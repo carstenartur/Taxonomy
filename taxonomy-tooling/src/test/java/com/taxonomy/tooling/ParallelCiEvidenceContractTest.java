@@ -29,7 +29,7 @@ class ParallelCiEvidenceContractTest {
                 .contains("ui-shards:\n    name: UI shard / ${{ matrix.shard }}")
                 .contains("verify:\n    name: Maven verification")
                 .contains("needs: [application, ui-plan, ui-contracts]")
-                .contains("needs: [application, core, observability, ui-contracts, ui-shards]")
+                .contains("needs: [application, core, observability, ui-contracts, ui-shards, interoperability-products]")
                 .contains("if: always()")
                 .contains("name: taxonomy-ui-application")
                 .contains("name: quality-reports-core")
@@ -72,6 +72,7 @@ class ParallelCiEvidenceContractTest {
         String finalGate = workflow.substring(finalGateStart);
         assertThat(finalGate)
                 .contains("APPLICATION_RESULT: ${{ needs.application.result }}")
+                .contains("INTEROPERABILITY_RESULT: ${{ needs.interoperability-products.result }}")
                 .contains("Require every authoritative lane")
                 .contains("Verify complete digest-bound UI evidence")
                 .contains("run: bash .github/scripts/finalize-quality-evidence.sh");

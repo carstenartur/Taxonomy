@@ -51,6 +51,13 @@ types and relation constraints are validated on the server. `Taxonomy.ElementTyp
 and `Taxonomy.RelationType` properties preserve a more precise canonical type on
 return exports. Names are never used for identity matching.
 
+Canonical relations without a lossless declared ArchiMate representation remain
+visible in the export preview with `UNSUPPORTED_RELATION_TYPE`. Review must reject
+them or choose an explicit mapping. They never silently become Association. A
+partial reviewed export is identified as partial. Local view membership and
+editable properties overlay older exchange evidence; removed placements prune
+dependent visual connections with an explicit loss report.
+
 ReqIF title/text mapping uses recognized attribute names; the user can select
 other existing attributes during review. A single rich-text field cannot represent
 two independently editable fields. In that case the body uses that field and the
@@ -71,6 +78,13 @@ authentication. Missing and foreign integration identities both return 404.
 Write routes additionally require ARCHITECT or ADMIN. No browser-side canonical
 graph is accepted. Retrying the same operation with different input or decisions
 is rejected. Repeating an accepted request does not reapply the model.
+
+Reviewed delivery binds generated external IDs to their original local objects,
+so returning a native export updates the same requirement/element. These bindings
+retain the frozen exported values but have **no confirmed external baseline**.
+Omissions cannot delete such objects. A later return compares against that frozen
+delivery and detects intersecting local changes; file download still advances no
+confirmed synchronization checkpoint.
 
 The connection overview provides its exact **OSLC discovery** URL. The provider's
 `/oslc/scopes/{scope}/catalog` links service providers, resource shapes and paged

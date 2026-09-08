@@ -281,6 +281,7 @@ public class IntegrationService {
             if (!Objects.equals(request.expectedExternalVersion(), previous == null ? null : previous.externalVersion())) throw IntegrationProblem.conflict("EXTERNAL_STATE_CHANGED");
             var authority = authority(context, connection, current.state());
             ExchangeDocument outgoing = domain.exportDocument(connection, current, document, mappings, previous);
+            if (outgoing.losses().stream().noneMatch(loss -> loss.disposition() == LossDisposition.UNSUPPORTED)) {
             ExchangeFile file = connector.previewOutbound(new OutboundRequest(authority, outgoing, request.expectedExternalVersion()));
             // Normalize generated types and hierarchy now. The downloaded file is derived solely from this durable snapshot.
             ExchangeDocument normalized = connector.previewInbound(new InboundRequest(authority, file.mediaType(), file.content(), outgoing.externalVersion(), true));
@@ -288,6 +289,7 @@ public class IntegrationService {
             normalized.losses().forEach(loss -> { if (!losses.contains(loss)) losses.add(loss); });
             outgoing = new ExchangeDocument(normalized.profile(), normalized.profileVersion(), normalized.externalVersion(), normalized.completeScope(), normalized.source(),
                     normalized.artifacts(), normalized.relations(), normalized.placements(), normalized.metadata(), losses);
+            }
             List<IntegrationChange> changes = ExchangeItems.flatten(outgoing).entrySet().stream().map(e -> new IntegrationChange(e.getKey(), e.getKey(), ChangeKind.ADD,
                     ExchangeItems.fields(e.getValue()).keySet(), json.fingerprint(ExchangeItems.fields(e.getValue())), json.fingerprint(null), null, e.getValue(), List.of())).toList();
             return session.preview(request.operationId(), authority, "OUTBOUND", fingerprint, outgoing, changes);
@@ -304,16 +306,26 @@ public class IntegrationService {
                 if (!operation.reviewFingerprint().equals(json.fingerprint(review))) throw IntegrationProblem.conflict("REVIEW_ID_REUSED");
                 return operation;
             }
-            expect(operation.context().internalState(), domain.snapshot(context, session.connection(), session.identities(), read(context)).state());
+            return workspace(context, before -> {
+            domain.lockProject(context, session.connection().projectId());
+            List<Identity> known = session.identities();
+            var current = domain.snapshot(context, session.connection(), known, before);
+            expect(operation.context().internalState(), current.state());
             Map<String, Artifact> selected = select(operation, review, Map.of(), Map.of());
             ExchangeDocument result = ExchangeItems.expand(operation.document(), selected);
             boolean complete = selected.size() == operation.changes().size();
             result = new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), complete, result.source(), result.artifacts(), result.relations(), result.placements(), result.metadata(), result.losses());
             ExchangeFile file = connectors.require(operation.context().profile()).previewOutbound(new OutboundRequest(operation.context(), result, result.externalVersion()));
             session.beginReview(review); session.applied(operation.id(), operation.context().internalState(), result, false);
+            Map<String, IntegrationDomainAdapter.AppliedRequirement> bindings = domain.exportBindings(session.connection(), current, before, selected);
+            Set<String> existing = known.stream().map(Identity::externalId).collect(java.util.stream.Collectors.toSet());
+            for (var entry : bindings.entrySet()) if (selected.containsKey(entry.getKey()) && !existing.contains(entry.getKey()))
+                session.mapping(operation.id(), entry.getKey(), entry.getValue().businessIdentity(), entry.getValue().requirementId(),
+                        null, null, selected.get(entry.getKey()), false);
             session.file(operation.id(), file);
             session.complete(operation.id(), operation.context().internalState(), result.externalVersion(), json.fingerprint(result), false);
             return session.operation(operation.id());
+            });
         });
     }
     public ExchangeFile file(RepositoryContext context, UUID connectionId, UUID operationId) {
@@ -338,8 +350,17 @@ public class IntegrationService {
             if (change.after() == null) selected.remove(change.externalId());
             else {
                 Identity previous = known.get(change.externalId());
-                Artifact selectedValue = ExchangeItems.merge(previous == null ? null : previous.external(), current.get(change.externalId()), change.after());
-                selected.put(change.externalId(), remap(selectedValue, review.mappings().get(change.id())));
+                Artifact baseline = previous == null ? null : previous.external() == null ? previous.internal() : previous.external();
+                Artifact selectedValue = ExchangeItems.merge(baseline, current.get(change.externalId()), change.after());
+                MappingOverride mapping = review.mappings().get(change.id());
+                Artifact mapped = remap(selectedValue, mapping);
+                if (operation.direction().equals("OUTBOUND") && operation.context().profile().equals(ArchiMateExchangeCodec.PROFILE)
+                        && mapping != null && mapping.canonicalType() != null) {
+                    String type = mapped.kind() == ArtifactKind.ELEMENT ? IntegrationDomainAdapter.archimateType(mapping.canonicalType())
+                            : mapped.kind() == ArtifactKind.RELATION ? IntegrationDomainAdapter.archimateRelation(mapping.canonicalType()) : mapped.type();
+                    mapped = new Artifact(mapped.id(), mapped.kind(), type, mapped.title(), mapped.text(), mapped.attributes(), mapped.extensions());
+                }
+                selected.put(change.externalId(), mapped);
             }
         }
         if (!selected.isEmpty() && !selected.containsKey("METADATA:package"))

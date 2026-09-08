@@ -50,7 +50,10 @@ public sealed interface ArchitectureCommand {
     record SetExchangeProperties(String objectKind, String id, Map<String, String> properties) implements ArchitectureCommand {
         public SetExchangeProperties { properties = copyProperties(properties); }
     }
-    record UpsertArchitectureView(String id, String title, List<String> members, Map<String, String> properties) implements ArchitectureCommand {
+    record ClearArchitectureElementProperties(String id, java.util.Set<String> properties) implements ArchitectureCommand {
+        public ClearArchitectureElementProperties { properties = java.util.Set.copyOf(properties); }
+    }
+    record UpsertArchitectureView(String id, String title, String description, List<String> members, Map<String, String> properties) implements ArchitectureCommand {
         public UpsertArchitectureView { members = List.copyOf(members); properties = copyProperties(properties); }
     }
     record DeleteArchitectureView(String id) implements ArchitectureCommand {}

@@ -8,13 +8,17 @@ OPTIONS:
 MID: e28355047b9b4cb7b0cc6831000aaecc
 UID: INTEROP-REQ-1
 TITLE: Preserve stable requirement identity
-STATEMENT: The exchange shall preserve the requirement identity and its text.
+STATEMENT: >>>
+The exchange shall preserve the requirement identity and its text.
+<<<
 
 [REQUIREMENT]
 MID: d861021d413a4ed2851309e66ad67ec7
 UID: INTEROP-REQ-2
 TITLE: Retain reviewed provenance
-STATEMENT: The exchange shall retain the reviewed source and rationale.
+STATEMENT: >>>
+The exchange shall retain the reviewed source and rationale.
+<<<
 RELATIONS:
 - TYPE: Parent
   VALUE: INTEROP-REQ-1

@@ -38,4 +38,13 @@ class IntegrationDiffTest {
         var reused = diff.compare(document(true, value), AuthorityMode.BIDIRECTIONAL, List.of(identity(value, true)), Map.of());
         assertTrue(reused.stream().anyMatch(c -> c.conflicts().contains("EXTERNAL_IDENTITY_REUSED")));
     }
+
+    @Test void deliveredIdentityHasNoExternalDeletionBaselineAndKeepsThreeWayConflictsOnReturn() {
+        Artifact exported = artifact("Title", "Body", "<source/>");
+        Identity binding = new Identity("REQUIREMENT:requirement-1", "internal-1", 1L, null, "fingerprint", null, exported, UUID.randomUUID(), false);
+        Map<String, Artifact> local = Map.of(binding.externalId(), artifact("Title", "Local edit", "<source/>"));
+        assertTrue(diff.compare(document(true), AuthorityMode.BIDIRECTIONAL, List.of(binding), local).stream().noneMatch(c -> c.externalId().equals(binding.externalId())));
+        var returned = diff.compare(document(true, artifact("Title", "Remote edit", "<source/>")), AuthorityMode.BIDIRECTIONAL, List.of(binding), local);
+        assertEquals(ChangeKind.CONFLICT, returned.stream().filter(c -> c.externalId().equals(binding.externalId())).findFirst().orElseThrow().kind());
+    }
 }

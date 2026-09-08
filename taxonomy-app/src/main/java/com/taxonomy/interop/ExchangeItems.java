@@ -50,7 +50,10 @@ public final class ExchangeItems {
         Map<String, String> result = new TreeMap<>();
         if (artifact == null) return result;
         result.put("title", artifact.title()); result.put("text", artifact.text()); result.put("type", artifact.type()); result.put("kind", artifact.kind().name());
-        artifact.attributes().forEach((key, value) -> { if (!key.equals("LAST-CHANGE")) result.put("attribute:" + key, comparable(value)); });
+        artifact.attributes().forEach((key, value) -> {
+            if (!key.equals("LAST-CHANGE") && !artifact.extensions().getOrDefault("definition:" + key, "").startsWith("Taxonomy."))
+                result.put("attribute:" + key, comparable(value));
+        });
         artifact.extensions().forEach((key, value) -> { if (!Set.of("xml", "rdfXml", "lastChange").contains(key)) result.put("extension:" + key, comparable(value)); });
         return result;
     }

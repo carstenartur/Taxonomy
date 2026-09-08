@@ -121,6 +121,13 @@ class IntegrationFlowTest {
         var next = integrations.overview(context, connection);
         Operation repeated = integrations.previewExport(context, connection, new ExportRequest(UUID.randomUUID(), next.current(), next.checkpoint().externalVersion()));
         assertTrue(repeated.document().artifacts().stream().anyMatch(a -> a.id().equals(added.id()) && a.title().equals(added.title())));
+        var binding = integrations.identities(context, connection).stream().filter(i -> i.externalId().equals("REQUIREMENT:" + added.id())).findFirst().orElseThrow();
+        assertNull(binding.external(), "File delivery must not claim a confirmed external baseline");
+        assertNotNull(binding.requirementId());
+        Operation returned = integrations.preview(context, connection, request(), integrations.file(context, connection, export.id()).content());
+        integrations.apply(context, connection, accept(returned));
+        assertEquals(2, projects.listRequirements(project, context.username(), IntegrationDomainAdapter.workspace(context)).size(), "Returning a native export must not create a copy of the local requirement");
+        assertEquals(binding.requirementId(), integrations.identities(context, connection).stream().filter(i -> i.externalId().equals(binding.externalId())).findFirst().orElseThrow().requirementId());
     }
     private static byte[] file(String title, String text) {
         return new ReqifExchangeCodec().write(new ExchangeDocument(ReqifExchangeCodec.PROFILE, "1", null, true, "",

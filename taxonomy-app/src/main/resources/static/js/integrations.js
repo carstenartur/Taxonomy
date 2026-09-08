@@ -38,11 +38,12 @@
     function renderChanges() {
         el('integrationChanges').replaceChildren();
         visible().forEach(function (change) {
-            var row = document.createElement('tr'); if (change.kind === 'CONFLICT') row.className = 'conflict';
+            var row = document.createElement('tr'); row.dataset.changeId = change.id; if (change.kind === 'CONFLICT') row.className = 'conflict';
             var id = document.createElement('td'); id.textContent = change.externalId;
             var kind = document.createElement('td'); kind.textContent = t('change.' + change.kind) + (change.conflicts.length ? ': ' + change.conflicts.join(', ') : '');
             var value = document.createElement('td'), detail = document.createElement('details'), summary = document.createElement('summary'), text = document.createElement('pre');
             summary.textContent = ((change.before && change.before.title) || '—') + ' → ' + ((change.after && change.after.title) || '—');
+            text.tabIndex = 0; text.setAttribute('aria-label', t('values') + ' ' + change.externalId);
             text.textContent = JSON.stringify({ fields: change.fields, before: change.before, after: change.after }, null, 2); detail.append(summary, text); value.append(detail);
             var decision = document.createElement('td'), select = document.createElement('select'); select.setAttribute('aria-label', t('decision') + ' ' + change.externalId);
             option(select, '', t('choose')); ['ACCEPT', 'REJECT', 'TAKE_EXTERNAL', 'KEEP_INTERNAL'].forEach(function (key) { option(select, key, t('decision.' + key)); });

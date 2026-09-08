@@ -7,6 +7,7 @@ import java.util.List;
 
 /** Small RDF graph writer for the declared read-only OSLC surface. No HTML or remote URI is executed. */
 public final class OslcRdf {
+    public static final String RM_PROFILE = "oslc-rm-2.1";
     public static final String RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#";
     public static final String DCT = "http://purl.org/dc/terms/";
     public static final String OSLC = "http://open-services.net/ns/core#";

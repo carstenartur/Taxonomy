@@ -25,7 +25,7 @@ public class IntegrationDiff {
         for (String id : ids) {
             Identity baseline = baselines.get(id); Artifact next = external.get(id), local = current.get(id);
             if (next == null) {
-                if (baseline == null || baseline.removed() || !incoming.completeScope()
+                if (baseline == null || baseline.external() == null || baseline.removed() || !incoming.completeScope()
                         || (mode != AuthorityMode.MIRROR_READ && mode != AuthorityMode.BIDIRECTIONAL)) continue;
                 List<String> conflict = changed(baseline.internal(), local).isEmpty() ? List.of() : List.of("DELETE_VERSUS_LOCAL_CHANGE");
                 changes.add(change(id, conflict.isEmpty() ? ChangeKind.REMOVE_CANDIDATE : ChangeKind.CONFLICT, Set.of("removed"), local, baseline.external(), null, conflict));
@@ -36,7 +36,10 @@ public class IntegrationDiff {
                 changes.add(change(id, conflicts.isEmpty() ? ChangeKind.ADD : ChangeKind.CONFLICT, ExchangeItems.fields(next).keySet(), local, baseline == null ? null : baseline.external(), next, conflicts));
                 continue;
             }
-            Set<String> remoteFields = changed(baseline.external(), next);
+            // A delivered identity is bound, but has no confirmed external baseline yet.
+            // Compare its return against the frozen export without inferring deletion from omissions.
+            Artifact observed = baseline.external() == null ? baseline.internal() : baseline.external();
+            Set<String> remoteFields = changed(observed, next);
             Set<String> localFields = changed(baseline.internal(), local);
             List<String> conflicts = new ArrayList<>();
             for (String field : remoteFields) if (localFields.contains(field)

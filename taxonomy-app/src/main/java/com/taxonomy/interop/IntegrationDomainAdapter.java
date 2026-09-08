@@ -8,7 +8,6 @@ import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.exchange.ArchiMateExchangeCodec;
 import com.taxonomy.exchange.ReqifExchangeCodec;
-import com.taxonomy.exchange.OslcRequirementsCodec;
 import com.taxonomy.exchange.OslcRdf;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore.Connection;
@@ -41,14 +40,37 @@ public class IntegrationDomainAdapter {
     public IntegrationDomainAdapter(ProjectPortfolioService projects, PortfolioGitService portfolio, IntegrationJson json) {
         this.projects = projects; this.portfolio = portfolio; this.json = json;
     }
-    public record Snapshot(InternalState state, Map<String, Artifact> items, List<RequirementView> requirements) {}
+    public record Snapshot(InternalState state, Map<String, Artifact> items, List<RequirementView> requirements, List<MappingLoss> losses) {}
     public record AppliedRequirement(String businessIdentity, Long requirementId) {}
+
+    /** Bind only identities actually delivered in a reviewed file; this is not an external acknowledgement. */
+    public Map<String, AppliedRequirement> exportBindings(Connection connection, Snapshot current,
+                                                          ArchitectureEditorService.Document document, Map<String, Artifact> selected) {
+        Map<String, AppliedRequirement> result = new TreeMap<>();
+        if (connection.projectId() != null) {
+            for (RequirementView requirement : current.requirements()) {
+                String external = connection.connectorId().equals(OslcRdf.RM_PROFILE)
+                        ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
+                        : "taxonomy-requirement-" + requirement.id();
+                result.put("REQUIREMENT:" + external, new AppliedRequirement(requirement.requirementKey(), requirement.id()));
+            }
+        } else for (BlockAst block : ArchitectureSemanticPatch.index(document.dsl()).values()) {
+            String kind = block.getKind();
+            if (!Set.of("element", "view", "relation").contains(kind)) continue;
+            String business = kind.equals("relation") ? String.join(" ", block.getHeaderTokens()) : block.getHeaderTokens().getFirst();
+            result.put(kind.toUpperCase(java.util.Locale.ROOT) + ":" + stableId(connection.id(), "export-" + kind + ":" + business), new AppliedRequirement(business, null));
+        }
+        for (var entry : selected.entrySet()) if (!Set.of(ArtifactKind.REQUIREMENT, ArtifactKind.ELEMENT, ArtifactKind.VIEW, ArtifactKind.RELATION).contains(entry.getValue().kind()))
+            result.put(entry.getKey(), new AppliedRequirement(businessId(connection, null, entry.getValue()), null));
+        return result;
+    }
     public Snapshot snapshot(RepositoryContext context, Connection connection, List<Identity> mappings, ArchitectureEditorService.Document document) {
         List<RequirementView> requirements = connection.projectId() == null ? List.of()
                 : projects.listRequirements(connection.projectId(), context.username(), workspace(context));
         Map<Long, RequirementView> byId = new LinkedHashMap<>(); requirements.forEach(r -> byId.put(r.id(), r));
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(document.dsl());
         Map<String, Artifact> items = new TreeMap<>();
+        List<MappingLoss> losses = new ArrayList<>();
         for (Identity mapping : mappings) {
             if (mapping.removed()) continue;
             Artifact baseline = mapping.internal(); if (baseline == null) continue;
@@ -69,7 +91,8 @@ public class IntegrationDomainAdapter {
                 if (baseline.kind() == ArtifactKind.ELEMENT) {
                     String canonical = block.getHeaderTokens().get(2);
                     if (!canonical.equals(baseline.extensions().get("canonicalType"))) type = archimateType(canonical);
-                    extensions.put("canonicalType", canonical); extensions.put("taxonomy:ElementType", canonical);
+                    extensions.put("canonicalType", canonical);
+                    if (extensions.containsKey("taxonomy:ElementType")) extensions.put("taxonomy:ElementType", canonical);
                     ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().filter(p -> !Set.of("title", "description").contains(p))
                             .forEach(p -> extensions.remove("taxonomy:" + p));
                     for (var property : block.getProperties()) if (ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(property.key())
@@ -79,15 +102,25 @@ public class IntegrationDomainAdapter {
             } else if (baseline.kind() == ArtifactKind.RELATION && connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE)) {
                 BlockAst relation = blocks.get("relation:" + mapping.businessIdentity()); if (relation == null) continue;
                 Map<String, String> extensions = new LinkedHashMap<>(baseline.extensions());
-                extensions.put("taxonomy:RelationType", relation.getHeaderTokens().get(1));
-                extensions.put("taxonomy:status", value(relation.property("status")));
+                if (extensions.containsKey("taxonomy:RelationType")) extensions.put("taxonomy:RelationType", relation.getHeaderTokens().get(1));
+                if (extensions.containsKey("taxonomy:status") || !"accepted".equals(relation.property("status")))
+                    extensions.put("taxonomy:status", value(relation.property("status")));
                 current = new Artifact(baseline.id(), baseline.kind(), baseline.type(), baseline.title(), baseline.text(), baseline.attributes(), extensions);
             }
             items.put(mapping.externalId(), current);
         }
+        if (connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE) && connection.authority() != AuthorityMode.LINK_ONLY) {
+            Map<String, String> elements = new TreeMap<>(), views = new TreeMap<>();
+            for (Identity mapping : mappings) if (!mapping.removed() && mapping.internal() != null) {
+                if (mapping.internal().kind() == ArtifactKind.ELEMENT) elements.put(mapping.businessIdentity(), mapping.internal().id());
+                if (mapping.internal().kind() == ArtifactKind.VIEW) views.put(mapping.businessIdentity(), mapping.internal().id());
+            }
+            synchronizeViews(connection, blocks, elements, views, items);
+            pruneConnections(items, losses);
+        }
         InternalState state = new InternalState(context.repositoryId(), document.context().workspaceScopeKey(), context.branch(), document.context().commit(),
                 document.context().revision(), connection.projectId(), json.fingerprint(requirements.stream().map(r -> List.of(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList()));
-        return new Snapshot(state, Map.copyOf(items), requirements);
+        return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses));
     }
 
     public void requireProject(RepositoryContext context, Long projectId) { projects.requireProject(projectId, context.username(), workspace(context)); }
@@ -113,13 +146,14 @@ public class IntegrationDomainAdapter {
         ExchangeDocument template = previous == null ? new ExchangeDocument(connection.connectorId(), connection.profileVersion(), null, true, "",
                 List.of(), List.of(), List.of(), Map.of("identifier", "taxonomy-" + connection.id(), "title", connection.displayName()), List.of()) : previous;
         Map<String, Artifact> items = new TreeMap<>(current.items());
+        List<MappingLoss> losses = new ArrayList<>(template.losses()); losses.addAll(current.losses());
         if (connection.projectId() != null) {
             Map<Long, Identity> known = new LinkedHashMap<>(); mappings.stream().filter(m -> m.requirementId() != null).forEach(m -> known.put(m.requirementId(), m));
             List<Artifact> added = new ArrayList<>();
             for (RequirementView requirement : current.requirements()) if (requirement.status() != RequirementStatus.ARCHIVED) {
                 Identity existing = known.get(requirement.id());
                 if (existing != null && items.containsKey(existing.externalId())) continue;
-                boolean oslc = connection.connectorId().equals(OslcRequirementsCodec.PROFILE);
+                boolean oslc = connection.connectorId().equals(OslcRdf.RM_PROFILE);
                 String id = existing != null ? existing.externalId().substring("REQUIREMENT:".length())
                         : oslc ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
                         : "taxonomy-requirement-" + requirement.id();
@@ -158,7 +192,10 @@ public class IntegrationDomainAdapter {
                 if (source == null || target == null) throw new IntegrationProblem("RELATION_MAPPING_REQUIRED", 422, "Canonical relation has an unmapped endpoint");
                 Map<String, String> extension = new TreeMap<>(Map.of("source", source, "target", target, "canonicalType", type, "taxonomy:status", value(block.property("status"))));
                 if (type.equals("PRODUCES")) extension.put("accessType", "Write");
-                Artifact artifact = new Artifact(stableId(connection.id(), "export-relation:" + key), ArtifactKind.RELATION, archimateRelation(type), "", "", Map.of(), extension);
+                String mappedType = archimateRelation(type), externalId = stableId(connection.id(), "export-relation:" + key);
+                if (mappedType == null) losses.add(new MappingLoss(externalId, "type", "UNSUPPORTED_RELATION_TYPE", LossDisposition.UNSUPPORTED,
+                        "Canonical " + type + " has no lossless declared ArchiMate mapping; reject this relation or explicitly select an export mapping"));
+                Artifact artifact = new Artifact(externalId, ArtifactKind.RELATION, mappedType == null ? type : mappedType, "", "", Map.of(), extension);
                 items.put(ExchangeItems.key(artifact), artifact);
             }
             for (BlockAst block : blocks.values()) if (block.getKind().equals("view") && !known.contains(block.getHeaderTokens().getFirst())) {
@@ -173,9 +210,12 @@ public class IntegrationDomainAdapter {
                     items.put(ExchangeItems.key(placement), placement);
                 }
             }
+            Map<String, String> views = new TreeMap<>();
+            mappings.stream().filter(m -> !m.removed() && m.internal() != null && m.internal().kind() == ArtifactKind.VIEW)
+                    .forEach(m -> views.put(m.businessIdentity(), m.internal().id()));
+            synchronizeViews(connection, blocks, ids, views, items);
         }
         // Local removals have an explicit export loss report; never leave an orphaned hierarchy or view connection.
-        List<MappingLoss> losses = new ArrayList<>(template.losses());
         Set<String> present = items.values().stream().filter(a -> a.kind() != ArtifactKind.PLACEMENT && a.kind() != ArtifactKind.METADATA).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
         boolean removed;
         do {
@@ -191,9 +231,63 @@ public class IntegrationDomainAdapter {
                 return omit;
             });
         } while (removed);
+        pruneConnections(items, losses);
         ExchangeDocument result = ExchangeItems.expand(template, items);
         return new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), result.completeScope(), result.source(), result.artifacts(),
                 result.relations(), result.placements(), result.metadata(), losses);
+    }
+
+    private static void synchronizeViews(Connection connection, Map<String, BlockAst> blocks, Map<String, String> elements,
+                                          Map<String, String> views, Map<String, Artifact> items) {
+        for (var view : views.entrySet()) {
+            BlockAst block = blocks.get("view:" + view.getKey()); if (block == null) continue;
+            Set<String> included = block.propertyValues("include").stream().map(elements::get).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
+            Set<String> managed = Set.copyOf(elements.values());
+            items.entrySet().removeIf(e -> e.getValue().kind() == ArtifactKind.PLACEMENT && view.getValue().equals(e.getValue().extensions().get("container"))
+                    && managed.contains(e.getValue().extensions().get("artifact")) && !included.contains(e.getValue().extensions().get("artifact")));
+            // A removed semantic parent must not leave a dangling placement parent. Preserve surviving children explicitly at the root.
+            Set<String> remaining = items.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
+            items.replaceAll((id, item) -> {
+                if (item.kind() != ArtifactKind.PLACEMENT || !view.getValue().equals(item.extensions().get("container"))
+                        || value(item.extensions().get("parent")).isEmpty() || remaining.contains(item.extensions().get("parent"))) return item;
+                Map<String, String> extension = new TreeMap<>(item.extensions()); extension.put("parent", "");
+                return new Artifact(item.id(), item.kind(), item.type(), item.title(), item.text(), item.attributes(), extension);
+            });
+            Set<String> represented = items.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT && view.getValue().equals(a.extensions().get("container")))
+                    .map(a -> a.extensions().get("artifact")).collect(java.util.stream.Collectors.toSet());
+            int position = represented.size();
+            for (String element : included.stream().sorted().toList()) if (!represented.contains(element)) {
+                Artifact placement = new Artifact(stableId(connection.id(), view.getValue() + ":" + element), ArtifactKind.PLACEMENT, "placement", "", "",
+                        Map.of("x", Integer.toString(position % 5 * 180), "y", Integer.toString(position / 5 * 100), "w", "160", "h", "70"),
+                        Map.of("container", view.getValue(), "parent", "", "artifact", element, "position", Integer.toString(position++)));
+                items.put(ExchangeItems.key(placement), placement);
+            }
+        }
+    }
+
+    /** Only export removes stale presentation connections, with a visible loss for each removed reference. */
+    private static void pruneConnections(Map<String, Artifact> items, List<MappingLoss> losses) {
+        Set<String> relations = items.values().stream().filter(a -> a.kind() == ArtifactKind.RELATION).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
+        items.replaceAll((id, item) -> {
+            String evidence = item.extensions().get("connectionsXml");
+            if (item.kind() != ArtifactKind.VIEW || evidence == null) return item;
+            var xml = com.taxonomy.exchange.ExchangeXml.parse(evidence.getBytes(StandardCharsets.UTF_8));
+            Set<String> targets = items.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT && item.id().equals(a.extensions().get("container")))
+                    .map(Artifact::id).collect(java.util.stream.Collectors.toSet());
+            com.taxonomy.exchange.ExchangeXml.children(xml.getDocumentElement()).forEach(c -> targets.add(c.getAttribute("identifier")));
+            boolean removed;
+            do {
+                removed = false;
+                for (var c : com.taxonomy.exchange.ExchangeXml.children(xml.getDocumentElement())) if (!targets.contains(c.getAttribute("source")) || !targets.contains(c.getAttribute("target"))
+                        || c.hasAttribute("relationshipRef") && !relations.contains(c.getAttribute("relationshipRef"))) {
+                    targets.remove(c.getAttribute("identifier")); xml.getDocumentElement().removeChild(c); removed = true;
+                    losses.add(new MappingLoss(c.getAttribute("identifier"), "connection", "LOCAL_DEPENDENCY_REMOVED", LossDisposition.TRANSFORMED,
+                            "View connection is omitted because its canonical relation or placement was removed locally"));
+                }
+            } while (removed);
+            Map<String, String> extensions = new TreeMap<>(item.extensions()); extensions.put("connectionsXml", com.taxonomy.exchange.ExchangeXml.xml(xml));
+            return new Artifact(item.id(), item.kind(), item.type(), item.title(), item.text(), item.attributes(), extensions);
+        });
     }
 
     public AppliedRequirement applyRequirement(RepositoryContext context, Connection connection, Artifact value, Identity previous, String rationale) {
@@ -243,8 +337,16 @@ public class IntegrationDomainAdapter {
             if (ExchangeItems.fields(artifact).equals(ExchangeItems.fields(current.get(ExchangeItems.key(artifact))))) continue;
             String internalId = elementIds.get(artifact.id()); String type = artifact.extensions().get("canonicalType");
             if (type == null) throw new IntegrationProblem("UNSUPPORTED_ELEMENT_TYPE", 422, "Reject or explicitly remap the unsupported element type");
-            Map<String, String> properties = Map.of("title", artifact.title(), "description", artifact.text());
+            Map<String, String> properties = new TreeMap<>(Map.of("title", artifact.title(), "description", artifact.text()));
+            ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().filter(p -> !Set.of("title", "description").contains(p))
+                    .forEach(p -> { if (artifact.extensions().containsKey("taxonomy:" + p)) properties.put(p, artifact.extensions().get("taxonomy:" + p)); });
             commands.add(blocks.containsKey("element:" + internalId) ? new UpdateArchitectureElement(internalId, type, properties) : new CreateArchitectureElement(internalId, type, properties));
+            BlockAst priorBlock = blocks.get("element:" + internalId);
+            if (priorBlock != null) {
+                Set<String> cleared = priorBlock.getProperties().stream().map(com.taxonomy.dsl.ast.PropertyAst::key)
+                        .filter(p -> ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(p) && !properties.containsKey(p)).collect(java.util.stream.Collectors.toSet());
+                if (!cleared.isEmpty()) commands.add(new ClearArchitectureElementProperties(internalId, cleared));
+            }
             commands.add(new SetExchangeProperties("element", internalId, exchangeProperties(connection, artifact)));
         }
         for (Artifact artifact : selected.values()) if (artifact.kind() == ArtifactKind.VIEW) {
@@ -253,9 +355,13 @@ public class IntegrationDomainAdapter {
                     .equals(selected.entrySet().stream().filter(e -> e.getValue().kind() == ArtifactKind.PLACEMENT && artifact.id().equals(e.getValue().extensions().get("container")))
                             .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> ExchangeItems.fields(e.getValue()))));
             if (!layoutChanged && ExchangeItems.fields(artifact).equals(ExchangeItems.fields(current.get(ExchangeItems.key(artifact))))) continue;
-            List<String> members = selected.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT && artifact.id().equals(a.extensions().get("container")))
-                    .map(a -> elementIds.get(a.extensions().get("artifact"))).filter(Objects::nonNull).distinct().toList();
-            commands.add(new UpsertArchitectureView(businessId(connection, known.get(ExchangeItems.key(artifact)), artifact), artifact.title(), members, exchangeProperties(connection, artifact)));
+            Set<String> members = selected.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT && artifact.id().equals(a.extensions().get("container")))
+                    .map(a -> elementIds.get(a.extensions().get("artifact"))).filter(Objects::nonNull).collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));
+            String viewId = businessId(connection, known.get(ExchangeItems.key(artifact)), artifact);
+            BlockAst existingView = blocks.get("view:" + viewId);
+            Set<String> managed = mappings.stream().filter(m -> m.internal() != null && m.internal().kind() == ArtifactKind.ELEMENT).map(Identity::businessIdentity).collect(java.util.stream.Collectors.toSet());
+            if (existingView != null) existingView.getProperties().stream().filter(p -> p.key().equals("include") && !managed.contains(p.value())).forEach(p -> members.add(p.value()));
+            commands.add(new UpsertArchitectureView(viewId, artifact.title(), artifact.text(), List.copyOf(members), exchangeProperties(connection, artifact)));
         }
         for (var entry : current.entrySet()) if (entry.getValue().kind() == ArtifactKind.ELEMENT && !selected.containsKey(entry.getKey())) {
             Identity prior = known.get(entry.getKey()); if (prior != null && blocks.containsKey("element:" + prior.businessIdentity())) commands.add(new DeleteArchitectureElement(prior.businessIdentity()));
@@ -263,7 +369,9 @@ public class IntegrationDomainAdapter {
         for (Artifact relation : selected.values()) if (relation.kind() == ArtifactKind.RELATION) {
             if (ExchangeItems.fields(relation).equals(ExchangeItems.fields(current.get(ExchangeItems.key(relation))))) continue;
             RelationKey key = relationKey(relation, elementIds);
-            if (!blocks.containsKey("relation:" + key.id())) commands.add(new CreateArchitectureRelation(key, "accepted"));
+            String status = relation.extensions().getOrDefault("taxonomy:status", "accepted");
+            if (!blocks.containsKey("relation:" + key.id())) commands.add(new CreateArchitectureRelation(key, status));
+            else if (!status.equals(blocks.get("relation:" + key.id()).property("status"))) commands.add(new UpdateArchitectureRelation(key, status));
             commands.add(new SetExchangeProperties("relation", key.id(), exchangeProperties(connection, relation)));
         }
         if (commands.size() > 2000) throw new IntegrationProblem("APPLY_COMMAND_LIMIT", 422, "Review at most 1000 semantic objects per import; the preview can contain a larger scope");
@@ -297,7 +405,7 @@ public class IntegrationDomainAdapter {
     public static String stableId(UUID connection, String id) { return "ext-" + UUID.nameUUIDFromBytes((connection + "\u0000" + id).getBytes(StandardCharsets.UTF_8)).toString(); }
     public static WorkspaceContext workspace(RepositoryContext context) { return new WorkspaceContext(context.username(), context.workspaceId(), context.branch(), context.repositoryId()); }
     private static String value(String value) { return value == null ? "" : value; }
-    private static String archimateType(String canonical) {
+    public static String archimateType(String canonical) {
         return switch (canonical) {
             case "Capability" -> "Capability"; case "Process" -> "BusinessProcess"; case "BusinessRole" -> "BusinessRole";
             case "CoreService" -> "ApplicationService"; case "COIService" -> "BusinessService"; case "CommunicationsService" -> "CommunicationNetwork";
@@ -305,12 +413,12 @@ public class IntegrationDomainAdapter {
             default -> throw new IntegrationProblem("UNSUPPORTED_ELEMENT_TYPE", 422, "Canonical element type has no exchange mapping");
         };
     }
-    private static String archimateRelation(String canonical) {
+    public static String archimateRelation(String canonical) {
         return switch (canonical) {
             case "REALIZES" -> "Realization"; case "SUPPORTS" -> "Serving"; case "ASSIGNED_TO" -> "Assignment";
             case "CONSUMES", "PRODUCES" -> "Access"; case "COMMUNICATES_WITH" -> "Flow"; case "CONTAINS" -> "Composition";
             case "RELATED_TO" -> "Association";
-            default -> throw new IntegrationProblem("UNSUPPORTED_RELATION_TYPE", 422, "Canonical relation type has no declared exchange mapping");
+            default -> null;
         };
     }
 }

@@ -14,6 +14,16 @@ window.TaxonomyContextBar = (function () {
     var POLL_INTERVAL = 10000; // 10 seconds
     var pollTimer = null;
     var currentContext = null;
+    var pendingRead = null;
+    var pageActive = true;
+    var activeContainer = null;
+    window.addEventListener('pagehide', function () {
+        pageActive = false; clearInterval(pollTimer); pollTimer = null;
+        if (pendingRead) pendingRead.abort();
+    });
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted && activeContainer) { pageActive = true; init(activeContainer); }
+    });
 
     /**
      * Initialise the context bar and start polling.
@@ -21,6 +31,7 @@ window.TaxonomyContextBar = (function () {
      * @param {string} containerId — DOM ID for the context bar container
      */
     function init(containerId) {
+        activeContainer = containerId;
         fetchAndRender(containerId);
         if (pollTimer) clearInterval(pollTimer);
         pollTimer = setInterval(function () {
@@ -34,10 +45,13 @@ window.TaxonomyContextBar = (function () {
      * @param {string} containerId — DOM ID
      */
     function fetchAndRender(containerId) {
-        fetch('/api/context/current')
+        if (!pageActive) return;
+        if (pendingRead) pendingRead.abort();
+        pendingRead = new AbortController();
+        fetch('/api/context/current', { signal: pendingRead.signal })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (ctx) {
-                if (!ctx) return;
+                if (!ctx || !pageActive) return;
                 currentContext = ctx;
                 render(containerId, ctx);
             })

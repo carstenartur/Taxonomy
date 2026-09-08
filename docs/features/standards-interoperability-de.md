@@ -44,6 +44,14 @@ Ablehnung. Namen sind keine Identitäten. Properties, Ordner, Views, Platzierung
 und Verbindungspunkte werden getrennt von der fachlichen Elementidentität
 erhalten. Die Taxonomy-Typproperties sichern präzisere interne Typen beim Rückweg.
 
+Fehlt für eine kanonische Relation eine verlustfreie ArchiMate-Zuordnung, bleibt
+sie mit Verlustbericht in der Exportprüfung sichtbar. Sie benötigt Ablehnung oder
+eine ausdrücklich gewählte Zuordnung; es gibt keinen stillen Association-Fallback.
+Lokale View-Mitgliedschaften und Properties ersetzen veraltete Austauschwerte.
+Generierte Export-IDs werden an ihre lokalen Ursprungsobjekte gebunden. Ein
+Rückimport erzeugt dadurch keine Duplikate. Diese Bindung bestätigt keinen externen
+Stand und erlaubt keine Löschung allein wegen fehlender Objekte im Rücklauf.
+
 Der OSLC-Anbieter ist authentifiziert und lesend. Er liefert Discovery,
 Ressourcenformen, freigegebene aktuelle Anforderungen, ihre unveränderlichen
 Textversionen und explizite Architekturversionen als RDF/XML, Turtle oder JSON-LD.

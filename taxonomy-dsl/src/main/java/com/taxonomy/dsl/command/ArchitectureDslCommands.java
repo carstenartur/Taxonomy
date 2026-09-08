@@ -59,6 +59,7 @@ public final class ArchitectureDslCommands {
             case DeleteArchitectureRelation delete -> deleteRelation(source, blocks, delete.relation());
             case MoveOrGroupElement move -> move(source, blocks, move);
             case SetExchangeProperties exchange -> exchangeProperties(source, blocks, exchange);
+            case ClearArchitectureElementProperties clear -> clearElementProperties(source, blocks, clear);
             case UpsertArchitectureView view -> exchangeView(source, blocks, view);
             case DeleteArchitectureView view -> ArchitectureSemanticPatch.replace(source, require(blocks, "view:" + view.id()), null);
             case StoreExchangeEvidence evidence -> exchangeEvidence(source, blocks, evidence);
@@ -119,15 +120,27 @@ public final class ArchitectureDslCommands {
         if (command.title() == null || command.title().isBlank() || command.title().length() > 8000)
             throw problem("INVALID_VALUE", "title", "View title must be bounded and nonempty");
         requireExchangeProperties(command.properties());
+        if (command.description() == null || command.description().length() > 8000)
+            throw problem("INVALID_VALUE", "description", "View description must be bounded");
         if (command.members().size() > 10000) throw problem("ITEM_LIMIT", "members", "View has too many members");
         command.members().forEach(id -> require(blocks, "element:" + id));
         BlockAst existing = blocks.get("view:" + command.id());
         List<PropertyAst> values = new ArrayList<>();
-        if (existing != null) existing.getProperties().stream().filter(p -> !p.key().equals("title") && !p.key().equals("include") && !command.properties().containsKey(p.key())).forEach(values::add);
+        if (existing != null) existing.getProperties().stream().filter(p -> !Set.of("title", "description", "include").contains(p.key()) && !command.properties().containsKey(p.key())).forEach(values::add);
         values.add(new PropertyAst("title", command.title(), null));
+        values.add(new PropertyAst("description", command.description(), null));
         command.members().stream().distinct().forEach(id -> values.add(new PropertyAst("include", id, null)));
         command.properties().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> values.add(new PropertyAst(e.getKey(), e.getValue(), null)));
         return ArchitectureSemanticPatch.replace(source, existing, new BlockAst("view", List.of(command.id()), values, List.of(), command.properties(), null));
+    }
+
+    private static String clearElementProperties(String source, Map<String, BlockAst> blocks, ClearArchitectureElementProperties command) {
+        BlockAst existing = require(blocks, "element:" + command.id());
+        if (command.properties().contains("title") || !ELEMENT_PROPERTIES.containsAll(command.properties()))
+            throw problem("READ_ONLY_PROPERTY", "properties", "Only optional editable properties can be cleared");
+        List<PropertyAst> values = existing.getProperties().stream().filter(p -> !command.properties().contains(p.key())).toList();
+        Map<String, String> extensions = new LinkedHashMap<>(existing.getExtensions()); command.properties().forEach(extensions::remove);
+        return ArchitectureSemanticPatch.replace(source, existing, new BlockAst(existing.getKind(), existing.getHeaderTokens(), values, existing.getChildren(), extensions, null));
     }
 
     private static String exchangeEvidence(String source, Map<String, BlockAst> blocks, StoreExchangeEvidence command) {

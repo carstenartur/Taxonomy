@@ -407,7 +407,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 case DeleteArchitectureRelation r -> parts.add(r.relation().id());
                 case MoveOrGroupElement e -> { parts.add(e.id()); parts.add(e.parentId()); }
                 case SetExchangeProperties e -> { parts.add(e.objectKind()); parts.add(e.id()); properties(parts, e.properties()); }
-                case UpsertArchitectureView e -> { parts.add(e.id()); parts.add(e.title()); parts.addAll(e.members()); properties(parts, e.properties()); }
+                case ClearArchitectureElementProperties e -> { parts.add(e.id()); parts.addAll(e.properties().stream().sorted().toList()); }
+                case UpsertArchitectureView e -> { parts.add(e.id()); parts.add(e.title()); parts.add(e.description()); parts.addAll(e.members()); properties(parts, e.properties()); }
                 case DeleteArchitectureView e -> parts.add(e.id());
                 case StoreExchangeEvidence e -> { parts.add(e.id()); parts.add(e.profile()); parts.add(e.profileVersion()); parts.add(e.fingerprint()); parts.add(e.source()); }
             }

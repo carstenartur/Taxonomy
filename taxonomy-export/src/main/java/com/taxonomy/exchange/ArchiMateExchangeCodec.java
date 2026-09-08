@@ -157,6 +157,10 @@ public final class ArchiMateExchangeCodec {
         if (mapped.isEmpty()) return;
         Element definitions = child(root, "propertyDefinitions"); if (definitions == null) definitions = append(root, NS, "propertyDefinitions");
         Element properties = child(node, "properties"); if (properties == null) properties = append(node, NS, "properties");
+        // Raw evidence cannot resurrect a mapped property cleared in the canonical workspace.
+        Set<String> taxonomyDefinitions = children(definitions).stream().filter(d -> text(d, "name").startsWith("Taxonomy."))
+                .map(d -> d.getAttribute("identifier")).collect(java.util.stream.Collectors.toSet());
+        children(properties).stream().filter(p -> taxonomyDefinitions.contains(p.getAttribute("propertyDefinitionRef"))).toList().forEach(properties::removeChild);
         for (var entry : mapped.entrySet()) {
             String name = "Taxonomy." + entry.getKey();
             Element definition = children(definitions).stream().filter(d -> name.equals(text(d, "name"))).findFirst().orElse(null);
@@ -244,7 +248,13 @@ public final class ArchiMateExchangeCodec {
     }
     private static Map<String, String> extensions(Element element, Map<String, String> names) {
         Map<String, String> extensions = new LinkedHashMap<>(); extensions.put("xml", xml(element));
-        properties(element).keySet().forEach(id -> { if (names.containsKey(id)) extensions.put("definition:" + id, names.get(id)); }); return extensions;
+        properties(element).forEach((id, property) -> {
+            if (names.containsKey(id)) {
+                extensions.put("definition:" + id, names.get(id));
+                if (names.get(id).startsWith("Taxonomy.")) extensions.put("taxonomy:" + names.get(id).substring(9),
+                        text(parse(property.getBytes(StandardCharsets.UTF_8)).getDocumentElement(), "value"));
+            }
+        }); return extensions;
     }
     private static String canonicalType(Map<String, String> properties, Map<String, String> names, String label, String fallback) {
         for (var entry : names.entrySet()) if (entry.getValue().equals(label) && properties.containsKey(entry.getKey()))

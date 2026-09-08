@@ -17,7 +17,7 @@ import static com.taxonomy.exchange.OslcRdf.RM;
 
 /** OSLC RM RDF/XML profile, parsed as RDF instead of depending on one producer's XML spelling. */
 public final class OslcRequirementsCodec {
-    public static final String PROFILE = "oslc-rm-2.1";
+    public static final String PROFILE = OslcRdf.RM_PROFILE;
     public ExchangeDocument read(byte[] content, URI base, String version, String configuration) {
         Model model = parse(content, base); List<Artifact> artifacts = new ArrayList<>(); List<MappingLoss> losses = new ArrayList<>();
         List<Resource> subjects = model.listResourcesWithProperty(RDF.type, model.createResource(RM + "Requirement")).toList();

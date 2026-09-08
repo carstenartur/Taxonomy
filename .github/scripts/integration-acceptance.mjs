@@ -80,9 +80,14 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
     await page.locator('#integrationExport').click();
     const exported = await exportResponse; assert.equal(exported.status(), 200, await exported.text());
     const exportPreview = await exported.json();
+    const unsupported = new Set(exportPreview.document.losses.filter(loss => loss.disposition === 'UNSUPPORTED').map(loss => loss.artifactId));
     await page.waitForFunction(() => !document.getElementById('integrationApply').disabled);
     for (let index = 0; index < Math.ceil(exportPreview.changes.length / 40); index++) {
       await page.locator('#integrationAccept').click();
+      for (const change of exportPreview.changes.slice(index * 40, (index + 1) * 40)) if (change.after && unsupported.has(change.after.id)) {
+        const row = page.locator('#integrationChanges tr').filter({ has: page.locator('td', { hasText: change.externalId }) });
+        await row.locator('td').last().locator('select').first().selectOption('REJECT');
+      }
       if (index + 1 < Math.ceil(exportPreview.changes.length / 40)) await page.locator('#integrationNext').click();
     }
     await page.locator('#integrationRationale').fill('Reviewed exact workspace export');
@@ -93,7 +98,7 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
     const download = await page.request.get(new URL(await page.locator('#integrationDownload').getAttribute('href'), page.url()).toString());
     assert.equal(download.status(), 200); assert.match(await download.text(), /id-37d5bc4b/);
     assert.equal(download.headers()['x-taxonomy-checkpoint'], applied.resultCommit);
-    measurements.frozenExport = true; measurements.exportItems = exportPreview.changes.length;
+    measurements.frozenExport = true; measurements.exportItems = exportPreview.changes.length; measurements.explicitlyRejectedUnsupported = [...unsupported];
   }
   const viewport = page.viewportSize();
   for (const width of [720, 360]) {
