@@ -79,11 +79,13 @@ public class ArchitectureEditorController {
         var document = service.read(readContext(repositoryId, workspaceScopeKey, branch), commit, revision);
         var view = projection.project(document, false);
         var provenance = document.context();
+        String selected = "GIT_CHECKPOINT".equals(document.source()) ? "Checkpoint " + provenance.commit()
+                : "Revision " + provenance.revision() + " / checkpoint " + provenance.commit();
         return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", view.schema().layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
                 .body(pdf.render(view.scene(), provenance.repositoryId() + " / " + provenance.workspaceScopeKey()
-                        + " / " + provenance.branch() + "\nRevision " + provenance.revision() + " / checkpoint " + provenance.commit()));
+                        + " / " + provenance.branch() + "\n" + selected));
     }
 
     @PostMapping("/api/architecture/editor/preview")
@@ -173,9 +175,12 @@ public class ArchitectureEditorController {
     }
 
     private static ResponseEntity.BodyBuilder documentResponse(ArchitectureEditorService.Document document) {
-        return response(HttpStatus.OK, document.context()).header("X-Taxonomy-Source", document.source())
-                .headers(headers -> headers.setETag("GIT_CHECKPOINT".equals(document.source())
-                        ? GitHttpPrecondition.etag(document.context().commit()) : etag(document.context())));
+        if ("GIT_CHECKPOINT".equals(document.source())) {
+            return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
+                    .eTag(GitHttpPrecondition.etag(document.context().commit()))
+                    .header("X-Taxonomy-Source", document.source());
+        }
+        return response(HttpStatus.OK, document.context()).header("X-Taxonomy-Source", document.source());
     }
 
     @PostMapping("/api/architecture/editor/versions/recover")

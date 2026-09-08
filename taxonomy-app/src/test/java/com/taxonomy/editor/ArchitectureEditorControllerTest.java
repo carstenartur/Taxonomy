@@ -60,10 +60,32 @@ class ArchitectureEditorControllerTest {
         assertThat(svg.getBody()).contains("System title", "arch-instance");
         assertThat(svg.getHeaders().getETag()).isEqualTo(json.getHeaders().getETag());
         assertThat(pdf.getHeaders().getETag()).isEqualTo(json.getHeaders().getETag());
+        for (var response : List.of(json, svg, pdf)) {
+            assertThat(response.getHeaders().getFirst("X-Taxonomy-Source")).isEqualTo("GIT_CHECKPOINT");
+            assertThat(response.getHeaders()).doesNotContainKey("X-Taxonomy-Semantic-Revision");
+        }
         assertThat(svg.getHeaders().getFirst("X-Taxonomy-Layout-Source")).isEqualTo("DERIVED_SERVER_LAYOUT");
         try (var parsed = org.apache.pdfbox.Loader.loadPDF(pdf.getBody())) {
             assertThat(parsed.getDocumentInformation().getSubject()).contains(HEAD, "repo-a", "workspace-a", "draft");
+            assertThat(parsed.getDocumentInformation().getSubject()).doesNotContain("Revision 0");
             assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(parsed)).contains("System title");
+        }
+    }
+
+    @Test
+    void uncheckpointedJsonSvgAndPdfExposeTheSameSemanticRevision() throws Exception {
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        String dsl = "element arch-instance type System {\n  title: \"Uncheckpointed title\";\n}\n";
+        var document = new ArchitectureEditorService.Document(Context.of(scope, null, 3), dsl, "READY",
+                List.of(), List.of(), 0, null, "WORKSPACE_REVISION");
+        when(service.read(scope, null, 3L)).thenReturn(document);
+        var json = controller.read("repo-a", "workspace-a", "draft", null, 3L);
+        var svg = controller.svg("repo-a", "workspace-a", "draft", null, 3L);
+        var pdf = controller.pdf("repo-a", "workspace-a", "draft", null, 3L);
+        for (var response : List.of(json, svg, pdf)) {
+            assertThat(response.getHeaders().getETag()).isEqualTo("\"workspace-revision-3\"");
+            assertThat(response.getHeaders().getFirst("X-Taxonomy-Semantic-Revision")).isEqualTo("3");
+            assertThat(response.getHeaders().getFirst("X-Taxonomy-Source")).isEqualTo("WORKSPACE_REVISION");
         }
     }
 

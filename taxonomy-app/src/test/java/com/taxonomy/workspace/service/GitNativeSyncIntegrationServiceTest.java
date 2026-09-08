@@ -14,6 +14,7 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,6 +29,12 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GitNativeSyncIntegrationServiceTest {
+    private static final WorkspaceArchitectureVersionPort DIRECT_VERSIONS = new WorkspaceArchitectureVersionPort() {
+        @Override
+        public <T> T version(RepositoryContext context, String rationale, GitAction<T> action) throws IOException {
+            return action.run();
+        }
+    };
 
     private final SyncStateRepository syncStateRepository = mock(SyncStateRepository.class);
     private final UserWorkspaceRepository workspaceRepository = mock(UserWorkspaceRepository.class);
@@ -56,7 +63,7 @@ class GitNativeSyncIntegrationServiceTest {
                 repositoryFactory,
                 semanticMergeService,
                 portfolioGitPort,
-                contextResolver, new com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort() { public <T> T version(com.taxonomy.workspace.service.RepositoryContext c, String r, GitAction<T> a) throws java.io.IOException { return a.run(); } });
+                contextResolver, DIRECT_VERSIONS);
 
         state = new SyncState();
         state.setUsername("alice");
