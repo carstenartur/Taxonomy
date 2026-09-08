@@ -44,7 +44,7 @@ public final class ArchiMateSchema {
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
             factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
             factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-            factory.setAttribute("http://www.oracle.com/xml/jaxp/properties/maxElementDepth", "128");
+            factory.setAttribute("http://www.oracle.com/xml/jaxp/properties/maxElementDepth", 128);
             var builder = factory.newDocumentBuilder();
             builder.setErrorHandler(new ErrorHandler() {
                 @Override public void warning(SAXParseException e) throws SAXException { throw e; }

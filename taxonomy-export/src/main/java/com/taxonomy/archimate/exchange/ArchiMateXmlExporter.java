@@ -16,7 +16,7 @@ public class ArchiMateXmlExporter {
         validateReferences(model);
         try {
             ByteArrayOutputStream output = new BoundedOutput();
-            XMLStreamWriter xml = XMLOutputFactory.newFactory().createXMLStreamWriter(output, "UTF-8");
+            XMLStreamWriter xml = XMLOutputFactory.newDefaultFactory().createXMLStreamWriter(output, "UTF-8");
             try {
                 write(xml, model);
             } finally {

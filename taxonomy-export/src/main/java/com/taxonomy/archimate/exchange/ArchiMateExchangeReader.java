@@ -119,8 +119,15 @@ public final class ArchiMateExchangeReader {
     }
 
     public static boolean hasTaxonomyProfile(Document document) {
-        return definitions(document.getDocumentElement()).values().stream()
-                .anyMatch(definition -> definition.name().startsWith("taxonomy."));
+        Element root = document.getDocumentElement();
+        Set<String> profileDefinitions = new HashSet<>();
+        for (Element definition : children(child(root, "propertyDefinitions"), "propertyDefinition")) {
+            if ("taxonomy.mappingProfile".equals(content(definition, "name"))) {
+                profileDefinitions.add(definition.getAttribute("identifier"));
+            }
+        }
+        return children(child(root, "properties"), "property").stream()
+                .anyMatch(property -> profileDefinitions.contains(property.getAttribute("propertyDefinitionRef")));
     }
 
     private static String viewIdentity(String kind, Element element, String viewId) {

@@ -54,11 +54,13 @@ Schema dependencies are Maven-pinned Apache POI `5.5.1` (`poi-ooxml` and `poi-oo
 
 The synthetic [acceptance fixture](../../taxonomy-export/src/test/resources/visio-handoff-v2/README.md) contains duplicate Unicode labels, three elements, two directed relationships, typed selection/review values and two pages. Its all-zero authority commit is deliberately synthetic, not the Taxonomy source revision. The fixture regression test binds the committed bundle bytes to the generator at the tested source revision. CI's commit-bound reports identify that revision separately.
 
-With Java 21 and the repository's Maven dependencies available:
+With Java 21 and the repository's Maven dependencies available, the authoritative
+verification is `./mvnw verify -DexcludedGroups=real-llm`. The following focused
+commands provide supplementary export evidence:
 
 ```sh
-mvn -B -pl taxonomy-export -am -Dtest=VisioHandoffContractTest,VisioPackageBuilderTest,VisioPackageContractTest,VisioPackagePoiCompatibilityTest -Dsurefire.failIfNoSpecifiedTests=false test
-mvn -B -pl taxonomy-app -am -Dtest=ArchitectureVisioHandoffAcceptanceTest,ArchitectureSnapshotExportServiceTest,ArchitectureSnapshotExportSemanticFingerprintTest -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -B -pl taxonomy-export -am -Dtest=VisioHandoffContractTest,VisioPackageBuilderTest,VisioPackageContractTest,VisioPackagePoiCompatibilityTest -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -B -pl taxonomy-app -am -Dtest=ArchitectureVisioHandoffAcceptanceTest,ArchitectureSnapshotExportServiceTest,ArchitectureSnapshotExportSemanticFingerprintTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 The tests cover native metadata reconstruction and cross-format canonical hashes, immutable authority/privacy boundaries, deterministic repeated and reordered input, malformed OPC/XML, style/glue references, two pages, empty diagrams, duplicate/long Unicode labels, 150 parallel connectors and a 1,000-element graph. Apache POI XDGF independently loads and renders both representative pages. It is supplementary evidence only: the observed Linux POI preview lacks Japanese/emoji glyphs and arrowheads, so it does not establish typography or directional rendering fidelity in Microsoft Visio. Endpoint direction is independently checked in native data and glue.
