@@ -634,7 +634,7 @@ Für ein exakt gespeichertes Ergebnis öffnen Sie die **Architecture Workbench**
 
 Die erste Seite enthält den vollständigen ausgewählten Graphen; eine zweite Seite zeigt eine nichtleere echte Teilmenge der Anker-/Impact-Auswahl. Container-Rechtecke sind ausdrücklich als nichtsemantisch markiert; das erzeugte Layout kann von der Browseransicht abweichen. Alle Grenzen gelten gemeinsam: 10.000 Eingabeelemente, 30.000 Beziehungen, 32 Seiten, 20.000 dargestellte Knotenvorkommen, 60.000 Konnektoren und 32 MiB unkomprimierte Paketdaten; einzelne Texte sind auf 32.767 Zeichen begrenzt. Nicht unterstützte Selbstbeziehungen oder fehlende Endpunkte führen zum Exportfehler ohne Teildownload. Der reproduzierbare Erzeugungszeitstempel wird auf die gespeicherte Snapshot-Erstellungszeit normiert und entsprechend gekennzeichnet.
 
-VSDX ist eine experimentelle visuelle Übergabe. ArchiMate Exchange zusammen mit kanonischen JSON-Nachweisen dient dem gesonderten semantischen Austausch; dessen unabhängige Werkzeugabnahme bleibt in #967 offen. Änderungen an der VSDX-Datei aktualisieren Taxonomy nicht. Siehe [VSDX-Profil und Abnahmeverfahren](../dev/VISIO_HANDOFF_PROFILE.md) sowie [Versionshinweise 1.4.0](RELEASE_NOTES_1.4.0.md).
+VSDX ist eine experimentelle visuelle Übergabe. ArchiMate Exchange zusammen mit kanonischen JSON-Nachweisen dient dem gesonderten semantischen Austausch; dessen unabhängige Werkzeugabnahme bleibt in #967 offen. Änderungen an der VSDX-Datei aktualisieren Taxonomy nicht. Siehe [VSDX-Profil und Abnahmeverfahren](../dev/VISIO_HANDOFF_PROFILE.md) sowie [Versionshinweise 1.4.0](RELEASE_NOTES_1_4_0.md).
 
 > **Voraussetzung:** Die Checkbox „Architecture View" muss vor der Durchführung der Analyse aktiviert worden sein.
 

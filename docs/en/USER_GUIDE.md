@@ -638,7 +638,7 @@ For an exact persisted result, open the **Architecture Workbench**, select its s
 
 The primary page contains the complete selected graph; a second page shows a nonempty proper anchor/impact subset. Container rectangles are explicitly non-semantic, and the generated layout can differ from the browser. Limits apply together: 10,000 input elements, 30,000 relationships, 32 pages, 20,000 rendered node occurrences, 60,000 connectors and 32 MiB of uncompressed package data; individual text values are limited to 32,767 characters. Unsupported self-loops or dangling endpoints fail without a partial download. The reproducible generation timestamp is normalized to the persisted snapshot creation time and explicitly labeled with that policy.
 
-VSDX is an experimental visual handoff. ArchiMate Exchange with canonical JSON evidence serves the separate semantic interchange use case; its own independent-tool acceptance remains tracked in #967. Editing a VSDX does not update Taxonomy. See the [VSDX profile and acceptance procedure](../dev/VISIO_HANDOFF_PROFILE.md) and [1.4.0 release notes](RELEASE_NOTES_1.4.0.md).
+VSDX is an experimental visual handoff. ArchiMate Exchange with canonical JSON evidence serves the separate semantic interchange use case; its own independent-tool acceptance remains tracked in #967. Editing a VSDX does not update Taxonomy. See the [VSDX profile and acceptance procedure](../dev/VISIO_HANDOFF_PROFILE.md) and [1.4.0 release notes](RELEASE_NOTES_1_4_0.md).
 
 > **Requires:** The Architecture View checkbox must have been enabled before running the analysis.
 

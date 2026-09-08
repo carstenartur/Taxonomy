@@ -178,7 +178,8 @@ class ArchitectureExportDocumentationContractTest {
                 .contains("Experimental architecture export formats")
                 .contains("Download ArchiMate 3.1 subset")
                 .contains("mapping and loss manifest pending")
-                .contains("Download Visio 2012 subset")
+                .contains("Download Visio + manifest")
+                .contains("visio-2012-opc-supported-subset-v2")
                 .contains("Microsoft Visio desktop certification pending");
         assertThat(controller)
                 .contains("schema-validated ArchiMate 3.1 supported subset")
