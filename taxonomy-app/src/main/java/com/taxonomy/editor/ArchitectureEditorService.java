@@ -135,6 +135,12 @@ public class ArchitectureEditorService implements ArchitectureCommandPort {
                 || !context.username().equals(selected.getAuthorIdent().getName())) {
             throw problem("NOT_FOUND", "targetCommit", "No personal command at this context and commit", List.of());
         }
+        if (selected.getParentCount() > 1) {
+            throw problem("NOT_UNDOABLE", "targetCommit", "Merge commits cannot be semantic undo or redo targets", List.of(target));
+        }
+        if (!isOwnEditorCommit(context, selected)) {
+            throw problem("NOT_FOUND", "targetCommit", "No reconstructible editor command at this commit", List.of());
+        }
         String targetKind = footer(selected, "Editor-Kind");
         boolean redo = command.operation() instanceof RedoArchitectureCommand;
         if (targetKind == null || (redo && !"UNDO".equals(targetKind)) || (!redo && "UNDO".equals(targetKind))) {
@@ -163,7 +169,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort {
         List<HistoryEntry> entries = new ArrayList<>();
         try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
             for (RevCommit cursor = parse(walk, head); cursor != null && entries.size() < 50; cursor = parent(walk, cursor)) {
-                if (!scope(context).equals(footer(cursor, "Editor-Scope"))) continue;
+                if (!isOwnEditorCommit(context, cursor)) continue;
                 String before = cursor.getParentCount() == 0 ? "" : source(repository, cursor.getParent(0).name());
                 entries.add(new HistoryEntry(cursor.name(), footer(cursor, "Editor-Command-Id"), footer(cursor, "Editor-Kind"),
                         footer(cursor, "Editor-Target"), cursor.getAuthorIdent().getName(),
@@ -178,8 +184,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort {
     private RevCommit findCommand(DslGitRepository repository, RepositoryContext context, String id) throws IOException {
         try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
             for (RevCommit cursor = parse(walk, head(repository, context.branch())); cursor != null; cursor = parent(walk, cursor)) {
-                if (scope(context).equals(footer(cursor, "Editor-Scope")) && id.equals(footer(cursor, "Editor-Command-Id"))
-                        && context.username().equals(cursor.getAuthorIdent().getName())) return cursor;
+                if (isOwnEditorCommit(context, cursor) && id.equals(footer(cursor, "Editor-Command-Id"))) return cursor;
             }
         }
         return null;
@@ -251,6 +256,13 @@ public class ArchitectureEditorService implements ArchitectureCommandPort {
     private static String footer(RevCommit commit, String name) {
         List<String> values = commit.getFooterLines(name);
         return values.size() == 1 ? values.getFirst() : null;
+    }
+
+    private static boolean isOwnEditorCommit(RepositoryContext context, RevCommit commit) {
+        return commit.getParentCount() <= 1 && "1".equals(footer(commit, "Editor-Version"))
+                && footer(commit, "Editor-Command-Id") != null && footer(commit, "Editor-Kind") != null
+                && scope(context).equals(footer(commit, "Editor-Scope"))
+                && context.username().equals(commit.getAuthorIdent().getName());
     }
 
     private static String kind(Operation operation) {

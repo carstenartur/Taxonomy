@@ -99,6 +99,16 @@ class ArchitectureDslCommandsTest {
     }
 
     @Test
+    void importedMultipleParentsCannotMakeMoveAFalseNoOp() {
+        String invalid = MODEL + "element arch-other type System {\n  title: \"Other\";\n}\n"
+                + "relation arch-system CONTAINS arch-component {\n}\n"
+                + "relation arch-other CONTAINS arch-component {\n}\n";
+        assertCode(() -> commands.apply(invalid, new MoveOrGroupElement("arch-component", "arch-system")), "MULTIPLE_PARENTS");
+        assertCode(() -> commands.apply(invalid, new MoveOrGroupElement("arch-component", "arch-other")), "MULTIPLE_PARENTS");
+        assertCode(() -> commands.apply(invalid, new MoveOrGroupElement("arch-component", null)), "MULTIPLE_PARENTS");
+    }
+
+    @Test
     void malformedEditedBlockAndDuplicatePropertiesFailClosed() {
         assertCode(() -> commands.apply("element arch-system type System {\n title: \"Incomplete\";\n",
                 new UpdateArchitectureElement("arch-system", null, Map.of("title", "Changed"))), "INVALID_DOCUMENT");

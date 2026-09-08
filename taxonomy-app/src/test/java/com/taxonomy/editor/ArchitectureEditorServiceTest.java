@@ -169,6 +169,66 @@ class ArchitectureEditorServiceTest {
         assertThat(repositories.resolveRepository(alice).getCommitCount("draft")).isEqualTo(2);
     }
 
+    @Test
+    void personalHistoryAndUndoDoNotExposeAnotherActorsCommands() throws Exception {
+        String head = seed(alice);
+        Accepted accepted = service.execute(alice, command(alice, head,
+                new SemanticCommand(new UpdateArchitectureElement("arch-existing", null, Map.of("title", "Personal")))));
+        RepositoryContext otherActor = RepositoryContext.workspace("repo-a", "workspace-a1", "draft", "bob");
+        assertThat(service.read(otherActor, null).history()).isEmpty();
+        assertCode(() -> service.preview(otherActor, command(otherActor, accepted.context().commit(),
+                new UndoArchitectureCommand(accepted.context().commit()))), "NOT_FOUND");
+        assertThat(service.read(alice, null).history()).hasSize(1);
+    }
+
+    @Test
+    void gitStorageFailureLeavesBranchAndProjectionUnchanged() throws Exception {
+        String head = seed(alice);
+        var source = repositories.resolveRepository(alice);
+        var failing = spy(source);
+        doThrow(new java.io.IOException("Git object unavailable")).when(failing).getDslAtCommit(head);
+        var factory = mock(DslGitRepositoryFactory.class);
+        when(factory.resolveRepository(alice)).thenReturn(failing);
+        var editor = new ArchitectureEditorService(factory, rebuild, readiness);
+        assertThatThrownBy(() -> editor.execute(alice, command(alice, head,
+                new SemanticCommand(new UpdateArchitectureElement("arch-existing", null, Map.of("title", "Unaccepted"))))))
+                .isInstanceOf(java.io.IOException.class);
+        assertThat(source.getHeadCommit("draft")).isEqualTo(head);
+        assertThat(source.getDslAtHead("draft")).isEqualTo(SEED);
+        assertThat(source.getCommitCount("draft")).isEqualTo(1);
+        verifyNoInteractions(rebuild, readiness);
+    }
+
+    @Test
+    void mergeCannotBeAnInverseTargetEvenWhenItCopiesEditorFooters() throws Exception {
+        String original = seed(alice);
+        Accepted accepted = service.execute(alice, command(alice, original,
+                new SemanticCommand(new UpdateArchitectureElement("arch-existing", null, Map.of("title", "Updated")))));
+        var repository = repositories.resolveRepository(alice).getGitRepository();
+        String mergeId;
+        try (var walk = new org.eclipse.jgit.revwalk.RevWalk(repository);
+             var inserter = repository.newObjectInserter()) {
+            var prior = walk.parseCommit(org.eclipse.jgit.lib.ObjectId.fromString(accepted.context().commit()));
+            var merge = new org.eclipse.jgit.lib.CommitBuilder();
+            merge.setTreeId(prior.getTree());
+            merge.setParentIds(prior.getId(), org.eclipse.jgit.lib.ObjectId.fromString(original));
+            merge.setAuthor(prior.getAuthorIdent());
+            merge.setCommitter(prior.getCommitterIdent());
+            merge.setMessage(prior.getFullMessage());
+            var id = inserter.insert(merge);
+            inserter.flush();
+            var update = repository.updateRef("refs/heads/draft");
+            update.setExpectedOldObjectId(prior.getId());
+            update.setNewObjectId(id);
+            assertThat(update.update()).isEqualTo(org.eclipse.jgit.lib.RefUpdate.Result.FAST_FORWARD);
+            mergeId = id.name();
+        }
+        assertCode(() -> service.preview(alice, command(alice, mergeId, new UndoArchitectureCommand(mergeId))), "NOT_UNDOABLE");
+        assertCode(() -> service.preview(alice, command(alice, mergeId, new RedoArchitectureCommand(mergeId))), "NOT_UNDOABLE");
+        assertThat(service.read(alice, null).history()).hasSize(1);
+        assertThat(repositories.resolveRepository(alice).getHeadCommit("draft")).isEqualTo(mergeId);
+    }
+
     private String seed(RepositoryContext context) throws Exception {
         return repositories.resolveRepository(context).commitDsl(context.branch(), SEED, "seed", "Seed architecture objects");
     }

@@ -25,6 +25,7 @@ public final class ArchitectureDslCommands {
     public record Change(String dsl, List<ArchitectureSemanticPatch.BlockChange> changes) {
         public Change { changes = List.copyOf(changes); }
         public List<String> changedIds() { return changes.stream().map(ArchitectureSemanticPatch.BlockChange::id).toList(); }
+        public List<String> getChangedIds() { return changedIds(); }
     }
 
     public static final class CommandProblem extends IllegalArgumentException {
@@ -155,6 +156,11 @@ public final class ArchitectureDslCommands {
 
     private String move(String source, Map<String, BlockAst> blocks, MoveOrGroupElement command) {
         require(blocks, "element:" + command.id());
+        long existingParents = blocks.values().stream().filter(block -> "relation".equals(block.getKind()))
+                .map(ArchitectureDslCommands::relationKey)
+                .filter(key -> "CONTAINS".equals(key.relationType()) && key.targetId().equals(command.id())).count();
+        if (existingParents > 1) throw problem("MULTIPLE_PARENTS", command.id(),
+                "Resolve multiple existing containment parents before moving this element");
         String next = source;
         for (BlockAst candidate : blocks.values()) {
             if ("relation".equals(candidate.getKind())) {

@@ -86,7 +86,8 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   if (role === 'USER') {
     assert.equal(initial.mayEdit, false);
     assert.equal(await page.locator('#editorNew').isDisabled(), true);
-    assert.equal(await page.locator('#editorFields').isDisabled(), true);
+    assert.equal(await page.locator('#editorTitle').isDisabled(), true);
+    assert.equal(await page.locator('#editorType').isDisabled(), true);
     await reflow();
   } else {
     if (!initial.mayEdit) {
@@ -127,11 +128,11 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(currentResponse.status(), 200);
     const current = await currentResponse.json();
     assert.equal(current.model.elements.find(element => element.id === system).title, `Updated system ${suffix}`);
-    const svg = await page.request.get(await page.locator('#editorSvg').getAttribute('href'));
+    const svg = await page.request.get(new URL(await page.locator('#editorSvg').getAttribute('href'), page.url()).href);
     assert.equal(svg.status(), 200);
     assert.equal(svg.headers().etag, `"${current.document.context.commit}"`);
     assert.ok((await svg.text()).includes(system));
-    const pdf = await page.request.get(await page.locator('#editorPdf').getAttribute('href'));
+    const pdf = await page.request.get(new URL(await page.locator('#editorPdf').getAttribute('href'), page.url()).href);
     assert.equal(pdf.status(), 200);
     assert.equal(pdf.headers().etag, svg.headers().etag);
 
