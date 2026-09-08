@@ -94,9 +94,9 @@
     }
     function render(preserveDraft) {
         var c = context();
-        var selected = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
+        var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit));
-        el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + selected + ' · ' + c.actor;
+        el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + contextLabel + ' · ' + c.actor;
         var state = view.document.projectionState;
         setStatus(t('editor.projection.' + state));
         el('editorMode').textContent = view.mayEdit ? t('editor.writable') : t('editor.readOnly');
