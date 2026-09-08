@@ -124,7 +124,7 @@ public class ProjectPortfolioService {
                                      String username,
                                      WorkspaceContext context) {
         requireNonNull(request, "project update");
-        ArchitectureProject project = requireProject(projectId, username, context);
+        ArchitectureProject project = requireProjectForUpdate(projectId, username, context);
         var requestedAmount = request.budgetAmount() != null
                 ? PortfolioValueValidator.money(request.budgetAmount(), "budgetAmount") : null;
         String requestedCurrency = request.budgetCurrency() != null
@@ -154,7 +154,7 @@ public class ProjectPortfolioService {
                                              String username,
                                              WorkspaceContext context) {
         requireNonNull(request, "requirement request");
-        ArchitectureProject project = requireProject(projectId, username, context);
+        ArchitectureProject project = requireProjectForUpdate(projectId, username, context);
         String scopeKey = project.getScopeKey();
         String requirementKey = normalizeBusinessKey(request.requirementKey(), "requirementKey");
         if (requirementRepository
@@ -253,7 +253,7 @@ public class ProjectPortfolioService {
                                              String username,
                                              WorkspaceContext context) {
         requireNonNull(request, "requirement update");
-        ProjectRequirement requirement = requireRequirement(projectId, requirementId, username, context);
+        ProjectRequirement requirement = requireRequirementForUpdate(projectId, requirementId, username, context);
         requirement.updateMetadata(
                 request.title() != null ? requireText(request.title(), "title", 240) : null,
                 request.status(),
@@ -347,13 +347,21 @@ public class ProjectPortfolioService {
                                                            Long requirementId,
                                                            String username,
                                                            WorkspaceContext context) {
-        ArchitectureProject project = requireProject(projectId, username, context);
+        ArchitectureProject project = requireProjectForUpdate(projectId, username, context);
         if (requirementId == null) throw PortfolioException.validation("requirementId is required");
         return requirementRepository
                 .findByIdAndProjectIdAndScopeKeyForUpdate(
                         requirementId, projectId, project.getScopeKey())
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Requirement " + requirementId + " was not found in project " + projectId));
+    }
+
+    /** Common aggregate lock, including integration previews applied against a frozen project fingerprint. */
+    @Transactional
+    public ArchitectureProject requireProjectForUpdate(Long projectId, String username, WorkspaceContext context) {
+        if (projectId == null) throw PortfolioException.validation("projectId is required");
+        return projectRepository.findByIdAndScopeKeyForUpdate(projectId, PortfolioScope.key(username, context))
+                .orElseThrow(() -> PortfolioException.notFound("Project not found: " + projectId));
     }
 
     @Transactional(readOnly = true)

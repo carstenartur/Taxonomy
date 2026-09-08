@@ -15,7 +15,7 @@ public final class EditorPersistenceFixture implements AutoCloseable {
     public final EditorJournal journal;
     public final ArchitectureEditorService service;
 
-    public EditorPersistenceFixture(String url) {
+    public EditorPersistenceFixture(String url, Class<?>... additionalEntities) {
         Configuration configuration = new Configuration()
                 .setProperty("hibernate.connection.driver_class", "org.hsqldb.jdbc.JDBCDriver")
                 .setProperty("hibernate.connection.url", url)
@@ -26,6 +26,7 @@ public final class EditorPersistenceFixture implements AutoCloseable {
                 .setProperty("hibernate.search.enabled", "false");
         CoreEntities.annotatedClasses().forEach(configuration::addAnnotatedClass);
         configuration.addAnnotatedClass(EditorWorkspace.class).addAnnotatedClass(EditorOperation.class).addAnnotatedClass(EditorCheckpoint.class);
+        for (Class<?> entity : additionalEntities) configuration.addAnnotatedClass(entity);
         factory = configuration.buildSessionFactory();
         repositories = new DslGitRepositoryFactory(new DefaultHibernateRepositoryFactory(factory));
         journal = new EditorJournal(factory, new JpaTransactionManager(factory));

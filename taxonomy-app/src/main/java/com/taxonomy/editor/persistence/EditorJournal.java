@@ -26,11 +26,13 @@ import java.util.function.Function;
 public class EditorJournal {
     private final EntityManager em;
     private final TransactionTemplate transaction;
+    private final TransactionTemplate joinedTransaction;
 
     public EditorJournal(EntityManagerFactory factory, PlatformTransactionManager manager) {
         em = SharedEntityManagerCreator.createSharedEntityManager(factory);
         transaction = new TransactionTemplate(manager);
         transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        joinedTransaction = new TransactionTemplate(manager);
     }
 
     public record State(String dsl, long revision, String checkpointCommit, long checkpointRevision,
@@ -94,7 +96,19 @@ public class EditorJournal {
 
     private <T> T transact(RepositoryContext context, String scope, State initial, Function<Session, T> action,
                            boolean[] initializing) {
-        return transaction.execute(status -> {
+        return transact(transaction, context, scope, initial, action, initializing);
+    }
+
+    /** Reviewed integration records and canonical edits participate in the caller's single database transaction. */
+    public <T> T joinedLocked(RepositoryContext context, State initial, Function<Session, T> action) {
+        if (!org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("A durable integration transaction is required");
+        return transact(joinedTransaction, context, scope(context), initial, action, new boolean[1]);
+    }
+
+    private <T> T transact(TransactionTemplate template, RepositoryContext context, String scope, State initial,
+                           Function<Session, T> action, boolean[] initializing) {
+        return template.execute(status -> {
             EditorWorkspace workspace = em.find(EditorWorkspace.class, scope, LockModeType.PESSIMISTIC_WRITE);
             if (workspace == null) {
                 workspace = new EditorWorkspace();

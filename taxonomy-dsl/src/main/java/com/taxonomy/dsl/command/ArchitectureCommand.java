@@ -45,4 +45,15 @@ public sealed interface ArchitectureCommand {
 
     /** Semantic containment; visual coordinates never enter this command. Null parent means ungroup. */
     record MoveOrGroupElement(String id, String parentId) implements ArchitectureCommand {}
+
+    /** Reviewed integration metadata is a bounded extension of an existing semantic object. */
+    record SetExchangeProperties(String objectKind, String id, Map<String, String> properties) implements ArchitectureCommand {
+        public SetExchangeProperties { properties = copyProperties(properties); }
+    }
+    record UpsertArchitectureView(String id, String title, List<String> members, Map<String, String> properties) implements ArchitectureCommand {
+        public UpsertArchitectureView { members = List.copyOf(members); properties = copyProperties(properties); }
+    }
+    record DeleteArchitectureView(String id) implements ArchitectureCommand {}
+    /** Safe, reviewed interchange evidence belongs to its explicit integration/version boundary. */
+    record StoreExchangeEvidence(String id, String profile, String profileVersion, String fingerprint, String source) implements ArchitectureCommand {}
 }
