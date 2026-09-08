@@ -106,6 +106,20 @@ class ArchitectureDslCommandsTest {
                 new UpdateArchitectureElement("arch-system", null, Map.of("title", "Changed"))), "DUPLICATE_PROPERTY");
     }
 
+    @Test
+    void sourceRangesSupportCrLfAndCrWithoutTouchingOtherBlocksOrLosingTrailingComments() {
+        for (String newline : java.util.List.of("\r\n", "\r")) {
+            String original = MODEL.replace("title: \"Payments\";", "# comment ending in {\n  title: \"Payments #1\"; # inline rationale")
+                    .replace("\n", newline);
+            var changed = commands.apply(original, new UpdateArchitectureElement("arch-system", null, Map.of("title", "Updated")));
+            assertThat(changed.dsl()).contains("# comment ending in {", "# inline rationale")
+                    .doesNotContain("#1\"");
+            assertThat(changed.dsl()).startsWith(original.substring(0, original.indexOf("element arch-system")))
+                    .endsWith(original.substring(original.indexOf("element arch-component")));
+            assertThat(commands.inverse(changed.dsl(), original, changed.dsl()).dsl()).isEqualTo(original);
+        }
+    }
+
     private static void assertCode(org.assertj.core.api.ThrowableAssert.ThrowingCallable call, String code) {
         assertThatThrownBy(call).isInstanceOfSatisfying(CommandProblem.class, problem -> assertThat(problem.code()).isEqualTo(code));
     }

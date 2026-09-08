@@ -159,7 +159,7 @@
         var offset = view.document.dsl.indexOf('element ' + selected + ' type ');
         if (offset >= 0) el('editorDsl').setSelectionRange(offset, view.document.dsl.indexOf('\n}', offset) + 2);
         if (!fromHistory) linkSelection(false);
-        setStatus(t('editor.selected', selected));
+        setStatus(selected ? t('editor.selected', selected) : t('editor.newDraft'));
     }
     function selectRelation(edge) {
         selectElement(edge.sourceId);

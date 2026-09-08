@@ -85,7 +85,7 @@ public final class ArchitectureSemanticPatch {
         if (Objects.equals(canonical(existing), next)) return source;
         if (existing != null && replacement != null) {
             // The formatter does not model comments. Retain them explicitly inside the edited block.
-            String comments = raw(source, existing).lines().filter(line -> line.strip().startsWith("#"))
+            String comments = raw(source, existing).lines().map(ArchitectureSemanticPatch::comment).filter(Objects::nonNull)
                     .reduce("", (a, b) -> a + b + "\n");
             int opening = next.indexOf('\n') + 1;
             next = next.substring(0, opening) + comments + next.substring(opening);
@@ -112,15 +112,16 @@ public final class ArchitectureSemanticPatch {
     private static int[] range(String source, BlockAst block) {
         int start = 0;
         for (int line = 1; line < block.getSourceLocation().line(); line++) {
-            start = source.indexOf('\n', start) + 1;
+            start = lineEnd(source, start);
         }
         int depth = 0;
         for (int cursor = start; cursor < source.length();) {
-            int newline = source.indexOf('\n', cursor);
-            int end = newline < 0 ? source.length() : newline + 1;
+            int end = lineEnd(source, cursor);
             String line = source.substring(cursor, end).strip();
             if (!line.startsWith("#")) {
                 if (line.endsWith("{")) depth++;
+                if (depth > 1) throw new ArchitectureDslCommands.CommandProblem("INVALID_DOCUMENT", key(block),
+                        "Nested blocks are not supported on an edited object", List.of(key(block)));
                 if (line.startsWith("}")) depth--;
                 if (depth == 0) return new int[]{start, end};
             }
@@ -128,6 +129,29 @@ public final class ArchitectureSemanticPatch {
         }
         throw new ArchitectureDslCommands.CommandProblem("INVALID_DOCUMENT", key(block),
                 "Block has no closing delimiter", List.of(key(block)));
+    }
+
+    private static int lineEnd(String source, int start) {
+        for (int cursor = start; cursor < source.length(); cursor++) {
+            char value = source.charAt(cursor);
+            if (value == '\n') return cursor + 1;
+            if (value == '\r') return cursor + 1 < source.length() && source.charAt(cursor + 1) == '\n' ? cursor + 2 : cursor + 1;
+        }
+        return source.length();
+    }
+
+    /** Retain both full-line and trailing comments without treating a quoted hash as a comment. */
+    private static String comment(String line) {
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int index = 0; index < line.length(); index++) {
+            char value = line.charAt(index);
+            if (escaped) { escaped = false; continue; }
+            if (quoted && value == '\\') { escaped = true; continue; }
+            if (value == '"') quoted = !quoted;
+            if (!quoted && value == '#') return "  " + line.substring(index);
+        }
+        return null;
     }
 
     private static String canonical(BlockAst block) {

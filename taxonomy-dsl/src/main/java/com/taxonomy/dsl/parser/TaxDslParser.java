@@ -81,6 +81,7 @@ public class TaxDslParser {
                 int depth = 1;
                 while (bodyEnd < lines.size() && depth > 0) {
                     String bodyStripped = lines.get(bodyEnd).strip();
+                    if (bodyStripped.startsWith("#")) { bodyEnd++; continue; }
                     if (bodyStripped.endsWith("{")) depth++;
                     if (bodyStripped.equals("}") || bodyStripped.startsWith("}")) depth--;
                     if (depth > 0) bodyEnd++;

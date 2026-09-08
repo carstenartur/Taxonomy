@@ -37,6 +37,9 @@ public interface ArchitectureCommandPort {
                 throw new IllegalArgumentException("A rationale of 1–1000 characters is required");
             }
             rationale = rationale.strip().replaceAll("\\s+", " ");
+            if (rationale.chars().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("Rationale must not contain control characters");
+            }
         }
     }
 

@@ -93,3 +93,8 @@ The `DslGitRepository` uses `HibernateRepository` backed by the same `SessionFac
 **Fix:** Replace `optModelUrls(fileUrl)` with `optModelPath(Path)` which uses the same `DefaultModelZoo` but converts a `Path` directly to a proper URI, avoiding `file:` URI parsing issues. Additionally, set `optTranslatorFactory(new TextEmbeddingTranslatorFactory())` explicitly so DJL does not need to discover the translator from `serving.properties`. Also set `optModelName("model")` to tell DJL the ONNX file is named `model.onnx`.
 
 **Key takeaway:** When loading local DJL models, prefer `optModelPath(Path)` over `optModelUrls(String)`, and always set `optTranslatorFactory()` explicitly to avoid relying on `serving.properties` discovery. The `serving.properties` file is still generated as a fallback but is no longer the primary mechanism for translator selection.
+
+
+### 2026-09-08 — Strict editor commands over the tolerant DSL parser
+
+`TaxDslParser` deliberately accepts incomplete imports and its AST/serializer does not retain comments. A semantic editor must not parse/serialize the whole document to update one property: that can discard unrelated comments or accept an unterminated edited block. Use exact block identity and source ranges, retain edited-block comments and unknown properties, reject ambiguous/malformed targets, and preserve unrelated source bytes. A reconstructible inverse must also guard changed block text so a later annotation cannot be silently overwritten.

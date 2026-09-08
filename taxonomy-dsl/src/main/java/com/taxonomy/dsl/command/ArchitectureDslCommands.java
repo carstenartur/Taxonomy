@@ -71,9 +71,6 @@ public final class ArchitectureDslCommands {
         }
         String next = ArchitectureSemanticPatch.inverse(current, original);
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(next);
-        for (BlockAst block : blocks.values()) {
-            if ("relation".equals(block.getKind())) validateRelation(blocks, relationKey(block));
-        }
         // Deletion inverses must not silently strand mappings, views or evidence added later.
         Map<String, BlockAst> currentBlocks = ArchitectureSemanticPatch.index(current);
         for (var change : ArchitectureSemanticPatch.between(current, next)) {
@@ -82,6 +79,14 @@ public final class ArchitectureDslCommands {
                 List<String> dependencies = dependencies(blocks, removed);
                 requireNoDependencies(change.id(), dependencies);
             }
+        }
+        Set<String> changed = new LinkedHashSet<>();
+        original.forEach(change -> changed.add(change.id()));
+        for (BlockAst block : blocks.values()) {
+            if (!"relation".equals(block.getKind())) continue;
+            RelationKey key = relationKey(block);
+            if (changed.contains(ArchitectureSemanticPatch.key(block)) || changed.contains("element:" + key.sourceId())
+                    || changed.contains("element:" + key.targetId())) validateRelation(blocks, key);
         }
         validateContainment(blocks);
         return new Change(next, ArchitectureSemanticPatch.between(current, next));
@@ -278,6 +283,8 @@ public final class ArchitectureDslCommands {
         for (var entry : properties.entrySet()) {
             if (!ELEMENT_PROPERTIES.contains(entry.getKey())) throw problem("READ_ONLY_PROPERTY", entry.getKey(), "Property is not editable");
             if (entry.getValue().length() > 8000) throw problem("VALUE_TOO_LONG", entry.getKey(), "Property exceeds 8000 characters");
+            if (entry.getValue().chars().anyMatch(value -> (value < 32 && value != '\n' && value != '\r' && value != '\t')
+                    || value == 0xfffe || value == 0xffff)) throw problem("INVALID_VALUE", entry.getKey(), "Property contains unsupported control characters");
         }
         if ((creating || properties.containsKey("title")) && (properties.get("title") == null || properties.get("title").isBlank())) {
             throw problem("REQUIRED_PROPERTY", "title", "Title is required");

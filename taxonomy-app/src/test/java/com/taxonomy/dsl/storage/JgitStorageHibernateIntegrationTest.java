@@ -1,5 +1,11 @@
 package com.taxonomy.dsl.storage;
 
+import com.taxonomy.editor.ArchitectureCommandPort;
+import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.dsl.command.ArchitectureCommand;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
 import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryDeletionResult;
 import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
@@ -100,6 +106,55 @@ class JgitStorageHibernateIntegrationTest {
             storageFactory.deleteRepository(secondName);
         }
     }
+
+    @Test
+    void semanticEditorHistoryAndInverseSurviveAllRepositoryHandlesBeingClosed() throws Exception {
+        String workspaceId = "editor-reopen-" + UUID.randomUUID();
+        var context = RepositoryContext.workspace("editor-source", workspaceId, "draft", "alice");
+        var rebuild = org.mockito.Mockito.mock(RelationBranchProjectionRebuildService.class);
+        var readiness = org.mockito.Mockito.mock(RelationBranchProjectionReadinessService.class);
+        String id = UUID.randomUUID().toString();
+        var metadata = new ArchitectureCommandPort.Metadata(id, id, id, "Persisted architecture decision");
+        var command = new ArchitectureCommandPort.Command(
+                ArchitectureCommandPort.Context.of(context, null), metadata,
+                new ArchitectureCommandPort.SemanticCommand(
+                        new ArchitectureCommand.CreateArchitectureElement("arch-persisted", "System", java.util.Map.of("title", "Durable"))));
+        String accepted;
+        String undo;
+        try {
+            try (var first = new DslGitRepositoryFactory(storageFactory)) {
+                var editor = new ArchitectureEditorService(first, rebuild, readiness);
+                accepted = editor.execute(context, command).context().commit();
+            }
+            try (var reopened = new DslGitRepositoryFactory(storageFactory)) {
+                var editor = new ArchitectureEditorService(reopened, rebuild, readiness);
+                assertThat(editor.execute(context, command).replayed()).isTrue();
+                assertThat(editor.read(context, null).history()).hasSize(1);
+                String undoId = UUID.randomUUID().toString();
+                undo = editor.execute(context, new ArchitectureCommandPort.Command(
+                        ArchitectureCommandPort.Context.of(context, accepted),
+                        new ArchitectureCommandPort.Metadata(undoId, id, id, "Undo after reopening"),
+                        new ArchitectureCommandPort.UndoArchitectureCommand(accepted))).context().commit();
+                assertThat(editor.read(context, null).dsl()).isEmpty();
+            }
+            try (var reopened = new DslGitRepositoryFactory(storageFactory)) {
+                var editor = new ArchitectureEditorService(reopened, rebuild, readiness);
+                assertThat(editor.read(context, null).history()).extracting(ArchitectureEditorService.HistoryEntry::kind)
+                        .containsExactly("UNDO", "CreateArchitectureElement");
+                String redoId = UUID.randomUUID().toString();
+                editor.execute(context, new ArchitectureCommandPort.Command(
+                        ArchitectureCommandPort.Context.of(context, undo),
+                        new ArchitectureCommandPort.Metadata(redoId, id, id, "Redo after reopening"),
+                        new ArchitectureCommandPort.RedoArchitectureCommand(undo)));
+                assertThat(editor.read(context, null).dsl()).contains("arch-persisted", "Durable");
+            }
+        } finally {
+            try (var cleanup = new DslGitRepositoryFactory(storageFactory)) {
+                cleanup.deleteWorkspaceRepository(workspaceId);
+            }
+        }
+    }
+
 
     private static RepositoryName uniqueRepositoryName(String prefix) {
         return new RepositoryName(prefix + UUID.randomUUID());

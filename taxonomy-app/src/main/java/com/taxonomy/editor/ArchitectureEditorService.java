@@ -283,8 +283,10 @@ public class ArchitectureEditorService implements ArchitectureCommandPort {
     }
 
     private static String fingerprint(Command command) {
-        List<String> parts = new ArrayList<>(List.of(kind(command.operation()), command.context().toString(),
+        List<String> parts = new ArrayList<>(List.of(kind(command.operation()), command.context().repositoryId(),
+                command.context().workspaceScopeKey(), command.context().branch(), command.context().actor(), command.context().writeMode(),
                 command.metadata().correlationId(), command.metadata().causationId(), command.metadata().rationale()));
+        parts.add(command.context().commit());
         if (command.operation() instanceof SemanticCommand semantic) {
             switch (semantic.command()) {
                 case CreateArchitectureElement e -> { parts.add(e.id()); parts.add(e.type()); properties(parts, e.properties()); }

@@ -8,6 +8,7 @@ import { runRoleStateFlow } from './ui-role-state-flow.mjs';
 import { runSystemInformationAcceptance } from './system-information-acceptance.mjs';
 
 import { runBrowserSessionsAcceptance } from './browser-sessions-acceptance.mjs';
+import { runArchitectureEditorAcceptance } from './architecture-editor-acceptance.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const adminUsername = process.env.TAXONOMY_UI_ADMIN_USERNAME || 'admin';
@@ -185,6 +186,16 @@ try {
     }
     checks.push('administrator browser-session page in EN and DE');
   }
+  taskMeasurements.failedStep = 'architecture editor acceptance';
+  const editorConsoleErrors = consoleErrors.length;
+  const editorExternalRequests = externalRequests.length;
+  taskMeasurements.architectureEditor = await runArchitectureEditorAcceptance({
+    page, role, baseUrl, evidence, outputDir, httpFailures
+  });
+  if (consoleErrors.length !== editorConsoleErrors || externalRequests.length !== editorExternalRequests) {
+    throw new Error('Architecture editor introduced console errors or external requests');
+  }
+  checks.push('exact-context architecture editor, semantic history, export and reflow');
   taskMeasurements.schemaVersion = 1;
   taskMeasurements.failedStep = null;
 } catch (error) {
