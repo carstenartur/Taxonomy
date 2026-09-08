@@ -74,6 +74,8 @@ window.ArchitectureEditorRenderer = function (element, onSelect, onRelation, onS
     function onKeyDown(event) {
         var moves = { ArrowLeft: [60, 0], ArrowRight: [-60, 0], ArrowUp: [0, 60], ArrowDown: [0, -60] };
         if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
+        // Navigation may remove a focused child from the visible scene; keep keyboard control on the SVG.
+        if ((moves[event.key] || event.key === '+' || event.key === '-') && event.target !== element) element.focus({ preventScroll: true });
         if (moves[event.key]) { event.preventDefault(); svg.call(zoom.translateBy, moves[event.key][0] / transform.k, moves[event.key][1] / transform.k); }
         if (event.key === '+' || event.key === '-') { event.preventDefault(); svg.call(zoom.scaleBy, event.key === '+' ? 1.4 : 1 / 1.4); }
     }

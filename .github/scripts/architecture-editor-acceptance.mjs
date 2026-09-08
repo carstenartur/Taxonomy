@@ -262,6 +262,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     for (const count of [309, 1000, 5000]) {
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
       svg.setAttribute('viewBox', '0 0 1000 420');
+      svg.setAttribute('tabindex', '0');
       svg.setAttribute('aria-hidden', 'true');
       svg.style.cssText = 'position:absolute;left:-2000px;width:1000px;height:420px';
       document.body.append(svg);
@@ -287,14 +288,17 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
         adapter.select(scene.nodes[count - 1].id); adapter.focus(); await settle();
         const focusMs = Math.round(performance.now() - focusStarted);
         const beforePan = svg.querySelector('g').getAttribute('transform');
+        svg.querySelector('.editor-node').focus({ preventScroll: true });
         svg.querySelector('.editor-node').dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true }));
         await settle();
         const afterPan = svg.querySelector('g').getAttribute('transform');
+        const keyboardFocusRetained = document.activeElement === svg;
         svg.querySelector('.editor-edge').dispatchEvent(new KeyboardEvent('keydown', { key: '+', bubbles: true, cancelable: true }));
         await settle();
         const afterZoom = svg.querySelector('g').getAttribute('transform');
         const measurement = { count, renderMs, focusMs, visibleNodes, markerIsUnique, edgesUseOwnMarker,
           keyboardPanFromNode: beforePan !== afterPan, keyboardZoomFromEdge: afterPan !== afterZoom,
+          keyboardFocusRetained,
           domElements: svg.querySelectorAll('*').length,
           selectedVisible: Boolean(svg.querySelector('.editor-node[aria-pressed="true"]')) };
         adapter.destroy();
@@ -313,6 +317,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(measurement.markerIsUnique, true, 'Concurrent editor renderers must have distinct SVG marker IDs');
     assert.equal(measurement.edgesUseOwnMarker, true, 'Edges must reference the marker owned by their renderer');
     assert.equal(measurement.keyboardPanFromNode, true, 'Node focus must permit keyboard panning');
+    assert.equal(measurement.keyboardFocusRetained, true, 'Navigation must retain keyboard control as visible nodes change');
     assert.equal(measurement.keyboardZoomFromEdge, true, 'Edge focus must permit keyboard zooming');
     assert.equal(measurement.keyboardHandlerReleased, true, 'Destroy must release the keyboard handler');
     assert.equal(measurement.rendererDomReleased, true, 'Destroy must release the renderer-owned SVG content');
