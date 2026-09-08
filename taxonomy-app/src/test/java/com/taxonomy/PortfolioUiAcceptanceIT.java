@@ -47,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PortfolioUiAcceptanceIT {
 
     private static final String ADMIN_PASSWORD = "Portfolio-Ui-Acceptance-2026!";
+    private static final Duration UI_WAIT_TIMEOUT = Duration.ofSeconds(120);
 
     private static Network network;
     private static GenericContainer<?> application;
@@ -71,7 +72,7 @@ class PortfolioUiAcceptanceIT {
         driver = browserSession.driver();
         driver.manage().window().setSize(new Dimension(1440, 1000));
         driver.setFileDetector(new LocalFileDetector());
-        wait = new WebDriverWait(driver, Duration.ofSeconds(120));
+        wait = new WebDriverWait(driver, UI_WAIT_TIMEOUT);
         login();
     }
 
@@ -473,7 +474,7 @@ class PortfolioUiAcceptanceIT {
     private static void click(By locator) {
         wait.until(ExpectedConditions.invisibilityOfElementLocated(
                 By.cssSelector(".modal-backdrop.show")));
-        new WebDriverWait(driver, wait.getTimeOut())
+        new WebDriverWait(driver, UI_WAIT_TIMEOUT)
                 .ignoring(ElementClickInterceptedException.class)
                 .ignoring(StaleElementReferenceException.class)
                 .withMessage("Native click on " + locator)
@@ -491,7 +492,7 @@ class PortfolioUiAcceptanceIT {
     private static void click(WebElement element) {
         wait.until(ExpectedConditions.invisibilityOfElementLocated(
                 By.cssSelector(".modal-backdrop.show")));
-        new WebDriverWait(driver, wait.getTimeOut())
+        new WebDriverWait(driver, UI_WAIT_TIMEOUT)
                 .ignoring(ElementClickInterceptedException.class)
                 .withMessage("Native click on " + element)
                 .until(browser -> {
