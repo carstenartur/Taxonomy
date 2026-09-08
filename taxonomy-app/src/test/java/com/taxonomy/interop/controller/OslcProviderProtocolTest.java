@@ -47,4 +47,14 @@ class OslcProviderProtocolTest {
         assertEquals(404, assertThrows(IntegrationProblem.class, () -> controller.catalog("scope", unavailable)).status());
         verify(service, times(5)).authorize(context, "scope");
     }
+
+    @Test void csrfTransportMetadataDoesNotAlterTheResourceButUnsupportedQueriesStillFail() {
+        var plain = controller.catalog("scope", request());
+        var secured = request(); secured.setMethod("HEAD"); secured.addParameter("_csrf", "transport-token");
+        var result = controller.catalog("scope", secured);
+        assertEquals(200, result.getStatusCode().value()); assertEquals(plain.getHeaders().getETag(), result.getHeaders().getETag());
+        assertArrayEquals(plain.getBody(), result.getBody());
+        var unsupported = request(); unsupported.addParameter("oslc.where", "dcterms:title=\"hidden\"");
+        assertThrows(IllegalArgumentException.class, () -> controller.catalog("scope", unsupported));
+    }
 }

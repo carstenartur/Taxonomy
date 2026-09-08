@@ -60,17 +60,15 @@ public class OslcProviderService {
     }
     public OslcRdf query(RepositoryContext context, long projectId, int page, int pageSize, Links links) {
         if (page < 0 || pageSize < 1 || pageSize > 100 || page > 100000) throw new IllegalArgumentException("Query page is outside supported bounds");
-        List<RequirementView> approved = projects.listRequirements(projectId, context.username(), IntegrationDomainAdapter.workspace(context)).stream()
-                .filter(r -> r.status() == RequirementStatus.APPROVED).toList();
+        var approved = projects.listApprovedRequirements(projectId, context.username(), IntegrationDomainAdapter.workspace(context), page, pageSize);
         String path = "/projects/" + projectId + "/requirements";
         String resource = links.uri(path) + "&page=" + page + "&oslc.pageSize=" + pageSize;
         OslcRdf graph = new OslcRdf().type(resource, OSLC + "ResponseInfo").literal(resource, DCT + "title", "Approved requirements");
-        int from = Math.min(approved.size(), page * pageSize), through = Math.min(approved.size(), from + pageSize);
-        for (RequirementView requirement : approved.subList(from, through)) {
+        for (RequirementView requirement : approved.requirements()) {
             String uri = links.uri(path + "/" + requirement.id());
             graph.link(resource, "http://www.w3.org/2000/01/rdf-schema#member", uri); requirement(graph, requirement, projectId, links, false);
         }
-        if (through < approved.size()) graph.link(resource, OSLC + "nextPage", links.uri(path) + "&page=" + (page + 1) + "&oslc.pageSize=" + pageSize);
+        if (approved.hasNext()) graph.link(resource, OSLC + "nextPage", links.uri(path) + "&page=" + (page + 1) + "&oslc.pageSize=" + pageSize);
         return graph;
     }
     public OslcRdf requirement(RepositoryContext context, long projectId, long requirementId, Long versionId, Links links) {

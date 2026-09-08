@@ -12,6 +12,13 @@ class ExchangeStandardsTest {
     private static byte[] fixture(String name) throws Exception {
         try (var stream = ExchangeStandardsTest.class.getResourceAsStream("/interoperability/" + name)) { assertNotNull(stream); return stream.readAllBytes(); }
     }
+    @Test void occurrenceContractRejectsMissingContainersAndNegativePositions() {
+        for (String container : Arrays.asList(null, "", " ", "x".repeat(2049)))
+            assertThrows(IllegalArgumentException.class, () -> new Placement("occurrence", container, null, null, 0, Map.of()));
+        assertThrows(IllegalArgumentException.class, () -> new Placement("occurrence", "view", null, null, -1, Map.of()));
+        var visualRoot = new Placement("occurrence", "view", null, null, 0, Map.of());
+        assertNull(visualRoot.parentId()); assertNull(visualRoot.artifactId());
+    }
     @Test void exchangeDeliveryRejectsControlCharactersAndPathNamesBeforePersistence() {
         for (String filename : List.of("", ".", "..", "../escape.xml", "directory\\file.xml", "file\r\nX-Injected: yes", "a" + (char) 0 + "b", "x".repeat(241)))
             assertThrows(IllegalArgumentException.class, () -> new ExchangeFile("application/xml", filename, new byte[]{1}, List.of()));

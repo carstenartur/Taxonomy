@@ -188,6 +188,16 @@ class IntegrationFlowTest {
             var consumer = new OslcRequirementsCodec();
             assertFalse(consumer.discover(provider.service(context, project, links).xml(), base, null, null).resources().isEmpty());
             assertEquals(1, consumer.read(provider.query(context, project, 0, 20, links).xml(), base, null, null).artifacts().size(), "Unapproved target is not exposed");
+            var second = projects.createRequirement(project, new CreateRequirementRequest("PUBLISHED-2", "Second approved", "Second approved text", RequirementStatus.APPROVED,
+                    50, Criticality.MEDIUM, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED, context.username(), "Page fixture", null), context.username(), scope);
+            var firstPage = provider.query(context, project, 0, 1, links);
+            var lastPage = provider.query(context, project, 1, 1, links);
+            assertEquals(List.of(uri), consumer.read(firstPage.xml(), base, null, null).artifacts().stream().map(Artifact::id).toList());
+            assertEquals(List.of(links.uri("/projects/" + project + "/requirements/" + second.id())),
+                    consumer.read(lastPage.xml(), base, null, null).artifacts().stream().map(Artifact::id).toList());
+            assertTrue(firstPage.triples().stream().anyMatch(t -> t.predicate().equals(com.taxonomy.exchange.OslcRdf.OSLC + "nextPage") && t.value().endsWith("&page=1&oslc.pageSize=1")));
+            assertFalse(lastPage.triples().stream().anyMatch(t -> t.predicate().equals(com.taxonomy.exchange.OslcRdf.OSLC + "nextPage")));
+            assertTrue(consumer.read(provider.query(context, project, 2, 1, links).xml(), base, null, null).artifacts().isEmpty());
             assertThrows(IntegrationProblem.class, () -> provider.requirement(context, project, target.id(), null, links));
             assertEquals(404, assertThrows(IntegrationProblem.class, () -> provider.authorize(RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), context.branch(), "foreign"), EditorJournal.scope(context))).status());
         } finally { remoteProfiles.setRemotes(previousProfiles); server.stop(0); }

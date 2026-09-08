@@ -25,6 +25,7 @@ import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
 import com.taxonomy.portfolio.repository.ProjectSolutionRepository;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -235,6 +236,25 @@ public class ProjectPortfolioService {
                 .stream()
                 .map(requirement -> toRequirementView(requirement, currentVersion(requirement)))
                 .toList();
+    }
+
+    public record RequirementPage(List<RequirementView> requirements, boolean hasNext) {
+        public RequirementPage { requirements = List.copyOf(requirements); }
+    }
+
+    /** Bound approved reads in the database, including the exact project and tenant predicates. */
+    @Transactional(readOnly = true)
+    public RequirementPage listApprovedRequirements(Long projectId, String username,
+                                                     WorkspaceContext context, int page, int pageSize) {
+        if (page < 0 || page > 100000 || pageSize < 1 || pageSize > 100)
+            throw PortfolioException.validation("Requirement page is outside supported bounds");
+        ArchitectureProject project = requireProject(projectId, username, context);
+        var slice = requirementRepository.findByProjectIdAndScopeKeyAndStatusOrderByRequirementKeyAscIdAsc(
+                projectId, project.getScopeKey(), RequirementStatus.APPROVED, PageRequest.of(page, pageSize));
+        return new RequirementPage(slice.getContent().stream()
+                .map(requirement -> toRequirementView(requirement, requirement.getCurrentVersion() != null
+                        ? requirement.getCurrentVersion() : currentVersion(requirement)))
+                .toList(), slice.hasNext());
     }
 
     @Transactional(readOnly = true)

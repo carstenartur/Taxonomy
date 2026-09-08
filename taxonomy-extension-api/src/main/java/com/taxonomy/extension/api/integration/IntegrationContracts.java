@@ -77,7 +77,11 @@ public final class IntegrationContracts {
     /** Occurrence identity preserves repeated requirements and independently named specification hierarchies. */
     public record Placement(String id, String containerId, String parentId, String artifactId, int position,
                             Map<String, String> attributes) {
-        public Placement { require(id, "occurrence id"); attributes = immutable(attributes); }
+        public Placement {
+            require(id, "occurrence id"); require(containerId, "container id");
+            if (position < 0) throw new IllegalArgumentException("Occurrence position must not be negative");
+            attributes = immutable(attributes);
+        }
     }
 
     public record MappingLoss(String artifactId, String field, String code,

@@ -42,7 +42,8 @@ public class OslcProviderController {
     private ResponseEntity<byte[]> response(String scope, HttpServletRequest request, Resource resource) {
         var context = resolver.resolveCurrentRepositoryContext(); service.authorize(context, scope);
         if (request.getHeader("OSLC-Core-Version") != null && !request.getHeader("OSLC-Core-Version").equals("3.0")) throw new IllegalArgumentException("Unsupported OSLC Core version");
-        for (String name : request.getParameterMap().keySet()) if (!Set.of("repositoryId", "workspaceId", "branch", "page", "oslc.pageSize", "oslc.paging").contains(name))
+        // Spring Security's form token is transport metadata, never an OSLC query or resource field.
+        for (String name : request.getParameterMap().keySet()) if (!Set.of("repositoryId", "workspaceId", "branch", "page", "oslc.pageSize", "oslc.paging", "_csrf").contains(name))
             throw new IllegalArgumentException("OSLC query option is outside the declared read-only profile");
         String base = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString() + "/oslc/scopes/" + scope;
         OslcProviderService.Links links = path -> UriComponentsBuilder.fromUriString(base + path)
