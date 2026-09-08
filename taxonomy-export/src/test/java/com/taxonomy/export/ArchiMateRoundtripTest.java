@@ -242,18 +242,63 @@ class ArchiMateRoundtripTest {
 
     @Test
     @ResourceLock(Resources.SYSTEM_PROPERTIES)
-    void exchangeParsingUsesTheSupportedJdkParserDespiteAConfiguredClasspathProvider() {
+    void exchangeCodecsUseSupportedJdkProvidersDespiteClasspathConfiguration() {
         byte[] xml = exporter.export(converter.convert(representative()));
-        String setting = "javax.xml.parsers.DocumentBuilderFactory";
-        String original = System.getProperty(setting);
+        Map<String, String> originals = new HashMap<>();
+        for (String setting : List.of("javax.xml.parsers.DocumentBuilderFactory", "javax.xml.stream.XMLOutputFactory")) {
+            originals.put(setting, System.getProperty(setting));
+        }
         try {
-            System.setProperty(setting, "unavailable.thirdparty.DocumentBuilderFactory");
+            originals.keySet().forEach(setting -> System.setProperty(setting, "unavailable.thirdparty.Factory"));
+            assertArrayEquals(xml, exporter.export(converter.convert(representative())));
             assertDoesNotThrow(() -> ArchiMateSchema.parse(xml));
             assertEquals(representative(), reader.toDiagram(reader.read(xml)));
         } finally {
-            if (original == null) System.clearProperty(setting);
-            else System.setProperty(setting, original);
+            originals.forEach((setting, original) -> {
+                if (original == null) System.clearProperty(setting);
+                else System.setProperty(setting, original);
+            });
         }
+    }
+
+    @Test
+    void profileDetectionRequiresTheSpecificMarkerOnTheModel() {
+        byte[] xml = exporter.export(converter.convert(representative()));
+        var document = ArchiMateSchema.parse(xml);
+        assertTrue(ArchiMateExchangeReader.hasTaxonomyProfile(document));
+        var root = document.getDocumentElement();
+        String definitionId = ArchiMateIds.id("property", "taxonomy.mappingProfile");
+        var modelProperties = ArchiMateExchangeReader.child(root, "properties");
+        var marker = ArchiMateExchangeReader.children(modelProperties, "property").stream()
+                .filter(property -> definitionId.equals(property.getAttribute("propertyDefinitionRef")))
+                .findFirst().orElseThrow();
+        ArchiMateExchangeReader.child(marker, "value").setTextContent("unsupported-future-profile");
+        assertTrue(ArchiMateExchangeReader.hasTaxonomyProfile(document), "unknown versions must reach strict validation");
+        assertThrows(IllegalArgumentException.class, () -> reader.read(document));
+        modelProperties.removeChild(marker);
+        assertFalse(ArchiMateExchangeReader.hasTaxonomyProfile(document), "an unused definition does not declare a profile");
+        var firstElement = ArchiMateExchangeReader.child(ArchiMateExchangeReader.child(root, "elements"), "element");
+        ArchiMateExchangeReader.child(firstElement, "properties").appendChild(marker);
+        assertFalse(ArchiMateExchangeReader.hasTaxonomyProfile(document), "an element property is not a model declaration");
+
+        var unrelated = ArchiMateSchema.parse(xml);
+        var definitions = ArchiMateExchangeReader.child(unrelated.getDocumentElement(), "propertyDefinitions");
+        var definition = ArchiMateExchangeReader.children(definitions, "propertyDefinition").stream()
+                .filter(item -> definitionId.equals(item.getAttribute("identifier"))).findFirst().orElseThrow();
+        ArchiMateExchangeReader.child(definition, "name").setTextContent("taxonomy.externalClassification");
+        assertFalse(ArchiMateExchangeReader.hasTaxonomyProfile(unrelated), "a shared property prefix does not declare our profile");
+    }
+
+    @Test
+    void schemaParserEnforcesTheNumericDepthLimit() {
+        String prefix = "<model xmlns=\"" + ArchiMateSchema.NAMESPACE + "\" identifier=\"depth-test\"><name>Depth</name><organizations>";
+        String suffix = "</organizations></model>";
+        String group = "<item><label>Group</label>";
+        assertDoesNotThrow(() -> ArchiMateSchema.parse((prefix + group.repeat(20) + "</item>".repeat(20) + suffix)
+                .getBytes(StandardCharsets.UTF_8)));
+        var error = assertThrows(IllegalArgumentException.class, () -> ArchiMateSchema.parse(
+                (prefix + group.repeat(130) + "</item>".repeat(130) + suffix).getBytes(StandardCharsets.UTF_8)));
+        assertTrue(error.getMessage().contains("maxElementDepth"));
     }
 
     static DiagramModel representative() {
