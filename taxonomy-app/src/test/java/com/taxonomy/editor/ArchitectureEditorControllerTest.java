@@ -62,7 +62,7 @@ class ArchitectureEditorControllerTest {
         assertThat(pdf.getHeaders().getETag()).isEqualTo(json.getHeaders().getETag());
         for (var response : List.of(json, svg, pdf)) {
             assertThat(response.getHeaders().getFirst("X-Taxonomy-Source")).isEqualTo("GIT_CHECKPOINT");
-            assertThat(response.getHeaders()).doesNotContainKey("X-Taxonomy-Semantic-Revision");
+            assertThat(response.getHeaders().getFirst("X-Taxonomy-Semantic-Revision")).isNull();
         }
         assertThat(svg.getHeaders().getFirst("X-Taxonomy-Layout-Source")).isEqualTo("DERIVED_SERVER_LAYOUT");
         try (var parsed = org.apache.pdfbox.Loader.loadPDF(pdf.getBody())) {
