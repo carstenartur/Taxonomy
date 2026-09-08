@@ -86,8 +86,9 @@ public final class ArchitectureSemanticPatch {
         if (Objects.equals(canonical(existing), next)) return source;
         if (existing != null && replacement != null) {
             // The formatter does not model comments. Retain them explicitly inside the edited block.
-            String comments = raw(source, existing).lines().map(ArchitectureSemanticPatch::comment).filter(Objects::nonNull)
-                    .reduce("", (a, b) -> a + b + "\n");
+            StringBuilder comments = new StringBuilder();
+            raw(source, existing).lines().map(ArchitectureSemanticPatch::comment).filter(Objects::nonNull)
+                    .forEach(comment -> comments.append(comment).append('\n'));
             int opening = next.indexOf('\n') + 1;
             next = next.substring(0, opening) + comments + next.substring(opening);
         }
