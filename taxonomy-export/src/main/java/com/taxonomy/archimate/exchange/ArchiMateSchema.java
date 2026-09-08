@@ -35,7 +35,9 @@ public final class ArchiMateSchema {
             throw new IllegalArgumentException("ArchiMate document must contain 1.." + MAX_BYTES + " bytes");
         }
         try {
-            DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+            // The supported Java runtime owns these security limits. Do not let a
+            // classpath JAXP provider replace the parser or silently disable them.
+            DocumentBuilderFactory factory = DocumentBuilderFactory.newDefaultInstance();
             factory.setNamespaceAware(true);
             factory.setSchema(SCHEMA);
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
@@ -69,11 +71,11 @@ public final class ArchiMateSchema {
 
     private static Schema load() {
         try {
-            SchemaFactory factory = SchemaFactory.newInstance(XMLConstants.W3C_XML_SCHEMA_NS_URI);
+            SchemaFactory factory = SchemaFactory.newDefaultInstance();
             factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);
             factory.setProperty(XMLConstants.ACCESS_EXTERNAL_DTD, "");
             factory.setProperty(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-            DOMImplementationLS implementation = (DOMImplementationLS) DocumentBuilderFactory.newInstance()
+            DOMImplementationLS implementation = (DOMImplementationLS) DocumentBuilderFactory.newDefaultInstance()
                     .newDocumentBuilder().getDOMImplementation().getFeature("LS", "3.0");
             factory.setResourceResolver((type, namespace, publicId, systemId, baseUri) -> {
                 String name = systemId == null ? "" : systemId.substring(systemId.lastIndexOf('/') + 1);
