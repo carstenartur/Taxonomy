@@ -17,6 +17,10 @@ public interface ArchitectureCommandPort {
         public static Context of(RepositoryContext context, String commit) {
             return of(context, commit, 0);
         }
+        public static Context version(RepositoryContext context, String commit) {
+            return new Context(context.repositoryId(), RelationDecisionProjection.scopeKeyFor(context.workspaceId()),
+                    context.branch(), commit, 0, context.username(), "READ_ONLY");
+        }
         public static Context of(RepositoryContext context, String commit, long revision) {
             return new Context(context.repositoryId(), RelationDecisionProjection.scopeKeyFor(context.workspaceId()),
                     context.branch(), commit, revision, context.username(),

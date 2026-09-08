@@ -56,7 +56,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         if (commit != null) {
             String selected = ObjectId.fromString(commit).name();
             requireReachable(repository, head, selected);
-            return new Document(Context.of(context, selected), source(repository, selected), "HISTORICAL",
+            return new Document(Context.version(context, selected), source(repository, selected), "HISTORICAL",
                     List.of(), versions, 0, null, "GIT_CHECKPOINT");
         }
         Snapshot snapshot = snapshot(context);
@@ -83,6 +83,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         requireContext(context, command.context()); requireWritable(context);
         Snapshot snapshot = snapshot(context);
         expect(snapshot.state(), command.context().revision());
+        requireInitialVersion(snapshot.state(), command.context());
         verifyVersion(context, snapshot.state());
         return new Preview(Context.of(context, snapshot.state().checkpointCommit(), snapshot.state().revision()),
                 transform(context, command, snapshot.state().dsl(), snapshot.operations()), kind(command.operation()), target(command.operation()));
@@ -101,6 +102,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 return accepted(context, session.state(), prior, true);
             }
             session.expect(command.context().revision());
+            requireInitialVersion(session.state(), command.context());
             try { verifyVersion(context, session.state()); }
             catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
             Change change = transform(context, command, session.state().dsl(), session.operations());
@@ -138,6 +140,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
             session.expect(command.context().revision());
             try { verifyVersion(context, session.state()); }
             catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            requireInitialVersion(session.state(), command.context());
             return session.prepare(command.metadata(), context.username(), fingerprint);
             });
         } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
@@ -283,6 +286,13 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     private static void expect(State state, long expected) {
         if (state.revision() != expected) throw new RevisionConflict(expected, state.revision());
         if (state.pendingCheckpoint() != null) throw problem("CHECKPOINT_PENDING", "checkpoint", "Retry the pending checkpoint", List.of(state.pendingCheckpoint()));
+    }
+    private static void requireInitialVersion(State state, Context expected) {
+        // Before the first accepted edit there is no durable semantic revision to distinguish Git baselines.
+        // After revision zero, checkpoints may advance Git without invalidating a semantic preview.
+        if (state.revision() == 0 && !Objects.equals(state.checkpointCommit(), expected.commit())) {
+            throw problem("CONTEXT_CHANGED", "commit", "The initial architecture version changed; reload and preview again", List.of());
+        }
     }
     private static void requireFingerprint(String expected, String actual) {
         if (!expected.equals(actual)) throw problem("COMMAND_ID_REUSED", "commandId", "Command identity was already used with another payload", List.of());
