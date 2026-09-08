@@ -236,7 +236,7 @@ public class ArchitectureEditorController {
         int status = switch (error.code()) {
             case "NOT_FOUND" -> 404;
             case "READ_ONLY" -> 403;
-            case "CONTEXT_CHANGED", "UNDO_CONFLICT", "ALREADY_INVERTED", "COMMAND_ID_REUSED", "DEPENDENCIES_EXIST", "CHECKPOINT_PENDING", "VERSION_CHANGED" -> 409;
+            case "CONTEXT_CHANGED", "UNDO_CONFLICT", "ALREADY_INVERTED", "COMMAND_ID_REUSED", "DEPENDENCIES_EXIST", "CHECKPOINT_PENDING", "CHECKPOINT_CONFLICT", "VERSION_CHANGED" -> 409;
             default -> 422;
         };
         return ResponseEntity.status(status).body(Map.of("code", error.code(), "field", error.field(),

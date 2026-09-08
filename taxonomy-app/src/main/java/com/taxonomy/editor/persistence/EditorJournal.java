@@ -41,7 +41,7 @@ public class EditorJournal {
     public record Snapshot(State state, List<Entry> operations) {}
     public record Checkpoint(String commandId, String actor, String occurredAt, String rationale,
                              String fingerprint, long fromRevision, long revision, String expectedCommit,
-                             String dsl, String commitId, boolean completed, boolean commitCreated) {}
+                             String dsl, String commitId, boolean completed, boolean commitCreated, String failureCode) {}
 
     public Snapshot read(RepositoryContext context) {
         String scope = scope(context);
@@ -72,7 +72,7 @@ public class EditorJournal {
                 workspace.repositoryId = context.repositoryId();
                 workspace.workspaceId = context.workspaceId();
                 workspace.branch = context.branch();
-                workspace.dsl = initial.dsl();
+                workspace.dsl = frame(initial.dsl());
                 workspace.checkpointCommit = initial.checkpointCommit();
                 em.persist(workspace);
                 em.flush();
@@ -117,11 +117,11 @@ public class EditorJournal {
             operation.fingerprint = fingerprint;
             operation.bodyVersion = 1;
             operation.beforeDsl = workspace.dsl;
-            operation.afterDsl = dsl;
-            operation.affectedIds = String.join("\n", affected);
+            operation.afterDsl = frame(dsl);
+            operation.affectedIds = frame(String.join("\n", affected));
             operation.previousRevision = workspace.revision;
             operation.revision = ++workspace.revision;
-            workspace.dsl = dsl;
+            workspace.dsl = operation.afterDsl;
             em.persist(operation);
             return entry(operation);
         }
@@ -157,6 +157,12 @@ public class EditorJournal {
             workspace.pendingCheckpoint = null;
             return EditorJournal.checkpoint(checkpoint);
         }
+        public void rejectCheckpoint(String commandId) {
+            EditorCheckpoint checkpoint = em.find(EditorCheckpoint.class, key(workspace.scopeId, commandId));
+            if (checkpoint.completed) return;
+            checkpoint.failureCode = "CHECKPOINT_CONFLICT";
+            if (commandId.equals(workspace.pendingCheckpoint)) workspace.pendingCheckpoint = null;
+        }
         /** A version-boundary import is journaled by the caller before adopting the new Git authority. */
         public void adoptVersion(String commit) {
             workspace.checkpointCommit = commit;
@@ -169,16 +175,22 @@ public class EditorJournal {
                 .setParameter("scope", scope).setParameter("revision", revision).getResultList().stream().map(EditorJournal::entry).toList();
     }
     private static State state(EditorWorkspace w) {
-        return new State(w.dsl, w.revision, w.checkpointCommit, w.checkpointRevision, w.pendingCheckpoint);
+        return new State(unframe(w.dsl), w.revision, w.checkpointCommit, w.checkpointRevision, w.pendingCheckpoint);
     }
     private static Entry entry(EditorOperation o) {
         return new Entry(o.commandId, o.actor, o.occurredAt, o.rationale, o.kind, o.targetOperationId,
-                o.previousRevision, o.revision, o.fingerprint, o.bodyVersion, o.beforeDsl, o.afterDsl,
-                o.affectedIds.isEmpty() ? List.of() : List.of(o.affectedIds.split("\n")));
+                o.previousRevision, o.revision, o.fingerprint, o.bodyVersion, unframe(o.beforeDsl), unframe(o.afterDsl),
+                unframe(o.affectedIds).isEmpty() ? List.of() : List.of(unframe(o.affectedIds).split("\n")));
     }
     private static Checkpoint checkpoint(EditorCheckpoint c) {
         return new Checkpoint(c.commandId, c.actor, c.occurredAt, c.rationale, c.fingerprint, c.fromRevision,
-                c.revision, c.expectedCommit, c.dsl, c.commitId, c.completed, c.commitCreated);
+                c.revision, c.expectedCommit, unframe(c.dsl), c.commitId, c.completed, c.commitCreated, c.failureCode);
+    }
+    // A nonempty version envelope also preserves empty source on Oracle, which maps empty VARCHARs to NULL.
+    private static String frame(String source) { return "1:" + source; }
+    private static String unframe(String source) {
+        if (source == null || !source.startsWith("1:")) throw new IllegalStateException("Unknown or missing journal source body");
+        return source.substring(2);
     }
     private static String key(String scope, String commandId) { return scope + ":" + commandId; }
     public static String scope(RepositoryContext context) {

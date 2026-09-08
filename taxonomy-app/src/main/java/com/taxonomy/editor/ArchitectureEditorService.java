@@ -83,6 +83,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         requireContext(context, command.context()); requireWritable(context);
         Snapshot snapshot = snapshot(context);
         expect(snapshot.state(), command.context().revision());
+        verifyVersion(context, snapshot.state());
         return new Preview(Context.of(context, snapshot.state().checkpointCommit(), snapshot.state().revision()),
                 transform(context, command, snapshot.state().dsl(), snapshot.operations()), kind(command.operation()), target(command.operation()));
     }
@@ -92,19 +93,23 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         requireContext(context, command.context()); requireWritable(context);
         Snapshot initial = snapshot(context);
         String fingerprint = fingerprint(command);
-        return journal.locked(context, initial.state(), session -> {
+        try {
+            return journal.locked(context, initial.state(), session -> {
             Entry prior = session.find(command.metadata().commandId());
             if (prior != null) {
                 requireFingerprint(fingerprint, prior.fingerprint());
                 return accepted(context, session.state(), prior, true);
             }
             session.expect(command.context().revision());
+            try { verifyVersion(context, session.state()); }
+            catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
             Change change = transform(context, command, session.state().dsl(), session.operations());
             if (change.changes().isEmpty()) throw problem("NO_CHANGE", "command", "No semantic change to accept", List.of());
             Entry entry = session.append(command.metadata(), context.username(), kind(command.operation()), target(command.operation()),
                     fingerprint, change.dsl(), List.copyOf(affected(change.changes())));
             return accepted(context, session.state(), entry, false);
-        });
+            });
+        } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
     }
 
     private static Accepted accepted(RepositoryContext context, State state, Entry entry, boolean replayed) {
@@ -121,17 +126,25 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         String fingerprint = digest(Arrays.asList("CHECKPOINT", EditorJournal.scope(context), context.username(),
                 Long.toString(command.context().revision()), command.metadata().rationale(),
                 command.metadata().correlationId(), command.metadata().causationId()));
-        Checkpoint prepared = journal.locked(context, initial, session -> {
+        Checkpoint prepared;
+        try {
+            prepared = journal.locked(context, initial, session -> {
             Checkpoint prior = session.checkpoint(command.metadata().commandId());
-            if (prior != null) { requireFingerprint(fingerprint, prior.fingerprint()); return prior; }
+            if (prior != null) {
+                requireFingerprint(fingerprint, prior.fingerprint());
+                if (prior.failureCode() != null) throw problem(prior.failureCode(), "checkpoint", "The checkpoint was rejected because Git moved; reconcile and create a new checkpoint", List.of(prior.commandId()));
+                return prior;
+            }
             session.expect(command.context().revision());
+            try { verifyVersion(context, session.state()); }
+            catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
             return session.prepare(command.metadata(), context.username(), fingerprint);
-        });
+            });
+        } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
         boolean replayed = prepared.completed();
         Checkpoint completed = prepared;
         if (!prepared.completed()) {
-            var written = checkpointWriter.write(repositories.resolveRepository(context), EditorJournal.scope(context), context.branch(), prepared);
-            completed = journal.locked(context, initial, session -> session.complete(prepared.commandId(), written.commitId(), written.created()));
+            completed = finishCheckpoint(context, initial, prepared);
         }
         return new CheckpointAccepted(Context.of(context, completed.commitId(), completed.revision()), completed.commandId(),
                 completed.commitId(), completed.fromRevision(), completed.revision(), completed.commitCreated(), replayed);
@@ -144,10 +157,20 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         if (snapshot == null || snapshot.state().pendingCheckpoint() == null) throw problem("NOT_FOUND", "checkpoint", "No pending checkpoint", List.of());
         Checkpoint intent = journal.locked(context, snapshot.state(), session -> session.checkpoint(snapshot.state().pendingCheckpoint()));
         if (!context.username().equals(intent.actor())) throw problem("NOT_FOUND", "checkpoint", "No personal checkpoint", List.of());
-        var written = checkpointWriter.write(repositories.resolveRepository(context), EditorJournal.scope(context), context.branch(), intent);
-        Checkpoint completed = journal.locked(context, snapshot.state(), session -> session.complete(intent.commandId(), written.commitId(), written.created()));
+        Checkpoint completed = finishCheckpoint(context, snapshot.state(), intent);
         return new CheckpointAccepted(Context.of(context, completed.commitId(), completed.revision()), completed.commandId(),
                 completed.commitId(), completed.fromRevision(), completed.revision(), completed.commitCreated(), true);
+    }
+
+    private Checkpoint finishCheckpoint(RepositoryContext context, State initial, Checkpoint intent) throws IOException {
+        try {
+            var written = checkpointWriter.write(repositories.resolveRepository(context), EditorJournal.scope(context), context.branch(), intent);
+            return journal.locked(context, initial, session -> session.complete(intent.commandId(), written.commitId(), written.created()));
+        } catch (com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException conflict) {
+            // Deterministic commit recovery ran first: this exception proves the intent did not advance the ref.
+            journal.locked(context, initial, session -> { session.rejectCheckpoint(intent.commandId()); return null; });
+            throw problem("CHECKPOINT_CONFLICT", "checkpoint", "Git changed before this checkpoint could be applied; reconcile the versions", List.of(intent.commandId()));
+        }
     }
 
     /** Editor projections are rebuilt from exact canonical DSL on every read, including before the first checkpoint. */
@@ -235,6 +258,13 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
             }
         }
         return transformer.inverse(current, selected.beforeDsl(), selected.afterDsl());
+    }
+
+    private void verifyVersion(RepositoryContext context, State state) throws IOException {
+        String actual = head(repositories.resolveRepository(context), context.branch());
+        if (!Objects.equals(actual, state.checkpointCommit())) {
+            throw problem("VERSION_CHANGED", "checkpoint", "A version action must be reconciled before accepting further edits", List.of());
+        }
     }
 
     private Snapshot snapshot(RepositoryContext context) throws IOException {

@@ -52,5 +52,8 @@ public class EditorCheckpoint {
     @Column(name = "commit_created", nullable = false)
     boolean commitCreated;
 
+    @Column(name = "failure_code", length = 40)
+    String failureCode;
+
     protected EditorCheckpoint() {}
 }

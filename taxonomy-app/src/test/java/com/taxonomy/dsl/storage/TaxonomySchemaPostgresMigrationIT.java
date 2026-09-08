@@ -137,11 +137,16 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(
                 dataSource, "relation_projection_recovery", "attempt_count"))
                 .isTrue();
+        assertThat(tableExists(dataSource, "editor_workspace")).isTrue();
+        assertThat(tableExists(dataSource, "editor_operation")).isTrue();
+        assertThat(tableExists(dataSource, "editor_checkpoint")).isTrue();
+        assertThat(columnExists(dataSource, "editor_operation", "before_dsl")).isTrue();
+        assertThat(columnExists(dataSource, "editor_operation", "target_operation_id")).isTrue();
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
     }
 
     @Test
@@ -215,7 +220,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
     }
 
     @Test

@@ -185,6 +185,52 @@ class ArchitectureEditorServiceTest {
         assertThat(service.read(alice, null).versions()).hasSize(4);
     }
 
+    @Test void movedGitHeadRejectsCheckpointIntentAndReleasesItsReservation() throws Exception {
+        execute(update("Durable uncheckpointed edit"));
+        var concurrent = new ArchitectureCheckpointWriter() {
+            @Override public Result write(com.taxonomy.dsl.storage.DslGitRepository repository, String scope, String branch,
+                                          EditorJournal.Checkpoint request) throws java.io.IOException {
+                repository.commitDsl(branch, SEED, "alice", "Independent version write");
+                return super.write(repository, scope, branch, request);
+            }
+        };
+        var editor = new ArchitectureEditorService(fixture.repositories, fixture.journal, concurrent);
+        var request = new CreateCheckpointCommand(service.read(alice, null).context(), metadata());
+        assertCode(() -> editor.checkpoint(alice, request), "CHECKPOINT_CONFLICT");
+        assertThat(fixture.journal.read(alice).state().pendingCheckpoint()).isNull();
+        assertCode(() -> service.checkpoint(alice, request), "CHECKPOINT_CONFLICT");
+        assertThat(service.read(alice, null).dsl()).contains("Durable uncheckpointed edit");
+    }
+
+    @Test void transactionFailureLeavesNeitherOperationNorWorkspaceResidue() throws Exception {
+        var state = new EditorJournal.State(SEED, 0, fixture.repositories.resolveRepository(alice).getHeadCommit("draft"), 0, null);
+        assertThatThrownBy(() -> fixture.journal.locked(alice, state, session -> {
+            session.expect(0);
+            session.append(metadata(), "alice", "TestOperation", null, "f".repeat(64), "", List.of("element:arch-existing"));
+            throw new IllegalStateException("Failure before durable transaction completion");
+        })).isInstanceOf(IllegalStateException.class);
+        assertThat(fixture.journal.read(alice)).isNull();
+        assertThat(fixture.repositories.resolveRepository(alice).getDslAtHead("draft")).isEqualTo(SEED);
+    }
+
+    @Test void failedVersionCompletionRequiresRecoveryAndNeverOverwritesUncheckpointedEdits() throws Exception {
+        var git = fixture.repositories.resolveRepository(alice);
+        execute(update("Checkpointed edit"));
+        assertThatThrownBy(() -> service.version(alice, "Restore interrupted version", () -> {
+            git.commitDsl("draft", SEED, "alice", "Explicit version restore");
+            throw new java.io.IOException("Process stopped after version write");
+        })).isInstanceOf(java.io.IOException.class);
+        assertThat(service.read(alice, null).projectionState()).isEqualTo("VERSION_CHANGED");
+        assertCode(() -> execute(update("Must reconcile first")), "VERSION_CHANGED");
+        service.reconcileVersion(alice);
+        assertThat(service.read(alice, null).dsl()).isEqualTo(SEED);
+        assertThat(service.read(alice, null).history().getFirst().kind()).isEqualTo("VERSION_IMPORT");
+        execute(update("Keep this uncheckpointed"));
+        git.commitDsl("draft", SEED, "alice", "Independent external version");
+        assertCode(() -> service.reconcileVersion(alice), "VERSION_CHANGED");
+        assertThat(service.read(alice, null).dsl()).contains("Keep this uncheckpointed");
+    }
+
     private Accepted execute(Operation operation) throws Exception { return service.execute(alice, command(operation)); }
     private Command command(Operation operation) throws Exception { return new Command(service.read(alice, null).context(), metadata(), operation); }
     static Metadata metadata() { String id = UUID.randomUUID().toString(); return new Metadata(id, id, id, "Architecture decision"); }

@@ -54,7 +54,10 @@ public class TaxonomySchemaMigrationConfig {
             "product_taxonomy",
             "solution_product",
             "project_conflict",
-            "webdav_application_credential");
+            "webdav_application_credential",
+            "editor_workspace",
+            "editor_operation",
+            "editor_checkpoint");
 
     @Bean
     @Primary
