@@ -28,8 +28,9 @@ public class ArchitectureEditorProjection {
                          Map<String, String> typeRoots, Map<String, PropertyRule> properties, String layoutMode) {}
     public record PropertyRule(boolean required, boolean readOnly, boolean derived,
                                List<String> values, String labelKey) {}
+    public record SearchEntry(String id, String text) {}
     public record View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,
-                       DiagramScene scene, Schema schema, boolean mayEdit) {}
+                       DiagramScene scene, Schema schema, boolean mayEdit, List<SearchEntry> searchIndex) {}
 
     public View project(ArchitectureEditorService.Document document, boolean mayEdit) {
         CanonicalArchitectureModel model = new ArchitectureDslCommands().model(document.dsl());
@@ -51,7 +52,9 @@ public class ArchitectureEditorProjection {
                 DslValidator.relationTypes().stream().sorted().toList(), DslValidator.relationStatuses().stream().sorted().toList(),
                 DslValidator.relationTypeRules(), TaxonomyRootTypes.TYPE_TO_ROOT, properties(), "DERIVED_SERVER_LAYOUT");
         return new View(document, model, scene, schema, mayEdit && "PRIVATE_WORKSPACE".equals(document.context().writeMode())
-                && "READY".equals(document.projectionState()));
+                && "READY".equals(document.projectionState()),
+                model.getElements().stream().map(element -> new SearchEntry(element.getId(),
+                        (element.getId() + " " + element.getTitle() + " " + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList());
     }
 
     private static List<String> types() { return TaxonomyRootTypes.TYPE_TO_ROOT.keySet().stream().sorted().toList(); }

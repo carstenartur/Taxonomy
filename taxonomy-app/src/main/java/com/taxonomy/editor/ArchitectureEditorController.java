@@ -174,8 +174,8 @@ public class ArchitectureEditorController {
 
     private static ResponseEntity.BodyBuilder documentResponse(ArchitectureEditorService.Document document) {
         return response(HttpStatus.OK, document.context()).header("X-Taxonomy-Source", document.source())
-                .header(HttpHeaders.ETAG, "GIT_CHECKPOINT".equals(document.source())
-                        ? GitHttpPrecondition.etag(document.context().commit()) : etag(document.context()));
+                .headers(headers -> headers.setETag("GIT_CHECKPOINT".equals(document.source())
+                        ? GitHttpPrecondition.etag(document.context().commit()) : etag(document.context())));
     }
 
     @PostMapping("/api/architecture/editor/versions/recover")

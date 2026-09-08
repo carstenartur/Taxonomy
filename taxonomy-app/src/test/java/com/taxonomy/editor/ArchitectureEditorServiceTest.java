@@ -168,6 +168,10 @@ class ArchitectureEditorServiceTest {
         var projector = new ArchitectureEditorProjection(new com.taxonomy.export.LayeredDiagramLayoutService());
         assertThat(projector.project(service.read(alice, null), true).model().getElements().getFirst().getTitle()).isEqualTo("Uncheckpointed");
         assertThat(projector.project(service.read(alice, version), true).model().getElements().getFirst().getTitle()).isEqualTo("Branch snapshot");
+        assertThat(projector.project(service.read(alice, null), true).searchIndex()).extracting(ArchitectureEditorProjection.SearchEntry::text)
+                .anyMatch(text -> text.contains("uncheckpointed"));
+        assertThat(projector.project(service.read(alice, version), true).searchIndex()).extracting(ArchitectureEditorProjection.SearchEntry::text)
+                .noneMatch(text -> text.contains("uncheckpointed")).anyMatch(text -> text.contains("branch snapshot"));
         assertThat(service.rebuild(alice, service.read(alice, null).context())).isEqualTo("READY");
         service.version(alice, "Restore architecture as new version", () -> {
             try { return git.restore(initial, "draft"); }

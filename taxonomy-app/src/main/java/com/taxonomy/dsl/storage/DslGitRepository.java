@@ -55,7 +55,7 @@ public class DslGitRepository implements AutoCloseable {
     private static final String DEFAULT_REPOSITORY_NAME = "taxonomy-dsl";
 
     /** The single DSL file stored in every commit tree. */
-    static final String DSL_FILENAME = "architecture.taxdsl";
+    public static final String DSL_FILENAME = "architecture.taxdsl";
 
     private final Repository gitRepo;
     private final HibernateGitStorage storageHandle;

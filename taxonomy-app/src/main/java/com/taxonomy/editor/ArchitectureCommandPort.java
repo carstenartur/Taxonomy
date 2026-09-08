@@ -34,7 +34,11 @@ public interface ArchitectureCommandPort {
     record RedoArchitectureCommand(UUID targetOperationId) implements Operation {
         public RedoArchitectureCommand { Objects.requireNonNull(targetOperationId); }
     }
-    record CreateCheckpointCommand(Context context, Metadata metadata) {}
+    record CreateCheckpointCommand(Context context, Metadata metadata) {
+        public CreateCheckpointCommand {
+            if (context == null || metadata == null) throw new IllegalArgumentException("Checkpoint context and metadata are required");
+        }
+    }
     record CheckpointAccepted(Context context, String commandId, String commitId,
                               long fromRevision, long throughRevision, boolean commitCreated, boolean replayed) {}
 
