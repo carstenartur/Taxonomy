@@ -37,6 +37,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class ArchitectureWorkbenchServiceTest {
@@ -108,6 +109,85 @@ class ArchitectureWorkbenchServiceTest {
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("no persisted architecture view")
                 .hasMessageContaining("Architecture View enabled");
+    }
+
+    @Test
+    void rejectsMissingSnapshotIdentityBeforeAccessingPersistence() {
+        for (String id : new String[] { null, "", "  " }) {
+            assertThatThrownBy(() -> service.load(PROJECT_ID, id, "alice", CONTEXT))
+                    .isInstanceOf(PortfolioException.class)
+                    .hasMessageContaining("snapshotId is required");
+        }
+        verifyNoInteractions(persistenceService, projectService);
+    }
+
+    @Test
+    void rejectsSnapshotWithoutPersistedAnalysisBeforeReadingCurrentProjectData() {
+        when(persistenceService.getSnapshot(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
+                .thenReturn(new SnapshotDetail(summary(), null, null, null, null, null, null));
+
+        assertThatThrownBy(() -> service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
+                .isInstanceOf(PortfolioException.class)
+                .hasMessageContaining("no persisted architecture view");
+        verifyNoInteractions(projectService);
+    }
+
+    @Test
+    void neverSubstitutesCurrentRequirementTextForMissingHistoricalVersion() {
+        prepareSnapshot(snapshotWithArchitecture());
+        when(projectService.listRequirementVersions(PROJECT_ID, REQUIREMENT_ID, "alice", CONTEXT))
+                .thenReturn(List.of(new RequirementVersionView(
+                        100L, 4, "Current requirement text must not replace historical evidence.",
+                        "current-hash", "Current revision", "alice",
+                        Instant.parse("2026-08-05T13:00:00Z"), null)));
+
+        assertThatThrownBy(() -> service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
+                .isInstanceOf(PortfolioException.class)
+                .hasMessageContaining("Requirement version for snapshot was not found: 99");
+    }
+
+    @Test
+    void replaysLegacySnapshotWithMissingOptionalMetadataAndStableFallbackTitle() {
+        for (String title : new String[] { null, "  " }) {
+            SnapshotDetail persisted = snapshotWithArchitecture();
+            persisted.analysis().getArchitectureView().setViewTitle(title);
+            persisted.analysis().getArchitectureView().setNotes(null);
+            persisted.analysis().setWarnings(null);
+            prepareSnapshot(new SnapshotDetail(summary(), persisted.analysis(), null, null, null, null, null));
+
+            Projection projection = service.load(PROJECT_ID, "  " + SNAPSHOT_ID + "  ", "alice", CONTEXT);
+
+            assertThat(projection.diagram().title())
+                    .isEqualTo("P-001 / REQ-001 — Secure command information");
+            assertThat(projection.requirementText()).isEqualTo(version().text());
+            assertThat(projection.elements()).isEmpty();
+            assertThat(projection.relations()).isEmpty();
+            assertThat(projection.warnings()).isEmpty();
+            assertThat(projection.exportProvenance().requirementVersionId()).isEqualTo(99L);
+            assertThat(projection.exportProvenance().taxonomyFingerprint()).isEqualTo("taxonomy-fingerprint");
+            assertThat(projection.exportProvenance().repositoryId()).isEqualTo(CONTEXT.repositoryId());
+        }
+    }
+
+    @Test
+    void removesEmptyAndDuplicatePersistedWarningsWithoutChangingTheirOrder() {
+        SnapshotDetail persisted = snapshotWithArchitecture();
+        persisted.analysis().setWarnings(java.util.Arrays.asList(null, "", "Review relation", "  "));
+        persisted.analysis().getArchitectureView().setNotes(List.of("Review relation", "Review evidence"));
+        prepareSnapshot(persisted);
+
+        assertThat(service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT).warnings())
+                .containsExactly("Review relation", "Review evidence");
+    }
+
+    private void prepareSnapshot(SnapshotDetail snapshot) {
+        when(persistenceService.getSnapshot(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
+                .thenReturn(snapshot);
+        when(projectService.getProject(PROJECT_ID, "alice", CONTEXT)).thenReturn(project());
+        when(projectService.getRequirement(PROJECT_ID, REQUIREMENT_ID, "alice", CONTEXT))
+                .thenReturn(requirement());
+        when(projectService.listRequirementVersions(PROJECT_ID, REQUIREMENT_ID, "alice", CONTEXT))
+                .thenReturn(List.of(version()));
     }
 
     private static SnapshotDetail snapshotWithArchitecture() {
