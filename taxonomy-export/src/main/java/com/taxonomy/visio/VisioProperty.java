@@ -24,7 +24,9 @@ public record VisioProperty(Kind kind, String value) {
         }
     }
 
-    public static VisioProperty text(Object value) { return new VisioProperty(Kind.STRING, value.toString()); }
+    public static VisioProperty text(Object value) {
+        return new VisioProperty(Kind.STRING, Objects.requireNonNull(value, "property value").toString());
+    }
     public static VisioProperty number(double value) {
         if (!Double.isFinite(value)) throw new IllegalArgumentException("Property number must be finite");
         return new VisioProperty(Kind.NUMBER, BigDecimal.valueOf(value).toPlainString());

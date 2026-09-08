@@ -290,6 +290,24 @@ class ArchiMateRoundtripTest {
     }
 
     @Test
+    @ResourceLock(Resources.SYSTEM_PROPERTIES)
+    void invalidRuntimeParserConfigurationKeepsTheExchangeErrorContext() {
+        byte[] xml = exporter.export(converter.convert(representative()));
+        String property = "jdk.xml.entityExpansionLimit";
+        String previous = System.getProperty(property);
+        try {
+            System.setProperty(property, "not-a-number");
+            var error = assertThrows(IllegalArgumentException.class, () -> ArchiMateSchema.parse(xml));
+            assertTrue(error.getMessage().startsWith("Invalid ArchiMate 3.1 Exchange XML:"));
+            assertInstanceOf(RuntimeException.class, error.getCause());
+        } finally {
+            if (previous == null) System.clearProperty(property);
+            else System.setProperty(property, previous);
+        }
+        assertDoesNotThrow(() -> ArchiMateSchema.parse(xml));
+    }
+
+    @Test
     void schemaParserEnforcesTheNumericDepthLimit() {
         String prefix = "<model xmlns=\"" + ArchiMateSchema.NAMESPACE + "\" identifier=\"depth-test\"><name>Depth</name><organizations>";
         String suffix = "</organizations></model>";

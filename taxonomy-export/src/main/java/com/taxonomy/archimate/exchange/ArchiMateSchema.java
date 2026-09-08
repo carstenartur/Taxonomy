@@ -64,7 +64,7 @@ public final class ArchiMateSchema {
                 throw new IllegalArgumentException("ArchiMate model exceeds the bounded exchange profile");
             }
             return document;
-        } catch (javax.xml.parsers.ParserConfigurationException | SAXException | IOException exception) {
+        } catch (javax.xml.parsers.ParserConfigurationException | SAXException | IOException | RuntimeException exception) {
             throw new IllegalArgumentException("Invalid ArchiMate 3.1 Exchange XML: " + exception.getMessage(), exception);
         }
     }
