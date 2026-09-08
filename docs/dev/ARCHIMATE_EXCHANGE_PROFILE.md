@@ -99,6 +99,10 @@ and property definitions. This is injective, independent of display names, and
 does not perform lossy sanitization or truncate hashes. A node or connection ID
 includes its view identity, so multiple occurrences in separate views cannot
 collide. Snapshot-bound model IDs use the immutable snapshot identity.
+Without snapshot authority, model IDs hash the sorted element identities and
+original types together with relationship identities, directed endpoints and
+original relationship types. Changes to this semantic graph produce a different
+model ID; display names, scores, input ordering and layout do not affect it.
 
 The typed model supports up to 32 views. Conversion creates a layered view and,
 when it selects a nonempty proper subset, an anchor/impact view. Flat organization

@@ -38,6 +38,11 @@ class ArchiMateInteropFixtureTest {
     }
 
     public static void main(String[] args) throws Exception {
-        Files.write(Path.of(args[0]), fixture());
+        if (args.length != 1 || args[0].isBlank()) {
+            throw new IllegalArgumentException("Usage: ArchiMateInteropFixtureTest <output.xml>");
+        }
+        Path output = Path.of(args[0]).toAbsolutePath();
+        Files.createDirectories(output.getParent());
+        Files.write(output, fixture());
     }
 }

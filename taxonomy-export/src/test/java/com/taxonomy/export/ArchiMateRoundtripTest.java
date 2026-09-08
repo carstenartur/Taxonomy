@@ -81,10 +81,29 @@ class ArchiMateRoundtripTest {
                         n.selectedForImpact(), n.parentId(), false)).toList());
         Collections.reverse(changed);
         var before = converter.convert(graph);
-        var after = converter.convert(new DiagramModel("Different title", changed, graph.edges(), new DiagramLayout("TB", false)));
+        var after = converter.convert(new DiagramModel("Different title", changed, graph.edges().reversed(), new DiagramLayout("TB", false)));
         assertEquals(before.id(), after.id());
         Set<String> beforeIds = elementXmlIds(exporter.export(before));
         assertEquals(beforeIds, elementXmlIds(exporter.export(after)));
+    }
+
+    @Test
+    void graphIdentityDistinguishesRelationshipMembershipDirectionIdentityAndType() {
+        DiagramModel graph = representative();
+        String original = converter.convert(graph).id();
+        DiagramEdge edge = graph.edges().getFirst();
+        List<List<DiagramEdge>> variants = List.of(
+                List.of(),
+                graph.edges().subList(1, graph.edges().size()),
+                List.of(new DiagramEdge("renamed-edge", edge.sourceId(), edge.targetId(), edge.relationType(), edge.relevance()), graph.edges().getLast()),
+                List.of(new DiagramEdge(edge.id(), edge.targetId(), edge.sourceId(), edge.relationType(), edge.relevance()), graph.edges().getLast()),
+                List.of(new DiagramEdge(edge.id(), edge.sourceId(), edge.targetId(), "SUPPORTS", edge.relevance()), graph.edges().getLast()));
+        for (List<DiagramEdge> edges : variants) {
+            assertNotEquals(original, converter.convert(new DiagramModel(graph.title(), graph.nodes(), edges, graph.layout())).id());
+        }
+        var changedTypes = List.of(graph.nodes().get(0), graph.nodes().get(1),
+                new DiagramNode("other", "Other", "Capabilities", .2, false, 3));
+        assertNotEquals(original, converter.convert(new DiagramModel(graph.title(), changedTypes, graph.edges(), graph.layout())).id());
     }
 
     @Test
