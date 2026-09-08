@@ -53,15 +53,16 @@ public class VisioDiagramService {
         doc.getPages().add(page);
 
         // Group nodes by layer for layout
+        List<DiagramNode> sortedNodes = model.nodes().stream().sorted(Comparator.comparing(DiagramNode::id)).toList();
         Map<Integer, List<DiagramNode>> layerGroups = new LinkedHashMap<>();
-        for (DiagramNode node : model.nodes().stream().sorted(Comparator.comparing(DiagramNode::id)).toList()) {
+        for (DiagramNode node : sortedNodes) {
             layerGroups.computeIfAbsent(node.layer(), k -> new java.util.ArrayList<>()).add(node);
         }
 
         // Assign positions: layers left-to-right, nodes top-to-bottom within a layer
         Map<String, String> nodeIdToShapeId = new LinkedHashMap<>();
         int shapeIdx = 0;
-        for (DiagramNode node : model.nodes().stream().sorted(Comparator.comparing(DiagramNode::id)).toList()) {
+        for (DiagramNode node : sortedNodes) {
             nodeIdToShapeId.put(node.id(), Integer.toString(++shapeIdx));
         }
         int layerIdx = 0;

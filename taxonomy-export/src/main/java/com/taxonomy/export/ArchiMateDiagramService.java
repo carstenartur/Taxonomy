@@ -88,12 +88,17 @@ public class ArchiMateDiagramService {
                     view.connections().stream().filter(c -> impact.contains(c.sourceNodeId())
                             && impact.contains(c.targetNodeId())).toList()));
         }
-        // Model identity describes the selected identity set, never its mutable display title.
+        // Unbound model identity describes typed membership and relationship topology,
+        // independent of display text, scores, ordering and generated layout.
         String identity;
         try {
             var digest = java.security.MessageDigest.getInstance("SHA-256");
-            elementIds.stream().sorted().forEach(id -> digest.update(
-                    ArchiMateIds.id("element", id).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            elements.stream().sorted(Comparator.comparing(ArchiMateElement::id)).forEach(element -> digest.update(
+                    ArchiMateIds.id("element", element.id(), element.properties().get("taxonomy.type").value())
+                            .getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            relationships.stream().sorted(Comparator.comparing(ArchiMateRelationship::id)).forEach(relation -> digest.update(
+                    ArchiMateIds.id("relationship", relation.id(), relation.sourceId(), relation.targetId(),
+                            relation.properties().get("taxonomy.type").value()).getBytes(java.nio.charset.StandardCharsets.UTF_8)));
             identity = "graph-" + java.util.HexFormat.of().formatHex(digest.digest());
         } catch (java.security.NoSuchAlgorithmException exception) {
             throw new IllegalStateException(exception);
