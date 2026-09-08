@@ -173,6 +173,7 @@ public class VisioPackageBuilder {
         properties.put("taxonomy.exportProfile", com.taxonomy.visio.VisioProperty.text(VisioHandoffProfile.ID));
         properties.put("taxonomy.profileSha256", com.taxonomy.visio.VisioProperty.text(VisioHandoffProfile.sha256(
                 VisioHandoffProfile.profileJson().getBytes(StandardCharsets.UTF_8))));
+        VisioPackageValidator.validateProperties(properties);
         StringBuilder xml = new StringBuilder(XML_DECLARATION).append("<Properties xmlns=\"http://schemas.openxmlformats.org/officeDocument/2006/custom-properties\" xmlns:vt=\"http://schemas.openxmlformats.org/officeDocument/2006/docPropsVTypes\">");
         int pid = 2;
         for (var entry : properties.entrySet()) {

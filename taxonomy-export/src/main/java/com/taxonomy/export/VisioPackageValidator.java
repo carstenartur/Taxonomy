@@ -174,7 +174,7 @@ final class VisioPackageValidator {
         }
     }
 
-    private static void validateProperties(Map<String, VisioProperty> properties) {
+    static void validateProperties(Map<String, VisioProperty> properties) {
         if (properties.size() > 64) throw invalid("Too many Visio properties");
         for (var entry : properties.entrySet()) {
             if (entry.getKey() == null || !entry.getKey().matches("taxonomy\\.[A-Za-z][A-Za-z0-9]{0,63}") || entry.getValue() == null) {

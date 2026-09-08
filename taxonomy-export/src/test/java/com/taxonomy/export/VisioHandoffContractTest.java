@@ -137,6 +137,23 @@ class VisioHandoffContractTest {
         }
     }
 
+    @Test void documentPropertyLimitIncludesGeneratedProfileProperties() throws Exception {
+        var document = fixtureDocument();
+        document.getProperties().clear();
+        for (int i = 0; i < 62; i++) document.getProperties().put("taxonomy.custom" + i, VisioProperty.text("value"));
+        var builder = new VisioPackageBuilder();
+        String custom = parts(builder.build(document)).get("docProps/custom.xml");
+        assertEquals(64, custom.split("<property ", -1).length - 1);
+        assertEquals(62, document.getProperties().size(), "serialization must not mutate caller properties");
+        document.getProperties().put("taxonomy.custom62", VisioProperty.text("value"));
+        assertThrows(IllegalArgumentException.class, () -> builder.build(document));
+        assertThrows(IllegalArgumentException.class, () -> builder.buildBundle(document));
+        document.getProperties().remove("taxonomy.custom62");
+        document.getProperties().put("taxonomy.exportProfile", VisioProperty.text(VisioHandoffProfile.ID));
+        document.getProperties().put("taxonomy.profileSha256", VisioProperty.text("replaced by generated hash"));
+        assertDoesNotThrow(() -> builder.build(document));
+    }
+
     @Test void lossOrderingDoesNotChangeTheImmutableHandoff() throws Exception {
         var document = fixtureDocument();
         document.getLosses().add(new VisioLoss("element", "CP-01", "optional", "OMITTED", "Not retained"));

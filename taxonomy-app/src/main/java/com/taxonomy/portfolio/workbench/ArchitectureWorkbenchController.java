@@ -219,7 +219,7 @@ public class ArchitectureWorkbenchController {
     @GetMapping(value = "/api/projects/{projectId}/architecture-workbench/{snapshotId}.visio.zip",
             produces = "application/zip")
     @ResponseBody
-    @Operation(summary = "Export the exact persisted snapshot as experimental VSDX with mapping and loss manifest")
+    @Operation(summary = "Export the exact persisted snapshot as a ZIP bundle containing experimental VSDX, mapping profile and loss manifest")
     public ResponseEntity<byte[]> visioBundle(@PathVariable Long projectId, @PathVariable String snapshotId) {
         RequestScope scope = scope();
         return artifactResponse(snapshotExportService.exportVisioBundle(projectId, snapshotId, scope.username(), scope.context()));
