@@ -48,6 +48,9 @@ try {
   const jar = path.join(root, 'target/ui-application', manifest.jarName);
   if (await digest(jar) !== manifest.sha256) throw new Error('Application artifact digest differs');
   report.applicationSha256 = manifest.sha256;
+  report.sourceTree = manifest.sourceTree;
+  report.applicationArtifact = manifest.jarName;
+  report.taxonomyVersion = manifest.jarName.replace(/^taxonomy-app-/, '').replace(/\.jar$/, '');
   const runtime = path.join(out, 'application'), classes = path.join(out, 'probe-classes');
   await mkdir(runtime, { recursive: true }); await mkdir(classes, { recursive: true });
   await run('jar', ['xf', jar, 'BOOT-INF/classes', 'BOOT-INF/lib'], runtime);

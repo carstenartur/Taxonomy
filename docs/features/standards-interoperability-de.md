@@ -2,6 +2,8 @@
 
 Implementierung und Kompatibilitätsnachweise werden in #926 verfolgt. Die
 Architekturentscheidung steht in [ADR 0006](../adr/0006-standards-interoperability.md).
+Die [QA- und Kompatibilitätsnachweise](../qa/standards-interoperability.md) enthalten
+die tatsächlich ausgeführten Produktläufe mit Quellstand, Versionen und Prüfsummen.
 
 Öffne **Werkzeugintegrationen** im eigenen privaten Workspace. Eine Verbindung
 legt Formatprofil, externe Identität, Datenhoheit und bei Anforderungen die
@@ -114,6 +116,9 @@ Produktzertifizierung. Ein verpflichtender CI-Lauf installiert StrictDoc 0.29.0
 und Archi 5.10.0 und prüft echte Import-/Export-Rundläufe. Bericht, Austauschdateien,
 Produktversionen, bekannte Verluste und Prüfsummen werden an den getesteten
 Git-Stand gebunden. Ohne erfolgreichen Bericht gilt kein Produktpfad als bestätigt.
+Wird ein übergeordnetes Diagrammobjekt entfernt, bleibt ein vorhandenes Kind auf
+der obersten Ebene erhalten. `VIEW_OCCURRENCE_REPARENTED` meldet diese Änderung
+und den notwendigen Blick auf die übernommenen Koordinaten ausdrücklich.
 Recovery wird über sechs getrennte JVM-Starts geprüft; Datenbanktests prüfen
 konkurrierende HTTP-Schreibvorgänge auf PostgreSQL, MSSQL und Oracle. Die
 Browsertests prüfen Rollen, Übernahme, Retry, Reload, Abbruch, Download,

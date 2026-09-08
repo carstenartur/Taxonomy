@@ -68,4 +68,19 @@ class OslcTransportTest {
         assertTrue(OslcTransport.allowedAddress(InetAddress.getByName("8.8.8.8"), false));
         assertEquals(0, requests.get());
     }
+    @Test void stalledResponseTimesOutWithinTheBoundAndNeverReturnsPartialContent() {
+        var release = new java.util.concurrent.CountDownLatch(1);
+        server.createContext("/rm/stalled", exchange -> {
+            exchange.getResponseHeaders().set("Content-Type", "application/rdf+xml");
+            exchange.sendResponseHeaders(200, 100);
+            try { release.await(15, java.util.concurrent.TimeUnit.SECONDS); }
+            catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            finally { exchange.close(); }
+        });
+        long started = System.nanoTime();
+        try {
+            assertEquals("REMOTE_TIMEOUT", assertThrows(IntegrationProblem.class, () -> transport.read(context, connection("USER:alice"), "stalled", null)).code());
+            assertTrue(java.util.concurrent.TimeUnit.NANOSECONDS.toSeconds(System.nanoTime() - started) < 12, "Socket timeout must bound stalled response bodies");
+        } finally { release.countDown(); }
+    }
 }

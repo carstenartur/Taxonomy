@@ -115,7 +115,7 @@ public class IntegrationDomainAdapter {
                 if (mapping.internal().kind() == ArtifactKind.ELEMENT) elements.put(mapping.businessIdentity(), mapping.internal().id());
                 if (mapping.internal().kind() == ArtifactKind.VIEW) views.put(mapping.businessIdentity(), mapping.internal().id());
             }
-            synchronizeViews(connection, blocks, elements, views, items);
+            synchronizeViews(connection, blocks, elements, views, items, losses);
             pruneConnections(items, losses);
         }
         InternalState state = new InternalState(context.repositoryId(), document.context().workspaceScopeKey(), context.branch(), document.context().commit(),
@@ -213,12 +213,12 @@ public class IntegrationDomainAdapter {
             Map<String, String> views = new TreeMap<>();
             mappings.stream().filter(m -> !m.removed() && m.internal() != null && m.internal().kind() == ArtifactKind.VIEW)
                     .forEach(m -> views.put(m.businessIdentity(), m.internal().id()));
-            synchronizeViews(connection, blocks, ids, views, items);
+            synchronizeViews(connection, blocks, ids, views, items, losses);
         }
         // Local removals have an explicit export loss report; never leave an orphaned hierarchy or view connection.
-        Set<String> present = items.values().stream().filter(a -> a.kind() != ArtifactKind.PLACEMENT && a.kind() != ArtifactKind.METADATA).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
         boolean removed;
         do {
+            Set<String> present = items.values().stream().filter(a -> a.kind() != ArtifactKind.PLACEMENT && a.kind() != ArtifactKind.METADATA).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
             Set<String> placements = items.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
             removed = items.entrySet().removeIf(e -> {
                 Artifact item = e.getValue(); Map<String, String> extension = item.extensions();
@@ -238,7 +238,7 @@ public class IntegrationDomainAdapter {
     }
 
     private static void synchronizeViews(Connection connection, Map<String, BlockAst> blocks, Map<String, String> elements,
-                                          Map<String, String> views, Map<String, Artifact> items) {
+                                          Map<String, String> views, Map<String, Artifact> items, List<MappingLoss> losses) {
         for (var view : views.entrySet()) {
             BlockAst block = blocks.get("view:" + view.getKey()); if (block == null) continue;
             Set<String> included = block.propertyValues("include").stream().map(elements::get).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());
@@ -251,6 +251,8 @@ public class IntegrationDomainAdapter {
                 if (item.kind() != ArtifactKind.PLACEMENT || !view.getValue().equals(item.extensions().get("container"))
                         || value(item.extensions().get("parent")).isEmpty() || remaining.contains(item.extensions().get("parent"))) return item;
                 Map<String, String> extension = new TreeMap<>(item.extensions()); extension.put("parent", "");
+                losses.add(new MappingLoss(item.id(), "parent", "VIEW_OCCURRENCE_REPARENTED", LossDisposition.TRANSFORMED,
+                        "The removed parent places this surviving occurrence at the view root; retained coordinates require layout review"));
                 return new Artifact(item.id(), item.kind(), item.type(), item.title(), item.text(), item.attributes(), extension);
             });
             Set<String> represented = items.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT && view.getValue().equals(a.extensions().get("container")))

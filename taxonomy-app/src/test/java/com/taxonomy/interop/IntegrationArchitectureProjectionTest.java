@@ -77,4 +77,26 @@ class IntegrationArchitectureProjectionTest {
         assertTrue(ArchitectureSemanticPatch.index(dsl).get("view:" + view).propertyValues("include").contains("arch-local"));
         assertTrue(dsl.startsWith("# Preserve unrelated source\n"));
     }
+
+    @Test void removingAViewParentRetainsItsChildAndReportsTheLayoutTransformation() {
+        var original = source();
+        var nested = new ExchangeDocument(original.profile(), original.profileVersion(), original.externalVersion(), true, original.source(),
+                original.artifacts(), original.relations(), original.placements().stream().map(p -> p.id().equals("node-component")
+                        ? new Placement(p.id(), p.containerId(), "node-system", p.artifactId(), p.position(), p.attributes()) : p).toList(), original.metadata(), original.losses());
+        nested = codec.read(codec.write(nested), "v1", true);
+        Map<String, Artifact> baseline = ExchangeItems.flatten(nested); List<Identity> mappings = identities(baseline);
+        String dsl = "";
+        for (var command : domain.architectureCommands(connection, dsl, Map.of(), baseline, List.of())) dsl = commands.apply(dsl, command).dsl();
+        String component = domain.businessId(connection, null, baseline.get("ELEMENT:component"));
+        String view = domain.businessId(connection, null, baseline.get("VIEW:view"));
+        dsl = commands.apply(dsl, new UpsertArchitectureView(view, "View", "View description", List.of(component), Map.of())).dsl();
+        var current = domain.snapshot(context, connection, mappings, document(dsl));
+        var exported = domain.exportDocument(connection, current, document(dsl), mappings, nested);
+        assertTrue(exported.losses().stream().anyMatch(l -> l.artifactId().equals("node-component") && l.code().equals("VIEW_OCCURRENCE_REPARENTED")));
+        var returned = codec.read(codec.write(exported), null, true);
+        assertEquals(1, returned.placements().stream().filter(p -> p.containerId().equals("view")).count());
+        var child = returned.placements().stream().filter(p -> p.id().equals("node-component")).findFirst().orElseThrow();
+        assertNull(child.parentId()); assertEquals("component", child.artifactId());
+        assertEquals(nested.placements().stream().filter(p -> p.id().equals(child.id())).findFirst().orElseThrow().attributes().get("x"), child.attributes().get("x"));
+    }
 }
