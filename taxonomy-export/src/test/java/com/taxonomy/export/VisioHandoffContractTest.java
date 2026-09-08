@@ -303,7 +303,11 @@ class VisioHandoffContractTest {
     }
 
     public static void main(String[] args) throws Exception {
-        Files.createDirectories(Path.of(args[0]).getParent());
-        Files.write(Path.of(args[0]), new VisioPackageBuilder().buildBundle(fixtureDocument()));
+        if (args.length != 1 || args[0].isBlank()) {
+            throw new IllegalArgumentException("Usage: VisioHandoffContractTest <output.zip>");
+        }
+        Path output = Path.of(args[0]).toAbsolutePath();
+        Files.createDirectories(output.getParent());
+        Files.write(output, new VisioPackageBuilder().buildBundle(fixtureDocument()));
     }
 }
