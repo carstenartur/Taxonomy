@@ -65,10 +65,10 @@ public final class ArchitectureDslCommands {
     /** Rechecks inverse preconditions and the resulting model, never restores a whole document. */
     public Change inverse(String current, String before, String after) {
         List<ArchitectureSemanticPatch.BlockChange> original = ArchitectureSemanticPatch.between(before, after);
-        if (original.isEmpty()) throw problem("NOT_UNDOABLE", "targetCommit", "Target has no semantic changes");
+        if (original.isEmpty()) throw problem("NOT_UNDOABLE", "targetOperationId", "Target has no semantic changes");
         if (original.stream().anyMatch(change -> !change.id().startsWith("element:")
                 && !change.id().startsWith("relation:"))) {
-            throw problem("NOT_UNDOABLE", "targetCommit", "Target contains unsupported semantic objects");
+            throw problem("NOT_UNDOABLE", "targetOperationId", "Target contains unsupported semantic objects");
         }
         String next = ArchitectureSemanticPatch.inverse(current, before, original);
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(next);
