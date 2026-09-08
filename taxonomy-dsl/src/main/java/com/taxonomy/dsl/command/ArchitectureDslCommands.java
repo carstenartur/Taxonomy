@@ -287,6 +287,7 @@ public final class ArchitectureDslCommands {
 
     private static void requireProperties(Map<String, String> properties, boolean creating) {
         for (var entry : properties.entrySet()) {
+            if (entry.getValue() == null) throw problem("INVALID_VALUE", entry.getKey(), "Property value must be a non-null string");
             if (!ELEMENT_PROPERTIES.contains(entry.getKey())) throw problem("READ_ONLY_PROPERTY", entry.getKey(), "Property is not editable");
             if (entry.getValue().length() > 8000) throw problem("VALUE_TOO_LONG", entry.getKey(), "Property exceeds 8000 characters");
             if (entry.getValue().chars().anyMatch(value -> (value < 32 && value != '\n' && value != '\r' && value != '\t')
