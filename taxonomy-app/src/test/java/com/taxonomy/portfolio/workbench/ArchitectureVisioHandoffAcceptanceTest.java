@@ -2,6 +2,7 @@ package com.taxonomy.portfolio.workbench;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.diagram.*;
 import com.taxonomy.export.*;
 import com.taxonomy.export.service.CanonicalDiagramExportService;

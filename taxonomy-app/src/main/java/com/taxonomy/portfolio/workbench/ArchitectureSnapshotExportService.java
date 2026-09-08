@@ -170,7 +170,8 @@ public class ArchitectureSnapshotExportService {
             var output = new java.io.ByteArrayOutputStream();
             try (var zip = new java.util.zip.ZipOutputStream(output, StandardCharsets.UTF_8)) {
                 zipEntry(zip, "model.archimate.xml", xml);
-                zipEntry(zip, "manifest.json", tools.jackson.databind.json.JsonMapper.builder().build()
+                zipEntry(zip, "manifest.json", tools.jackson.databind.json.JsonMapper.builder()
+                        .enable(tools.jackson.databind.SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build()
                         .writerWithDefaultPrettyPrinter().writeValueAsBytes(manifest));
                 zipEntry(zip, "mapping-profile.tsv", ArchiMateExchangeProfile.resourceBytes());
             }
