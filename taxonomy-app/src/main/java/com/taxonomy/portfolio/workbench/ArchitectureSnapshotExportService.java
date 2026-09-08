@@ -177,7 +177,8 @@ public class ArchitectureSnapshotExportService {
 
     private static void zipEntry(java.util.zip.ZipOutputStream zip, String name, byte[] bytes) throws java.io.IOException {
         var entry = new java.util.zip.ZipEntry(name);
-        entry.setTime(0L);
+        // Match the VSDX epoch inside the DOS range; Jan 1 triggers extended timestamps.
+        entry.setTimeLocal(java.time.LocalDateTime.of(1980, 1, 2, 0, 0));
         zip.putNextEntry(entry);
         zip.write(bytes);
         zip.closeEntry();
