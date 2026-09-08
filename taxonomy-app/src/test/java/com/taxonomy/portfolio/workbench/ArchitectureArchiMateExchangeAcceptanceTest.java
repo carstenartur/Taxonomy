@@ -1,5 +1,9 @@
 package com.taxonomy.portfolio.workbench;
 
+import com.taxonomy.archimate.exchange.ArchiMateExchangeProfile;
+import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
+
 import com.taxonomy.archimate.ArchiMateProperty;
 import com.taxonomy.diagram.*;
 import com.taxonomy.export.*;

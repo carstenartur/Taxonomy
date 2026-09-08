@@ -1,5 +1,8 @@
 package com.taxonomy;
 
+import com.taxonomy.archimate.exchange.ArchiMateExchangeProfile;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
+
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.*;
