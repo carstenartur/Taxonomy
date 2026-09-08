@@ -1,4 +1,4 @@
-# ADR 0005: Private architecture editing over immutable Git context
+# ADR 0005: Durable semantic editing and explicit Git checkpoints
 
 Date: 2026-09-08. Status: proposed with the implementation in PR #1028.
 Tracks [#814](https://github.com/carstenartur/Taxonomy/issues/814); extends [ADR 0003](0003-server-authoritative-architecture-workbench.md).
@@ -20,36 +20,87 @@ The comparison is a bounded integration assessment, not a claim that React Flow 
 
 Primary references: [D3 zoom API](https://d3js.org/d3-zoom), [React Flow performance](https://reactflow.dev/learn/advanced-use/performance), [React Flow accessibility](https://reactflow.dev/learn/advanced-use/accessibility). D3's programmatic transform does not automatically enforce the interaction scale extent; fit-to-model deliberately computes its complete transform from the server scene.
 
-## Authority and persistence
+## Decision: three authorities with distinct lifetimes
 
-`ArchitectureCommandPort` takes an immutable repository/workspace/branch/commit/actor/mode tuple. HTTP re-resolves the authenticated workspace and compares the tuple. A request cannot select another actor or upgrade central read mode. Only ARCHITECT/ADMIN requests in their private workspace can write. Every write also supplies a strong commit ETag, or `If-None-Match: *` for an absent branch. Preview runs the same semantic transformation and head check without inserting Git objects.
+Git is the authority for durable architecture versions/checkpoints. The durable workspace session and semantic operation log are authoritative for accepted uncheckpointed editing revisions. Every accepted semantic edit is durably journaled; only explicit semantic checkpoints create Git commits.
 
-Typed commands create/update/delete elements and relations or change semantic containment. New editor element identities are assigned as `arch-<command UUID>` by the server; they are architecture objects, not invented taxonomy catalog entries. The canonical DSL type matrix supplies relation rules. Invalid direction, missing endpoints, self-relations, duplicates, containment cycles and multiple containment parents are rejected. Deletion reports dependent relations, mappings, views, references and evidence; this slice has no implicit cascade.
+| Concept | Authoritative representation | Identity / concurrency |
+| --- | --- | --- |
+| Accepted architecture operation | Append-only `editor_operation`, including complete before/after canonical DSL for reconstructible inverses | UUID command/operation ID; previous and resulting semantic revision |
+| Current private workspace | `editor_workspace` canonical DSL snapshot and semantic revision | Repository/workspace/branch scope; locked revision comparison |
+| Architecture version | Complete deterministic `architecture.taxdsl` in Git | Git commit SHA; separate checkpoint command and durable intent |
 
-One accepted command creates one `architecture.taxdsl` commit through `ExpectedHeadDslCommitter` and its expected-old JGit ref update. The commit includes command identity, fingerprint, actor, rationale, correlation, causation, version and inverse target. Retrying the same identity and payload returns its original authority; reusing an identity with another payload conflicts. There is no browser graph replacement endpoint and no editor JPA mutation. A failed Git write cannot publish a projection.
+A property change and an architecture release are different abstractions. A live editor needs detailed acceptance, actor, inverse and conflict data. A durable architecture version should describe an intentional stable state. Turning every gesture into a commit makes version history noisy and ties undo eligibility to branch topology, merges and Git retention. Git is therefore not the live editor undo stack.
 
-Only affected DSL blocks are formatted; unrelated source and ordering remain byte-identical. Comments and unknown properties of edited blocks are retained; comment placement, indentation and line endings may be normalized. Duplicate identities/properties and unterminated edited blocks fail closed. The import parser remains tolerant; it shares quote/comment-aware delimiter recognition with the source patcher. Unknown existing extension fields and taxonomy references are read-only in the editor.
+`ArchitectureCommandPort` retains typed commands, authenticated exact scope, stable UUID identities, rationale and bounded metadata. `If-Match: "workspace-revision-N"` checks the semantic revision; a checkpoint does not invalidate an already previewed edit at the same revision. A Git SHA is never an operation ID. Private writes require ARCHITECT/ADMIN authorization and server-resolved workspace membership. No browser graph replacement endpoint exists.
 
-The accepted Git commit is projected using the existing relation rebuild service. A projection failure returns HTTP 202 with the accepted SHA and `REBUILD_REQUIRED`; checkpoint comparison also detects stale or missing projection state after restart. Explicit rebuild uses the same exact context and expected head, without another model commit. Graph, forms, element list, source and exports always derive directly from the selected Git document, never from an unproven relational checkpoint.
+## Accepted operation transaction
 
-## Durable semantic history
+`EditorJournal` uses the application JPA database and its own transaction. A pessimistic workspace-row lock serializes different application instances. Revision is checked under that lock, with a unique scope/revision constraint and a primary-key constraint protecting initialization races. Before returning acceptance, the transaction commits:
 
-The lessons from [audio-analyzer semantic undo/redo](https://github.com/carstenartur/audio-analyzer/blob/master/docs/architecture/semantic-undo-redo.md) are stable command identity, reconstructible inverse data, actor ownership, dependency guards and append-only history. Taxonomy reuses the Git parent/child documents for reconstructibility instead of introducing that project's session/outbox store or copying client state.
+- command/operation UUID, actor, timestamp, rationale, type, correlation/causation;
+- versioned complete before/after canonical source, sufficient to reconstruct an inverse without Git;
+- affected semantic identities, including both relation endpoints;
+- undo/redo target UUID, prior and resulting semantic revision;
+- deterministic length-prefixed SHA-256 idempotency fingerprint;
+- the resulting canonical workspace snapshot and revision.
 
-Undo targets one of the actor's accepted editor commits; redo targets an accepted undo. Both append a new commit with fresh identity and target linkage. The original target must be reachable in the selected branch and scoped to the same repository/workspace. Later intersecting semantic objects, changed block text, dependent references, a merge or an already accepted inverse block the operation. A relation touches both endpoint element identities. Unrelated later edits survive the inverse. Git handle reopen tests prove replay, history, undo and redo recover from persisted Git data without a browser stack.
+The command and its snapshot either both commit or neither does. Retrying an identical identity/payload returns the original operation and revision; changing the payload conflicts. Preview and history reads do not initialize a workspace, advance revision, insert an operation or write Git. Rejected transformations leave no durable residue.
 
-The UI lists the latest 50 scoped commands and asks the server to preview eligibility. It does not infer permission from cached history. Native text undo is limited to unaccepted form input; discarding a draft and semantic undo are distinct actions. Git baseline revert remains in the existing versioning workflow.
+Full before/after source is an intentionally simple reconstructible body format, not Java object serialization. It preserves the existing inverse algorithm and source anchors; it costs storage proportional to snapshot size per operation. Future lossless body compaction needs a versioned decoder and must retain every inverse and retry guarantee.
 
-Undo of a deletion restores the original block beside a surviving original neighbor, preserving source gaps and later unrelated block edits. If neither insertion boundary can be established safely, it reports `UNDO_CONFLICT` rather than relocating the restored object to the document end.
+Only affected DSL blocks are formatted. Unrelated source/order remains byte-identical. Edited blocks retain unknown properties and comments, with the existing normalization limits. The source-preserving patcher, quote/comment-aware block parsing, deletion dependency preview and validation matrix remain unchanged.
 
-## Session, layout and delivery boundary
+## Undo, redo and recovery
 
-`/architecture/editor` provides the private workflow. Existing `/architecture/workbench` routes and immutable analysis snapshots retain their behavior. Deep links pin repository, workspace, branch, commit and selection. Workspace query routing is explicitly propagated to reads, commands and exports. Each reload invalidates older read/preview results. After acceptance the UI loads the returned immutable commit. A moved branch returns structured HTTP 412; refresh/compare/repreview precedes explicit reacceptance. Ambiguous network failures retain the same command identity for a safe explicit retry.
+Undo targets a personal accepted operation; redo targets a personal accepted undo. Each appends a fresh UUID operation. Neither removes history. The durable operation sequence supplies later affected-object intersections and already-inverted checks. The source patcher independently guards changed blocks, dependencies and restoration anchors. Unrelated later operations survive. Version imports are explicit journal boundaries rather than fabricated user edits; their intersecting changes block unsafe inverses.
 
-Layout is derived, not a canonical artifact. No persistent `ApplyLayoutChange` command is exposed: pan, zoom and focus are disposable local state, and export headers identify `DERIVED_SERVER_LAYOUT`. Semantic containment changes use `MoveOrGroupElement`. Shared undo, collaborative sessions, persistent personal/shared layouts, editable DSL-to-command translation, richer evidence decisions, history pagination beyond the displayed window, and end-to-end large-repository budgets remain follow-ups under #814. This PR must not auto-close that broader issue.
+A complete restart reloads the workspace snapshot, revision, operation bodies, actor/timestamp and target links from the database. No browser state, service singleton or one-commit-per-operation Git chain participates. The restart acceptance test launches four separate JVMs against the same database, accepting, undoing, redoing and verifying while Git still has no editor commits.
 
-## Verification
+## Checkpoint transaction and failure model
 
-Domain tests cover transformations, text preservation, idempotent no-ops, invalid relation/type combinations, deletion dependencies, containment and guarded inverses. Application tests cover exact context isolation, stale heads, command identity reuse, concurrent writers, projection failure/rebuild and personal history. Hibernate integration closes all Git handles between command, replay, undo and redo. Controller/export tests establish commit and geometry parity; architecture fitness tests prevent direct JPA writes and renderer transport.
+`CreateCheckpointCommand` is a separate application command:
 
-The existing role/browser acceptance runner adds real editor CRUD, dependency rejection, reloaded undo/redo, concurrent writer recovery, pinned exports, keyboard controls, Axe, responsive reflow and bounded renderer measurements. EN/DE user documentation describes the production boundary. The canonical final gate remains `./mvnw verify -DexcludedGroups="real-llm"`; local DNS failures are not a passing verification result. Exact-head CI and review results must be recorded on the PR before merge.
+1. Under the workspace database lock, check the expected semantic revision and command identity, then persist `editor_checkpoint` with the complete frozen DSL, actor/rationale, timestamp, expected Git parent and exclusive/inclusive revision range `(fromRevision, throughRevision]`. Reserve the workspace for this intent.
+2. Outside that transaction, construct the Git blob/tree/commit from the durable intent. Timestamp, parent, author, text and footers are fixed, so every retry computes the same SHA. Advance the branch using expected-old-object comparison. Equal DSL reuses the previous checkpoint without a redundant commit.
+3. In another database transaction, record the resulting SHA, checkpoint revision and completion, then release the reservation. No semantic operation is appended and the semantic revision does not change.
+
+There is **no atomic database/JGit transaction**. If Git succeeds but completion fails, the persisted intent is still pending. A retry or **Resume pending checkpoint** recreates the same object ID, recognizes an already applied commit and completes the database linkage. If Git has not succeeded, the same command can retry the same write. While pending, reads remain available and editing is blocked rather than silently losing the reserved version. Git ref conflicts fail closed; unrelated external ref changes must be reconciled explicitly.
+
+Version application boundaries checkpoint current edits before branch/baseline creation, publish, merge, restore, revert or cherry-pick. Workspace locks guard the subsequent version action and import. A changed resulting version is journaled with complete snapshots as `VERSION_IMPORT`. A Git success followed by database failure is not reported as atomic: **Recover completed version** imports the completed Git state only when no newer uncheckpointed edits exist. Otherwise reconciliation requires an explicit semantic decision; accepted workspace data is never overwritten automatically.
+
+## Exactly when Git commits are created
+
+| Application action | Git behavior |
+| --- | --- |
+| Typed create/update/delete element or relation; containment move; undo; redo | **No Git commit.** One durable semantic revision per accepted change. |
+| Preview, read/reload, history, search, export, projection rebuild, draft discard | No Git commit and no semantic operation. |
+| Explicit Create checkpoint/version | One commit for changed canonical DSL; equal content reuses the prior version. |
+| Publish / source integration / merge | Checkpoint uncheckpointed workspace content, then the existing explicit publish/merge version writes if content/topology requires them. |
+| Branch or baseline creation | Checkpoint source edits if necessary; creating a ref at an existing snapshot adds no commit itself. |
+| Restore / revert / cherry-pick | Preserve uncheckpointed edits first, then create/apply the requested version and journal its resulting state. |
+| Existing explicit DSL/version commit, initial repository/workspace seed, portfolio publication, external Git import | Remain intentional version/provisioning application actions; they are not normal editor commands. |
+
+The changes do not redefine unrelated legacy relation-decision or portfolio APIs as editor commands. Existing version-history compare, restore and branch operations continue to address Git SHAs.
+
+## Projections, search, exports and UI
+
+The editor graph, searchable list, properties and source are rebuilt from the exact canonical DSL selected by the server: either a durable workspace revision or an immutable Git checkpoint. The UI receives derived views; it has no independent canonical graph. A workspace view carries a semantic revision; a version view carries a Git SHA. SVG/vector PDF use the same selected source and deterministic server geometry, including exports before the first Git checkpoint.
+
+The pre-existing relational relation projection and Hibernate Search version index retain their Git-checkpoint source and existing rebuild/readiness semantics. They are not relabeled as projections of uncheckpointed workspace edits. Editor list/search and graph rebuilding use the workspace snapshot directly. Any future cached workspace index must be scoped and revision-stamped separately and must never substitute its rows for either authority. Deleting derived indexes must not remove workspace or operation rows.
+
+Editor history shows the latest 50 personal semantic operations. Version history lists stable Git checkpoints separately. Historical revision/version links are read-only; refresh opens the current durable workspace. Structured HTTP 412 responses name semantic revisions, and refresh/compare/repreview precedes explicit reacceptance. Native text undo covers unaccepted form input only. Ambiguous transport failures preserve command identity; checkpoint recovery is discoverable after reload.
+
+## Comparison with audio-analyzer
+
+The reference is [durable semantic undo/redo](https://github.com/carstenartur/audio-analyzer/blob/master/docs/architecture/semantic-undo-redo.md). Both systems atomically retain accepted semantic operations, canonical state, revision, retry identity and inverse linkage. Both recover personal undo/redo after restart and reject later intersecting changes without rewriting history.
+
+Taxonomy retains its own typed architecture commands and source-preserving DSL patches. Its body format stores full before/after source rather than copying workflow operation codecs. It has no ordered SSE stream in this editor, so acceptance does not require an SSE outbox. Projections are rebuilt on demand; the durable checkpoint intent is the recovery record for the separate Git side effect. Workflow-specific classes, shared collaboration modes and client graph synchronization were not imported.
+
+## Verification and scope
+
+Acceptance covers 100 mixed semantic operations without Git advancement, full process restart, retry, two independent writers, append-only inverses/conflicts, checkpoint retry after Git success, two checkpoints separated by edits, version branch/compare/restore, both canonical projection sources, exact revision exports and browser history separation. Existing domain source-preservation, dependency and parser tests remain unchanged. Database compatibility and application schema validation include the new entities and PostgreSQL migration V19.
+
+The canonical gate is `./mvnw verify -DexcludedGroups="real-llm"`, together with the existing database/browser/security/export integration jobs. A blocked dependency download is not a passing test; current-commit CI evidence must be checked before merge.
+
+D3/SVG renderer, server validation, read-only DSL view and immutable analysis snapshots are retained. Persistent layouts, editable DSL-to-command translation, shared undo, extended history pagination and full large-repository budgets remain follow-ups under #814.

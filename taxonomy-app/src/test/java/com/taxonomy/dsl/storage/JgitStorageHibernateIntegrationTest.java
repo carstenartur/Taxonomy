@@ -43,6 +43,9 @@ class JgitStorageHibernateIntegrationTest {
     @Autowired
     private HibernateRepositoryFactory storageFactory;
 
+    @Autowired
+    private com.taxonomy.editor.persistence.EditorJournal journal;
+
     @Test
     void registersAllCoreStorageEntitiesInTheApplicationPersistenceUnit() {
         Set<Class<?>> managedTypes = entityManagerFactory.getMetamodel().getEntities().stream()
@@ -123,29 +126,29 @@ class JgitStorageHibernateIntegrationTest {
         String undo;
         try {
             try (var first = new DslGitRepositoryFactory(storageFactory)) {
-                var editor = new ArchitectureEditorService(first, rebuild, readiness);
-                accepted = editor.execute(context, command).context().commit();
+                var editor = new ArchitectureEditorService(first, journal, new com.taxonomy.editor.ArchitectureCheckpointWriter());
+                accepted = editor.execute(context, command).operationId();
             }
             try (var reopened = new DslGitRepositoryFactory(storageFactory)) {
-                var editor = new ArchitectureEditorService(reopened, rebuild, readiness);
+                var editor = new ArchitectureEditorService(reopened, journal, new com.taxonomy.editor.ArchitectureCheckpointWriter());
                 assertThat(editor.execute(context, command).replayed()).isTrue();
                 assertThat(editor.read(context, null).history()).hasSize(1);
                 String undoId = UUID.randomUUID().toString();
                 undo = editor.execute(context, new ArchitectureCommandPort.Command(
-                        ArchitectureCommandPort.Context.of(context, accepted),
+                        ArchitectureCommandPort.Context.of(context, null, 1),
                         new ArchitectureCommandPort.Metadata(undoId, id, id, "Undo after reopening"),
-                        new ArchitectureCommandPort.UndoArchitectureCommand(accepted))).context().commit();
+                        new ArchitectureCommandPort.UndoArchitectureCommand(UUID.fromString(accepted)))).operationId();
                 assertThat(editor.read(context, null).dsl()).isEmpty();
             }
             try (var reopened = new DslGitRepositoryFactory(storageFactory)) {
-                var editor = new ArchitectureEditorService(reopened, rebuild, readiness);
+                var editor = new ArchitectureEditorService(reopened, journal, new com.taxonomy.editor.ArchitectureCheckpointWriter());
                 assertThat(editor.read(context, null).history()).extracting(ArchitectureEditorService.HistoryEntry::kind)
                         .containsExactly("UNDO", "CreateArchitectureElement");
                 String redoId = UUID.randomUUID().toString();
                 editor.execute(context, new ArchitectureCommandPort.Command(
-                        ArchitectureCommandPort.Context.of(context, undo),
+                        ArchitectureCommandPort.Context.of(context, null, 2),
                         new ArchitectureCommandPort.Metadata(redoId, id, id, "Redo after reopening"),
-                        new ArchitectureCommandPort.RedoArchitectureCommand(undo)));
+                        new ArchitectureCommandPort.RedoArchitectureCommand(UUID.fromString(undo))));
                 assertThat(editor.read(context, null).dsl()).contains("arch-persisted", "Durable");
             }
         } finally {

@@ -7,6 +7,7 @@
     var generation = 0;
     var loader = null;
     var pending = null;
+    var pendingCheckpoint = null;
     var busy = false;
     var formBaseline = {};
     var PAGE_SIZE = 50;
@@ -48,14 +49,20 @@
     }
     function linkSelection(replace) {
         var url = new URL(location.href);
-        ['repositoryId', 'workspaceScopeKey', 'branch', 'commit'].forEach(function (key) {
+        ['repositoryId', 'workspaceScopeKey', 'branch'].forEach(function (key) {
             if (context()[key]) url.searchParams.set(key, context()[key]); else url.searchParams.delete(key);
         });
+        url.searchParams.delete('commit'); url.searchParams.delete('revision');
+        if (view.document.source === 'GIT_CHECKPOINT') url.searchParams.set('commit', context().commit);
+        else url.searchParams.set('revision', context().revision);
         if (selected) url.searchParams.set('element', selected); else url.searchParams.delete('element');
         if (replace) history.replaceState(null, '', url); else history.pushState(null, '', url);
     }
     function permissions() {
         var writable = view && view.mayEdit && !busy;
+        el('editorCheckpoint').disabled = !writable;
+        el('editorResumeCheckpoint').disabled = busy;
+        el('editorRecoverVersion').disabled = busy;
         el('editorNew').disabled = !writable;
         el('editorFields').disabled = !writable;
         el('editorRelationFields').disabled = !writable || !selectedElement();
@@ -87,15 +94,17 @@
     }
     function render(preserveDraft) {
         var c = context();
-        el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + short(c.commit) + ' · ' + c.actor;
+        el('editorContext').textContent = c.repositoryId + ' / ' + c.workspaceScopeKey + ' / ' + c.branch + ' · ' + t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit)) + ' · ' + c.actor;
         var state = view.document.projectionState;
         setStatus(t('editor.projection.' + state));
         el('editorMode').textContent = view.mayEdit ? t('editor.writable') : t('editor.readOnly');
         el('editorWorkspace').hidden = c.writeMode !== 'READ_ONLY' || state === 'HISTORICAL';
-        el('editorRebuild').hidden = !view.mayEdit || !c.commit || state === 'READY';
+        el('editorRebuild').hidden = !view.mayEdit || state === 'READY';
+        el('editorResumeCheckpoint').hidden = state !== 'CHECKPOINT_PENDING';
+        el('editorRecoverVersion').hidden = state !== 'VERSION_CHANGED';
         ['Svg', 'Pdf'].forEach(function (format) {
-            var link = el('editor' + format); link.hidden = !c.commit || !view.model.elements.length;
-            if (!link.hidden) link.href = api.exportUrl(c, format.toLowerCase());
+            var link = el('editor' + format); link.hidden = !view.model.elements.length;
+            if (!link.hidden) link.href = api.exportUrl(c, format.toLowerCase(), view.document.source);
         });
         if (!preserveDraft) {
             el('editorType').replaceChildren();
@@ -108,7 +117,7 @@
             renderForm();
         }
         el('editorDsl').value = view.document.dsl;
-        renderTree(); renderRelations(); renderHistory();
+        renderTree(); renderRelations(); renderHistory(); renderVersions();
         renderer.render(view.scene, selected);
         permissions();
     }
@@ -188,14 +197,25 @@
         var historyList = el('editorHistory'); historyList.replaceChildren();
         view.document.history.forEach(function (entry) {
             var row = document.createElement('li');
-            row.append(document.createTextNode(short(entry.commit) + ' · ' + entry.kind + ' · ' + entry.actor + ' · ' + entry.occurredAt + ' — ' + entry.rationale + ' '));
+            row.append(document.createTextNode(t('editor.revision', entry.revision) + ' · ' + entry.kind + ' · ' + entry.actor + ' · ' + entry.occurredAt + ' — ' + entry.rationale + ' '));
             row.append(button(t(entry.kind === 'UNDO' ? 'editor.redo' : 'editor.undo'), function () {
-                stage({ kind: entry.kind === 'UNDO' ? 'REDO' : 'UNDO', targetCommit: entry.commit });
+                stage({ kind: entry.kind === 'UNDO' ? 'REDO' : 'UNDO', targetOperationId: entry.operationId });
             }, !view.mayEdit || entry.actor !== context().actor));
             historyList.append(row);
         });
     }
     function relationPayload(relation) { return { sourceId: relation.sourceId, relationType: relation.relationType, targetId: relation.targetId }; }
+    function renderVersions() {
+        var list = el('editorVersions'); list.replaceChildren();
+        view.document.versions.forEach(function (version) {
+            var row = document.createElement('li');
+            var url = new URL(location.href);
+            url.searchParams.delete('revision'); url.searchParams.set('commit', version.commitId);
+            var link = document.createElement('a'); link.href = url.href;
+            link.textContent = short(version.commitId) + ' · ' + version.author + ' · ' + version.message.split('\n')[0];
+            row.append(link); list.append(row);
+        });
+    }
     function metadata(causation) {
         var id = crypto.randomUUID();
         return { commandId: id, correlationId: pending ? pending.metadata.correlationId : id,
@@ -216,7 +236,7 @@
             if (ticket !== generation) return;
             el('editorChanges').replaceChildren();
             el('editorPreviewContext').textContent = context().repositoryId + ' / ' + context().workspaceScopeKey + ' / ' + context().branch
-                + ' · ' + short(preview.context.commit) + ' · ' + pending.metadata.rationale;
+                + ' · ' + t('editor.revision', preview.context.revision) + ' · ' + pending.metadata.rationale;
             preview.change.changes.forEach(function (change) {
                 var title = document.createElement('h3'); title.textContent = change.id;
                 var diff = document.createElement('div'); diff.className = 'editor-diff';
@@ -281,8 +301,8 @@
             if (ticket !== generation) return;
             pending = null; dialog.close();
             if (acceptedCommand.kind === 'CREATE_ELEMENT') selected = 'arch-' + acceptedCommand.metadata.commandId;
-            var ok = await load(accepted.context, accepted.context.commit);
-            if (ok) { setStatus(t('editor.accepted', short(accepted.context.commit)) + ' · ' + t('editor.projection.' + accepted.projectionState)); renderer.focus(); }
+            var ok = await load(accepted.context, accepted.context.revision);
+            if (ok) { setStatus(t('editor.accepted', accepted.context.revision) + ' · ' + t('editor.projection.' + accepted.projectionState)); renderer.focus(); }
         } catch (error) {
             if (ticket !== generation) return;
             report(error, el('editorPreviewError'));
@@ -302,6 +322,26 @@
         if (!ok) { pending = null; permissions(); return; }
         pending = Object.assign({}, original, { context: context(), metadata: metadata(original.metadata.commandId) });
         await previewPending();
+    };
+    el('editorCheckpoint').onclick = async function () {
+        if (busy || !view || !view.mayEdit || !el('editorRationale').reportValidity()) return;
+        if (!pendingCheckpoint) pendingCheckpoint = { context: context(), metadata: metadata() };
+        busy = true; permissions();
+        try {
+            await api.checkpoint(pendingCheckpoint); pendingCheckpoint = null;
+            await load(context(), null);
+        } catch (error) { report(error); if (error.status === 412) pendingCheckpoint = null; }
+        finally { busy = false; permissions(); }
+    };
+    el('editorResumeCheckpoint').onclick = async function () {
+        if (busy) return; busy = true; permissions();
+        try { await api.resumeCheckpoint(context()); pendingCheckpoint = null; await load(context(), null); }
+        catch (error) { report(error); } finally { busy = false; permissions(); }
+    };
+    el('editorRecoverVersion').onclick = async function () {
+        if (busy) return; busy = true; permissions();
+        try { await api.recoverVersion(context()); await load(context(), null); }
+        catch (error) { report(error); } finally { busy = false; permissions(); }
     };
     el('editorRebuild').onclick = async function () {
         if (busy || !view) return;
@@ -323,11 +363,11 @@
     window.addEventListener('popstate', function () {
         if (dialog.open) dialog.close(); pending = null;
         selected = new URLSearchParams(location.search).get('element');
-        load(scopeFromUrl(), new URLSearchParams(location.search).get('commit')).then(function (ok) { if (ok) renderer.focus(); });
+        load(scopeFromUrl(), new URLSearchParams(location.search).get('commit') || new URLSearchParams(location.search).get('revision')).then(function (ok) { if (ok) renderer.focus(); });
     });
     window.TaxonomyI18n.ready().then(function () {
         document.querySelectorAll('[data-i18n]').forEach(function (node) { node.textContent = t(node.getAttribute('data-i18n')); });
         selected = new URLSearchParams(location.search).get('element');
-        return load(scopeFromUrl(), new URLSearchParams(location.search).get('commit'));
+        return load(scopeFromUrl(), new URLSearchParams(location.search).get('commit') || new URLSearchParams(location.search).get('revision'));
     }).then(function (ok) { if (ok) { renderer.fit(); if (selected) renderer.focus(); } });
 }());

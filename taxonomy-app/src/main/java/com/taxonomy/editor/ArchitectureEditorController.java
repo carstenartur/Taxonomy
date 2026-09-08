@@ -2,7 +2,7 @@ package com.taxonomy.editor;
 
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.portfolio.workbench.ArchitecturePdfRenderer;
@@ -21,6 +21,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 @Controller
 public class ArchitectureEditorController {
@@ -48,19 +49,22 @@ public class ArchitectureEditorController {
             @RequestParam(required = false) String repositoryId,
             @RequestParam(required = false) String workspaceScopeKey,
             @RequestParam(required = false) String branch,
-            @RequestParam(required = false) String commit) throws IOException {
+            @RequestParam(required = false) String commit,
+            @RequestParam(required = false) Long revision) throws IOException {
         RepositoryContext context = readContext(repositoryId, workspaceScopeKey, branch);
-        var document = service.read(context, commit);
-        return response(HttpStatus.OK, document.context().commit()).body(projection.project(document, mayEdit()));
+        var document = service.read(context, commit, revision);
+        return documentResponse(document).body(projection.project(document, mayEdit()));
     }
 
     @GetMapping(value = "/api/architecture/editor.svg", produces = "image/svg+xml")
     @ResponseBody
     public ResponseEntity<String> svg(@RequestParam String repositoryId, @RequestParam String workspaceScopeKey,
-                                      @RequestParam String branch, @RequestParam String commit) throws IOException {
-        var document = service.read(readContext(repositoryId, workspaceScopeKey, branch), commit);
+                                      @RequestParam String branch, @RequestParam(required = false) String commit,
+                                      @RequestParam(required = false) Long revision) throws IOException {
+        if (commit == null && revision == null) throw new IllegalArgumentException("An exact revision or version is required for export");
+        var document = service.read(readContext(repositoryId, workspaceScopeKey, branch), commit, revision);
         var view = projection.project(document, false);
-        return response(HttpStatus.OK, document.context().commit())
+        return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", view.schema().layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.svg")
                 .body(svg.render(view.scene()));
@@ -69,15 +73,17 @@ public class ArchitectureEditorController {
     @GetMapping(value = "/api/architecture/editor.pdf", produces = "application/pdf")
     @ResponseBody
     public ResponseEntity<byte[]> pdf(@RequestParam String repositoryId, @RequestParam String workspaceScopeKey,
-                                      @RequestParam String branch, @RequestParam String commit) throws IOException {
-        var document = service.read(readContext(repositoryId, workspaceScopeKey, branch), commit);
+                                      @RequestParam String branch, @RequestParam(required = false) String commit,
+                                      @RequestParam(required = false) Long revision) throws IOException {
+        if (commit == null && revision == null) throw new IllegalArgumentException("An exact revision or version is required for export");
+        var document = service.read(readContext(repositoryId, workspaceScopeKey, branch), commit, revision);
         var view = projection.project(document, false);
         var provenance = document.context();
-        return response(HttpStatus.OK, document.context().commit())
+        return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", view.schema().layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
                 .body(pdf.render(view.scene(), provenance.repositoryId() + " / " + provenance.workspaceScopeKey()
-                        + " / " + provenance.branch() + "\n" + provenance.commit()));
+                        + " / " + provenance.branch() + "\nRevision " + provenance.revision() + " / checkpoint " + provenance.commit()));
     }
 
     @PostMapping("/api/architecture/editor/preview")
@@ -87,7 +93,7 @@ public class ArchitectureEditorController {
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
         Command command = command(body, ifMatch, ifNoneMatch);
         Preview result = service.preview(resolver.resolveCurrentRepositoryContext(), command);
-        return response(HttpStatus.OK, result.context().commit()).body(result);
+        return response(HttpStatus.OK, result.context()).body(result);
     }
 
     @PostMapping("/api/architecture/editor/commands")
@@ -97,24 +103,22 @@ public class ArchitectureEditorController {
             @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
         Accepted result = service.execute(resolver.resolveCurrentRepositoryContext(), command(body, ifMatch, ifNoneMatch));
         return response("READY".equals(result.projectionState()) ? HttpStatus.OK : HttpStatus.ACCEPTED,
-                result.context().commit()).body(result);
+                result.context()).body(result);
     }
 
     @PostMapping("/api/architecture/editor/rebuild")
     @ResponseBody
     public ResponseEntity<Map<String, String>> rebuild(@RequestBody Context context,
             @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
-        if (!Objects.equals(context.commit(), GitHttpPrecondition.expectedHead(ifMatch, null))) {
-            throw new IllegalArgumentException("HTTP precondition must match the editor context");
-        }
-        return response(HttpStatus.OK, context.commit()).body(Map.of("projectionState",
+        requireRevision(context, ifMatch, null);
+        return response(HttpStatus.OK, context).body(Map.of("projectionState",
                 service.rebuild(resolver.resolveCurrentRepositoryContext(), context)));
     }
 
     /** A bounded wire union is converted immediately to typed application/domain commands. No full graph payload exists. */
     public record WireCommand(Context context, Metadata metadata, String kind, String id, String type,
                               Map<String, String> properties, String sourceId, String relationType, String targetId,
-                              String status, String parentId, String targetCommit) {
+                              String status, String parentId, String targetOperationId) {
         public WireCommand {
             if (context == null || metadata == null || kind == null) throw new IllegalArgumentException("Context, metadata and kind are required");
             if (properties != null && properties.values().stream().anyMatch(Objects::isNull)) {
@@ -125,9 +129,7 @@ public class ArchitectureEditorController {
     }
 
     private static Command command(WireCommand body, String ifMatch, String ifNoneMatch) {
-        if (!Objects.equals(body.context().commit(), GitHttpPrecondition.expectedHead(ifMatch, ifNoneMatch))) {
-            throw new IllegalArgumentException("HTTP precondition must match the editor context");
-        }
+        requireRevision(body.context(), ifMatch, ifNoneMatch);
         Operation operation = switch (body.kind()) {
             case "CREATE_ELEMENT" -> new SemanticCommand(new CreateArchitectureElement("arch-" + body.metadata().commandId(), body.type(), body.properties()));
             case "UPDATE_ELEMENT" -> new SemanticCommand(new UpdateArchitectureElement(body.id(), body.type(), body.properties()));
@@ -136,8 +138,8 @@ public class ArchitectureEditorController {
             case "UPDATE_RELATION" -> new SemanticCommand(new UpdateArchitectureRelation(relation(body), body.status()));
             case "DELETE_RELATION" -> new SemanticCommand(new DeleteArchitectureRelation(relation(body)));
             case "MOVE_ELEMENT" -> new SemanticCommand(new MoveOrGroupElement(body.id(), body.parentId()));
-            case "UNDO" -> new UndoArchitectureCommand(requireTarget(body.targetCommit()));
-            case "REDO" -> new RedoArchitectureCommand(requireTarget(body.targetCommit()));
+            case "UNDO" -> new UndoArchitectureCommand(requireTarget(body.targetOperationId()));
+            case "REDO" -> new RedoArchitectureCommand(requireTarget(body.targetOperationId()));
             default -> throw new IllegalArgumentException("Unsupported semantic command");
         };
         return new Command(body.context(), body.metadata(), operation);
@@ -148,9 +150,9 @@ public class ArchitectureEditorController {
         return new RelationKey(body.sourceId(), body.relationType(), body.targetId());
     }
 
-    private static String requireTarget(String target) {
-        if (target == null) throw new IllegalArgumentException("Target commit is required");
-        return org.eclipse.jgit.lib.ObjectId.fromString(target).name();
+    private static UUID requireTarget(String target) {
+        if (target == null) throw new IllegalArgumentException("Target operation ID is required");
+        return UUID.fromString(target);
     }
 
     private RepositoryContext readContext(String repositoryId, String workspaceScopeKey, String branch) {
@@ -170,20 +172,56 @@ public class ArchitectureEditorController {
                 .anyMatch(authority -> List.of("ROLE_ARCHITECT", "ROLE_ADMIN").contains(authority.getAuthority()));
     }
 
-    private static ResponseEntity.BodyBuilder response(HttpStatus status, String commit) {
-        var response = ResponseEntity.status(status).header(HttpHeaders.CACHE_CONTROL, "no-store");
-        return commit == null ? response : response.header(HttpHeaders.ETAG, GitHttpPrecondition.etag(commit));
+    private static ResponseEntity.BodyBuilder documentResponse(ArchitectureEditorService.Document document) {
+        return response(HttpStatus.OK, document.context()).header("X-Taxonomy-Source", document.source())
+                .header(HttpHeaders.ETAG, "GIT_CHECKPOINT".equals(document.source())
+                        ? GitHttpPrecondition.etag(document.context().commit()) : etag(document.context()));
     }
 
-    @ExceptionHandler(BranchHeadConflictException.class)
+    @PostMapping("/api/architecture/editor/versions/recover")
     @ResponseBody
-    public ResponseEntity<Map<String, Object>> conflict(BranchHeadConflictException error) {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("code", "HEAD_MOVED");
-        body.put("detail", "The branch moved. Refresh, compare and preview the command again.");
-        body.put("expectedCommit", error.getExpectedHeadCommit());
-        body.put("currentCommit", error.getActualHeadCommit());
-        return response(HttpStatus.PRECONDITION_FAILED, error.getActualHeadCommit()).body(body);
+    public ResponseEntity<Void> recoverVersion() throws IOException {
+        service.reconcileVersion(resolver.resolveCurrentRepositoryContext());
+        return ResponseEntity.noContent().build();
+    }
+
+    private static String etag(Context context) { return "\"workspace-revision-" + context.revision() + "\""; }
+
+    private static void requireRevision(Context context, String ifMatch, String ifNoneMatch) {
+        if (ifMatch == null) throw new GitHttpPrecondition.PreconditionRequiredException("An exact semantic revision If-Match header is required");
+        if (ifNoneMatch != null || !etag(context).equals(ifMatch)) {
+            throw new IllegalArgumentException("HTTP precondition must match the semantic workspace revision");
+        }
+    }
+
+    private static ResponseEntity.BodyBuilder response(HttpStatus status, Context context) {
+        return ResponseEntity.status(status).header(HttpHeaders.CACHE_CONTROL, "no-store")
+                .header(HttpHeaders.ETAG, etag(context))
+                .header("X-Taxonomy-Semantic-Revision", Long.toString(context.revision()));
+    }
+
+    @PostMapping("/api/architecture/editor/checkpoints")
+    @ResponseBody
+    public ResponseEntity<CheckpointAccepted> checkpoint(@RequestBody CreateCheckpointCommand command,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
+        requireRevision(command.context(), ifMatch, null);
+        var result = service.checkpoint(resolver.resolveCurrentRepositoryContext(), command);
+        return response(HttpStatus.OK, result.context()).body(result);
+    }
+
+    @PostMapping("/api/architecture/editor/checkpoints/resume")
+    @ResponseBody
+    public ResponseEntity<CheckpointAccepted> resumeCheckpoint() throws IOException {
+        var result = service.resumeCheckpoint(resolver.resolveCurrentRepositoryContext());
+        return response(HttpStatus.OK, result.context()).body(result);
+    }
+
+    @ExceptionHandler(RevisionConflict.class)
+    @ResponseBody
+    public ResponseEntity<Map<String, Object>> conflict(RevisionConflict error) {
+        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(Map.of(
+                "code", "REVISION_MOVED", "detail", "The workspace changed. Refresh, compare and preview again.",
+                "expectedRevision", error.expected(), "currentRevision", error.actual()));
     }
 
     @ExceptionHandler(GitHttpPrecondition.PreconditionRequiredException.class)
@@ -198,7 +236,7 @@ public class ArchitectureEditorController {
         int status = switch (error.code()) {
             case "NOT_FOUND" -> 404;
             case "READ_ONLY" -> 403;
-            case "CONTEXT_CHANGED", "UNDO_CONFLICT", "ALREADY_INVERTED", "COMMAND_ID_REUSED", "DEPENDENCIES_EXIST" -> 409;
+            case "CONTEXT_CHANGED", "UNDO_CONFLICT", "ALREADY_INVERTED", "COMMAND_ID_REUSED", "DEPENDENCIES_EXIST", "CHECKPOINT_PENDING", "VERSION_CHANGED" -> 409;
             default -> 422;
         };
         return ResponseEntity.status(status).body(Map.of("code", error.code(), "field", error.field(),

@@ -17,7 +17,11 @@ class ArchitectureEditorBoundaryTest {
     @ArchTest
     static final ArchRule editorDoesNotWriteArchitectureJpa = noClasses().that().resideInAPackage("com.taxonomy.editor..")
             .should().dependOnClassesThat().resideInAnyPackage("com.taxonomy.catalog.repository..",
-                    "com.taxonomy.relations.repository..", "jakarta.persistence..", "org.springframework.data.jpa..");
+                    "com.taxonomy.relations.repository..");
+
+    @ArchTest
+    static final ArchRule journalCannotWriteGit = noClasses().that().resideInAPackage("com.taxonomy.editor.persistence..")
+            .should().dependOnClassesThat().resideInAnyPackage("org.eclipse.jgit..", "com.taxonomy.dsl.storage..");
 
     @ArchTest
     static final ArchRule httpDoesNotCommitGitDirectly = noClasses().that().haveSimpleName("ArchitectureEditorController")

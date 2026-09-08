@@ -38,7 +38,7 @@ class DslOperationsFacadeWorkspaceIsolationTest {
                 conflictDetectionService,
                 stateGuard,
                 repositoryStateService,
-                workspaceResolver);
+                workspaceResolver, new com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort() { public <T> T version(com.taxonomy.workspace.service.RepositoryContext c, String r, GitAction<T> a) throws java.io.IOException { return a.run(); } });
 
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("architect");
         doThrow(new IllegalStateException("workspace database unavailable"))

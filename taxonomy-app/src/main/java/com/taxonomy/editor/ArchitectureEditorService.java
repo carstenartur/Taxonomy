@@ -5,18 +5,17 @@ import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.Change;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.CommitRequest;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
-import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
-import com.taxonomy.relations.service.RelationBranchProjectionRebuildService;
+import com.taxonomy.editor.persistence.EditorJournal;
+import com.taxonomy.editor.persistence.EditorJournal.*;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.springframework.stereotype.Service;
 
@@ -26,221 +25,266 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
-import java.util.HexFormat;
-import java.util.LinkedHashSet;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
-import java.util.Set;
-import java.util.TreeMap;
+import java.util.*;
 
-/** Git is both model authority and durable operation history. No architecture JPA writes occur here. */
+/** Accepted editing revisions belong to the durable workspace journal. Git contains explicit versions only. */
 @Service
-public class ArchitectureEditorService implements ArchitectureCommandPort {
+public class ArchitectureEditorService implements ArchitectureCommandPort, WorkspaceArchitectureVersionPort {
     private final DslGitRepositoryFactory repositories;
-    private final RelationBranchProjectionRebuildService rebuild;
-    private final RelationBranchProjectionReadinessService readiness;
+    private final EditorJournal journal;
+    private final ArchitectureCheckpointWriter checkpointWriter;
     private final ArchitectureDslCommands transformer = new ArchitectureDslCommands();
-    private final ExpectedHeadDslCommitter committer = new ExpectedHeadDslCommitter();
 
-    public ArchitectureEditorService(DslGitRepositoryFactory repositories,
-                                     RelationBranchProjectionRebuildService rebuild,
-                                     RelationBranchProjectionReadinessService readiness) {
-        this.repositories = repositories;
-        this.rebuild = rebuild;
-        this.readiness = readiness;
+    public ArchitectureEditorService(DslGitRepositoryFactory repositories, EditorJournal journal,
+                                     ArchitectureCheckpointWriter checkpointWriter) {
+        this.repositories = repositories; this.journal = journal; this.checkpointWriter = checkpointWriter;
     }
 
-    public record HistoryEntry(String commit, String commandId, String kind, String targetCommit,
-                               String actor, String occurredAt, String rationale, List<String> changedIds) {}
-    public record Document(Context context, String dsl, String projectionState, List<HistoryEntry> history) {}
+    public record HistoryEntry(String operationId, String commandId, String kind, String targetOperationId,
+                               String actor, String occurredAt, String rationale, List<String> changedIds,
+                               long previousRevision, long revision) {}
+    public record Document(Context context, String dsl, String projectionState, List<HistoryEntry> history,
+                           List<DslCommit> versions, long checkpointRevision, String pendingCheckpointId, String source) {}
 
-    public Document read(RepositoryContext context, String commit) throws IOException {
+    public Document read(RepositoryContext context, String commit) throws IOException { return read(context, commit, null); }
+
+    public Document read(RepositoryContext context, String commit, Long revision) throws IOException {
+        if (commit != null && revision != null) throw new IllegalArgumentException("Select a version or a semantic revision");
         DslGitRepository repository = repositories.resolveRepository(context);
         String head = head(repository, context.branch());
-        String selected = commit == null ? head : ObjectId.fromString(commit).name();
-        if (selected != null) requireReachable(repository, head, selected);
-        String dsl = source(repository, selected);
-        return new Document(Context.of(context, selected), dsl,
-                Objects.equals(head, selected) ? projectionState(context, selected) : "HISTORICAL",
-                history(repository, context, selected));
+        List<DslCommit> versions = head == null ? List.of() : repository.getDslHistory(context.branch());
+        if (commit != null) {
+            String selected = ObjectId.fromString(commit).name();
+            requireReachable(repository, head, selected);
+            return new Document(Context.of(context, selected), source(repository, selected), "HISTORICAL",
+                    List.of(), versions, 0, null, "GIT_CHECKPOINT");
+        }
+        Snapshot snapshot = snapshot(context);
+        State state = snapshot.state();
+        String dsl = state.dsl();
+        long selected = revision == null ? state.revision() : revision;
+        if (selected < 0 || selected > state.revision()) throw problem("NOT_FOUND", "revision", "Unknown workspace revision", List.of());
+        if (selected != state.revision()) {
+            dsl = selected == 0 ? snapshot.operations().getLast().beforeDsl() : snapshot.operations().stream()
+                    .filter(entry -> entry.revision() == selected).findFirst()
+                    .orElseThrow(() -> problem("NOT_FOUND", "revision", "Unknown workspace revision", List.of())).afterDsl();
+        }
+        String status = selected != state.revision() ? "HISTORICAL"
+                : state.pendingCheckpoint() != null ? "CHECKPOINT_PENDING"
+                : !Objects.equals(head, state.checkpointCommit()) ? "VERSION_CHANGED" : "READY";
+        return new Document(Context.of(context, state.checkpointCommit(), selected), dsl, status,
+                snapshot.operations().stream().filter(e -> e.revision() <= selected && e.actor().equals(context.username()))
+                        .limit(50).map(ArchitectureEditorService::history).toList(), versions,
+                state.checkpointRevision(), state.pendingCheckpoint(), "WORKSPACE_REVISION");
     }
 
     @Override
     public Preview preview(RepositoryContext context, Command command) throws IOException {
-        requireContext(context, command.context());
-        requireWritable(context);
-        DslGitRepository repository = repositories.resolveRepository(context);
-        committer.verifyExpectedHead(repository, context.branch(), command.context().commit());
-        Change change = transform(repository, context, command);
-        return new Preview(command.context(), change, kind(command.operation()), target(command.operation()));
+        requireContext(context, command.context()); requireWritable(context);
+        Snapshot snapshot = snapshot(context);
+        expect(snapshot.state(), command.context().revision());
+        return new Preview(Context.of(context, snapshot.state().checkpointCommit(), snapshot.state().revision()),
+                transform(context, command, snapshot.state().dsl(), snapshot.operations()), kind(command.operation()), target(command.operation()));
     }
 
     @Override
     public Accepted execute(RepositoryContext context, Command command) throws IOException {
-        requireContext(context, command.context());
-        requireWritable(context);
-        DslGitRepository repository = repositories.resolveRepository(context);
+        requireContext(context, command.context()); requireWritable(context);
+        Snapshot initial = snapshot(context);
         String fingerprint = fingerprint(command);
-        RevCommit previous = findCommand(repository, context, command.metadata().commandId());
-        if (previous != null) {
-            if (!fingerprint.equals(footer(previous, "Editor-Fingerprint"))) {
-                throw problem("COMMAND_ID_REUSED", "commandId", "Command identity was already used with another payload", List.of());
+        return journal.locked(context, initial.state(), session -> {
+            Entry prior = session.find(command.metadata().commandId());
+            if (prior != null) {
+                requireFingerprint(fingerprint, prior.fingerprint());
+                return accepted(context, session.state(), prior, true);
             }
-            return new Accepted(Context.of(context, previous.name()), command.metadata().commandId(), false, true,
-                    projectionState(context, previous.name()), new Change(source(repository, previous.name()), List.of()));
-        }
-        Preview preview = preview(context, command);
-        if (preview.change().changes().isEmpty()) {
-            throw problem("NO_CHANGE", "command", "No semantic change to accept", List.of());
-        }
-        var committed = committer.commit(repository, new CommitRequest(context.branch(), command.context().commit(),
-                preview.change().dsl(), context.username(), message(context, command, fingerprint)));
-        // Git succeeded. Projection failure cannot turn this into a rejected or replayable write.
-        String state;
-        try {
-            var projected = rebuild.rebuild(context);
-            state = committed.commitId().equals(projected.authoritativeCommitId())
-                    ? projectionState(context, committed.commitId()) : "STALE";
-        } catch (RuntimeException failure) {
-            state = "REBUILD_REQUIRED";
-        }
-        return new Accepted(Context.of(context, committed.commitId()), command.metadata().commandId(), true, false,
-                state, preview.change());
+            session.expect(command.context().revision());
+            Change change = transform(context, command, session.state().dsl(), session.operations());
+            if (change.changes().isEmpty()) throw problem("NO_CHANGE", "command", "No semantic change to accept", List.of());
+            Entry entry = session.append(command.metadata(), context.username(), kind(command.operation()), target(command.operation()),
+                    fingerprint, change.dsl(), List.copyOf(affected(change.changes())));
+            return accepted(context, session.state(), entry, false);
+        });
     }
 
-    public String rebuild(RepositoryContext context, Context expected) throws IOException {
-        requireContext(context, expected);
+    private static Accepted accepted(RepositoryContext context, State state, Entry entry, boolean replayed) {
+        return new Accepted(Context.of(context, state.checkpointCommit(), entry.revision()), entry.commandId(), entry.commandId(), replayed,
+                "READY", new Change(entry.afterDsl(), ArchitectureSemanticPatch.between(entry.beforeDsl(), entry.afterDsl())));
+    }
+
+    /** Explicit checkpoint command: durable prepare, retryable Git write, durable completion. No semantic append. */
+    public CheckpointAccepted checkpoint(RepositoryContext context, CreateCheckpointCommand command) throws IOException {
+        requireContext(context, command.context()); requireWritable(context);
+        // A pending intent must be recoverable even when its Git phase has already advanced HEAD.
+        Snapshot current = journal.read(context);
+        State initial = current == null ? seed(context) : current.state();
+        String fingerprint = digest(Arrays.asList("CHECKPOINT", EditorJournal.scope(context), context.username(),
+                Long.toString(command.context().revision()), command.metadata().rationale(),
+                command.metadata().correlationId(), command.metadata().causationId()));
+        Checkpoint prepared = journal.locked(context, initial, session -> {
+            Checkpoint prior = session.checkpoint(command.metadata().commandId());
+            if (prior != null) { requireFingerprint(fingerprint, prior.fingerprint()); return prior; }
+            session.expect(command.context().revision());
+            return session.prepare(command.metadata(), context.username(), fingerprint);
+        });
+        boolean replayed = prepared.completed();
+        Checkpoint completed = prepared;
+        if (!prepared.completed()) {
+            var written = checkpointWriter.write(repositories.resolveRepository(context), EditorJournal.scope(context), context.branch(), prepared);
+            completed = journal.locked(context, initial, session -> session.complete(prepared.commandId(), written.commitId(), written.created()));
+        }
+        return new CheckpointAccepted(Context.of(context, completed.commitId(), completed.revision()), completed.commandId(),
+                completed.commitId(), completed.fromRevision(), completed.revision(), completed.commitCreated(), replayed);
+    }
+
+    /** Resume the exact durable intent after restart; the authenticated actor must own it. */
+    public CheckpointAccepted resumeCheckpoint(RepositoryContext context) throws IOException {
         requireWritable(context);
-        committer.verifyExpectedHead(repositories.resolveRepository(context), context.branch(), expected.commit());
-        rebuild.rebuild(context);
-        return projectionState(context, expected.commit());
+        Snapshot snapshot = journal.read(context);
+        if (snapshot == null || snapshot.state().pendingCheckpoint() == null) throw problem("NOT_FOUND", "checkpoint", "No pending checkpoint", List.of());
+        Checkpoint intent = journal.locked(context, snapshot.state(), session -> session.checkpoint(snapshot.state().pendingCheckpoint()));
+        if (!context.username().equals(intent.actor())) throw problem("NOT_FOUND", "checkpoint", "No personal checkpoint", List.of());
+        var written = checkpointWriter.write(repositories.resolveRepository(context), EditorJournal.scope(context), context.branch(), intent);
+        Checkpoint completed = journal.locked(context, snapshot.state(), session -> session.complete(intent.commandId(), written.commitId(), written.created()));
+        return new CheckpointAccepted(Context.of(context, completed.commitId(), completed.revision()), completed.commandId(),
+                completed.commitId(), completed.fromRevision(), completed.revision(), completed.commitCreated(), true);
     }
 
-    private Change transform(DslGitRepository repository, RepositoryContext context, Command command) throws IOException {
-        String current = source(repository, command.context().commit());
+    /** Editor projections are rebuilt from exact canonical DSL on every read, including before the first checkpoint. */
+    public String rebuild(RepositoryContext context, Context expected) throws IOException {
+        requireContext(context, expected); requireWritable(context);
+        Snapshot snapshot = snapshot(context);
+        expect(snapshot.state(), expected.revision());
+        transformer.model(snapshot.state().dsl());
+        return "READY";
+    }
+
+    @Override
+    public <T> T version(RepositoryContext context, String rationale, GitAction<T> action) throws IOException {
+        Snapshot snapshot = journal.read(context);
+        if (context.scope() != RepositoryScope.WORKSPACE || snapshot == null) return action.run();
+        if (snapshot.state().pendingCheckpoint() != null) resumeCheckpoint(context);
+        reconcileVersion(context);
+        snapshot = journal.read(context);
+        String id = UUID.nameUUIDFromBytes((EditorJournal.scope(context) + ":" + snapshot.state().revision()
+                + ":" + context.username() + ":" + rationale).getBytes(StandardCharsets.UTF_8)).toString();
+        var prepared = checkpoint(context, new CreateCheckpointCommand(
+                Context.of(context, snapshot.state().checkpointCommit(), snapshot.state().revision()), new Metadata(id, id, id, rationale)));
+        try {
+            return journal.locked(context, snapshot.state(), session -> {
+                session.expect(prepared.context().revision());
+                try {
+                    T result = action.run();
+                    importVersion(context, session, rationale);
+                    return result;
+                } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            });
+        } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
+    }
+
+    /** Recovery for a version write that reached Git before the journal transaction could finish. */
+    public void reconcileVersion(RepositoryContext context) throws IOException {
+        requireWritable(context);
+        Snapshot snapshot = journal.read(context);
+        if (snapshot == null) return;
+        try {
+            journal.locked(context, snapshot.state(), session -> {
+                session.expect(session.state().revision());
+                try {
+                    String head = head(repositories.resolveRepository(context), context.branch());
+                    if (Objects.equals(head, session.state().checkpointCommit())) return null;
+                    if (session.state().revision() != session.state().checkpointRevision()) {
+                        throw problem("VERSION_CHANGED", "checkpoint", "Uncheckpointed edits and a moved Git version require explicit reconciliation", List.of());
+                    }
+                    importVersion(context, session, "Recover completed architecture version");
+                    return null;
+                } catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            });
+        } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
+    }
+
+    private void importVersion(RepositoryContext context, EditorJournal.Session session, String rationale) throws IOException {
+        var repository = repositories.resolveRepository(context);
+        String head = head(repository, context.branch());
+        if (Objects.equals(head, session.state().checkpointCommit())) return;
+        String dsl = source(repository, head);
+        if (!dsl.equals(session.state().dsl())) {
+            var changes = ArchitectureSemanticPatch.between(session.state().dsl(), dsl);
+            String id = UUID.randomUUID().toString();
+            session.append(new Metadata(id, id, id, rationale), context.username(), "VERSION_IMPORT", null,
+                    EditorJournal.hash("version:" + head), dsl, List.copyOf(affected(changes)));
+        }
+        session.adoptVersion(head);
+    }
+
+    private Change transform(RepositoryContext context, Command command, String current, List<Entry> operations) {
         if (command.operation() instanceof SemanticCommand semantic) return transformer.apply(current, semantic.command());
         String target = target(command.operation());
-        ObjectId.fromString(target);
-        List<RevCommit> later = new ArrayList<>();
-        RevCommit selected = null;
-        try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
-            for (RevCommit cursor = parse(walk, command.context().commit()); cursor != null; cursor = parent(walk, cursor)) {
-                if (cursor.name().equals(target)) { selected = cursor; break; }
-                later.add(cursor);
-            }
-        }
-        if (selected == null || !scope(context).equals(footer(selected, "Editor-Scope"))
-                || !context.username().equals(selected.getAuthorIdent().getName())) {
-            throw problem("NOT_FOUND", "targetCommit", "No personal command at this context and commit", List.of());
-        }
-        if (selected.getParentCount() > 1) {
-            throw problem("NOT_UNDOABLE", "targetCommit", "Merge commits cannot be semantic undo or redo targets", List.of(target));
-        }
-        if (!isOwnEditorCommit(context, selected)) {
-            throw problem("NOT_FOUND", "targetCommit", "No reconstructible editor command at this commit", List.of());
-        }
-        String targetKind = footer(selected, "Editor-Kind");
+        Entry selected = operations.stream().filter(e -> e.commandId().equals(target) && e.actor().equals(context.username()))
+                .findFirst().orElseThrow(() -> problem("NOT_FOUND", "targetOperationId", "No personal operation in this workspace", List.of()));
         boolean redo = command.operation() instanceof RedoArchitectureCommand;
-        if (targetKind == null || (redo && !"UNDO".equals(targetKind)) || (!redo && "UNDO".equals(targetKind))) {
-            throw problem("NOT_UNDOABLE", "targetCommit", "Choose an accepted command for undo or an undo command for redo", List.of());
+        if (selected.bodyVersion() != 1 || (redo && !"UNDO".equals(selected.kind())) || (!redo && "UNDO".equals(selected.kind()))
+                || selected.kind().startsWith("VERSION_")) {
+            throw problem("NOT_UNDOABLE", "targetOperationId", "Choose an accepted edit for undo or an undo operation for redo", List.of());
         }
-        String before = selected.getParentCount() == 0 ? "" : source(repository, selected.getParent(0).name());
-        String after = source(repository, selected.name());
-        Set<String> affected = affected(ArchitectureSemanticPatch.between(before, after));
-        for (RevCommit newer : later) {
-            if (target.equals(footer(newer, "Editor-Target"))) {
-                throw problem("ALREADY_INVERTED", "targetCommit", "This command already has an accepted inverse", List.of(newer.name()));
-            }
-            if (newer.getParentCount() != 1) {
-                throw problem("UNDO_CONFLICT", "targetCommit", "A later merge requires a new semantic decision", List.of(newer.name()));
-            }
-            Set<String> touched = affected(ArchitectureSemanticPatch.between(
-                    source(repository, newer.getParent(0).name()), source(repository, newer.name())));
-            if (touched.stream().anyMatch(affected::contains)) {
-                throw problem("UNDO_CONFLICT", "targetCommit", "A later command depends on the affected objects", List.of(newer.name()));
+        for (Entry newer : operations) {
+            if (newer.revision() <= selected.revision()) continue;
+            if (target.equals(newer.targetOperationId())) throw problem("ALREADY_INVERTED", "targetOperationId", "This operation already has an inverse", List.of(newer.commandId()));
+            if (newer.affectedIds().stream().anyMatch(selected.affectedIds()::contains)) {
+                throw problem("UNDO_CONFLICT", "targetOperationId", "A later operation depends on the affected objects", List.of(newer.commandId()));
             }
         }
-        return transformer.inverse(current, before, after);
+        return transformer.inverse(current, selected.beforeDsl(), selected.afterDsl());
     }
 
-    private List<HistoryEntry> history(DslGitRepository repository, RepositoryContext context, String head) throws IOException {
-        List<HistoryEntry> entries = new ArrayList<>();
-        try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
-            for (RevCommit cursor = parse(walk, head); cursor != null && entries.size() < 50; cursor = parent(walk, cursor)) {
-                if (!isOwnEditorCommit(context, cursor)) continue;
-                String before = cursor.getParentCount() == 0 ? "" : source(repository, cursor.getParent(0).name());
-                entries.add(new HistoryEntry(cursor.name(), footer(cursor, "Editor-Command-Id"), footer(cursor, "Editor-Kind"),
-                        footer(cursor, "Editor-Target"), cursor.getAuthorIdent().getName(),
-                        cursor.getAuthorIdent().getWhenAsInstant().toString(), footer(cursor, "Rationale"),
-                        ArchitectureSemanticPatch.between(before, source(repository, cursor.name())).stream()
-                                .map(ArchitectureSemanticPatch.BlockChange::id).toList()));
-            }
-        }
-        return List.copyOf(entries);
+    private Snapshot snapshot(RepositoryContext context) throws IOException {
+        Snapshot snapshot = journal.read(context);
+        return snapshot == null ? new Snapshot(seed(context), List.of()) : snapshot;
     }
-
-    private RevCommit findCommand(DslGitRepository repository, RepositoryContext context, String id) throws IOException {
-        try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
-            for (RevCommit cursor = parse(walk, head(repository, context.branch())); cursor != null; cursor = parent(walk, cursor)) {
-                if (isOwnEditorCommit(context, cursor) && id.equals(footer(cursor, "Editor-Command-Id"))) return cursor;
-            }
-        }
-        return null;
+    private State seed(RepositoryContext context) throws IOException {
+        DslGitRepository repository = repositories.resolveRepository(context);
+        String head = head(repository, context.branch());
+        return new State(source(repository, head), 0, head, 0, null);
     }
-
-    private static void requireReachable(DslGitRepository repository, String head, String selected) throws IOException {
-        try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
-            if (head != null && walk.isMergedInto(walk.parseCommit(ObjectId.fromString(selected)), walk.parseCommit(ObjectId.fromString(head)))) return;
-        } catch (org.eclipse.jgit.errors.MissingObjectException | org.eclipse.jgit.errors.IncorrectObjectTypeException ignored) {
-            // Guessed objects must not expose whether another branch/repository contains the ID.
-        }
-        throw problem("NOT_FOUND", "commit", "Commit is not reachable in the selected context", List.of());
+    private static HistoryEntry history(Entry entry) {
+        return new HistoryEntry(entry.commandId(), entry.commandId(), entry.kind(), entry.targetOperationId(),
+                entry.actor(), entry.occurredAt(), entry.rationale(), entry.affectedIds(), entry.previousRevision(), entry.revision());
     }
-
-    private String projectionState(RepositoryContext context, String commit) {
-        if (commit == null) return "BRANCH_MISSING";
-        try {
-            var state = readiness.inspect(context);
-            return commit.equals(state.currentHeadCommit()) && commit.equals(state.projectedCommit())
-                    ? state.state().name() : "STALE";
-        } catch (RuntimeException unavailable) { return "REBUILD_REQUIRED"; }
+    private static void expect(State state, long expected) {
+        if (state.revision() != expected) throw new RevisionConflict(expected, state.revision());
+        if (state.pendingCheckpoint() != null) throw problem("CHECKPOINT_PENDING", "checkpoint", "Retry the pending checkpoint", List.of(state.pendingCheckpoint()));
     }
-
+    private static void requireFingerprint(String expected, String actual) {
+        if (!expected.equals(actual)) throw problem("COMMAND_ID_REUSED", "commandId", "Command identity was already used with another payload", List.of());
+    }
     static void requireContext(RepositoryContext context, Context requested) {
-        if (!Context.of(context, requested.commit()).equals(requested)) {
-            throw problem("CONTEXT_CHANGED", "context", "The selected repository, workspace, branch, actor or mode changed; reopen the editor", List.of());
+        if (!Context.of(context, requested.commit(), requested.revision()).equals(requested)) {
+            throw problem("CONTEXT_CHANGED", "context", "The repository, workspace, branch, actor or mode changed; reopen the editor", List.of());
         }
+        if (requested.revision() < 0) throw new IllegalArgumentException("Revision must be nonnegative");
         if (requested.commit() != null) ObjectId.fromString(requested.commit());
     }
-
     private static void requireWritable(RepositoryContext context) {
-        if (context.scope() != RepositoryScope.WORKSPACE) {
-            throw problem("READ_ONLY", "context", "Open a private writable workspace to edit this architecture", List.of());
-        }
+        if (context.scope() != RepositoryScope.WORKSPACE) throw problem("READ_ONLY", "context", "Open a private writable workspace", List.of());
     }
-
     private static String source(DslGitRepository repository, String commit) throws IOException {
         if (commit == null) return "";
         String source = repository.getDslAtCommit(commit);
         if (source == null) throw problem("NOT_FOUND", "commit", "Commit has no architecture document", List.of());
         return source;
     }
-
     private static String head(DslGitRepository repository, String branch) throws IOException {
         var ref = repository.getGitRepository().exactRef(Constants.R_HEADS + branch);
         return ref == null ? null : ref.getObjectId().name();
     }
-
-    private static RevCommit parse(RevWalk walk, String commit) throws IOException {
-        return commit == null ? null : walk.parseCommit(ObjectId.fromString(commit));
+    private static void requireReachable(DslGitRepository repository, String head, String selected) throws IOException {
+        try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
+            if (head != null && walk.isMergedInto(walk.parseCommit(ObjectId.fromString(selected)), walk.parseCommit(ObjectId.fromString(head)))) return;
+        } catch (org.eclipse.jgit.errors.MissingObjectException | org.eclipse.jgit.errors.IncorrectObjectTypeException ignored) {
+            // Guessed object IDs cannot expose another repository or branch.
+        }
+        throw problem("NOT_FOUND", "commit", "Commit is not reachable in the selected context", List.of());
     }
-
-    private static RevCommit parent(RevWalk walk, RevCommit commit) throws IOException {
-        return commit.getParentCount() == 0 ? null : walk.parseCommit(commit.getParent(0));
-    }
-
     private static Set<String> affected(List<ArchitectureSemanticPatch.BlockChange> changes) {
         Set<String> ids = new LinkedHashSet<>();
         for (var change : changes) {
@@ -252,19 +296,6 @@ public class ArchitectureEditorService implements ArchitectureCommandPort {
         }
         return ids;
     }
-
-    private static String footer(RevCommit commit, String name) {
-        List<String> values = commit.getFooterLines(name);
-        return values.size() == 1 ? values.getFirst() : null;
-    }
-
-    private static boolean isOwnEditorCommit(RepositoryContext context, RevCommit commit) {
-        return commit.getParentCount() <= 1 && "1".equals(footer(commit, "Editor-Version"))
-                && footer(commit, "Editor-Command-Id") != null && footer(commit, "Editor-Kind") != null
-                && scope(context).equals(footer(commit, "Editor-Scope"))
-                && context.username().equals(commit.getAuthorIdent().getName());
-    }
-
     private static String kind(Operation operation) {
         return switch (operation) {
             case SemanticCommand semantic -> semantic.command().getClass().getSimpleName();
@@ -272,33 +303,18 @@ public class ArchitectureEditorService implements ArchitectureCommandPort {
             case RedoArchitectureCommand ignored -> "REDO";
         };
     }
-
     private static String target(Operation operation) {
         return switch (operation) {
-            case UndoArchitectureCommand undo -> undo.targetCommit();
-            case RedoArchitectureCommand redo -> redo.targetCommit();
+            case UndoArchitectureCommand undo -> undo.targetOperationId().toString();
+            case RedoArchitectureCommand redo -> redo.targetOperationId().toString();
             default -> null;
         };
     }
-
-    private static String message(RepositoryContext context, Command command, String fingerprint) {
-        return "architecture: " + kind(command.operation()) + "\n\nEditor-Version: 1\nEditor-Command-Id: "
-                + command.metadata().commandId() + "\nEditor-Fingerprint: " + fingerprint
-                + "\nEditor-Scope: " + scope(context) + "\nEditor-Kind: " + kind(command.operation())
-                + (target(command.operation()) == null ? "" : "\nEditor-Target: " + target(command.operation()))
-                + "\nCorrelation-Id: " + command.metadata().correlationId()
-                + "\nCausation-Id: " + command.metadata().causationId() + "\nRationale: " + command.metadata().rationale();
-    }
-
-    private static String scope(RepositoryContext context) {
-        return digest(List.of(context.repositoryId(), context.workspaceId() == null ? "central" : context.workspaceId(), context.branch()));
-    }
-
     private static String fingerprint(Command command) {
         List<String> parts = new ArrayList<>(List.of(kind(command.operation()), command.context().repositoryId(),
                 command.context().workspaceScopeKey(), command.context().branch(), command.context().actor(), command.context().writeMode(),
                 command.metadata().correlationId(), command.metadata().causationId(), command.metadata().rationale()));
-        parts.add(command.context().commit());
+        parts.add(Long.toString(command.context().revision()));
         if (command.operation() instanceof SemanticCommand semantic) {
             switch (semantic.command()) {
                 case CreateArchitectureElement e -> { parts.add(e.id()); parts.add(e.type()); properties(parts, e.properties()); }

@@ -56,7 +56,7 @@ class GitNativeSyncIntegrationServiceTest {
                 repositoryFactory,
                 semanticMergeService,
                 portfolioGitPort,
-                contextResolver);
+                contextResolver, new com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort() { public <T> T version(com.taxonomy.workspace.service.RepositoryContext c, String r, GitAction<T> a) throws java.io.IOException { return a.run(); } });
 
         state = new SyncState();
         state.setUsername("alice");

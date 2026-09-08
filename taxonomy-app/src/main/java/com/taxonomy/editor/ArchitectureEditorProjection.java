@@ -15,7 +15,7 @@ import org.springframework.stereotype.Component;
 import java.util.List;
 import java.util.Map;
 
-/** Graph, tree, forms and source are projections of the same immutable Git document. */
+/** Graph, tree, forms and source are projections of the same canonical workspace revision or Git checkpoint. */
 @Component
 public class ArchitectureEditorProjection {
     private final LayeredDiagramLayoutService layout;
@@ -51,7 +51,7 @@ public class ArchitectureEditorProjection {
                 DslValidator.relationTypes().stream().sorted().toList(), DslValidator.relationStatuses().stream().sorted().toList(),
                 DslValidator.relationTypeRules(), TaxonomyRootTypes.TYPE_TO_ROOT, properties(), "DERIVED_SERVER_LAYOUT");
         return new View(document, model, scene, schema, mayEdit && "PRIVATE_WORKSPACE".equals(document.context().writeMode())
-                && !"HISTORICAL".equals(document.projectionState()));
+                && "READY".equals(document.projectionState()));
     }
 
     private static List<String> types() { return TaxonomyRootTypes.TYPE_TO_ROOT.keySet().stream().sorted().toList(); }

@@ -50,12 +50,13 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     const result = await response;
     assert.ok([200, 202].includes(result.status()), await result.text());
     const value = await result.json();
-    assert.equal(value.commitCreated, true);
-    assert.match(value.context.commit, /^[a-f0-9]{40}$/);
-    await page.waitForFunction(sha => new URL(location.href).searchParams.get('commit') === sha
-      && document.getElementById('architectureEditor').getAttribute('aria-busy') === 'false', value.context.commit);
-    accepted.push(value.context.commit);
-    measurements.commands.push({ commit: value.context.commit, changedIds: value.change.changedIds });
+    assert.equal(value.operationId, value.commandId);
+    assert.equal(value.commitCreated, undefined);
+    assert.ok(Number.isSafeInteger(value.context.revision));
+    await page.waitForFunction(revision => new URL(location.href).searchParams.get('revision') === String(revision)
+      && document.getElementById('architectureEditor').getAttribute('aria-busy') === 'false', value.context.revision);
+    accepted.push(value.operationId);
+    measurements.commands.push({ operationId: value.operationId, revision: value.context.revision, checkpoint: value.context.commit, changedIds: value.change.changedIds });
     return value;
   }
   async function create(type, title, owner = '') {
@@ -148,7 +149,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     assert.equal(current.model.elements.find(element => element.id === system).title, `Updated system ${suffix}`);
     const svg = await page.request.get(new URL(await page.locator('#editorSvg').getAttribute('href'), page.url()).href);
     assert.equal(svg.status(), 200);
-    assert.equal(svg.headers().etag, `"${current.document.context.commit}"`);
+    assert.equal(svg.headers().etag, `"workspace-revision-${current.document.context.revision}"`);
     assert.ok((await svg.text()).includes(system));
     const pdf = await page.request.get(new URL(await page.locator('#editorPdf').getAttribute('href'), page.url()).href);
     assert.equal(pdf.status(), 200);
@@ -163,8 +164,9 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
         properties: { description: 'Concurrent accepted description' },
         metadata: { commandId: uuid, correlationId: uuid, causationId: uuid, rationale: 'Concurrent writer fixture' } });
     }, { c: current.document.context, id: system });
-    assert.equal(stale.commitCreated, true);
-    await expectFailure(() => page.locator('#editorAccept').click(), '/api/architecture/editor/commands', 412, 'HEAD_MOVED');
+    assert.ok(stale.operationId);
+    assert.equal(stale.context.commit, current.document.context.commit);
+    await expectFailure(() => page.locator('#editorAccept').click(), '/api/architecture/editor/commands', 412, 'REVISION_MOVED');
     await page.waitForFunction(() => document.activeElement?.id === 'editorReapply' && !document.activeElement.disabled);
     await preview(() => page.keyboard.press('Enter'));
     assert.ok((await page.locator('#editorChanges').innerText()).includes('Concurrent accepted description'));
@@ -179,11 +181,38 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await preview(() => page.locator('#editorDelete').click());
     await commit();
     assert.ok(!(await page.locator('#editorDsl').inputValue()).includes(`element ${component} type`));
+    // Two explicit versions with a durable edit between them; both histories survive reload.
+    const beforeVersions = await page.locator('#editorVersions li').count();
+    const beforeOperations = await page.locator('#editorHistory li').count();
+    async function checkpoint() {
+      const response = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor/checkpoints'));
+      await page.locator('#editorCheckpoint').click();
+      const result = await response; assert.equal(result.status(), 200, await result.text());
+      const value = await result.json(); assert.equal(value.commitCreated, true);
+      await page.waitForFunction(() => document.getElementById('architectureEditor').getAttribute('aria-busy') === 'false'
+        && !document.getElementById('editorCheckpoint').disabled);
+      return value;
+    }
+    const firstCheckpoint = await checkpoint();
+    assert.equal(await page.locator('#editorHistory li').count(), beforeOperations);
+    assert.equal(await page.locator('#editorVersions li').count(), beforeVersions + 1);
+    await select(system); await page.locator('#editorTitle').fill(`After checkpoint ${suffix}`);
+    await preview(() => page.locator('#editorPreviewElement').click());
+    const afterCheckpoint = await commit();
+    assert.equal(afterCheckpoint.context.commit, firstCheckpoint.commitId);
+    const secondCheckpoint = await checkpoint();
+    assert.notEqual(secondCheckpoint.commitId, firstCheckpoint.commitId);
+    await page.reload();
+    await page.waitForFunction(() => document.getElementById('architectureEditor')?.getAttribute('aria-busy') === 'false');
+    assert.equal(await page.locator('#editorVersions li').count(), beforeVersions + 2);
+    assert.equal(await page.locator('#editorHistory li').count(), beforeOperations + 1);
+    assert.ok((await page.locator('#editorDsl').inputValue()).includes(`After checkpoint ${suffix}`));
+    measurements.separateOperationAndVersionHistory = true;
     await reflow();
     measurements.deepLinkRestored = true;
     measurements.undoRedoAfterReload = true;
     measurements.staleReappliedExplicitly = true;
-    measurements.exportCommitParity = true;
+    measurements.exportRevisionParity = true;
     measurements.unchangedFormIsNoOp = true;
     measurements.explicitPropertyClear = true;
   }

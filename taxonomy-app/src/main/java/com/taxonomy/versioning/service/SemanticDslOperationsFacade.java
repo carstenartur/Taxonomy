@@ -35,10 +35,11 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
                                        RepositoryStateService repositoryStateService,
                                        WorkspaceResolver workspaceResolver,
                                        SemanticGitMergeService semanticMergeService,
-                                       VersioningPortfolioGitPort portfolioGitPort) {
+                                       VersioningPortfolioGitPort portfolioGitPort,
+                                       com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort editorVersions) {
         super(exportService, materializeService, documentRepository, repositoryFactory,
                 commitIndexService, conflictDetectionService, stateGuard,
-                repositoryStateService, workspaceResolver);
+                repositoryStateService, workspaceResolver, editorVersions);
         this.repositoryFactory = repositoryFactory;
         this.repositoryStateService = repositoryStateService;
         this.workspaceResolver = workspaceResolver;
@@ -48,6 +49,10 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
 
     @Override
     public String merge(String fromBranch, String intoBranch) throws IOException {
+        return mergeVersion(fromBranch, intoBranch, () -> mergeCheckpointedVersions(fromBranch, intoBranch));
+    }
+
+    private String mergeCheckpointedVersions(String fromBranch, String intoBranch) throws IOException {
         WorkspaceContext context = resolveContext();
         DslGitRepository repository = repositoryFactory.resolveRepository(context);
         SemanticGitMergeService.MergeOutcome outcome = semanticMergeService.mergeBranches(

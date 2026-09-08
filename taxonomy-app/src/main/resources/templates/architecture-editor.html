@@ -21,6 +21,9 @@
     <p id="editorError" role="alert" hidden></p>
     <div class="editor-toolbar">
         <button id="editorRefresh" type="button" data-i18n="editor.refresh">Refresh from branch</button>
+        <button id="editorCheckpoint" type="button" disabled data-i18n="editor.checkpoint">Create checkpoint/version</button>
+        <button id="editorResumeCheckpoint" type="button" hidden data-i18n="editor.resumeCheckpoint">Resume checkpoint</button>
+        <button id="editorRecoverVersion" type="button" hidden data-i18n="editor.recoverVersion">Recover completed version</button>
         <button id="editorNew" type="button" disabled data-i18n="editor.new">New element</button>
         <button id="editorWorkspace" type="button" hidden data-i18n="editor.workspace">Create private workspace</button>
         <button id="editorRebuild" type="button" hidden data-i18n="editor.rebuild">Rebuild projection</button>
@@ -101,6 +104,11 @@
         <p data-i18n="editor.historyHelp">Undo and redo append audited commands. Eligibility is checked by the server during preview and acceptance. Git baseline revert remains a separate operation.</p>
         <ol id="editorHistory"></ol>
     </section>
+    <section aria-labelledby="editorVersionsTitle">
+        <h2 id="editorVersionsTitle" data-i18n="editor.versions">Version history — Git checkpoints</h2>
+        <p data-i18n="editor.versionsHelp">Stable architecture versions. Editing operations appear in the separate editor history.</p>
+        <ol id="editorVersions"></ol>
+    </section>
 </main>
 <dialog id="editorPreviewDialog" aria-labelledby="editorPreviewTitle">
     <h2 id="editorPreviewTitle" data-i18n="editor.previewTitle">Review semantic changes</h2>
@@ -108,7 +116,7 @@
     <div id="editorChanges"></div>
     <p id="editorPreviewError" role="alert"></p>
     <div class="editor-toolbar">
-        <button id="editorAccept" type="button" data-i18n="editor.accept">Accept and commit</button>
+        <button id="editorAccept" type="button" data-i18n="editor.accept">Accept operation</button>
         <button id="editorReapply" type="button" hidden data-i18n="editor.reapply">Refresh, compare and preview again</button>
         <button id="editorCancel" type="button" data-i18n="editor.cancel">Cancel</button>
     </div>

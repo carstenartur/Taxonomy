@@ -40,6 +40,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private final SemanticGitMergeService semanticMergeService;
     private final WorkspacePortfolioGitPort portfolioGitPort;
     private final WorkspaceContextResolver contextResolver;
+    private final WorkspaceArchitectureVersionPort editorVersions;
 
     public GitNativeSyncIntegrationService(SyncStateRepository syncStateRepository,
                                            UserWorkspaceRepository workspaceRepository,
@@ -47,7 +48,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
                                            DslGitRepositoryFactory repositoryFactory,
                                            SemanticGitMergeService semanticMergeService,
                                            WorkspacePortfolioGitPort portfolioGitPort,
-                                           WorkspaceContextResolver contextResolver) {
+                                           WorkspaceContextResolver contextResolver, WorkspaceArchitectureVersionPort editorVersions) {
         super(syncStateRepository, workspaceRepository, systemRepositoryService, repositoryFactory);
         this.syncStateRepository = syncStateRepository;
         this.workspaceRepository = workspaceRepository;
@@ -56,6 +57,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         this.semanticMergeService = semanticMergeService;
         this.portfolioGitPort = portfolioGitPort;
         this.contextResolver = contextResolver;
+        this.editorVersions = editorVersions;
     }
 
     @Override
@@ -108,6 +110,13 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private String pullAcrossRepositories(String username,
                                           WorkspaceContext context,
                                           String userBranch) throws IOException {
+        RepositoryContext selected = RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), userBranch, username);
+        return editorVersions.version(selected, "Integrate architecture versions from source", () -> pullAcrossRepositoriesVersion(username, context, userBranch));
+    }
+
+    private String pullAcrossRepositoriesVersion(String username,
+                                          WorkspaceContext context,
+                                          String userBranch) throws IOException {
         UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());
         SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);
         requireMatchingRepository(context, sourceMetadata);
@@ -151,6 +160,13 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     }
 
     private String publishAcrossRepositories(String username,
+                                             WorkspaceContext context,
+                                             String userBranch) throws IOException {
+        RepositoryContext selected = RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), userBranch, username);
+        return editorVersions.version(selected, "Publish architecture workspace", () -> publishAcrossRepositoriesVersion(username, context, userBranch));
+    }
+
+    private String publishAcrossRepositoriesVersion(String username,
                                              WorkspaceContext context,
                                              String userBranch) throws IOException {
         UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());
