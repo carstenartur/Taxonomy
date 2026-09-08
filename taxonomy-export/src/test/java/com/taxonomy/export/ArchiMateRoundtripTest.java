@@ -12,6 +12,8 @@ import com.taxonomy.model.RelationType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.api.parallel.ResourceLock;
+import org.junit.jupiter.api.parallel.Resources;
 
 import java.nio.charset.StandardCharsets;
 import java.util.*;
@@ -193,6 +195,45 @@ class ArchiMateRoundtripTest {
             byte[] bytes = extension.getBytes(StandardCharsets.UTF_8);
             assertDoesNotThrow(() -> ArchiMateSchema.parse(bytes));
             assertThrows(IllegalArgumentException.class, () -> reader.read(bytes));
+        }
+    }
+
+    @ParameterizedTest
+    @ValueSource(ints = {0, 1})
+    void schemaValidAdditionalViewPropertiesAreRejectedRatherThanLost(int viewIndex) {
+        String xml = new String(exporter.export(converter.convert(representative())), StandardCharsets.UTF_8);
+        String propertyId = ArchiMateIds.id("property", "consumer.reviewNotes");
+        xml = xml.replace("</propertyDefinitions>",
+                "<propertyDefinition identifier=\"" + propertyId + "\" type=\"string\">"
+                        + "<name>consumer.reviewNotes</name></propertyDefinition></propertyDefinitions>");
+        int viewStart = -1;
+        for (int index = 0; index <= viewIndex; index++) viewStart = xml.indexOf("<view ", viewStart + 1);
+        assertTrue(viewStart >= 0, "fixture must contain the selected view");
+        int propertiesEnd = xml.indexOf("</properties>", viewStart);
+        assertTrue(propertiesEnd > viewStart, "fixture must contain view identity properties");
+        String property = "<property propertyDefinitionRef=\"" + propertyId + "\">"
+                + "<value xml:lang=\"en\">Approved view: Grüße &amp; 漢字</value></property>";
+        byte[] extended = (xml.substring(0, propertiesEnd) + property + xml.substring(propertiesEnd))
+                .getBytes(StandardCharsets.UTF_8);
+        assertDoesNotThrow(() -> ArchiMateSchema.parse(extended), "the extension is valid Exchange XML");
+        var error = assertThrows(IllegalArgumentException.class, () -> reader.read(extended));
+        assertTrue(error.getMessage().contains("Unsupported view properties"));
+        assertTrue(error.getMessage().contains("consumer.reviewNotes"));
+    }
+
+    @Test
+    @ResourceLock(Resources.SYSTEM_PROPERTIES)
+    void exchangeParsingUsesTheSupportedJdkParserDespiteAConfiguredClasspathProvider() {
+        byte[] xml = exporter.export(converter.convert(representative()));
+        String setting = "javax.xml.parsers.DocumentBuilderFactory";
+        String original = System.getProperty(setting);
+        try {
+            System.setProperty(setting, "unavailable.thirdparty.DocumentBuilderFactory");
+            assertDoesNotThrow(() -> ArchiMateSchema.parse(xml));
+            assertEquals(representative(), reader.toDiagram(reader.read(xml)));
+        } finally {
+            if (original == null) System.clearProperty(setting);
+            else System.setProperty(setting, original);
         }
     }
 

@@ -65,7 +65,12 @@ public final class ArchiMateExchangeReader {
         }
         List<ArchiMateView> views = new ArrayList<>();
         for (Element view : children(child(child(root, "views"), "diagrams"), "view")) {
-            String viewId = identity(view, "view", properties(view, definitions));
+            Map<String, ArchiMateProperty> viewProperties = properties(view, definitions);
+            String viewId = identity(view, "view", viewProperties);
+            viewProperties.remove("taxonomy.id");
+            if (!viewProperties.isEmpty()) {
+                throw new IllegalArgumentException("Unsupported view properties in " + viewId + ": " + viewProperties.keySet());
+            }
             List<ArchiMateViewNode> nodes = new ArrayList<>();
             for (Element node : children(view, "node")) {
                 if (!"Element".equals(type(node))) throw new IllegalArgumentException("Unsupported diagram node type");
