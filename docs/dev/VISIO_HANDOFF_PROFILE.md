@@ -58,7 +58,7 @@ With Java 21 and the repository's Maven dependencies available:
 
 ```sh
 mvn -B -pl taxonomy-export -am -Dtest=VisioHandoffContractTest,VisioPackageBuilderTest,VisioPackageContractTest,VisioPackagePoiCompatibilityTest -Dsurefire.failIfNoSpecifiedTests=false test
-mvn -B -pl taxonomy-app -am -Dtest=ArchitectureVisioHandoffAcceptanceTest,ArchitectureSnapshotExportServiceTest,ArchitectureSnapshotSemanticFingerprintTest -Dsurefire.failIfNoSpecifiedTests=false test
+mvn -B -pl taxonomy-app -am -Dtest=ArchitectureVisioHandoffAcceptanceTest,ArchitectureSnapshotExportServiceTest,ArchitectureSnapshotExportSemanticFingerprintTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
 The tests cover native metadata reconstruction and cross-format canonical hashes, immutable authority/privacy boundaries, deterministic repeated and reordered input, malformed OPC/XML, style/glue references, two pages, empty diagrams, duplicate/long Unicode labels, 150 parallel connectors and a 1,000-element graph. Apache POI XDGF independently loads and renders both representative pages. It is supplementary evidence only: the observed Linux POI preview lacks Japanese/emoji glyphs and arrowheads, so it does not establish typography or directional rendering fidelity in Microsoft Visio. Endpoint direction is independently checked in native data and glue.
