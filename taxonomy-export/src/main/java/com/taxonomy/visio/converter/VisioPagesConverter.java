@@ -38,9 +38,9 @@ public class VisioPagesConverter implements Converter {
         for (int index = 0; index < document.getPages().size(); index++) {
             VisioPage page = document.getPages().get(index);
             writer.startNode("Page");
-            writer.addAttribute("ID", String.valueOf(index));
+            writer.addAttribute("ID", page.getId());
             writer.addAttribute("Name", page.getName());
-            writer.addAttribute("NameU", "TaxonomyPage." + index);
+            writer.addAttribute("NameU", "TaxonomyPage." + page.getId());
             writer.addAttribute("IsCustomName", "1");
             writer.addAttribute("IsCustomNameU", "1");
 

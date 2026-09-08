@@ -236,7 +236,7 @@ class VisioDiagramTests {
 
         VisioDocument doc = visioDiagramService.convert(model);
 
-        assertThat(doc.getPages()).hasSize(1);
+        assertThat(doc.getPages()).hasSize(2);
         assertThat(doc.getPages().get(0).getShapes()).hasSize(2);
         assertThat(doc.getPages().get(0).getConnects()).hasSize(1);
     }

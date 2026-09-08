@@ -140,7 +140,9 @@ public class ArchitectureWorkbenchService {
                 snapshot.summary().provider(), snapshot.summary().modelName(),
                 snapshot.summary().workspaceId(), snapshot.summary().branchName(),
                 snapshot.summary().commitSha(), diagram, scene, elements, relations,
-                new ArrayList<>(warnings));
+                new ArrayList<>(warnings), new ArchitectureWorkbenchDtos.SnapshotProvenance(
+                        snapshot.summary().requirementVersionId(), snapshot.summary().taxonomyFingerprint(),
+                        context.repositoryId()));
     }
 
     @Transactional(readOnly = true)

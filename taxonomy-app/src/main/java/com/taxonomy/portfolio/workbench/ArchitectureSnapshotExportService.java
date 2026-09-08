@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.export.VisioHandoffProfile;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.export.service.CanonicalDiagramExportService;
@@ -69,6 +70,11 @@ public class ArchitectureSnapshotExportService {
                 Format.VISIO_VSDX);
     }
 
+    @Transactional(readOnly = true)
+    public Artifact exportVisioBundle(Long projectId, String snapshotId, String username, WorkspaceContext context) {
+        return export(projectId, snapshotId, username, context, Format.VISIO_BUNDLE);
+    }
+
     private Artifact export(
             Long projectId,
             String snapshotId,
@@ -87,13 +93,12 @@ public class ArchitectureSnapshotExportService {
         verifyExactCoordinates(projectId, requestedSnapshotId, projection);
 
         DiagramModel canonicalDiagram = freeze(projection.diagram());
-        byte[] content = serialize(canonicalDiagram, format);
+        String graphFingerprint = fingerprint(canonicalDiagram);
+        byte[] content = serialize(canonicalDiagram, format, projection, graphFingerprint);
         if (content == null || content.length == 0) {
             throw PortfolioException.conflict(
                     "The canonical diagram exporter returned no content");
         }
-        String graphFingerprint = fingerprint(canonicalDiagram);
-
         return new Artifact(
                 format,
                 fileName(projection, format),
@@ -113,13 +118,15 @@ public class ArchitectureSnapshotExportService {
                 content);
     }
 
-    private byte[] serialize(DiagramModel canonicalDiagram, Format format) {
+    private byte[] serialize(DiagramModel canonicalDiagram, Format format, Projection projection, String graphFingerprint) {
         try {
             return switch (format) {
                 case ARCHIMATE_XML ->
                         diagramExportService.exportAsArchiMate(canonicalDiagram);
                 case VISIO_VSDX ->
-                        diagramExportService.exportAsVisio(canonicalDiagram);
+                        diagramExportService.exportAsVisio(canonicalDiagram, VisioSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint));
+                case VISIO_BUNDLE ->
+                        diagramExportService.exportAsVisioBundle(canonicalDiagram, VisioSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint));
             };
         } catch (IllegalArgumentException exception) {
             throw new PortfolioException(
@@ -324,7 +331,8 @@ public class ArchitectureSnapshotExportService {
         VISIO_VSDX(
                 "application/vnd.ms-visio.drawing",
                 "vsdx",
-                "visio-2012-opc-supported-subset-v1");
+                VisioHandoffProfile.ID),
+        VISIO_BUNDLE("application/zip", "visio.zip", VisioHandoffProfile.ID);
 
         private final String mediaType;
         private final String extension;

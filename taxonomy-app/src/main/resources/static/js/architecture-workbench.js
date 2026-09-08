@@ -853,6 +853,8 @@
     }
 
     function renderProvenance(data) {
+        const visioButton = document.getElementById('downloadArchitectureVisio');
+        if (visioButton) visioButton.disabled = false;
         const model = data.modelName ? '/' + data.modelName : '';
         const created = data.snapshotCreatedAt
             ? ' · ' + new Date(data.snapshotCreatedAt).toLocaleString()

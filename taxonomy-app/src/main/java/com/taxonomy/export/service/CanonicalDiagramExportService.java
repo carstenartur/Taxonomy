@@ -9,6 +9,7 @@ import com.taxonomy.export.ArchiMateXmlExporter;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioExportMetadata;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -47,10 +48,22 @@ public class CanonicalDiagramExportService {
     }
 
     public byte[] exportAsVisio(DiagramModel canonicalDiagram) {
+        return exportAsVisio(canonicalDiagram, VisioExportMetadata.unbound());
+    }
+
+    public byte[] exportAsVisio(DiagramModel canonicalDiagram, VisioExportMetadata metadata) {
+        return serializeVisio(canonicalDiagram, metadata, false);
+    }
+
+    public byte[] exportAsVisioBundle(DiagramModel canonicalDiagram, VisioExportMetadata metadata) {
+        return serializeVisio(canonicalDiagram, metadata, true);
+    }
+
+    private byte[] serializeVisio(DiagramModel canonicalDiagram, VisioExportMetadata metadata, boolean bundle) {
         DiagramModel diagram = requireCanonicalDiagram(canonicalDiagram);
-        VisioDocument document = visioDiagramService.convert(diagram);
+        VisioDocument document = visioDiagramService.convert(diagram, metadata);
         try {
-            return visioPackageBuilder.build(document);
+            return bundle ? visioPackageBuilder.buildBundle(document) : visioPackageBuilder.build(document);
         } catch (IOException exception) {
             throw new UncheckedIOException(
                     "Could not serialize the canonical diagram as VSDX",

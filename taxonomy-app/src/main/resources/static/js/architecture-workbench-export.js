@@ -19,5 +19,5 @@
         ArchitectureWorkbenchApi.archiMateUrl);
     bind(
         'downloadArchitectureVisio',
-        ArchitectureWorkbenchApi.visioUrl);
+        ArchitectureWorkbenchApi.visioBundleUrl);
 }());
