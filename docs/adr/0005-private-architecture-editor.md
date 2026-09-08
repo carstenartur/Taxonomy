@@ -40,6 +40,8 @@ Undo targets one of the actor's accepted editor commits; redo targets an accepte
 
 The UI lists the latest 50 scoped commands and asks the server to preview eligibility. It does not infer permission from cached history. Native text undo is limited to unaccepted form input; discarding a draft and semantic undo are distinct actions. Git baseline revert remains in the existing versioning workflow.
 
+Undo of a deletion restores the original block beside a surviving original neighbor, preserving source gaps and later unrelated block edits. If neither insertion boundary can be established safely, it reports `UNDO_CONFLICT` rather than relocating the restored object to the document end.
+
 ## Session, layout and delivery boundary
 
 `/architecture/editor` provides the private workflow. Existing `/architecture/workbench` routes and immutable analysis snapshots retain their behavior. Deep links pin repository, workspace, branch, commit and selection. Workspace query routing is explicitly propagated to reads, commands and exports. Each reload invalidates older read/preview results. After acceptance the UI loads the returned immutable commit. A moved branch returns structured HTTP 412; refresh/compare/repreview precedes explicit reacceptance. Ambiguous network failures retain the same command identity for a safe explicit retry.

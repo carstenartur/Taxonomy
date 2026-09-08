@@ -37,9 +37,11 @@ public class ArchitectureEditorProjection {
         model.getRelations().stream().filter(relation -> "CONTAINS".equals(relation.getRelationType()))
                 .forEach(relation -> parents.putIfAbsent(relation.getTargetId(), relation.getSourceId()));
         List<String> elementTypes = types();
+        Map<String, Integer> typeRanks = new java.util.HashMap<>();
+        for (int rank = 0; rank < elementTypes.size(); rank++) typeRanks.put(elementTypes.get(rank), rank);
         List<DiagramNode> nodes = model.getElements().stream().map(element -> new DiagramNode(
                 element.getId(), element.getTitle(), element.getType(), 0, false,
-                Math.max(0, elementTypes.indexOf(element.getType())), 0, false,
+                typeRanks.getOrDefault(element.getType(), 0), 0, false,
                 parents.get(element.getId()), false)).toList();
         List<DiagramEdge> edges = model.getRelations().stream().map(relation -> new DiagramEdge(
                 relation.getSourceId() + " " + relation.getRelationType() + " " + relation.getTargetId(),

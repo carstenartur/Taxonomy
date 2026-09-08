@@ -99,6 +99,31 @@ class ArchitectureDslCommandsTest {
     }
 
     @Test
+    void deletionUndoRestoresSourcePositionAndPreservesLaterUnrelatedEdits() {
+        String original = "# Prefix\n" + MODEL + "# Final annotation\n";
+        String deleted = commands.apply(original, new DeleteArchitectureElement("arch-system")).dsl();
+        assertThat(commands.inverse(deleted, original, deleted).dsl()).isEqualTo(original);
+        String later = commands.apply(deleted, new UpdateArchitectureElement("arch-component", null, Map.of("title", "Later title"))).dsl();
+        String restored = commands.inverse(later, original, deleted).dsl();
+        assertThat(restored).isEqualTo(original.replace("Ledger", "Later title"));
+        assertThat(commands.inverse(restored, later, restored).dsl()).isEqualTo(later);
+        String annotated = deleted.replace("}\n\n\n", "}\n# Outside note\n\n");
+        assertThat(annotated).isNotEqualTo(deleted);
+        assertThat(commands.inverse(annotated, original, deleted).dsl())
+                .isEqualTo(original.replace("}\n\nelement arch-system", "}\n# Outside note\nelement arch-system"));
+
+        String lastDeleted = commands.apply(original, new DeleteArchitectureElement("arch-component")).dsl();
+        assertThat(commands.inverse(lastDeleted, original, lastDeleted).dsl()).isEqualTo(original);
+        String changedBoundary = lastDeleted.replace("}\n\n# Final", "}\n# Edited boundary\n# Final");
+        assertThat(changedBoundary).isNotEqualTo(lastDeleted);
+        assertCode(() -> commands.inverse(changedBoundary, original, lastDeleted), "UNDO_CONFLICT");
+
+        String first = "# Prefix\nelement arch-first type System {\n  title: \"First\";\n}\n# Suffix\n";
+        String firstDeleted = commands.apply(first, new DeleteArchitectureElement("arch-first")).dsl();
+        assertThat(commands.inverse(firstDeleted, first, firstDeleted).dsl()).isEqualTo(first);
+    }
+
+    @Test
     void importedMultipleParentsCannotMakeMoveAFalseNoOp() {
         String invalid = MODEL + "element arch-other type System {\n  title: \"Other\";\n}\n"
                 + "relation arch-system CONTAINS arch-component {\n}\n"

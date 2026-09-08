@@ -70,7 +70,7 @@ public final class ArchitectureDslCommands {
                 && !change.id().startsWith("relation:"))) {
             throw problem("NOT_UNDOABLE", "targetCommit", "Target contains unsupported semantic objects");
         }
-        String next = ArchitectureSemanticPatch.inverse(current, original);
+        String next = ArchitectureSemanticPatch.inverse(current, before, original);
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(next);
         // Deletion inverses must not silently strand mappings, views or evidence added later.
         Map<String, BlockAst> currentBlocks = ArchitectureSemanticPatch.index(current);

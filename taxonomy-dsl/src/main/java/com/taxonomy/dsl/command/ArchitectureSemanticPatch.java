@@ -42,7 +42,7 @@ public final class ArchitectureSemanticPatch {
         return List.copyOf(changes);
     }
 
-    public static String inverse(String current, List<BlockChange> changes) {
+    public static String inverse(String current, String original, List<BlockChange> changes) {
         Map<String, BlockAst> currentBlocks = index(current);
         for (BlockChange change : changes) {
             String actual = raw(current, currentBlocks.get(change.id()));
@@ -54,9 +54,40 @@ public final class ArchitectureSemanticPatch {
         }
         String result = current;
         for (BlockChange change : changes) {
-            result = replaceRaw(result, index(result).get(change.id()), change.before());
+            BlockAst existing = index(result).get(change.id());
+            if (existing == null && change.before() != null) {
+                int insertion = restorationOffset(result, original, change.id());
+                result = result.substring(0, insertion) + change.before() + result.substring(insertion);
+            } else {
+                result = replaceRaw(result, existing, change.before());
+            }
         }
         return result;
+    }
+
+    /** Restore beside an original neighbor, preserving intervening source and later unrelated block edits. */
+    private static int restorationOffset(String current, String original, String id) {
+        Map<String, BlockAst> oldBlocks = index(original);
+        List<String> order = new ArrayList<>(oldBlocks.keySet());
+        int position = order.indexOf(id);
+        int[] target = range(original, oldBlocks.get(id));
+        Map<String, BlockAst> live = index(current);
+        String previous = position == 0 ? null : order.get(position - 1);
+        int oldLeft = previous == null ? 0 : range(original, oldBlocks.get(previous))[1];
+        String leftGap = original.substring(oldLeft, target[0]);
+        int liveLeft = previous == null ? 0 : live.containsKey(previous) ? range(current, live.get(previous))[1] : -1;
+        if (liveLeft >= 0 && current.startsWith(leftGap, liveLeft)) return liveLeft + leftGap.length();
+
+        if (position + 1 < order.size()) {
+            String next = order.get(position + 1);
+            if (live.containsKey(next)) {
+                String rightGap = original.substring(target[1], range(original, oldBlocks.get(next))[0]);
+                int insertion = range(current, live.get(next))[0] - rightGap.length();
+                if (insertion >= 0 && current.startsWith(rightGap, insertion)) return insertion;
+            }
+        }
+        throw new ArchitectureDslCommands.CommandProblem("UNDO_CONFLICT", id,
+                "The original insertion boundary changed; choose a new explicit placement", List.of(id));
     }
 
     public static Map<String, BlockAst> index(String source) {
