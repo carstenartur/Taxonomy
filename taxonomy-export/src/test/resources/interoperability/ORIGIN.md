@@ -15,8 +15,8 @@ IDREF. These three are deliberate negative schema tests, not silently fixed inpu
 from https://github.com/archimatetool/archi/tree/f757b06d5f75b5565786bb0679c75450cc3a577f
 under the MIT licence retained in `/archimate-3.1/LICENSE.archi.txt`.
 
-`archi-bendpoints.xml` is the view-connection/bendpoint example from the same pinned
-Archi test-data directory and licence. Product CI additionally imports the Taxonomy
+`archi-bendpoints.xml` is `bendpoint.test.xml` from the same pinned Archi test-data
+directory and licence. Product CI additionally imports the Taxonomy
 export into the official Archi 5.10.0 release and exports it again.
 
 `strictdoc-product.sdoc` is an original project-owned acceptance fixture. Product

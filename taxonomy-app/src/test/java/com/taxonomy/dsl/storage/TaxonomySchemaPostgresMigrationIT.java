@@ -142,11 +142,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(tableExists(dataSource, "editor_checkpoint")).isTrue();
         assertThat(columnExists(dataSource, "editor_operation", "before_dsl")).isTrue();
         assertThat(columnExists(dataSource, "editor_operation", "target_operation_id")).isTrue();
+        assertIntegrationSchema(dataSource);
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20");
     }
 
     @Test
@@ -220,7 +221,19 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20");
+        assertIntegrationSchema(dataSource);
+    }
+
+    private static void assertIntegrationSchema(DataSource dataSource) throws SQLException {
+        for (String table : List.of("interop_connection", "interop_operation", "interop_identity", "interop_checkpoint", "interop_event")) {
+            assertThat(tableExists(dataSource, table)).as(table).isTrue();
+            assertThat(columnExists(dataSource, table, "scope_id")).as(table + " exact scope").isTrue();
+        }
+        assertThat(columnExists(dataSource, "interop_operation", "result_file_json")).isTrue();
+        assertThat(columnExists(dataSource, "interop_operation", "review_fingerprint")).isTrue();
+        assertThat(columnExists(dataSource, "interop_identity", "row_version")).isTrue();
+        assertThat(columnExists(dataSource, "interop_checkpoint", "context_json")).isTrue();
     }
 
     @Test

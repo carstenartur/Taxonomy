@@ -36,7 +36,7 @@ public final class OslcRequirementsCodec {
             if (title.isBlank()) losses.add(new MappingLoss(subject.getURI(), "title", "REQUIREMENT_MAPPING_REQUIRED", LossDisposition.UNSUPPORTED, "Resource has no mapped title"));
             Statement description = subject.getProperty(model.createProperty(DCT + "description"));
             if (description != null && description.getObject().isLiteral() && RDF.dtXMLLiteral.getURI().equals(description.getLiteral().getDatatypeURI()))
-                body = ExchangeXml.parse(body.getBytes(StandardCharsets.UTF_8)).getDocumentElement().getTextContent();
+                body = xmlLiteralText(body);
             extensions.put("rdfXml", new String(serialize(evidence), StandardCharsets.UTF_8)); extensions.put("uri", subject.getURI());
             if (configuration != null) extensions.put("configuration", configuration);
             boolean requirement = subject.hasProperty(RDF.type, model.createResource(RM + "Requirement"));
@@ -66,10 +66,28 @@ public final class OslcRequirementsCodec {
             String existing = literal(subject, DCT + "description");
             Statement original = subject.getProperty(result.createProperty(DCT + "description"));
             if (original != null && original.getObject().isLiteral() && RDF.dtXMLLiteral.getURI().equals(original.getLiteral().getDatatypeURI()))
-                existing = ExchangeXml.parse(existing.getBytes(StandardCharsets.UTF_8)).getDocumentElement().getTextContent();
+                existing = xmlLiteralText(existing);
             if (!existing.equals(artifact.text())) replaceLiteral(subject, DCT + "description", artifact.text());
         }
         return serialize(result);
+    }
+    public List<MappingLoss> exportLosses(ExchangeDocument document) {
+        List<MappingLoss> losses = new ArrayList<>(document.losses());
+        for (Artifact artifact : document.artifacts()) if (artifact.extensions().containsKey("rdfXml")) {
+            Model model = parse(artifact.extensions().get("rdfXml").getBytes(StandardCharsets.UTF_8), URI.create(artifact.id()));
+            Resource subject = model.getResource(artifact.id()); Statement original = subject.getProperty(model.createProperty(DCT + "description"));
+            if (original != null && original.getObject().isLiteral() && RDF.dtXMLLiteral.getURI().equals(original.getLiteral().getDatatypeURI())
+                    && !xmlLiteralText(original.getString()).equals(artifact.text()))
+                losses.add(new MappingLoss(artifact.id(), "description", "OSLC_RICH_TEXT_REPLACED", LossDisposition.TRANSFORMED,
+                        "The edited canonical plain text replaces the original XML literal; old markup is retained only in operation evidence"));
+        }
+        return List.copyOf(losses);
+    }
+    private static String xmlLiteralText(String fragment) {
+        var document = ExchangeXml.parse(("<div xmlns=\"http://www.w3.org/1999/xhtml\">" + fragment + "</div>").getBytes(StandardCharsets.UTF_8));
+        if (ExchangeXml.all(document, "*", "*").stream().anyMatch(e -> !"http://www.w3.org/1999/xhtml".equals(e.getNamespaceURI())))
+            throw ExchangeXml.invalid("OSLC_XML_LITERAL_MAPPING", "Mapped descriptions support passive XHTML fragments only");
+        return document.getDocumentElement().getTextContent();
     }
     private static void replaceLiteral(Resource subject, String predicate, String value) {
         if (literal(subject, predicate).equals(value)) return;

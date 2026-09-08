@@ -50,4 +50,16 @@ class OslcRdfContractTest {
         assertThrows(ExchangeFormatException.class, () -> codec.read(bytes(rdf("<rm:Requirement><dcterms:title>Anonymous</dcterms:title></rm:Requirement>")), BASE, null, null));
         assertThrows(ExchangeFormatException.class, () -> codec.read(bytes(rdf("<rm:Requirement rdf:about=\"one\"><ex:structured rdf:parseType=\"Resource\"><ex:value>nested</ex:value></ex:structured></rm:Requirement>")), BASE, null, null));
     }
+
+    @Test void multipleXhtmlFragmentsRemainRdfLiteralsUntilAReviewedPlainTextEdit() {
+        byte[] source = bytes(rdf("<rm:Requirement rdf:about=\"one\"><dcterms:title>Title</dcterms:title><dcterms:description rdf:parseType=\"Literal\">"
+                + "<span xmlns=\"http://www.w3.org/1999/xhtml\">First</span><span xmlns=\"http://www.w3.org/1999/xhtml\">Second</span></dcterms:description></rm:Requirement>"));
+        var document = codec.read(source, BASE, null, null); Artifact original = document.artifacts().getFirst();
+        assertEquals("FirstSecond", original.text());
+        assertTrue(OslcRequirementsCodec.parse(source, BASE).isIsomorphicWith(OslcRequirementsCodec.parse(codec.write(document), BASE)));
+        Artifact edited = new Artifact(original.id(), original.kind(), original.type(), original.title(), "Reviewed plain text", original.attributes(), original.extensions());
+        var changed = new ExchangeDocument(document.profile(), "1", null, false, "", List.of(edited), List.of(), List.of(), document.metadata(), document.losses());
+        assertEquals("OSLC_RICH_TEXT_REPLACED", codec.exportLosses(changed).getFirst().code());
+        assertEquals("Reviewed plain text", codec.read(codec.write(changed), BASE, null, null).artifacts().getFirst().text());
+    }
 }

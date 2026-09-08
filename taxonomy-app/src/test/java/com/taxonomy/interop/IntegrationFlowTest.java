@@ -4,6 +4,9 @@ import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.exchange.ReqifExchangeCodec;
+import com.taxonomy.exchange.OslcRequirementsCodec;
+import com.taxonomy.interop.oslc.OslcProviderService;
+import com.taxonomy.interop.oslc.OslcRemoteProfiles;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.IntegrationService.*;
 import com.taxonomy.interop.persistence.IntegrationStore.Operation;
@@ -19,7 +22,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+@SpringBootTest(properties = "OSLC_REFERENCE_TOKEN=reference-fixture-token")
 class IntegrationFlowTest {
     @Autowired IntegrationService integrations;
     @Autowired ProjectPortfolioService projects;
@@ -28,6 +31,9 @@ class IntegrationFlowTest {
     @Autowired DslGitRepositoryFactory git;
     @Autowired ArchitectureEditorService editor;
     @Autowired EditorJournal journal;
+    @Autowired OslcProviderService provider;
+    @Autowired OslcRemoteProfiles remoteProfiles;
+    @Autowired com.taxonomy.interop.persistence.IntegrationStore store;
     private RepositoryContext context;
     private Long project;
     private UUID connection;
@@ -128,6 +134,93 @@ class IntegrationFlowTest {
         integrations.apply(context, connection, accept(returned));
         assertEquals(2, projects.listRequirements(project, context.username(), IntegrationDomainAdapter.workspace(context)).size(), "Returning a native export must not create a copy of the local requirement");
         assertEquals(binding.requirementId(), integrations.identities(context, connection).stream().filter(i -> i.externalId().equals(binding.externalId())).findFirst().orElseThrow().requirementId());
+    }
+
+    @Test void realOslcDiscoveryAndAuthorizedLinksKeepStableUrisAcrossProviderRename() throws Exception {
+        var scope = IntegrationDomainAdapter.workspace(context);
+        var published = projects.createRequirement(project, new CreateRequirementRequest("PUBLISHED", "Approved source", "Approved immutable text", RequirementStatus.APPROVED,
+                50, Criticality.MEDIUM, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED, context.username(), "Approved fixture", null), context.username(), scope);
+        var target = projects.createRequirement(project, new CreateRequirementRequest("TRACE-TARGET", "Internal target", "Internal body", RequirementStatus.DRAFT,
+                50, Criticality.MEDIUM, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED, context.username(), "Link target", null), context.username(), scope);
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        var base = java.net.URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/rm/");
+        OslcProviderService.Links links = path -> base.resolve(path.substring(1)).toString() + "?repositoryId=" + context.repositoryId();
+        String uri = links.uri("/projects/" + project + "/requirements/" + published.id());
+        var version = new java.util.concurrent.atomic.AtomicReference<>("\"v1\"");
+        var requests = new java.util.concurrent.atomic.AtomicInteger();
+        server.createContext("/rm/", exchange -> {
+            requests.incrementAndGet();
+            if (!"Bearer reference-fixture-token".equals(exchange.getRequestHeaders().getFirst("Authorization"))) {
+                exchange.sendResponseHeaders(401, -1); exchange.close(); return;
+            }
+            String expected = exchange.getRequestHeaders().getFirst("If-Match");
+            if (expected != null && !expected.equals(version.get())) { exchange.sendResponseHeaders(412, -1); exchange.close(); return; }
+            byte[] body = exchange.getRequestURI().getPath().endsWith("catalog") ? provider.catalog(context, links).xml()
+                    : provider.requirement(context, project, published.id(), null, links).xml();
+            exchange.getResponseHeaders().set("Content-Type", "application/rdf+xml"); exchange.getResponseHeaders().set("ETag", version.get());
+            exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body); exchange.close();
+        });
+        var previousProfiles = remoteProfiles.getRemotes();
+        remoteProfiles.setRemotes(Map.of("reference", new OslcRemoteProfiles.RemoteProfile(context.repositoryId(), "USER:" + context.username(), base,
+                "OSLC_REFERENCE_TOKEN", true, true)));
+        server.start();
+        try {
+            String head = git.resolveRepository(context).getHeadCommit(context.branch());
+            connection = integrations.create(context, new CreateConnection(UUID.randomUUID(), "OSLC reference", OslcRequirementsCodec.PROFILE, AuthorityMode.LINK_ONLY,
+                    new ExternalScope("Reference OSLC", base.toString(), null), project, "reference")).id();
+            Operation discovery = integrations.previewRemote(context, connection, new RemoteRequest(UUID.randomUUID(), integrations.overview(context, connection).current(), base.resolve("catalog").toString(), null));
+            assertTrue(discovery.document().metadata().get("discovery").contains("serviceProvider"));
+            integrations.cancel(context, connection, discovery.id(), "Discovery inspected before choosing resource");
+            var request = new RemoteRequest(UUID.randomUUID(), integrations.overview(context, connection).current(), uri, "\"v1\"");
+            Operation preview = integrations.previewRemote(context, connection, request);
+            String item = "REQUIREMENT:" + uri;
+            integrations.apply(context, connection, new ReviewedChangeSet(preview.id(), preview.fingerprint(), decisions(preview), "Reviewed existing trace target",
+                    Map.of(item, new MappingOverride(null, null, null, "requirement:TRACE-TARGET"))));
+            int reads = requests.get(); integrations.previewRemote(context, connection, request); assertEquals(reads, requests.get(), "Idempotent retry does not fetch a different resource version");
+            projects.updateRequirement(project, published.id(), new UpdateRequirementRequest("Renamed approved source", null, null, null, null, null, null), context.username(), scope);
+            version.set("\"v2\"");
+            Operation renamed = integrations.previewRemote(context, connection, new RemoteRequest(UUID.randomUUID(), integrations.overview(context, connection).current(), uri, "\"v2\""));
+            integrations.apply(context, connection, accept(renamed));
+            var mapping = integrations.identities(context, connection).stream().filter(i -> i.externalId().equals(item)).findFirst().orElseThrow();
+            assertEquals(target.id(), mapping.requirementId()); assertEquals("Renamed approved source", mapping.external().title());
+            assertEquals("Internal target", projects.getRequirement(project, target.id(), context.username(), scope).title());
+            assertEquals(head, git.resolveRepository(context).getHeadCommit(context.branch())); assertTrue(journal.read(context).operations().isEmpty());
+            var consumer = new OslcRequirementsCodec();
+            assertFalse(consumer.discover(provider.service(context, project, links).xml(), base, null, null).resources().isEmpty());
+            assertEquals(1, consumer.read(provider.query(context, project, 0, 20, links).xml(), base, null, null).artifacts().size(), "Unapproved target is not exposed");
+            assertThrows(IntegrationProblem.class, () -> provider.requirement(context, project, target.id(), null, links));
+            assertEquals(404, assertThrows(IntegrationProblem.class, () -> provider.authorize(RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), context.branch(), "foreign"), EditorJournal.scope(context))).status());
+        } finally { remoteProfiles.setRemotes(previousProfiles); server.stop(0); }
+    }
+
+    @Test void restartAfterGitRejectionReportsDurableConflictThroughRepositoryExceptionTranslation() throws Exception {
+        connection = integrations.create(context, new CreateConnection(UUID.randomUUID(), "Checkpoint recovery", "archimate-3.1", AuthorityMode.BIDIRECTIONAL,
+                new ExternalScope("Reference", "model", null), null, null)).id();
+        UUID operation = UUID.randomUUID(), checkpoint = UUID.nameUUIDFromBytes((operation + ":checkpoint").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        String rationale = "Reviewed before an independent Git writer moved the branch";
+        var metadata = new com.taxonomy.editor.ArchitectureCommandPort.Metadata(operation.toString(), operation.toString(), operation.toString(), rationale);
+        var checkpointMetadata = new com.taxonomy.editor.ArchitectureCommandPort.Metadata(checkpoint.toString(), operation.toString(), operation.toString(), rationale);
+        var before = editor.read(context, null); var initial = integrations.overview(context, connection).current();
+        var authority = new IntegrationContext(connection, AuthorityMode.BIDIRECTIONAL, new ExternalScope("Reference", "model", null), initial, context.username(), "archimate-3.1", "1");
+        var payload = new ExchangeDocument("archimate-3.1", "1", "v1", true, "", List.of(), List.of(), List.of(), Map.of(), List.of());
+        store.locked(context, connection, session -> {
+            session.preview(operation, authority, "INBOUND", "frozen-preview", payload, List.of());
+            session.beginReview(new ReviewedChangeSet(operation, "frozen-preview", Map.of(), rationale));
+            try {
+                var accepted = editor.acceptIntegration(context, before.context(), metadata, "review-fingerprint",
+                        List.of(new com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitectureElement("arch-durable-import", "System", Map.of("title", "Accepted import"))), null, checkpointMetadata);
+                session.applied(operation, new InternalState(accepted.repositoryId(), accepted.workspaceScopeKey(), accepted.branch(), accepted.commit(), accepted.revision(), null, initial.projectFingerprint()), payload, true);
+            } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            return null;
+        });
+        String moved = git.resolveRepository(context).commitDsl(context.branch(), before.dsl() + "\nelement arch-independent type System { title: \"Independent version\"; }\n", context.username(), "Independent Git version");
+        assertThrows(RuntimeException.class, () -> editor.resumeCheckpoint(context));
+        assertEquals(OperationStatus.CHECKPOINT_PENDING, integrations.operation(context, connection, operation).status(), "Simulated crash before integration acknowledgement");
+        assertEquals("CHECKPOINT_CONFLICT", assertThrows(IntegrationProblem.class, () -> integrations.retry(context, connection, operation)).code());
+        assertEquals(OperationStatus.CONFLICT, integrations.operation(context, connection, operation).status());
+        assertTrue(integrations.events(context, connection, operation).stream().anyMatch(e -> e.type().equals("MODEL_APPLIED_CHECKPOINT_CONFLICT")));
+        assertTrue(journal.read(context).state().dsl().contains("arch-durable-import"));
+        assertEquals(moved, git.resolveRepository(context).getHeadCommit(context.branch()));
     }
     private static byte[] file(String title, String text) {
         return new ReqifExchangeCodec().write(new ExchangeDocument(ReqifExchangeCodec.PROFILE, "1", null, true, "",

@@ -103,7 +103,10 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
   const viewport = page.viewportSize();
   for (const width of [720, 360]) {
     await page.setViewportSize({ width, height: 800 });
-    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth + 2), `Integration page overflows at ${width}px`);
+    const reflow = await page.evaluate(() => ({ width: document.documentElement.clientWidth, scrollWidth: document.documentElement.scrollWidth,
+      overflow: [...document.querySelectorAll('main *')].filter(node => !node.closest('.table-scroll') && node.getBoundingClientRect().right > document.documentElement.clientWidth + 2)
+        .slice(0, 10).map(node => ({ tag: node.tagName, id: node.id, right: node.getBoundingClientRect().right })) }));
+    assert.ok(reflow.scrollWidth <= reflow.width + 2, `Integration page overflows at ${width}px: ${JSON.stringify(reflow)}`);
     await page.locator('#integrationRefresh').focus();
     assert.ok(await page.locator('#integrationRefresh').evaluate(node => { const r = node.getBoundingClientRect(); return node.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }));
     measurements.reflow.push(width);

@@ -208,13 +208,19 @@ public class IntegrationService {
                 return session.operation(operation.id());
             });
         } catch (IOException | RuntimeException failure) {
-            if (failure instanceof ArchitectureDslCommands.CommandProblem problem && Set.of("CHECKPOINT_CONFLICT", "CHECKPOINT_REJECTED").contains(problem.code())) {
+            if (rejectedCheckpoint(failure)) {
                 store.locked(context, connectionId, session -> { session.checkpointConflict(operation.id()); return null; });
                 throw new IntegrationProblem("CHECKPOINT_CONFLICT", 409, "Accepted model changes and their snapshot are durable; reconcile the moved Git version explicitly before starting a new integration review");
             }
             store.locked(context, connectionId, session -> { session.failure(operation.id(), "CHECKPOINT_RETRY_REQUIRED"); return null; });
             throw new IntegrationProblem("CHECKPOINT_RETRY_REQUIRED", 503, "Model changes are durable; retry the pending checkpoint with the same operation identity");
         }
+    }
+    private static boolean rejectedCheckpoint(Throwable failure) {
+        // Spring's repository exception translation may wrap a durable CommandProblem on retry.
+        for (int depth = 0; failure != null && depth < 20; depth++, failure = failure.getCause())
+            if (failure instanceof ArchitectureDslCommands.CommandProblem problem && Set.of("CHECKPOINT_CONFLICT", "CHECKPOINT_REJECTED").contains(problem.code())) return true;
+        return false;
     }
     public Operation cancel(RepositoryContext context, UUID connectionId, UUID operationId, String rationale) {
         authorize(context, true); metadata(operationId, rationale);
@@ -286,6 +292,7 @@ public class IntegrationService {
             // Normalize generated types and hierarchy now. The downloaded file is derived solely from this durable snapshot.
             ExchangeDocument normalized = connector.previewInbound(new InboundRequest(authority, file.mediaType(), file.content(), outgoing.externalVersion(), true));
             List<MappingLoss> losses = new ArrayList<>(outgoing.losses());
+            file.losses().forEach(loss -> { if (!losses.contains(loss)) losses.add(loss); });
             normalized.losses().forEach(loss -> { if (!losses.contains(loss)) losses.add(loss); });
             outgoing = new ExchangeDocument(normalized.profile(), normalized.profileVersion(), normalized.externalVersion(), normalized.completeScope(), normalized.source(),
                     normalized.artifacts(), normalized.relations(), normalized.placements(), normalized.metadata(), losses);

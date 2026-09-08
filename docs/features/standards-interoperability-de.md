@@ -29,6 +29,12 @@ und entdeckt Ressourcen; er veröffentlicht keine Änderungen auf dem Fremdserve
 Es gibt keine automatisch gestartete Hintergrundsynchronisation. Die gemeldeten
 Fähigkeiten des Profils bestimmen die verfügbaren Aktionen.
 
+ReqIF dient dem portablen Anforderungsaustausch, OSLC dauerhaften Links und
+bedingtem Lesen, ArchiMate dem Architekturmodell-Austausch. Vollständige kanonische
+Architekturversionen zwischen Taxonomy-Repositories verwenden weiterhin die
+Git-Synchronisation mit expliziten Checkpoints. Zusätzliche Herstelleraktionen
+benötigen einen optionalen Adapter mit eigenen deklarierten Fähigkeiten.
+
 ReqIF 1.2 erhält Objektidentitäten, Datentypen, Attribute einschließlich XHTML und
 Aufzählungen, Spezifikationen, wiederholte Hierarchie-Vorkommen und Relationen.
 Anforderungen werden im bestehenden versionierten Projektportfolio gespeichert;

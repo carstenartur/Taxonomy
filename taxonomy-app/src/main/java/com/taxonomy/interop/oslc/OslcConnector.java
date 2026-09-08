@@ -15,6 +15,6 @@ public class OslcConnector implements LifecycleIntegrationConnector {
         return codec.read(request.content(), URI.create(request.context().externalScope().repository()), request.externalVersion(), request.context().externalScope().configuration());
     }
     @Override public ExchangeFile previewOutbound(OutboundRequest request) {
-        return new ExchangeFile("application/rdf+xml", "requirements.rdf", codec.write(request.document()), request.document().losses());
+        return new ExchangeFile("application/rdf+xml", "requirements.rdf", codec.write(request.document()), codec.exportLosses(request.document()));
     }
 }

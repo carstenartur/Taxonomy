@@ -11,6 +11,14 @@ resource. The preview identifies the exact internal and external states, changed
 objects, conflicts and mapping losses. Review every proposed change, provide a
 rationale and apply. Large previews have filtering and pages of 40 objects.
 
+| Need | Boundary |
+|---|---|
+| Portable project requirements, hierarchy and attributes | Reviewed ReqIF file exchange |
+| Stable lifecycle links and bounded remote reading | OSLC discovery/read/link |
+| Architecture elements, relations, folders and view evidence | ArchiMate model exchange |
+| Whole canonical architecture versions between Taxonomy repositories | Existing Git synchronization and explicit checkpoints |
+| Product actions unavailable through a supported standard | Optional connector with declared capabilities and tested version |
+
 | Mode | Inbound behavior | Outbound behavior |
 |---|---|---|
 | LINK_ONLY | Store trace evidence without changing the model | No publication |
@@ -100,6 +108,13 @@ version identity are immutable, but visibility follows current approval: an olde
 version is not a historical approval archive. Architecture version endpoints read
 an explicitly selected reachable Git checkpoint. The small provider does not
 implement arbitrary OSLC query expressions or general configuration management.
+
+The reference flow test serves the real scoped provider graph over HTTP and uses
+the configured consumer transport to discover and link its approved requirement.
+It checks stable URIs after a rename, credential scoping, idempotent read retry and
+non-disclosure of an unapproved target. Passive XHTML fragments in RDF XML literals
+retain their original graph representation until canonical text is edited; that
+replacement is reported as `OSLC_RICH_TEXT_REPLACED`.
 
 ## Security and operations
 

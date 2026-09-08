@@ -93,4 +93,7 @@ try {
   report.status = 'passed';
 } catch (error) {
   report.status = 'failed'; report.failure = error.message; console.error(error); process.exitCode = 1;
-} finally { await writeFile(path.join(out, 'evidence.json'), `${JSON.stringify(report, null, 2)}\n`); }
+} finally {
+  await writeFile(path.join(out, 'evidence.json'), `${JSON.stringify(report, null, 2)}\n`);
+  console.log(`INTEROPERABILITY_EVIDENCE ${JSON.stringify(report)}`);
+}
