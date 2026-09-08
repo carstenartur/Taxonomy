@@ -67,8 +67,10 @@ export async function runSystemInformationAcceptance({ page, evidence, outputDir
       assert.match(response.headers()['cache-control'] || '', /\bno-store\b/);
       const snapshot = await response.json();
       validateSystemSnapshot(snapshot);
-      await page.waitForFunction(() => document.getElementById('systemInformationContent')
-        ?.getAttribute('aria-busy') === 'false');
+      // Read the DOM state directly: idle WebKit pages can suspend animation-frame
+      // polling even after the HTTP response has rendered successfully.
+      await page.locator('#systemInformationContent[aria-busy="false"]')
+        .waitFor({ state: 'attached' });
       const content = page.locator('#systemInformationContent');
       const rendered = await content.innerText();
       assert.ok(rendered.includes(snapshot.database.product));
@@ -99,8 +101,8 @@ export async function runSystemInformationAcceptance({ page, evidence, outputDir
       validateSystemSnapshot(next);
       assert.equal(next.instanceId, snapshot.instanceId);
       assert.ok(Date.parse(next.timestamp) >= Date.parse(snapshot.timestamp));
-      await page.waitForFunction(() => document.getElementById('systemInformationContent')
-        ?.getAttribute('aria-busy') === 'false');
+      await page.locator('#systemInformationContent[aria-busy="false"]')
+        .waitFor({ state: 'attached' });
       assert.equal(requests, 2, 'manual refresh must not introduce polling or duplicate reads');
       await evidence.runAxe(`system-information-${locale}`);
       const dimensions = await panel.boundingBox();
