@@ -22,6 +22,8 @@ import java.util.zip.ZipInputStream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+@org.junit.jupiter.api.parallel.Isolated("Temporarily changes the default timezone to verify ZIP reproducibility")
+@org.junit.jupiter.api.parallel.Execution(org.junit.jupiter.api.parallel.ExecutionMode.SAME_THREAD)
 class VisioHandoffContractTest {
     @TempDir Path renderDirectory;
     private static final String NS = "http://schemas.microsoft.com/office/visio/2012/main";
@@ -141,6 +143,21 @@ class VisioHandoffContractTest {
         byte[] first = new VisioPackageBuilder().buildBundle(document);
         Collections.reverse(document.getLosses());
         assertArrayEquals(first, new VisioPackageBuilder().buildBundle(document));
+    }
+
+    @Test
+    void bundleBytesDoNotDependOnTheHostTimezone() throws Exception {
+        TimeZone original = TimeZone.getDefault();
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"));
+            byte[] expected = new VisioPackageBuilder().buildBundle(fixtureDocument());
+            for (String zone : List.of("Europe/Berlin", "Pacific/Honolulu", "Pacific/Kiritimati")) {
+                TimeZone.setDefault(TimeZone.getTimeZone(zone));
+                assertArrayEquals(expected, new VisioPackageBuilder().buildBundle(fixtureDocument()), zone);
+            }
+        } finally {
+            TimeZone.setDefault(original);
+        }
     }
 
     @Test void typedNumbersRejectUnboundedExpansionAndNonfiniteValues() {

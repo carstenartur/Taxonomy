@@ -34,7 +34,10 @@ public class VisioPackageBuilder {
     private static final Logger log = LoggerFactory.getLogger(VisioPackageBuilder.class);
     private static final String XML_DECLARATION =
             "<?xml version=\"1.0\" encoding=\"UTF-8\" standalone=\"yes\"?>\n";
-    private static final LocalDateTime ZIP_EPOCH = LocalDateTime.of(1980, 1, 1, 0, 0);
+    // The DOS minimum (Jan 1) is also ZipEntry's sentinel for an extended
+    // timestamp, whose conversion uses the default timezone. Jan 2 stays in
+    // the DOS range and emits no timezone-dependent extended timestamp.
+    private static final LocalDateTime ZIP_EPOCH = LocalDateTime.of(1980, 1, 2, 0, 0);
 
     /**
      * Builds a deterministic {@code .vsdx} byte array from a validated document.
