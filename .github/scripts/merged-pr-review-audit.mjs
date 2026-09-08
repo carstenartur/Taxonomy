@@ -151,7 +151,7 @@ export function auditMergedPullRequest({
     let humanConfirmation = null;
 
     if (!number || !mergedAt || !headSha
-            || !Number.isInteger(changedFiles) || changedFiles < 1) {
+            || !Number.isSafeInteger(changedFiles) || changedFiles < 1) {
         findings.push(finding('high', 'MERGED_PR_METADATA_INCOMPLETE',
             'Merged pull-request number, merge time, head SHA, or changed-file count is missing.'));
         return auditResult(
