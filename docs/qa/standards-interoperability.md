@@ -29,7 +29,13 @@ installed with its exact product version in an isolated application environment;
 the resolved product dependency versions are retained with each run. Neither
 product lane uses a mocked importer or exporter. The current gate also compares
 named Archi properties, connection identities/endpoints and attachment/bendpoint
-coordinates; future successful runs provide evidence for that stronger comparison.
+coordinates. The stronger check observed that Archi 5.10.0 replaces two collinear
+attachment points with their midpoint bendpoint. This is an explicit layout
+transformation, not lossless layout equivalence: `ARCHI_ATTACHMENTS_TO_BENDPOINT`
+records each original/resulting point set. Only this precisely checked transformation
+is accepted; unknown geometry changes fail. Taxonomy's own codec retains the
+original attachment evidence. Future runs retain these per-connection machine-readable
+losses alongside the product result.
 
 ## Acceptance ownership
 

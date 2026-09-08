@@ -89,8 +89,11 @@ try {
     const exported = path.join(out, 'taxonomy-archimate.xml'), returned = path.join(out, 'archi-returned.xml');
     await probe('archimate', 'export', fixture, exported);
     await run('xvfb-run', ['-a', executables[0], '-nosplash', '-consoleLog', '-application', 'com.archimatetool.commandline.app', '-data', path.join(out, 'archi-workspace'), '--abortOnException', '--xmlexchange.import', exported, '--xmlexchange.export', returned]);
-    await probe('archimate', 'compare', fixture, returned);
-    report.results.push({ product: 'Archi', version: '5.10.0', releaseSha256: archiSha, profile: 'archimate-3.1/1', direction: 'Archi fixture -> Taxonomy -> Archi -> Taxonomy', fixture: path.basename(fixture), inputSha256: await digest(fixture), outputSha256: await digest(returned), result: 'passed', knownLosses: ['This product fixture verifies identities, types, relation endpoints, view membership and geometry; it does not certify every Archi feature.'] });
+    const comparison = await probe('archimate', 'compare', fixture, returned);
+    const lossLine = comparison.split('\n').find(line => line.startsWith('PRODUCT_MAPPING_LOSSES '));
+    if (!lossLine) throw new Error('Product comparison did not return its layout loss report');
+    const mappingLosses = JSON.parse(lossLine.slice('PRODUCT_MAPPING_LOSSES '.length));
+    report.results.push({ product: 'Archi', version: '5.10.0', releaseSha256: archiSha, profile: 'archimate-3.1/1', direction: 'Archi fixture -> Taxonomy -> Archi -> Taxonomy', fixture: path.basename(fixture), inputSha256: await digest(fixture), outputSha256: await digest(returned), result: 'passed', mappingLosses, knownLosses: ['Archi 5.10.0 may replace two straight-line attachment points with their midpoint bendpoint; every such transformation is recorded. Unknown geometry changes fail. This fixture does not certify every Archi feature.'] });
   } catch (error) { report.results.push({ product: 'Archi', result: 'failed', failure: error.message }); }
   if (report.results.some(result => result.result !== 'passed')) throw new Error('At least one real product round trip failed; inspect execution.log');
   report.status = 'passed';

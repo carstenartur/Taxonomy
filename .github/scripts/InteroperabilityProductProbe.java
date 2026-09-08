@@ -13,8 +13,11 @@ public class InteroperabilityProductProbe {
             byte[] output = profile.equals("reqif") ? new ReqifExchangeCodec().write(before) : new ArchiMateExchangeCodec().write(before);
             Files.write(Path.of(args[3]), output); read(profile, Path.of(args[3]));
         } else if (action.equals("compare")) {
-            var expected = semantics(profile, before); var actual = semantics(profile, read(profile, Path.of(args[3])));
+            var after = read(profile, Path.of(args[3]));
+            var expected = semantics(profile, before); var actual = semantics(profile, after);
             if (!expected.equals(actual)) throw new AssertionError("Product changed the declared semantic subset: expected=" + expected + "; actual=" + actual);
+            var losses = profile.equals("archimate") ? compareConnectionGeometry(before, after) : List.<MappingLoss>of();
+            System.out.println("PRODUCT_MAPPING_LOSSES " + tools.jackson.databind.json.JsonMapper.builder().build().writeValueAsString(losses));
         } else throw new IllegalArgumentException(action);
         System.out.println(profile + " " + action + ": supported semantic subset verified");
     }
@@ -35,10 +38,7 @@ public class InteroperabilityProductProbe {
                 var connections = new TreeMap<String, Object>();
                 var xml = ExchangeXml.parse(artifact.extensions().get("connectionsXml").getBytes(StandardCharsets.UTF_8));
                 for (var connection : ExchangeXml.children(xml.getDocumentElement())) {
-                    var geometry = new ArrayList<String>();
-                    for (var point : ExchangeXml.children(connection)) if (Set.of("sourceAttachment", "targetAttachment", "bendpoint").contains(point.getLocalName()))
-                        geometry.add(point.getLocalName() + ":" + point.getAttribute("x") + ":" + point.getAttribute("y"));
-                    connections.put(connection.getAttribute("identifier"), List.of(connection.getAttribute("source"), connection.getAttribute("target"), connection.getAttribute("relationshipRef"), geometry));
+                    connections.put(connection.getAttribute("identifier"), List.of(connection.getAttribute("source"), connection.getAttribute("target"), connection.getAttribute("relationshipRef")));
                 }
                 result.put("connections:" + artifact.id(), connections);
             }
@@ -68,5 +68,39 @@ public class InteroperabilityProductProbe {
             result.put(name, ExchangeXml.semantic(ExchangeXml.xml(property)));
         });
         return result;
+    }
+    private record Point(String kind, java.math.BigDecimal x, java.math.BigDecimal y) {}
+    private static Map<String, List<Point>> geometry(ExchangeDocument document) {
+        var result = new TreeMap<String, List<Point>>();
+        for (var view : document.artifacts()) if (view.kind() == ArtifactKind.VIEW) {
+            var xml = ExchangeXml.parse(view.extensions().get("connectionsXml").getBytes(StandardCharsets.UTF_8));
+            for (var connection : ExchangeXml.children(xml.getDocumentElement())) {
+                var points = new ArrayList<Point>();
+                for (var point : ExchangeXml.children(connection)) if (Set.of("sourceAttachment", "targetAttachment", "bendpoint").contains(point.getLocalName()))
+                    points.add(new Point(point.getLocalName(), new java.math.BigDecimal(point.getAttribute("x")).stripTrailingZeros(), new java.math.BigDecimal(point.getAttribute("y")).stripTrailingZeros()));
+                result.put(view.id() + "/" + connection.getAttribute("identifier"), points);
+            }
+        }
+        return result;
+    }
+    private static List<MappingLoss> compareConnectionGeometry(ExchangeDocument before, ExchangeDocument after) {
+        var original = geometry(before); var returned = geometry(after); var losses = new ArrayList<MappingLoss>();
+        if (!original.keySet().equals(returned.keySet())) throw new AssertionError("Product changed view connection identities");
+        original.forEach((id, points) -> {
+            var actual = returned.get(id); if (points.equals(actual)) return;
+            // Observed in the installed Archi 5.10.0 importer/exporter, not a claim of lossless layout equivalence.
+            boolean known = points.size() == 2 && actual.size() == 1 && points.getFirst().kind().equals("sourceAttachment")
+                    && points.getLast().kind().equals("targetAttachment") && actual.getFirst().kind().equals("bendpoint");
+            if (known) {
+                var a = points.getFirst(); var b = points.getLast(); var point = actual.getFirst();
+                var two = java.math.BigDecimal.valueOf(2);
+                known = (a.x().compareTo(b.x()) == 0 || a.y().compareTo(b.y()) == 0)
+                        && point.x().compareTo(a.x().add(b.x()).divide(two)) == 0 && point.y().compareTo(a.y().add(b.y()).divide(two)) == 0;
+            }
+            if (!known) throw new AssertionError("Unrecognized product layout change for " + id + ": " + points + " -> " + actual);
+            losses.add(new MappingLoss(id, "attachments", "ARCHI_ATTACHMENTS_TO_BENDPOINT", LossDisposition.TRANSFORMED,
+                    "Archi 5.10.0 replaces the two straight-line attachment points with their midpoint bendpoint: " + points + " -> " + actual));
+        });
+        return losses;
     }
 }

@@ -44,6 +44,9 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.POST, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.POST, "/api/architecture/editor/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers(HttpMethod.GET, "/api/integrations/**", "/integrations", "/oslc/**").authenticated();
+        auth.requestMatchers(HttpMethod.HEAD, "/api/integrations/**", "/integrations", "/oslc/**").authenticated();
+        auth.requestMatchers(HttpMethod.OPTIONS, "/api/integrations/**").permitAll();
+        auth.requestMatchers(HttpMethod.OPTIONS, "/oslc/**").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/integrations", "/api/integrations/**").hasAnyRole("ARCHITECT", "ADMIN");
         auth.requestMatchers("/oslc/**", "/api/integrations/**").denyAll();
         auth.requestMatchers(HttpMethod.PUT, "/api/proposals/**").hasAnyRole("ARCHITECT", "ADMIN");

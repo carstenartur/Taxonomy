@@ -5,7 +5,7 @@ window.IntegrationApi = (function () {
         ['repositoryId', 'workspaceId', 'branch'].forEach(function (key) { if (current.has(key)) query.set(key, current.get(key)); });
         return query.toString();
     }
-    function url(path) { return '/api/integrations' + path + '?' + scope(); }
+    function url(path) { var query = scope(); return '/api/integrations' + path + (query ? '?' + query : ''); }
     return {
         read: function (path) { return window.TaxonomyApiClient.getJson(url(path)); },
         write: function (path, body) { return window.TaxonomyApiClient.request(url(path), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, { retries: 0 }).then(function (r) { return r.json(); }); },

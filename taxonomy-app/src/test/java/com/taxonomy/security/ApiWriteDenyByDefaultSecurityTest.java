@@ -31,6 +31,37 @@ class ApiWriteDenyByDefaultSecurityTest {
 
     @Autowired
     private MockMvc mockMvc;
+    @Autowired private com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService repositories;
+    @Autowired private com.taxonomy.workspace.service.RepositoryWorkspaceService workspaces;
+
+    @Test
+    @WithMockUser(roles = "USER")
+    void headUsesTheSameScopedReadAuthorityForIntegrationsAndOslc() throws Exception {
+        var repository = repositories.createRepository("HTTP read methods", "user", "", com.taxonomy.workspace.model.RepositoryVisibility.PRIVATE, "user", "draft");
+        var workspace = workspaces.createWorkingCopy("user", repository.getRepositoryId(), "draft", "Protocol", "");
+        var context = com.taxonomy.workspace.service.RepositoryContext.workspace(repository.getRepositoryId(), workspace.getWorkspaceId(), workspace.getCurrentBranch(), "user");
+        for (String path : java.util.List.of("/api/integrations/profiles", "/oslc/scopes/" + com.taxonomy.editor.persistence.EditorJournal.scope(context) + "/catalog"))
+            mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.head(path)
+                            .param("repositoryId", context.repositoryId()).param("workspaceId", context.workspaceId()).param("branch", context.branch()))
+                    .andExpect(status().isOk());
+    }
+
+    @Test
+    void integrationOptionsRetainsTheExistingPublicApiPreflightPolicy() throws Exception {
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.options("/api/integrations/profiles"))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    @WithMockUser(roles = "ADMIN")
+    void integrationAndOslcUnknownWritesRemainDeniedEvenForAdministrators() throws Exception {
+        for (String path : java.util.List.of("/api/integrations/unclassified", "/oslc/unclassified")) {
+            mockMvc.perform(put(path).with(csrf())).andExpect(status().isForbidden());
+            mockMvc.perform(patch(path).with(csrf())).andExpect(status().isForbidden());
+            mockMvc.perform(delete(path).with(csrf())).andExpect(status().isForbidden());
+        }
+        mockMvc.perform(post("/oslc/unclassified").with(csrf())).andExpect(status().isForbidden());
+    }
 
     @Test
     @WithMockUser(roles = "USER")
