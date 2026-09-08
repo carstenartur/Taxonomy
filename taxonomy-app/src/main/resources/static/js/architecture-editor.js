@@ -333,7 +333,14 @@
         try {
             await api.checkpoint(pendingCheckpoint); pendingCheckpoint = null;
             await load(context(), null);
-        } catch (error) { report(error); if (error.status === 412) pendingCheckpoint = null; }
+        } catch (error) {
+            report(error);
+            // Definitive client errors reject this intent. Timeouts, throttling and server/transport
+            // failures retain its identity because the result may still need an idempotent retry.
+            if (error.status >= 400 && error.status < 500 && error.status !== 408 && error.status !== 429) {
+                pendingCheckpoint = null;
+            }
+        }
         finally { busy = false; permissions(); }
     };
     el('editorResumeCheckpoint').onclick = async function () {

@@ -193,7 +193,37 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
         && !document.getElementById('editorCheckpoint').disabled);
       return value;
     }
+    // Inject known/ambiguous application-boundary failures, then complete the real HTTP checkpoint.
+    await page.evaluate(() => {
+      const original = window.ArchitectureEditorApi.checkpoint;
+      const attempts = [];
+      window.__editorCheckpointRecovery = { original, attempts };
+      window.ArchitectureEditorApi.checkpoint = async command => {
+        attempts.push(JSON.parse(JSON.stringify(command)));
+        const failure = [{ status: 409, code: 'CHECKPOINT_CONFLICT' },
+          { status: 422, code: 'INVALID_VALUE' }, { status: 503, code: 'GIT_UNAVAILABLE' }][attempts.length - 1];
+        if (failure) throw Object.assign(new Error('Checkpoint recovery acceptance'),
+          { status: failure.status, responseBody: { code: failure.code } });
+        return original(command);
+      };
+    });
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      await page.locator('#editorRationale').fill(`Checkpoint recovery attempt ${attempt}`);
+      await page.locator('#editorCheckpoint').click();
+      await page.waitForFunction(count => window.__editorCheckpointRecovery.attempts.length === count
+        && !document.getElementById('editorCheckpoint').disabled, attempt);
+    }
     const firstCheckpoint = await checkpoint();
+    const checkpointAttempts = await page.evaluate(() => {
+      const recovery = window.__editorCheckpointRecovery;
+      window.ArchitectureEditorApi.checkpoint = recovery.original;
+      delete window.__editorCheckpointRecovery;
+      return recovery.attempts;
+    });
+    assert.notEqual(checkpointAttempts[0].metadata.commandId, checkpointAttempts[1].metadata.commandId);
+    assert.notEqual(checkpointAttempts[1].metadata.commandId, checkpointAttempts[2].metadata.commandId);
+    assert.deepEqual(checkpointAttempts[2], checkpointAttempts[3], 'Ambiguous failures must retry the exact checkpoint');
+    measurements.checkpointRejectionAndRetryRecovery = true;
     assert.equal(await page.locator('#editorHistory li').count(), beforeOperations);
     assert.equal(await page.locator('#editorVersions li').count(), beforeVersions + 1);
     await select(system); await page.locator('#editorTitle').fill(`After checkpoint ${suffix}`);
