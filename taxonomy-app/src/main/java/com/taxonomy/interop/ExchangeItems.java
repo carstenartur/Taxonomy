@@ -71,10 +71,13 @@ public final class ExchangeItems {
             if (after.containsKey(key)) merged.put(key, incomingValues.get(key)); else merged.remove(key);
         }
         Map<String, String> attributes = new LinkedHashMap<>(), extensions = new LinkedHashMap<>();
-        for (String evidence : List.of("xml", "rdfXml", "lastChange")) if (incoming.extensions().containsKey(evidence))
-            extensions.put(evidence, incoming.extensions().get(evidence));
         merged.forEach((key, value) -> { if (key.startsWith("attribute:")) attributes.put(key.substring(10), value);
             if (key.startsWith("extension:")) extensions.put(key.substring(10), value); });
+        // Evidence describes the newly observed source, while mapped values above keep disjoint local edits.
+        for (String evidence : List.of("xml", "rdfXml", "lastChange")) {
+            extensions.remove(evidence);
+            if (incoming.extensions().containsKey(evidence)) extensions.put(evidence, incoming.extensions().get(evidence));
+        }
         return new Artifact(incoming.id(), incoming.kind(), merged.get("type"), merged.get("title"), merged.get("text"), attributes, extensions);
     }
     private static Map<String, String> rawFields(Artifact value) {

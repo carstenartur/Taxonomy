@@ -8,6 +8,8 @@ import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.exchange.ArchiMateExchangeCodec;
 import com.taxonomy.exchange.ReqifExchangeCodec;
+import com.taxonomy.exchange.OslcRequirementsCodec;
+import com.taxonomy.exchange.OslcRdf;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore.Connection;
 import com.taxonomy.interop.persistence.IntegrationStore.Identity;
@@ -64,6 +66,8 @@ public class IntegrationDomainAdapter {
                     String canonical = block.getHeaderTokens().get(2);
                     if (!canonical.equals(baseline.extensions().get("canonicalType"))) type = archimateType(canonical);
                     extensions.put("canonicalType", canonical); extensions.put("taxonomy:ElementType", canonical);
+                    ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().filter(p -> !Set.of("title", "description").contains(p))
+                            .forEach(p -> extensions.remove("taxonomy:" + p));
                     for (var property : block.getProperties()) if (ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(property.key())
                             && !Set.of("title", "description").contains(property.key())) extensions.put("taxonomy:" + property.key(), property.value());
                 }
@@ -94,10 +98,28 @@ public class IntegrationDomainAdapter {
                 List.of(), List.of(), List.of(), Map.of("identifier", "taxonomy-" + connection.id(), "title", connection.displayName()), List.of()) : previous;
         Map<String, Artifact> items = new TreeMap<>(current.items());
         if (connection.projectId() != null) {
-            Set<Long> known = mappings.stream().filter(m -> m.requirementId() != null).map(Identity::requirementId).collect(java.util.stream.Collectors.toSet());
-            for (RequirementView requirement : current.requirements()) if (!known.contains(requirement.id()) && requirement.status() != RequirementStatus.ARCHIVED) {
-                Artifact artifact = new Artifact("taxonomy-requirement-" + requirement.id(), ArtifactKind.REQUIREMENT, "taxonomy-object", requirement.title(),
-                        requirement.currentVersion().text(), Map.of(), Map.of()); items.put(ExchangeItems.key(artifact), artifact);
+            Map<Long, Identity> known = new LinkedHashMap<>(); mappings.stream().filter(m -> m.requirementId() != null).forEach(m -> known.put(m.requirementId(), m));
+            List<Artifact> added = new ArrayList<>();
+            for (RequirementView requirement : current.requirements()) if (requirement.status() != RequirementStatus.ARCHIVED) {
+                Identity existing = known.get(requirement.id());
+                if (existing != null && items.containsKey(existing.externalId())) continue;
+                boolean oslc = connection.connectorId().equals(OslcRequirementsCodec.PROFILE);
+                String id = existing != null ? existing.externalId().substring("REQUIREMENT:".length())
+                        : oslc ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
+                        : "taxonomy-requirement-" + requirement.id();
+                Artifact artifact = new Artifact(id, ArtifactKind.REQUIREMENT, oslc ? OslcRdf.RM + "Requirement" : "taxonomy-object", requirement.title(),
+                        requirement.currentVersion().text(), Map.of(), Map.of()); items.put(ExchangeItems.key(artifact), artifact); added.add(artifact);
+            }
+            if (connection.connectorId().equals(ReqifExchangeCodec.PROFILE) && previous != null && !added.isEmpty()) {
+                // Local additions have their own stable specification; imported multi-level hierarchies stay intact.
+                String specification = stableId(connection.id(), "export-local-requirements");
+                Artifact group = new Artifact(specification, ArtifactKind.SPECIFICATION, "taxonomy-specification-type", "Taxonomy additions", "", Map.of(), Map.of());
+                items.put(ExchangeItems.key(group), group); int position = 0;
+                for (Artifact artifact : added) {
+                    Artifact placement = new Artifact(stableId(connection.id(), "export-occurrence:" + artifact.id()), ArtifactKind.PLACEMENT, "placement", "", "", Map.of(),
+                            Map.of("container", specification, "parent", "", "artifact", artifact.id(), "position", Integer.toString(position++)));
+                    items.put(ExchangeItems.key(placement), placement);
+                }
             }
         } else {
             Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(document.dsl());
@@ -136,11 +158,26 @@ public class IntegrationDomainAdapter {
                 }
             }
         }
-        // Accepted requirements may have been archived locally; their occurrence/relation evidence is no longer part of this snapshot.
+        // Local removals have an explicit export loss report; never leave an orphaned hierarchy or view connection.
+        List<MappingLoss> losses = new ArrayList<>(template.losses());
         Set<String> present = items.values().stream().filter(a -> a.kind() != ArtifactKind.PLACEMENT && a.kind() != ArtifactKind.METADATA).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
-        items.entrySet().removeIf(e -> e.getValue().kind() == ArtifactKind.RELATION && (!present.contains(e.getValue().extensions().get("source")) || !present.contains(e.getValue().extensions().get("target"))));
-        items.entrySet().removeIf(e -> e.getValue().kind() == ArtifactKind.PLACEMENT && !e.getValue().extensions().get("artifact").isEmpty() && !present.contains(e.getValue().extensions().get("artifact")));
-        return ExchangeItems.expand(template, items);
+        boolean removed;
+        do {
+            Set<String> placements = items.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
+            removed = items.entrySet().removeIf(e -> {
+                Artifact item = e.getValue(); Map<String, String> extension = item.extensions();
+                boolean omit = item.kind() == ArtifactKind.RELATION && (!present.contains(extension.get("source")) || !present.contains(extension.get("target")))
+                        || item.kind() == ArtifactKind.PLACEMENT && (!value(extension.get("artifact")).isEmpty() && !present.contains(extension.get("artifact"))
+                        || !value(extension.get("parent")).isEmpty() && !placements.contains(extension.get("parent"))
+                        || !"organizations".equals(extension.get("container")) && !present.contains(extension.get("container")));
+                if (omit) losses.add(new MappingLoss(item.id(), "dependency", "LOCAL_DEPENDENCY_REMOVED", LossDisposition.TRANSFORMED,
+                        "Occurrence or relation is omitted because its canonical target was removed locally"));
+                return omit;
+            });
+        } while (removed);
+        ExchangeDocument result = ExchangeItems.expand(template, items);
+        return new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), result.completeScope(), result.source(), result.artifacts(),
+                result.relations(), result.placements(), result.metadata(), losses);
     }
 
     public AppliedRequirement applyRequirement(RepositoryContext context, Connection connection, Artifact value, Identity previous, String rationale) {
@@ -161,9 +198,10 @@ public class IntegrationDomainAdapter {
         }
         RequirementView before = projects.getRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context));
         boolean textChanged = !before.currentVersion().text().equals(value.text());
-        if (!before.title().equals(value.title()) || textChanged)
-            projects.updateRequirement(connection.projectId(), previous.requirementId(), new UpdateRequirementRequest(value.title(), textChanged ? RequirementStatus.DRAFT : null,
-                    null, null, null, textChanged ? ReviewStatus.PROPOSED : null, null), context.username(), workspace(context));
+        boolean requiresReview = textChanged || before.status() == RequirementStatus.ARCHIVED;
+        if (!before.title().equals(value.title()) || requiresReview)
+            projects.updateRequirement(connection.projectId(), previous.requirementId(), new UpdateRequirementRequest(value.title(), requiresReview ? RequirementStatus.DRAFT : null,
+                    null, null, null, requiresReview ? ReviewStatus.PROPOSED : null, null), context.username(), workspace(context));
         if (textChanged) projects.addRequirementVersion(connection.projectId(), previous.requirementId(), new CreateRequirementVersionRequest(value.text(), rationale, provenance), context.username(), workspace(context));
         return new AppliedRequirement(previous.businessIdentity(), previous.requirementId());
     }

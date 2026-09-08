@@ -77,6 +77,18 @@ class ExchangeStandardsTest {
             byte[] source = fixture(name); assertThrows(ExchangeFormatException.class, () -> reqif.read(source, null, true), name);
         }
     }
+    @Test void partialReviewCannotSilentlyDropAnOrphanedOrCyclicOccurrence() throws Exception {
+        var source = reqif.read(fixture("eclipse-rmf.reqif"), null, true);
+        Placement original = source.placements().getFirst();
+        for (String parent : List.of("missing-parent", original.id())) {
+            var placements = new ArrayList<>(source.placements());
+            placements.set(0, new Placement(original.id(), original.containerId(), parent, original.artifactId(), original.position(), original.attributes()));
+            assertThrows(ExchangeFormatException.class, () -> reqif.write(copy(source, source.source(), source.artifacts(), placements)));
+        }
+        var model = archimate.read(fixture("archi-bendpoints.xml"), null, true);
+        var orphan = new Placement("orphan", "unselected-view", null, model.placements().getFirst().artifactId(), 0, Map.of());
+        assertThrows(ExchangeFormatException.class, () -> archimate.write(copy(model, model.source(), model.artifacts(), List.of(orphan))));
+    }
     @Test void xxeUtf16DepthAndSizeAreRejectedBeforeAnyExternalAccess() {
         String entity = "<?xml version=\"1.0\"?><!DOCTYPE x [<!ENTITY leak SYSTEM \"file:///etc/passwd\">]><x>&leak;</x>";
         assertThrows(ExchangeFormatException.class, () -> ExchangeXml.parse(entity.getBytes(StandardCharsets.UTF_8)));

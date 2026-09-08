@@ -59,7 +59,11 @@ public class OslcTransport {
                 request.setHeader("If-Match", expectedVersion);
             }
             String configuration = connection.externalScope().configuration();
-            if (configuration != null) { URI.create(configuration); if (configuration.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException("Invalid configuration"); request.setHeader("Configuration-Context", configuration); }
+            if (configuration != null) {
+                URI uri = URI.create(configuration);
+                if (!uri.isAbsolute() || configuration.length() > 2048 || configuration.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException("Invalid configuration");
+                request.setHeader("Configuration-Context", configuration);
+            }
             if (profile.credentialEnvironmentVariable() != null) {
                 if (!profile.credentialEnvironmentVariable().matches("[A-Z][A-Z0-9_]{0,127}")) throw new IllegalStateException("Invalid credential reference");
                 String token = environment.getProperty(profile.credentialEnvironmentVariable());
@@ -111,7 +115,7 @@ public class OslcTransport {
             throw new IntegrationProblem("REMOTE_URI_REJECTED", 400, "Resource is outside the configured integration boundary");
         if (uri.getRawQuery() != null) for (String parameter : uri.getRawQuery().split("&")) {
             String name = URLDecoder.decode(parameter.split("=", 2)[0], java.nio.charset.StandardCharsets.UTF_8);
-            if (!Set.of("oslc.where", "oslc.select", "oslc.searchTerms", "oslc.prefix", "oslc.orderBy", "oslc.paging", "oslc.pageSize", "page", "pageToken", "configuration", "oslc_config.context").contains(name))
+            if (!Set.of("oslc.where", "oslc.select", "oslc.searchTerms", "oslc.prefix", "oslc.orderBy", "oslc.paging", "oslc.pageSize", "page", "pageToken", "configuration", "oslc_config.context", "repositoryId", "workspaceId", "branch").contains(name))
                 throw new IntegrationProblem("REMOTE_QUERY_REJECTED", 400, "Remote query parameter is outside the declared OSLC profile");
         }
         return uri.normalize();

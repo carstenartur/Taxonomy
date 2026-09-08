@@ -1,0 +1,53 @@
+package com.taxonomy.exchange;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.riot.*;
+import org.apache.jena.vocabulary.RDF;
+import org.junit.jupiter.api.Test;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+import static org.junit.jupiter.api.Assertions.*;
+
+class OslcRdfContractTest {
+    private final OslcRequirementsCodec codec = new OslcRequirementsCodec();
+    private static final URI BASE = URI.create("https://provider.example/rm/");
+    private static byte[] bytes(String value) { return value.getBytes(StandardCharsets.UTF_8); }
+    private static String rdf(String inner) { return "<rdf:RDF xmlns:rdf=\"" + OslcRdf.RDF + "\" xmlns:dcterms=\"" + OslcRdf.DCT + "\" xmlns:rm=\"" + OslcRdf.RM + "\" xmlns:ex=\"urn:profile:\">" + inner + "</rdf:RDF>"; }
+    @Test void typedAndDescriptionSpellingsResolveStableUrisAndPreserveRdfTerms() {
+        byte[] xml = bytes(rdf("<rdf:Description rdf:about=\"requirement-1\"><rdf:type rdf:resource=\"" + OslcRdf.RM + "Requirement\"/>"
+                + "<dcterms:title xml:lang=\"en\">Title</dcterms:title><dcterms:description>Body</dcterms:description>"
+                + "<ex:score rdf:datatype=\"http://www.w3.org/2001/XMLSchema#integer\">42</ex:score><ex:tag>A</ex:tag><ex:tag>B</ex:tag>"
+                + "<ex:link rdf:resource=\"linked\"/></rdf:Description>"));
+        var document = codec.read(xml, BASE, "\"etag-1\"", BASE.resolve("config-a").toString());
+        assertEquals("https://provider.example/rm/requirement-1", document.artifacts().getFirst().id());
+        assertFalse(document.completeScope()); assertEquals("\"etag-1\"", document.externalVersion());
+        assertTrue(OslcRequirementsCodec.parse(xml, BASE).isIsomorphicWith(OslcRequirementsCodec.parse(codec.write(document), BASE)));
+        Artifact original = document.artifacts().getFirst();
+        Artifact changed = new Artifact(original.id(), original.kind(), original.type(), "Renamed", original.text(), original.attributes(), original.extensions());
+        var result = codec.read(codec.write(new ExchangeDocument(document.profile(), "1", null, false, "", List.of(changed), List.of(), List.of(), document.metadata(), List.of())), BASE, null, null);
+        assertEquals(original.id(), result.artifacts().getFirst().id()); assertEquals("Renamed", result.artifacts().getFirst().title());
+        assertEquals(2, OslcRequirementsCodec.parse(codec.write(result), BASE).listObjectsOfProperty(ModelFactory.createDefaultModel().createProperty("urn:profile:tag")).toList().size());
+    }
+    @Test void referenceConsumerReadsAllProviderRepresentationsAsEquivalentRdf() {
+        String subject = BASE.resolve("requirements/7/versions/11").toString();
+        OslcRdf graph = new OslcRdf().type(subject, OslcRdf.RM + "Requirement").literal(subject, OslcRdf.DCT + "title", "Title <&> \"quoted\"")
+                .literal(subject, OslcRdf.DCT + "description", "Two\nlines").link(subject, OslcRdf.DCT + "isVersionOf", BASE.resolve("requirements/7").toString());
+        var expected = OslcRequirementsCodec.parse(graph.xml(), BASE);
+        for (var format : Map.of(Lang.TURTLE, graph.turtle(), Lang.JSONLD, graph.jsonLd()).entrySet()) {
+            var actual = ModelFactory.createDefaultModel(); RDFParser.fromString(new String(format.getValue(), StandardCharsets.UTF_8), format.getKey()).parse(actual);
+            assertTrue(expected.isIsomorphicWith(actual));
+        }
+        assertEquals(1, expected.listResourcesWithProperty(RDF.type, expected.createResource(OslcRdf.RM + "Requirement")).toList().size());
+    }
+    @Test void discoveryIsBoundedEvidenceAndDoesNotFollowLinksOrTreatOmissionsAsDeletion() {
+        byte[] xml = new OslcRdf().type(BASE.toString(), OslcRdf.OSLC + "ServiceProviderCatalog")
+                .link(BASE.toString(), OslcRdf.OSLC + "serviceProvider", BASE.resolve("provider").toString()).xml();
+        var discovery = codec.discover(xml, BASE, "v1", null);
+        assertEquals(List.of(BASE.resolve("provider").toString()), discovery.resources().stream().map(DiscoveryResource::uri).toList());
+        assertFalse(codec.read(xml, BASE, "v1", null).completeScope());
+        assertThrows(ExchangeFormatException.class, () -> codec.read(bytes(rdf("<rm:Requirement><dcterms:title>Anonymous</dcterms:title></rm:Requirement>")), BASE, null, null));
+        assertThrows(ExchangeFormatException.class, () -> codec.read(bytes(rdf("<rm:Requirement rdf:about=\"one\"><ex:structured rdf:parseType=\"Resource\"><ex:value>nested</ex:value></ex:structured></rm:Requirement>")), BASE, null, null));
+    }
+}

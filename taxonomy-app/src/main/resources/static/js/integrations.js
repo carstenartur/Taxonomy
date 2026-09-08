@@ -2,6 +2,7 @@
     'use strict';
     var api = window.IntegrationApi, overview = null, operation = null, profiles = [], decisions = {}, page = 0, busy = false, generation = 0;
     var pendingUpload = null, pendingExport = null, pendingCreation = null, pendingRemote = null, mappings = {};
+    var mayWrite = document.body.dataset.mayWrite === 'true';
     function el(id) { return document.getElementById(id); }
     function t(key) { return window.TaxonomyI18n.t('integration.' + key); }
     function option(select, value, text) { var node = document.createElement('option'); node.value = value; node.textContent = text; select.append(node); }
@@ -15,12 +16,15 @@
     }
     function controls() {
         document.querySelectorAll('button, #integrationConnection').forEach(function (node) { node.disabled = busy; });
-        var editable = operation && operation.status === 'PREVIEWED';
-        ['integrationApply', 'integrationCancel', 'integrationAccept', 'integrationReject'].forEach(function (id) { el(id).disabled = busy || !editable; });
-        el('integrationRetry').disabled = busy || !operation || !['CHECKPOINT_PENDING', 'FETCH_PENDING', 'FETCH_FAILED'].includes(operation.status);
+        document.querySelectorAll('#integrationCreate input, #integrationCreate select, #integrationCreate button, #integrationImport input, #integrationImport button, #integrationRemote input, #integrationRemote button').forEach(function (node) { node.disabled = busy || !mayWrite; });
+        var editable = mayWrite && operation && operation.status === 'PREVIEWED';
+        ['integrationApply', 'integrationAccept', 'integrationReject'].forEach(function (id) { el(id).disabled = busy || !editable; });
+        el('integrationCancel').disabled = busy || !mayWrite || !operation || !['PREVIEWED', 'FETCH_PENDING', 'FETCH_FAILED'].includes(operation.status);
+        el('integrationRetry').disabled = busy || !mayWrite || !operation || !['CHECKPOINT_PENDING', 'FETCH_PENDING', 'FETCH_FAILED'].includes(operation.status);
+        el('integrationRationale').disabled = busy || !mayWrite;
         el('integrationRemote').hidden = !overview || overview.connection.connectorId !== 'oslc-rm-2.1';
         el('integrationImport').hidden = overview && overview.connection.connectorId === 'oslc-rm-2.1';
-        el('integrationExport').disabled = busy || !overview;
+        el('integrationExport').disabled = busy || !mayWrite || !overview;
         el('integrationPrevious').disabled = busy || page === 0;
         el('integrationNext').disabled = busy || (page + 1) * 40 >= filtered().length;
         el('integrationDownload').hidden = !(operation && operation.status === 'COMPLETED' && operation.direction === 'OUTBOUND');
@@ -42,10 +46,10 @@
             text.textContent = JSON.stringify({ fields: change.fields, before: change.before, after: change.after }, null, 2); detail.append(summary, text); value.append(detail);
             var decision = document.createElement('td'), select = document.createElement('select'); select.setAttribute('aria-label', t('decision') + ' ' + change.externalId);
             option(select, '', t('choose')); ['ACCEPT', 'REJECT', 'TAKE_EXTERNAL', 'KEEP_INTERNAL'].forEach(function (key) { option(select, key, t('decision.' + key)); });
-            select.value = decisions[change.id] || ''; select.disabled = operation.status !== 'PREVIEWED';
+            select.value = decisions[change.id] || ''; select.disabled = !mayWrite || operation.status !== 'PREVIEWED';
             select.addEventListener('change', function () { if (select.value) decisions[change.id] = select.value; else delete decisions[change.id]; });
             decision.append(select);
-            if (change.after && operation.status === 'PREVIEWED') {
+            if (mayWrite && change.after && operation.status === 'PREVIEWED') {
                 var advanced = document.createElement('details'), heading = document.createElement('summary'); heading.textContent = t('remap'); advanced.append(heading);
                 var artifact = change.after;
                 var fields = artifact.kind === 'REQUIREMENT' && operation.context.profile === 'reqif-1.2' ? ['titleAttribute', 'textAttribute'] : ['ELEMENT', 'RELATION'].includes(artifact.kind) ? ['canonicalType'] : [];
@@ -105,7 +109,11 @@
         if (selected) el('integrationConnection').value = selected; else if (values.length) el('integrationConnection').value = values[0].id;
         await refresh();
     }
-    el('integrationConnection').addEventListener('change', function () { operation = null; decisions = {}; pendingUpload = null; pendingExport = null; link(null); run(refresh); renderChanges(); });
+    el('integrationConnection').addEventListener('change', function () {
+        operation = null; decisions = {}; mappings = {}; pendingUpload = null; pendingExport = null; pendingRemote = null;
+        ['integrationOperation', 'integrationProvenance', 'integrationEvents', 'integrationLosses', 'integrationDiscovery'].forEach(function (id) { el(id).replaceChildren(); });
+        el('integrationRationale').value = ''; link(null); run(refresh); renderChanges();
+    });
     el('integrationRefresh').addEventListener('click', function () { run(async function () { await refresh(); if (operation) await loadOperation(operation.id); }); });
     el('integrationCreate').addEventListener('submit', function (event) { event.preventDefault(); run(async function () {
         if (!pendingCreation) pendingCreation = { id: crypto.randomUUID(), name: el('connectionName').value, connectorId: el('connectionProfile').value, authority: el('connectionAuthority').value,
@@ -138,7 +146,13 @@
         var review = operation.review || { operationId: operation.id, previewFingerprint: operation.fingerprint, decisions: Object.assign({}, decisions), rationale: el('integrationRationale').value.trim(), mappings: Object.assign({}, mappings) };
         var id = operation.id;
         try { show(await api.write(prefix() + (operation.direction === 'OUTBOUND' ? '/files' : '/apply'), review)); }
-        finally { await refresh(); await loadOperation(id); }
+        finally {
+            await refresh(); await loadOperation(id);
+            if (operation.status === 'PREVIEWED' && operation.fingerprint === review.previewFingerprint) {
+                decisions = Object.assign({}, review.decisions); mappings = Object.assign({}, review.mappings);
+                el('integrationRationale').value = review.rationale; renderChanges();
+            }
+        }
     }); });
     el('integrationCancel').addEventListener('click', function () { run(async function () { show(await api.write(prefix() + '/operations/' + operation.id + '/cancel', { rationale: el('integrationRationale').value.trim() })); await refresh(); }); });
     el('integrationRetry').addEventListener('click', function () { run(async function () { show(await api.write(prefix() + '/operations/' + operation.id + '/retry', {})); await refresh(); await loadOperation(operation.id); }); });

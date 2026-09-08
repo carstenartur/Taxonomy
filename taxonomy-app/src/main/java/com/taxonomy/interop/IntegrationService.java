@@ -273,7 +273,11 @@ public class IntegrationService {
             ExchangeDocument outgoing = domain.exportDocument(connection, current, document, mappings, previous);
             ExchangeFile file = connector.previewOutbound(new OutboundRequest(authority, outgoing, request.expectedExternalVersion()));
             // Normalize generated types and hierarchy now. The downloaded file is derived solely from this durable snapshot.
-            outgoing = connector.previewInbound(new InboundRequest(authority, file.mediaType(), file.content(), outgoing.externalVersion(), true));
+            ExchangeDocument normalized = connector.previewInbound(new InboundRequest(authority, file.mediaType(), file.content(), outgoing.externalVersion(), true));
+            List<MappingLoss> losses = new ArrayList<>(outgoing.losses());
+            normalized.losses().forEach(loss -> { if (!losses.contains(loss)) losses.add(loss); });
+            outgoing = new ExchangeDocument(normalized.profile(), normalized.profileVersion(), normalized.externalVersion(), normalized.completeScope(), normalized.source(),
+                    normalized.artifacts(), normalized.relations(), normalized.placements(), normalized.metadata(), losses);
             List<IntegrationChange> changes = ExchangeItems.flatten(outgoing).entrySet().stream().map(e -> new IntegrationChange(e.getKey(), e.getKey(), ChangeKind.ADD,
                     ExchangeItems.fields(e.getValue()).keySet(), json.fingerprint(ExchangeItems.fields(e.getValue())), json.fingerprint(null), null, e.getValue(), List.of())).toList();
             return session.preview(request.operationId(), authority, "OUTBOUND", fingerprint, outgoing, changes);

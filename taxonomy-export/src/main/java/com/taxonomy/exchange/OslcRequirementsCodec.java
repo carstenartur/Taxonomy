@@ -86,7 +86,7 @@ public final class OslcRequirementsCodec {
         String safe = new String(ExchangeXml.write(ExchangeXml.parse(content)), StandardCharsets.UTF_8);
         try {
             Model model = ModelFactory.createDefaultModel();
-            RDFParser.fromString(safe).base(base.toString()).lang(Lang.RDFXML).errorHandler(ErrorHandlerFactory.errorHandlerStrictSilent()).parse(model);
+            RDFParser.fromString(safe, Lang.RDFXML).base(base.toString()).errorHandler(ErrorHandlerFactory.errorHandlerStrictSilent()).parse(model);
             if (model.size() > 100000) throw ExchangeXml.invalid("ITEM_LIMIT", "RDF response exceeds the triple limit");
             return model;
         } catch (Exception rejected) { throw ExchangeXml.invalid("INVALID_RDF", "Response does not satisfy the declared RDF/XML profile"); }

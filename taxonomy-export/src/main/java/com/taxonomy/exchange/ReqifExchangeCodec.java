@@ -101,6 +101,7 @@ public final class ReqifExchangeCodec {
     }
 
     public byte[] write(ExchangeDocument source) {
+        validatePlacements(source);
         if ((source.source() == null || source.source().isBlank()) && !source.metadata().containsKey("DATATYPES")) {
             ExchangeDocument initial = read(ExchangeXml.write(generated(source)), source.externalVersion(), source.completeScope());
             List<Placement> placements = source.placements();

@@ -25,7 +25,10 @@ public class IntegrationController {
     private final IntegrationService service;
     private final WorkspaceResolver resolver;
     public IntegrationController(IntegrationService service, WorkspaceResolver resolver) { this.service = service; this.resolver = resolver; }
-    @GetMapping("/integrations") public String page() { return "integrations"; }
+    @GetMapping("/integrations") public String page(jakarta.servlet.http.HttpServletRequest request, org.springframework.ui.Model model) {
+        model.addAttribute("mayWrite", request.isUserInRole("ADMIN") || request.isUserInRole("ARCHITECT"));
+        return "integrations";
+    }
     @GetMapping("/api/integrations/profiles") @ResponseBody
     public List<IntegrationDescriptor> profiles() { return service.profiles(resolver.resolveCurrentRepositoryContext()); }
     @GetMapping("/api/integrations") @ResponseBody

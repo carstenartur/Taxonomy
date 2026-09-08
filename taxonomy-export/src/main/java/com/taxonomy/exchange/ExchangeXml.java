@@ -42,6 +42,34 @@ public final class ExchangeXml {
             "xhtml-object-1.xsd", "xhtml-param-1.xsd", "xhtml-pres-1.xsd", "xhtml-table-1.xsd", "xhtml-text-1.xsd");
     private ExchangeXml() {}
 
+    /** Reviewed subsets must retain complete occurrence ancestry; an unreachable node is never silently dropped. */
+    public static void validatePlacements(com.taxonomy.extension.api.integration.IntegrationContracts.ExchangeDocument document) {
+        var placements = new java.util.HashMap<String, com.taxonomy.extension.api.integration.IntegrationContracts.Placement>();
+        Set<String> containers = new java.util.HashSet<>(), objects = new java.util.HashSet<>();
+        if (ArchiMateExchangeCodec.PROFILE.equals(document.profile())) containers.add("organizations");
+        for (var artifact : document.artifacts()) {
+            objects.add(artifact.id());
+            if (artifact.kind() == com.taxonomy.extension.api.integration.IntegrationContracts.ArtifactKind.SPECIFICATION
+                    || artifact.kind() == com.taxonomy.extension.api.integration.IntegrationContracts.ArtifactKind.VIEW) containers.add(artifact.id());
+        }
+        document.relations().forEach(relation -> objects.add(relation.id()));
+        for (var placement : document.placements()) if (placements.putIfAbsent(placement.id(), placement) != null)
+            throw invalid("DUPLICATE_IDENTITY", "Duplicate occurrence identity");
+        for (var placement : document.placements()) {
+            if (!containers.contains(placement.containerId()) || placement.position() < 0
+                    || placement.artifactId() != null && !placement.artifactId().isEmpty() && !objects.contains(placement.artifactId()))
+                throw invalid("HIERARCHY_REFERENCE", "A reviewed occurrence has a missing container or target");
+            Set<String> ancestry = new java.util.HashSet<>(); var node = placement;
+            while (node != null) {
+                if (!ancestry.add(node.id()) || ancestry.size() > MAX_DEPTH) throw invalid("HIERARCHY_CYCLE", "Occurrence ancestry is cyclic or exceeds the depth limit");
+                String parent = node.parentId(); if (parent == null) break;
+                node = placements.get(parent);
+                if (node == null || !node.containerId().equals(placement.containerId()))
+                    throw invalid("HIERARCHY_REFERENCE", "A reviewed occurrence has a missing or incompatible parent");
+            }
+        }
+    }
+
     /** Namespace-aware semantic comparison; formatting and XML prefix choices are not model changes. */
     public static String semantic(String source) {
         StringBuilder result = new StringBuilder(); semantic(parse(source.getBytes(StandardCharsets.UTF_8)).getDocumentElement(), result); return result.toString();

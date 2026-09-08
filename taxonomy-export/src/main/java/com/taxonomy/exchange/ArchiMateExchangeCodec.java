@@ -88,6 +88,7 @@ public final class ArchiMateExchangeCodec {
     }
 
     public byte[] write(ExchangeDocument source) {
+        validatePlacements(source);
         Document doc = source.source() == null || source.source().isBlank()
                 ? parse(("<model xmlns=\"" + NS + "\" xmlns:xsi=\"" + XSI + "\" identifier=\"" + safeId(source.metadata().getOrDefault("identifier", "taxonomy-model")) + "\"/>").getBytes(StandardCharsets.UTF_8))
                 : parse(source.source().getBytes(StandardCharsets.UTF_8));

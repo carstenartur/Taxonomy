@@ -32,6 +32,9 @@ public class OslcProviderController {
         return response(scope, request, (c, links) -> service.requirement(c, project, requirement, version, links));
     }
     @GetMapping("/shapes/requirement") public ResponseEntity<byte[]> shape(@PathVariable String scope, HttpServletRequest request) { return response(scope, request, (c, links) -> service.shape(links)); }
+    @GetMapping("/configurations/current") public ResponseEntity<byte[]> configuration(@PathVariable String scope, HttpServletRequest request) {
+        return response(scope, request, (c, links) -> service.configuration(c, links));
+    }
     @GetMapping("/architecture/versions/{commit}") public ResponseEntity<byte[]> architecture(@PathVariable String scope, @PathVariable String commit, HttpServletRequest request) {
         return response(scope, request, (c, links) -> { try { return service.architectureVersion(c, commit, links); } catch (IOException failure) { throw new IntegrationProblem("VERSION_UNAVAILABLE", 503, "Architecture version is temporarily unavailable"); } });
     }
@@ -44,19 +47,45 @@ public class OslcProviderController {
         String base = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString() + "/oslc/scopes/" + scope;
         OslcProviderService.Links links = path -> UriComponentsBuilder.fromUriString(base + path)
                 .queryParam("repositoryId", context.repositoryId()).queryParam("workspaceId", context.workspaceId()).queryParam("branch", context.branch()).build().encode().toUriString();
+        String configuration = links.uri("/configurations/current");
+        if (request.getHeader("Configuration-Context") != null && !configuration.equals(request.getHeader("Configuration-Context")))
+            throw new IntegrationProblem("CONFIGURATION_UNAVAILABLE", 404, "Requested configuration is not available in this scope");
         String type = negotiate(request.getHeader(HttpHeaders.ACCEPT)); OslcRdf graph = resource.read(context, links);
         byte[] body = switch (type) { case "text/turtle" -> graph.turtle(); case "application/ld+json" -> graph.jsonLd(); default -> graph.xml(); };
         String etag = "\"" + ReqifExchangeCodec.digest(body) + "\"";
-        var response = ResponseEntity.status(etag.equals(request.getHeader(HttpHeaders.IF_NONE_MATCH)) ? HttpStatus.NOT_MODIFIED : HttpStatus.OK)
+        if (request.getHeader(HttpHeaders.IF_MATCH) != null && !matches(request.getHeader(HttpHeaders.IF_MATCH), etag, false))
+            throw new IntegrationProblem("RESOURCE_VERSION_CHANGED", 412, "Resource no longer has the expected version");
+        boolean unchanged = matches(request.getHeader(HttpHeaders.IF_NONE_MATCH), etag, true);
+        var response = ResponseEntity.status(unchanged ? HttpStatus.NOT_MODIFIED : HttpStatus.OK)
                 .header(HttpHeaders.CONTENT_TYPE, type).header("OSLC-Core-Version", "3.0").header(HttpHeaders.ETAG, etag)
+                .header("Configuration-Context", configuration)
                 .header(HttpHeaders.VARY, "Accept, Authorization, Configuration-Context").header(HttpHeaders.CACHE_CONTROL, "private, no-cache").header("X-Content-Type-Options", "nosniff");
-        return response.body(etag.equals(request.getHeader(HttpHeaders.IF_NONE_MATCH)) ? null : body);
+        return response.body(unchanged ? null : body);
+    }
+    static boolean matches(String condition, String etag, boolean weak) {
+        if (condition == null) return false;
+        for (String token : condition.split(",")) {
+            String value = token.strip();
+            if (weak && value.startsWith("W/")) value = value.substring(2);
+            if (value.equals("*") || value.equals(etag)) return true;
+        }
+        return false;
     }
     public static String negotiate(String accept) {
         List<MediaType> requested = accept == null ? List.of(MediaType.ALL) : MediaType.parseMediaTypes(accept);
-        List<MediaType> ordered = new ArrayList<>(requested); ordered.sort(Comparator.comparingDouble(MediaType::getQualityValue).reversed());
-        for (MediaType candidate : ordered) if (candidate.getQualityValue() > 0) for (String supported : List.of("application/rdf+xml", "text/turtle", "application/ld+json"))
-            if (candidate.isCompatibleWith(MediaType.parseMediaType(supported))) return supported;
+        String best = null; double quality = 0;
+        for (String supported : List.of("application/rdf+xml", "text/turtle", "application/ld+json")) {
+            MediaType representation = MediaType.parseMediaType(supported), match = null;
+            int specificity = -1;
+            for (MediaType candidate : requested) if (candidate.isCompatibleWith(representation)) {
+                int rank = candidate.isWildcardType() ? 0 : candidate.isWildcardSubtype() ? 1 : 2;
+                if (rank > specificity || rank == specificity && match != null && candidate.getQualityValue() > match.getQualityValue()) {
+                    specificity = rank; match = candidate;
+                }
+            }
+            if (match != null && match.getQualityValue() > quality) { quality = match.getQualityValue(); best = supported; }
+        }
+        if (best != null) return best;
         throw new IntegrationProblem("UNSUPPORTED_REPRESENTATION", 406, "Supported representations are RDF/XML, Turtle and JSON-LD");
     }
     @ExceptionHandler(IntegrationProblem.class) public ResponseEntity<Map<String, String>> problem(IntegrationProblem failure) { return ResponseEntity.status(failure.status()).body(Map.of("code", failure.code(), "message", failure.getMessage())); }

@@ -35,7 +35,7 @@ public class IntegrationStore {
     public record Operation(UUID id, UUID connectionId, IntegrationContext context, String direction, OperationStatus status,
                             String fingerprint, long connectionRevision, ExchangeDocument document, List<IntegrationChange> changes,
                             ReviewedChangeSet review, String reviewFingerprint, String resultCommit, Long resultRevision,
-                            ExchangeDocument resultDocument, InternalState resultState, ExchangeFile resultFile, String failureCode, Instant createdAt) {}
+                            ExchangeDocument resultDocument, InternalState resultState, @com.fasterxml.jackson.annotation.JsonIgnore ExchangeFile resultFile, String failureCode, Instant createdAt) {}
     public record OperationSummary(UUID id, UUID connectionId, String direction, OperationStatus status, String fingerprint,
                                    String resultCommit, Long resultRevision, String failureCode, Instant createdAt) {}
     public record Identity(String externalId, String businessIdentity, Long requirementId, String externalVersion,

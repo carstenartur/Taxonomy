@@ -49,7 +49,14 @@ public class OslcProviderService {
                 .type(query, OSLC + "QueryCapability").literal(query, DCT + "title", "Approved current requirements")
                 .link(query, OSLC + "queryBase", links.uri("/projects/" + projectId + "/requirements"))
                 .link(query, OSLC + "resourceType", RM + "Requirement").link(query, OSLC + "resourceShape", links.uri("/shapes/requirement"));
+        graph.link(provider, "http://open-services.net/ns/config#configuration", links.uri("/configurations/current"));
         return graph;
+    }
+    public OslcRdf configuration(RepositoryContext context, Links links) {
+        String uri = links.uri("/configurations/current");
+        return new OslcRdf().type(uri, "http://open-services.net/ns/config#Stream")
+                .literal(uri, DCT + "title", "Current approved requirements")
+                .literal(uri, TAX + "repositoryId", context.repositoryId()).literal(uri, TAX + "branch", context.branch());
     }
     public OslcRdf query(RepositoryContext context, long projectId, int page, int pageSize, Links links) {
         if (page < 0 || pageSize < 1 || pageSize > 100 || page > 100000) throw new IllegalArgumentException("Query page is outside supported bounds");

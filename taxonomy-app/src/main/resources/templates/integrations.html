@@ -6,7 +6,7 @@
     <title th:text="#{integration.title}">Tool integrations</title>
     <link rel="stylesheet" th:href="@{/css/integrations.css}" href="/css/integrations.css"/>
 </head>
-<body>
+<body th:attr="data-may-write=${mayWrite}">
 <a href="#integrationReview" class="skip" data-i18n="integration.skip">Skip to review</a>
 <header><a th:href="@{/}" href="/">Taxonomy</a><h1 data-i18n="integration.title">Tool integrations</h1>
     <a th:href="@{/projects}" href="/projects" data-i18n="integration.projects">Projects</a>
