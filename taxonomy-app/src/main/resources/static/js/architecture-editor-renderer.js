@@ -6,7 +6,8 @@ window.ArchitectureEditorRenderer = function (element, onSelect, onRelation, onS
     var markerSequence = (window.ArchitectureEditorRenderer.markerSequence || 0) + 1;
     window.ArchitectureEditorRenderer.markerSequence = markerSequence;
     var markerId = 'editorArrow-' + markerSequence;
-    svg.append('defs').append('marker').attr('id', markerId).attr('viewBox', '0 0 10 10')
+    var definitions = svg.append('defs');
+    definitions.append('marker').attr('id', markerId).attr('viewBox', '0 0 10 10')
         .attr('refX', 9).attr('refY', 5).attr('markerWidth', 7).attr('markerHeight', 7).attr('orient', 'auto')
         .append('path').attr('d', 'M0,0 L10,5 L0,10 Z').attr('fill', 'context-stroke');
     var edges = svg.append('g');
@@ -70,17 +71,23 @@ window.ArchitectureEditorRenderer = function (element, onSelect, onRelation, onS
         var node = scene.nodes.find(function (candidate) { return candidate.id === selected; });
         if (node) svg.call(zoom.transform, d3.zoomIdentity.translate(500 - node.x - node.width / 2, 210 - node.y - node.height / 2));
     }
-    element.addEventListener('keydown', function (event) {
+    function onKeyDown(event) {
         var moves = { ArrowLeft: [60, 0], ArrowRight: [-60, 0], ArrowUp: [0, 60], ArrowDown: [0, -60] };
-        if (event.target !== element) return;
+        if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey) return;
         if (moves[event.key]) { event.preventDefault(); svg.call(zoom.translateBy, moves[event.key][0] / transform.k, moves[event.key][1] / transform.k); }
         if (event.key === '+' || event.key === '-') { event.preventDefault(); svg.call(zoom.scaleBy, event.key === '+' ? 1.4 : 1 / 1.4); }
-    });
+    }
+    element.addEventListener('keydown', onKeyDown);
     return {
         render: function (value, selection) { scene = value; selected = selection; draw(); },
         select: function (id) { selected = id; draw(); },
         fit: fit, focus: focus,
         zoom: function (factor) { svg.call(zoom.scaleBy, factor); },
-        destroy: function () { if (frame !== null) cancelAnimationFrame(frame); svg.on('.zoom', null); }
+        destroy: function () {
+            if (frame !== null) cancelAnimationFrame(frame);
+            element.removeEventListener('keydown', onKeyDown);
+            svg.on('.zoom', null);
+            nodes.remove(); edges.remove(); definitions.remove();
+        }
     };
 };
