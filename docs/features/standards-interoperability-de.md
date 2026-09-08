@@ -18,6 +18,11 @@ Konflikte und den Verlustbericht. Jede Änderung braucht eine Entscheidung; die
 | PUBLISH_TARGET | Ausschließlich geprüfter Export |
 | BIDIRECTIONAL | Dreifacher Zustandsvergleich, geprüfte Änderungen und explizite Löschentscheidungen |
 
+Bei `LINK_ONLY` kann die Prüfung ein bestehendes Ziel ausdrücklich als
+`requirement:<Schlüssel>` im ausgewählten Projekt oder `element:<ID>` im Workspace
+angeben. Der Server prüft Existenz und Berechtigung. Die Verknüpfung dokumentiert
+die Herkunft, ohne Felder des Ziels zu überschreiben.
+
 Ein Dateidownload bestätigt keine Übernahme durch ein Fremdsystem. Die
 Dateiadapter schreiben nicht auf einen Herstellerserver. Der OSLC-Consumer liest
 und entdeckt Ressourcen; er veröffentlicht keine Änderungen auf dem Fremdserver.
@@ -45,6 +50,15 @@ Textversionen und explizite Architekturversionen als RDF/XML, Turtle oder JSON-L
 Der Consumer verarbeitet RDF/XML. Strukturierte Blank-Node-Attribute benötigen
 ein anderes ausdrücklich deklariertes Zuordnungsprofil.
 
+Die Verbindungsansicht verlinkt die genaue OSLC-Discovery dieses Workspaces.
+Discovery und Formen sind berechtigungspflichtig; der Scope-Hash ersetzt keine
+Zugriffskontrolle. ETags unterstützen bedingtes Lesen. Der aktuelle Stream ist der
+einzige unterstützte Konfigurationskontext. Anforderungsendpunkte liefern nur die
+aktuell freigegebene Textversion: Ältere Versionen sind kein historisches
+Freigabearchiv. Beliebige OSLC-Abfragen und allgemeines Configuration Management
+sind nicht implementiert. XMI-, UAF-, SysML- und Herstelleradapter bleiben optionale
+Erweiterungen derselben Schnittstelle.
+
 Dateien sind auf 16 MiB und 10.000 fachliche Objekte begrenzt. Anforderungen haben
 höchstens 240 Titel- und 100.000 Textzeichen. Architekturbatches sind auf 2.000
 typisierte Befehle begrenzt. ReqIFZ-Archive werden nicht entpackt, Anhänge nicht
@@ -68,6 +82,12 @@ nicht wiederholt. Ein unveränderter Import erzeugt keinen redundanten Git-Commi
 Vorschau, Discovery, Link-only, Abbruch und Dateiexport erzeugen ebenfalls keinen
 Commit. Normale Editorbefehle behalten die Trennung aus ADR 0005 bei.
 
+Vorübergehende Git-Fehler bleiben mit derselben eingefrorenen Absicht wiederholbar.
+Ist der Git-Elternstand inzwischen verschoben, wird der Vorgang als `CONFLICT`
+mit `MODEL_APPLIED_CHECKPOINT_CONFLICT` protokolliert. Die akzeptierte
+Datenbankänderung bleibt erhalten; der Versionskonflikt erfordert eine bewusste
+Abstimmung. Ein Retry überschreibt den fremden Stand nicht automatisch.
+
 Backups müssen Anwendungstabellen und datenbankgestützten Git-Speicher zusammen
 sichern. Dazu gehören Workspace-/Editorjournal, Projektversionen, externe
 Zuordnungen, Integrationsvorgänge und Checkpoints. PostgreSQL erhält Migration V20;
@@ -76,7 +96,13 @@ Suchindizes und Projektionen bleiben daraus wiederherstellbar.
 
 Die Format-Tests verwenden unabhängige RMF-/Archi-Dateien und behalten fehlerhafte
 Herstellerbeispiele ausdrücklich als Negativtests bei. Das ersetzt keine
-Produktzertifizierung. Nachweise mit installierten Werkzeugversionen sowie die
-vollständigen CI-, Datenbank- und Browsertests gehören weiterhin zur laufenden
-Abnahme von #926. Details und API-Verträge stehen in der
+Produktzertifizierung. Ein verpflichtender CI-Lauf installiert StrictDoc 0.29.0
+und Archi 5.10.0 und prüft echte Import-/Export-Rundläufe. Bericht, Austauschdateien,
+Produktversionen, bekannte Verluste und Prüfsummen werden an den getesteten
+Git-Stand gebunden. Ohne erfolgreichen Bericht gilt kein Produktpfad als bestätigt.
+Recovery wird über sechs getrennte JVM-Starts geprüft; Datenbanktests prüfen
+konkurrierende HTTP-Schreibvorgänge auf PostgreSQL, MSSQL und Oracle. Die
+Browsertests prüfen Rollen, Übernahme, Retry, Reload, Abbruch, Download,
+Tastaturbedienung, schmale Ansichten und deutsche Beschriftungen. Die vollständige
+CI-Abnahme bleibt erforderlich. Details und API-Verträge stehen in der
 [englischen Dokumentation](standards-interoperability.md).

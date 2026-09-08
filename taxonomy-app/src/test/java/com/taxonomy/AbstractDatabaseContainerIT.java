@@ -243,6 +243,60 @@ abstract class AbstractDatabaseContainerIT {
         return java.util.Map.of("commandId", id, "correlationId", id, "causationId", id, "rationale", "Database acceptance");
     }
 
+    @Test
+    @Order(20)
+    void reviewedIntegrationMappingsCheckpointsAndCompetingWritersWorkOnTheConfiguredDatabase() throws Exception {
+        var created = httpPost("/api/workspace/create", java.util.Map.of("displayName", "Integration database " + java.util.UUID.randomUUID()), null);
+        assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
+        String workspace = MAPPER.readTree(created.body()).get("workspaceId").textValue();
+        String query = "?workspaceId=" + workspace;
+        assertThat(httpGet("/api/architecture/editor" + query).statusCode()).isEqualTo(200);
+        String connection = java.util.UUID.randomUUID().toString();
+        var connectionResponse = httpPost("/api/integrations" + query, java.util.Map.of("id", connection, "name", "Database Archi contract", "connectorId", "archimate-3.1", "authority", "BIDIRECTIONAL",
+                "externalScope", java.util.Map.of("systemType", "Reference Archi", "repository", "model-db")), null);
+        assertThat(connectionResponse.statusCode()).as(connectionResponse.body()).isEqualTo(200);
+        String endpoint = "/api/integrations/" + connection;
+        JsonNode baseline = MAPPER.readTree(httpGet(endpoint + query).body()).get("current");
+        String xml = "<model xmlns=\"http://www.opengroup.org/xsd/archimate/3.0/\" xmlns:xsi=\"http://www.w3.org/2001/XMLSchema-instance\" identifier=\"model-db\"><name>Database exchange</name>"
+                + "<elements><element identifier=\"external-role\" xsi:type=\"BusinessRole\"><name>Database role</name></element></elements></model>";
+        var reviews = new java.util.ArrayList<java.util.Map<String, Object>>();
+        for (int i = 0; i < 2; i++) {
+            String id = java.util.UUID.randomUUID().toString();
+            var request = java.util.Map.of("operationId", id, "expected", baseline, "mediaType", "application/archimate+xml", "completeScope", true);
+            String boundary = "TaxonomyIntegration" + id;
+            String multipart = "--" + boundary + "\r\nContent-Disposition: form-data; name=\"request\"\r\nContent-Type: application/json\r\n\r\n" + MAPPER.writeValueAsString(request)
+                    + "\r\n--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"model.xml\"\r\nContent-Type: application/xml\r\n\r\n" + xml + "\r\n--" + boundary + "--\r\n";
+            var preview = HTTP.send(HttpRequest.newBuilder(URI.create(baseUrl() + endpoint + "/previews" + query)).header("Authorization", BASIC_AUTH)
+                    .header("Content-Type", "multipart/form-data; boundary=" + boundary).POST(HttpRequest.BodyPublishers.ofString(multipart)).build(), HttpResponse.BodyHandlers.ofString());
+            assertThat(preview.statusCode()).as(preview.body()).isEqualTo(200);
+            JsonNode operation = MAPPER.readTree(preview.body()); var decisions = new java.util.TreeMap<String, String>();
+            operation.get("changes").forEach(change -> decisions.put(change.get("id").textValue(), "ACCEPT"));
+            reviews.add(java.util.Map.of("operationId", id, "previewFingerprint", operation.get("fingerprint").textValue(), "decisions", decisions, "rationale", "Reviewed database integration"));
+        }
+        try (var executor = java.util.concurrent.Executors.newFixedThreadPool(2)) {
+            var barrier = new java.util.concurrent.CyclicBarrier(2);
+            var futures = new java.util.ArrayList<java.util.concurrent.Future<HttpResponse<String>>>();
+            for (var review : reviews) futures.add(executor.submit(() -> { barrier.await(); return httpPost(endpoint + "/apply" + query, review, null); }));
+            var responses = new java.util.ArrayList<HttpResponse<String>>();
+            for (var future : futures) responses.add(future.get(30, java.util.concurrent.TimeUnit.SECONDS));
+            assertThat(responses.stream().map(HttpResponse::statusCode).sorted().toList()).as(responses.toString()).containsExactly(200, 409);
+            int winner = responses.get(0).statusCode() == 200 ? 0 : 1;
+            JsonNode completed = MAPPER.readTree(responses.get(winner).body());
+            assertThat(completed.get("status").textValue()).isEqualTo("COMPLETED");
+            assertThat(completed.get("resultCommit").textValue()).hasSize(40);
+            var retry = httpPost(endpoint + "/apply" + query, reviews.get(winner), null);
+            assertThat(retry.statusCode()).as(retry.body()).isEqualTo(200);
+            assertThat(MAPPER.readTree(retry.body()).get("resultCommit")).isEqualTo(completed.get("resultCommit"));
+            JsonNode overview = MAPPER.readTree(httpGet(endpoint + query).body());
+            assertThat(overview.get("checkpoint").get("operationId")).isEqualTo(completed.get("id"));
+            JsonNode identities = MAPPER.readTree(httpGet(endpoint + "/identities" + query).body());
+            assertThat(identities.toString()).contains("ELEMENT:external-role");
+            JsonNode editor = MAPPER.readTree(httpGet("/api/architecture/editor" + query).body()).get("document");
+            assertThat(editor.get("history").size()).isEqualTo(1);
+            assertThat(editor.get("dsl").textValue()).contains("Database role");
+        }
+    }
+
     private HttpResponse<String> httpPost(String path, Object body, String revision) throws Exception {
         var request = HttpRequest.newBuilder().uri(URI.create(baseUrl() + path))
                 .header("Accept", "application/json").header("Content-Type", "application/json")

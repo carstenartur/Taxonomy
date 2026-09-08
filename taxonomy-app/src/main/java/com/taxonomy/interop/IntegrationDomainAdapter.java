@@ -53,6 +53,10 @@ public class IntegrationDomainAdapter {
             if (mapping.removed()) continue;
             Artifact baseline = mapping.internal(); if (baseline == null) continue;
             Artifact current = baseline;
+            if (connection.authority() == AuthorityMode.LINK_ONLY) {
+                // A trace snapshot describes the external resource, independently of the linked object's display fields.
+                items.put(mapping.externalId(), current); continue;
+            }
             if (baseline.kind() == ArtifactKind.REQUIREMENT && mapping.requirementId() != null) {
                 RequirementView requirement = byId.get(mapping.requirementId());
                 if (requirement == null || requirement.status() == RequirementStatus.ARCHIVED) continue;
@@ -89,6 +93,18 @@ public class IntegrationDomainAdapter {
     public void requireProject(RepositoryContext context, Long projectId) { projects.requireProject(projectId, context.username(), workspace(context)); }
     public void lockProject(RepositoryContext context, Long projectId) {
         if (projectId != null) projects.requireProjectForUpdate(projectId, context.username(), workspace(context));
+    }
+
+    public AppliedRequirement linkTarget(RepositoryContext context, Connection connection, String dsl, String identity) {
+        if (identity == null || identity.length() > 300) throw new IllegalArgumentException("A bounded internal link target is required");
+        if (identity.startsWith("requirement:") && connection.projectId() != null) {
+            String key = identity.substring("requirement:".length());
+            var requirement = projects.listRequirements(connection.projectId(), context.username(), workspace(context)).stream()
+                    .filter(r -> r.requirementKey().equals(key) && r.status() != RequirementStatus.ARCHIVED).findFirst().orElseThrow(IntegrationProblem::missing);
+            return new AppliedRequirement(identity, requirement.id());
+        }
+        if (identity.startsWith("element:") && ArchitectureSemanticPatch.index(dsl).containsKey(identity)) return new AppliedRequirement(identity, null);
+        throw IntegrationProblem.missing();
     }
 
     /** Capture the complete selected project/model, overlaying current canonical values on accepted exchange evidence. */
@@ -264,7 +280,9 @@ public class IntegrationDomainAdapter {
                 .forEach(a -> ids.put(a.id(), businessId(connection, known.get(ExchangeItems.key(a)), a)));
         return relationKey(relation, ids).id();
     }
-    public UnaryOperator<String> portfolioContribution(RepositoryContext context) { return source -> portfolio.contributeTo(source, context.username(), workspace(context)); }
+    public UnaryOperator<String> portfolioContribution(RepositoryContext context) {
+        return source -> ArchitectureSemanticPatch.applyProjection(source, portfolio.contributeTo(source, context.username(), workspace(context)));
+    }
     private Map<String, String> exchangeProperties(Connection connection, Artifact artifact) {
         return Map.of("x-exchange-connection", connection.id().toString(), "x-exchange-id", artifact.id(), "x-exchange-profile", connection.connectorId(),
                 "x-exchange-artifact", json.write(artifact));

@@ -67,6 +67,7 @@ public final class ArchiMateExchangeCodec {
         for (Element view : children(child(child(doc.getDocumentElement(), "views"), "diagrams"))) {
             String id = required(view, "identifier");
             Map<String, String> viewExtensions = extensions(view, propertyNames);
+            viewExtensions.put("xml", shallowEvidence(view, "node", "connection"));
             Document evidence = parse(("<connections xmlns=\"" + NS + "\"/>").getBytes(StandardCharsets.UTF_8));
             for (Element connection : children(view)) if (connection.getLocalName().equals("connection")) evidence.getDocumentElement().appendChild(evidence.importNode(connection, true));
             viewExtensions.put("connectionsXml", xml(evidence));
@@ -75,12 +76,15 @@ public final class ArchiMateExchangeCodec {
             if (view.getElementsByTagNameNS(NS, "style").getLength() > 0) losses.add(loss(id, "style", "PRESENTATION_PRESERVED", LossDisposition.PRESERVED_EXTENSION,
                     "Layout and styling are retained separately from canonical architecture semantics"));
         }
-        readOrganizations(child(doc.getDocumentElement(), "organizations"), null, "org", placements);
+        int organizationGroup = 0;
+        for (Element group : children(doc.getDocumentElement())) if (group.getLocalName().equals("organizations")) {
+            readOrganizations(group, null, "org-" + organizationGroup, organizationGroup, placements); organizationGroup++;
+        }
         if (artifacts.size() > MAX_ARTIFACTS || relations.size() > 4 * MAX_ARTIFACTS || placements.size() > 8 * MAX_ARTIFACTS)
             throw invalid("ITEM_LIMIT", "ArchiMate exceeds the supported item count");
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("identifier", required(doc.getDocumentElement(), "identifier")); metadata.put("title", text(doc.getDocumentElement(), "name"));
-        for (String name : List.of("propertyDefinitions", "organizations", "metadata")) {
+        for (String name : List.of("propertyDefinitions", "metadata", "properties", "documentation")) {
             Element node = child(doc.getDocumentElement(), name); if (node != null) metadata.put(name, xml(node));
         }
         return new ExchangeDocument(PROFILE, VERSION, externalVersion == null ? ReqifExchangeCodec.digest(bytes) : externalVersion,
@@ -112,16 +116,17 @@ public final class ArchiMateExchangeCodec {
             replaceProperties(node, relation.attributes());
         }
         tail.forEach(root::appendChild);
-        for (String name : List.of("propertyDefinitions", "metadata")) if (source.metadata().containsKey(name)) {
+        for (String name : List.of("propertyDefinitions", "metadata", "properties", "documentation")) if (source.metadata().containsKey(name)) {
             Element previous = child(root, name); if (previous != null) root.removeChild(previous);
             root.appendChild(doc.importNode(parse(source.metadata().get(name).getBytes(StandardCharsets.UTF_8)).getDocumentElement(), true));
         }
         for (Artifact artifact : source.artifacts()) if (artifact.kind() == ArtifactKind.ELEMENT)
             taxonomyProperties(root, find(elements, artifact.id()), artifact.extensions(), "ElementType");
         for (Relation relation : source.relations()) taxonomyProperties(root, find(relations, relation.id()), relation.extensions(), "RelationType");
-        Element organizations = child(root, "organizations"); if (organizations != null) root.removeChild(organizations);
+        children(root).stream().filter(n -> n.getLocalName().equals("organizations")).toList().forEach(root::removeChild);
         List<Placement> folders = source.placements().stream().filter(p -> p.containerId().equals("organizations")).toList();
-        if (!folders.isEmpty()) writePlacements(append(root, NS, "organizations"), null, folders, true, new HashSet<>());
+        for (String group : folders.stream().map(p -> p.attributes().getOrDefault("organizationGroup", "0")).distinct().sorted(Comparator.comparingInt(Integer::parseInt)).toList())
+            writePlacements(append(root, NS, "organizations"), null, folders.stream().filter(p -> p.attributes().getOrDefault("organizationGroup", "0").equals(group)).toList(), true, new HashSet<>());
         List<Artifact> views = source.artifacts().stream().filter(a -> a.kind() == ArtifactKind.VIEW).toList();
         if (!views.isEmpty()) {
             Element diagrams = append(append(root, NS, "views"), NS, "diagrams");
@@ -260,17 +265,17 @@ public final class ArchiMateExchangeCodec {
             readViewNodes(node, view, id, placements, losses);
         }
     }
-    private static void readOrganizations(Element parent, String parentId, String path, List<Placement> placements) {
+    private static void readOrganizations(Element parent, String parentId, String path, int group, List<Placement> placements) {
         int position = 0;
         for (Element item : children(parent)) if (item.getLocalName().equals("item")) {
             String id = path + "-" + position;
-            placements.add(new Placement(id, "organizations", parentId, item.getAttribute("identifierRef"), position++, Map.of("label", text(item, "label"), "nodeXml", shallowEvidence(item, "item"))));
-            readOrganizations(item, id, id, placements);
+            placements.add(new Placement(id, "organizations", parentId, item.getAttribute("identifierRef"), position++, Map.of("label", text(item, "label"), "nodeXml", shallowEvidence(item, "item"), "organizationGroup", Integer.toString(group))));
+            readOrganizations(item, id, id, group, placements);
         }
     }
-    private static String shallowEvidence(Element original, String childKind) {
+    private static String shallowEvidence(Element original, String... childKinds) {
         Element copy = (Element) original.cloneNode(true);
-        for (Element child : children(copy)) if (child.getLocalName().equals(childKind)) copy.removeChild(child);
+        for (Element child : children(copy)) if (List.of(childKinds).contains(child.getLocalName())) copy.removeChild(child);
         return xml(copy);
     }
     private static List<Element> descendants(Element parent) {

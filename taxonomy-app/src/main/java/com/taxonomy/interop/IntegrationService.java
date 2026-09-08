@@ -50,7 +50,7 @@ public class IntegrationService {
     public record PreviewRequest(UUID operationId, InternalState expected, String mediaType, boolean completeScope) {}
     public record ExportRequest(UUID operationId, InternalState expected, String expectedExternalVersion) {}
     public record RemoteRequest(UUID operationId, InternalState expected, String resource, String expectedExternalVersion) {}
-    public record Overview(Connection connection, InternalState current, Checkpoint checkpoint, List<OperationSummary> history) {}
+    public record Overview(Connection connection, InternalState current, Checkpoint checkpoint, List<OperationSummary> history, String oslcCatalogPath) {}
 
     public List<IntegrationDescriptor> profiles(RepositoryContext context) { authorize(context, false); return connectors.descriptors(); }
     public List<Connection> connections(RepositoryContext context) { authorize(context, false); return store.list(context); }
@@ -79,7 +79,8 @@ public class IntegrationService {
     public Overview overview(RepositoryContext context, UUID connectionId) {
         authorize(context, false); Connection connection = store.read(context, connectionId);
         return new Overview(connection, domain.snapshot(context, connection, store.identities(context, connectionId), read(context)).state(),
-                store.checkpoint(context, connectionId), store.history(context, connectionId));
+                store.checkpoint(context, connectionId), store.history(context, connectionId), "/oslc/scopes/" + com.taxonomy.editor.persistence.EditorJournal.scope(context)
+                + "/catalog?repositoryId=" + encode(context.repositoryId()) + "&workspaceId=" + encode(context.workspaceId()) + "&branch=" + encode(context.branch()));
     }
     public Operation operation(RepositoryContext context, UUID connectionId, UUID operationId) {
         authorize(context, false); return store.operation(context, connectionId, operationId);
@@ -151,6 +152,11 @@ public class IntegrationService {
                 Artifact value = selected.get(change.externalId()); Identity previous = known.get(change.externalId());
                 String business = previous == null ? domain.businessId(connection, null, change.after()) : previous.businessIdentity();
                 Long requirementId = previous == null ? null : previous.requirementId();
+                MappingOverride mapping = review.mappings().get(change.id());
+                if (linked && mapping != null && mapping.internalIdentity() != null) {
+                    var target = domain.linkTarget(context, connection, before.dsl(), mapping.internalIdentity());
+                    business = target.businessIdentity(); requirementId = target.requirementId();
+                }
                 if (!linked && (value != null ? value.kind() == ArtifactKind.REQUIREMENT : previous != null && previous.internal().kind() == ArtifactKind.REQUIREMENT)) {
                     var applied = domain.applyRequirement(context, connection, value, previous, review.rationale());
                     business = applied.businessIdentity(); requirementId = applied.requirementId();
@@ -202,6 +208,10 @@ public class IntegrationService {
                 return session.operation(operation.id());
             });
         } catch (IOException | RuntimeException failure) {
+            if (failure instanceof ArchitectureDslCommands.CommandProblem problem && Set.of("CHECKPOINT_CONFLICT", "CHECKPOINT_REJECTED").contains(problem.code())) {
+                store.locked(context, connectionId, session -> { session.checkpointConflict(operation.id()); return null; });
+                throw new IntegrationProblem("CHECKPOINT_CONFLICT", 409, "Accepted model changes and their snapshot are durable; reconcile the moved Git version explicitly before starting a new integration review");
+            }
             store.locked(context, connectionId, session -> { session.failure(operation.id(), "CHECKPOINT_RETRY_REQUIRED"); return null; });
             throw new IntegrationProblem("CHECKPOINT_RETRY_REQUIRED", 503, "Model changes are durable; retry the pending checkpoint with the same operation identity");
         }
@@ -318,6 +328,8 @@ public class IntegrationService {
         Set<String> ids = new HashSet<>(); operation.changes().forEach(c -> ids.add(c.id()));
         if (!ids.containsAll(review.decisions().keySet())) throw new IllegalArgumentException("Review contains unknown change identities");
         if (!review.decisions().keySet().containsAll(review.mappings().keySet())) throw new IllegalArgumentException("Mappings require an explicit item decision");
+        if (operation.context().authority() != AuthorityMode.LINK_ONLY && review.mappings().values().stream().anyMatch(m -> m.internalIdentity() != null))
+            throw new IllegalArgumentException("Internal trace targets require LINK_ONLY authority");
         for (IntegrationChange change : operation.changes()) {
             Decision decision = review.decisions().get(change.id());
             if (decision == null && change.kind() != ChangeKind.UNCHANGED) throw new IllegalArgumentException("Every proposed change needs an explicit decision");
@@ -330,6 +342,8 @@ public class IntegrationService {
                 selected.put(change.externalId(), remap(selectedValue, review.mappings().get(change.id())));
             }
         }
+        if (!selected.isEmpty() && !selected.containsKey("METADATA:package"))
+            throw new IntegrationProblem("REVIEW_DEPENDENCY_REQUIRED", 422, "Accepted exchange objects require their reviewed type and package metadata");
         return selected;
     }
     private static Artifact remap(Artifact artifact, MappingOverride mapping) {
@@ -383,6 +397,7 @@ public class IntegrationService {
         if (expected == null) throw precondition();
         if (!expected.equals(actual)) throw IntegrationProblem.conflict("INTERNAL_STATE_CHANGED");
     }
+    private static String encode(String value) { return java.net.URLEncoder.encode(value, StandardCharsets.UTF_8); }
     private static IntegrationProblem precondition() { return new IntegrationProblem("EXACT_STATE_REQUIRED", 428, "An exact workspace revision and project fingerprint are required"); }
     private static Operation replay(Operation prior, String fingerprint) {
         if (!prior.fingerprint().equals(fingerprint)) throw IntegrationProblem.conflict("OPERATION_ID_REUSED"); return prior;

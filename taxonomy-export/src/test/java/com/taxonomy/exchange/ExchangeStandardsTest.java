@@ -105,6 +105,27 @@ class ExchangeStandardsTest {
             assertThrows(ExchangeFormatException.class, () -> ExchangeXml.parse(("<div xmlns=\"http://www.w3.org/1999/xhtml\">" + content + "</div>").getBytes(StandardCharsets.UTF_8)));
         assertDoesNotThrow(() -> ExchangeXml.parse("<div xmlns=\"http://www.w3.org/1999/xhtml\"><a href=\"https://example.org/reference\">Reference</a></div>".getBytes(StandardCharsets.UTF_8)));
     }
+    @Test void acceptedContainerEvidenceDoesNotDuplicateIndividuallyReviewedChildren() throws Exception {
+        var requirements = reqif.read(fixture("eclipse-rmf.reqif"), null, true);
+        for (Artifact specification : requirements.artifacts()) if (specification.kind() == ArtifactKind.SPECIFICATION)
+            assertFalse(specification.extensions().get("xml").contains("SPEC-HIERARCHY"));
+        var model = archimate.read(fixture("archi-bendpoints.xml"), null, true);
+        for (Artifact view : model.artifacts()) if (view.kind() == ArtifactKind.VIEW) {
+            var evidence = ExchangeXml.parse(view.extensions().get("xml").getBytes(StandardCharsets.UTF_8));
+            assertEquals(0, evidence.getElementsByTagNameNS(ArchiMateExchangeCodec.NS, "node").getLength());
+            assertEquals(0, evidence.getElementsByTagNameNS(ArchiMateExchangeCodec.NS, "connection").getLength());
+        }
+    }
+    @Test void multipleArchiOrganizationGroupsSurviveAcceptedEvidenceRebuild() throws Exception {
+        String xml = new String(fixture("archi-sample.xml"), StandardCharsets.UTF_8).replace("</model>",
+                "<organizations><item><label>First</label><item identifierRef=\"id-37d5bc4b\"/></item></organizations>"
+                        + "<organizations><item><label>Second</label><item identifierRef=\"id-89c22226\"/></item></organizations></model>");
+        var original = archimate.read(xml.getBytes(StandardCharsets.UTF_8), null, true);
+        var rebuilt = archimate.read(archimate.write(copy(original, "", original.artifacts(), original.placements())), null, true);
+        assertEquals(4, rebuilt.placements().size());
+        assertEquals(original.placements(), rebuilt.placements());
+        assertEquals(2, ExchangeXml.parse(archimate.write(rebuilt)).getElementsByTagNameNS(ArchiMateExchangeCodec.NS, "organizations").getLength());
+    }
     private static Artifact requirement(String id, String title, String text) { return new Artifact(id, ArtifactKind.REQUIREMENT, "taxonomy-object", title, text, Map.of(), Map.of()); }
     private static ExchangeDocument copy(ExchangeDocument source, String xml, List<Artifact> artifacts, List<Placement> placements) {
         return new ExchangeDocument(source.profile(), source.profileVersion(), source.externalVersion(), source.completeScope(), xml, artifacts, source.relations(), placements, source.metadata(), source.losses());

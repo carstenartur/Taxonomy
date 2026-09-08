@@ -66,7 +66,9 @@ public final class ReqifExchangeCodec {
         }
         for (Element specification : all(doc, NS, "SPECIFICATION")) {
             Fields fields = fields(specification, definitions);
-            fields.extensions.put("xml", xml(specification));
+            Element evidence = (Element) specification.cloneNode(true);
+            Element hierarchy = child(evidence, "CHILDREN"); if (hierarchy != null) evidence.removeChild(hierarchy);
+            fields.extensions.put("xml", xml(evidence));
             artifacts.add(new Artifact(required(specification, "IDENTIFIER"), ArtifactKind.SPECIFICATION, ref(specification, "TYPE"),
                     specification.getAttribute("LONG-NAME"), specification.getAttribute("DESC"), fields.values, fields.extensions));
         }
@@ -92,6 +94,7 @@ public final class ReqifExchangeCodec {
         String safe = xml(doc);
         Map<String, String> metadata = new LinkedHashMap<>();
         metadata.put("sourceTool", text(all(doc, NS, "REQ-IF-HEADER").getFirst(), "SOURCE-TOOL-ID"));
+        Element tools = child(doc.getDocumentElement(), "TOOL-EXTENSIONS"); if (tools != null) metadata.put("TOOL-EXTENSIONS", xml(tools));
         Element core = all(doc, NS, "REQ-IF-CONTENT").getFirst();
         for (String name : List.of("DATATYPES", "SPEC-TYPES", "SPEC-RELATION-GROUPS")) {
             Element node = child(core, name); if (node != null) metadata.put(name, xml(node));
@@ -118,6 +121,10 @@ public final class ReqifExchangeCodec {
         }
         Document doc = source.source() == null || source.source().isBlank() ? generated(source) : parse(source.source().getBytes(StandardCharsets.UTF_8));
         Element core = all(doc, NS, "REQ-IF-CONTENT").getFirst();
+        if (source.metadata().containsKey("TOOL-EXTENSIONS")) {
+            Element tools = child(doc.getDocumentElement(), "TOOL-EXTENSIONS"); if (tools != null) doc.getDocumentElement().removeChild(tools);
+            doc.getDocumentElement().appendChild(doc.importNode(parse(source.metadata().get("TOOL-EXTENSIONS").getBytes(StandardCharsets.UTF_8)).getDocumentElement(), true));
+        }
         for (String name : List.of("DATATYPES", "SPEC-TYPES", "SPEC-RELATION-GROUPS")) if (source.metadata().containsKey(name)) {
             Element previous = child(core, name);
             Node replacement = doc.importNode(parse(source.metadata().get(name).getBytes(StandardCharsets.UTF_8)).getDocumentElement(), true);

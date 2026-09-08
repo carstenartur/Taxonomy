@@ -89,6 +89,39 @@ class IntegrationFlowTest {
         assertEquals(404, assertThrows(IntegrationProblem.class, () -> integrations.overview(intruder, connection)).status());
     }
     private PreviewRequest request() { return new PreviewRequest(UUID.randomUUID(), integrations.overview(context, connection).current(), "application/reqif+xml", true); }
+    @Test void linkOnlyBindsAnAuthorizedExistingRequirementWithoutCopyingOrCommitting() throws Exception {
+        var target = projects.createRequirement(project, new CreateRequirementRequest("LINK-TARGET", "Internal target", "Unchanged internal body", RequirementStatus.DRAFT,
+                50, Criticality.MEDIUM, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED, context.username(), "Existing internal target", null), context.username(), IntegrationDomainAdapter.workspace(context));
+        connection = integrations.create(context, new CreateConnection(UUID.randomUUID(), "Trace", ReqifExchangeCodec.PROFILE, AuthorityMode.LINK_ONLY,
+                new ExternalScope("Reference tool", "linked-requirements", null), project, null)).id();
+        String head = git.resolveRepository(context).getHeadCommit(context.branch());
+        Operation preview = integrations.preview(context, connection, request(), file("External title", "External body"));
+        String item = preview.changes().stream().filter(c -> c.after() != null && c.after().kind() == ArtifactKind.REQUIREMENT).findFirst().orElseThrow().id();
+        var review = new ReviewedChangeSet(preview.id(), preview.fingerprint(), decisions(preview), "Link to the reviewed internal requirement",
+                Map.of(item, new MappingOverride(null, null, null, "requirement:LINK-TARGET")));
+        integrations.apply(context, connection, review);
+        assertEquals(head, git.resolveRepository(context).getHeadCommit(context.branch())); assertTrue(journal.read(context).operations().isEmpty());
+        var mapping = integrations.identities(context, connection).stream().filter(i -> i.externalId().equals(item)).findFirst().orElseThrow();
+        assertEquals(target.id(), mapping.requirementId()); assertEquals("requirement:LINK-TARGET", mapping.businessIdentity());
+        assertEquals("Unchanged internal body", projects.getRequirement(project, target.id(), context.username(), IntegrationDomainAdapter.workspace(context)).currentVersion().text());
+        assertEquals(1, projects.listRequirements(project, context.username(), IntegrationDomainAdapter.workspace(context)).size());
+        var again = integrations.preview(context, connection, request(), file("External title", "External body"));
+        assertTrue(again.changes().stream().allMatch(c -> c.kind() == ChangeKind.UNCHANGED));
+    }
+    @Test void exportedLocalAdditionsAfterImportHaveStableIdentitiesAndOccurrences() {
+        integrations.apply(context, connection, accept(integrations.preview(context, connection, request(), file("Imported", "Imported body"))));
+        projects.createRequirement(project, new CreateRequirementRequest("LOCAL-ADDITION", "Local addition", "New canonical text", RequirementStatus.DRAFT, 50,
+                Criticality.MEDIUM, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED, context.username(), "Added locally", null), context.username(), IntegrationDomainAdapter.workspace(context));
+        var overview = integrations.overview(context, connection);
+        Operation export = integrations.previewExport(context, connection, new ExportRequest(UUID.randomUUID(), overview.current(), overview.checkpoint().externalVersion()));
+        integrations.prepareFile(context, connection, accept(export));
+        var result = new ReqifExchangeCodec().read(integrations.file(context, connection, export.id()).content(), null, true);
+        Artifact added = result.artifacts().stream().filter(a -> a.title().equals("Local addition")).findFirst().orElseThrow();
+        assertEquals("New canonical text", added.text()); assertTrue(result.placements().stream().anyMatch(p -> p.artifactId().equals(added.id())));
+        var next = integrations.overview(context, connection);
+        Operation repeated = integrations.previewExport(context, connection, new ExportRequest(UUID.randomUUID(), next.current(), next.checkpoint().externalVersion()));
+        assertTrue(repeated.document().artifacts().stream().anyMatch(a -> a.id().equals(added.id()) && a.title().equals(added.title())));
+    }
     private static byte[] file(String title, String text) {
         return new ReqifExchangeCodec().write(new ExchangeDocument(ReqifExchangeCodec.PROFILE, "1", null, true, "",
                 List.of(new Artifact("external-requirement-1", ArtifactKind.REQUIREMENT, "taxonomy-object", title, text, Map.of(), Map.of())), List.of(), List.of(), Map.of(), List.of()));

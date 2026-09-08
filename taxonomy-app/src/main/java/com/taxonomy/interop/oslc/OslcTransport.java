@@ -108,10 +108,11 @@ public class OslcTransport {
         URI uri;
         try { uri = resource == null || resource.isBlank() ? base : base.resolve(URI.create(resource)); }
         catch (IllegalArgumentException invalid) { throw new IntegrationProblem("REMOTE_URI_REJECTED", 400, "Invalid remote resource identity"); }
-        String rawPath = uri.getRawPath().toLowerCase(Locale.ROOT);
+        String rawPath = uri.getRawPath() == null ? "" : uri.getRawPath().toLowerCase(Locale.ROOT);
         if (!Objects.equals(uri.getScheme(), base.getScheme()) || !Objects.equals(uri.getHost(), base.getHost()) || port(uri) != port(base)
                 || uri.getUserInfo() != null || uri.getFragment() != null || !uri.normalize().getPath().startsWith(base.getPath())
-                || rawPath.contains("%2e") || rawPath.contains("%2f") || rawPath.contains("%5c") || rawPath.contains("\\") || uri.toString().length() > 2048)
+                || rawPath.contains("%2e") || rawPath.contains("%2f") || rawPath.contains("%5c") || rawPath.contains("%25") || rawPath.contains("\\")
+                || uri.getPath().chars().anyMatch(Character::isISOControl) || uri.toString().length() > 2048)
             throw new IntegrationProblem("REMOTE_URI_REJECTED", 400, "Resource is outside the configured integration boundary");
         if (uri.getRawQuery() != null) for (String parameter : uri.getRawQuery().split("&")) {
             String name = URLDecoder.decode(parameter.split("=", 2)[0], java.nio.charset.StandardCharsets.UTF_8);

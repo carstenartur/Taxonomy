@@ -203,6 +203,12 @@ public class IntegrationStore {
             operation.failureCode = code; event(operation, "ATTEMPT_FAILED", null, code);
             // Preserve the recoverable phase and reservation; a transport failure does not undo accepted data.
         }
+        public void checkpointConflict(UUID id) {
+            var operation = requireOperation(id);
+            if (!operation.status.equals(OperationStatus.CHECKPOINT_PENDING.name())) throw IntegrationProblem.conflict("OPERATION_STATE");
+            connection.activeOperationId = null;
+            transition(operation, OperationStatus.CONFLICT, "MODEL_APPLIED_CHECKPOINT_CONFLICT", json.read(operation.reviewJson, ReviewedChangeSet.class).rationale(), "CHECKPOINT_CONFLICT");
+        }
         private IntegrationOperationEntity requireOperation(UUID id) {
             var entity = em.find(IntegrationOperationEntity.class, id.toString()); if (entity == null) throw IntegrationProblem.missing(); requireScope(entity); return entity;
         }

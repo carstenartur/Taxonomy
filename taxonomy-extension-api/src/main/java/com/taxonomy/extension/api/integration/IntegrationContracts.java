@@ -106,7 +106,7 @@ public final class IntegrationContracts {
         public IntegrationChangeSet { changes = List.copyOf(changes); losses = List.copyOf(losses); }
     }
 
-    public record MappingOverride(String canonicalType, String titleAttribute, String textAttribute) {}
+    public record MappingOverride(String canonicalType, String titleAttribute, String textAttribute, String internalIdentity) {}
     public record ReviewedChangeSet(UUID operationId, String previewFingerprint,
                                     Map<String, Decision> decisions, String rationale, Map<String, MappingOverride> mappings) {
         public ReviewedChangeSet(UUID id, String fingerprint, Map<String, Decision> decisions, String rationale) {

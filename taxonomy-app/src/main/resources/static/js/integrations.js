@@ -61,6 +61,13 @@
                     mapping.addEventListener('change', function () { if (!mappings[change.id]) mappings[change.id] = {}; mappings[change.id][field] = mapping.value || null; });
                     label.append(mapping); advanced.append(label);
                 });
+                if (operation.context.authority === 'LINK_ONLY' && ['REQUIREMENT', 'ELEMENT'].includes(artifact.kind)) {
+                    var targetLabel = document.createElement('label'), target = document.createElement('input');
+                    targetLabel.textContent = t('mapping.internalIdentity'); target.maxLength = 300;
+                    target.value = mappings[change.id] && mappings[change.id].internalIdentity || '';
+                    target.addEventListener('input', function () { if (!mappings[change.id]) mappings[change.id] = {}; mappings[change.id].internalIdentity = target.value.trim() || null; });
+                    targetLabel.append(target); advanced.append(targetLabel); fields.push('internalIdentity');
+                }
                 if (fields.length) decision.append(advanced);
             }
             row.append(id, kind, value, decision); el('integrationChanges').append(row);
@@ -97,6 +104,7 @@
         if (!connection()) { overview = null; controls(); return; }
         var version = ++generation; var value = await api.read(prefix()); if (version !== generation) return;
         overview = value; el('integrationContext').textContent = JSON.stringify({ current: value.current, authority: value.connection.authority, external: value.connection.externalScope, checkpoint: value.checkpoint }, null, 2);
+        el('integrationOslcCatalog').href = window.TaxonomyI18n.resolveUrl(value.oslcCatalogPath); el('integrationOslcCatalog').hidden = false;
         el('integrationHistory').replaceChildren(); value.history.forEach(function (entry) {
             var item = document.createElement('li'), button = document.createElement('button'); button.type = 'button';
             button.textContent = entry.createdAt + ' · ' + t('status.' + entry.status) + ' · ' + entry.id; button.addEventListener('click', function () { run(function () { return loadOperation(entry.id); }); }); item.append(button); el('integrationHistory').append(item);

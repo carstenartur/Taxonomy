@@ -192,6 +192,7 @@ Wirksame Richtlinie: `GET /api/ai-automation`. Verbindliche Zuordnungen, Zustän
 | `TAXONOMY_DSL_REMOTE_PUSH_ON_COMMIT` | Git-Einstellung `taxonomy.dsl.remote-push-on-commit` | `false` | Push nach jedem DSL-Commit. |
 | `TAXONOMY_EXTERNAL_GIT_USERNAME` | direkte Deployment-Zugangsdaten | `oauth2` | Benutzername des administrativ konfigurierten kanonischen Remotes. |
 | `TAXONOMY_EXTERNAL_GIT_TOKEN` | direkte Deployment-Zugangsdaten | leer | Write-only Fetch-/Push-Token, nicht persistiert. |
+| `TAXONOMY_INTEGRATIONS_REMOTES` | `taxonomy.integrations.remotes` | leere Map | Administrativ konfigurierte OSLC-Endpunkte. Die strukturierte Map über YAML oder `SPRING_APPLICATION_JSON` konfigurieren; ein einzelner skalarer Umgebungswert beschreibt kein Profil. Jedes Profil bindet Repository, Organisation, Ursprung/Pfad und eine Umgebungsreferenz für Zugangsdaten. Siehe [Werkzeugintegrationen](../features/standards-interoperability-de.md). |
 
 ## Eingabe-, Architektur- und Dokumentgrenzen
 

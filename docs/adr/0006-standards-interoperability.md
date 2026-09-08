@@ -48,6 +48,13 @@ evidence; they are not replayed as the current model during export.
    A crash before this record does not require reapplying model changes. A rejected
    external/Git precondition is not converted to success.
 
+A transient checkpoint failure retains `CHECKPOINT_PENDING` and the frozen intent.
+A moved Git parent ends the attempt in `CONFLICT`, with an append-only
+`MODEL_APPLIED_CHECKPOINT_CONFLICT` event. Accepted database changes remain durable;
+this state requires explicit version reconciliation, not blind reapplication or
+a fabricated remote acknowledgement. The restart test executes six separate JVMs,
+including a crash after Git success but before integration completion.
+
 There is no atomic transaction spanning the relational database, JGit and an
 external requirements server. Pending/failure states and explicit retry exist
 precisely because those boundaries can fail independently. File delivery retains
@@ -59,6 +66,12 @@ Compare the last accepted external/internal pair with the incoming external data
 and current internal authority. Disjoint field changes can be combined. An
 intersecting edit, identity reuse or deletion-versus-edit needs an explicit review
 decision and rationale. A normal acceptance cannot silently resolve a conflict.
+
+`LINK_ONLY` can bind an external identity to an explicitly selected existing
+`requirement:<key>` or `element:<id>` in the authorized scope. It neither copies
+fields into that target nor treats its independently edited fields as a mirror.
+Container evidence excludes separately reviewed children. Rejecting a hierarchy
+occurrence cannot leave that occurrence hidden in an accepted container's XML.
 
 Only a complete external file scope in mirror/bidirectional mode can propose
 deletion. Deletion is a candidate requiring an individual decision and valid
@@ -85,6 +98,12 @@ format contracts. Installed product import/export runs must separately record to
 versions, fixture fingerprints and observed results before product compatibility is
 claimed. Unsupported constructs fail or require a reviewed mapping; no approximate
 relationship fallback is allowed.
+
+The required product CI lane installs pinned StrictDoc and Archi versions and
+round-trips exports through their actual importers/exporters. Its evidence is tied
+to the tested Git tree and application artifact digest. It reports product-owned
+identifier regeneration separately from semantic fields, identity and topology.
+An absent or failed run is not compatibility evidence.
 
 Editor projections rebuild from the durable DSL; checkpoint projections rebuild
 from the selected Git version. Requirement search derives from scoped portfolio
