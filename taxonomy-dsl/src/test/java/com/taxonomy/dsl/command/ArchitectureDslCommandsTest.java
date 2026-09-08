@@ -39,7 +39,7 @@ class ArchitectureDslCommandsTest {
         assertThat(result.dsl()).startsWith(MODEL.substring(0, MODEL.indexOf("element arch-system")))
                 .contains("# Keep object rationale.", "x-future-property: \"retain\";", "element arch-system type System")
                 .endsWith(MODEL.substring(MODEL.indexOf("element arch-component")));
-        assertThat(commands.model(result.dsl()).findElement("arch-system").getDescription()).isEqualTo("Quoted \"text\"\nNext line");
+        assertThat(commands.model(result.dsl()).findElement("arch-system").orElseThrow().getDescription()).isEqualTo("Quoted \"text\"\nNext line");
         assertThat(commands.apply(result.dsl(), update).changes()).isEmpty();
         assertThat(commands.apply(result.dsl(), update).dsl()).isEqualTo(result.dsl());
     }
@@ -88,8 +88,8 @@ class ArchitectureDslCommandsTest {
         String edited = commands.apply(MODEL, new UpdateArchitectureElement("arch-system", null, Map.of("title", "New title"))).dsl();
         String later = commands.apply(edited, new UpdateArchitectureElement("arch-component", null, Map.of("title", "Later edit"))).dsl();
         String undone = commands.inverse(later, MODEL, edited).dsl();
-        assertThat(commands.model(undone).findElement("arch-system").getTitle()).isEqualTo("Payments");
-        assertThat(commands.model(undone).findElement("arch-component").getTitle()).isEqualTo("Later edit");
+        assertThat(commands.model(undone).findElement("arch-system").orElseThrow().getTitle()).isEqualTo("Payments");
+        assertThat(commands.model(undone).findElement("arch-component").orElseThrow().getTitle()).isEqualTo("Later edit");
         assertThat(commands.inverse(undone, later, undone).dsl()).isEqualTo(later);
         assertCode(() -> commands.inverse(edited.replace("New title", "Conflicting edit"), MODEL, edited), "UNDO_CONFLICT");
         assertCode(() -> commands.inverse(edited.replace("# Keep object rationale.", "# Later annotation"), MODEL, edited), "UNDO_CONFLICT");

@@ -5,6 +5,7 @@ import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.export.SvgDiagramRenderer;
+import com.taxonomy.portfolio.workbench.ArchitecturePdfRenderer;
 import com.taxonomy.relations.controller.GitHttpPrecondition;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -27,13 +28,15 @@ public class ArchitectureEditorController {
     private final ArchitectureEditorProjection projection;
     private final WorkspaceResolver resolver;
     private final SvgDiagramRenderer svg;
+    private final ArchitecturePdfRenderer pdf;
 
     public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
-                                        WorkspaceResolver resolver, SvgDiagramRenderer svg) {
+                                        WorkspaceResolver resolver, SvgDiagramRenderer svg, ArchitecturePdfRenderer pdf) {
         this.service = service;
         this.projection = projection;
         this.resolver = resolver;
         this.svg = svg;
+        this.pdf = pdf;
     }
 
     @GetMapping("/architecture/editor")
@@ -61,6 +64,18 @@ public class ArchitectureEditorController {
                 .header("X-Taxonomy-Layout-Source", view.schema().layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.svg")
                 .body(svg.render(view.scene()));
+    }
+
+    @GetMapping(value = "/api/architecture/editor.pdf", produces = "application/pdf")
+    @ResponseBody
+    public ResponseEntity<byte[]> pdf(@RequestParam String repositoryId, @RequestParam String workspaceScopeKey,
+                                      @RequestParam String branch, @RequestParam String commit) throws IOException {
+        var document = service.read(readContext(repositoryId, workspaceScopeKey, branch), commit);
+        var view = projection.project(document, false);
+        return response(HttpStatus.OK, document.context().commit())
+                .header("X-Taxonomy-Layout-Source", view.schema().layoutMode())
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
+                .body(pdf.render(view.scene(), repositoryId + " / " + workspaceScopeKey + " / " + branch + "\n" + commit));
     }
 
     @PostMapping("/api/architecture/editor/preview")
