@@ -27,8 +27,13 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     const rejected = await response;
     const problem = await rejected.json();
     assert.equal(problem.code, code);
+    const responseHeaders = rejected.headers();
+    const requestHeaders = rejected.request().headers();
+    const requestId = responseHeaders['x-request-id'] || responseHeaders['x-correlation-id']
+      || requestHeaders['x-request-id'] || requestHeaders['x-correlation-id'];
+    assert.ok(requestId, 'Expected rejection must be tied to the exact request');
     expectedFailures.push({ path: new URL(rejected.url()).pathname, status, code,
-      requestId: rejected.headers()['x-request-id'] || rejected.headers()['x-correlation-id'] });
+      requestId });
   }
   async function preview(action) {
     const response = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor/preview'));
@@ -40,7 +45,8 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   }
   async function commit() {
     const response = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/architecture/editor/commands'));
-    await page.locator('#editorAccept').press('Enter');
+    await page.waitForFunction(() => document.activeElement?.id === 'editorAccept' && !document.activeElement.disabled);
+    await page.keyboard.press('Enter');
     const result = await response;
     assert.ok([200, 202].includes(result.status()), await result.text());
     const value = await result.json();

@@ -226,13 +226,17 @@
             });
             if (!dialog.open) dialog.showModal();
             if (!preview.change.changes.length) { pending = null; el('editorPreviewError').textContent = t('editor.problem.NO_CHANGE'); }
-            el('editorAccept').focus();
         } catch (error) {
             if (ticket !== generation) return;
             report(error, dialog.open ? el('editorPreviewError') : el('editorError'));
             if (error.status === 412) { if (!dialog.open) dialog.showModal(); report(error, el('editorPreviewError')); el('editorReapply').hidden = false; }
             else pending = null;
-        } finally { busy = false; permissions(); }
+        } finally {
+            busy = false; permissions();
+            if (dialog.open) {
+                el(!el('editorReapply').hidden ? 'editorReapply' : pending ? 'editorAccept' : 'editorCancel').focus();
+            }
+        }
     }
     el('editorForm').addEventListener('submit', function (event) {
         event.preventDefault();
@@ -275,7 +279,7 @@
             report(error, el('editorPreviewError'));
             if (error.status === 412) el('editorReapply').hidden = false;
             // Keep this exact identity on ambiguous transport failure; never silently replay with a new ID.
-        } finally { busy = false; permissions(); if (!dialog.open) el('editorTitle').focus(); }
+        } finally { busy = false; permissions(); if (!dialog.open) el(view && view.mayEdit ? 'editorTitle' : 'editorRefresh').focus(); }
     };
     el('editorReapply').onclick = async function () {
         if (!pending || busy) return;
