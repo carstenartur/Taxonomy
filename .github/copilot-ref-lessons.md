@@ -98,3 +98,5 @@ The `DslGitRepository` uses `HibernateRepository` backed by the same `SessionFac
 ### 2026-09-08 — Strict editor commands over the tolerant DSL parser
 
 `TaxDslParser` deliberately accepts incomplete imports and its AST/serializer does not retain comments. A semantic editor must not parse/serialize the whole document to update one property: that can discard unrelated comments or accept an unterminated edited block. Use exact block identity and source ranges, retain edited-block comments and unknown properties, reject ambiguous/malformed targets, and preserve unrelated source bytes. A reconstructible inverse must also guard changed block text so a later annotation cannot be silently overwritten.
+
+The parser and source-range scanner must share delimiter recognition: braces in quoted values or trailing comments are not block structure. Cover header, property and closing-line comments, escaped quotes and LF/CRLF/CR through edit, delete and inverse tests.

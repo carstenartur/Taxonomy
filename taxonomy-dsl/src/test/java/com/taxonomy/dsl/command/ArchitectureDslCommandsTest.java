@@ -130,6 +130,34 @@ class ArchitectureDslCommandsTest {
         }
     }
 
+    @Test
+    void quotedAndCommentBracesCannotChangeBlockBoundariesOrInverseTargets() {
+        String prefix = "# Outside the edited block }\n";
+        String target = """
+                element arch-system type System { # opening comment {
+                  title: "Before { # literal }"; # trailing comment {
+                  x-future-property: "Escaped \\" { # literal"; # retained comment }
+                  x-count: 7; # comment with "quoted text" {
+                } # closing comment {
+                """;
+        String suffix = "element arch-other type Component {\n  title: \"Other }\";\n}\n";
+        for (String newline : java.util.List.of("\n", "\r\n", "\r")) {
+            String original = (prefix + target + suffix).replace("\n", newline);
+            var update = new UpdateArchitectureElement("arch-system", null, Map.of("title", "After {"));
+            var changed = commands.apply(original, update);
+            assertThat(changed.changedIds()).containsExactly("element:arch-system");
+            assertThat(changed.dsl()).startsWith(prefix.replace("\n", newline)).endsWith(suffix.replace("\n", newline))
+                    .contains("# opening comment {", "# trailing comment {", "# retained comment }", "# closing comment {");
+            var element = commands.model(changed.dsl()).findElement("arch-system").orElseThrow();
+            assertThat(element.getExtensions()).containsEntry("x-count", "7")
+                    .containsEntry("x-future-property", "Escaped \" { # literal");
+            assertThat(commands.apply(changed.dsl(), update).changes()).isEmpty();
+            assertThat(commands.inverse(changed.dsl(), original, changed.dsl()).dsl()).isEqualTo(original);
+            assertThat(commands.apply(original, new DeleteArchitectureElement("arch-system")).dsl())
+                    .isEqualTo((prefix + suffix).replace("\n", newline));
+        }
+    }
+
     private static void assertCode(org.assertj.core.api.ThrowableAssert.ThrowingCallable call, String code) {
         assertThatThrownBy(call).isInstanceOfSatisfying(CommandProblem.class, problem -> assertThat(problem.code()).isEqualTo(code));
     }

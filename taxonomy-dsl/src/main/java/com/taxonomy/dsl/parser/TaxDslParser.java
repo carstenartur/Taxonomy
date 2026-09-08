@@ -61,7 +61,7 @@ public class TaxDslParser {
         int i = 0;
 
         while (i < lines.size()) {
-            String stripped = lines.get(i).strip();
+            String stripped = withoutComment(lines.get(i)).strip();
 
             // Skip blank lines and comments
             if (stripped.isEmpty() || stripped.startsWith("#")) {
@@ -70,7 +70,7 @@ public class TaxDslParser {
             }
 
             // Look for a block opening: keyword ... {
-            if (stripped.endsWith("{")) {
+            if (blockDelimiter(stripped) > 0) {
                 String headerPart = stripped.substring(0, stripped.length() - 1).strip();
                 String keyword = firstToken(headerPart);
                 List<String> headerTokens = parseHeaderTokens(headerPart);
@@ -80,10 +80,7 @@ public class TaxDslParser {
                 int bodyEnd = bodyStart;
                 int depth = 1;
                 while (bodyEnd < lines.size() && depth > 0) {
-                    String bodyStripped = lines.get(bodyEnd).strip();
-                    if (bodyStripped.startsWith("#")) { bodyEnd++; continue; }
-                    if (bodyStripped.endsWith("{")) depth++;
-                    if (bodyStripped.equals("}") || bodyStripped.startsWith("}")) depth--;
+                    depth += blockDelimiter(lines.get(bodyEnd));
                     if (depth > 0) bodyEnd++;
                     else break;
                 }
@@ -91,7 +88,7 @@ public class TaxDslParser {
                 List<PropertyAst> properties = new ArrayList<>();
                 Map<String, String> extensions = new LinkedHashMap<>();
                 for (int j = bodyStart; j < bodyEnd; j++) {
-                    String bodyLine = lines.get(j).strip();
+                    String bodyLine = withoutComment(lines.get(j)).strip();
                     if (bodyLine.isEmpty() || bodyLine.startsWith("#")) continue;
                     PropertyAst prop = parseProperty(bodyLine, fileName, j + 1);
                     if (prop != null) {
@@ -127,6 +124,27 @@ public class TaxDslParser {
     /** Convenience overload without file name. */
     public DocumentAst parse(String text) {
         return parse(text, null);
+    }
+
+    /** Block structure excludes quoted values and full-line or trailing comments. Shared with source patches. */
+    public static int blockDelimiter(String line) {
+        String structural = QUOTED_VALUE.matcher(withoutComment(line)).replaceAll("\"\"").strip();
+        if (structural.startsWith("}")) return -1;
+        return structural.endsWith("{") ? 1 : 0;
+    }
+
+    /** Keep literal hashes inside quoted values, including escaped quotes and backslashes. */
+    public static String withoutComment(String line) {
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int index = 0; index < line.length(); index++) {
+            char value = line.charAt(index);
+            if (escaped) { escaped = false; continue; }
+            if (quoted && value == '\\') { escaped = true; continue; }
+            if (value == '"') quoted = !quoted;
+            if (!quoted && value == '#') return line.substring(0, index);
+        }
+        return line;
     }
 
     private String firstToken(String line) {

@@ -119,14 +119,11 @@ public final class ArchitectureSemanticPatch {
         int depth = 0;
         for (int cursor = start; cursor < source.length();) {
             int end = lineEnd(source, cursor);
-            String line = source.substring(cursor, end).strip();
-            if (!line.startsWith("#")) {
-                if (line.endsWith("{")) depth++;
-                if (depth > 1) throw new ArchitectureDslCommands.CommandProblem("INVALID_DOCUMENT", key(block),
-                        "Nested blocks are not supported on an edited object", List.of(key(block)));
-                if (line.startsWith("}")) depth--;
-                if (depth == 0) return new int[]{start, end};
-            }
+            int delimiter = TaxDslParser.blockDelimiter(source.substring(cursor, end));
+            depth += delimiter;
+            if (depth > 1) throw new ArchitectureDslCommands.CommandProblem("INVALID_DOCUMENT", key(block),
+                    "Nested blocks are not supported on an edited object", List.of(key(block)));
+            if (depth == 0 && delimiter < 0) return new int[]{start, end};
             cursor = end;
         }
         throw new ArchitectureDslCommands.CommandProblem("INVALID_DOCUMENT", key(block),
