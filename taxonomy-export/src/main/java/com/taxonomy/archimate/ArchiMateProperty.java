@@ -6,6 +6,7 @@ import java.util.Objects;
 /** A typed exchange property; arbitrary application objects are never serialized. */
 public record ArchiMateProperty(String type, String value) {
     public ArchiMateProperty {
+        if (type == null) throw new IllegalArgumentException("Missing exchange property type");
         Objects.requireNonNull(value, "property value");
         switch (type) {
             case "string" -> { }
