@@ -219,9 +219,9 @@
             row.append(link); list.append(row);
         });
     }
-    function metadata(causation) {
+    function metadata(causation, correlation) {
         var id = crypto.randomUUID();
-        return { commandId: id, correlationId: pending ? pending.metadata.correlationId : id,
+        return { commandId: id, correlationId: correlation || id,
             causationId: causation || id, rationale: el('editorRationale').value };
     }
     async function stage(intent) {
@@ -323,7 +323,7 @@
         var ok = await load(original.context, null, true);
         busy = false;
         if (!ok) { pending = null; permissions(); return; }
-        pending = Object.assign({}, original, { context: context(), metadata: metadata(original.metadata.commandId) });
+        pending = Object.assign({}, original, { context: context(), metadata: metadata(original.metadata.commandId, original.metadata.correlationId) });
         await previewPending();
     };
     el('editorCheckpoint').onclick = async function () {

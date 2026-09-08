@@ -7,6 +7,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   const failureStart = httpFailures.length;
   const expectedFailures = [];
   const accepted = [];
+  let lastPreviewMetadata;
   const base = baseUrl.replace(/\/$/, '');
   await page.evaluate(async () => {
     if (window.TaxonomyAnalysisSession) await window.TaxonomyAnalysisSession.saveNow();
@@ -40,6 +41,10 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await action();
     const result = await response;
     assert.equal(result.status(), 200, await result.text());
+    lastPreviewMetadata = result.request().postDataJSON().metadata;
+    if (lastPreviewMetadata.causationId === lastPreviewMetadata.commandId) {
+      assert.equal(lastPreviewMetadata.correlationId, lastPreviewMetadata.commandId, 'New intents start their own correlation');
+    }
     await page.locator('#editorPreviewDialog[open]').waitFor();
     return result.json();
   }
@@ -158,6 +163,7 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     // A second accepted writer advances the branch after the real UI has previewed its intent.
     await page.locator('#editorTitle').fill(`Reapplied system ${suffix}`);
     await preview(() => page.locator('#editorPreviewElement').click());
+    const staleMetadata = lastPreviewMetadata;
     const stale = await page.evaluate(async ({ c, id }) => {
       const uuid = crypto.randomUUID();
       return window.ArchitectureEditorApi.execute({ context: c, kind: 'UPDATE_ELEMENT', id,
@@ -169,6 +175,9 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     await expectFailure(() => page.locator('#editorAccept').click(), '/api/architecture/editor/commands', 412, 'REVISION_MOVED');
     await page.waitForFunction(() => document.activeElement?.id === 'editorReapply' && !document.activeElement.disabled);
     await preview(() => page.keyboard.press('Enter'));
+    assert.notEqual(lastPreviewMetadata.commandId, staleMetadata.commandId);
+    assert.equal(lastPreviewMetadata.correlationId, staleMetadata.correlationId);
+    assert.equal(lastPreviewMetadata.causationId, staleMetadata.commandId);
     assert.ok((await page.locator('#editorChanges').innerText()).includes('Concurrent accepted description'));
     await commit();
     assert.equal(await page.locator('#editorTitle').inputValue(), `Reapplied system ${suffix}`);
