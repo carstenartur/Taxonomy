@@ -47,6 +47,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PortfolioUiAcceptanceIT {
 
     private static final String ADMIN_PASSWORD = "Portfolio-Ui-Acceptance-2026!";
+    private static final Duration UI_WAIT_TIMEOUT = Duration.ofSeconds(120);
 
     private static Network network;
     private static GenericContainer<?> application;
@@ -71,7 +72,7 @@ class PortfolioUiAcceptanceIT {
         driver = browserSession.driver();
         driver.manage().window().setSize(new Dimension(1440, 1000));
         driver.setFileDetector(new LocalFileDetector());
-        wait = new WebDriverWait(driver, Duration.ofSeconds(120));
+        wait = new WebDriverWait(driver, UI_WAIT_TIMEOUT);
         login();
     }
 
@@ -464,43 +465,44 @@ class PortfolioUiAcceptanceIT {
 
     /**
      * Performs a real native browser click after scrolling to a stable viewport
-     * position. Bootstrap may report a trigger as clickable while the fading
+     * position. Explicit instant scrolling avoids racing Bootstrap's smooth
+     * scrolling with WebDriver's native pointer hit test. Bootstrap may report a
+     * trigger as clickable while the fading
      * backdrop still intercepts the pointer; retry only that transient browser
      * condition instead of bypassing it with JavaScript.
      */
     private static void click(By locator) {
         wait.until(ExpectedConditions.invisibilityOfElementLocated(
                 By.cssSelector(".modal-backdrop.show")));
-        wait.until(browser -> {
-            try {
-                WebElement element = browser.findElement(locator);
-                if (!element.isDisplayed() || !element.isEnabled()) return false;
-                javascript().executeScript(
-                        "arguments[0].scrollIntoView({block:'center',inline:'nearest'});",
-                        element);
-                element.click();
-                return true;
-            } catch (ElementClickInterceptedException | StaleElementReferenceException error) {
-                return false;
-            }
-        });
+        new WebDriverWait(driver, UI_WAIT_TIMEOUT)
+                .ignoring(ElementClickInterceptedException.class)
+                .ignoring(StaleElementReferenceException.class)
+                .withMessage("Native click on " + locator)
+                .until(browser -> {
+                    WebElement element = browser.findElement(locator);
+                    if (!element.isDisplayed() || !element.isEnabled()) return false;
+                    javascript().executeScript(
+                            "arguments[0].scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});",
+                            element);
+                    element.click();
+                    return true;
+                });
     }
 
     private static void click(WebElement element) {
         wait.until(ExpectedConditions.invisibilityOfElementLocated(
                 By.cssSelector(".modal-backdrop.show")));
-        wait.until(browser -> {
-            try {
-                if (!element.isDisplayed() || !element.isEnabled()) return false;
-                javascript().executeScript(
-                        "arguments[0].scrollIntoView({block:'center',inline:'nearest'});",
-                        element);
-                element.click();
-                return true;
-            } catch (ElementClickInterceptedException error) {
-                return false;
-            }
-        });
+        new WebDriverWait(driver, UI_WAIT_TIMEOUT)
+                .ignoring(ElementClickInterceptedException.class)
+                .withMessage("Native click on " + element)
+                .until(browser -> {
+                    if (!element.isDisplayed() || !element.isEnabled()) return false;
+                    javascript().executeScript(
+                            "arguments[0].scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});",
+                            element);
+                    element.click();
+                    return true;
+                });
     }
 
     private static void fill(String id, String value) {
