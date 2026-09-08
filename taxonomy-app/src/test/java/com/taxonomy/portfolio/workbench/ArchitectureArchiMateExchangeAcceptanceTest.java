@@ -25,6 +25,36 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Runs the real snapshot export, metadata whitelist, ZIP manifest and profile reader together. */
 class ArchitectureArchiMateExchangeAcceptanceTest {
     @Test
+    void bundleBytesRemainStableAcrossProcessesAndTimeZones(@org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        byte[] expected = fixtureBundle().content();
+        String classpath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+        for (String zone : List.of("UTC", "Europe/Berlin", "Pacific/Honolulu", "Pacific/Kiritimati")) {
+            var output = directory.resolve(zone.replace('/', '-') + ".zip");
+            var log = directory.resolve(zone.replace('/', '-') + ".log");
+            var process = new ProcessBuilder(java.nio.file.Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                    "-Duser.timezone=" + zone, "-cp", classpath, getClass().getName(), output.toString())
+                    .redirectErrorStream(true).redirectOutput(log.toFile()).start();
+            if (!process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) {
+                process.destroyForcibly(); fail("ArchiMate bundle fixture process did not finish: " + zone);
+            }
+            assertEquals(0, process.exitValue(), () -> "Fixture process failed: " + log);
+            assertArrayEquals(expected, java.nio.file.Files.readAllBytes(output), zone);
+        }
+    }
+
+    private static ArchitectureSnapshotExportService.Artifact fixtureBundle() {
+        var service = new ArchitectureSnapshotExportService(new FixedWorkbench(projection()),
+                new CanonicalDiagramExportService(null, null, new ArchiMateDiagramService(), new ArchiMateXmlExporter()));
+        return service.exportArchiMateBundle(42L, "snapshot", "alice",
+                new WorkspaceContext("alice", "workspace", "branch", "repository"));
+    }
+
+    public static void main(String[] args) throws Exception {
+        if (args.length != 1 || args[0].isBlank()) throw new IllegalArgumentException("Expected one output ZIP path");
+        java.nio.file.Files.write(java.nio.file.Path.of(args[0]), fixtureBundle().content());
+    }
+
+    @Test
     void packageContainsTheExactSnapshotProfileAndMachineReadableLossReport() throws Exception {
         Projection projection = projection();
         var workbench = new FixedWorkbench(projection);
