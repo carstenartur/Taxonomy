@@ -240,10 +240,14 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
         adapter.render(scene, null); adapter.fit(); await settle();
         const renderMs = Math.round(performance.now() - started);
         const visibleNodes = svg.querySelectorAll('.editor-node').length;
+        const markerId = svg.querySelector('marker').id;
+        const markerIsUnique = document.querySelectorAll('#' + markerId).length === 1;
+        const edgesUseOwnMarker = [...svg.querySelectorAll('.editor-edge')]
+          .every(edge => edge.getAttribute('marker-end') === 'url(#' + markerId + ')');
         const focusStarted = performance.now();
         adapter.select(scene.nodes[count - 1].id); adapter.focus(); await settle();
         const focusMs = Math.round(performance.now() - focusStarted);
-        measurements.push({ count, renderMs, focusMs, visibleNodes, domElements: svg.querySelectorAll('*').length,
+        measurements.push({ count, renderMs, focusMs, visibleNodes, markerIsUnique, edgesUseOwnMarker, domElements: svg.querySelectorAll('*').length,
           selectedVisible: Boolean(svg.querySelector('.editor-node[aria-pressed="true"]')) });
       } finally { adapter.destroy(); svg.remove(); }
     }
@@ -252,6 +256,8 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
   for (const measurement of measurements.renderer) {
     assert.ok(measurement.visibleNodes <= 200 && measurement.domElements <= 1100);
     assert.equal(measurement.selectedVisible, true);
+    assert.equal(measurement.markerIsUnique, true, 'Concurrent editor renderers must have distinct SVG marker IDs');
+    assert.equal(measurement.edgesUseOwnMarker, true, 'Edges must reference the marker owned by their renderer');
     assert.ok(measurement.renderMs < 1500 && measurement.focusMs < 1500,
       `Renderer exceeded its 1500 ms CI budget: ${JSON.stringify(measurement)}`);
   }

@@ -146,7 +146,20 @@ public class DslOperationsFacade {
         RepositoryContext context = resolveRepositoryContext();
         RepositoryContext selected = new RepositoryContext(context.repositoryId(), context.workspaceId(),
                 branch, context.username(), context.scope());
-        return editorVersions.version(selected, rationale == null || rationale.isBlank() ? "Create architecture version" : rationale, action);
+        return editorVersions.version(selected, versionRationale(rationale), action);
+    }
+
+    /** The bounded journal rationale is a summary; the Git action retains its complete original message. */
+    private static String versionRationale(String message) {
+        if (message == null) return "Create architecture version";
+        String normalized = message.codePoints()
+                .map(codePoint -> Character.isISOControl(codePoint) || Character.isWhitespace(codePoint) ? ' ' : codePoint)
+                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)
+                .toString().strip().replaceAll(" +", " ");
+        if (normalized.isEmpty()) return "Create architecture version";
+        if (normalized.length() <= 1000) return normalized;
+        int end = Character.isHighSurrogate(normalized.charAt(999)) ? 999 : 1000;
+        return normalized.substring(0, end).stripTrailing();
     }
 
     public boolean isDatabaseBacked() {

@@ -3,7 +3,10 @@ window.ArchitectureEditorRenderer = function (element, onSelect, onRelation, onS
     'use strict';
     var d3 = window.d3;
     var svg = d3.select(element);
-    svg.append('defs').append('marker').attr('id', 'editorArrow').attr('viewBox', '0 0 10 10')
+    var markerSequence = (window.ArchitectureEditorRenderer.markerSequence || 0) + 1;
+    window.ArchitectureEditorRenderer.markerSequence = markerSequence;
+    var markerId = 'editorArrow-' + markerSequence;
+    svg.append('defs').append('marker').attr('id', markerId).attr('viewBox', '0 0 10 10')
         .attr('refX', 9).attr('refY', 5).attr('markerWidth', 7).attr('markerHeight', 7).attr('orient', 'auto')
         .append('path').attr('d', 'M0,0 L10,5 L0,10 Z').attr('fill', 'context-stroke');
     var edges = svg.append('g');
@@ -39,7 +42,7 @@ window.ArchitectureEditorRenderer = function (element, onSelect, onRelation, onS
             return ids.has(edge.sourceId) && ids.has(edge.targetId);
         }).slice(0, MAX_EDGES), function (edge) { return edge.id; }).join('path')
             .attr('class', 'editor-edge').attr('tabindex', 0).attr('role', 'button')
-            .attr('marker-end', 'url(#editorArrow)')
+            .attr('marker-end', 'url(#' + markerId + ')')
             .attr('aria-label', function (edge) { return edge.sourceId + ' ' + edge.relationType + ' ' + edge.targetId; })
             .attr('d', function (edge) { return 'M' + edge.sourceX + ',' + edge.sourceY + ' L' + edge.targetX + ',' + edge.targetY; })
             .on('click', function (event, edge) { onRelation(edge); })
