@@ -72,10 +72,12 @@ public class ArchitectureEditorController {
                                       @RequestParam String branch, @RequestParam String commit) throws IOException {
         var document = service.read(readContext(repositoryId, workspaceScopeKey, branch), commit);
         var view = projection.project(document, false);
+        var provenance = document.context();
         return response(HttpStatus.OK, document.context().commit())
                 .header("X-Taxonomy-Layout-Source", view.schema().layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
-                .body(pdf.render(view.scene(), repositoryId + " / " + workspaceScopeKey + " / " + branch + "\n" + commit));
+                .body(pdf.render(view.scene(), provenance.repositoryId() + " / " + provenance.workspaceScopeKey()
+                        + " / " + provenance.branch() + "\n" + provenance.commit()));
     }
 
     @PostMapping("/api/architecture/editor/preview")

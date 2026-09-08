@@ -153,7 +153,8 @@ export async function runArchitectureEditorAcceptance({ page, role, baseUrl, evi
     }, { c: current.document.context, id: system });
     assert.equal(stale.commitCreated, true);
     await expectFailure(() => page.locator('#editorAccept').click(), '/api/architecture/editor/commands', 412, 'HEAD_MOVED');
-    await preview(() => page.locator('#editorReapply').click());
+    await page.waitForFunction(() => document.activeElement?.id === 'editorReapply' && !document.activeElement.disabled);
+    await preview(() => page.keyboard.press('Enter'));
     assert.ok((await page.locator('#editorChanges').innerText()).includes('Concurrent accepted description'));
     await commit();
     assert.equal(await page.locator('#editorTitle').inputValue(), `Reapplied system ${suffix}`);

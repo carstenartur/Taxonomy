@@ -25,7 +25,7 @@ class ArchitectureEditorControllerTest {
             new ArchitectureEditorProjection(new LayeredDiagramLayoutService()), resolver,
             new SvgDiagramRenderer(), new ArchitecturePdfRenderer());
     private final RepositoryContext scope = RepositoryContext.workspace("repo-a", "workspace-a", "draft", "alice");
-    private static final String HEAD = "1234567890123456789012345678901234567890";
+    private static final String HEAD = "a1".repeat(20);
 
     @Test
     void missingAndContradictoryPreconditionsNeverReachTheCommandPort() {
@@ -51,9 +51,11 @@ class ArchitectureEditorControllerTest {
         String dsl = "element arch-instance type System {\n  title: \"System title\";\n}\n";
         var document = new ArchitectureEditorService.Document(Context.of(scope, HEAD), dsl, "READY", List.of());
         when(service.read(scope, HEAD)).thenReturn(document);
+        String requestedCommit = HEAD.toUpperCase(java.util.Locale.ROOT);
+        when(service.read(scope, requestedCommit)).thenReturn(document);
         var json = controller.read("repo-a", "workspace-a", "draft", HEAD);
         var svg = controller.svg("repo-a", "workspace-a", "draft", HEAD);
-        var pdf = controller.pdf("repo-a", "workspace-a", "draft", HEAD);
+        var pdf = controller.pdf("repo-a", "workspace-a", "draft", requestedCommit);
         assertThat(json.getBody().scene().nodes()).hasSize(1);
         assertThat(svg.getBody()).contains("System title", "arch-instance");
         assertThat(svg.getHeaders().getETag()).isEqualTo(json.getHeaders().getETag());

@@ -279,7 +279,11 @@
             report(error, el('editorPreviewError'));
             if (error.status === 412) el('editorReapply').hidden = false;
             // Keep this exact identity on ambiguous transport failure; never silently replay with a new ID.
-        } finally { busy = false; permissions(); if (!dialog.open) el(view && view.mayEdit ? 'editorTitle' : 'editorRefresh').focus(); }
+        } finally {
+            busy = false; permissions();
+            if (dialog.open) el(!el('editorReapply').hidden ? 'editorReapply' : pending ? 'editorAccept' : 'editorCancel').focus();
+            else el(view && view.mayEdit ? 'editorTitle' : 'editorRefresh').focus();
+        }
     };
     el('editorReapply').onclick = async function () {
         if (!pending || busy) return;

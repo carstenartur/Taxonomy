@@ -14,7 +14,8 @@ import java.util.Objects;
 
 /**
  * A reconstructible semantic patch between two immutable Git documents.
- * Only changed blocks are replaced. Unrelated text, ordering and comments remain byte-for-byte intact.
+ * Only changed blocks are replaced; unrelated source remains byte-for-byte intact.
+ * Comments in edited blocks are retained, but their placement, indentation and line endings may change.
  * Applying an inverse requires the affected blocks to still match the accepted after-state.
  */
 public final class ArchitectureSemanticPatch {
