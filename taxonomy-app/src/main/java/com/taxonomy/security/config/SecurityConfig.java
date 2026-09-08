@@ -11,6 +11,7 @@ import org.springframework.security.config.Customizer;
 import org.springframework.security.config.ObjectPostProcessor;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.core.session.SessionRegistry;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.authentication.www.BasicAuthenticationFilter;
@@ -73,7 +74,13 @@ public class SecurityConfig {
                 webDavCredentialFilter, rateLimitFilter, Optional.empty());
     }
 
-    @Bean
+    @Bean(name = "securityFilterChain")
+    SecurityFilterChain trackedSecurityFilterChain(HttpSecurity http, SessionRegistry registry) throws Exception {
+        BrowserSessionConfiguration.configure(http, registry);
+        return securityFilterChain(http);
+    }
+
+    /** Existing security rules, also used by focused protocol/filter configuration tests. */
     SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         RequestMatcher statelessProtocolClient = SecurityConfig::isStatelessProtocolClient;
 

@@ -7,6 +7,8 @@ import { isolateRoleStateScenario } from './ui-role-state-isolation.mjs';
 import { runRoleStateFlow } from './ui-role-state-flow.mjs';
 import { runSystemInformationAcceptance } from './system-information-acceptance.mjs';
 
+import { runBrowserSessionsAcceptance } from './browser-sessions-acceptance.mjs';
+
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const adminUsername = process.env.TAXONOMY_UI_ADMIN_USERNAME || 'admin';
 const adminPassword = process.env.TAXONOMY_UI_ADMIN_PASSWORD || 'ui-state-admin-password';
@@ -65,6 +67,7 @@ let taskMeasurements = {
   secondaryToolsCollapsedByDefault: false
 };
 let failureEvidence = null;
+let browserSessions = [];
 await mkdir(outputDir, { recursive: true });
 
 function draftConflictMatches(failure, reconciliation) {
@@ -167,6 +170,20 @@ try {
       throw new Error('System-information flow introduced HTTP, console or external-request failures');
     }
     checks.push('DE/EN system information, persistence warnings, keyboard refresh and screenshots');
+
+    taskMeasurements.failedStep = 'browser-session inventory acceptance';
+    const previousHttpFailures = httpFailures.length;
+    const previousConsoleErrors = consoleErrors.length;
+    const previousExternalRequests = externalRequests.length;
+    browserSessions = await runBrowserSessionsAcceptance({
+      page, evidence, outputDir, baseUrl, adminUsername, adminPassword
+    });
+    if (httpFailures.length !== previousHttpFailures
+        || consoleErrors.length !== previousConsoleErrors
+        || externalRequests.length !== previousExternalRequests) {
+      throw new Error('Unexpected HTTP, console or external-request error during session-page acceptance');
+    }
+    checks.push('administrator browser-session page in EN and DE');
   }
   taskMeasurements.schemaVersion = 1;
   taskMeasurements.failedStep = null;
@@ -195,7 +212,7 @@ try {
     taskMeasurements,
     checks, findings, externalRequests, httpFailures,
     draftReconciliations, reconciledHttpFailures, consoleErrors,
-    auditError, failureEvidence
+    auditError, failureEvidence, browserSessions
   };
   await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
   if (auditError) {
