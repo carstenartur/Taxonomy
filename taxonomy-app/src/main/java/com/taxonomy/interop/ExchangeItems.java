@@ -58,11 +58,9 @@ public final class ExchangeItems {
         return result;
     }
     private static String comparable(String value) {
-        if (value.startsWith("<")) {
-            try { return com.taxonomy.exchange.ExchangeXml.semantic(value); }
-            catch (com.taxonomy.exchange.ExchangeFormatException notXml) { return value; }
-        }
-        return value;
+        if (value == null || !value.startsWith("<")) return value;
+        try { return com.taxonomy.exchange.ExchangeXml.semantic(value); }
+        catch (com.taxonomy.exchange.ExchangeFormatException notXml) { return value; }
     }
     /** Apply only fields changed externally; preserve non-intersecting local edits. */
     public static Artifact merge(Artifact baselineExternal, Artifact currentInternal, Artifact incoming) {
