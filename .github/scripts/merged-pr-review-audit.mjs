@@ -4,7 +4,7 @@ import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { humanReviewDecision, loadHumanEvidence } from './exact-head-review-gate.mjs';
+import { humanReviewDecision, isValidReviewCoverage, loadHumanEvidence } from './exact-head-review-gate.mjs';
 
 const API_VERSION = '2022-11-28';
 const DEFAULT_REVIEWERS = [
@@ -113,9 +113,9 @@ function reviewEvidence(review, changedFiles, headSha) {
         classification: classifyReview(review),
         coverage,
         commentCount,
-        completeCoverage: Boolean(coverage
-            && coverage.reviewed === coverage.total
-            && coverage.total === changedFiles),
+        validCoverage: isValidReviewCoverage(coverage, changedFiles),
+        completeCoverage: isValidReviewCoverage(coverage, changedFiles)
+            && coverage.reviewed === coverage.total,
         exactHead: commit === headSha,
         submittedAt: reviewSubmittedAt(review),
         commit,
@@ -148,9 +148,10 @@ export function auditMergedPullRequest({
     const baseRef = String(pullRequest?.base?.ref ?? '');
     const changedFiles = Number(pullRequest?.changed_files);
     const findings = [];
+    let humanConfirmation = null;
 
     if (!number || !mergedAt || !headSha
-            || !Number.isInteger(changedFiles) || changedFiles < 1) {
+            || !Number.isSafeInteger(changedFiles) || changedFiles < 1) {
         findings.push(finding('high', 'MERGED_PR_METADATA_INCOMPLETE',
             'Merged pull-request number, merge time, head SHA, or changed-file count is missing.'));
         return auditResult(
@@ -172,40 +173,40 @@ export function auditMergedPullRequest({
         const evidence = reviewEvidence(latestBeforeMerge, changedFiles, headSha);
         const decision = humanReviewDecision({
             pullRequest, review: latestBeforeMerge, reviews, comments, humanPermissions, reviewerLogins,
-            asOf: Date.parse(mergedAt)
+            asOf: Date.parse(mergedAt), requireCompleteCoverage: !evidence.completeCoverage
         });
-        const humanConfirmed = evidence.classification === 'needs-closer-look'
+        const humanConfirmed = ['approval-recommended', 'needs-closer-look'].includes(evidence.classification)
+            && evidence.validCoverage && evidence.commentCount === 0
             && Boolean(decision.confirmation) && !decision.objection;
+        if (humanConfirmed && (!evidence.completeCoverage || evidence.classification === 'needs-closer-look')) {
+            humanConfirmation = decision.confirmation;
+        }
         if (decision.objection) {
             findings.push(finding('high', 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE',
                 'A repository writer requested changes on the merged head.'));
         }
-        const laterCleanReview = exactHeadReviews
-            .filter(review => reviewSubmittedAt(review) > evidence.submittedAt)
-            .map(review => reviewEvidence(review, changedFiles, headSha))
-            .find(isCleanApprovalEvidence);
-        if (!laterCleanReview) {
-            if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
-                findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
-                    `The latest unreconciled exact-head pre-merge review outcome was ${evidence.classification}.`,
-                    evidence));
-            }
-            if (!evidence.completeCoverage) {
-                findings.push(finding('high', 'INCOMPLETE_EXACT_HEAD_REVIEW',
-                    evidence.coverage
-                        ? `The unreconciled pre-merge review covered ${evidence.coverage.reviewed}/${evidence.coverage.total} files while the PR changed ${changedFiles}.`
-                        : 'The unreconciled pre-merge review published no changed-file coverage count.',
-                    evidence));
-            }
-            if (evidence.commentCount === null) {
-                findings.push(finding('medium', 'PRE_MERGE_REVIEW_COMMENT_COUNT_MISSING',
-                    'The unreconciled pre-merge review did not publish its generated-comment count.',
-                    evidence));
-            } else if (evidence.commentCount > 0) {
-                findings.push(finding('high', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED',
-                    `The exact-head pre-merge review generated ${evidence.commentCount} comment(s) and no later complete, comment-free exact-head approval exists.`,
-                    evidence));
-            }
+        // This is already the latest exact-head review before merge. A later
+        // approval may report remediation, but cannot change the merge-time facts.
+        if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
+            findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
+                `The latest exact-head pre-merge review outcome was ${evidence.classification}.`,
+                evidence));
+        }
+        if (!evidence.completeCoverage && !humanConfirmed) {
+            findings.push(finding('high', 'INCOMPLETE_EXACT_HEAD_REVIEW',
+                evidence.coverage
+                    ? `The pre-merge review covered ${evidence.coverage.reviewed}/${evidence.coverage.total} files while the PR changed ${changedFiles}.`
+                    : 'The pre-merge review published no changed-file coverage count.',
+                evidence));
+        }
+        if (evidence.commentCount === null) {
+            findings.push(finding('medium', 'PRE_MERGE_REVIEW_COMMENT_COUNT_MISSING',
+                'The pre-merge review did not publish its generated-comment count.',
+                evidence));
+        } else if (evidence.commentCount > 0) {
+            findings.push(finding('high', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED',
+                `The latest exact-head review before merge generated ${evidence.commentCount} comment(s); no fresh comment-free review completed before merge.`,
+                evidence));
         }
     }
 
@@ -247,7 +248,7 @@ export function auditMergedPullRequest({
     }
 
     return auditResult(
-        pullRequest, number, headSha, baseRef, mergedAt, changedFiles, findings);
+        pullRequest, number, headSha, baseRef, mergedAt, changedFiles, findings, humanConfirmation);
 }
 
 function auditResult(
@@ -257,7 +258,8 @@ function auditResult(
     baseRef,
     mergedAt,
     changedFiles,
-    findings
+    findings,
+    humanConfirmation = null
 ) {
     return {
         number,
@@ -267,6 +269,7 @@ function auditResult(
         baseRef,
         mergedAt,
         changedFiles,
+        humanConfirmation,
         findings
     };
 }
