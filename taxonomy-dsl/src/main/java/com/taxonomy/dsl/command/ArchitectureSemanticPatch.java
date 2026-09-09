@@ -22,6 +22,8 @@ import java.util.Set;
 public final class ArchitectureSemanticPatch {
     private static final TaxDslParser PARSER = new TaxDslParser();
     private static final TaxDslSerializer SERIALIZER = new TaxDslSerializer();
+    private static final Set<String> COMPOSITE_IDENTITY_KINDS =
+            Set.of("relation", "mapping", "projectRequirement", "requirementVersion");
 
     private ArchitectureSemanticPatch() {}
 
@@ -123,7 +125,7 @@ public final class ArchitectureSemanticPatch {
             throw new ArchitectureDslCommands.CommandProblem("INVALID_HEADER", block.getKind(),
                     "Block identity is missing", List.of());
         }
-        return block.getKind() + ":" + (Set.of("relation", "mapping", "projectRequirement", "requirementVersion").contains(block.getKind())
+        return block.getKind() + ":" + (COMPOSITE_IDENTITY_KINDS.contains(block.getKind())
                 ? String.join(" ", tokens) : tokens.getFirst());
     }
 

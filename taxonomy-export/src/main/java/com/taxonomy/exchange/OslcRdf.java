@@ -40,7 +40,7 @@ public final class OslcRdf {
         StringBuilder result = new StringBuilder();
         for (Triple t : triples) result.append('<').append(iri(t.subject())).append("> <").append(iri(t.predicate())).append("> ")
                 .append(t.resource() ? "<" + iri(t.value()) + ">" : quote(t.value())).append(" .\n");
-        return result.toString().getBytes(StandardCharsets.UTF_8);
+        return boundedUtf8(result.toString());
     }
     public byte[] jsonLd() {
         StringBuilder result = new StringBuilder("{\"@graph\":["); boolean comma = false;
@@ -49,7 +49,12 @@ public final class OslcRdf {
             result.append("{\"@id\":").append(quote(iri(t.subject()))).append(',').append(quote(iri(t.predicate()))).append(':')
                     .append(t.resource() ? "{\"@id\":" + quote(iri(t.value())) + "}" : "{\"@value\":" + quote(t.value()) + "}").append('}');
         }
-        return result.append("]}").toString().getBytes(StandardCharsets.UTF_8);
+        return boundedUtf8(result.append("]}").toString());
+    }
+    private static byte[] boundedUtf8(String value) {
+        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
+        if (bytes.length > ExchangeXml.MAX_BYTES) throw ExchangeXml.invalid("PACKAGE_SIZE", "OSLC output exceeds 16 MiB");
+        return bytes;
     }
     private static String iri(String value) {
         if (value.chars().anyMatch(c -> c <= 32 || "<>\"{}|^`\\".indexOf(c) >= 0) || !java.net.URI.create(value).isAbsolute())

@@ -5,9 +5,14 @@ import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.riot.*;
 import org.apache.jena.vocabulary.RDF;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.MethodSource;
+import org.junit.jupiter.params.provider.Arguments;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Stream;
 import static org.junit.jupiter.api.Assertions.*;
 
 class OslcRdfContractTest {
@@ -79,6 +84,30 @@ class OslcRdfContractTest {
                 assertThrows(IllegalArgumentException.class, graph::jsonLd, invalid);
             }
         }
+    }
+
+    static Stream<Arguments> representations() {
+        return Stream.of(
+                Arguments.of("RDF/XML", (Function<OslcRdf, byte[]>) OslcRdf::xml),
+                Arguments.of("Turtle", (Function<OslcRdf, byte[]>) OslcRdf::turtle),
+                Arguments.of("JSON-LD", (Function<OslcRdf, byte[]>) OslcRdf::jsonLd));
+    }
+
+    @ParameterizedTest(name = "{0} enforces the UTF-8 byte limit")
+    @MethodSource("representations")
+    void everyRepresentationAcceptsTheByteLimitAndRejectsOneByteMore(
+            String format, Function<OslcRdf, byte[]> write) {
+        Function<String, OslcRdf> graph = value -> new OslcRdf()
+                .literal(BASE.toString(), OslcRdf.DCT + "title", value);
+        int overhead = write.apply(graph.apply("x")).length - 1;
+        String unicode = "Ä日🚀";
+        String atLimit = unicode + "a".repeat(ExchangeXml.MAX_BYTES - overhead - bytes(unicode).length);
+        assertEquals(ExchangeXml.MAX_BYTES, write.apply(graph.apply(atLimit)).length, format);
+
+        var error = assertThrows(ExchangeFormatException.class,
+                () -> write.apply(graph.apply(atLimit + "a")), format);
+        assertEquals("PACKAGE_SIZE", error.code());
+        assertEquals("OSLC output exceeds 16 MiB", error.getMessage());
     }
 
     @Test void multipleXhtmlFragmentsRemainRdfLiteralsUntilAReviewedPlainTextEdit() {
