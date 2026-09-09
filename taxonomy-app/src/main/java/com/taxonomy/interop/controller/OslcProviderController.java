@@ -1,6 +1,7 @@
 package com.taxonomy.interop.controller;
 
 import com.taxonomy.exchange.OslcRdf;
+import com.taxonomy.exchange.ExchangeFormatException;
 import com.taxonomy.exchange.ReqifExchangeCodec;
 import com.taxonomy.interop.IntegrationProblem;
 import com.taxonomy.interop.oslc.OslcProviderService;
@@ -89,6 +90,11 @@ public class OslcProviderController {
         if (best != null) return best;
         throw new IntegrationProblem("UNSUPPORTED_REPRESENTATION", 406, "Supported representations are RDF/XML, Turtle and JSON-LD");
     }
-    @ExceptionHandler(IntegrationProblem.class) public ResponseEntity<Map<String, String>> problem(IntegrationProblem failure) { return ResponseEntity.status(failure.status()).body(Map.of("code", failure.code(), "message", failure.getMessage())); }
-    @ExceptionHandler(IllegalArgumentException.class) public ResponseEntity<Map<String, String>> invalid() { return ResponseEntity.badRequest().body(Map.of("code", "UNSUPPORTED_OSLC_REQUEST", "message", "Request is outside the declared OSLC profile")); }
+    // Failures use bounded JSON regardless of the requested RDF representation.
+    @ExceptionHandler(IntegrationProblem.class) public ResponseEntity<Map<String, String>> problem(IntegrationProblem failure) { return ResponseEntity.status(failure.status()).contentType(MediaType.APPLICATION_JSON).body(Map.of("code", failure.code(), "message", failure.getMessage())); }
+    @ExceptionHandler(ExchangeFormatException.class) public ResponseEntity<Map<String, String>> format(ExchangeFormatException failure) {
+        return ResponseEntity.unprocessableContent().contentType(MediaType.APPLICATION_JSON)
+                .body(Map.of("code", failure.code(), "message", failure.getMessage()));
+    }
+    @ExceptionHandler(IllegalArgumentException.class) public ResponseEntity<Map<String, String>> invalid() { return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(Map.of("code", "UNSUPPORTED_OSLC_REQUEST", "message", "Request is outside the declared OSLC profile")); }
 }

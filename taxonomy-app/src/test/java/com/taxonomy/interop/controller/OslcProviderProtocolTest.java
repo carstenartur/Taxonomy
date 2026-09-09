@@ -1,17 +1,23 @@
 package com.taxonomy.interop.controller;
 
 import com.taxonomy.exchange.OslcRdf;
+import com.taxonomy.exchange.ExchangeXml;
 import com.taxonomy.interop.IntegrationProblem;
 import com.taxonomy.interop.oslc.OslcProviderService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 class OslcProviderProtocolTest {
     private final OslcProviderService service = mock(OslcProviderService.class);
@@ -56,5 +62,29 @@ class OslcProviderProtocolTest {
         assertArrayEquals(plain.getBody(), result.getBody());
         var unsupported = request(); unsupported.addParameter("oslc.where", "dcterms:title=\"hidden\"");
         assertThrows(IllegalArgumentException.class, () -> controller.catalog("scope", unsupported));
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"application/rdf+xml", "text/turtle", "application/ld+json"})
+    void oversizedRepresentationsKeepTheBoundedExchangeErrorAtTheHttpBoundary(String mediaType) throws Exception {
+        when(service.catalog(eq(context), any())).thenReturn(new OslcRdf()
+                .literal("https://provider.example/catalog", OslcRdf.DCT + "title", "a".repeat(ExchangeXml.MAX_BYTES)));
+        standaloneSetup(controller).build().perform(get("/oslc/scopes/scope/catalog").accept(mediaType))
+                .andExpect(status().isUnprocessableContent())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.code").value("PACKAGE_SIZE"))
+                .andExpect(jsonPath("$.message").value("OSLC output exceeds 16 MiB"));
+    }
+
+    @Test void profileAndNegotiationErrorsRemainJsonForNonJsonAcceptHeaders() throws Exception {
+        var mvc = standaloneSetup(controller).build();
+        mvc.perform(get("/oslc/scopes/scope/catalog").accept("text/turtle").param("oslc.where", "unsupported"))
+                .andExpect(status().isBadRequest())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_OSLC_REQUEST"));
+        mvc.perform(get("/oslc/scopes/scope/catalog").accept("text/html"))
+                .andExpect(status().isNotAcceptable())
+                .andExpect(content().contentTypeCompatibleWith("application/json"))
+                .andExpect(jsonPath("$.code").value("UNSUPPORTED_REPRESENTATION"));
     }
 }

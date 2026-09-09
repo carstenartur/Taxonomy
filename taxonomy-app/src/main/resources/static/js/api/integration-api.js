@@ -8,10 +8,10 @@ window.IntegrationApi = (function () {
     function url(path) { var query = scope(); return '/api/integrations' + path + (query ? '?' + query : ''); }
     return {
         read: function (path) { return window.TaxonomyApiClient.getJson(url(path)); },
-        write: function (path, body) { return window.TaxonomyApiClient.request(url(path), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, { retries: 0 }).then(function (r) { return r.json(); }); },
+        write: function (path, body) { return window.TaxonomyApiClient.sendJson(url(path), body, 'POST', { retries: 0 }); },
         upload: function (path, request, file) {
             var form = new FormData(); form.append('request', new Blob([JSON.stringify(request)], { type: 'application/json' })); form.append('file', file);
-            return window.TaxonomyApiClient.request(url(path), { method: 'POST', body: form }, { retries: 0 }).then(function (r) { return r.json(); });
+            return window.TaxonomyApiClient.sendFormData(url(path), form, 'POST', { retries: 0 });
         },
         downloadUrl: function (path) { return window.TaxonomyI18n.resolveUrl(url(path)); }
     };
