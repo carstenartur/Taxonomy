@@ -112,7 +112,27 @@ public final class ArchitectureDslCommands {
             throw problem("INVALID_EXCHANGE_TARGET", "objectKind", "Exchange metadata requires a semantic target");
         requireExchangeProperties(command.properties());
         BlockAst existing = require(blocks, command.objectKind() + ":" + command.id());
-        return ArchitectureSemanticPatch.replace(source, existing, block(existing.getKind(), existing.getHeaderTokens(), command.properties(), existing));
+        BlockAst replacement = "view".equals(existing.getKind())
+                ? viewWithExchangeProperties(existing, command.properties())
+                : block(existing.getKind(), existing.getHeaderTokens(), command.properties(), existing);
+        return ArchitectureSemanticPatch.replace(source, existing, replacement);
+    }
+
+    private static BlockAst viewWithExchangeProperties(BlockAst existing, Map<String, String> changes) {
+        List<PropertyAst> values = new ArrayList<>();
+        Set<String> seen = new LinkedHashSet<>();
+        for (PropertyAst property : existing.getProperties()) {
+            if (!"include".equals(property.key()) && !seen.add(property.key())) {
+                throw problem("DUPLICATE_PROPERTY", property.key(), "Ambiguous property on edited object");
+            }
+            if (!changes.containsKey(property.key())) values.add(property);
+        }
+        changes.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> values.add(new PropertyAst(entry.getKey(), entry.getValue(), null)));
+        Map<String, String> extensions = new LinkedHashMap<>(existing.getExtensions());
+        extensions.putAll(changes);
+        return new BlockAst(existing.getKind(), existing.getHeaderTokens(), values,
+                existing.getChildren(), extensions, null);
     }
 
     private static String exchangeView(String source, Map<String, BlockAst> blocks, UpsertArchitectureView command) {
