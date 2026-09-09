@@ -1,6 +1,9 @@
 package com.taxonomy.exchange;
 
-import org.w3c.dom.Element;
+import org.apache.jena.rdf.model.ModelFactory;
+import org.apache.jena.riot.RDFDataMgr;
+import org.apache.jena.riot.RDFFormat;
+import java.io.ByteArrayOutputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
@@ -20,17 +23,18 @@ public final class OslcRdf {
     public OslcRdf type(String subject, String type) { return link(subject, RDF + "type", type); }
     public List<Triple> triples() { return List.copyOf(triples); }
     public byte[] xml() {
-        var document = ExchangeXml.parse(("<rdf:RDF xmlns:rdf=\"" + RDF + "\"/>").getBytes(StandardCharsets.UTF_8));
-        var groups = new java.util.LinkedHashMap<String, Element>();
+        var model = ModelFactory.createDefaultModel();
         for (Triple triple : triples) {
-            Element subject = groups.computeIfAbsent(triple.subject(), uri -> {
-                Element node = ExchangeXml.append(document.getDocumentElement(), RDF, "rdf:Description"); node.setAttributeNS(RDF, "rdf:about", uri); return node;
-            });
-            int split = Math.max(triple.predicate().lastIndexOf('#'), triple.predicate().lastIndexOf('/')) + 1;
-            Element property = ExchangeXml.append(subject, triple.predicate().substring(0, split), triple.predicate().substring(split));
-            if (triple.resource()) property.setAttributeNS(RDF, "rdf:resource", triple.value()); else property.setTextContent(triple.value());
+            var subject = model.createResource(iri(triple.subject()));
+            var predicate = model.createProperty(iri(triple.predicate()));
+            if (triple.resource()) subject.addProperty(predicate, model.createResource(iri(triple.value())));
+            else subject.addLiteral(predicate, triple.value());
         }
-        return ExchangeXml.write(document);
+        // Let the standards writer derive XML QNames, including URN namespaces.
+        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        RDFDataMgr.write(out, model, RDFFormat.RDFXML_PLAIN);
+        if (out.size() > ExchangeXml.MAX_BYTES) throw ExchangeXml.invalid("PACKAGE_SIZE", "OSLC output exceeds 16 MiB");
+        return out.toByteArray();
     }
     public byte[] turtle() {
         StringBuilder result = new StringBuilder();
@@ -42,8 +46,8 @@ public final class OslcRdf {
         StringBuilder result = new StringBuilder("{\"@graph\":["); boolean comma = false;
         for (Triple t : triples) {
             if (comma) result.append(','); comma = true;
-            result.append("{\"@id\":").append(quote(t.subject())).append(',').append(quote(t.predicate())).append(':')
-                    .append(t.resource() ? "{\"@id\":" + quote(t.value()) + "}" : "{\"@value\":" + quote(t.value()) + "}").append('}');
+            result.append("{\"@id\":").append(quote(iri(t.subject()))).append(',').append(quote(iri(t.predicate()))).append(':')
+                    .append(t.resource() ? "{\"@id\":" + quote(iri(t.value())) + "}" : "{\"@value\":" + quote(t.value()) + "}").append('}');
         }
         return result.append("]}").toString().getBytes(StandardCharsets.UTF_8);
     }

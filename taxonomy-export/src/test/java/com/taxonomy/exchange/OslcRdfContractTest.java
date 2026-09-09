@@ -51,6 +51,36 @@ class OslcRdfContractTest {
         assertThrows(ExchangeFormatException.class, () -> codec.read(bytes(rdf("<rm:Requirement rdf:about=\"one\"><ex:structured rdf:parseType=\"Resource\"><ex:value>nested</ex:value></ex:structured></rm:Requirement>")), BASE, null, null));
     }
 
+    @Test void urnPredicatesAndResourcesSurviveEveryRepresentation() {
+        String subject = "urn:requirements:one";
+        OslcRdf graph = new OslcRdf()
+                .literal(subject, "urn:profile:tag", "Evidence\r\n<&>")
+                .link(subject, "urn:profile:link", "urn:requirements:two");
+        var expected = ModelFactory.createDefaultModel();
+        expected.createResource(subject)
+                .addLiteral(expected.createProperty("urn:profile:tag"), "Evidence\r\n<&>")
+                .addProperty(expected.createProperty("urn:profile:link"),
+                        expected.createResource("urn:requirements:two"));
+        for (var format : Map.of(Lang.RDFXML, graph.xml(), Lang.TURTLE, graph.turtle(), Lang.JSONLD, graph.jsonLd()).entrySet()) {
+            var actual = ModelFactory.createDefaultModel();
+            RDFParser.fromString(new String(format.getValue(), StandardCharsets.UTF_8), format.getKey()).parse(actual);
+            assertTrue(expected.isIsomorphicWith(actual), format.getKey().toString());
+        }
+    }
+
+    @Test void everyRepresentationRejectsUnsafeOrRelativeResourceIris() {
+        for (String invalid : List.of("relative", "urn:bad value", "urn:bad<value", "urn:bad{value", "urn:bad\\value")) {
+            for (OslcRdf graph : List.of(
+                    new OslcRdf().literal(invalid, OslcRdf.DCT + "title", "Title"),
+                    new OslcRdf().literal(BASE.toString(), invalid, "Title"),
+                    new OslcRdf().link(BASE.toString(), OslcRdf.DCT + "relation", invalid))) {
+                assertThrows(IllegalArgumentException.class, graph::xml, invalid);
+                assertThrows(IllegalArgumentException.class, graph::turtle, invalid);
+                assertThrows(IllegalArgumentException.class, graph::jsonLd, invalid);
+            }
+        }
+    }
+
     @Test void multipleXhtmlFragmentsRemainRdfLiteralsUntilAReviewedPlainTextEdit() {
         byte[] source = bytes(rdf("<rm:Requirement rdf:about=\"one\"><dcterms:title>Title</dcterms:title><dcterms:description rdf:parseType=\"Literal\">"
                 + "<span xmlns=\"http://www.w3.org/1999/xhtml\">First</span><span xmlns=\"http://www.w3.org/1999/xhtml\">Second</span></dcterms:description></rm:Requirement>"));
