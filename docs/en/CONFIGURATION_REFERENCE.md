@@ -194,6 +194,7 @@ The first six settings below initialise repository-backed preferences. The `taxo
 | `TAXONOMY_DSL_REMOTE_PUSH_ON_COMMIT` | `taxonomy.dsl.remote-push-on-commit` | `false` | Pushes after each DSL commit when a remote is configured. |
 | `TAXONOMY_EXTERNAL_GIT_USERNAME` | direct deployment credential | `oauth2` | Username supplied to the administrator-configured canonical external repository. |
 | `TAXONOMY_EXTERNAL_GIT_TOKEN` | direct deployment credential | empty | Write-only token for fetch/push; never persist or log it. |
+| `TAXONOMY_INTEGRATIONS_REMOTES` | `taxonomy.integrations.remotes` | empty map | Administrator-owned OSLC endpoint profiles. Configure the structured map through YAML or `SPRING_APPLICATION_JSON`; a single scalar environment value cannot describe a profile. Each profile binds repository, organization, origin/path and an environment credential reference. See [standards interoperability](../features/standards-interoperability.md). |
 
 ## Input, architecture, export and document limits
 

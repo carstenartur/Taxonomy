@@ -12,6 +12,12 @@
     <name>Taxonomy Export</name>
     <description>Export formats, diagram models, converters, and the diagram export SPI</description>
     <dependencies>
+        <!-- Standards RDF parser for the OSLC surface. No SPARQL endpoint is exposed. -->
+        <dependency>
+            <groupId>org.apache.jena</groupId>
+            <artifactId>jena-arq</artifactId>
+            <version>6.2.0</version>
+        </dependency>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-domain</artifactId>

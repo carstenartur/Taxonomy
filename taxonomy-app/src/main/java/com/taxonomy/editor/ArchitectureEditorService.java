@@ -19,11 +19,12 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.DigestOutputStream;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
@@ -114,6 +115,48 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         } catch (java.io.UncheckedIOException failure) { throw failure.getCause(); }
     }
 
+    /**
+     * A reviewed integration is one explicit application boundary. Its typed architecture commands,
+     * optional server-owned portfolio contribution and journal entry join the integration transaction.
+     * The caller checkpoints separately after that transaction commits. No Git write happens here.
+     */
+    public Context acceptIntegration(RepositoryContext context, Context expected, Metadata metadata,
+                                     String fingerprint, List<com.taxonomy.dsl.command.ArchitectureCommand> commands,
+                                     java.util.function.UnaryOperator<String> portfolioContribution,
+                                     Metadata checkpointMetadata) throws IOException {
+        requireContext(context, expected); requireWritable(context);
+        State initial = seed(context);
+        return journal.joinedLocked(context, initial, session -> {
+            Entry prior = session.find(metadata.commandId());
+            if (prior != null) {
+                requireFingerprint(prior.fingerprint(), fingerprint);
+                return Context.of(context, session.state().checkpointCommit(), prior.revision());
+            }
+            session.expect(expected.revision()); requireInitialVersion(session.state(), expected);
+            try { verifyVersion(context, session.state()); }
+            catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
+            String before = session.state().dsl(), next = before;
+            for (var command : commands) next = transformer.apply(next, command).dsl();
+            if (portfolioContribution != null) next = portfolioContribution.apply(next);
+            if (!next.equals(before)) session.append(metadata, context.username(), "VERSION_IMPORT", null, fingerprint, next,
+                    new ArrayList<>(affected(ArchitectureSemanticPatch.between(before, next))));
+            Context result = Context.of(context, session.state().checkpointCommit(), session.state().revision());
+            if (checkpointMetadata != null) session.prepare(checkpointMetadata, context.username(),
+                    checkpointFingerprint(context, new CreateCheckpointCommand(result, checkpointMetadata)));
+            return result;
+        });
+    }
+
+    /** Workspace is the first model lock for cross-aggregate integrations, before any project lock. */
+    public <T> T integrationBoundary(RepositoryContext context, java.util.function.Function<Document, T> action) throws IOException {
+        requireWritable(context);
+        return journal.joinedLocked(context, seed(context), session -> {
+            State state = session.state();
+            return action.apply(new Document(Context.of(context, state.checkpointCommit(), state.revision()), state.dsl(),
+                    state.pendingCheckpoint() == null ? "READY" : "CHECKPOINT_PENDING", List.of(), List.of(), state.checkpointRevision(), state.pendingCheckpoint(), "WORKSPACE_REVISION"));
+        });
+    }
+
     private static Accepted accepted(RepositoryContext context, State state, Entry entry, boolean replayed) {
         return new Accepted(Context.of(context, state.checkpointCommit(), entry.revision()), entry.commandId(), entry.commandId(), replayed,
                 "READY", new Change(entry.afterDsl(), ArchitectureSemanticPatch.between(entry.beforeDsl(), entry.afterDsl())));
@@ -125,9 +168,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         // A pending intent must be recoverable even when its Git phase has already advanced HEAD.
         Snapshot current = journal.read(context);
         State initial = current == null ? seed(context) : current.state();
-        String fingerprint = digest(Arrays.asList("CHECKPOINT", EditorJournal.scope(context), context.username(),
-                Long.toString(command.context().revision()), command.metadata().rationale(),
-                command.metadata().correlationId(), command.metadata().causationId()));
+        String fingerprint = checkpointFingerprint(context, command);
         Checkpoint prepared;
         try {
             prepared = journal.locked(context, initial, session -> {
@@ -366,9 +407,20 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                 case UpdateArchitectureRelation r -> { parts.add(r.relation().id()); parts.add(r.status()); }
                 case DeleteArchitectureRelation r -> parts.add(r.relation().id());
                 case MoveOrGroupElement e -> { parts.add(e.id()); parts.add(e.parentId()); }
+                case SetExchangeProperties e -> { parts.add(e.objectKind()); parts.add(e.id()); properties(parts, e.properties()); }
+                case ClearArchitectureElementProperties e -> { parts.add(e.id()); parts.addAll(e.properties().stream().sorted().toList()); }
+                case UpsertArchitectureView e -> { parts.add(e.id()); parts.add(e.title()); parts.add(e.description()); parts.addAll(e.members()); properties(parts, e.properties()); }
+                case DeleteArchitectureView e -> parts.add(e.id());
+                case StoreExchangeEvidence e -> { parts.add(e.id()); parts.add(e.profile()); parts.add(e.profileVersion()); parts.add(e.fingerprint()); parts.add(e.source()); }
             }
         } else parts.add(target(command.operation()));
         return digest(parts);
+    }
+
+    private static String checkpointFingerprint(RepositoryContext context, CreateCheckpointCommand command) {
+        return digest(Arrays.asList("CHECKPOINT", EditorJournal.scope(context), context.username(),
+                Long.toString(command.context().revision()), command.metadata().rationale(),
+                command.metadata().correlationId(), command.metadata().causationId()));
     }
 
     private static void properties(List<String> parts, Map<String, String> properties) {
@@ -377,8 +429,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     private static String digest(List<String> parts) {
         try {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            try (DataOutputStream stream = new DataOutputStream(bytes)) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (DataOutputStream stream = new DataOutputStream(new DigestOutputStream(OutputStream.nullOutputStream(), digest))) {
                 for (String part : parts) {
                     if (part == null) { stream.writeInt(-1); continue; }
                     byte[] encoded = part.getBytes(StandardCharsets.UTF_8);
@@ -386,7 +438,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                     stream.write(encoded);
                 }
             }
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
+            return HexFormat.of().formatHex(digest.digest());
         } catch (IOException | NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 

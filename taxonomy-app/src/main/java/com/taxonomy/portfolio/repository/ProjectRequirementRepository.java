@@ -1,7 +1,10 @@
 package com.taxonomy.portfolio.repository;
 
 import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
 import jakarta.persistence.LockModeType;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -16,6 +19,10 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
     @EntityGraph(attributePaths = "currentVersion")
     List<ProjectRequirement> findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(
             Long projectId, String scopeKey);
+
+    @EntityGraph(attributePaths = "currentVersion")
+    Slice<ProjectRequirement> findByProjectIdAndScopeKeyAndStatusOrderByRequirementKeyAscIdAsc(
+            Long projectId, String scopeKey, RequirementStatus status, Pageable pageable);
 
     Optional<ProjectRequirement> findByIdAndProjectIdAndScopeKey(
             Long id, Long projectId, String scopeKey);

@@ -12,6 +12,17 @@
     var POLL_INTERVAL = 10000; // 10 seconds
     var statusBar = null;
     var pollTimer = null;
+    var pendingRead = null;
+    var pageActive = true;
+    window.addEventListener('pagehide', function () {
+        pageActive = false; clearInterval(pollTimer); pollTimer = null;
+        if (pendingRead) pendingRead.abort();
+    });
+    window.addEventListener('pageshow', function (event) {
+        if (event.persisted && statusBar) {
+            pageActive = true; pollGitState(); pollTimer = setInterval(pollGitState, POLL_INTERVAL);
+        }
+    });
 
     // ── Initialization ──────────────────────────────────────────────
 
@@ -29,20 +40,23 @@
     // ── Polling ─────────────────────────────────────────────────────
 
     function pollGitState() {
+        if (!pageActive) return;
+        if (pendingRead) pendingRead.abort();
+        pendingRead = new AbortController();
         // Use the current context's branch if available, otherwise default to 'draft'
         var ctx = window.TaxonomyContextBar ? window.TaxonomyContextBar.getCurrentContext() : null;
         var branch = (ctx && ctx.branch) ? ctx.branch : 'draft';
 
-        fetch('/api/git/state?branch=' + encodeURIComponent(branch))
+        fetch('/api/git/state?branch=' + encodeURIComponent(branch), { signal: pendingRead.signal })
             .then(function (r) {
                 if (!r.ok) throw new Error('HTTP ' + r.status);
                 return r.json();
             })
             .then(function (state) {
-                renderStatusBar(state);
+                if (pageActive) renderStatusBar(state);
             })
             .catch(function (err) {
-                renderError(err.message);
+                if (pageActive && err.name !== 'AbortError') renderError(err.message);
             });
     }
 

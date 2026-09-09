@@ -1,0 +1,42 @@
+{
+  "workflowRun": "https://github.com/carstenartur/Taxonomy/actions/runs/34242073916",
+  "job": "https://github.com/carstenartur/Taxonomy/actions/runs/34242073916/job/102116477328",
+  "pullRequestHead": "afc88d37c191b2540c309dc482110f5993c824f5",
+  "taxonomyVersion": "1.4.0-SNAPSHOT",
+  "evidence": {
+    "applicationSha256": "e48a2ee1cda1e05ff96f9b737db0e423fa7a689cf2aba55620ace0b4e8458d09",
+    "executedAt": "2026-09-08T15:07:01.908Z",
+    "results": [
+      {
+        "direction": "product -> Taxonomy -> product -> Taxonomy",
+        "fixture": "strictdoc-product.sdoc",
+        "inputSha256": "5c452d83713be851d6a2da2425d4629ce3af8c39f391a5a23a443285131ec373",
+        "knownLosses": [
+          "StrictDoc regenerates type, hierarchy and relation identifiers; stable requirement/specification MIDs, mapped fields and topology are compared."
+        ],
+        "outputSha256": "9291e33958054ce52385581381ebb9f0c07740c4df8ab7750d3a7b555b03915b",
+        "product": "StrictDoc",
+        "profile": "reqif-1.2/1",
+        "result": "passed",
+        "version": "0.29.0"
+      },
+      {
+        "direction": "Archi fixture -> Taxonomy -> Archi -> Taxonomy",
+        "fixture": "archi-bendpoints.xml",
+        "inputSha256": "c2b1e74b44089c84ca054fc2c3dd9a9789e2e7fbc33990aae9654632c08bc95f",
+        "knownLosses": [
+          "This product fixture verifies identities, types, relation endpoints, view membership and geometry; it does not certify every Archi feature."
+        ],
+        "outputSha256": "fd596497850f2b99a6810f4190786a6f799b83750b106060653287212f568ffc",
+        "product": "Archi",
+        "profile": "archimate-3.1/1",
+        "releaseSha256": "f9422455a00a22f5340dc28692ceafe0ad720c8cde839eaafb0fab1cea57287f",
+        "result": "passed",
+        "version": "5.10.0"
+      }
+    ],
+    "schemaVersion": 1,
+    "sourceCommit": "563705699d2418ecf86ffd1b1d3180e90a9a04ba",
+    "status": "passed"
+  }
+}

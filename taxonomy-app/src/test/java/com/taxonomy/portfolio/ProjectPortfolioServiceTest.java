@@ -15,6 +15,8 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 
@@ -119,6 +121,54 @@ class ProjectPortfolioServiceTest {
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("Project not found");
         assertThat(projectService.listProjects("bob-isolated", bob)).isEmpty();
+        assertThatThrownBy(() -> projectService.listApprovedRequirements(
+                project.id(), "bob-isolated", bob, 0, 10))
+                .isInstanceOfSatisfying(PortfolioException.class,
+                        failure -> assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.NOT_FOUND));
+    }
+
+    @Test
+    void approvedPagesFilterBeforePagingAndKeepStableRequirementOrder() {
+        WorkspaceContext context = context("approved-pages");
+        ProjectView project = createProject(context, "P-" + shortId());
+        createRequirement(project.id(), context, "REQ-000", "Unapproved", RequirementStatus.DRAFT);
+        // Insert out of key order so paging cannot accidentally rely on creation order or IDs alone.
+        var last = createRequirement(project.id(), context, "REQ-C", "Approved C");
+        var first = createRequirement(project.id(), context, "REQ-A", "Approved A");
+        var middle = createRequirement(project.id(), context, "REQ-B", "Approved B");
+        ProjectView otherProject = createProject(context, "P-" + shortId());
+        createRequirement(otherProject.id(), context, "REQ-001", "Other project's approved requirement");
+
+        var page = projectService.listApprovedRequirements(project.id(), context.username(), context, 0, 2);
+        assertThat(page.requirements()).extracting(RequirementView::id).containsExactly(first.id(), middle.id());
+        assertThat(page.requirements()).extracting(RequirementView::status).containsOnly(RequirementStatus.APPROVED);
+        assertThat(page.requirements()).extracting(value -> value.currentVersion().text())
+                .containsExactly("Approved A", "Approved B");
+        assertThat(page.hasNext()).isTrue();
+
+        var lastPage = projectService.listApprovedRequirements(project.id(), context.username(), context, 1, 2);
+        assertThat(lastPage.requirements()).extracting(RequirementView::id).containsExactly(last.id());
+        assertThat(lastPage.hasNext()).isFalse();
+        var emptyPage = projectService.listApprovedRequirements(project.id(), context.username(), context, 2, 2);
+        assertThat(emptyPage.requirements()).isEmpty();
+        assertThat(emptyPage.hasNext()).isFalse();
+        assertThat(projectService.listApprovedRequirements(project.id(), context.username(), context, 0, 2)
+                .requirements()).extracting(RequirementView::id).containsExactly(first.id(), middle.id());
+        assertThat(projectService.listApprovedRequirements(project.id(), context.username(), context, 100000, 100)
+                .requirements()).isEmpty();
+    }
+
+    @ParameterizedTest
+    @CsvSource({"-1, 1", "100001, 1", "2147483647, 1", "0, -1", "0, 0", "0, 101", "0, 2147483647"})
+    void approvedPagesRejectOutOfBoundsRequests(int page, int pageSize) {
+        WorkspaceContext context = context("page-bounds");
+        ProjectView project = createProject(context, "P-" + shortId());
+
+        assertThatThrownBy(() -> projectService.listApprovedRequirements(
+                project.id(), context.username(), context, page, pageSize))
+                .isInstanceOfSatisfying(PortfolioException.class,
+                        failure -> assertThat(failure.getKind()).isEqualTo(PortfolioException.Kind.VALIDATION))
+                .hasMessage("Requirement page is outside supported bounds");
     }
 
     private ProjectView createProject(WorkspaceContext context, String key) {
@@ -140,13 +190,21 @@ class ProjectPortfolioServiceTest {
                                               WorkspaceContext context,
                                               String key,
                                               String text) {
+        return createRequirement(projectId, context, key, text, RequirementStatus.APPROVED);
+    }
+
+    private RequirementView createRequirement(Long projectId,
+                                              WorkspaceContext context,
+                                              String key,
+                                              String text,
+                                              RequirementStatus status) {
         return projectService.createRequirement(
                 projectId,
                 new CreateRequirementRequest(
                         key,
                         key + " title",
                         text,
-                        RequirementStatus.APPROVED,
+                        status,
                         50,
                         Criticality.MEDIUM,
                         RequirementType.FUNCTIONAL,

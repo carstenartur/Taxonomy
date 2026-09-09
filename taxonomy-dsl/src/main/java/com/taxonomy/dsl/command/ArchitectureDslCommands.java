@@ -58,6 +58,11 @@ public final class ArchitectureDslCommands {
             case UpdateArchitectureRelation update -> updateRelation(source, blocks, update.relation(), update.status());
             case DeleteArchitectureRelation delete -> deleteRelation(source, blocks, delete.relation());
             case MoveOrGroupElement move -> move(source, blocks, move);
+            case SetExchangeProperties exchange -> exchangeProperties(source, blocks, exchange);
+            case ClearArchitectureElementProperties clear -> clearElementProperties(source, blocks, clear);
+            case UpsertArchitectureView view -> exchangeView(source, blocks, view);
+            case DeleteArchitectureView view -> ArchitectureSemanticPatch.replace(source, require(blocks, "view:" + view.id()), null);
+            case StoreExchangeEvidence evidence -> exchangeEvidence(source, blocks, evidence);
         };
         return new Change(next, ArchitectureSemanticPatch.between(source, next));
     }
@@ -100,6 +105,91 @@ public final class ArchitectureDslCommands {
         requireProperties(command.properties(), true);
         return ArchitectureSemanticPatch.replace(source, null,
                 block("element", List.of(command.id(), "type", command.type()), command.properties(), null));
+    }
+
+    private static String exchangeProperties(String source, Map<String, BlockAst> blocks, SetExchangeProperties command) {
+        if (!Set.of("element", "relation", "view").contains(command.objectKind()))
+            throw problem("INVALID_EXCHANGE_TARGET", "objectKind", "Exchange metadata requires a semantic target");
+        requireExchangeProperties(command.properties());
+        BlockAst existing = require(blocks, command.objectKind() + ":" + command.id());
+        BlockAst replacement = "view".equals(existing.getKind())
+                ? viewWithExchangeProperties(existing, command.properties())
+                : block(existing.getKind(), existing.getHeaderTokens(), command.properties(), existing);
+        return ArchitectureSemanticPatch.replace(source, existing, replacement);
+    }
+
+    private static BlockAst viewWithExchangeProperties(BlockAst existing, Map<String, String> changes) {
+        requireUnambiguousViewProperties(existing);
+        List<PropertyAst> values = new ArrayList<>();
+        for (PropertyAst property : existing.getProperties()) {
+            if (!changes.containsKey(property.key())) values.add(property);
+        }
+        changes.entrySet().stream().sorted(Map.Entry.comparingByKey())
+                .forEach(entry -> values.add(new PropertyAst(entry.getKey(), entry.getValue(), null)));
+        Map<String, String> extensions = new LinkedHashMap<>(existing.getExtensions());
+        extensions.putAll(changes);
+        return new BlockAst(existing.getKind(), existing.getHeaderTokens(), values,
+                existing.getChildren(), extensions, null);
+    }
+
+    private static void requireUnambiguousViewProperties(BlockAst view) {
+        Set<String> seen = new LinkedHashSet<>();
+        for (PropertyAst property : view.getProperties()) {
+            if (!"include".equals(property.key()) && !seen.add(property.key())) {
+                throw problem("DUPLICATE_PROPERTY", property.key(), "Ambiguous property on edited object");
+            }
+        }
+    }
+
+    private static String exchangeView(String source, Map<String, BlockAst> blocks, UpsertArchitectureView command) {
+        token(command.id(), "viewId");
+        if (command.title() == null || command.title().isBlank() || command.title().length() > 8000)
+            throw problem("INVALID_VALUE", "title", "View title must be bounded and nonempty");
+        requireExchangeProperties(command.properties());
+        if (command.description() == null || command.description().length() > 8000)
+            throw problem("INVALID_VALUE", "description", "View description must be bounded");
+        if (command.members().size() > 10000) throw problem("ITEM_LIMIT", "members", "View has too many members");
+        command.members().forEach(id -> require(blocks, "element:" + id));
+        BlockAst existing = blocks.get("view:" + command.id());
+        List<PropertyAst> values = new ArrayList<>();
+        if (existing != null) {
+            requireUnambiguousViewProperties(existing);
+            existing.getProperties().stream()
+                    .filter(p -> !Set.of("title", "description", "include").contains(p.key())
+                            && !command.properties().containsKey(p.key()))
+                    .forEach(values::add);
+        }
+        values.add(new PropertyAst("title", command.title(), null));
+        values.add(new PropertyAst("description", command.description(), null));
+        command.members().stream().distinct().forEach(id -> values.add(new PropertyAst("include", id, null)));
+        command.properties().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -> values.add(new PropertyAst(e.getKey(), e.getValue(), null)));
+        return ArchitectureSemanticPatch.replace(source, existing, new BlockAst("view", List.of(command.id()), values, List.of(), command.properties(), null));
+    }
+
+    private static String clearElementProperties(String source, Map<String, BlockAst> blocks, ClearArchitectureElementProperties command) {
+        BlockAst existing = require(blocks, "element:" + command.id());
+        if (command.properties().contains("title") || !ELEMENT_PROPERTIES.containsAll(command.properties()))
+            throw problem("READ_ONLY_PROPERTY", "properties", "Only optional editable properties can be cleared");
+        List<PropertyAst> values = existing.getProperties().stream().filter(p -> !command.properties().contains(p.key())).toList();
+        Map<String, String> extensions = new LinkedHashMap<>(existing.getExtensions()); command.properties().forEach(extensions::remove);
+        return ArchitectureSemanticPatch.replace(source, existing, new BlockAst(existing.getKind(), existing.getHeaderTokens(), values, existing.getChildren(), extensions, null));
+    }
+
+    private static String exchangeEvidence(String source, Map<String, BlockAst> blocks, StoreExchangeEvidence command) {
+        token(command.id(), "exchangeId"); token(command.profile(), "profile"); token(command.profileVersion(), "profileVersion");
+        if (command.source() == null || command.source().length() > 16 * 1024 * 1024 || command.fingerprint() == null || !command.fingerprint().matches("[a-f0-9]{64}"))
+            throw problem("INVALID_EXCHANGE_EVIDENCE", "source", "Exchange evidence must be bounded and fingerprinted");
+        BlockAst existing = blocks.get("exchange:" + command.id());
+        return ArchitectureSemanticPatch.replace(source, existing, block("exchange", List.of(command.id()),
+                Map.of("profile", command.profile(), "profileVersion", command.profileVersion(), "fingerprint", command.fingerprint(), "source", command.source()), existing));
+    }
+
+    private static void requireExchangeProperties(Map<String, String> properties) {
+        if (properties.size() > 128) throw problem("ITEM_LIMIT", "properties", "Too many exchange properties");
+        properties.forEach((key, value) -> {
+            if (!key.matches("x-exchange-[A-Za-z0-9_.-]{1,100}") || value.length() > 500000)
+                throw problem("INVALID_EXCHANGE_PROPERTY", "properties", "Only bounded exchange extension properties are permitted");
+        });
     }
 
     private String updateElement(String source, Map<String, BlockAst> blocks, UpdateArchitectureElement command) {

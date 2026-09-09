@@ -46,4 +46,11 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
     long countVisibleWorkspaceMetadata(
             @Param("workspaceId") String workspaceId,
             @Param("username") String username);
+
+    @Query("""
+            select count(w) from UserWorkspace w
+            where w.workspaceId=:workspace and w.username=:actor and w.sourceRepositoryId=:repository
+              and w.shared=false and w.archived=false
+            """)
+    long countOwnedPrivateWorkspace(@Param("workspace") String workspace, @Param("actor") String actor, @Param("repository") String repository);
 }

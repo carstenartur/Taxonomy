@@ -75,7 +75,7 @@ function loadClient(fetchImpl) {
   });
   context.fetch = (...args) => window.fetch(...args);
   vm.runInContext(core, context, { filename: 'taxonomy-api-client.js' });
-  return { client: window.TaxonomyApiClient, events };
+  return { client: window.TaxonomyApiClient, events, context };
 }
 
 {
@@ -216,4 +216,47 @@ function loadClient(fetchImpl) {
   assert.equal(attempts, 2);
 }
 
-console.log('Taxonomy canonical API transport tests passed.');
+const integrationSource = await readFile(
+  new URL('../../taxonomy-app/src/main/resources/static/js/api/integration-api.js', import.meta.url), 'utf8'
+);
+for (const operation of ['write', 'upload']) {
+  for (const status of [200, 204, 503]) {
+    const calls = [];
+    const { context } = loadClient(async (input, init) => {
+      calls.push({ input, init });
+      return new Response(status === 204 ? null : 'not-json', {
+        status, headers: { 'Content-Type': 'application/json', 'X-Request-ID': 'integration-request' }
+      });
+    });
+    Object.assign(context, {
+      URLSearchParams, FormData, Blob,
+      location: { search: '?repositoryId=repo%2Fa&workspaceId=team+space&branch=draft&lang=en' }
+    });
+    vm.runInContext(integrationSource, context, { filename: 'integration-api.js' });
+    const body = { rationale: 'Reviewed import' };
+    const file = new Blob(['<model/>'], { type: 'application/xml' });
+    const pending = context.window.IntegrationApi[operation]('/connection/previews', body, file);
+    if (status === 204) assert.equal(await pending, null);
+    else await assert.rejects(pending, error => {
+      assert.equal(error.name, 'ApiError');
+      assert.equal(error.code, status === 200 ? 'INVALID_JSON' : 'HTTP_ERROR');
+      assert.equal(error.status, status);
+      assert.equal(error.requestId, 'integration-request');
+      assert.match(error.url, /^\/api\/integrations\/connection\/previews\?/);
+      return true;
+    });
+    assert.equal(calls.length, 1, `${operation} must not retry a mutation`);
+    assert.equal(calls[0].input, '/api/integrations/connection/previews?repositoryId=repo%2Fa&workspaceId=team+space&branch=draft');
+    assert.equal(calls[0].init.method, 'POST');
+    assert.equal(calls[0].init.credentials, 'same-origin');
+    assert.equal(calls[0].init.headers.get('X-CSRF-TOKEN'), 'csrf-token');
+    if (operation === 'write') assert.equal(calls[0].init.body, JSON.stringify(body));
+    else {
+      assert.equal(await calls[0].init.body.get('request').text(), JSON.stringify(body));
+      assert.equal(await calls[0].init.body.get('file').text(), '<model/>');
+      assert.equal(calls[0].init.headers.has('Content-Type'), false);
+    }
+  }
+}
+
+console.log('Taxonomy canonical API transport and integration mutation tests passed.');

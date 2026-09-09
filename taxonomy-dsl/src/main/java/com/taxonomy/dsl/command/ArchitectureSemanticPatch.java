@@ -11,9 +11,10 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 
 /**
- * A reconstructible semantic patch between two immutable Git documents.
+ * A reconstructible semantic patch between canonical workspace or checkpoint documents.
  * Only changed blocks are replaced; unrelated source remains byte-for-byte intact.
  * Comments in edited blocks are retained, but their placement, indentation and line endings may change.
  * Applying an inverse requires the affected blocks to still match the accepted after-state.
@@ -21,6 +22,8 @@ import java.util.Objects;
 public final class ArchitectureSemanticPatch {
     private static final TaxDslParser PARSER = new TaxDslParser();
     private static final TaxDslSerializer SERIALIZER = new TaxDslSerializer();
+    private static final Set<String> COMPOSITE_IDENTITY_KINDS =
+            Set.of("relation", "mapping", "projectRequirement", "requirementVersion");
 
     private ArchitectureSemanticPatch() {}
 
@@ -40,6 +43,19 @@ public final class ArchitectureSemanticPatch {
             }
         }
         return List.copyOf(changes);
+    }
+
+    /** Apply a server-generated projection without reformatting unrelated blocks or document comments. */
+    public static String applyProjection(String source, String projection) {
+        Map<String, BlockAst> before = index(source), after = index(projection);
+        List<BlockAst> existing = new ArrayList<>(before.values());
+        String result = source;
+        // Earlier source locations remain valid when blocks are replaced from the end of the document.
+        for (int i = existing.size() - 1; i >= 0; i--) {
+            BlockAst block = existing.get(i); result = replace(result, block, after.get(key(block)));
+        }
+        for (var entry : after.entrySet()) if (!before.containsKey(entry.getKey())) result = replace(result, null, entry.getValue());
+        return result;
     }
 
     public static String inverse(String current, String original, List<BlockChange> changes) {
@@ -109,7 +125,7 @@ public final class ArchitectureSemanticPatch {
             throw new ArchitectureDslCommands.CommandProblem("INVALID_HEADER", block.getKind(),
                     "Block identity is missing", List.of());
         }
-        return block.getKind() + ":" + ("relation".equals(block.getKind()) || "mapping".equals(block.getKind())
+        return block.getKind() + ":" + (COMPOSITE_IDENTITY_KINDS.contains(block.getKind())
                 ? String.join(" ", tokens) : tokens.getFirst());
     }
 

@@ -1,0 +1,18 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; background: #f4f6fa; color: #162338; }
+header { display: flex; flex-wrap: wrap; align-items: center; gap: 1.5rem; padding: 1rem 3vw; background: #142d49; color: white; }
+header a { color: white; } h1 { flex: 1; font-size: 1.5rem; }
+main { max-width: 1400px; margin: auto; padding: 1.5rem; }
+section { background: white; border: 1px solid #b6c5d5; border-radius: .5rem; padding: 1.3rem; margin-bottom: 1.5rem; }
+form { margin: 1rem 0; } label { display: block; margin: .7rem 0 .25rem; }
+input, select, textarea, button { font: inherit; padding: .55rem; border: 1px solid #64788e; border-radius: .3rem; background: white; color: #162338; max-width: 100%; box-sizing: border-box; }
+input:not([type=checkbox]), textarea { width: min(100%, 45rem); box-sizing: border-box; } button, summary { cursor: pointer; } button:disabled { opacity: .5; cursor: default; }
+button { margin: .3rem .3rem .3rem 0; overflow-wrap: anywhere; white-space: normal; } pre { white-space: pre-wrap; overflow-wrap: anywhere; font: .85rem/1.5 ui-monospace, monospace; }
+li, p, summary, a { overflow-wrap: anywhere; }
+table { width: 100%; border-collapse: collapse; } td, th { padding: .7rem; border-bottom: 1px solid #cad3df; text-align: left; vertical-align: top; }
+td { max-width: 28rem; overflow-wrap: anywhere; } td pre { max-height: 14rem; overflow: auto; } .table-scroll { overflow-x: auto; }
+.toolbar { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin: 1rem 0; }
+#integrationError { border-left: .3rem solid #b42318; padding: 1rem; background: #fff2f0; color: #821a14; white-space: pre-wrap; }
+.conflict { background: #fff1dd; } :focus-visible { outline: 3px solid #1167bb; outline-offset: 3px; }
+.skip { position: absolute; left: -10000px; } .skip:focus { left: 1rem; top: 1rem; background: white; padding: 1rem; }
+@media (prefers-color-scheme: dark) { body { background: #111d2c; color: #e6edf6; } section, input, select, textarea, button { background: #1a2b40; color: #e6edf6; } .conflict { background: #473723; } a { color: #a7d5ff; } }

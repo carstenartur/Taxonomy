@@ -269,9 +269,41 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with: { name: 'ui-verification-${{ matrix.shard }}', path: 'target/ui-verification/**', if-no-files-found: error, retention-days: 7 }
 
+  interoperability-products:
+    name: Interoperability product compatibility
+    needs: [application]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - name: Set up Java 21
+        uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with: { java-version: '21', distribution: temurin }
+      - name: Download commit-bound application
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: taxonomy-ui-application, path: target/ui-application }
+      - name: Verify real StrictDoc and Archi round trips
+        run: node .github/scripts/verify-interoperability-products.mjs
+      - name: Upload product compatibility evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: interoperability-product-evidence
+          path: |
+            target/interoperability-products/evidence.json
+            target/interoperability-products/execution.log
+            target/interoperability-products/strictdoc-dependencies.txt
+            target/interoperability-products/*.reqif
+            target/interoperability-products/*.xml
+            target/interoperability-products/strictdoc-original/reqif/*.reqif
+            target/interoperability-products/strictdoc-final/reqif/*.reqif
+          if-no-files-found: error
+          retention-days: 7
+
   verify:
     name: Maven verification
-    needs: [application, core, observability, ui-contracts, ui-shards]
+    needs: [application, core, observability, ui-contracts, ui-shards, interoperability-products]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 40
@@ -291,8 +323,9 @@ jobs:
           OBSERVABILITY_RESULT: ${{ needs.observability.result }}
           UI_CONTRACTS_RESULT: ${{ needs.ui-contracts.result }}
           UI_SHARDS_RESULT: ${{ needs.ui-shards.result }}
+          INTEROPERABILITY_RESULT: ${{ needs.interoperability-products.result }}
         run: |
-          for lane in APPLICATION_RESULT CORE_RESULT OBSERVABILITY_RESULT UI_CONTRACTS_RESULT UI_SHARDS_RESULT; do
+          for lane in APPLICATION_RESULT CORE_RESULT OBSERVABILITY_RESULT UI_CONTRACTS_RESULT UI_SHARDS_RESULT INTEROPERABILITY_RESULT; do
             [[ "${!lane}" == success ]] || { echo "::error::$lane ended with ${!lane}"; exit 1; }
           done
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7

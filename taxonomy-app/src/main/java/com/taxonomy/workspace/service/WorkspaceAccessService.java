@@ -28,4 +28,10 @@ public class WorkspaceAccessService {
         return workspaceRepository.countVisibleWorkspaceMetadata(
                 workspaceId.strip(), username.strip()) > 0L;
     }
+
+    @Transactional(readOnly = true)
+    public boolean canUsePrivateWorkspace(RepositoryContext context) {
+        return context != null && context.scope() == RepositoryScope.WORKSPACE
+                && workspaceRepository.countOwnedPrivateWorkspace(context.workspaceId(), context.username(), context.repositoryId()) == 1;
+    }
 }

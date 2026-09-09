@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head>
+    <meta charset="UTF-8"/><meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <meta name="_csrf" th:if="${_csrf}" th:content="${_csrf.token}"/><meta name="_csrf_header" th:if="${_csrf}" th:content="${_csrf.headerName}"/>
+    <title th:text="#{integration.title}">Tool integrations</title>
+    <link rel="stylesheet" th:href="@{/css/integrations.css}" href="/css/integrations.css"/>
+</head>
+<body th:attr="data-may-write=${mayWrite}">
+<a href="#integrationReview" class="skip" data-i18n="integration.skip">Skip to review</a>
+<header><a th:href="@{/}" href="/">Taxonomy</a><h1 data-i18n="integration.title">Tool integrations</h1>
+    <a th:href="@{/projects}" href="/projects" data-i18n="integration.projects">Projects</a>
+    <a th:href="@{/architecture/editor}" href="/architecture/editor" data-i18n="integration.editor">Architecture editor</a></header>
+<main>
+    <p data-i18n="integration.intro">Review external changes against an exact private workspace. Preview preserves evidence; only an accepted import changes the model and creates an explicit version.</p>
+    <p id="integrationStatus" role="status" aria-live="polite"></p><p id="integrationError" role="alert" hidden></p>
+    <section aria-labelledby="connectionTitle"><h2 id="connectionTitle" data-i18n="integration.connections">Connections</h2>
+        <label for="integrationConnection" data-i18n="integration.connection">Selected connection</label><select id="integrationConnection"></select>
+        <button id="integrationRefresh" type="button" data-i18n="integration.refresh">Refresh</button>
+        <details><summary data-i18n="integration.new">New connection</summary>
+            <form id="integrationCreate">
+                <label for="connectionName" data-i18n="integration.name">Name</label><input id="connectionName" required maxlength="160"/>
+                <label for="connectionProfile" data-i18n="integration.profile">Format profile</label><select id="connectionProfile" required></select>
+                <label for="connectionAuthority" data-i18n="integration.authority">Authority</label><select id="connectionAuthority">
+                    <option value="IMPORT_COPY" data-i18n="integration.mode.IMPORT_COPY">Import independent copies</option><option value="MIRROR_READ" data-i18n="integration.mode.MIRROR_READ">Reviewed read mirror</option>
+                    <option value="BIDIRECTIONAL" data-i18n="integration.mode.BIDIRECTIONAL">Reviewed exchange in both directions</option><option value="PUBLISH_TARGET" data-i18n="integration.mode.PUBLISH_TARGET">Publication target</option>
+                    <option value="LINK_ONLY" data-i18n="integration.mode.LINK_ONLY">Trace links only</option></select>
+                <label for="connectionProject" data-i18n="integration.project">Project ID (required for requirements)</label><input id="connectionProject" type="number" min="1"/>
+                <label for="externalSystem" data-i18n="integration.externalSystem">External tool name</label><input id="externalSystem" required maxlength="160"/>
+                <label for="externalRepository" data-i18n="integration.externalRepository">External project/repository identity</label><input id="externalRepository" required maxlength="2048"/>
+                <label for="externalConfiguration" data-i18n="integration.configuration">External configuration identity</label><input id="externalConfiguration" maxlength="2048"/>
+                <label for="connectionRemote" data-i18n="integration.remoteProfile">Configured remote profile key (OSLC)</label><input id="connectionRemote" maxlength="100"/>
+                <button type="submit" data-i18n="integration.create">Create connection</button>
+            </form>
+        </details>
+        <pre id="integrationContext"></pre>
+        <a id="integrationOslcCatalog" hidden data-i18n="integration.oslcCatalog">OSLC discovery for this workspace</a>
+        <form id="integrationRemote"><label for="integrationRemoteUri" data-i18n="integration.remoteUri">OSLC resource or catalog URI within the configured endpoint</label><input id="integrationRemoteUri" maxlength="2048"/>
+            <label for="integrationRemoteVersion" data-i18n="integration.remoteVersion">Expected remote ETag (optional for first discovery)</label><input id="integrationRemoteVersion" maxlength="2048"/>
+            <button type="submit" data-i18n="integration.remoteRead">Read and preview OSLC resource</button></form>
+        <ul id="integrationDiscovery"></ul>
+        <form id="integrationImport"><label for="integrationFile" data-i18n="integration.file">Exchange file (XML, maximum 16 MiB)</label><input id="integrationFile" type="file" accept=".reqif,.xml" required/>
+            <label><input id="integrationComplete" type="checkbox"/><span data-i18n="integration.complete">This file is the complete external scope. Missing objects may be proposed for deletion.</span></label>
+            <button type="submit" data-i18n="integration.preview">Preview import</button>
+        </form>
+        <button id="integrationExport" type="button" data-i18n="integration.export">Preview export of this exact state</button>
+        <p data-i18n="integration.delivery">A downloaded file is an export artifact. It does not confirm that another tool accepted it.</p>
+    </section>
+    <section id="integrationReview" aria-labelledby="reviewTitle" tabindex="-1"><h2 id="reviewTitle" data-i18n="integration.review">Review changes</h2>
+        <p id="integrationOperation"></p><pre id="integrationProvenance"></pre>
+        <label for="integrationFilter" data-i18n="integration.filter">Filter by identity, title, kind or conflict</label><input id="integrationFilter" type="search"/>
+        <div class="toolbar"><button id="integrationAccept" type="button" data-i18n="integration.acceptVisible">Accept visible nonconflicting changes</button><button id="integrationReject" type="button" data-i18n="integration.rejectVisible">Reject visible changes</button></div>
+        <div class="table-scroll" tabindex="0" role="region" aria-labelledby="reviewTitle"><table><thead><tr><th data-i18n="integration.object">Object</th><th data-i18n="integration.change">Change</th><th data-i18n="integration.values">Current → proposed</th><th data-i18n="integration.decision">Decision</th></tr></thead><tbody id="integrationChanges"></tbody></table></div>
+        <div class="toolbar"><button id="integrationPrevious" type="button" data-i18n="integration.previous">Previous</button><span id="integrationPage" aria-live="polite"></span><button id="integrationNext" type="button" data-i18n="integration.next">Next</button></div>
+        <details><summary data-i18n="integration.losses">Mappings and loss report</summary><ul id="integrationLosses"></ul></details>
+        <label for="integrationRationale" data-i18n="integration.rationale">Rationale for this review</label><textarea id="integrationRationale" rows="3" maxlength="1000"></textarea>
+        <div class="toolbar"><button id="integrationApply" type="button" data-i18n="integration.apply">Apply reviewed decisions</button><button id="integrationCancel" type="button" data-i18n="integration.cancel">Cancel preview</button><button id="integrationRetry" type="button" data-i18n="integration.retry">Resume durable operation</button><a id="integrationDownload" hidden data-i18n="integration.download">Download reviewed file</a></div>
+        <ol id="integrationEvents"></ol>
+    </section>
+    <section aria-labelledby="historyTitle"><h2 id="historyTitle" data-i18n="integration.history">Integration operations</h2><p data-i18n="integration.historyHint">Reload an operation to inspect its frozen context, decisions and recovery state. Editor operations and Git versions are available in the architecture editor.</p><ul id="integrationHistory"></ul></section>
+</main>
+<script th:src="@{/js/taxonomy-i18n.js}" src="/js/taxonomy-i18n.js"></script><script th:src="@{/js/api/taxonomy-api-client.js}" src="/js/api/taxonomy-api-client.js"></script>
+<script th:src="@{/js/api/integration-api.js}" src="/js/api/integration-api.js"></script><script th:src="@{/js/integrations.js}" src="/js/integrations.js"></script>
+</body></html>
