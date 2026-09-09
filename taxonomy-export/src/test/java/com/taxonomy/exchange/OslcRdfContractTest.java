@@ -120,6 +120,37 @@ class OslcRdfContractTest {
                 Arguments.of("JSON-LD", (Function<OslcRdf, byte[]>) OslcRdf::jsonLd));
     }
 
+    static Stream<Arguments> textRepresentations() {
+        return Stream.of(
+                Arguments.of("Turtle", (Function<OslcRdf, byte[]>) OslcRdf::turtle),
+                Arguments.of("JSON-LD", (Function<OslcRdf, byte[]>) OslcRdf::jsonLd));
+    }
+
+    @ParameterizedTest(name = "{0} stops writing before visiting later triples")
+    @MethodSource("textRepresentations")
+    void oversizedTextOutputStopsBeforeLaterTriplesAreVisited(
+            String format, Function<OslcRdf, byte[]> write) {
+        var graph = new OslcRdf()
+                .literal(BASE.toString(), OslcRdf.DCT + "title", "x".repeat(ExchangeXml.MAX_BYTES + 16 * 1024))
+                .literal("invalid-relative-subject", OslcRdf.DCT + "title", "Must not be visited");
+
+        var error = assertThrows(ExchangeFormatException.class, () -> write.apply(graph), format);
+        assertEquals("PACKAGE_SIZE", error.code());
+        assertEquals("OSLC output exceeds 16 MiB", error.getMessage());
+    }
+
+    @Test void textRepresentationsKeepExactEscapingAcrossUnicodeChunks() {
+        String padding = "a".repeat(4095);
+        String value = padding + "🚀Ä日\\\"\n\r\t\u0001\u001f\b\f";
+        String escaped = padding + "🚀Ä日\\\\\\\"\\n\\r\\t\\u0001\\u001f\\u0008\\u000c";
+        String predicate = OslcRdf.DCT + "title";
+        var graph = new OslcRdf().literal(BASE.toString(), predicate, value);
+
+        assertArrayEquals(bytes("<" + BASE + "> <" + predicate + "> \"" + escaped + "\" .\n"), graph.turtle());
+        assertArrayEquals(bytes("{\"@graph\":[{\"@id\":\"" + BASE + "\",\"" + predicate
+                + "\":{\"@value\":\"" + escaped + "\"}}]}"), graph.jsonLd());
+    }
+
     @ParameterizedTest(name = "{0} enforces the UTF-8 byte limit")
     @MethodSource("representations")
     void everyRepresentationAcceptsTheByteLimitAndRejectsOneByteMore(

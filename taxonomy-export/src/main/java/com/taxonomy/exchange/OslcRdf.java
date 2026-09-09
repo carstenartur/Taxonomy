@@ -3,10 +3,15 @@ package com.taxonomy.exchange;
 import org.apache.jena.rdf.model.ModelFactory;
 import org.apache.jena.riot.RDFDataMgr;
 import org.apache.jena.riot.RDFFormat;
+import java.io.BufferedWriter;
 import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Objects;
 
 /** Small RDF graph writer for the declared read-only OSLC surface. No HTML or remote URI is executed. */
 public final class OslcRdf {
@@ -40,41 +45,88 @@ public final class OslcRdf {
             else subject.addLiteral(predicate, triple.value());
         }
         // Let the standards writer derive XML QNames, including URN namespaces.
-        ByteArrayOutputStream out = new ByteArrayOutputStream();
+        ByteArrayOutputStream out = new BoundedOutput();
         RDFDataMgr.write(out, model, RDFFormat.RDFXML_PLAIN);
-        if (out.size() > ExchangeXml.MAX_BYTES) throw ExchangeXml.invalid("PACKAGE_SIZE", "OSLC output exceeds 16 MiB");
         return out.toByteArray();
     }
     public byte[] turtle() {
-        StringBuilder result = new StringBuilder();
-        for (Triple t : triples) result.append('<').append(iri(t.subject())).append("> <").append(iri(t.predicate())).append("> ")
-                .append(t.resource() ? "<" + iri(t.value()) + ">" : quote(t.value())).append(" .\n");
-        return boundedUtf8(result.toString());
+        return utf8(result -> {
+            for (Triple t : triples) {
+                result.append('<').append(iri(t.subject())).append("> <").append(iri(t.predicate())).append("> ");
+                if (t.resource()) result.append('<').append(iri(t.value())).append('>');
+                else quote(result, t.value());
+                result.append(" .\n");
+            }
+        });
     }
     public byte[] jsonLd() {
-        StringBuilder result = new StringBuilder("{\"@graph\":["); boolean comma = false;
-        for (Triple t : triples) {
-            if (comma) result.append(','); comma = true;
-            result.append("{\"@id\":").append(quote(iri(t.subject()))).append(',').append(quote(iri(t.predicate()))).append(':')
-                    .append(t.resource() ? "{\"@id\":" + quote(iri(t.value())) + "}" : "{\"@value\":" + quote(t.value()) + "}").append('}');
-        }
-        return boundedUtf8(result.append("]}").toString());
+        return utf8(result -> {
+            result.append("{\"@graph\":["); boolean comma = false;
+            for (Triple t : triples) {
+                if (comma) result.append(','); comma = true;
+                result.append("{\"@id\":"); quote(result, iri(t.subject())); result.append(',');
+                quote(result, iri(t.predicate())); result.append(':');
+                result.append(t.resource() ? "{\"@id\":" : "{\"@value\":");
+                quote(result, t.resource() ? iri(t.value()) : t.value()); result.append("}}");
+            }
+            result.append("]}");
+        });
     }
-    private static byte[] boundedUtf8(String value) {
-        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
-        if (bytes.length > ExchangeXml.MAX_BYTES) throw ExchangeXml.invalid("PACKAGE_SIZE", "OSLC output exceeds 16 MiB");
-        return bytes;
+    @FunctionalInterface
+    private interface TextOutput { void write(Writer output) throws IOException; }
+
+    private static byte[] utf8(TextOutput action) {
+        var output = new BoundedOutput();
+        try (var writer = new BufferedWriter(new OutputStreamWriter(output, StandardCharsets.UTF_8))) {
+            action.write(writer);
+        } catch (IOException failure) {
+            throw new IllegalStateException("Cannot serialize OSLC output", failure);
+        }
+        return output.toByteArray();
+    }
+
+    private static final class BoundedOutput extends ByteArrayOutputStream {
+        @Override public synchronized void write(int value) {
+            requireSpace(1);
+            super.write(value);
+        }
+
+        @Override public synchronized void write(byte[] bytes, int offset, int length) {
+            Objects.checkFromIndexSize(offset, length, bytes.length);
+            requireSpace(length);
+            super.write(bytes, offset, length);
+        }
+
+        private void requireSpace(int length) {
+            if (length > ExchangeXml.MAX_BYTES - count)
+                throw ExchangeXml.invalid("PACKAGE_SIZE", "OSLC output exceeds 16 MiB");
+        }
     }
     private static String iri(String value) {
         if (value == null || value.chars().anyMatch(c -> c <= 32 || "<>\"{}|^`\\".indexOf(c) >= 0) || !java.net.URI.create(value).isAbsolute())
             throw new IllegalArgumentException("RDF resource must be an absolute safe IRI"); return value;
     }
-    private static String quote(String value) {
-        StringBuilder result = new StringBuilder("\"");
-        for (char c : value.toCharArray()) switch (c) {
-            case '\\' -> result.append("\\\\"); case '"' -> result.append("\\\""); case '\n' -> result.append("\\n"); case '\r' -> result.append("\\r"); case '\t' -> result.append("\\t");
-            default -> { if (c < 32) result.append(String.format("\\u%04x", (int) c)); else result.append(c); }
+    private static void quote(Writer result, String value) throws IOException {
+        result.append('"');
+        int start = 0;
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            boolean escape = c == '\\' || c == '"' || c < 32;
+            if (escape || i - start == 4096) {
+                result.write(value, start, i - start);
+                start = i;
+            }
+            if (!escape) continue;
+            switch (c) {
+                case '\\' -> result.append("\\\\"); case '"' -> result.append("\\\"");
+                case '\n' -> result.append("\\n"); case '\r' -> result.append("\\r"); case '\t' -> result.append("\\t");
+                default -> result.append("\\u00")
+                        .append("0123456789abcdef".charAt(c >>> 4))
+                        .append("0123456789abcdef".charAt(c & 15));
+            }
+            start = i + 1;
         }
-        return result.append('"').toString();
+        result.write(value, start, value.length() - start);
+        result.append('"');
     }
 }
