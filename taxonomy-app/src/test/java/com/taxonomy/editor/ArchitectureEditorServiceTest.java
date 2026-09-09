@@ -108,12 +108,15 @@ class ArchitectureEditorServiceTest {
         Command first = command(update("First"));
         Command second = command(update("Second"));
         var start = new CountDownLatch(1);
-        try (var pool = Executors.newFixedThreadPool(2)) {
+        var pool = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+        try {
             var one = pool.submit(() -> attempt(service, first, start));
             var two = pool.submit(() -> attempt(secondService, second, start));
             start.countDown();
             assertThat(List.of(one.get(30, TimeUnit.SECONDS), two.get(30, TimeUnit.SECONDS)))
                     .containsExactlyInAnyOrder("accepted", "stale");
+        } finally {
+            pool.shutdownNow();
         }
         assertThat(fixture.journal.read(alice).operations()).hasSize(1);
     }
@@ -211,10 +214,29 @@ class ArchitectureEditorServiceTest {
         assertThat(versionLink.actor()).isEqualTo("alice");
     }
 
-    @Test void concurrentRetriesOfTheSameCheckpointCompleteOneIntentAndOneCommit() throws Exception {
+    @RepeatedTest(20) void concurrentRetriesOfTheSameCheckpointCompleteOneIntentAndOneCommit() throws Exception {
         execute(update("Concurrent checkpoint"));
         var start = new CountDownLatch(2);
-        var writer = new ArchitectureCheckpointWriter() {
+        var concurrent = new ArchitectureEditorService(fixture.repositories, fixture.journal, checkpointWriter(start));
+        var other = new ArchitectureEditorService(fixture.repositories, fixture.journal, checkpointWriter(start));
+        var request = new CreateCheckpointCommand(service.read(alice, null).context(), metadata());
+        // ExecutorService.close waits indefinitely for a deadlocked task after get's
+        // timeout. Daemon workers and explicit cancellation let CI report the failure.
+        var pool = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+        try {
+            var first = pool.submit(() -> concurrent.checkpoint(alice, request));
+            var second = pool.submit(() -> other.checkpoint(alice, request));
+            assertThat(first.get(30, TimeUnit.SECONDS).commitId()).isEqualTo(second.get(30, TimeUnit.SECONDS).commitId());
+        } finally {
+            pool.shutdownNow();
+        }
+        assertThat(fixture.journal.read(alice).state().pendingCheckpoint()).isNull();
+        assertThat(fixture.repositories.resolveRepository(alice).getCommitCount("draft")).isEqualTo(2);
+        assertThat(service.checkpoint(alice, request).replayed()).isTrue();
+    }
+
+    private static ArchitectureCheckpointWriter checkpointWriter(CountDownLatch start) {
+        return new ArchitectureCheckpointWriter() {
             @Override public Result write(com.taxonomy.dsl.storage.DslGitRepository repository, String scope, String branch,
                                           EditorJournal.Checkpoint request) throws java.io.IOException {
                 start.countDown();
@@ -223,16 +245,6 @@ class ArchitectureEditorServiceTest {
                 return super.write(repository, scope, branch, request);
             }
         };
-        var concurrent = new ArchitectureEditorService(fixture.repositories, fixture.journal, writer);
-        var request = new CreateCheckpointCommand(service.read(alice, null).context(), metadata());
-        try (var pool = Executors.newFixedThreadPool(2)) {
-            var first = pool.submit(() -> concurrent.checkpoint(alice, request));
-            var second = pool.submit(() -> concurrent.checkpoint(alice, request));
-            assertThat(first.get(30, TimeUnit.SECONDS).commitId()).isEqualTo(second.get(30, TimeUnit.SECONDS).commitId());
-        }
-        assertThat(fixture.journal.read(alice).state().pendingCheckpoint()).isNull();
-        assertThat(fixture.repositories.resolveRepository(alice).getCommitCount("draft")).isEqualTo(2);
-        assertThat(service.checkpoint(alice, request).replayed()).isTrue();
     }
 
     @Test void movedGitHeadRejectsCheckpointIntentAndReleasesItsReservation() throws Exception {

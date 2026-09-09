@@ -23,6 +23,7 @@ import {
     keymap,
     MergeView
 } from '../vendor/codemirror-bundle.mjs';
+import { createDslValidationSource } from './taxonomy-dsl-validation.mjs';
 
 const apiClient = window.TaxonomyApiClient;
 if (!apiClient) {
@@ -289,47 +290,10 @@ async function taxDslCompletions(context) {
 }
 
 // ── Live validation linter ─────────────────────────────────────────────
-let lintTimer = null;
-
-const taxDslLinter = linter(view => {
-    return new Promise(resolve => {
-        clearTimeout(lintTimer);
-        lintTimer = setTimeout(() => {
-            const text = view.state.doc.toString();
-            apiClient.request('/api/dsl/validate', {
-                method: 'POST',
-                headers: { 'Content-Type': 'text/plain' },
-                body: text
-            }, {
-                timeoutMillis: 10000
-            })
-            .then(r => r.json())
-            .then(data => {
-                const diags = [];
-                const addDiag = (msg, severity) => {
-                    const message = typeof msg === 'string' ? msg : JSON.stringify(msg);
-                    // Try to parse line number from message like "line 3: ..."
-                    let from = 0;
-                    let to = Math.min(text.length, 1);
-                    const lineMatch = message.match(/line\s+(\d+)/i);
-                    if (lineMatch) {
-                        const lineNo = parseInt(lineMatch[1], 10);
-                        if (lineNo >= 1 && lineNo <= view.state.doc.lines) {
-                            const line = view.state.doc.line(lineNo);
-                            from = line.from;
-                            to = line.to;
-                        }
-                    }
-                    diags.push({ from, to, severity, message });
-                };
-                if (data.errors)   for (const e of data.errors)   addDiag(e, 'error');
-                if (data.warnings) for (const w of data.warnings) addDiag(w, 'warning');
-                resolve(diags);
-            })
-            .catch(() => resolve([]));
-        }, 500);
-    });
-}, { delay: 500 });
+// CodeMirror owns the debounce. A second timer left superseded lint promises
+// unresolved and could start a request after the document began navigating away.
+const dslValidation = createDslValidationSource(apiClient, window);
+const taxDslLinter = linter(dslValidation.lint, { delay: 500 });
 
 // ── Theme compartment ──────────────────────────────────────────────────
 const themeCompartment = new Compartment();
