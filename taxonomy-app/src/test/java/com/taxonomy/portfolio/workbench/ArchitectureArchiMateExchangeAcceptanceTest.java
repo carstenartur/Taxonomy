@@ -81,7 +81,9 @@ class ArchitectureArchiMateExchangeAcceptanceTest {
         String manifest = new String(files.get("manifest.json"), StandardCharsets.UTF_8);
         String xml = new String(files.get("model.archimate.xml"), StandardCharsets.UTF_8);
         var json = tools.jackson.databind.json.JsonMapper.builder().build().readTree(manifest);
-        assertEquals(imported.losses().size(), json.get("losses").size());
+        var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+        assertEquals(mapper.valueToTree(imported.properties()), json.get("provenance"));
+        assertEquals(mapper.valueToTree(imported.losses()), json.get("losses"));
         assertEquals(sha256(files.get("model.archimate.xml")), json.get("xmlSha256").asString());
         assertTrue(json.get("experimental").asBoolean());
         assertTrue(manifest.contains("selectionProfileFingerprint"));

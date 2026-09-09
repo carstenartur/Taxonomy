@@ -177,6 +177,15 @@ class VisioHandoffContractTest {
         }
     }
 
+    @Test void malformedNumbersHaveAStableValidationError() {
+        for (String invalid : List.of("", "NaN", "1.2.3", "1e999999999999")) {
+            var error = assertThrows(IllegalArgumentException.class,
+                    () -> new VisioProperty(VisioProperty.Kind.NUMBER, invalid));
+            assertEquals("Invalid numeric Visio property", error.getMessage());
+            assertInstanceOf(NumberFormatException.class, error.getCause());
+        }
+    }
+
     @Test void typedNumbersRejectUnboundedExpansionAndNonfiniteValues() {
         for (String invalid : List.of("1e2147483647", "1e-2147483647", "1e9999", "NaN", "9".repeat(351))) {
             assertThrows(IllegalArgumentException.class, () -> new VisioProperty(VisioProperty.Kind.NUMBER, invalid));

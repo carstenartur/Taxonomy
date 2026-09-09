@@ -2,7 +2,7 @@ package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.archimate.ArchiMateExportMetadata;
 import com.taxonomy.archimate.exchange.ArchiMateExchangeProfile;
-import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
+import com.taxonomy.archimate.ArchiMateModel;
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.export.VisioHandoffProfile;
 import com.taxonomy.diagram.DiagramModel;
@@ -131,7 +131,7 @@ public class ArchitectureSnapshotExportService {
             return switch (format) {
                 case ARCHIMATE_XML ->
                         diagramExportService.exportAsArchiMate(canonicalDiagram, ArchiMateSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint));
-                case ARCHIMATE_BUNDLE -> bundle(diagramExportService.exportAsArchiMate(canonicalDiagram, ArchiMateSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint)));
+                case ARCHIMATE_BUNDLE -> bundle(diagramExportService.prepareArchiMate(canonicalDiagram, ArchiMateSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint)));
                 case VISIO_VSDX ->
                         diagramExportService.exportAsVisio(canonicalDiagram, VisioSnapshotMetadata.from(projection, canonicalDiagram, graphFingerprint));
                 case VISIO_BUNDLE ->
@@ -145,8 +145,8 @@ public class ArchitectureSnapshotExportService {
         }
     }
 
-    private static byte[] bundle(byte[] xml) {
-        var model = new ArchiMateExchangeReader().read(xml);
+    private byte[] bundle(ArchiMateModel model) {
+        byte[] xml = diagramExportService.serializeArchiMate(model);
         var manifest = new java.util.LinkedHashMap<String, Object>();
         manifest.put("manifestVersion", "taxonomy-architecture-exchange-v1");
         manifest.put("format", "ArchiMate Exchange 3.1");

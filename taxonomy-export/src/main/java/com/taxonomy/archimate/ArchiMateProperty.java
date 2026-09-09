@@ -15,7 +15,13 @@ public record ArchiMateProperty(String type, String value) {
                     throw new IllegalArgumentException("Invalid boolean exchange property");
                 }
             }
-            case "number" -> new BigDecimal(value);
+            case "number" -> {
+                try {
+                    new BigDecimal(value);
+                } catch (NumberFormatException exception) {
+                    throw new IllegalArgumentException("Invalid numeric exchange property", exception);
+                }
+            }
             default -> throw new IllegalArgumentException("Unsupported exchange property type: " + type);
         }
     }

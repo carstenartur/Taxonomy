@@ -12,7 +12,12 @@ public record VisioProperty(Kind kind, String value) {
         Objects.requireNonNull(value, "property value");
         if (kind == Kind.NUMBER) {
             if (value.length() > 350) throw new IllegalArgumentException("Property number is too long");
-            BigDecimal number = new BigDecimal(value).stripTrailingZeros();
+            BigDecimal number;
+            try {
+                number = new BigDecimal(value).stripTrailingZeros();
+            } catch (NumberFormatException exception) {
+                throw new IllegalArgumentException("Invalid numeric Visio property", exception);
+            }
             if (Math.abs((long) number.scale()) > 350 || number.precision() > 350
                     || !Double.isFinite(number.doubleValue())) {
                 throw new IllegalArgumentException("Property number is outside the supported finite range");
