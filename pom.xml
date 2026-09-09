@@ -70,7 +70,7 @@
         <!-- Keep the complete Boot-managed Tomcat family on the released fixes
              for CVE-2026-65182, CVE-2026-65905 and CVE-2026-68525 (#989). -->
         <tomcat.version>11.0.25</tomcat.version>
-        <djl.version>0.36.0</djl.version>
+        <djl.version>0.37.0</djl.version>
         <skipITs>true</skipITs>
         <excludedGroups>real-llm,onnx,db-postgres,db-mssql,db-oracle</excludedGroups>
         <poi.version>5.5.1</poi.version>
