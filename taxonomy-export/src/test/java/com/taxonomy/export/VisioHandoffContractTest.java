@@ -125,7 +125,33 @@ class VisioHandoffContractTest {
         var shuffled = new DiagramModel(graph.title(), nodes, edges, graph.layout());
         var converter = new VisioDiagramService(); var builder = new VisioPackageBuilder();
         assertArrayEquals(builder.build(converter.convert(graph)), builder.build(converter.convert(shuffled)));
-        assertArrayEquals(builder.buildBundle(fixtureDocument()), builder.buildBundle(fixtureDocument()));
+        assertArrayEquals(builder.buildBundle(converter.convert(graph)), builder.buildBundle(converter.convert(shuffled)));
+    }
+
+    @Test void impactPageUsesIndependentShapesConnectorsAndPropertyMaps() {
+        VisioDocument document = fixtureDocument();
+        assertEquals(2, document.getPages().size());
+        VisioPage primary = document.getPages().get(0);
+        VisioPage impact = document.getPages().get(1);
+
+        VisioShape impactShape = impact.getShapes().get(0);
+        VisioShape primaryShape = primary.getShapes().stream()
+                .filter(shape -> shape.getId().equals(impactShape.getId())).findFirst().orElseThrow();
+        assertNotSame(primaryShape, impactShape);
+        assertNotSame(primaryShape.getProperties(), impactShape.getProperties());
+        primaryShape.getProperties().put("taxonomy.testMutation", VisioProperty.text("primary-only"));
+        assertFalse(impactShape.getProperties().containsKey("taxonomy.testMutation"));
+
+        VisioConnect impactConnect = impact.getConnects().get(0);
+        VisioConnect primaryConnect = primary.getConnects().stream()
+                .filter(connect -> connect.getFromShape().equals(impactConnect.getFromShape())
+                        && connect.getToShape().equals(impactConnect.getToShape())
+                        && connect.getRelationType().equals(impactConnect.getRelationType()))
+                .findFirst().orElseThrow();
+        assertNotSame(primaryConnect, impactConnect);
+        assertNotSame(primaryConnect.getProperties(), impactConnect.getProperties());
+        primaryConnect.getProperties().put("taxonomy.testMutation", VisioProperty.text("primary-only"));
+        assertFalse(impactConnect.getProperties().containsKey("taxonomy.testMutation"));
     }
 
     @Test void emptyGraphStillProducesAValidEmptyPage() throws Exception {

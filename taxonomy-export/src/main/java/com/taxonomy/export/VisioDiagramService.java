@@ -126,13 +126,28 @@ public class VisioDiagramService {
                 .map(n -> nodeIdToShapeId.get(n.id())).collect(java.util.stream.Collectors.toSet());
         if (!selected.isEmpty() && selected.size() < page.getShapes().size()) {
             VisioPage impact = new VisioPage("1", "Anchor and impact selection");
-            page.getShapes().stream().filter(s -> selected.contains(s.getId())).forEach(impact.getShapes()::add);
+            page.getShapes().stream().filter(s -> selected.contains(s.getId())).map(VisioDiagramService::copyShape)
+                    .forEach(impact.getShapes()::add);
             page.getConnects().stream().filter(c -> selected.contains(c.getFromShape()) && selected.contains(c.getToShape()))
-                    .forEach(impact.getConnects()::add);
+                    .map(VisioDiagramService::copyConnect).forEach(impact.getConnects()::add);
             doc.getPages().add(impact);
         }
         return doc;
     }
+
+    private static VisioShape copyShape(VisioShape source) {
+        VisioShape copy = new VisioShape(source.getId(), source.getText(), source.getX(), source.getY(),
+                source.getWidth(), source.getHeight(), source.getType(), source.isAnchor());
+        copy.getProperties().putAll(source.getProperties());
+        return copy;
+    }
+
+    private static VisioConnect copyConnect(VisioConnect source) {
+        VisioConnect copy = new VisioConnect(source.getFromShape(), source.getToShape(), source.getRelationType());
+        copy.getProperties().putAll(source.getProperties());
+        return copy;
+    }
+
     private static void validateGraph(DiagramModel model) {
         if (model == null || model.nodes() == null || model.edges() == null || model.layout() == null) {
             throw new IllegalArgumentException("Complete canonical graph required");
