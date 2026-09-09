@@ -210,13 +210,13 @@ class VisioConverterTests {
     }
 
     @Test
-    void documentConverterIncludesRequiredSettingsAndOmitsEmptyOptionalCollections() {
+    void documentConverterDeclaresRenderableDefaultStyles() {
         VisioDocument doc = new VisioDocument();
         String xml = documentXstream.toXML(doc);
 
         assertThat(xml).contains("DocumentSettings");
-        assertThat(xml).doesNotContain("FaceNames");
-        assertThat(xml).doesNotContain("StyleSheets");
+        assertThat(xml).contains("FaceNames").contains("NameU=\"Arial\"");
+        assertThat(xml).contains("StyleSheets").contains("DefaultLineStyle=\"0\"");
     }
 
     @Test

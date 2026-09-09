@@ -34,9 +34,53 @@ public class VisioDocumentConverter implements Converter {
         writer.addAttribute("xmlns:r", REL_NS);
         writer.addAttribute("xml:space", "preserve");
 
-        // Apache POI's XDGF reader requires DocumentSettings, while all of its
-        // children and attributes are optional for this bounded package profile.
+        // Explicit defaults make the masterless package renderable as well as parseable.
         writer.startNode("DocumentSettings");
+        writer.addAttribute("DefaultLineStyle", "0");
+        writer.addAttribute("DefaultFillStyle", "0");
+        writer.addAttribute("DefaultTextStyle", "0");
+        writer.endNode();
+        writer.startNode("FaceNames");
+        writer.startNode("FaceName");
+        writer.addAttribute("NameU", "Arial");
+        writer.endNode();
+        writer.endNode();
+        writer.startNode("StyleSheets");
+        writer.startNode("StyleSheet");
+        writer.addAttribute("ID", "0");
+        writer.addAttribute("NameU", "Normal");
+        cell(writer, "LineColor", "#44546A");
+        cell(writer, "LinePattern", "1");
+        cell(writer, "LineWeight", "0.01388888888888889");
+        cell(writer, "LineCap", "0");
+        cell(writer, "FillForegnd", "#FFFFFF");
+        cell(writer, "FillBkgnd", "#FFFFFF");
+        cell(writer, "FillPattern", "1");
+        cell(writer, "VerticalAlign", "1");
+        writer.startNode("Section");
+        writer.addAttribute("N", "Character");
+        writer.startNode("Row");
+        writer.addAttribute("IX", "0");
+        cell(writer, "Font", "Arial");
+        cell(writer, "Size", "0.1388888888888889");
+        cell(writer, "Color", "#172B4D");
+        writer.endNode();
+        writer.endNode();
+        writer.startNode("Section");
+        writer.addAttribute("N", "Paragraph");
+        writer.startNode("Row");
+        writer.addAttribute("IX", "0");
+        cell(writer, "HorzAlign", "1");
+        writer.endNode();
+        writer.endNode();
+        writer.endNode();
+        writer.endNode();
+    }
+
+    private static void cell(HierarchicalStreamWriter writer, String name, String value) {
+        writer.startNode("Cell");
+        writer.addAttribute("N", name);
+        writer.addAttribute("V", value);
         writer.endNode();
     }
 

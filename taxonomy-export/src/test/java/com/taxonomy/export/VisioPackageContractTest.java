@@ -256,7 +256,7 @@ class VisioPackageContractTest {
 
     private static VisioDocument documentWithShapes(VisioShape... shapes) {
         VisioDocument document = new VisioDocument();
-        VisioPage page = new VisioPage("page-1", "Architecture");
+        VisioPage page = new VisioPage("0", "Architecture");
         page.getShapes().addAll(Arrays.asList(shapes));
         document.getPages().add(page);
         return document;

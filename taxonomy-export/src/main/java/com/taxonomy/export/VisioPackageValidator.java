@@ -4,6 +4,7 @@ import com.taxonomy.visio.VisioConnect;
 import com.taxonomy.visio.VisioDocument;
 import com.taxonomy.visio.VisioPage;
 import com.taxonomy.visio.VisioShape;
+import com.taxonomy.visio.VisioProperty;
 
 import java.util.HashMap;
 import java.util.List;
@@ -26,11 +27,23 @@ final class VisioPackageValidator {
             throw invalid("Visio page collection must not be null");
         }
 
+        if (pages.isEmpty() || pages.size() > 32) throw invalid("Visio profile requires 1 to 32 pages");
+        validateProperties(document.getProperties());
+        for (var loss : document.getLosses()) {
+            if (loss == null) throw invalid("Missing loss entry");
+            for (String text : List.of(loss.scope(), loss.id(), loss.field(), loss.kind(), loss.rationale())) validateXmlText(text, "Loss report");
+        }
+        java.util.Set<Long> pageIds = new java.util.HashSet<>();
+        long shapeCount = 0, connectorCount = 0;
         for (int pageIndex = 0; pageIndex < pages.size(); pageIndex++) {
             VisioPage page = pages.get(pageIndex);
             if (page == null) {
                 throw invalid("Page " + pageIndex + " must not be null");
             }
+            if (page.getId() == null || !page.getId().matches("0|[1-9][0-9]*")) throw invalid("Page ID must be a canonical unsigned integer");
+            long pageId;
+            try { pageId = Long.parseLong(page.getId()); } catch (NumberFormatException e) { throw invalid("Page ID out of range", e); }
+            if (pageId > MAX_VISIO_ID || !pageIds.add(pageId)) throw invalid("Duplicate or out-of-range page ID");
             validateXmlText(page.getName(), "Page " + pageIndex + " name");
 
             List<VisioShape> shapes = page.getShapes();
@@ -42,6 +55,8 @@ final class VisioPackageValidator {
                 throw invalid("Connect collection on page " + pageIndex + " must not be null");
             }
 
+            shapeCount += shapes.size(); connectorCount += connects.size();
+            if (shapeCount > 20_000 || connectorCount > 60_000) throw invalid("Visio profile shape/connector limit exceeded");
             Map<Long, VisioShape> shapesById = new HashMap<>();
             long maximumShapeId = 0;
             for (int shapeIndex = 0; shapeIndex < shapes.size(); shapeIndex++) {
@@ -59,6 +74,7 @@ final class VisioPackageValidator {
                 }
                 maximumShapeId = Math.max(maximumShapeId, shapeId);
 
+                validateProperties(shape.getProperties());
                 validateXmlText(shape.getText(), "Text of shape " + shapeId);
                 if (shape.getType() != null) {
                     validateXmlText(shape.getType(), "Type of shape " + shapeId);
@@ -89,6 +105,7 @@ final class VisioPackageValidator {
                             + " must not be null");
                 }
 
+                validateProperties(connect.getProperties());
                 long fromId = parseShapeId(
                         connect.getFromShape(), "Source of connector " + connectIndex);
                 long toId = parseShapeId(
@@ -116,7 +133,7 @@ final class VisioPackageValidator {
     }
 
     static long parseShapeId(String value, String field) {
-        if (value == null || value.isBlank()) {
+        if (value == null || !value.matches("[1-9][0-9]*")) {
             throw invalid(field + " must contain a positive numeric Visio ID");
         }
 
@@ -142,10 +159,11 @@ final class VisioPackageValidator {
         }
     }
 
-    private static void validateXmlText(String value, String field) {
+    static void validateXmlText(String value, String field) {
         if (value == null) {
             throw invalid(field + " must not be null");
         }
+        if (value.length() > 32767) throw invalid(field + " exceeds 32767 characters");
         for (int offset = 0; offset < value.length();) {
             int codePoint = value.codePointAt(offset);
             if (!isXml10CodePoint(codePoint)) {
@@ -153,6 +171,16 @@ final class VisioPackageValidator {
                         + Integer.toHexString(codePoint).toUpperCase());
             }
             offset += Character.charCount(codePoint);
+        }
+    }
+
+    static void validateProperties(Map<String, VisioProperty> properties) {
+        if (properties.size() > 64) throw invalid("Too many Visio properties");
+        for (var entry : properties.entrySet()) {
+            if (entry.getKey() == null || !entry.getKey().matches("taxonomy\\.[A-Za-z][A-Za-z0-9]{0,63}") || entry.getValue() == null) {
+                throw invalid("Unsafe Visio property key/value");
+            }
+            validateXmlText(entry.getValue().value(), entry.getKey());
         }
     }
 

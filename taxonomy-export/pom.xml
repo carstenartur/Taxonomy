@@ -39,12 +39,27 @@
             <groupId>org.slf4j</groupId>
             <artifactId>slf4j-api</artifactId>
         </dependency>
-        <!-- Independent VSDX reader contract (test scope only) -->
+        <!-- Pinned Visio/XMLBeans schema validation before returning VSDX bytes. -->
         <dependency>
             <groupId>org.apache.poi</groupId>
             <artifactId>poi-ooxml</artifactId>
             <version>${poi.version}</version>
-            <scope>test</scope>
+            <exclusions>
+                <exclusion>
+                    <groupId>org.apache.poi</groupId>
+                    <artifactId>poi-ooxml-lite</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <!-- The lite jar omits FaceNames schema bindings; complete validation needs full. -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml-full</artifactId>
+            <version>${poi.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
         </dependency>
         <!-- JUnit + AssertJ for tests -->
         <dependency>

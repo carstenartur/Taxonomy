@@ -94,7 +94,7 @@ graph TB
 | `ArchitectureGapService` | Identifiziert fehlende Beziehungen und unvollständige Architekturmuster im Taxonomiegraphen bezüglich einer gegebenen Anforderung. |
 | `ArchitecturePatternService` | Erkennt Standard-Architekturmuster (Full Stack, App Chain, Role Chain) in bewerteten Taxonomieergebnissen. |
 | `ArchiMateDiagramService` | Erzeugt die experimentelle begrenzte ArchiMate-3.1-XML-Teilmenge. Jede Datei wird offline gegen den festgeschriebenen XSD-Satz validiert. Stabile IDs, typisierte Eigenschaften, Mapping-/Verlustprofil und semantischer Taxonomy-Roundtrip sind implementiert; die Fremdwerkzeug-Abnahme steht aus. |
-| `VisioDiagramService` | Erzeugt die experimentelle begrenzte Visio-2012-VSDX-Teilmenge; Microsoft-Visio-Desktop-Zertifizierung und vollständige Übergabe-/Verlustnachweise stehen aus. |
+| `VisioDiagramService` | Erzeugt die experimentelle begrenzte Visio-2012-VSDX-Teilmenge; typisierte Identitäten und versionierte Übergabe-/Verlustmanifeste sind enthalten; Microsoft-Visio-Desktop-Zertifizierung steht aus. |
 | `MermaidExportService` | Exportiert Architekturansichten als Mermaid-Flussdiagramm-Codeblöcke. |
 | `DiagramProjectionService` | Projiziert Architekturansichten in neutrale Diagrammmodelle, die von mehreren Exportern gerendert werden können. |
 | `RelevancePropagationService` | Propagiert Relevanzbewertungen von Ankerknoten durch Taxonomiebeziehungen und erweitert die Architekturansicht um indirekt relevante Elemente. |
@@ -502,7 +502,7 @@ Importierte Elemente tragen ein `x-source-framework`-Erweiterungsattribut für d
 | Format | Beschreibung |
 |---|---|
 | **ArchiMate-3.1-XML** | Experimentelle begrenzte ArchiMate-3.1-Teilmenge. Jede Datei wird offline gegen den festgeschriebenen XSD-Satz validiert. Das versionierte Profil erhält stabile Identitäten, typisierte Eigenschaften und Ansichten im Taxonomy-Reader. Ein maschinenlesbares Verlustmanifest begleitet Snapshot-Downloads. Die Fremdwerkzeug-Abnahme bleibt in #967 offen; siehe [Profil und Grenzen](../dev/ARCHIMATE_EXCHANGE_PROFILE.md). |
-| **Visio-2012 `.vsdx`** | Experimentelle begrenzte Visio-2012-VSDX-Teilmenge. Paketprüfungen liegen vor; Microsoft-Visio-Desktop-Zertifizierung für Öffnen/Bearbeiten/Speichern/erneutes Öffnen und ein vollständiges Übergabe-/Verlustmanifest stehen in #965 aus. |
+| **Visio-2012 `.vsdx`** | Experimentelle begrenzte Visio-2012-VSDX-Teilmenge. Paketprüfungen liegen vor; Microsoft-Visio-Desktop-Zertifizierung für Öffnen/Bearbeiten/Speichern/erneutes Öffnen steht in #965 aus; typisierte Identitäten und ein versioniertes Übergabe-/Verlustmanifest sind enthalten. |
 | **Mermaid-Flussdiagramm** | Textbasiertes Mermaid-Diagramm (Markdown-Codeblock), renderbar in GitHub, GitLab, Notion, Confluence und den meisten modernen Dokumentationsplattformen. |
 
 Diese Tabelle beschreibt erzeugte Formate, nicht eine breite Zertifizierung durch Drittwerkzeuge. Snapshot-Autorität und Formatverluste werden durch die [Unterstützungsgrenze der Architekturexporte](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte) festgelegt.
