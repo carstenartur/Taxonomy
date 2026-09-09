@@ -1,7 +1,7 @@
 package com.taxonomy.shared.config;
 
 import com.taxonomy.export.ArchiMateDiagramService;
-import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.export.ConfigurableDiagramSelectionPolicy;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.DiagramSelectionConfig;

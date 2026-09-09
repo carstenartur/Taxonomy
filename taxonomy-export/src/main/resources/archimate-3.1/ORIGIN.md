@@ -1,4 +1,4 @@
-# ArchiMate 3.1 exchange schema test resources
+# ArchiMate 3.1 exchange schema resources
 
 Source repository: `archimatetool/archi`
 
@@ -12,4 +12,4 @@ Imported files:
 - `dc.xsd`
 - `xml.xsd`
 
-These files are used only for reproducible offline validation of Taxonomy's generated exchange XML. The upstream MIT licence is retained as `LICENSE.archi.txt`; `SHA256SUMS` records the exact imported bytes.
+These files are used for reproducible offline validation at runtime and in tests of Taxonomy's generated exchange XML. The upstream MIT licence is retained as `LICENSE.archi.txt`; `SHA256SUMS` records the exact imported bytes.

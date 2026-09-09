@@ -904,6 +904,8 @@
 
         document.getElementById('architectureTitle').textContent = resolvePolicyTitle(scene.title);
         renderProvenance(data);
+        const archiMateDownload = document.getElementById('downloadArchitectureArchiMate');
+        if (archiMateDownload) archiMateDownload.disabled = false;
         document.getElementById('requirementText').textContent = data.requirementText || '';
         renderWarnings(data);
         contextCheckbox.disabled = !scene.nodes.some(function (node) { return node.anchor; });

@@ -402,7 +402,7 @@
         </profile>
         <profile>
             <id>archimate-import-tests</id>
-            <properties><test>ArchiMateWorkspaceImportTests,CatalogFacadeTest</test></properties>
+            <properties><test>ArchiMateWorkspaceImportTests,ArchiMateIdentityImportTest,ArchitectureArchiMateExchangeAcceptanceTest,CatalogFacadeTest</test></properties>
         </profile>
         <profile>
             <id>screenshots</id>

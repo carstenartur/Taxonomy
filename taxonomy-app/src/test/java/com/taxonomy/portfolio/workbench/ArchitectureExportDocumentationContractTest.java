@@ -49,7 +49,7 @@ class ArchitectureExportDocumentationContractTest {
                 .contains("Snapshot-bound browser/SVG/vector PDF views")
                 .contains("Mermaid/JSON architecture projections")
                 .contains("Experimental bounded ArchiMate 3.1 subset")
-                .contains("mapping and loss manifest pending")
+                .contains("independent-tool acceptance pending")
                 .contains("Independent-tool interoperability is not certified")
                 .contains("Experimental bounded Visio 2012 subset")
                 .contains("Microsoft Visio desktop certification pending")
@@ -68,7 +68,7 @@ class ArchitectureExportDocumentationContractTest {
                 .contains("Snapshot-gebundene Browser-/SVG-/Vektor-PDF-Ansichten")
                 .contains("Mermaid-/JSON-Architekturprojektionen")
                 .contains("Experimentelle begrenzte ArchiMate-3.1-Teilmenge")
-                .contains("Mapping- und Verlustmanifest ausstehend")
+                .contains("Fremdwerkzeug-Abnahme ausstehend")
                 .contains("Interoperabilität mit unabhängigen Werkzeugen ist nicht zertifiziert")
                 .contains("Experimentelle begrenzte Visio-2012-Teilmenge")
                 .contains("Microsoft-Visio-Desktop-Zertifizierung ausstehend")
@@ -108,19 +108,19 @@ class ArchitectureExportDocumentationContractTest {
         assertThat(englishArchitecture)
                 .contains("Experimental bounded ArchiMate 3.1 subset")
                 .contains("Experimental bounded Visio 2012 VSDX subset")
-                .contains("independent-tool interoperability")
+                .contains("independent-tool acceptance")
                 .contains("Microsoft Visio desktop")
                 .contains("FEATURE_MATRIX.md#architecture-export-support-boundary");
         assertThat(germanArchitecture)
                 .contains("Experimentelle begrenzte ArchiMate-3.1-Teilmenge")
                 .contains("Experimentelle begrenzte Visio-2012-VSDX-Teilmenge")
-                .contains("Interoperabilität mit unabhängigen Werkzeugen")
+                .contains("Fremdwerkzeug-Abnahme")
                 .contains("Microsoft-Visio-Desktop-Zertifizierung")
                 .contains("FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte");
         assertThat(englishGuide)
                 .contains("experimental bounded ArchiMate 3.1 subset")
                 .contains("experimental bounded Visio 2012 VSDX subset")
-                .contains("independent-tool interoperability")
+                .contains("Independent-tool interoperability")
                 .contains("Microsoft Visio desktop")
                 .contains("Click **📥 Visio 2012 subset**")
                 .contains("Click **📥 ArchiMate 3.1 subset**")
@@ -142,17 +142,17 @@ class ArchitectureExportDocumentationContractTest {
         assertThat(index)
                 .contains("ArchiMate 3.1 subset")
                 .contains("Visio 2012 subset")
-                .contains("mapping and loss manifest pending")
+                .contains("independent-tool acceptance pending")
                 .contains("Microsoft Visio desktop certification pending");
         assertThat(messages)
                 .contains("experimental bounded ArchiMate 3.1 subset")
                 .contains("experimental bounded Visio 2012 subset")
-                .contains("mapping and loss manifest pending")
+                .contains("independent-tool acceptance pending")
                 .contains("Microsoft Visio desktop certification pending");
         assertThat(germanMessages)
                 .contains("Experimentelle begrenzte ArchiMate-3.1-Teilmenge")
                 .contains("Experimentelle begrenzte Visio-2012-Teilmenge")
-                .contains("Mapping- und Verlustmanifest ausstehend")
+                .contains("Fremdwerkzeug-Abnahme ausstehend")
                 .contains("Microsoft-Visio-Desktop-Zertifizierung ausstehend");
 
         assertNoForbiddenClaims(
@@ -176,8 +176,8 @@ class ArchitectureExportDocumentationContractTest {
 
         assertThat(template)
                 .contains("Experimental architecture export formats")
-                .contains("Download ArchiMate 3.1 subset")
-                .contains("mapping and loss manifest pending")
+                .contains("Download ArchiMate + manifest")
+                .contains("independent-tool acceptance pending")
                 .contains("Download Visio 2012 subset")
                 .contains("Microsoft Visio desktop certification pending");
         assertThat(controller)

@@ -15,7 +15,7 @@
     "onnx": {"itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT", "systemProperty": "runOnnxTests"},
     "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest"},
     "document-import-tests": {"test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"},
-    "archimate-import-tests": {"test": "ArchiMateWorkspaceImportTests,CatalogFacadeTest"},
+    "archimate-import-tests": {"test": "ArchiMateWorkspaceImportTests,ArchiMateIdentityImportTest,ArchitectureArchiMateExchangeAcceptanceTest,CatalogFacadeTest"},
     "document-template-report-e2e": {
       "purpose": "Packaged application, PostgreSQL Testcontainers, Playwright requirement evaluation, report download and rendered document evidence",
       "itTest": "DocumentTemplateReportDownloadIT",

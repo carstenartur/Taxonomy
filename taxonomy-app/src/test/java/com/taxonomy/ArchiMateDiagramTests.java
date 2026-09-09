@@ -9,7 +9,8 @@ import com.taxonomy.diagram.DiagramLayout;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
 import com.taxonomy.export.ArchiMateDiagramService;
-import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.archimate.exchange.ArchiMateIds;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -72,11 +73,11 @@ class ArchiMateDiagramTests {
     }
 
     @Test
-    void typeMapping_Unknown_defaultsToBusinessObject() {
-        assertThat(ArchiMateDiagramService.toArchiMateType("SomethingElse"))
-                .isEqualTo("BusinessObject");
-        assertThat(ArchiMateDiagramService.toArchiMateType(null))
-                .isEqualTo("BusinessObject");
+    void typeMapping_Unknown_isRejected() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> ArchiMateDiagramService.toArchiMateType("SomethingElse"));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> ArchiMateDiagramService.toArchiMateType(null));
     }
 
     @Test
@@ -158,9 +159,11 @@ class ArchiMateDiagramTests {
     }
 
     @Test
-    void relMapping_unknown_defaultsToAssociation() {
-        assertThat(ArchiMateDiagramService.toArchiMateRelType("SOMETHING")).isEqualTo("Association");
-        assertThat(ArchiMateDiagramService.toArchiMateRelType(null)).isEqualTo("Association");
+    void relMapping_unknown_isRejected() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> ArchiMateDiagramService.toArchiMateRelType("SOMETHING"));
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> ArchiMateDiagramService.toArchiMateRelType(null));
     }
 
     @Test
@@ -201,7 +204,7 @@ class ArchiMateDiagramTests {
     @Test
     void accessType_isNullForNonAccessRels() {
         assertThat(ArchiMateDiagramService.toAccessType("SUPPORTS")).isNull();
-        assertThat(ArchiMateDiagramService.toAccessType(null)).isNull();
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class, () -> ArchiMateDiagramService.toAccessType(null));
     }
 
     // ── ArchiMateDiagramService – convert ───────────────────────────────────
@@ -237,7 +240,7 @@ class ArchiMateDiagramTests {
         assertThat(el1.id()).isEqualTo("N1");
         assertThat(el1.label()).isEqualTo("Capability A");
         assertThat(el1.archiMateType()).isEqualTo("Capability");
-        assertThat(el1.documentation()).contains("0.90");
+        assertThat(el1.properties().get("taxonomy.relevance").value()).isEqualTo("0.9");
     }
 
     @Test
@@ -405,12 +408,12 @@ class ArchiMateDiagramTests {
         assertThat(xmlStr).contains("<model ");
         assertThat(xmlStr).contains("</model>");
         assertThat(xmlStr).contains("xmlns=\"http://www.opengroup.org/xsd/archimate/3.0/\"");
-        assertThat(xmlStr).contains("identifier=\"id-model-1\"");
+        assertThat(xmlStr).contains("identifier=\"" + ArchiMateIds.id("model", archiModel.id()) + "\"");
         assertThat(xmlStr).contains("<name xml:lang=\"en\">Empty Model</name>");
-        assertThat(xmlStr).contains("<elements>");
-        assertThat(xmlStr).contains("</elements>");
-        assertThat(xmlStr).contains("<relationships>");
-        assertThat(xmlStr).contains("</relationships>");
+        assertThat(xmlStr).doesNotContain("<elements>");
+        assertThat(xmlStr).doesNotContain("</elements>");
+        assertThat(xmlStr).doesNotContain("<relationships>");
+        assertThat(xmlStr).doesNotContain("</relationships>");
     }
 
     @Test
@@ -423,10 +426,10 @@ class ArchiMateDiagramTests {
 
         String xmlStr = new String(archiMateXmlExporter.export(archiModel), StandardCharsets.UTF_8);
 
-        assertThat(xmlStr).contains("identifier=\"id-N1\"");
+        assertThat(xmlStr).contains("identifier=\"" + ArchiMateIds.id("element", "N1") + "\"");
         assertThat(xmlStr).contains("xsi:type=\"Capability\"");
         assertThat(xmlStr).contains("<name xml:lang=\"en\">Test Node</name>");
-        assertThat(xmlStr).contains("<documentation xml:lang=\"en\">Relevance:");
+        assertThat(xmlStr).contains("taxonomy.relevance");
     }
 
     @Test
@@ -441,10 +444,10 @@ class ArchiMateDiagramTests {
 
         String xmlStr = new String(archiMateXmlExporter.export(archiModel), StandardCharsets.UTF_8);
 
-        assertThat(xmlStr).contains("identifier=\"id-rel-e1\"");
+        assertThat(xmlStr).contains("identifier=\"" + ArchiMateIds.id("relationship", "e1") + "\"");
         assertThat(xmlStr).contains("xsi:type=\"Serving\"");
-        assertThat(xmlStr).contains("source=\"id-A\"");
-        assertThat(xmlStr).contains("target=\"id-B\"");
+        assertThat(xmlStr).contains("source=\"" + ArchiMateIds.id("element", "A") + "\"");
+        assertThat(xmlStr).contains("target=\"" + ArchiMateIds.id("element", "B") + "\"");
     }
 
     @Test
@@ -474,7 +477,7 @@ class ArchiMateDiagramTests {
 
         assertThat(xmlStr).contains("<organizations>");
         assertThat(xmlStr).contains("<label xml:lang=\"en\">Capabilities</label>");
-        assertThat(xmlStr).contains("identifierRef=\"id-N1\"");
+        assertThat(xmlStr).contains("identifierRef=\"" + ArchiMateIds.id("element", "N1") + "\"");
     }
 
     @Test
@@ -490,8 +493,8 @@ class ArchiMateDiagramTests {
         assertThat(xmlStr).contains("<views>");
         assertThat(xmlStr).contains("<view ");
         assertThat(xmlStr).contains("viewpoint=\"Layered\"");
-        assertThat(xmlStr).contains("identifier=\"id-vn-N1\"");
-        assertThat(xmlStr).contains("elementRef=\"id-N1\"");
+        assertThat(xmlStr).contains("identifier=\"" + ArchiMateIds.id("node", "layered", "N1") + "\"");
+        assertThat(xmlStr).contains("elementRef=\"" + ArchiMateIds.id("element", "N1") + "\"");
         assertThat(xmlStr).contains("<fillColor ");
         assertThat(xmlStr).contains("<style lineWidth=\"3\">");
         assertThat(xmlStr).doesNotContain("<lineWidth>");
@@ -509,10 +512,10 @@ class ArchiMateDiagramTests {
 
         String xmlStr = new String(archiMateXmlExporter.export(archiModel), StandardCharsets.UTF_8);
 
-        assertThat(xmlStr).contains("identifier=\"id-vc-e1\"");
-        assertThat(xmlStr).contains("relationshipRef=\"id-rel-e1\"");
-        assertThat(xmlStr).contains("source=\"id-vn-A\"");
-        assertThat(xmlStr).contains("target=\"id-vn-B\"");
+        assertThat(xmlStr).contains("identifier=\"" + ArchiMateIds.id("connection", "layered", "e1") + "\"");
+        assertThat(xmlStr).contains("relationshipRef=\"" + ArchiMateIds.id("relationship", "e1") + "\"");
+        assertThat(xmlStr).contains("source=\"" + ArchiMateIds.id("node", "layered", "A") + "\"");
+        assertThat(xmlStr).contains("target=\"" + ArchiMateIds.id("node", "layered", "B") + "\"");
     }
 
     @Test
@@ -526,9 +529,8 @@ class ArchiMateDiagramTests {
         String xmlStr = new String(archiMateXmlExporter.export(archiModel), StandardCharsets.UTF_8);
 
         assertThat(xmlStr).contains("Title &amp; &lt;Test&gt;");
-        assertThat(xmlStr).contains("Node &quot;quoted&quot; &amp; &lt;tag&gt;");
+        assertThat(xmlStr).contains("Node \"quoted\" &amp; &lt;tag&gt;");
         assertThat(xmlStr).doesNotContain("<tag>");
-        assertThat(xmlStr).doesNotContain("\"quoted\"");
     }
 
     @Test
