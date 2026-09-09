@@ -119,12 +119,9 @@ public final class ArchitectureDslCommands {
     }
 
     private static BlockAst viewWithExchangeProperties(BlockAst existing, Map<String, String> changes) {
+        requireUnambiguousViewProperties(existing);
         List<PropertyAst> values = new ArrayList<>();
-        Set<String> seen = new LinkedHashSet<>();
         for (PropertyAst property : existing.getProperties()) {
-            if (!"include".equals(property.key()) && !seen.add(property.key())) {
-                throw problem("DUPLICATE_PROPERTY", property.key(), "Ambiguous property on edited object");
-            }
             if (!changes.containsKey(property.key())) values.add(property);
         }
         changes.entrySet().stream().sorted(Map.Entry.comparingByKey())
@@ -133,6 +130,15 @@ public final class ArchitectureDslCommands {
         extensions.putAll(changes);
         return new BlockAst(existing.getKind(), existing.getHeaderTokens(), values,
                 existing.getChildren(), extensions, null);
+    }
+
+    private static void requireUnambiguousViewProperties(BlockAst view) {
+        Set<String> seen = new LinkedHashSet<>();
+        for (PropertyAst property : view.getProperties()) {
+            if (!"include".equals(property.key()) && !seen.add(property.key())) {
+                throw problem("DUPLICATE_PROPERTY", property.key(), "Ambiguous property on edited object");
+            }
+        }
     }
 
     private static String exchangeView(String source, Map<String, BlockAst> blocks, UpsertArchitectureView command) {
@@ -146,7 +152,13 @@ public final class ArchitectureDslCommands {
         command.members().forEach(id -> require(blocks, "element:" + id));
         BlockAst existing = blocks.get("view:" + command.id());
         List<PropertyAst> values = new ArrayList<>();
-        if (existing != null) existing.getProperties().stream().filter(p -> !Set.of("title", "description", "include").contains(p.key()) && !command.properties().containsKey(p.key())).forEach(values::add);
+        if (existing != null) {
+            requireUnambiguousViewProperties(existing);
+            existing.getProperties().stream()
+                    .filter(p -> !Set.of("title", "description", "include").contains(p.key())
+                            && !command.properties().containsKey(p.key()))
+                    .forEach(values::add);
+        }
         values.add(new PropertyAst("title", command.title(), null));
         values.add(new PropertyAst("description", command.description(), null));
         command.members().stream().distinct().forEach(id -> values.add(new PropertyAst("include", id, null)));
