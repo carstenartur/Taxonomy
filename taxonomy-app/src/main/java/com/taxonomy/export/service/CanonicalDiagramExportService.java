@@ -52,7 +52,12 @@ public class CanonicalDiagramExportService {
     }
 
     public byte[] exportAsArchiMate(DiagramModel canonicalDiagram, ArchiMateExportMetadata metadata) {
-        return archiMateXmlExporter.export(prepareArchiMate(canonicalDiagram, metadata));
+        return serializeArchiMate(prepareArchiMate(canonicalDiagram, metadata));
+    }
+
+    /** Serialize and validate an already prepared model once, including bundle exports. */
+    public byte[] serializeArchiMate(ArchiMateModel model) {
+        return archiMateXmlExporter.export(model);
     }
 
     public byte[] exportAsVisio(DiagramModel canonicalDiagram) {

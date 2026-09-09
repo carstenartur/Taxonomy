@@ -2,7 +2,7 @@ package com.taxonomy.portfolio.workbench;
 
 import com.taxonomy.archimate.ArchiMateExportMetadata;
 import com.taxonomy.archimate.exchange.ArchiMateExchangeProfile;
-import com.taxonomy.archimate.exchange.ArchiMateExchangeReader;
+import com.taxonomy.archimate.ArchiMateModel;
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.diagram.DiagramNode;
@@ -127,7 +127,7 @@ public class ArchitectureSnapshotExportService {
             return switch (format) {
                 case ARCHIMATE_XML ->
                         diagramExportService.exportAsArchiMate(canonicalDiagram, metadata);
-                case ARCHIMATE_BUNDLE -> bundle(diagramExportService.exportAsArchiMate(canonicalDiagram, metadata));
+                case ARCHIMATE_BUNDLE -> bundle(diagramExportService.prepareArchiMate(canonicalDiagram, metadata));
                 case VISIO_VSDX ->
                         diagramExportService.exportAsVisio(canonicalDiagram);
             };
@@ -139,8 +139,8 @@ public class ArchitectureSnapshotExportService {
         }
     }
 
-    private static byte[] bundle(byte[] xml) {
-        var model = new ArchiMateExchangeReader().read(xml);
+    private byte[] bundle(ArchiMateModel model) {
+        byte[] xml = diagramExportService.serializeArchiMate(model);
         var manifest = new java.util.LinkedHashMap<String, Object>();
         manifest.put("manifestVersion", "taxonomy-architecture-exchange-v1");
         manifest.put("format", "ArchiMate Exchange 3.1");

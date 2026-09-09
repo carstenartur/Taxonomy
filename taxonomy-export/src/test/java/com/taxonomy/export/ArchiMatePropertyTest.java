@@ -18,6 +18,15 @@ class ArchiMatePropertyTest {
         assertTrue(error.getMessage().contains("exchange property type"));
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"", "NaN", "1.2.3", "1e999999999999"})
+    void rejectsMalformedNumbersWithAStableValidationError(String value) {
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> new ArchiMateProperty("number", value));
+        assertEquals("Invalid numeric exchange property", error.getMessage());
+        assertInstanceOf(NumberFormatException.class, error.getCause());
+    }
+
     @Test
     void preservesSupportedTypedValues() {
         assertEquals(new ArchiMateProperty("string", "Text"), ArchiMateProperty.text("Text"));
