@@ -17,12 +17,12 @@ public class IntegrationJson {
     public IntegrationJson(ObjectMapper mapper) { this.mapper = mapper; }
     public String write(Object value) {
         try { return mapper.writeValueAsString(value); }
-        catch (Exception failure) { throw new IllegalStateException("Cannot encode integration evidence"); }
+        catch (Exception failure) { throw new IllegalStateException("Cannot encode integration evidence", failure); }
     }
     public <T> T read(String value, Class<T> type) {
         if (value == null) return null;
         try { return mapper.readValue(value, type); }
-        catch (Exception failure) { throw new IllegalStateException("Cannot decode versioned integration evidence"); }
+        catch (Exception failure) { throw new IllegalStateException("Cannot decode versioned integration evidence", failure); }
     }
     public String fingerprint(Object value) { return ReqifExchangeCodec.digest(write(canonical(value)).getBytes(StandardCharsets.UTF_8)); }
     private Object canonical(Object value) {
@@ -38,7 +38,7 @@ public class IntegrationJson {
         if (value.getClass().isRecord()) {
             Map<String, Object> result = new TreeMap<>();
             try { for (var field : value.getClass().getRecordComponents()) result.put(field.getName(), canonical(field.getAccessor().invoke(value))); }
-            catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot fingerprint integration value"); }
+            catch (ReflectiveOperationException failure) { throw new IllegalStateException("Cannot fingerprint integration value", failure); }
             return result;
         }
         return value.toString();

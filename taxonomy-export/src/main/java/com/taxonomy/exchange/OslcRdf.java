@@ -18,7 +18,12 @@ public final class OslcRdf {
     public static final String TAX = "https://github.com/carstenartur/Taxonomy/ns/integration#";
     public record Triple(String subject, String predicate, String value, boolean resource) {}
     private final List<Triple> triples = new ArrayList<>();
-    public OslcRdf literal(String subject, String predicate, String value) { if (value != null) triples.add(new Triple(subject, predicate, value, false)); return this; }
+    public OslcRdf literal(String subject, String predicate, String value) {
+        if (value == null) return this;
+        if (subject == null || predicate == null)
+            throw new IllegalArgumentException("RDF literal subject and predicate are required");
+        triples.add(new Triple(subject, predicate, value, false)); return this;
+    }
     public OslcRdf link(String subject, String predicate, String value) {
         if (subject == null || predicate == null || value == null)
             throw new IllegalArgumentException("RDF link subject, predicate and value are required");

@@ -98,14 +98,19 @@ class OslcRdfContractTest {
         }
     }
 
-    @Test void missingLiteralIdentitiesHaveTheSameValidationErrorInEveryRepresentation() {
-        for (OslcRdf graph : List.of(new OslcRdf().literal(null, OslcRdf.DCT + "title", "Title"),
-                new OslcRdf().literal(BASE.toString(), null, "Title"))) {
-            assertThrows(IllegalArgumentException.class, graph::xml);
-            assertThrows(IllegalArgumentException.class, graph::turtle);
-            assertThrows(IllegalArgumentException.class, graph::jsonLd);
+    @Test void literalsRejectMissingIdentitiesBeforeChangingTheGraph() {
+        var graph = new OslcRdf().type(BASE.toString(), OslcRdf.RM + "Requirement");
+        var before = graph.triples();
+        for (int missing = 0; missing < 2; missing++) {
+            String[] terms = {BASE.toString(), OslcRdf.DCT + "title"};
+            terms[missing] = null;
+            var error = assertThrows(IllegalArgumentException.class,
+                    () -> graph.literal(terms[0], terms[1], "Title"));
+            assertEquals("RDF literal subject and predicate are required", error.getMessage());
+            assertEquals(before, graph.triples());
         }
-        assertTrue(new OslcRdf().literal(BASE.toString(), OslcRdf.DCT + "title", null).triples().isEmpty());
+        assertSame(graph, graph.literal(BASE.toString(), OslcRdf.DCT + "title", null));
+        assertEquals(before, graph.triples());
     }
 
     static Stream<Arguments> representations() {
