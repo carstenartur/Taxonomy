@@ -1,5 +1,8 @@
 package com.taxonomy.export;
 
+import com.taxonomy.archimate.exchange.ArchiMateIds;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
+
 import com.taxonomy.diagram.DiagramEdge;
 import com.taxonomy.diagram.DiagramLayout;
 import com.taxonomy.diagram.DiagramModel;
@@ -30,17 +33,17 @@ class ArchiMateXmlExporterSchemaContractTest {
     void emitsConcreteDiagramNodeAndConnectionTypes() throws Exception {
         Document document = exportRepresentativeDiagram();
 
-        Element anchorNode = elementByIdentifier(document, "node", "id-vn-capability");
-        Element serviceNode = elementByIdentifier(document, "node", "id-vn-service");
-        Element connection = elementByIdentifier(document, "connection", "id-vc-supports");
+        Element anchorNode = elementByIdentifier(document, "node", ArchiMateIds.id("node", "layered", "capability"));
+        Element serviceNode = elementByIdentifier(document, "node", ArchiMateIds.id("node", "layered", "service"));
+        Element connection = elementByIdentifier(document, "connection", ArchiMateIds.id("connection", "layered", "supports"));
 
         assertThat(anchorNode.getAttributeNS(XSI_NAMESPACE, "type")).isEqualTo("Element");
         assertThat(serviceNode.getAttributeNS(XSI_NAMESPACE, "type")).isEqualTo("Element");
         assertThat(connection.getAttributeNS(XSI_NAMESPACE, "type"))
                 .isEqualTo("Relationship");
-        assertThat(connection.getAttribute("relationshipRef")).isEqualTo("id-rel-supports");
-        assertThat(connection.getAttribute("source")).isEqualTo("id-vn-capability");
-        assertThat(connection.getAttribute("target")).isEqualTo("id-vn-service");
+        assertThat(connection.getAttribute("relationshipRef")).isEqualTo(ArchiMateIds.id("relationship", "supports"));
+        assertThat(connection.getAttribute("source")).isEqualTo(ArchiMateIds.id("node", "layered", "capability"));
+        assertThat(connection.getAttribute("target")).isEqualTo(ArchiMateIds.id("node", "layered", "service"));
     }
 
     @Test
@@ -48,9 +51,9 @@ class ArchiMateXmlExporterSchemaContractTest {
         Document document = exportRepresentativeDiagram();
 
         Element anchorStyle = directChildElement(
-                elementByIdentifier(document, "node", "id-vn-capability"), "style");
+                elementByIdentifier(document, "node", ArchiMateIds.id("node", "layered", "capability")), "style");
         Element regularStyle = directChildElement(
-                elementByIdentifier(document, "node", "id-vn-service"), "style");
+                elementByIdentifier(document, "node", ArchiMateIds.id("node", "layered", "service")), "style");
 
         assertThat(anchorStyle.getAttribute("lineWidth")).isEqualTo("3");
         assertThat(regularStyle.hasAttribute("lineWidth")).isFalse();

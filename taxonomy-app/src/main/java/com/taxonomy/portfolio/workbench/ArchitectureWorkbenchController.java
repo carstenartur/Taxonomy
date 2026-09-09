@@ -71,6 +71,7 @@ public class ArchitectureWorkbenchController {
             Model model) {
         model.addAttribute("projectId", projectId);
         model.addAttribute("snapshotId", snapshotId);
+        model.addAttribute("archimateMappingProfile", com.taxonomy.archimate.exchange.ArchiMateExchangeProfile.VERSION);
         return "architecture-workbench";
     }
 
@@ -163,6 +164,16 @@ public class ArchitectureWorkbenchController {
                         HttpHeaders.CONTENT_DISPOSITION,
                         disposition("architecture", "pdf"))
                 .body(content);
+    }
+
+    @GetMapping(value = "/api/projects/{projectId}/architecture-workbench/{snapshotId}.archimate.zip",
+            produces = "application/zip")
+    @ResponseBody
+    @Operation(summary = "Export experimental ArchiMate XML with the exact mapping profile and loss manifest")
+    public ResponseEntity<byte[]> archiMateBundle(@PathVariable Long projectId, @PathVariable String snapshotId) {
+        RequestScope scope = scope();
+        return artifactResponse(snapshotExportService.exportArchiMateBundle(
+                projectId, snapshotId, scope.username(), scope.context()));
     }
 
     @GetMapping(

@@ -20,7 +20,16 @@ public class ArchiMateImportResult {
     private int relationsSkipped;
     private int relationsRejected;
     private boolean preview;
+    private String mappingProfile;
+    private List<ImportLoss> losses = List.of();
     private List<String> notes = new ArrayList<>();
+
+    public record ImportLoss(String scope, String id, String field, String kind, String rationale) { }
+
+    public String getMappingProfile() { return mappingProfile; }
+    public void setMappingProfile(String mappingProfile) { this.mappingProfile = mappingProfile; }
+    public List<ImportLoss> getLosses() { return losses; }
+    public void setLosses(List<ImportLoss> losses) { this.losses = List.copyOf(losses); }
 
     public ArchiMateImportResult() {
     }

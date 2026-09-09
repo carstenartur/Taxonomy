@@ -9,7 +9,7 @@ import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.export.ArchiMateDiagramService;
-import com.taxonomy.export.ArchiMateXmlExporter;
+import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.export.DiagramProjectionService;
 import com.taxonomy.export.MermaidExportService;
 import com.taxonomy.export.MermaidLabels;
