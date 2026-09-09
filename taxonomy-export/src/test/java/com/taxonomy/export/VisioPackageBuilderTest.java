@@ -54,8 +54,8 @@ class VisioPackageBuilderTest {
     @Test
     void multiplePagesProduceMultiplePageFiles() throws IOException {
         var document = new VisioDocument();
-        document.getPages().add(new VisioPage("page1", "Page 1"));
-        document.getPages().add(new VisioPage("page2", "Page 2"));
+        document.getPages().add(new VisioPage("0", "Page 1"));
+        document.getPages().add(new VisioPage("1", "Page 2"));
 
         byte[] result = builder.build(document);
 
@@ -87,14 +87,9 @@ class VisioPackageBuilderTest {
     }
 
     @Test
-    void emptyDocumentStillProducesAParseablePackageSkeleton() throws IOException {
-        byte[] result = builder.build(new VisioDocument());
-
-        assertNotNull(result);
-        assertTrue(result.length > 0);
-        assertTrue(containsEntry(result, "[Content_Types].xml"));
-        assertTrue(containsEntry(result, "visio/document.xml"));
-        assertTrue(containsEntry(result, "visio/pages/pages.xml"));
+    void rejectsPagelessDocumentInsteadOfEmittingAnInvalidPagesCollection() {
+        org.junit.jupiter.api.Assertions.assertThrows(IllegalArgumentException.class,
+                () -> builder.build(new VisioDocument()));
     }
 
     @Test
@@ -113,7 +108,7 @@ class VisioPackageBuilderTest {
 
     private static VisioDocument createSimpleDocument() {
         var document = new VisioDocument();
-        var page = new VisioPage("page1", "Page 1");
+        var page = new VisioPage("0", "Page 1");
         page.getShapes().add(new VisioShape(
                 "1", "Shape 1", 1.0, 1.0, 2.0, 1.0, "Default", false));
         document.getPages().add(page);
@@ -122,7 +117,7 @@ class VisioPackageBuilderTest {
 
     static VisioDocument representativeDocument() {
         var document = new VisioDocument();
-        var page = new VisioPage("p1", "Architecture");
+        var page = new VisioPage("0", "Architecture");
         page.getShapes().add(new VisioShape(
                 "10", "Capability A", 1.5, 2.0, 2.0, 1.0, "Capability", true));
         page.getShapes().add(new VisioShape(

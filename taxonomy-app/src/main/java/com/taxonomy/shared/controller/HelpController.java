@@ -60,6 +60,7 @@ public class HelpController {
         new String[]{"USER_GUIDE",               "📖", "help.toc.USER_GUIDE",                    "help.audience.everyone"},
         new String[]{"CONCEPTS",                  "💡", "help.toc.CONCEPTS",                      "help.audience.everyone"},
         new String[]{"EXAMPLES",                  "📝", "help.toc.EXAMPLES",                      "help.audience.everyone"},
+        new String[]{"RELEASE_NOTES_1_4_0",       "📋", "help.toc.RELEASE_NOTES_1_4_0",           "help.audience.everyone"},
         new String[]{"PROJECT_REQUIREMENT_PORTFOLIO", "🧭", "help.toc.PROJECT_REQUIREMENT_PORTFOLIO", "help.audience.everyone"},
         new String[]{"PROJECT_PORTFOLIO_FEATURE_MATRIX", "📊", "help.toc.PROJECT_PORTFOLIO_FEATURE_MATRIX", "help.audience.everyone"},
         new String[]{"PROJECT_PORTFOLIO_API",     "🔌", "help.toc.PROJECT_PORTFOLIO_API",         "help.audience.integrators"},

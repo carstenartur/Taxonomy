@@ -52,6 +52,9 @@ window.ArchitectureWorkbenchApi = (function () {
         archiMateUrl: function (projectId, snapshotId) {
             return base(projectId, snapshotId) + '.archimate.xml';
         },
+        visioBundleUrl: function (projectId, snapshotId) {
+            return base(projectId, snapshotId) + '.visio.zip';
+        },
         archiMateBundleUrl: function (projectId, snapshotId) {
             return base(projectId, snapshotId) + '.archimate.zip';
         },

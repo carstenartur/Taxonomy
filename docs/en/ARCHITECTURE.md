@@ -94,7 +94,7 @@ graph TB
 | `ArchitectureGapService` | Identifies missing relations and incomplete architecture patterns in the taxonomy graph relative to a given requirement. |
 | `ArchitecturePatternService` | Detects standard architecture patterns (Full Stack, App Chain, Role Chain) in scored taxonomy results. |
 | `ArchiMateDiagramService` | Generates the experimental bounded ArchiMate 3.1 XML subset. Every generated file is validated offline against the pinned XSD set. Stable IDs, typed properties, a versioned mapping/loss profile and the supported semantic reader are implemented; independent-tool acceptance remains pending. |
-| `VisioDiagramService` | Generates the experimental bounded Visio 2012 VSDX subset; Microsoft Visio desktop certification and complete handoff/loss evidence remain pending. |
+| `VisioDiagramService` | Generates the experimental bounded Visio 2012 VSDX subset; typed identities and versioned handoff/loss manifests are included; Microsoft Visio desktop certification remains pending. |
 | `MermaidExportService` | Exports architecture views as Mermaid flowchart code blocks. |
 | `DiagramProjectionService` | Projects architecture views into neutral diagram models that can be rendered by multiple exporters. |
 | `RelevancePropagationService` | Propagates relevance scores from anchor nodes through taxonomy relations, expanding the architecture view to include indirectly relevant elements. |
@@ -507,7 +507,7 @@ Imported elements carry an `x-source-framework` extension attribute for traceabi
 | Format | Description |
 |---|---|
 | **ArchiMate 3.1 XML** | Experimental bounded ArchiMate 3.1 subset. Every file is validated offline against the pinned XSD set. The versioned profile retains stable identities, typed properties and view membership in the clean Taxonomy reader. A machine-readable loss manifest accompanies snapshot downloads. Independent consumer acceptance remains open in #967; see [the exact profile and limits](../dev/ARCHIMATE_EXCHANGE_PROFILE.md). |
-| **Visio 2012 `.vsdx`** | Experimental bounded Visio 2012 VSDX subset. Package-level checks exist, but Microsoft Visio desktop open/edit/save/reopen certification and a complete handoff/loss manifest remain pending in #965. |
+| **Visio 2012 `.vsdx`** | Experimental bounded Visio 2012 VSDX subset. Package-level checks exist, but Microsoft Visio desktop open/edit/save/reopen certification remains pending in #965; typed identities and a versioned handoff/loss manifest are included. |
 | **Mermaid flowchart** | Text-based Mermaid diagram (Markdown code block), renderable in GitHub, GitLab, Notion, Confluence, and most modern documentation platforms. |
 
 This table describes generated formats, not broad third-party certification. Snapshot authority and format-loss boundaries are defined by the [Architecture export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary).

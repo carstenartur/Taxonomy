@@ -307,6 +307,8 @@ The resulting XML is validated against the pinned ArchiMate 3.1 XSD set. Accepta
 
 ### Visio
 
+For the exact reviewed snapshot, use the workbench **Download Visio + manifest** action (`{snapshotId}.visio.zip`). This preserves stable Shape Data and a checksum-bound mapping/loss manifest. The existing direct VSDX route remains available. Microsoft Visio desktop certification is pending; see the [profile](../dev/VISIO_HANDOFF_PROFILE.md).
+
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \

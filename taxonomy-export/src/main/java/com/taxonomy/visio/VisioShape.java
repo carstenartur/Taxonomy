@@ -1,5 +1,8 @@
 package com.taxonomy.visio;
 
+import java.util.Map;
+import java.util.TreeMap;
+
 public class VisioShape {
     private final String id;
     private final String text;
@@ -9,6 +12,7 @@ public class VisioShape {
     private final double height;
     private final String type;
     private final boolean anchor;
+    private final Map<String, VisioProperty> properties = new TreeMap<>();
 
     public VisioShape(String id, String text, double x, double y, double width, double height,
                       String type, boolean anchor) {
@@ -30,4 +34,5 @@ public class VisioShape {
     public double getHeight() { return height; }
     public String getType() { return type; }
     public boolean isAnchor() { return anchor; }
+    public Map<String, VisioProperty> getProperties() { return properties; }
 }
