@@ -19,11 +19,12 @@ import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.springframework.stereotype.Service;
 
-import java.io.ByteArrayOutputStream;
+import java.io.OutputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.security.DigestOutputStream;
 import java.security.NoSuchAlgorithmException;
 import java.util.*;
 
@@ -428,8 +429,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
 
     private static String digest(List<String> parts) {
         try {
-            ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-            try (DataOutputStream stream = new DataOutputStream(bytes)) {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            try (DataOutputStream stream = new DataOutputStream(new DigestOutputStream(OutputStream.nullOutputStream(), digest))) {
                 for (String part : parts) {
                     if (part == null) { stream.writeInt(-1); continue; }
                     byte[] encoded = part.getBytes(StandardCharsets.UTF_8);
@@ -437,7 +438,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
                     stream.write(encoded);
                 }
             }
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray()));
+            return HexFormat.of().formatHex(digest.digest());
         } catch (IOException | NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
     }
 

@@ -81,6 +81,23 @@ class ArchitectureEditorServiceTest {
                 .isInstanceOf(EditorJournal.RevisionConflict.class);
     }
 
+    @Test void evidenceCommandFingerprintsRemainCompatibleAndBindTheCompleteSource() throws Exception {
+        var context = service.read(alice, null).context();
+        var metadata = new Metadata("00000000-0000-0000-0000-000000000001",
+                "00000000-0000-0000-0000-000000000002", "00000000-0000-0000-0000-000000000003", "Evidence review");
+        var command = new Command(context, metadata, new SemanticCommand(new StoreExchangeEvidence(
+                "evidence-1", "reqif-1.2", "1.2", "a".repeat(64), "Grüße 日本語\nEvidence")));
+        service.execute(alice, command);
+        // Persisted by the previous length-prefixed fingerprint implementation.
+        assertThat(fixture.journal.operation(alice, metadata.commandId()).fingerprint())
+                .isEqualTo("392033381b06433ccbe4d43089bbd735398c7548e1ac92acd73747d66caf5e5d");
+        assertThat(service.execute(alice, command).replayed()).isTrue();
+        var altered = new Command(context, metadata, new SemanticCommand(new StoreExchangeEvidence(
+                "evidence-1", "reqif-1.2", "1.2", "a".repeat(64), "Different source with the same declared fingerprint")));
+        assertCode(() -> service.execute(alice, altered), "COMMAND_ID_REUSED");
+        assertThat(fixture.journal.read(alice).operations()).hasSize(1);
+    }
+
     @Test void historyAndNormalEditsDoNotLoadHistoricalBodiesButInversesLoadTheirExactTarget() throws Exception {
         execute(update("History target"));
         execute(new SemanticCommand(new CreateArchitectureElement("arch-other", "Component", Map.of("title", "Unrelated"))));
