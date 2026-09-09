@@ -2,12 +2,18 @@ package com.taxonomy.dsl;
 
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import org.springframework.security.test.context.support.WithMockUser;
 
 /**
@@ -23,6 +29,20 @@ class DslMaterializeServiceTest {
 
     @Autowired
     private ArchitectureDslDocumentRepository documentRepository;
+
+    @Autowired
+    private SystemRepositoryService systemRepositoryService;
+
+    @MockitoBean
+    private WorkspaceResolver workspaceResolver;
+
+    @BeforeEach
+    void selectExplicitWriteContext() {
+        var primary = systemRepositoryService.getPrimaryRepository();
+        var writeContext = RepositoryContext.centralWrite(
+                primary.getRepositoryId(), primary.getDefaultBranch(), "user");
+        when(workspaceResolver.resolveCurrentRepositoryContext()).thenReturn(writeContext);
+    }
 
     @Test
     void materializeValidDslCreatesDocument() {
