@@ -102,3 +102,13 @@ The `DslGitRepository` uses `HibernateRepository` backed by the same `SessionFac
 The parser and source-range scanner must share delimiter recognition: braces in quoted values or trailing comments are not block structure. Cover header, property and closing-line comments, escaped quotes and LF/CRLF/CR through edit, delete and inverse tests.
 
 Undoing a deletion also needs the original insertion boundary. Recover it from the original Git document and surviving neighbor identities; appending a missing block changes order. Preserve intervening annotations and report a conflict if both placement anchors changed.
+
+### 2026-09-09 — Concurrent checkpoint publication and bounded race tests
+
+With jgit-storage-hibernate 0.11.3, a checkpoint retry's pack flush can hold the object catalogue write lock while waiting for the repository database lock. A simultaneous ref update holds that database lock and waits for the catalogue read lock. Keep each checkpoint's Git insertion and ref update together under the shared live `Repository` monitor, including retries through different writer instances. The durable intent, expected-head CAS and replay checks remain authoritative across processes; never put this monitor around the ORM journal transaction. This coordinates the checkpoint consumer path; the storage library's general lock ordering still needs an upstream correction.
+
+Do not use `ExecutorService.close()` around a deadlock regression: it waits indefinitely after `Future.get(timeout)` has already failed and can consume the entire CI job timeout. Use daemon test workers with explicit cancellation so the test reports the blocked operation.
+
+### 2026-09-09 — CodeMirror validation owns the document lifecycle
+
+CodeMirror's linter already debounces calls. A second shared timer can strand an earlier promise and start a validation request after navigation begins; WebKit reports that interrupted request as an access-control console error. Cancel validation on `pagehide`, refuse delayed callbacks while suspended, resume on `pageshow`, and discard diagnostics if the source document changed. Keep HTTP/console failures visible in acceptance tests.
