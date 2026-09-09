@@ -152,7 +152,13 @@ public final class IntegrationContracts {
     }
 
     private static Map<String, String> immutable(Map<String, String> value) {
-        return value == null ? Map.of() : Map.copyOf(value);
+        if (value == null) return Map.of();
+        for (var entry : value.entrySet()) {
+            if (entry.getKey() == null || entry.getValue() == null) {
+                throw new IllegalArgumentException("Integration maps must not contain null keys or values");
+            }
+        }
+        return Map.copyOf(value);
     }
     private static void require(String value, String field) {
         if (value == null || value.isBlank() || value.length() > 2048)

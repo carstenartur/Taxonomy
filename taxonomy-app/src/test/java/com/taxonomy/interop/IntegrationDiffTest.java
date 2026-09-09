@@ -28,17 +28,12 @@ class IntegrationDiffTest {
         assertEquals(placements, expanded.placements());
         assertEquals(expanded, ExchangeItems.expand(expanded, ExchangeItems.flatten(expanded)));
     }
-    @Test void nullableAttributeAndExtensionValuesRemainComparable() {
+    @Test void integrationMapsRejectNullEntriesWithStableValidation() {
         Map<String, String> attributes = new LinkedHashMap<>();
         attributes.put("nullable", null);
-        Map<String, String> extensions = new LinkedHashMap<>();
-        extensions.put("nullable", null);
-        var value = new Artifact("requirement-1", ArtifactKind.REQUIREMENT, "type-1", "Title", "Body", attributes, extensions);
-        Map<String, String> fields = ExchangeItems.fields(value);
-        assertTrue(fields.containsKey("attribute:nullable"));
-        assertNull(fields.get("attribute:nullable"));
-        assertTrue(fields.containsKey("extension:nullable"));
-        assertNull(fields.get("extension:nullable"));
+        var error = assertThrows(IllegalArgumentException.class,
+                () -> new Artifact("requirement-1", ArtifactKind.REQUIREMENT, "type-1", "Title", "Body", attributes, Map.of()));
+        assertEquals("Integration maps must not contain null keys or values", error.getMessage());
     }
     @Test void disjointFieldsMergeWithNewSourceEvidenceWhileIntersectingFieldsConflict() {
         Artifact before = artifact("Title", "Body", "<old/>"), local = artifact("Local title", "Body", "<old/>"), external = artifact("Title", "Remote body", "<new/>");
