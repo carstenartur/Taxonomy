@@ -303,7 +303,9 @@ public final class ArchiMateExchangeReader {
             requireSupportedStructure(child);
         }
         Set<String> attributes = switch (name) {
-            case "model", "element", "view", "propertyDefinition" -> Set.of("identifier", "type", "viewpoint");
+            case "model", "element" -> Set.of("identifier");
+            case "view" -> Set.of("identifier", "viewpoint");
+            case "propertyDefinition" -> Set.of("identifier", "type");
             case "relationship" -> Set.of("identifier", "source", "target", "accessType");
             case "node" -> Set.of("identifier", "elementRef", "x", "y", "w", "h");
             case "connection" -> Set.of("identifier", "relationshipRef", "source", "target");
