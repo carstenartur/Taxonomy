@@ -20,6 +20,19 @@ public class ArchitectureCheckpointWriter {
 
     public Result write(DslGitRepository source, String scope, String branch, EditorJournal.Checkpoint request) throws IOException {
         Repository repository = source.getGitRepository();
+        // A checkpoint is one Git publication, even when several requests retry its
+        // durable intent. Keep insertion and ref publication together on this live
+        // repository: storage 0.11.3 otherwise takes its catalogue and database locks
+        // in opposite orders when another retry flushes a pack during a ref update.
+        // Separate processes still coordinate through the expected-head CAS below;
+        // this monitor neither replaces that check nor spans a journal transaction.
+        synchronized (repository) {
+            return write(source, repository, scope, branch, request);
+        }
+    }
+
+    private Result write(DslGitRepository source, Repository repository, String scope, String branch,
+                         EditorJournal.Checkpoint request) throws IOException {
         String previous = request.expectedCommit();
         if (Objects.equals(request.dsl(), previous == null ? "" : source.getDslAtCommit(previous))) {
             new ExpectedHeadDslCommitter().verifyExpectedHead(source, branch, previous);
