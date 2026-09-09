@@ -19,7 +19,11 @@ public final class OslcRdf {
     public record Triple(String subject, String predicate, String value, boolean resource) {}
     private final List<Triple> triples = new ArrayList<>();
     public OslcRdf literal(String subject, String predicate, String value) { if (value != null) triples.add(new Triple(subject, predicate, value, false)); return this; }
-    public OslcRdf link(String subject, String predicate, String value) { triples.add(new Triple(subject, predicate, value, true)); return this; }
+    public OslcRdf link(String subject, String predicate, String value) {
+        if (subject == null || predicate == null || value == null)
+            throw new IllegalArgumentException("RDF link subject, predicate and value are required");
+        triples.add(new Triple(subject, predicate, value, true)); return this;
+    }
     public OslcRdf type(String subject, String type) { return link(subject, RDF + "type", type); }
     public List<Triple> triples() { return List.copyOf(triples); }
     public byte[] xml() {
@@ -57,7 +61,7 @@ public final class OslcRdf {
         return bytes;
     }
     private static String iri(String value) {
-        if (value.chars().anyMatch(c -> c <= 32 || "<>\"{}|^`\\".indexOf(c) >= 0) || !java.net.URI.create(value).isAbsolute())
+        if (value == null || value.chars().anyMatch(c -> c <= 32 || "<>\"{}|^`\\".indexOf(c) >= 0) || !java.net.URI.create(value).isAbsolute())
             throw new IllegalArgumentException("RDF resource must be an absolute safe IRI"); return value;
     }
     private static String quote(String value) {

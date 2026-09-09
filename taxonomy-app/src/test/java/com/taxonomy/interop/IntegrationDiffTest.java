@@ -18,6 +18,16 @@ class IntegrationDiffTest {
     private static Identity identity(Artifact value, boolean removed) {
         return new Identity("REQUIREMENT:requirement-1", "internal-1", 1L, "v1", "fingerprint", value, value, UUID.randomUUID(), removed);
     }
+    @Test void itemProjectionPreservesPlacementsWithoutAnArtifactTarget() {
+        var placements = List.of(
+                new Placement("group", "view", null, null, 0, Map.of("label", "Grouping")),
+                new Placement("node", "view", "group", "requirement-1", 1, Map.of()));
+        var original = new ExchangeDocument("archimate-3.1", "1", "v1", true, "",
+                List.of(), List.of(), placements, Map.of(), List.of());
+        var expanded = ExchangeItems.expand(original, ExchangeItems.flatten(original));
+        assertEquals(placements, expanded.placements());
+        assertEquals(expanded, ExchangeItems.expand(expanded, ExchangeItems.flatten(expanded)));
+    }
     @Test void disjointFieldsMergeWithNewSourceEvidenceWhileIntersectingFieldsConflict() {
         Artifact before = artifact("Title", "Body", "<old/>"), local = artifact("Local title", "Body", "<old/>"), external = artifact("Title", "Remote body", "<new/>");
         Artifact merged = ExchangeItems.merge(before, local, external);

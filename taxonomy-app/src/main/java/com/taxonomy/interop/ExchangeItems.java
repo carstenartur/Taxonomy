@@ -40,7 +40,7 @@ public final class ExchangeItems {
                 relations.add(new Relation(item.id(), item.type(), source, target, item.attributes(), extension));
             }
             case PLACEMENT -> placements.add(new Placement(item.id(), item.extensions().get("container"), emptyToNull(item.extensions().get("parent")),
-                    item.extensions().get("artifact"), Integer.parseInt(item.extensions().get("position")), item.attributes()));
+                    emptyToNull(item.extensions().get("artifact")), Integer.parseInt(item.extensions().get("position")), item.attributes()));
             case METADATA -> metadata = item.attributes();
             default -> artifacts.add(item);
         }

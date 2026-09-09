@@ -86,6 +86,28 @@ class OslcRdfContractTest {
         }
     }
 
+    @Test void linksRejectMissingIdentitiesBeforeChangingTheGraph() {
+        var graph = new OslcRdf().type(BASE.toString(), OslcRdf.RM + "Requirement");
+        var before = graph.triples();
+        for (int missing = 0; missing < 3; missing++) {
+            String[] terms = {BASE.toString(), OslcRdf.DCT + "relation", BASE.resolve("target").toString()};
+            terms[missing] = null;
+            var error = assertThrows(IllegalArgumentException.class, () -> graph.link(terms[0], terms[1], terms[2]));
+            assertEquals("RDF link subject, predicate and value are required", error.getMessage());
+            assertEquals(before, graph.triples());
+        }
+    }
+
+    @Test void missingLiteralIdentitiesHaveTheSameValidationErrorInEveryRepresentation() {
+        for (OslcRdf graph : List.of(new OslcRdf().literal(null, OslcRdf.DCT + "title", "Title"),
+                new OslcRdf().literal(BASE.toString(), null, "Title"))) {
+            assertThrows(IllegalArgumentException.class, graph::xml);
+            assertThrows(IllegalArgumentException.class, graph::turtle);
+            assertThrows(IllegalArgumentException.class, graph::jsonLd);
+        }
+        assertTrue(new OslcRdf().literal(BASE.toString(), OslcRdf.DCT + "title", null).triples().isEmpty());
+    }
+
     static Stream<Arguments> representations() {
         return Stream.of(
                 Arguments.of("RDF/XML", (Function<OslcRdf, byte[]>) OslcRdf::xml),
