@@ -12,6 +12,7 @@ import com.taxonomy.model.RelationType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.api.parallel.ResourceLock;
 import org.junit.jupiter.api.parallel.Resources;
 
@@ -148,6 +149,17 @@ class ArchiMateRoundtripTest {
                 List.of(new DiagramNode("n", "Safe", "Capabilities", .5, false, 1)), List.of(), null);
         assertThrows(IllegalArgumentException.class, () -> exporter.export(converter.convert(graph)));
         assertThrows(IllegalArgumentException.class, () -> ArchiMateIds.id("element", invalid));
+    }
+
+    @ParameterizedTest
+    @CsvSource({"model,type", "model,viewpoint", "element,type", "element,viewpoint",
+            "view,type", "propertyDefinition,viewpoint"})
+    void domReaderRejectsAttributesOutsideTheirElementSpecificProfile(String element, String attribute) {
+        var document = ArchiMateSchema.parse(exporter.export(converter.convert(representative())));
+        var target = (org.w3c.dom.Element) document.getElementsByTagNameNS(ArchiMateSchema.NAMESPACE, element).item(0);
+        target.setAttribute(attribute, "unexpected");
+        var error = assertThrows(IllegalArgumentException.class, () -> reader.read(document));
+        assertEquals("Unsupported exchange attribute on " + element + ": " + attribute, error.getMessage());
     }
 
     @Test
