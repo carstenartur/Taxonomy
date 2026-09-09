@@ -11,7 +11,7 @@ import java.util.Map;
 public class OslcRemoteProfiles {
     private Map<String, RemoteProfile> remotes = Map.of();
     public Map<String, RemoteProfile> getRemotes() { return remotes; }
-    public void setRemotes(Map<String, RemoteProfile> value) { remotes = Map.copyOf(value); }
+    public void setRemotes(Map<String, RemoteProfile> value) { remotes = value == null ? Map.of() : Map.copyOf(value); }
     public record RemoteProfile(String repositoryId, String organizationId, URI baseUri,
                                 String credentialEnvironmentVariable, boolean allowPrivateNetworks, boolean allowInsecureHttp) {}
 }
