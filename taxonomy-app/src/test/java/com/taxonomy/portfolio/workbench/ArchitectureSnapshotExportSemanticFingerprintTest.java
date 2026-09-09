@@ -56,7 +56,7 @@ class ArchitectureSnapshotExportSemanticFingerprintTest {
                 .thenReturn(projection("snapshot-grouped", grouped));
         when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(plain), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("plain-archimate".getBytes(StandardCharsets.UTF_8));
-        when(diagramExportService.exportAsVisio(grouped))
+        when(diagramExportService.exportAsVisio(org.mockito.ArgumentMatchers.eq(grouped), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("grouped-visio".getBytes(StandardCharsets.UTF_8));
 
         Artifact plainArtifact = service.exportArchiMate(
@@ -76,7 +76,7 @@ class ArchitectureSnapshotExportSemanticFingerprintTest {
         assertThat(plainArtifact.artifactSha256())
                 .isNotEqualTo(groupedArtifact.artifactSha256());
         verify(diagramExportService).exportAsArchiMate(org.mockito.ArgumentMatchers.eq(plain), org.mockito.ArgumentMatchers.any());
-        verify(diagramExportService).exportAsVisio(grouped);
+        verify(diagramExportService).exportAsVisio(org.mockito.ArgumentMatchers.eq(grouped), org.mockito.ArgumentMatchers.any());
     }
 
     private static DiagramModel plainDiagram() {

@@ -3,6 +3,7 @@ package com.taxonomy.visio.converter;
 import com.taxonomy.visio.VisioConnect;
 import com.taxonomy.visio.VisioPage;
 import com.taxonomy.visio.VisioShape;
+import com.taxonomy.visio.VisioProperty;
 import com.thoughtworks.xstream.converters.Converter;
 import com.thoughtworks.xstream.converters.MarshallingContext;
 import com.thoughtworks.xstream.converters.UnmarshallingContext;
@@ -98,6 +99,7 @@ public class VisioPageContentsConverter implements Converter {
         writer.addAttribute("Name", shape.getText());
         writer.addAttribute("IsCustomName", "1");
         writer.addAttribute("Type", "Shape");
+        writeStyleReferences(writer);
 
         writeCell(writer, "PinX", decimal(shape.getX()));
         writeCell(writer, "PinY", decimal(shape.getY()));
@@ -113,6 +115,7 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "LineWeight", "0.01388888888888889");
         writeCell(writer, "VerticalAlign", "1");
         writeRectangleGeometry(writer, shape.getWidth(), shape.getHeight());
+        writeProperties(writer, shape.getProperties());
 
         writer.startNode("Text");
         writer.setValue(shape.getText());
@@ -138,6 +141,7 @@ public class VisioPageContentsConverter implements Converter {
         writer.addAttribute("NameU", "TaxonomyConnector." + connectorId);
         writer.addAttribute("IsCustomNameU", "1");
         writer.addAttribute("Type", "Shape");
+        writeStyleReferences(writer);
 
         writeCell(writer, "OneD", "1");
         // A masterless custom connector is not automatically recognised as the
@@ -174,6 +178,7 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "EndArrow", "13");
         writeCell(writer, "EndArrowSize", "2");
         writeLineGeometry(writer, width);
+        writeProperties(writer, connect.getProperties());
 
         writer.startNode("Text");
         writer.setValue(connect.getRelationType());
@@ -191,6 +196,32 @@ public class VisioPageContentsConverter implements Converter {
         writer.addAttribute("FromCell", fromCell);
         writer.addAttribute("ToSheet", endpointShapeId);
         writer.addAttribute("ToCell", "PinX");
+        writer.endNode();
+    }
+
+    private static void writeStyleReferences(HierarchicalStreamWriter writer) {
+        writer.addAttribute("LineStyle", "0");
+        writer.addAttribute("FillStyle", "0");
+        writer.addAttribute("TextStyle", "0");
+    }
+
+    private static void writeProperties(HierarchicalStreamWriter writer, Map<String, VisioProperty> properties) {
+        if (properties.isEmpty()) return;
+        writer.startNode("Section");
+        writer.addAttribute("N", "Property");
+        for (var entry : new java.util.TreeMap<>(properties).entrySet()) {
+            writer.startNode("Row");
+            // Hex encoding is injective and uses only portable ShapeSheet row-name characters.
+            writer.addAttribute("N", "t" + java.util.HexFormat.of().formatHex(entry.getKey().getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+            writeCell(writer, "Label", entry.getKey());
+            writeCell(writer, "Type", entry.getValue().shapeType());
+            writer.startNode("Cell");
+            writer.addAttribute("N", "Value");
+            writer.addAttribute("V", entry.getValue().shapeValue());
+            if (entry.getValue().kind() == VisioProperty.Kind.STRING) writer.addAttribute("U", "STR");
+            writer.endNode();
+            writer.endNode();
+        }
         writer.endNode();
     }
 

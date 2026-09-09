@@ -34,7 +34,7 @@ class ArchitectureSnapshotExportUiContractTest {
                 .contains("Experimental architecture export formats")
                 .contains("Download ArchiMate + manifest")
                 .contains("independent-tool acceptance pending")
-                .contains("Download Visio 2012 subset")
+                .contains("Download Visio + manifest")
                 .contains("Microsoft Visio desktop certification pending")
                 .doesNotContain(">\n            Download ArchiMate\n")
                 .doesNotContain(">\n            Download Visio\n");
@@ -51,7 +51,7 @@ class ArchitectureSnapshotExportUiContractTest {
                 .doesNotContain("analyze");
         assertThat(adapter)
                 .contains("ArchitectureWorkbenchApi.archiMateBundleUrl")
-                .contains("ArchitectureWorkbenchApi.visioUrl")
+                .contains("ArchitectureWorkbenchApi.visioBundleUrl")
                 .doesNotContain("fetch(")
                 .doesNotContain("businessText")
                 .doesNotContain("analyze");

@@ -306,6 +306,8 @@ Die XML-Datei wird gegen den festgeschriebenen ArchiMate-3.1-XSD-Satz validiert.
 
 ### Visio
 
+Für den exakt geprüften Snapshot verwenden Sie **Download Visio + manifest** in der Workbench (`{snapshotId}.visio.zip`). Das Paket erhält stabile Shape-Daten und ein durch Prüfsummen gebundenes Mapping-/Verlustmanifest. Der direkte VSDX-Endpunkt bleibt verfügbar. Die Microsoft-Visio-Desktop-Zertifizierung steht aus; siehe [Profil](../dev/VISIO_HANDOFF_PROFILE.md).
+
 ```bash
 curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/diagram/visio \
   -H "Content-Type: application/json" \

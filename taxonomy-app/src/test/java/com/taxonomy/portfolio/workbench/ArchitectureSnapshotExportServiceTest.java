@@ -62,7 +62,7 @@ class ArchitectureSnapshotExportServiceTest {
                 .thenReturn(projection);
         when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(archiMate);
-        when(diagramExportService.exportAsVisio(projection.diagram()))
+        when(diagramExportService.exportAsVisio(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any()))
                 .thenReturn(visio);
 
         Artifact archiMateArtifact = service.exportArchiMate(
@@ -100,7 +100,7 @@ class ArchitectureSnapshotExportServiceTest {
                 .isEqualTo(
                         "taxonomy-archimate-3.1-v2");
         assertThat(visioArtifact.exporterProfile())
-                .isEqualTo("visio-2012-opc-supported-subset-v1");
+                .isEqualTo("visio-2012-opc-supported-subset-v2");
 
         verify(workbenchService, times(2)).load(
                 PROJECT_ID,
@@ -110,7 +110,7 @@ class ArchitectureSnapshotExportServiceTest {
         verify(diagramExportService)
                 .exportAsArchiMate(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any());
         verify(diagramExportService)
-                .exportAsVisio(projection.diagram());
+                .exportAsVisio(org.mockito.ArgumentMatchers.eq(projection.diagram()), org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -151,7 +151,7 @@ class ArchitectureSnapshotExportServiceTest {
                 .thenReturn(reordered);
         when(diagramExportService.exportAsArchiMate(org.mockito.ArgumentMatchers.eq(firstDiagram), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("first-artifact".getBytes(StandardCharsets.UTF_8));
-        when(diagramExportService.exportAsVisio(reorderedDiagram))
+        when(diagramExportService.exportAsVisio(org.mockito.ArgumentMatchers.eq(reorderedDiagram), org.mockito.ArgumentMatchers.any()))
                 .thenReturn("second-artifact".getBytes(StandardCharsets.UTF_8));
 
         Artifact firstArtifact = service.exportArchiMate(

@@ -1,0 +1,19 @@
+{
+  "profileVersion": "visio-2012-opc-supported-subset-v2",
+  "status": "EXPERIMENTAL_NOT_MICROSOFT_VISIO_CERTIFIED",
+  "namespace": "http://schemas.microsoft.com/office/visio/2012/main",
+  "schemaBinding": "Apache POI 5.5.1 / XMLBeans Visio 2012 schema",
+  "identityPolicy": "Sorted original element IDs allocate positive numeric page-local IDs; sorted relationship IDs follow the largest element ID. Stable external identities live in taxonomy.id Shape Data, independently of numeric IDs and display names.",
+  "timestampPolicy": "For reproducibility, the generation timestamp is normalized to snapshotCreatedAt and marked SOURCE_SNAPSHOT_CREATED_AT. Unbound diagrams omit the timestamp.",
+  "limits": {"inputElements": 10000, "inputRelationships": 30000, "pages": 32, "totalShapes": 20000, "totalConnectors": 60000, "xmlBytes": 33554432, "textCharacters": 32767},
+  "mappings": [
+    {"scope": "element", "source": "id,type,relevance,anchor,selectedForImpact,depth,layer,parentId,container", "target": "typed taxonomy.* Shape Data and manifest", "kind": "EXTENDED", "rationale": "Arbitrary nonblank Taxonomy types retain their exact meaning as properties; Visio rectangles have no architecture metamodel type."},
+    {"scope": "relationship", "source": "id,type,sourceId,targetId,relevance,relationCategory", "target": "typed taxonomy.* connector Shape Data and manifest", "kind": "EXTENDED", "rationale": "Native masterless arrow geometry shows the original source-to-target direction; exact relation semantics remain properties."},
+    {"scope": "document", "source": "authorized snapshot authority and human decisions", "target": "OPC custom properties, shape data and manifest", "kind": "EXTENDED", "rationale": "Only application-allowlisted values are supplied; unavailable authority and decisions are named in the loss report."},
+    {"scope": "layout", "source": "browser layout, typography and routing", "target": "generated inch-based layer layout", "kind": "MAPPED", "rationale": "Presentation geometry may differ from SVG/PDF; semantic identities and directions do not depend on layout."},
+    {"scope": "element", "source": "visual container hierarchy", "target": "flat rectangle with taxonomy.container=true and original parentId", "kind": "MAPPED", "rationale": "No native nested Visio group semantics are claimed; containers are excluded from the canonical semantic graph hash."},
+    {"scope": "metadata", "source": "prompts,provider responses,requirement text,unreviewed evidence,warnings", "target": "none", "kind": "OMITTED", "rationale": "Outside the safe visual handoff profile; separately authorized canonical evidence remains authoritative."},
+    {"scope": "geometry", "source": "self-loops,coincident endpoints", "target": "export error", "kind": "UNSUPPORTED", "rationale": "The straight masterless connector profile requires two distinct endpoint positions; no partial artifact is emitted."},
+    {"scope": "persistence", "source": "canonical snapshots,operations,review decisions", "target": "visual handoff only", "kind": "OMITTED", "rationale": "Editing or saving a VSDX does not write back to Taxonomy or preserve canonical operation history."}
+  ]
+}
