@@ -95,6 +95,86 @@ test('parses and classifies the review evidence contract', () => {
     assert.equal(classifyReview(review(CLOSER)), 'needs-closer-look');
 });
 
+test('audit recognizes human completion of 113/121 coverage before merge', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const comment = {
+        id: 201, user, last_edited_at: null,
+        body: `/confirm-review ${HEAD} 101 all-files=121`,
+        created_at: '2026-09-01T10:30:00Z', updated_at: '2026-09-01T10:30:00Z'
+    };
+    for (const outcome of ['Approval recommended', 'Needs a closer look']) {
+        const input = {
+            pullRequest: pullRequest({ user, changed_files: 121 }),
+            reviews: [review(APPROVAL.replace('2/2', '113/121')
+                .replace('Approval recommended', outcome), { id: 101 })],
+            threads: [], reviewerLogins: REVIEWERS, comments: [comment],
+            humanPermissions: new Map([['maintainer', 'admin']])
+        };
+        const result = auditMergedPullRequest(input);
+        assert.deepEqual(result.findings, []);
+        assert.equal(result.humanConfirmation.scope, 'all-changed-files');
+        assert.equal(result.humanConfirmation.changedFiles, 121);
+        for (const invalid of [
+            { ...comment, body: `/confirm-review ${HEAD} 101` },
+            { ...comment, body: `/confirm-review ${HEAD} 101 all-files=120` },
+            { ...comment, created_at: '2026-09-01T11:30:00Z', updated_at: '2026-09-01T11:30:00Z' }
+        ]) {
+            assert.ok(auditMergedPullRequest({ ...input, comments: [invalid] }).findings
+                .some(item => item.code === 'INCOMPLETE_EXACT_HEAD_REVIEW'));
+        }
+    }
+});
+
+test('audit accepts native peer completion and retains real pre-merge objections', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const approval = review('Reviewed the complete change.', {
+        id: 202, user, state: 'APPROVED', submitted_at: '2026-09-01T10:30:00Z'
+    });
+    const input = {
+        pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+        reviews: [review(APPROVAL.replace('2/2', '1/2'), { id: 101 }), approval],
+        threads: [], reviewerLogins: REVIEWERS, humanPermissions: new Map([['maintainer', 'write']])
+    };
+    const result = auditMergedPullRequest(input);
+    assert.deepEqual(result.findings, []);
+    assert.equal(result.humanConfirmation.source, 'pull_request_review');
+    for (const state of ['CHANGES_REQUESTED', 'DISMISSED']) {
+        const audit = auditMergedPullRequest({ ...input,
+            reviews: [input.reviews[0], { ...approval, state }]
+        });
+        assert.ok(audit.findings.some(item => item.code === 'INCOMPLETE_EXACT_HEAD_REVIEW'));
+        assert.equal(audit.humanConfirmation, null);
+        if (state === 'CHANGES_REQUESTED') {
+            assert.ok(audit.findings.some(item => item.code === 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE'));
+        }
+    }
+});
+
+test('audit does not use full-change confirmation to hide invalid coverage or review findings', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const input = {
+        pullRequest: pullRequest({ user }), threads: [], reviewerLogins: REVIEWERS,
+        comments: [{ id: 201, user, last_edited_at: null,
+            body: `/confirm-review ${HEAD} 101 all-files=2`,
+            created_at: '2026-09-01T10:30:00Z', updated_at: '2026-09-01T10:30:00Z'
+        }], humanPermissions: new Map([['maintainer', 'admin']])
+    };
+    for (const coverage of ['unknown', '3/2', '1/3', '0/0']) {
+        const audit = auditMergedPullRequest({ ...input,
+            reviews: [review(APPROVAL.replace('2/2', coverage), { id: 101 })]
+        });
+        assert.ok(audit.findings.some(item => item.code === 'INCOMPLETE_EXACT_HEAD_REVIEW'));
+        assert.equal(audit.humanConfirmation, null);
+    }
+    for (const body of [CHANGES, CLOSER]) {
+        const audit = auditMergedPullRequest({ ...input,
+            reviews: [review(body.replace('2/2', '1/2'), { id: 101 })]
+        });
+        assert.ok(audit.findings.some(item => item.code === 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED'));
+        assert.equal(audit.humanConfirmation, null);
+    }
+});
+
 test('searches every recently merged repository PR without a base-branch blind spot', () => {
     const query = mergedPullRequestSearchQuery(
         'carstenartur/Taxonomy', '2026-08-01');
@@ -196,12 +276,12 @@ test('distinguishes a stale-head late review from exact merged-head evidence', (
         item.code === 'ACTIONABLE_REVIEW_SUBMITTED_AFTER_MERGE'), false);
 });
 
-test('later clean exact-head approval reconciles an earlier commented pre-merge review', () => {
+test('a clean exact-head approval before merge supersedes an earlier commented review', () => {
     const result = auditMergedPullRequest({
         pullRequest: pullRequest(),
         reviews: [
             review(CHANGES),
-            review(APPROVAL, { submitted_at: '2026-09-01T12:00:00Z' })
+            review(APPROVAL, { submitted_at: '2026-09-01T10:30:00Z' })
         ],
         threads: [],
         reviewerLogins: REVIEWERS
@@ -210,10 +290,26 @@ test('later clean exact-head approval reconciles an earlier commented pre-merge 
     assert.equal(findingsAtOrAbove(result.findings, 'high').length, 0);
     assert.equal(result.findings.some(item =>
         item.code === 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED'), false);
-    assert.ok(result.findings.some(item =>
-        item.code === 'APPROVING_REVIEW_SUBMITTED_AFTER_MERGE'
-            && item.severity === 'medium'));
+    assert.deepEqual(result.findings, []);
 });
+
+for (const [body, codes] of [
+    [CHANGES, ['NON_APPROVING_EXACT_HEAD_REVIEW', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED']],
+    [APPROVAL.replace('2/2', '1/2'), ['INCOMPLETE_EXACT_HEAD_REVIEW']],
+    [APPROVAL.replace('Approval recommended', 'Needs a closer look'), ['NON_APPROVING_EXACT_HEAD_REVIEW']]
+]) {
+    test(`post-merge approval cannot erase ${codes.join(', ')}`, () => {
+        const result = auditMergedPullRequest({
+            pullRequest: pullRequest(), threads: [], reviewerLogins: REVIEWERS,
+            reviews: [review(body), review(APPROVAL, { submitted_at: '2026-09-01T12:00:00Z' })]
+        });
+        for (const code of codes) {
+            assert.ok(result.findings.some(item => item.code === code && item.severity === 'high'));
+        }
+        assert.ok(result.findings.some(item =>
+            item.code === 'APPROVING_REVIEW_SUBMITTED_AFTER_MERGE' && item.severity === 'medium'));
+    });
+}
 
 test('later clean exact-head approval downgrades an actionable late review', () => {
     const result = auditMergedPullRequest({
