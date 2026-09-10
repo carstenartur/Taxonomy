@@ -1,6 +1,5 @@
 package com.taxonomy.interop.persistence;
 
-import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.IntegrationJson;
 import com.taxonomy.interop.IntegrationProblem;
@@ -13,8 +12,12 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.Arrays;
+import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -162,7 +165,7 @@ public class IntegrationStore {
         }
         public void mapping(UUID operationId, String externalId, String businessIdentity, Long requirementId,
                             String externalVersion, Artifact external, Artifact internal, boolean removed) {
-            String id = EditorJournal.hash(connection.id + "\u0000" + externalId);
+            String id = identityId(connection.id, externalId);
             ExternalIdentityMappingEntity entity = em.find(ExternalIdentityMappingEntity.class, id);
             boolean created = entity == null;
             if (entity == null) {
@@ -245,6 +248,14 @@ public class IntegrationStore {
         return new Identity(m.externalId, m.businessIdentity, m.requirementId, m.externalVersion, m.fingerprint,
                 json.read(m.externalJson, Artifact.class), json.read(m.internalJson, Artifact.class), uuid(m.operationId), m.removed);
     }
-    private static String scope(RepositoryContext context) { return EditorJournal.scope(context); }
+    private static String scope(RepositoryContext context) { return context.workspaceScopeKey(); }
+    private static String identityId(String connectionId, String externalId) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest((connectionId + "\u0000" + externalId).getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
+    }
     private static UUID uuid(String value) { return value == null ? null : UUID.fromString(value); }
 }
