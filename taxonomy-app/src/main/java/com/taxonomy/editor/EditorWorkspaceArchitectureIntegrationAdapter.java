@@ -1,15 +1,23 @@
-package com.taxonomy.workspace.service;
+package com.taxonomy.editor;
 
 import com.taxonomy.editor.ArchitectureCommandPort.Context;
 import com.taxonomy.editor.ArchitectureCommandPort.CreateCheckpointCommand;
-import com.taxonomy.editor.ArchitectureEditorService;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.Checkpoint;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.CommandMetadata;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.State;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.WorkspaceDocument;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.Objects;
 import java.util.function.Function;
 
-/** Keeps concrete editor/journal/checkpoint types inside the workspace bounded context. */
+/**
+ * Editor-side adapter for the workspace-owned integration boundary.
+ * Concrete editor DTOs stay on the editor side instead of creating a workspace-to-editor dependency.
+ */
 @Service
 public class EditorWorkspaceArchitectureIntegrationAdapter implements WorkspaceArchitectureIntegrationPort {
 
@@ -65,9 +73,9 @@ public class EditorWorkspaceArchitectureIntegrationAdapter implements WorkspaceA
         return editorContext;
     }
 
-    private static com.taxonomy.editor.ArchitectureCommandPort.Metadata editorMetadata(CommandMetadata metadata) {
+    private static ArchitectureCommandPort.Metadata editorMetadata(CommandMetadata metadata) {
         Objects.requireNonNull(metadata, "metadata");
-        return new com.taxonomy.editor.ArchitectureCommandPort.Metadata(
+        return new ArchitectureCommandPort.Metadata(
                 metadata.commandId().toString(), metadata.correlationId().toString(),
                 metadata.causationId().toString(), metadata.rationale());
     }
