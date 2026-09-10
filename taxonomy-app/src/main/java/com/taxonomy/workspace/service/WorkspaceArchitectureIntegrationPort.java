@@ -52,11 +52,11 @@ public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitect
             Objects.requireNonNull(commandId, "commandId");
             Objects.requireNonNull(correlationId, "correlationId");
             Objects.requireNonNull(causationId, "causationId");
-            if (rationale == null) {
+            if (rationale == null || rationale.length() > 1000) {
                 throw new IllegalArgumentException("A rationale of 1–1000 characters is required");
             }
             rationale = rationale.strip().replaceAll("\\s+", " ");
-            if (rationale.isBlank() || rationale.length() > 1000) {
+            if (rationale.isBlank()) {
                 throw new IllegalArgumentException("A rationale of 1–1000 characters is required");
             }
             if (rationale.chars().anyMatch(Character::isISOControl)) {

@@ -59,21 +59,20 @@ class WorkspaceArchitectureIntegrationPortTest {
                         commandId, correlationId, causationId, "x".repeat(1001)));
         assertThatIllegalArgumentException().isThrownBy(() ->
                 new WorkspaceArchitectureIntegrationPort.CommandMetadata(
+                        commandId, correlationId, causationId,
+                        "reason" + " ".repeat(1001) + "detail"));
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                new WorkspaceArchitectureIntegrationPort.CommandMetadata(
                         commandId, correlationId, causationId, "reason\u0000detail"));
 
         WorkspaceArchitectureIntegrationPort.CommandMetadata metadata =
                 new WorkspaceArchitectureIntegrationPort.CommandMetadata(
                         commandId, correlationId, causationId, "  reviewed   integration  ");
-        WorkspaceArchitectureIntegrationPort.CommandMetadata longBeforeNormalization =
-                new WorkspaceArchitectureIntegrationPort.CommandMetadata(
-                        commandId, correlationId, causationId,
-                        "reason" + " ".repeat(1001) + "detail");
 
         assertThat(metadata.commandId()).isEqualTo(commandId);
         assertThat(metadata.correlationId()).isEqualTo(correlationId);
         assertThat(metadata.causationId()).isEqualTo(causationId);
         assertThat(metadata.rationale()).isEqualTo("reviewed integration");
-        assertThat(longBeforeNormalization.rationale()).isEqualTo("reason detail");
     }
 
     @Test
