@@ -57,6 +57,29 @@
       ]
     },
     {
+      "id": "provenance",
+      "targetModule": null,
+      "packages": [
+        "com.taxonomy.provenance.."
+      ]
+    },
+    {
+      "id": "preferences",
+      "targetModule": null,
+      "packages": [
+        "com.taxonomy.preferences.."
+      ]
+    },
+    {
+      "id": "app-composition",
+      "targetModule": "taxonomy-app",
+      "packages": [
+        "com.taxonomy.observability..",
+        "com.taxonomy.security..",
+        "com.taxonomy.shared.."
+      ]
+    },
+    {
       "id": "legacy-export-adapters",
       "targetModule": null,
       "packages": [
