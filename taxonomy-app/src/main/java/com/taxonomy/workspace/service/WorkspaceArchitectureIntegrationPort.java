@@ -19,6 +19,26 @@ import java.util.function.UnaryOperator;
  */
 public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitectureReadPort {
 
+    /** Exact workspace architecture state needed to detect stale integration operations. */
+    record State(String workspaceScopeKey, String commitId, long semanticRevision) implements ReadState {
+        public State {
+            if (workspaceScopeKey == null || workspaceScopeKey.isBlank()) {
+                throw new IllegalArgumentException("Workspace scope key is required");
+            }
+            if (semanticRevision < 0) {
+                throw new IllegalArgumentException("Semantic revision must not be negative");
+            }
+        }
+    }
+
+    /** Minimal canonical document view exposed outside the workspace bounded context. */
+    record WorkspaceDocument(State state, String dsl) implements ReadDocument {
+        public WorkspaceDocument {
+            Objects.requireNonNull(state, "state");
+            Objects.requireNonNull(dsl, "dsl");
+        }
+    }
+
     /** Stable command identity and audit metadata without leaking editor-specific DTOs. */
     record CommandMetadata(UUID commandId, UUID correlationId, UUID causationId, String rationale) {
         public CommandMetadata {
@@ -41,6 +61,9 @@ public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitect
             Objects.requireNonNull(state, "state");
         }
     }
+
+    @Override
+    WorkspaceDocument read(RepositoryContext context, String commit) throws IOException;
 
     /** Execute within the workspace model lock used for cross-aggregate integrations. */
     <T> T locked(RepositoryContext context, Function<WorkspaceDocument, T> action) throws IOException;
