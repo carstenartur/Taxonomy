@@ -273,7 +273,7 @@ public class EditorJournal {
     }
     private static String key(String scope, String commandId) { return scope + ":" + commandId; }
     public static String scope(RepositoryContext context) {
-        return hash(context.repositoryId() + "\u0000" + context.workspaceId() + "\u0000" + context.branch());
+        return context.repositoryWorkspaceScopeKey();
     }
     public static String hash(String value) {
         try {
