@@ -1,6 +1,5 @@
 package com.taxonomy.interop.oslc;
 
-import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.exchange.OslcRdf;
 import com.taxonomy.interop.IntegrationDomainAdapter;
 import com.taxonomy.interop.IntegrationProblem;
@@ -26,7 +25,7 @@ public class OslcProviderService {
         this.workspaceAccess = workspaceAccess;
     }
     public void authorize(RepositoryContext context, String scope) {
-        if (!workspaceAccess.canUsePrivateWorkspace(context) || !EditorJournal.scope(context).equals(scope)
+        if (!workspaceAccess.canUsePrivateWorkspace(context) || !context.workspaceScopeKey().equals(scope)
                 || !memberships.canRead(repositories.getRepository(context.repositoryId()), context.username())) throw IntegrationProblem.missing();
     }
     public interface Links { String uri(String path); }
