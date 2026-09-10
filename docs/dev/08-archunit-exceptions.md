@@ -1,12 +1,18 @@
 # ArchUnit Exception Inventory
 
-This document tracks the current incremental exceptions used by
-`taxonomy-app/src/test/java/com/taxonomy/ArchitectureTest.java`.
+This document tracks the current incremental exceptions enforced by the
+architecture fitness functions in `taxonomy-app/src/test/java/com/taxonomy`.
+
+The checked source of truth for temporary cycle and adapter exceptions is
+`.github/architecture-exceptions.json`. The target bounded-context extraction map
+is `.github/architecture-contexts.json`; its cross-context dependency baseline is
+`.github/architecture-dependency-baseline.json`.
 
 Each exception includes:
 
 - why it exists today
 - the condition that allows removing it
+- an expiry date in the checked ledger
 
 ## Controller → repository rule
 
@@ -43,13 +49,36 @@ These are temporary exceptions to:
 
 ## Package-level exceptions
 
-These are documented in the Javadoc of `ArchitectureTest` rules:
+`ArchitectureCycleBoundaryTest` records the currently tolerated cycle edges and
+adapter-boundary exclusions. `ArchitectureExceptionLedgerTest` requires those
+hard-coded exception IDs to match the checked ledger exactly and rejects expired
+entries.
 
-- cycle check exclusions for known cross-cutting shared packages
-- `taxonomy-dsl` adapter exclusions (`com.taxonomy.dsl.storage`, `com.taxonomy.dsl.export`)
-- `taxonomy-export` adapter exclusions (`com.taxonomy.export.service`, `com.taxonomy.export.controller`)
+Current adapter-boundary exceptions include:
 
-Removal condition for package-level exclusions:
+- `taxonomy-dsl` application adapters (`com.taxonomy.dsl.storage`, `com.taxonomy.dsl.export`)
+- `taxonomy-export` application adapters (`com.taxonomy.export.service`, `com.taxonomy.export.controller`)
 
-- remove each exclusion once the adapter package is moved out of framework-free module scope
-  into a dedicated adapter module/package boundary.
+Removal condition for package-level adapter exclusions:
+
+- put each adapter behind a narrow port owned by the bounded context that needs it;
+- move the implementation into that context's adapter package/module when the context is extracted;
+- keep `taxonomy-dsl`, `taxonomy-export`, `taxonomy-domain`, and `taxonomy-extension-api` framework-free;
+- do **not** create a generic catch-all `taxonomy-adapters` module, because that would recreate the broad coupling currently being removed from `taxonomy-app`.
+
+## Cross-context dependency ratchet
+
+`ArchitectureContextDependencyRatchetTest` complements the cycle rule. A dependency
+can damage a module boundary before it closes a cycle, so the ratchet records the
+current direct class-to-class dependencies between managed bounded contexts per
+package pair.
+
+The baseline is deliberately not an allowlist of ideal dependency directions. It
+captures the reviewed current state while #628 removes coupling incrementally:
+
+- a new package edge fails;
+- growth of an existing edge fails;
+- a reduction also fails until the lower value is committed to the baseline, so the improvement cannot silently regress later.
+
+Changing the baseline therefore requires reviewing the architectural direction,
+not merely regenerating a file.
