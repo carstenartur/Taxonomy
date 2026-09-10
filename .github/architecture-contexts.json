@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "compositionModule": "taxonomy-app",
+  "catchAllAdapterModuleAllowed": false,
+  "contexts": [
+    {
+      "id": "knowledge",
+      "targetModule": "taxonomy-knowledge",
+      "packages": [
+        "com.taxonomy.catalog..",
+        "com.taxonomy.relations..",
+        "com.taxonomy.search.."
+      ]
+    },
+    {
+      "id": "workspace",
+      "targetModule": "taxonomy-workspace",
+      "packages": [
+        "com.taxonomy.workspace..",
+        "com.taxonomy.versioning.."
+      ]
+    },
+    {
+      "id": "architecture",
+      "targetModule": "taxonomy-architecture",
+      "packages": [
+        "com.taxonomy.architecture..",
+        "com.taxonomy.editor.."
+      ]
+    },
+    {
+      "id": "analysis",
+      "targetModule": "taxonomy-analysis",
+      "packages": [
+        "com.taxonomy.analysis.."
+      ]
+    },
+    {
+      "id": "portfolio",
+      "targetModule": "taxonomy-portfolio",
+      "packages": [
+        "com.taxonomy.portfolio.."
+      ]
+    },
+    {
+      "id": "interop",
+      "targetModule": "taxonomy-interop",
+      "packages": [
+        "com.taxonomy.interop.."
+      ]
+    },
+    {
+      "id": "templates",
+      "targetModule": "taxonomy-templates",
+      "packages": [
+        "com.taxonomy.templates.."
+      ]
+    },
+    {
+      "id": "legacy-export-adapters",
+      "targetModule": null,
+      "packages": [
+        "com.taxonomy.export.controller..",
+        "com.taxonomy.export.service.."
+      ]
+    },
+    {
+      "id": "dsl-adapters",
+      "targetModule": null,
+      "packages": [
+        "com.taxonomy.dsl.storage..",
+        "com.taxonomy.dsl.export.."
+      ]
+    }
+  ]
+}
