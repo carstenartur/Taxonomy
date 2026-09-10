@@ -1,6 +1,10 @@
 {
   "schemaVersion": 1,
   "compositionModule": "taxonomy-app",
+  "rootCompositionClasses": [
+    "AppConfig.java",
+    "TaxonomyApplication.java"
+  ],
   "catchAllAdapterModuleAllowed": false,
   "contexts": [
     {
