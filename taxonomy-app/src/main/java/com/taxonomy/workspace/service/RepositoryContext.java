@@ -1,5 +1,10 @@
 package com.taxonomy.workspace.service;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.HexFormat;
+
 /**
  * Explicit routing identity for every repository-sensitive operation.
  *
@@ -49,6 +54,26 @@ public record RepositoryContext(
             String repositoryId, String workspaceId, String branch, String username) {
         return new RepositoryContext(
                 repositoryId, workspaceId, branch, username, RepositoryScope.WORKSPACE);
+    }
+
+    /**
+     * Stable storage and protocol identity for this repository/workspace/branch tuple.
+     * The actor is deliberately excluded so authorized users address the same workspace state.
+     *
+     * <p>The representation is compatibility-sensitive because it is already persisted by the
+     * editor and interoperability journals.</p>
+     */
+    public String workspaceScopeKey() {
+        return sha256(repositoryId + "\u0000" + workspaceId + "\u0000" + branch);
+    }
+
+    private static String sha256(String value) {
+        try {
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException(impossible);
+        }
     }
 
     private static String requireText(String value, String field) {
