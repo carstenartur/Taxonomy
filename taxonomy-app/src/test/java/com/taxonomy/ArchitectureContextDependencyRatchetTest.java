@@ -33,6 +33,10 @@ import static org.assertj.core.api.Assertions.assertThat;
  * existing package-to-package edge, and any reduction that has not yet been
  * recorded in the baseline fails the test. This keeps improvements monotonic
  * while the physical Maven-module extraction is performed incrementally.</p>
+ *
+ * <p>Every production Java package below the application package root must also
+ * be classified by the checked context map. This prevents new code from evading
+ * the ratchet simply by introducing an unmapped package.</p>
  */
 class ArchitectureContextDependencyRatchetTest {
 
@@ -49,6 +53,7 @@ class ArchitectureContextDependencyRatchetTest {
         Path repositoryRoot = findRepositoryRoot();
         List<ContextDefinition> contexts = readAndValidateContextPolicy(
                 repositoryRoot.resolve(".github/architecture-contexts.json"));
+        validateSourceCoverage(repositoryRoot, contexts);
 
         SortedMap<PackageEdge, Integer> actual = collectDependencies(contexts);
         Path baselinePath = repositoryRoot.resolve(".github/architecture-dependency-baseline.json");
@@ -71,6 +76,7 @@ class ArchitectureContextDependencyRatchetTest {
         JsonNode root = objectMapper.readTree(Files.readString(policyPath));
         assertThat(root.path("schemaVersion").asInt()).isEqualTo(1);
         assertThat(requiredText(root, "compositionModule")).isEqualTo("taxonomy-app");
+        assertThat(root.path("catchAllAdapterModuleAllowed").isBoolean()).isTrue();
         assertThat(root.path("catchAllAdapterModuleAllowed").asBoolean()).isFalse();
 
         JsonNode contextNodes = root.path("contexts");
@@ -123,6 +129,32 @@ class ArchitectureContextDependencyRatchetTest {
             }
         }
         return List.copyOf(contexts);
+    }
+
+    private static void validateSourceCoverage(Path repositoryRoot, List<ContextDefinition> contexts) throws Exception {
+        Path packageRoot = repositoryRoot.resolve("taxonomy-app/src/main/java/com/taxonomy");
+        assertThat(Files.isDirectory(packageRoot)).as("taxonomy-app production package root").isTrue();
+
+        List<String> unclassifiedPackages;
+        try (var sources = Files.walk(packageRoot)) {
+            unclassifiedPackages = sources
+                    .filter(Files::isRegularFile)
+                    .filter(path -> path.getFileName().toString().endsWith(".java"))
+                    .map(Path::getParent)
+                    .map(packageRoot::relativize)
+                    .map(Path::toString)
+                    .filter(relativePackage -> !relativePackage.isEmpty())
+                    .map(relativePackage -> "com.taxonomy." + relativePackage.replace('\\', '.').replace('/', '.'))
+                    .filter(packageName -> contextFor(packageName, contexts) == null)
+                    .distinct()
+                    .sorted()
+                    .toList();
+        }
+
+        assertThat(unclassifiedPackages)
+                .withFailMessage(() -> "Production packages are missing from .github/architecture-contexts.json: "
+                        + String.join(", ", unclassifiedPackages))
+                .isEmpty();
     }
 
     private SortedMap<PackageEdge, Integer> collectDependencies(List<ContextDefinition> contexts) {
