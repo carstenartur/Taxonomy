@@ -23,7 +23,7 @@ The shipped application modules are therefore only part of the reactor. `taxonom
 
 ## Why `taxonomy-app` is being decomposed
 
-`taxonomy-app` has accumulated several independently coherent areas: catalogue/search, architecture generation, requirement analysis, workspace/version state, the semantic editor journal and Git checkpoints, project portfolio workflows, external-tool interoperability, document-template/WebDAV handling, security, and observability. Keeping all Spring-aware feature code in the executable module weakens dependency direction and makes Maven unable to prevent cross-feature coupling.
+`taxonomy-app` has accumulated several independently coherent areas: catalogue/search, architecture generation, requirement analysis, workspace/version state, the semantic editor journal and Git checkpoints, project portfolio workflows, external-tool interoperability, document-template/WebDAV handling, provenance/document ingestion, preferences, security, and observability. Keeping all Spring-aware feature code in the executable module weakens dependency direction and makes Maven unable to prevent cross-feature coupling.
 
 The decomposition therefore follows **authority and bounded contexts**, not the current package hierarchy mechanically.
 
@@ -59,6 +59,15 @@ Owns reviewed external-tool interoperability, including durable integration oper
 
 Owns the document-template subsystem: the template Git repository, OOXML package codec and safety validation, materialization/cache, WebDAV projection/locking and template administration/health contracts.
 
+## Residual contexts that are deliberately not modules yet
+
+`provenance` and `preferences` are explicitly classified so their dependencies are visible to the ratchet, but they have no target Maven module yet.
+
+- `provenance` is a real subsystem with document parsing/chunking, provenance persistence and AI-assisted document analysis. It currently crosses analysis, knowledge and shared application services, so extracting it now would freeze an unclear dependency direction.
+- `preferences` remains application-local until its ownership and persistence dependencies justify a separate feature boundary.
+
+Both are reassessed after the stronger context APIs exist. This avoids creating small modules merely to improve the module count.
+
 ## Transitional adapter contexts
 
 `com.taxonomy.dsl.storage..` / `com.taxonomy.dsl.export..` and the Spring-aware `com.taxonomy.export.service..` / `com.taxonomy.export.controller..` packages remain explicit transitional contexts while their owning ports settle.
@@ -67,7 +76,9 @@ They are **not** the seed of a generic `taxonomy-adapters` module. Each adapter 
 
 ## `taxonomy-app` target role
 
-After the feature contexts are extracted, `taxonomy-app` remains the executable composition root. It should contain only genuinely application-wide responsibilities such as:
+After the feature contexts are extracted, `taxonomy-app` remains the executable composition root. The context map currently classifies `observability`, `security`, and `shared` as `app-composition`; the root `AppConfig` and `TaxonomyApplication` classes are composition classes as well.
+
+The long-term application module should contain only genuinely application-wide responsibilities such as:
 
 - Spring Boot assembly and cross-context wiring;
 - global security/authentication/request identity;
@@ -83,7 +94,9 @@ A package named `shared` is not automatically a module boundary. Shared classes 
 The migration uses two complementary protections:
 
 1. `ArchitectureCycleBoundaryTest` rejects undocumented package cycles. Temporary exceptions must exist in `.github/architecture-exceptions.json` and expire.
-2. `ArchitectureContextDependencyRatchetTest` records distinct direct class-to-class dependencies between planned contexts per package pair. New edges or increased counts fail. When refactoring removes dependencies, the lower baseline must be committed in the same change so the improvement cannot regress silently.
+2. `ArchitectureContextDependencyRatchetTest` records distinct direct class-to-class dependencies between planned, residual and transitional contexts per package pair. New edges or increased counts fail. When refactoring removes dependencies, the lower baseline must be committed in the same change so the improvement cannot regress silently.
+
+The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.
 
 The ratchet is intentionally a **current-state baseline, not an ideal-direction allowlist**. Architectural direction is improved by explicit port/refactoring PRs and then locked in monotonically.
 
@@ -98,6 +111,7 @@ Issue #628 is the implementation parent. The intended order is:
 5. extract `taxonomy-workspace`;
 6. extract `taxonomy-knowledge`;
 7. extract `taxonomy-interop` and `taxonomy-templates` in independently reviewable changes;
-8. extract architecture/analysis/portfolio only after their dependency direction is stable.
+8. extract architecture/analysis/portfolio only after their dependency direction is stable;
+9. reassess `provenance` and `preferences` from the measured dependency graph rather than module-count aesthetics.
 
 Physical Maven moves therefore come **after** logical boundaries are enforceable. This keeps each PR reviewable and avoids hiding existing coupling behind new POM dependencies.
