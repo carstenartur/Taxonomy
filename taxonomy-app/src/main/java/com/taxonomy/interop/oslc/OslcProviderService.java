@@ -1,6 +1,5 @@
 package com.taxonomy.interop.oslc;
 
-import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.exchange.OslcRdf;
 import com.taxonomy.interop.IntegrationDomainAdapter;
@@ -18,11 +17,11 @@ import static com.taxonomy.exchange.OslcRdf.*;
 @Service
 public class OslcProviderService {
     private final ProjectPortfolioService projects;
-    private final ArchitectureEditorService editor;
+    private final WorkspaceArchitectureIntegrationPort editor;
     private final SystemRepositoryService repositories;
     private final RepositoryMembershipService memberships;
     private final WorkspaceAccessService workspaceAccess;
-    public OslcProviderService(ProjectPortfolioService projects, ArchitectureEditorService editor, SystemRepositoryService repositories, RepositoryMembershipService memberships, WorkspaceAccessService workspaceAccess) {
+    public OslcProviderService(ProjectPortfolioService projects, WorkspaceArchitectureIntegrationPort editor, SystemRepositoryService repositories, RepositoryMembershipService memberships, WorkspaceAccessService workspaceAccess) {
         this.projects = projects; this.editor = editor; this.repositories = repositories; this.memberships = memberships;
         this.workspaceAccess = workspaceAccess;
     }
@@ -99,8 +98,8 @@ public class OslcProviderService {
     }
     public OslcRdf architectureVersion(RepositoryContext context, String commit, Links links) throws IOException {
         var document = editor.read(context, commit); String uri = links.uri("/architecture/versions/" + commit);
-        return new OslcRdf().type(uri, TAX + "ArchitectureVersion").literal(uri, DCT + "identifier", document.context().commit())
-                .literal(uri, DCT + "title", "Architecture checkpoint " + document.context().commit())
+        return new OslcRdf().type(uri, TAX + "ArchitectureVersion").literal(uri, DCT + "identifier", document.state().commitId())
+                .literal(uri, DCT + "title", "Architecture checkpoint " + document.state().commitId())
                 .literal(uri, TAX + "canonicalDsl", document.dsl());
     }
 }
