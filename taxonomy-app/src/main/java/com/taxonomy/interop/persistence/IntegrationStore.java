@@ -248,7 +248,7 @@ public class IntegrationStore {
         return new Identity(m.externalId, m.businessIdentity, m.requirementId, m.externalVersion, m.fingerprint,
                 json.read(m.externalJson, Artifact.class), json.read(m.internalJson, Artifact.class), uuid(m.operationId), m.removed);
     }
-    private static String scope(RepositoryContext context) { return context.workspaceScopeKey(); }
+    private static String scope(RepositoryContext context) { return context.repositoryWorkspaceScopeKey(); }
     private static String identityId(String connectionId, String externalId) {
         try {
             return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
