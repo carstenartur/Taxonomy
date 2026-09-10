@@ -78,7 +78,7 @@ public class IntegrationService {
     public Overview overview(RepositoryContext context, UUID connectionId) {
         authorize(context, false); Connection connection = store.read(context, connectionId);
         return new Overview(connection, domain.snapshot(context, connection, store.identities(context, connectionId), read(context)).state(),
-                store.checkpoint(context, connectionId), store.history(context, connectionId), "/oslc/scopes/" + com.taxonomy.editor.persistence.EditorJournal.scope(context)
+                store.checkpoint(context, connectionId), store.history(context, connectionId), "/oslc/scopes/" + context.workspaceScopeKey()
                 + "/catalog?repositoryId=" + encode(context.repositoryId()) + "&workspaceId=" + encode(context.workspaceId()) + "&branch=" + encode(context.branch()));
     }
     public Operation operation(RepositoryContext context, UUID connectionId, UUID operationId) {
@@ -224,7 +224,7 @@ public class IntegrationService {
     }
     public Operation cancel(RepositoryContext context, UUID connectionId, UUID operationId, String rationale) {
         authorize(context, true); metadata(operationId, rationale);
-        return store.locked(context, connectionId, session -> { requireActor(context, session.operation(operationId)); session.cancel(operationId, rationale); return session.operation(operationId); });
+        return store.locked(context, connectionId, session -> { requireActor(context, session.operation(operationId)); session.cancel(operationId, rationale); return null; });
     }
 
     public Operation previewRemote(RepositoryContext context, UUID connectionId, RemoteRequest request) {
