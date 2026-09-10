@@ -25,6 +25,7 @@ public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitect
             if (workspaceScopeKey == null || workspaceScopeKey.isBlank()) {
                 throw new IllegalArgumentException("Workspace scope key is required");
             }
+            workspaceScopeKey = workspaceScopeKey.strip();
             if (semanticRevision < 0) {
                 throw new IllegalArgumentException("Semantic revision must not be negative");
             }
@@ -51,10 +52,13 @@ public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitect
             Objects.requireNonNull(commandId, "commandId");
             Objects.requireNonNull(correlationId, "correlationId");
             Objects.requireNonNull(causationId, "causationId");
-            if (rationale == null || rationale.isBlank() || rationale.length() > 1000) {
+            if (rationale == null) {
                 throw new IllegalArgumentException("A rationale of 1–1000 characters is required");
             }
             rationale = rationale.strip().replaceAll("\\s+", " ");
+            if (rationale.isBlank() || rationale.length() > 1000) {
+                throw new IllegalArgumentException("A rationale of 1–1000 characters is required");
+            }
             if (rationale.chars().anyMatch(Character::isISOControl)) {
                 throw new IllegalArgumentException("Rationale must not contain control characters");
             }

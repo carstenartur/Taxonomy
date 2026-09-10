@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 class WorkspaceArchitectureIntegrationPortTest {
 
     @Test
-    void stateRequiresAConcreteWorkspaceScopeAndNonNegativeRevisionAndNormalizesOptionalCommit() {
+    void stateRequiresAConcreteWorkspaceScopeAndNonNegativeRevisionAndNormalizesIdentifiers() {
         assertThatIllegalArgumentException().isThrownBy(() ->
                 new WorkspaceArchitectureIntegrationPort.State(null, "commit", 0));
         assertThatIllegalArgumentException().isThrownBy(() ->
@@ -20,7 +20,7 @@ class WorkspaceArchitectureIntegrationPortTest {
                 new WorkspaceArchitectureIntegrationPort.State("workspace", "commit", -1));
 
         WorkspaceArchitectureIntegrationPort.State withoutCommit =
-                new WorkspaceArchitectureIntegrationPort.State("workspace", null, 0);
+                new WorkspaceArchitectureIntegrationPort.State("  workspace  ", null, 0);
         WorkspaceArchitectureIntegrationPort.State trimmedCommit =
                 new WorkspaceArchitectureIntegrationPort.State("workspace", "  commit  ", 1);
         WorkspaceArchitectureIntegrationPort.State blankCommit =
@@ -64,11 +64,16 @@ class WorkspaceArchitectureIntegrationPortTest {
         WorkspaceArchitectureIntegrationPort.CommandMetadata metadata =
                 new WorkspaceArchitectureIntegrationPort.CommandMetadata(
                         commandId, correlationId, causationId, "  reviewed   integration  ");
+        WorkspaceArchitectureIntegrationPort.CommandMetadata longBeforeNormalization =
+                new WorkspaceArchitectureIntegrationPort.CommandMetadata(
+                        commandId, correlationId, causationId,
+                        "reason" + " ".repeat(1001) + "detail");
 
         assertThat(metadata.commandId()).isEqualTo(commandId);
         assertThat(metadata.correlationId()).isEqualTo(correlationId);
         assertThat(metadata.causationId()).isEqualTo(causationId);
         assertThat(metadata.rationale()).isEqualTo("reviewed integration");
+        assertThat(longBeforeNormalization.rationale()).isEqualTo("reason detail");
     }
 
     @Test

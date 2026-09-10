@@ -21,5 +21,9 @@ public interface WorkspaceArchitectureReadPort {
         String dsl();
     }
 
+    /**
+     * Read the current semantic workspace state when {@code commit} is {@code null},
+     * or the exact reachable Git checkpoint identified by {@code commit} otherwise.
+     */
     ReadDocument read(RepositoryContext context, String commit) throws IOException;
 }

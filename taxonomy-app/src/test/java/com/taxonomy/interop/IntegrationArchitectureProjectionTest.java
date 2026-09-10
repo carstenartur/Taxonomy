@@ -7,6 +7,7 @@ import com.taxonomy.exchange.ArchiMateExchangeCodec;
 import com.taxonomy.exchange.ExchangeXml;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore.*;
+import com.taxonomy.relations.model.RelationDecisionProjection;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.State;
 import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.WorkspaceDocument;
@@ -22,7 +23,7 @@ class IntegrationArchitectureProjectionTest {
     private final RepositoryContext context = RepositoryContext.workspace("repository", "workspace", "draft", "alice");
     private final Connection connection = new Connection(UUID.randomUUID(), "USER:alice", "Archi", ArchiMateExchangeCodec.PROFILE, "1",
             AuthorityMode.BIDIRECTIONAL, new ExternalScope("Archi", "model", null), null, null, 0, null, null, "alice");
-    private WorkspaceDocument document(String dsl) { return new WorkspaceDocument(new State(context.workspaceId(), "checkpoint", 1), dsl); }
+    private WorkspaceDocument document(String dsl) { return new WorkspaceDocument(new State(RelationDecisionProjection.scopeKeyFor(context.workspaceId()), "checkpoint", 1), dsl); }
     private ExchangeDocument source() {
         List<Artifact> objects = List.of(
                 new Artifact("system", ArtifactKind.ELEMENT, "ApplicationComponent", "System", "Body", Map.of(), Map.of("canonicalType", "System", "taxonomy:x-owner", "Alice")),

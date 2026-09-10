@@ -24,7 +24,7 @@ public class EditorWorkspaceArchitectureIntegrationAdapter implements WorkspaceA
     private final ArchitectureEditorService editor;
 
     public EditorWorkspaceArchitectureIntegrationAdapter(ArchitectureEditorService editor) {
-        this.editor = editor;
+        this.editor = Objects.requireNonNull(editor, "editor");
     }
 
     @Override
@@ -35,7 +35,8 @@ public class EditorWorkspaceArchitectureIntegrationAdapter implements WorkspaceA
     @Override
     public <T> T locked(RepositoryContext context, Function<WorkspaceDocument, T> action) throws IOException {
         Objects.requireNonNull(action, "action");
-        return editor.integrationBoundary(context, document -> action.apply(document(document)));
+        return editor.integrationBoundary(context,
+                editorDocument -> action.apply(document(editorDocument)));
     }
 
     @Override
