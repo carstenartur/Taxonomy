@@ -17,15 +17,15 @@
       "targetModule": "taxonomy-workspace",
       "packages": [
         "com.taxonomy.workspace..",
-        "com.taxonomy.versioning.."
+        "com.taxonomy.versioning..",
+        "com.taxonomy.editor.."
       ]
     },
     {
       "id": "architecture",
       "targetModule": "taxonomy-architecture",
       "packages": [
-        "com.taxonomy.architecture..",
-        "com.taxonomy.editor.."
+        "com.taxonomy.architecture.."
       ]
     },
     {
