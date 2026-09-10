@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThatNullPointerException;
 class WorkspaceArchitectureIntegrationPortTest {
 
     @Test
-    void stateRequiresAConcreteWorkspaceScopeAndNonNegativeRevision() {
+    void stateRequiresAConcreteWorkspaceScopeAndNonNegativeRevisionAndNormalizesOptionalCommit() {
         assertThatIllegalArgumentException().isThrownBy(() ->
                 new WorkspaceArchitectureIntegrationPort.State(null, "commit", 0));
         assertThatIllegalArgumentException().isThrownBy(() ->
@@ -19,12 +19,18 @@ class WorkspaceArchitectureIntegrationPortTest {
         assertThatIllegalArgumentException().isThrownBy(() ->
                 new WorkspaceArchitectureIntegrationPort.State("workspace", "commit", -1));
 
-        WorkspaceArchitectureIntegrationPort.State state =
+        WorkspaceArchitectureIntegrationPort.State withoutCommit =
                 new WorkspaceArchitectureIntegrationPort.State("workspace", null, 0);
+        WorkspaceArchitectureIntegrationPort.State trimmedCommit =
+                new WorkspaceArchitectureIntegrationPort.State("workspace", "  commit  ", 1);
+        WorkspaceArchitectureIntegrationPort.State blankCommit =
+                new WorkspaceArchitectureIntegrationPort.State("workspace", "   ", 2);
 
-        assertThat(state.workspaceScopeKey()).isEqualTo("workspace");
-        assertThat(state.commitId()).isNull();
-        assertThat(state.semanticRevision()).isZero();
+        assertThat(withoutCommit.workspaceScopeKey()).isEqualTo("workspace");
+        assertThat(withoutCommit.commitId()).isNull();
+        assertThat(withoutCommit.semanticRevision()).isZero();
+        assertThat(trimmedCommit.commitId()).isEqualTo("commit");
+        assertThat(blankCommit.commitId()).isNull();
     }
 
     @Test

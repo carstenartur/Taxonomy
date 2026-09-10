@@ -28,6 +28,12 @@ public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitect
             if (semanticRevision < 0) {
                 throw new IllegalArgumentException("Semantic revision must not be negative");
             }
+            if (commitId != null) {
+                commitId = commitId.strip();
+                if (commitId.isEmpty()) {
+                    commitId = null;
+                }
+            }
         }
     }
 

@@ -8,7 +8,10 @@ public interface WorkspaceArchitectureReadPort {
     /** Read-only projection of exact workspace architecture state. */
     interface ReadState {
         String workspaceScopeKey();
+
+        /** Git checkpoint commit identifier, or {@code null} before a checkpoint exists. */
         String commitId();
+
         long semanticRevision();
     }
 
