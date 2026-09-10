@@ -1,29 +1,41 @@
 package com.taxonomy.workspace.service;
 
 import java.io.IOException;
+import java.util.Objects;
 
 /** Read-only workspace boundary for exact canonical architecture versions. */
 public interface WorkspaceArchitectureReadPort {
 
-    /** Read-only projection of exact workspace architecture state. */
-    interface ReadState {
-        String workspaceScopeKey();
-
-        /** Git checkpoint commit identifier, or {@code null} before a checkpoint exists. */
-        String commitId();
-
-        long semanticRevision();
+    /** Exact workspace architecture state needed by read-only and mutation consumers. */
+    record State(String workspaceScopeKey, String commitId, long semanticRevision) {
+        public State {
+            if (workspaceScopeKey == null || workspaceScopeKey.isBlank()) {
+                throw new IllegalArgumentException("Workspace scope key is required");
+            }
+            workspaceScopeKey = workspaceScopeKey.strip();
+            if (semanticRevision < 0) {
+                throw new IllegalArgumentException("Semantic revision must not be negative");
+            }
+            if (commitId != null) {
+                commitId = commitId.strip();
+                if (commitId.isEmpty()) {
+                    commitId = null;
+                }
+            }
+        }
     }
 
-    /** Read-only projection of a canonical architecture document. */
-    interface ReadDocument {
-        ReadState state();
-        String dsl();
+    /** Minimal canonical document view exposed outside the workspace bounded context. */
+    record WorkspaceDocument(State state, String dsl) {
+        public WorkspaceDocument {
+            Objects.requireNonNull(state, "state");
+            Objects.requireNonNull(dsl, "dsl");
+        }
     }
 
     /**
      * Read the current semantic workspace state when {@code commit} is {@code null},
      * or the exact reachable Git checkpoint identified by {@code commit} otherwise.
      */
-    ReadDocument read(RepositoryContext context, String commit) throws IOException;
+    WorkspaceDocument read(RepositoryContext context, String commit) throws IOException;
 }
