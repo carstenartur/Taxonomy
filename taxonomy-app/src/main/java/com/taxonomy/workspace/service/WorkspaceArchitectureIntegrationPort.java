@@ -1,6 +1,8 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dsl.command.ArchitectureCommand;
+import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.State;
+import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.WorkspaceDocument;
 
 import java.io.IOException;
 import java.util.List;
@@ -18,33 +20,6 @@ import java.util.function.UnaryOperator;
  * remain separate, retryable Git versions.</p>
  */
 public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitectureReadPort {
-
-    /** Exact workspace architecture state needed to detect stale integration operations. */
-    record State(String workspaceScopeKey, String commitId, long semanticRevision) implements ReadState {
-        public State {
-            if (workspaceScopeKey == null || workspaceScopeKey.isBlank()) {
-                throw new IllegalArgumentException("Workspace scope key is required");
-            }
-            workspaceScopeKey = workspaceScopeKey.strip();
-            if (semanticRevision < 0) {
-                throw new IllegalArgumentException("Semantic revision must not be negative");
-            }
-            if (commitId != null) {
-                commitId = commitId.strip();
-                if (commitId.isEmpty()) {
-                    commitId = null;
-                }
-            }
-        }
-    }
-
-    /** Minimal canonical document view exposed outside the workspace bounded context. */
-    record WorkspaceDocument(State state, String dsl) implements ReadDocument {
-        public WorkspaceDocument {
-            Objects.requireNonNull(state, "state");
-            Objects.requireNonNull(dsl, "dsl");
-        }
-    }
 
     /** Stable command identity and audit metadata without leaking editor-specific DTOs. */
     record CommandMetadata(UUID commandId, UUID correlationId, UUID causationId, String rationale) {
