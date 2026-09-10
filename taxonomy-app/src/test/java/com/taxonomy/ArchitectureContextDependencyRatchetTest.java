@@ -35,8 +35,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  * while the physical Maven-module extraction is performed incrementally.</p>
  *
  * <p>Every production Java package below the application package root must also
- * be classified by the checked context map. This prevents new code from evading
- * the ratchet simply by introducing an unmapped package.</p>
+ * be classified by the checked context map. Root-package composition classes
+ * are listed explicitly. This prevents new code from evading the ratchet simply
+ * by introducing an unmapped package or root-level class.</p>
  */
 class ArchitectureContextDependencyRatchetTest {
 
@@ -51,18 +52,18 @@ class ArchitectureContextDependencyRatchetTest {
     @Test
     void managedContextDependenciesMatchReviewedBaseline() throws Exception {
         Path repositoryRoot = findRepositoryRoot();
-        List<ContextDefinition> contexts = readAndValidateContextPolicy(
+        ContextPolicy policy = readAndValidateContextPolicy(
                 repositoryRoot.resolve(".github/architecture-contexts.json"));
-        validateSourceCoverage(repositoryRoot, contexts);
+        validateSourceCoverage(repositoryRoot, policy);
 
-        SortedMap<PackageEdge, Integer> actual = collectDependencies(contexts);
+        SortedMap<PackageEdge, Integer> actual = collectDependencies(policy.contexts());
         Path baselinePath = repositoryRoot.resolve(".github/architecture-dependency-baseline.json");
         if (!Files.isRegularFile(baselinePath)) {
             throw new AssertionError("Architecture dependency baseline is missing. Review and add this generated baseline:\n"
                     + renderBaseline(actual));
         }
 
-        SortedMap<PackageEdge, Integer> expected = readBaseline(baselinePath, contexts);
+        SortedMap<PackageEdge, Integer> expected = readBaseline(baselinePath, policy.contexts());
         List<String> differences = compare(expected, actual);
         assertThat(differences)
                 .withFailMessage(() -> "Cross-context dependency ratchet changed:\n- "
@@ -72,12 +73,25 @@ class ArchitectureContextDependencyRatchetTest {
                 .isEmpty();
     }
 
-    private List<ContextDefinition> readAndValidateContextPolicy(Path policyPath) throws Exception {
+    private ContextPolicy readAndValidateContextPolicy(Path policyPath) throws Exception {
         JsonNode root = objectMapper.readTree(Files.readString(policyPath));
         assertThat(root.path("schemaVersion").asInt()).isEqualTo(1);
         assertThat(requiredText(root, "compositionModule")).isEqualTo("taxonomy-app");
         assertThat(root.path("catchAllAdapterModuleAllowed").isBoolean()).isTrue();
         assertThat(root.path("catchAllAdapterModuleAllowed").asBoolean()).isFalse();
+
+        JsonNode rootClassNodes = root.path("rootCompositionClasses");
+        assertThat(rootClassNodes.isArray()).isTrue();
+        Set<String> rootCompositionClasses = new LinkedHashSet<>();
+        for (JsonNode rootClassNode : rootClassNodes) {
+            String fileName = rootClassNode.asText();
+            assertThat(fileName).as("root composition class file").isNotBlank().endsWith(".java");
+            assertThat(fileName).as("root composition class must be a file name").doesNotContain("/", "\\");
+            assertThat(rootCompositionClasses.add(fileName))
+                    .as("duplicate root composition class %s", fileName)
+                    .isTrue();
+        }
+        assertThat(rootCompositionClasses).isNotEmpty();
 
         JsonNode contextNodes = root.path("contexts");
         assertThat(contextNodes.isArray()).isTrue();
@@ -128,12 +142,26 @@ class ArchitectureContextDependencyRatchetTest {
                 }
             }
         }
-        return List.copyOf(contexts);
+        return new ContextPolicy(List.copyOf(contexts), Set.copyOf(rootCompositionClasses));
     }
 
-    private static void validateSourceCoverage(Path repositoryRoot, List<ContextDefinition> contexts) throws Exception {
+    private static void validateSourceCoverage(Path repositoryRoot, ContextPolicy policy) throws Exception {
         Path packageRoot = repositoryRoot.resolve("taxonomy-app/src/main/java/com/taxonomy");
         assertThat(Files.isDirectory(packageRoot)).as("taxonomy-app production package root").isTrue();
+
+        Set<String> actualRootJavaFiles;
+        try (var rootSources = Files.list(packageRoot)) {
+            actualRootJavaFiles = rootSources
+                    .filter(Files::isRegularFile)
+                    .map(path -> path.getFileName().toString())
+                    .filter(fileName -> fileName.endsWith(".java"))
+                    .collect(java.util.stream.Collectors.toCollection(TreeSet::new));
+        }
+        assertThat(actualRootJavaFiles)
+                .withFailMessage(() -> "Root-package Java classes must be explicitly listed as composition classes in "
+                        + ".github/architecture-contexts.json. Expected " + policy.rootCompositionClasses()
+                        + " but found " + actualRootJavaFiles)
+                .containsExactlyInAnyOrderElementsOf(policy.rootCompositionClasses());
 
         List<String> unclassifiedPackages;
         try (var sources = Files.walk(packageRoot)) {
@@ -145,7 +173,7 @@ class ArchitectureContextDependencyRatchetTest {
                     .map(Path::toString)
                     .filter(relativePackage -> !relativePackage.isEmpty())
                     .map(relativePackage -> "com.taxonomy." + relativePackage.replace('\\', '.').replace('/', '.'))
-                    .filter(packageName -> contextFor(packageName, contexts) == null)
+                    .filter(packageName -> contextFor(packageName, policy.contexts()) == null)
                     .distinct()
                     .sorted()
                     .toList();
@@ -308,6 +336,8 @@ class ArchitectureContextDependencyRatchetTest {
         }
         throw new IllegalStateException("Unable to locate repository root");
     }
+
+    private record ContextPolicy(List<ContextDefinition> contexts, Set<String> rootCompositionClasses) {}
 
     private record ContextDefinition(String id, String targetModule, List<String> packages) {}
 
