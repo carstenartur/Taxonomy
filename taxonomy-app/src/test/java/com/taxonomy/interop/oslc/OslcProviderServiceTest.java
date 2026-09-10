@@ -6,6 +6,7 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceAccessService;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort;
 import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort;
 import org.junit.jupiter.api.Test;
 
@@ -32,8 +33,8 @@ class OslcProviderServiceTest {
                 "repository", "workspace", "draft", "alice");
         String requestedCommit = "0123456789abcdef0123456789abcdef01234567";
         String canonicalDsl = "element arch-a type System";
-        var document = new WorkspaceArchitectureReadPort.WorkspaceDocument(
-                new WorkspaceArchitectureReadPort.State("workspace-scope", requestedCommit, 7),
+        var document = new WorkspaceArchitectureIntegrationPort.WorkspaceDocument(
+                new WorkspaceArchitectureIntegrationPort.State("workspace-scope", requestedCommit, 7),
                 canonicalDsl);
         when(architecture.read(context, requestedCommit)).thenReturn(document);
 
