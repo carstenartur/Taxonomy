@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "compositionModule": "taxonomy-app",
+  "rootCompositionClasses": [
+    "AppConfig.java",
+    "TaxonomyApplication.java"
+  ],
+  "catchAllAdapterModuleAllowed": false,
+  "contexts": [
+    {
+      "id": "knowledge",
+      "targetModule": "taxonomy-knowledge",
+      "packages": [
+        "com.taxonomy.catalog..",
+        "com.taxonomy.relations..",
+        "com.taxonomy.search.."
+      ]
+    },
+    {
+      "id": "workspace",
+      "targetModule": "taxonomy-workspace",
+      "packages": [
+        "com.taxonomy.workspace..",
+        "com.taxonomy.versioning..",
+        "com.taxonomy.editor.."
+      ]
+    },
+    {
+      "id": "architecture",
+      "targetModule": "taxonomy-architecture",
+      "packages": [
+        "com.taxonomy.architecture.."
+      ]
+    },
+    {
+      "id": "analysis",
+      "targetModule": "taxonomy-analysis",
+      "packages": [
+        "com.taxonomy.analysis.."
+      ]
+    },
+    {
+      "id": "portfolio",
+      "targetModule": "taxonomy-portfolio",
+      "packages": [
+        "com.taxonomy.portfolio.."
+      ]
+    },
+    {
+      "id": "interop",
+      "targetModule": "taxonomy-interop",
+      "packages": [
+        "com.taxonomy.interop.."
+      ]
+    },
+    {
+      "id": "templates",
+      "targetModule": "taxonomy-templates",
+      "packages": [
+        "com.taxonomy.templates.."
+      ]
+    },
+    {
+      "id": "provenance",
+      "targetModule": null,
+      "packages": [
+        "com.taxonomy.provenance.."
+      ]
+    },
+    {
+      "id": "preferences",
+      "targetModule": null,
+      "packages": [
+        "com.taxonomy.preferences.."
+      ]
+    },
+    {
+      "id": "app-composition",
+      "targetModule": "taxonomy-app",
+      "packages": [
+        "com.taxonomy.observability..",
+        "com.taxonomy.security..",
+        "com.taxonomy.shared.."
+      ]
+    },
+    {
+      "id": "legacy-export-adapters",
+      "targetModule": null,
+      "packages": [
+        "com.taxonomy.export.controller..",
+        "com.taxonomy.export.service.."
+      ]
+    },
+    {
+      "id": "dsl-adapters",
+      "targetModule": null,
+      "packages": [
+        "com.taxonomy.dsl.storage..",
+        "com.taxonomy.dsl.export.."
+      ]
+    }
+  ]
+}

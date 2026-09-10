@@ -48,7 +48,7 @@
       "toPackage": "com.taxonomy.workspace..",
       "owner": "versioning-maintainers",
       "rationale": "Version operations require explicit workspace context and repository routing.",
-      "removalCondition": "Introduce a versioning-owned repository-context port implemented by the workspace adapter.",
+      "removalCondition": "Introduce a versioning-owned repository-context port implemented by the workspace adapter inside the workspace bounded context.",
       "expiresOn": "2027-06-30"
     },
     {
@@ -58,7 +58,7 @@
       "toPackage": "com.taxonomy.versioning..",
       "owner": "workspace-maintainers",
       "rationale": "Workspace synchronization currently invokes versioning and repository-state services.",
-      "removalCondition": "Move synchronization orchestration to an application service above both bounded contexts.",
+      "removalCondition": "Move synchronization orchestration to a workspace-owned application service above repository-state and version operations.",
       "expiresOn": "2027-06-30"
     },
     {
@@ -68,7 +68,7 @@
       "toPackage": "*",
       "owner": "dsl-maintainers",
       "rationale": "Spring/JGit persistence and export adapters still reside below the com.taxonomy.dsl package root in taxonomy-app.",
-      "removalCondition": "Move these adapters to a dedicated taxonomy-adapters module and leave taxonomy-dsl framework-free.",
+      "removalCondition": "Move each adapter behind an owning bounded-context port and into that context's adapter package or module; leave taxonomy-dsl framework-free and do not introduce a catch-all adapters module.",
       "expiresOn": "2027-06-30"
     },
     {
@@ -78,7 +78,7 @@
       "toPackage": "com.taxonomy.dsl.storage..|com.taxonomy.dsl.export..",
       "owner": "dsl-maintainers",
       "rationale": "Application services still address DSL persistence/export adapters through their historical package names.",
-      "removalCondition": "Move these adapters to a dedicated taxonomy-adapters module and expose narrow ports.",
+      "removalCondition": "Move each adapter behind a narrow owning-context port and into that context's adapter package or module; do not introduce a catch-all adapters module.",
       "expiresOn": "2027-06-30"
     },
     {
