@@ -1,8 +1,6 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dsl.command.ArchitectureCommand;
-import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.State;
-import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.WorkspaceDocument;
 
 import java.io.IOException;
 import java.util.List;
@@ -20,6 +18,35 @@ import java.util.function.UnaryOperator;
  * remain separate, retryable Git versions.</p>
  */
 public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitectureReadPort {
+
+    /** Validated mutable-workflow state implementing the read-only state contract. */
+    record State(String workspaceScopeKey, String commitId, long semanticRevision)
+            implements WorkspaceArchitectureReadPort.State {
+        public State {
+            if (workspaceScopeKey == null || workspaceScopeKey.isBlank()) {
+                throw new IllegalArgumentException("Workspace scope key is required");
+            }
+            workspaceScopeKey = workspaceScopeKey.strip();
+            if (semanticRevision < 0) {
+                throw new IllegalArgumentException("Semantic revision must not be negative");
+            }
+            if (commitId != null) {
+                commitId = commitId.strip();
+                if (commitId.isEmpty()) {
+                    commitId = null;
+                }
+            }
+        }
+    }
+
+    /** Concrete integration document implementing the read-only document contract. */
+    record WorkspaceDocument(State state, String dsl)
+            implements WorkspaceArchitectureReadPort.WorkspaceDocument {
+        public WorkspaceDocument {
+            Objects.requireNonNull(state, "state");
+            Objects.requireNonNull(dsl, "dsl");
+        }
+    }
 
     /** Stable command identity and audit metadata without leaking editor-specific DTOs. */
     record CommandMetadata(UUID commandId, UUID correlationId, UUID causationId, String rationale) {
