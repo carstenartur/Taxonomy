@@ -1,36 +1,22 @@
 package com.taxonomy.workspace.service;
 
 import java.io.IOException;
-import java.util.Objects;
 
 /** Read-only workspace boundary for exact canonical architecture versions. */
 public interface WorkspaceArchitectureReadPort {
 
-    /** Exact workspace architecture state needed by read-only and mutation consumers. */
-    record State(String workspaceScopeKey, String commitId, long semanticRevision) {
-        public State {
-            if (workspaceScopeKey == null || workspaceScopeKey.isBlank()) {
-                throw new IllegalArgumentException("Workspace scope key is required");
-            }
-            workspaceScopeKey = workspaceScopeKey.strip();
-            if (semanticRevision < 0) {
-                throw new IllegalArgumentException("Semantic revision must not be negative");
-            }
-            if (commitId != null) {
-                commitId = commitId.strip();
-                if (commitId.isEmpty()) {
-                    commitId = null;
-                }
-            }
-        }
+    /** Exact immutable state visible to read-only workspace consumers. */
+    interface State {
+        String workspaceScopeKey();
+        /** Nullable until a Git checkpoint exists for the semantic workspace state. */
+        String commitId();
+        long semanticRevision();
     }
 
     /** Minimal canonical document view exposed outside the workspace bounded context. */
-    record WorkspaceDocument(State state, String dsl) {
-        public WorkspaceDocument {
-            Objects.requireNonNull(state, "state");
-            Objects.requireNonNull(dsl, "dsl");
-        }
+    interface WorkspaceDocument {
+        State state();
+        String dsl();
     }
 
     /**
