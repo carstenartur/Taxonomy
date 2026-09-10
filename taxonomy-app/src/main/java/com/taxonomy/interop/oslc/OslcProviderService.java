@@ -17,12 +17,12 @@ import static com.taxonomy.exchange.OslcRdf.*;
 @Service
 public class OslcProviderService {
     private final ProjectPortfolioService projects;
-    private final WorkspaceArchitectureIntegrationPort editor;
+    private final WorkspaceArchitectureReadPort architecture;
     private final SystemRepositoryService repositories;
     private final RepositoryMembershipService memberships;
     private final WorkspaceAccessService workspaceAccess;
-    public OslcProviderService(ProjectPortfolioService projects, WorkspaceArchitectureIntegrationPort editor, SystemRepositoryService repositories, RepositoryMembershipService memberships, WorkspaceAccessService workspaceAccess) {
-        this.projects = projects; this.editor = editor; this.repositories = repositories; this.memberships = memberships;
+    public OslcProviderService(ProjectPortfolioService projects, WorkspaceArchitectureReadPort architecture, SystemRepositoryService repositories, RepositoryMembershipService memberships, WorkspaceAccessService workspaceAccess) {
+        this.projects = projects; this.architecture = architecture; this.repositories = repositories; this.memberships = memberships;
         this.workspaceAccess = workspaceAccess;
     }
     public void authorize(RepositoryContext context, String scope) {
@@ -97,7 +97,7 @@ public class OslcProviderService {
         return graph;
     }
     public OslcRdf architectureVersion(RepositoryContext context, String commit, Links links) throws IOException {
-        var document = editor.read(context, commit); String uri = links.uri("/architecture/versions/" + commit);
+        var document = architecture.read(context, commit); String uri = links.uri("/architecture/versions/" + commit);
         return new OslcRdf().type(uri, TAX + "ArchitectureVersion").literal(uri, DCT + "identifier", document.state().commitId())
                 .literal(uri, DCT + "title", "Architecture checkpoint " + document.state().commitId())
                 .literal(uri, TAX + "canonicalDsl", document.dsl());
