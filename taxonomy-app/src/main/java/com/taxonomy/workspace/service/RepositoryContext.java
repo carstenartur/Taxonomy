@@ -57,13 +57,15 @@ public record RepositoryContext(
     }
 
     /**
-     * Stable storage and protocol identity for this repository/workspace/branch tuple.
+     * Stable opaque routing identity for this repository/workspace/branch tuple.
      * The actor is deliberately excluded so authorized users address the same workspace state.
      *
-     * <p>The representation is compatibility-sensitive because it is already persisted by the
-     * editor and interoperability journals.</p>
+     * <p>This key is distinct from the architecture projection's {@code workspaceScopeKey},
+     * which identifies only the workspace overlay. The representation here is
+     * compatibility-sensitive because it is already persisted by the editor and
+     * interoperability journals and is exposed as the opaque OSLC scope.</p>
      */
-    public String workspaceScopeKey() {
+    public String repositoryWorkspaceScopeKey() {
         return sha256(repositoryId + "\u0000" + workspaceId + "\u0000" + branch);
     }
 
