@@ -7,8 +7,8 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort;
 import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.Checkpoint;
 import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.CommandMetadata;
-import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.State;
-import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.WorkspaceDocument;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.State;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.WorkspaceDocument;
 import com.taxonomy.workspace.service.WorkspaceRevisionConflict;
 import org.springframework.stereotype.Service;
 
