@@ -13,18 +13,18 @@ class WorkspaceArchitectureIntegrationPortTest {
     @Test
     void stateRequiresAConcreteWorkspaceScopeAndNonNegativeRevisionAndNormalizesIdentifiers() {
         assertThatIllegalArgumentException().isThrownBy(() ->
-                new WorkspaceArchitectureIntegrationPort.State(null, "commit", 0));
+                new WorkspaceArchitectureReadPort.State(null, "commit", 0));
         assertThatIllegalArgumentException().isThrownBy(() ->
-                new WorkspaceArchitectureIntegrationPort.State("   ", "commit", 0));
+                new WorkspaceArchitectureReadPort.State("   ", "commit", 0));
         assertThatIllegalArgumentException().isThrownBy(() ->
-                new WorkspaceArchitectureIntegrationPort.State("workspace", "commit", -1));
+                new WorkspaceArchitectureReadPort.State("workspace", "commit", -1));
 
-        WorkspaceArchitectureIntegrationPort.State withoutCommit =
-                new WorkspaceArchitectureIntegrationPort.State("  workspace  ", null, 0);
-        WorkspaceArchitectureIntegrationPort.State trimmedCommit =
-                new WorkspaceArchitectureIntegrationPort.State("workspace", "  commit  ", 1);
-        WorkspaceArchitectureIntegrationPort.State blankCommit =
-                new WorkspaceArchitectureIntegrationPort.State("workspace", "   ", 2);
+        WorkspaceArchitectureReadPort.State withoutCommit =
+                new WorkspaceArchitectureReadPort.State("  workspace  ", null, 0);
+        WorkspaceArchitectureReadPort.State trimmedCommit =
+                new WorkspaceArchitectureReadPort.State("workspace", "  commit  ", 1);
+        WorkspaceArchitectureReadPort.State blankCommit =
+                new WorkspaceArchitectureReadPort.State("workspace", "   ", 2);
 
         assertThat(withoutCommit.workspaceScopeKey()).isEqualTo("workspace");
         assertThat(withoutCommit.commitId()).isNull();
@@ -77,18 +77,18 @@ class WorkspaceArchitectureIntegrationPortTest {
 
     @Test
     void documentAndCheckpointRequireStateAndDocumentRequiresCanonicalDsl() {
-        WorkspaceArchitectureIntegrationPort.State state =
-                new WorkspaceArchitectureIntegrationPort.State("workspace", "commit", 7);
+        WorkspaceArchitectureReadPort.State state =
+                new WorkspaceArchitectureReadPort.State("workspace", "commit", 7);
 
         assertThatNullPointerException().isThrownBy(() ->
-                new WorkspaceArchitectureIntegrationPort.WorkspaceDocument(null, "dsl"));
+                new WorkspaceArchitectureReadPort.WorkspaceDocument(null, "dsl"));
         assertThatNullPointerException().isThrownBy(() ->
-                new WorkspaceArchitectureIntegrationPort.WorkspaceDocument(state, null));
+                new WorkspaceArchitectureReadPort.WorkspaceDocument(state, null));
         assertThatNullPointerException().isThrownBy(() ->
                 new WorkspaceArchitectureIntegrationPort.Checkpoint(null));
 
-        WorkspaceArchitectureIntegrationPort.WorkspaceDocument document =
-                new WorkspaceArchitectureIntegrationPort.WorkspaceDocument(state, "dsl");
+        WorkspaceArchitectureReadPort.WorkspaceDocument document =
+                new WorkspaceArchitectureReadPort.WorkspaceDocument(state, "dsl");
         WorkspaceArchitectureIntegrationPort.Checkpoint checkpoint =
                 new WorkspaceArchitectureIntegrationPort.Checkpoint(state);
 
