@@ -36,8 +36,9 @@ import static org.assertj.core.api.Assertions.assertThat;
  *
  * <p>Every production Java package below the application package root must also
  * be classified by the checked context map. Root-package composition classes
- * are listed explicitly. This prevents new code from evading the ratchet simply
- * by introducing an unmapped package or root-level class.</p>
+ * are listed explicitly and belong to the composition context. This prevents
+ * new code or composition wiring from evading the ratchet through an unmapped
+ * package or root-level class.</p>
  */
 class ArchitectureContextDependencyRatchetTest {
 
@@ -56,7 +57,7 @@ class ArchitectureContextDependencyRatchetTest {
                 repositoryRoot.resolve(".github/architecture-contexts.json"));
         validateSourceCoverage(repositoryRoot, policy);
 
-        SortedMap<PackageEdge, Integer> actual = collectDependencies(policy.contexts());
+        SortedMap<PackageEdge, Integer> actual = collectDependencies(policy);
         Path baselinePath = repositoryRoot.resolve(".github/architecture-dependency-baseline.json");
         if (!Files.isRegularFile(baselinePath)) {
             throw new AssertionError("Architecture dependency baseline is missing. Review and add this generated baseline:\n"
@@ -76,7 +77,8 @@ class ArchitectureContextDependencyRatchetTest {
     private ContextPolicy readAndValidateContextPolicy(Path policyPath) throws Exception {
         JsonNode root = objectMapper.readTree(Files.readString(policyPath));
         assertThat(root.path("schemaVersion").asInt()).isEqualTo(1);
-        assertThat(requiredText(root, "compositionModule")).isEqualTo("taxonomy-app");
+        String compositionModule = requiredText(root, "compositionModule");
+        assertThat(compositionModule).isEqualTo("taxonomy-app");
         assertThat(root.path("catchAllAdapterModuleAllowed").isBoolean()).isTrue();
         assertThat(root.path("catchAllAdapterModuleAllowed").asBoolean()).isFalse();
 
@@ -142,7 +144,17 @@ class ArchitectureContextDependencyRatchetTest {
                 }
             }
         }
-        return new ContextPolicy(List.copyOf(contexts), Set.copyOf(rootCompositionClasses));
+
+        List<ContextDefinition> compositionContexts = contexts.stream()
+                .filter(context -> compositionModule.equals(context.targetModule()))
+                .toList();
+        assertThat(compositionContexts)
+                .as("exactly one context must own the composition module %s", compositionModule)
+                .hasSize(1);
+        return new ContextPolicy(
+                List.copyOf(contexts),
+                Set.copyOf(rootCompositionClasses),
+                compositionContexts.getFirst());
     }
 
     private static void validateSourceCoverage(Path repositoryRoot, ContextPolicy policy) throws Exception {
@@ -185,20 +197,20 @@ class ArchitectureContextDependencyRatchetTest {
                 .isEmpty();
     }
 
-    private SortedMap<PackageEdge, Integer> collectDependencies(List<ContextDefinition> contexts) {
+    private SortedMap<PackageEdge, Integer> collectDependencies(ContextPolicy policy) {
         JavaClasses classes = new ClassFileImporter()
                 .withImportOption(new ImportOption.DoNotIncludeTests())
                 .importPackages("com.taxonomy");
 
         Map<PackageEdge, Set<ClassPair>> classPairsByEdge = new TreeMap<>(EDGE_ORDER);
         for (JavaClass origin : classes) {
-            ContextDefinition originContext = contextFor(origin.getPackageName(), contexts);
+            ContextDefinition originContext = contextFor(origin, policy);
             if (originContext == null) {
                 continue;
             }
             for (Dependency dependency : origin.getDirectDependenciesFromSelf()) {
                 JavaClass target = dependency.getTargetClass();
-                ContextDefinition targetContext = contextFor(target.getPackageName(), contexts);
+                ContextDefinition targetContext = contextFor(target, policy);
                 if (targetContext == null || originContext.id().equals(targetContext.id())) {
                     continue;
                 }
@@ -265,6 +277,18 @@ class ArchitectureContextDependencyRatchetTest {
             }
         }
         return differences;
+    }
+
+    private static ContextDefinition contextFor(JavaClass javaClass, ContextPolicy policy) {
+        ContextDefinition packageContext = contextFor(javaClass.getPackageName(), policy.contexts());
+        if (packageContext != null || !"com.taxonomy".equals(javaClass.getPackageName())) {
+            return packageContext;
+        }
+
+        String binaryName = javaClass.getName().substring("com.taxonomy.".length());
+        int nestedSeparator = binaryName.indexOf('$');
+        String sourceFile = (nestedSeparator < 0 ? binaryName : binaryName.substring(0, nestedSeparator)) + ".java";
+        return policy.rootCompositionClasses().contains(sourceFile) ? policy.compositionContext() : null;
     }
 
     private static ContextDefinition contextFor(String packageName, List<ContextDefinition> contexts) {
@@ -337,7 +361,10 @@ class ArchitectureContextDependencyRatchetTest {
         throw new IllegalStateException("Unable to locate repository root");
     }
 
-    private record ContextPolicy(List<ContextDefinition> contexts, Set<String> rootCompositionClasses) {}
+    private record ContextPolicy(
+            List<ContextDefinition> contexts,
+            Set<String> rootCompositionClasses,
+            ContextDefinition compositionContext) {}
 
     private record ContextDefinition(String id, String targetModule, List<String> packages) {}
 
