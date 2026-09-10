@@ -43,6 +43,7 @@ public class EditorWorkspaceArchitectureIntegrationAdapter implements WorkspaceA
                                    String fingerprint, java.util.List<com.taxonomy.dsl.command.ArchitectureCommand> commands,
                                    java.util.function.UnaryOperator<String> portfolioContribution,
                                    CommandMetadata checkpointMetadata) throws IOException {
+        Objects.requireNonNull(checkpointMetadata, "checkpointMetadata");
         Context accepted = editor.acceptIntegration(context, editorContext(context, expected), editorMetadata(metadata),
                 fingerprint, commands, portfolioContribution, editorMetadata(checkpointMetadata));
         return state(accepted);
@@ -51,6 +52,7 @@ public class EditorWorkspaceArchitectureIntegrationAdapter implements WorkspaceA
     @Override
     public Checkpoint checkpoint(RepositoryContext context, State expected,
                                  CommandMetadata checkpointMetadata) throws IOException {
+        Objects.requireNonNull(checkpointMetadata, "checkpointMetadata");
         var accepted = editor.checkpoint(context,
                 new CreateCheckpointCommand(editorContext(context, expected), editorMetadata(checkpointMetadata)));
         return new Checkpoint(state(accepted.context()));
