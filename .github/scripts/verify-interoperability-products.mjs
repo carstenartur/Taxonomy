@@ -76,7 +76,7 @@ try {
 
   try {
     const archive = path.join(out, 'archi.tgz');
-    const response = await fetch('https://github.com/archimatetool/archi.io/releases/download/5_10_0/Archi-Linux64-5.10.0.tgz', { signal: AbortSignal.timeout(120_000) });
+    const response = await fetch('https://github.com/archimatetool/archi.io/releases/download/5.10_0/Archi-Linux64-5.10.0.tgz', { signal: AbortSignal.timeout(120_000) });
     if (!response.ok) throw new Error(`Archi download returned ${response.status}`);
     await pipeline(Readable.fromWeb(response.body), createWriteStream(archive));
     if (await digest(archive) !== archiSha) throw new Error('Archi release digest differs from pinned upstream asset');
