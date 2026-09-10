@@ -224,7 +224,7 @@ public class IntegrationService {
     }
     public Operation cancel(RepositoryContext context, UUID connectionId, UUID operationId, String rationale) {
         authorize(context, true); metadata(operationId, rationale);
-        return store.locked(context, connectionId, session -> { requireActor(context, session.operation(operationId)); session.cancel(operationId, rationale); return null; });
+        return store.locked(context, connectionId, session -> { requireActor(context, session.operation(operationId)); session.cancel(operationId, rationale); return session.operation(operationId); });
     }
 
     public Operation previewRemote(RepositoryContext context, UUID connectionId, RemoteRequest request) {
