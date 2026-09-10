@@ -25,7 +25,7 @@ public class OslcProviderService {
         this.workspaceAccess = workspaceAccess;
     }
     public void authorize(RepositoryContext context, String scope) {
-        if (!workspaceAccess.canUsePrivateWorkspace(context) || !context.workspaceScopeKey().equals(scope)
+        if (!workspaceAccess.canUsePrivateWorkspace(context) || !context.repositoryWorkspaceScopeKey().equals(scope)
                 || !memberships.canRead(repositories.getRepository(context.repositoryId()), context.username())) throw IntegrationProblem.missing();
     }
     public interface Links { String uri(String path); }
