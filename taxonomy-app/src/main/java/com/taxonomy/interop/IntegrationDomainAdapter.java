@@ -16,7 +16,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.PortfolioGitService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.WorkspaceDocument;
+import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.WorkspaceDocument;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 
