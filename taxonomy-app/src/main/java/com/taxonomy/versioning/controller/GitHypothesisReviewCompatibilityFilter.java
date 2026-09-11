@@ -2,10 +2,10 @@ package com.taxonomy.versioning.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.http.GitHttpPrecondition;
+import com.taxonomy.http.GitHttpPrecondition.InvalidPreconditionException;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
-import com.taxonomy.relations.controller.GitHttpPrecondition;
-import com.taxonomy.relations.controller.GitHttpPrecondition.InvalidPreconditionException;
 import com.taxonomy.relations.controller.RelationApiController;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
