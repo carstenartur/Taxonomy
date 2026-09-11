@@ -74,6 +74,20 @@ public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitect
         }
     }
 
+    /**
+     * Classify the workspace-owned optimistic revision signal without exposing its concrete
+     * implementation type to integration consumers. Framework exception translation may
+     * wrap the signal, so inspect a bounded cause chain.
+     */
+    static boolean isRevisionConflict(Throwable failure) {
+        for (int depth = 0; failure != null && depth < 20; depth++, failure = failure.getCause()) {
+            if (failure instanceof WorkspaceRevisionConflict) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     @Override
     WorkspaceDocument read(RepositoryContext context, String commit) throws IOException;
 
