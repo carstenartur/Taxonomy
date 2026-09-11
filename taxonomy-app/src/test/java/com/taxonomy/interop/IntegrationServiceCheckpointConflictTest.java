@@ -10,6 +10,7 @@ import com.taxonomy.extension.api.integration.IntegrationContracts.ReviewedChang
 import com.taxonomy.interop.oslc.OslcTransport;
 import com.taxonomy.interop.persistence.IntegrationStore;
 import com.taxonomy.interop.persistence.IntegrationStore.Operation;
+import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
@@ -54,7 +55,7 @@ class IntegrationServiceCheckpointConflictTest {
         RepositoryContext context = RepositoryContext.workspace("repo", "workspace", "draft", "alice");
         UUID connectionId = UUID.randomUUID();
         UUID operationId = UUID.randomUUID();
-        InternalState state = new InternalState("repo", context.repositoryWorkspaceScopeKey(), "draft",
+        InternalState state = new InternalState("repo", WorkspaceOverlayScope.keyFor(context.workspaceId()), "draft",
                 "0123456789012345678901234567890123456789", 7, null, "project-state");
         IntegrationContext authority = new IntegrationContext(connectionId, AuthorityMode.BIDIRECTIONAL,
                 new ExternalScope("Reference", "model", null), state, "alice", "archimate-3.1", "1");
