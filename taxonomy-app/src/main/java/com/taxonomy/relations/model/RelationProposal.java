@@ -3,6 +3,7 @@ package com.taxonomy.relations.model;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.model.ProposalStatus;
 import com.taxonomy.model.RelationType;
+import com.taxonomy.model.WorkspaceOverlayScope;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Enumerated;
@@ -43,7 +44,7 @@ import java.time.Instant;
         })
 public class RelationProposal {
 
-    public static final String SHARED_SCOPE_KEY = "__shared__";
+    public static final String SHARED_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -118,8 +119,7 @@ public class RelationProposal {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        String normalized = normalizeOptional(workspaceId);
-        return normalized == null ? SHARED_SCOPE_KEY : normalized;
+        return WorkspaceOverlayScope.keyFor(workspaceId);
     }
 
     public Long getId() { return id; }

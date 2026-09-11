@@ -5,7 +5,6 @@ import com.taxonomy.dsl.command.ArchitectureCommand;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
-import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.exchange.ArchiMateExchangeCodec;
 import com.taxonomy.exchange.ReqifExchangeCodec;
 import com.taxonomy.exchange.OslcRdf;
@@ -17,6 +16,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.PortfolioGitService;
 import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.WorkspaceDocument;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 
@@ -45,7 +45,7 @@ public class IntegrationDomainAdapter {
 
     /** Bind only identities actually delivered in a reviewed file; this is not an external acknowledgement. */
     public Map<String, AppliedRequirement> exportBindings(Connection connection, Snapshot current,
-                                                          ArchitectureEditorService.Document document, Map<String, Artifact> selected) {
+                                                          WorkspaceDocument document, Map<String, Artifact> selected) {
         Map<String, AppliedRequirement> result = new TreeMap<>();
         if (connection.projectId() != null) {
             for (RequirementView requirement : current.requirements()) {
@@ -64,7 +64,7 @@ public class IntegrationDomainAdapter {
             result.put(entry.getKey(), new AppliedRequirement(businessId(connection, null, entry.getValue()), null));
         return result;
     }
-    public Snapshot snapshot(RepositoryContext context, Connection connection, List<Identity> mappings, ArchitectureEditorService.Document document) {
+    public Snapshot snapshot(RepositoryContext context, Connection connection, List<Identity> mappings, WorkspaceDocument document) {
         List<RequirementView> requirements = connection.projectId() == null ? List.of()
                 : projects.listRequirements(connection.projectId(), context.username(), workspace(context));
         Map<Long, RequirementView> byId = new LinkedHashMap<>(); requirements.forEach(r -> byId.put(r.id(), r));
@@ -118,8 +118,8 @@ public class IntegrationDomainAdapter {
             synchronizeViews(connection, blocks, elements, views, items, losses);
             pruneConnections(items, losses);
         }
-        InternalState state = new InternalState(context.repositoryId(), document.context().workspaceScopeKey(), context.branch(), document.context().commit(),
-                document.context().revision(), connection.projectId(), json.fingerprint(requirements.stream().map(r -> List.of(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList()));
+        InternalState state = new InternalState(context.repositoryId(), document.state().workspaceScopeKey(), context.branch(), document.state().commitId(),
+                document.state().semanticRevision(), connection.projectId(), json.fingerprint(requirements.stream().map(r -> List.of(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList()));
         return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses));
     }
 
@@ -141,7 +141,7 @@ public class IntegrationDomainAdapter {
     }
 
     /** Capture the complete selected project/model, overlaying current canonical values on accepted exchange evidence. */
-    public ExchangeDocument exportDocument(Connection connection, Snapshot current, ArchitectureEditorService.Document document,
+    public ExchangeDocument exportDocument(Connection connection, Snapshot current, WorkspaceDocument document,
                                            List<Identity> mappings, ExchangeDocument previous) {
         ExchangeDocument template = previous == null ? new ExchangeDocument(connection.connectorId(), connection.profileVersion(), null, true, "",
                 List.of(), List.of(), List.of(), Map.of("identifier", "taxonomy-" + connection.id(), "title", connection.displayName()), List.of()) : previous;

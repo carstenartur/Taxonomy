@@ -19,6 +19,21 @@ class RepositoryContextTest {
     }
 
     @Test
+    void repositoryWorkspaceScopeKeyPreservesPersistedRoutingIdentityAndIgnoresActor() {
+        RepositoryContext alice = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "feature/a", "alice");
+        RepositoryContext bob = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "feature/a", "bob");
+        RepositoryContext anotherBranch = RepositoryContext.workspace(
+                "repo-a", "workspace-a", "feature/b", "alice");
+
+        assertThat(alice.repositoryWorkspaceScopeKey())
+                .isEqualTo("e292cc8d7644151fe4311a598f1a90c5fb243486f79ab6e9dbc9969e775b0177")
+                .isEqualTo(bob.repositoryWorkspaceScopeKey())
+                .isNotEqualTo(anotherBranch.repositoryWorkspaceScopeKey());
+    }
+
+    @Test
     void everyNonWorkspaceContextRejectsWorkspaceIdentity() {
         assertThatIllegalArgumentException().isThrownBy(() -> new RepositoryContext(
                 "repo-a",

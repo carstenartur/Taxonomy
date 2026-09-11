@@ -3,10 +3,6 @@ package com.taxonomy.interop;
 import com.taxonomy.dsl.command.ArchitectureCommand;
 import com.taxonomy.dsl.command.ArchitectureCommand.StoreExchangeEvidence;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
-import com.taxonomy.editor.ArchitectureCommandPort.Context;
-import com.taxonomy.editor.ArchitectureCommandPort.Metadata;
-import com.taxonomy.editor.ArchitectureCommandPort.CreateCheckpointCommand;
-import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.exchange.ArchiMateExchangeCodec;
 import com.taxonomy.exchange.ExchangeXml;
 import com.taxonomy.exchange.ReqifExchangeCodec;
@@ -16,6 +12,9 @@ import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore;
 import com.taxonomy.interop.persistence.IntegrationStore.*;
 import com.taxonomy.workspace.service.*;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.CommandMetadata;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.State;
+import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.WorkspaceDocument;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -29,7 +28,7 @@ public class IntegrationService {
     private final IntegrationStore store;
     private final ExchangeConnectorRegistry connectors;
     private final IntegrationDomainAdapter domain;
-    private final ArchitectureEditorService editor;
+    private final WorkspaceArchitectureIntegrationPort editor;
     private final IntegrationDiff diff;
     private final IntegrationJson json;
     private final SystemRepositoryService repositories;
@@ -38,7 +37,7 @@ public class IntegrationService {
     private final WorkspaceAccessService workspaceAccess;
 
     public IntegrationService(IntegrationStore store, ExchangeConnectorRegistry connectors, IntegrationDomainAdapter domain,
-                              ArchitectureEditorService editor, IntegrationDiff diff, IntegrationJson json,
+                              WorkspaceArchitectureIntegrationPort editor, IntegrationDiff diff, IntegrationJson json,
                               SystemRepositoryService repositories, RepositoryMembershipService memberships, OslcTransport remote, WorkspaceAccessService workspaceAccess) {
         this.store = store; this.connectors = connectors; this.domain = domain; this.editor = editor;
         this.diff = diff; this.json = json; this.repositories = repositories; this.memberships = memberships;
@@ -79,7 +78,7 @@ public class IntegrationService {
     public Overview overview(RepositoryContext context, UUID connectionId) {
         authorize(context, false); Connection connection = store.read(context, connectionId);
         return new Overview(connection, domain.snapshot(context, connection, store.identities(context, connectionId), read(context)).state(),
-                store.checkpoint(context, connectionId), store.history(context, connectionId), "/oslc/scopes/" + com.taxonomy.editor.persistence.EditorJournal.scope(context)
+                store.checkpoint(context, connectionId), store.history(context, connectionId), "/oslc/scopes/" + context.repositoryWorkspaceScopeKey()
                 + "/catalog?repositoryId=" + encode(context.repositoryId()) + "&workspaceId=" + encode(context.workspaceId()) + "&branch=" + encode(context.branch()));
     }
     public Operation operation(RepositoryContext context, UUID connectionId, UUID operationId) {
@@ -164,7 +163,7 @@ public class IntegrationService {
                     business = domain.relationBusinessId(value, connection, selected, mappings);
                 session.mapping(operation.id(), change.externalId(), business, requirementId, operation.document().externalVersion(), change.after(), value, value == null);
             }
-            Context resultContext = before.context();
+            State resultContext = before.state();
             if (!linked && changed) {
                 // Only reviewed evidence is put in canonical versions; rejected source remains in the scoped operation journal.
                 ExchangeDocument evidence = new ExchangeDocument(resultDocument.profile(), resultDocument.profileVersion(), resultDocument.externalVersion(),
@@ -172,13 +171,13 @@ public class IntegrationService {
                 String encoded = json.write(evidence);
                 commands.add(new StoreExchangeEvidence("integration-" + connection.id(), connection.connectorId(), connection.profileVersion(), json.fingerprint(evidence), encoded));
                 try {
-                    resultContext = editor.acceptIntegration(context, before.context(), metadata(operation.id(), review.rationale()), json.fingerprint(review), commands,
+                    resultContext = editor.acceptIntegration(context, before.state(), metadata(operation.id(), review.rationale()), json.fingerprint(review), commands,
                             connection.projectId() != null ? domain.portfolioContribution(context) : null, checkpointMetadata(operation.id(), review.rationale()));
                 } catch (IOException failure) { throw new UncheckedIOException(failure); }
             }
             String projectFingerprint = domain.snapshot(context, connection, session.identities(), before).state().projectFingerprint();
-            InternalState state = new InternalState(context.repositoryId(), resultContext.workspaceScopeKey(), context.branch(), resultContext.commit(),
-                    resultContext.revision(), connection.projectId(), projectFingerprint);
+            InternalState state = new InternalState(context.repositoryId(), resultContext.workspaceScopeKey(), context.branch(), resultContext.commitId(),
+                    resultContext.semanticRevision(), connection.projectId(), projectFingerprint);
             session.applied(operation.id(), state, resultDocument, !linked && changed);
             if (linked || !changed) session.complete(operation.id(), state, resultDocument.externalVersion(), json.fingerprint(semanticItems(selected)), true);
             return session.operation(operation.id());
@@ -199,10 +198,11 @@ public class IntegrationService {
     private Operation finish(RepositoryContext context, UUID connectionId, Operation operation) {
         try {
             InternalState state = operation.resultState();
-            var checkpoint = editor.checkpoint(context, new CreateCheckpointCommand(Context.of(context, state.commitId(), state.semanticRevision()),
-                    checkpointMetadata(operation.id(), operation.review().rationale())));
-            InternalState completed = new InternalState(state.repositoryId(), state.workspaceScopeKey(), state.branch(), checkpoint.commitId(),
-                    state.semanticRevision(), state.projectId(), state.projectFingerprint());
+            var checkpoint = editor.checkpoint(context,
+                    new State(state.workspaceScopeKey(), state.commitId(), state.semanticRevision()),
+                    checkpointMetadata(operation.id(), operation.review().rationale()));
+            InternalState completed = new InternalState(state.repositoryId(), state.workspaceScopeKey(), state.branch(), checkpoint.state().commitId(),
+                    checkpoint.state().semanticRevision(), state.projectId(), state.projectFingerprint());
             return store.locked(context, connectionId, session -> {
                 session.complete(operation.id(), completed, operation.document().externalVersion(), json.fingerprint(semanticItems(ExchangeItems.flatten(operation.resultDocument()))), true);
                 return session.operation(operation.id());
@@ -217,6 +217,7 @@ public class IntegrationService {
         }
     }
     private static boolean rejectedCheckpoint(Throwable failure) {
+        if (WorkspaceArchitectureIntegrationPort.isRevisionConflict(failure)) return true;
         // Spring's repository exception translation may wrap a durable CommandProblem on retry.
         for (int depth = 0; failure != null && depth < 20; depth++, failure = failure.getCause())
             if (failure instanceof ArchitectureDslCommands.CommandProblem problem && Set.of("CHECKPOINT_CONFLICT", "CHECKPOINT_REJECTED").contains(problem.code())) return true;
@@ -409,11 +410,11 @@ public class IntegrationService {
     private void requireProfile(Connection connection) {
         if (!connectors.require(connection.connectorId()).descriptor().version().equals(connection.profileVersion())) throw IntegrationProblem.conflict("PROFILE_VERSION_CHANGED");
     }
-    private ArchitectureEditorService.Document read(RepositoryContext context) {
+    private WorkspaceDocument read(RepositoryContext context) {
         try { return editor.read(context, null); } catch (IOException failure) { throw new IntegrationProblem("VERSION_UNAVAILABLE", 503, "Architecture state is temporarily unavailable"); }
     }
-    private <T> T workspace(RepositoryContext context, java.util.function.Function<ArchitectureEditorService.Document, T> action) {
-        try { return editor.integrationBoundary(context, action); } catch (IOException failure) { throw new IntegrationProblem("VERSION_UNAVAILABLE", 503, "Architecture state is temporarily unavailable"); }
+    private <T> T workspace(RepositoryContext context, java.util.function.Function<WorkspaceDocument, T> action) {
+        try { return editor.locked(context, action); } catch (IOException failure) { throw new IntegrationProblem("VERSION_UNAVAILABLE", 503, "Architecture state is temporarily unavailable"); }
     }
     private void authorize(RepositoryContext context, boolean write) {
         if (context == null || context.username() == null || context.scope() != RepositoryScope.WORKSPACE) throw new IntegrationProblem("PRIVATE_WORKSPACE_REQUIRED", 403, "Select an authorized private workspace");
@@ -433,9 +434,11 @@ public class IntegrationService {
     private static void requireActor(RepositoryContext context, Operation operation) {
         if (!context.username().equals(operation.context().actor())) throw IntegrationProblem.missing();
     }
-    private static Metadata metadata(UUID id, String rationale) { return new Metadata(id.toString(), id.toString(), id.toString(), rationale); }
-    private static Metadata checkpointMetadata(UUID operation, String rationale) {
+    private static CommandMetadata metadata(UUID id, String rationale) {
+        return new CommandMetadata(id, id, id, rationale);
+    }
+    private static CommandMetadata checkpointMetadata(UUID operation, String rationale) {
         UUID id = UUID.nameUUIDFromBytes((operation + ":checkpoint").getBytes(StandardCharsets.UTF_8));
-        return new Metadata(id.toString(), operation.toString(), operation.toString(), rationale);
+        return new CommandMetadata(id, operation, operation, rationale);
     }
 }

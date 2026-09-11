@@ -1,5 +1,7 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.identity.StableIdentityHash;
+
 /**
  * Explicit routing identity for every repository-sensitive operation.
  *
@@ -49,6 +51,19 @@ public record RepositoryContext(
             String repositoryId, String workspaceId, String branch, String username) {
         return new RepositoryContext(
                 repositoryId, workspaceId, branch, username, RepositoryScope.WORKSPACE);
+    }
+
+    /**
+     * Stable opaque routing identity for this repository/workspace/branch tuple.
+     * The actor is deliberately excluded so authorized users address the same workspace state.
+     *
+     * <p>This key is distinct from the architecture projection's {@code workspaceScopeKey},
+     * which identifies only the workspace overlay. The representation here is
+     * compatibility-sensitive because it is already persisted by the editor and
+     * interoperability journals and is exposed as the opaque OSLC scope.</p>
+     */
+    public String repositoryWorkspaceScopeKey() {
+        return StableIdentityHash.sha256(repositoryId + "\u0000" + workspaceId + "\u0000" + branch);
     }
 
     private static String requireText(String value, String field) {

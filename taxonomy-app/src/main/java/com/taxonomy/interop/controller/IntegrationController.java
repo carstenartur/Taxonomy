@@ -1,7 +1,6 @@
 package com.taxonomy.interop.controller;
 
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
-import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
 import com.taxonomy.exchange.ExchangeFormatException;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.IntegrationProblem;
@@ -9,6 +8,7 @@ import com.taxonomy.interop.IntegrationService;
 import com.taxonomy.interop.IntegrationService.*;
 import com.taxonomy.interop.persistence.IntegrationStore.*;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceRevisionConflict;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Controller;
@@ -78,7 +78,7 @@ public class IntegrationController {
     public ResponseEntity<Map<String, String>> format(ExchangeFormatException problem) { return ResponseEntity.unprocessableContent().body(Map.of("code", problem.code(), "message", problem.getMessage())); }
     @ExceptionHandler(CommandProblem.class) @ResponseBody
     public ResponseEntity<Map<String, Object>> command(CommandProblem problem) { return ResponseEntity.unprocessableContent().body(Map.of("code", problem.code(), "message", problem.getMessage(), "dependencies", problem.dependencies())); }
-    @ExceptionHandler(RevisionConflict.class) @ResponseBody
+    @ExceptionHandler(WorkspaceRevisionConflict.class) @ResponseBody
     public ResponseEntity<Map<String, String>> revision() { return ResponseEntity.status(409).body(Map.of("code", "INTERNAL_STATE_CHANGED", "message", "Refresh the exact workspace state and preview again")); }
     @ExceptionHandler(IllegalArgumentException.class) @ResponseBody
     public ResponseEntity<Map<String, String>> invalid() { return ResponseEntity.badRequest().body(Map.of("code", "INVALID_REQUEST", "message", "Check the required bounded integration fields")); }

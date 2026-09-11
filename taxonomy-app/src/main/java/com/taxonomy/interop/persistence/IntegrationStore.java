@@ -1,7 +1,7 @@
 package com.taxonomy.interop.persistence;
 
-import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.interop.IntegrationJson;
 import com.taxonomy.interop.IntegrationProblem;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -162,7 +162,7 @@ public class IntegrationStore {
         }
         public void mapping(UUID operationId, String externalId, String businessIdentity, Long requirementId,
                             String externalVersion, Artifact external, Artifact internal, boolean removed) {
-            String id = EditorJournal.hash(connection.id + "\u0000" + externalId);
+            String id = identityId(connection.id, externalId);
             ExternalIdentityMappingEntity entity = em.find(ExternalIdentityMappingEntity.class, id);
             boolean created = entity == null;
             if (entity == null) {
@@ -245,6 +245,9 @@ public class IntegrationStore {
         return new Identity(m.externalId, m.businessIdentity, m.requirementId, m.externalVersion, m.fingerprint,
                 json.read(m.externalJson, Artifact.class), json.read(m.internalJson, Artifact.class), uuid(m.operationId), m.removed);
     }
-    private static String scope(RepositoryContext context) { return EditorJournal.scope(context); }
+    private static String scope(RepositoryContext context) { return context.repositoryWorkspaceScopeKey(); }
+    private static String identityId(String connectionId, String externalId) {
+        return StableIdentityHash.sha256(connectionId + "\u0000" + externalId);
+    }
     private static UUID uuid(String value) { return value == null ? null : UUID.fromString(value); }
 }

@@ -1,7 +1,5 @@
 package com.taxonomy.interop.oslc;
 
-import com.taxonomy.editor.ArchitectureEditorService;
-import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.exchange.OslcRdf;
 import com.taxonomy.interop.IntegrationDomainAdapter;
 import com.taxonomy.interop.IntegrationProblem;
@@ -18,16 +16,16 @@ import static com.taxonomy.exchange.OslcRdf.*;
 @Service
 public class OslcProviderService {
     private final ProjectPortfolioService projects;
-    private final ArchitectureEditorService editor;
+    private final WorkspaceArchitectureReadPort architecture;
     private final SystemRepositoryService repositories;
     private final RepositoryMembershipService memberships;
     private final WorkspaceAccessService workspaceAccess;
-    public OslcProviderService(ProjectPortfolioService projects, ArchitectureEditorService editor, SystemRepositoryService repositories, RepositoryMembershipService memberships, WorkspaceAccessService workspaceAccess) {
-        this.projects = projects; this.editor = editor; this.repositories = repositories; this.memberships = memberships;
+    public OslcProviderService(ProjectPortfolioService projects, WorkspaceArchitectureReadPort architecture, SystemRepositoryService repositories, RepositoryMembershipService memberships, WorkspaceAccessService workspaceAccess) {
+        this.projects = projects; this.architecture = architecture; this.repositories = repositories; this.memberships = memberships;
         this.workspaceAccess = workspaceAccess;
     }
     public void authorize(RepositoryContext context, String scope) {
-        if (!workspaceAccess.canUsePrivateWorkspace(context) || !EditorJournal.scope(context).equals(scope)
+        if (!workspaceAccess.canUsePrivateWorkspace(context) || !context.repositoryWorkspaceScopeKey().equals(scope)
                 || !memberships.canRead(repositories.getRepository(context.repositoryId()), context.username())) throw IntegrationProblem.missing();
     }
     public interface Links { String uri(String path); }
@@ -98,9 +96,9 @@ public class OslcProviderService {
         return graph;
     }
     public OslcRdf architectureVersion(RepositoryContext context, String commit, Links links) throws IOException {
-        var document = editor.read(context, commit); String uri = links.uri("/architecture/versions/" + commit);
-        return new OslcRdf().type(uri, TAX + "ArchitectureVersion").literal(uri, DCT + "identifier", document.context().commit())
-                .literal(uri, DCT + "title", "Architecture checkpoint " + document.context().commit())
+        var document = architecture.read(context, commit); String uri = links.uri("/architecture/versions/" + commit);
+        return new OslcRdf().type(uri, TAX + "ArchitectureVersion").literal(uri, DCT + "identifier", document.state().commitId())
+                .literal(uri, DCT + "title", "Architecture checkpoint " + document.state().commitId())
                 .literal(uri, TAX + "canonicalDsl", document.dsl());
     }
 }

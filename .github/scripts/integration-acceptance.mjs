@@ -107,8 +107,14 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
       overflow: [...document.querySelectorAll('main *')].filter(node => !node.closest('.table-scroll') && node.getBoundingClientRect().right > document.documentElement.clientWidth + 2)
         .slice(0, 10).map(node => ({ tag: node.tagName, id: node.id, right: node.getBoundingClientRect().right })) }));
     assert.ok(reflow.scrollWidth <= reflow.width + 2, `Integration page overflows at ${width}px: ${JSON.stringify(reflow)}`);
-    await page.locator('#integrationRefresh').focus();
-    assert.ok(await page.locator('#integrationRefresh').evaluate(node => { const r = node.getBoundingClientRect(); return node.contains(document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2)); }));
+    const refresh = page.locator('#integrationRefresh');
+    await refresh.scrollIntoViewIfNeeded();
+    await refresh.focus();
+    // Use Playwright's actionability polling after a viewport transition. A raw
+    // elementFromPoint check can race WebKit's paint while layout already reports
+    // the new geometry; trial mode verifies that the control actually receives
+    // pointer events without triggering a refresh.
+    await refresh.click({ trial: true });
     measurements.reflow.push(width);
   }
   await page.setViewportSize(viewport);
