@@ -2,9 +2,9 @@ package com.taxonomy.editor;
 
 import com.taxonomy.dsl.command.ArchitectureCommand;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.Change;
-import com.taxonomy.relations.model.RelationDecisionProjection;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceOverlayScope;
 
 import java.io.IOException;
 import java.util.Objects;
@@ -18,11 +18,11 @@ public interface ArchitectureCommandPort {
             return of(context, commit, 0);
         }
         public static Context version(RepositoryContext context, String commit) {
-            return new Context(context.repositoryId(), RelationDecisionProjection.scopeKeyFor(context.workspaceId()),
+            return new Context(context.repositoryId(), WorkspaceOverlayScope.keyFor(context.workspaceId()),
                     context.branch(), commit, 0, context.username(), "READ_ONLY");
         }
         public static Context of(RepositoryContext context, String commit, long revision) {
-            return new Context(context.repositoryId(), RelationDecisionProjection.scopeKeyFor(context.workspaceId()),
+            return new Context(context.repositoryId(), WorkspaceOverlayScope.keyFor(context.workspaceId()),
                     context.branch(), commit, revision, context.username(),
                     context.scope() == RepositoryScope.WORKSPACE ? "PRIVATE_WORKSPACE" : "READ_ONLY");
         }
