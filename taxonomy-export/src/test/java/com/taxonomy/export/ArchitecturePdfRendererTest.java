@@ -29,6 +29,17 @@ class ArchitecturePdfRendererTest {
     }
 
     @Test
+    void preservesExactLiveProvenanceInPdfMetadata() throws Exception {
+        String provenance = "  repo-a / workspace-a / draft  \nCheckpoint abcdef1234567890  ";
+
+        byte[] pdf = renderer.render(scene(), provenance);
+
+        try (var parsed = org.apache.pdfbox.Loader.loadPDF(pdf)) {
+            assertThat(parsed.getDocumentInformation().getSubject()).isEqualTo(provenance);
+        }
+    }
+
+    @Test
     void rendersSnapshotSceneThroughNeutralExportMetadata() {
         DiagramScene scene = scene();
         var metadata = new ArchitecturePdfRenderer.SnapshotMetadata(

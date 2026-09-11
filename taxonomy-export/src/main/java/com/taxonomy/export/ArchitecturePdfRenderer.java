@@ -57,16 +57,16 @@ public final class ArchitecturePdfRenderer {
     /** Live editor export uses the same vector geometry without masquerading as an analysis snapshot. */
     public byte[] render(DiagramScene scene, String provenance) {
         requireScene(scene);
-        String exportProvenance = safe(provenance);
+        String displayProvenance = safe(provenance);
         return renderScene(scene, document -> {
             PDDocumentInformation information = new PDDocumentInformation();
             information.setTitle(scene.title());
-            information.setSubject(exportProvenance);
+            information.setSubject(provenance);
             information.setCreator("Taxonomy server-side vector renderer");
             document.setDocumentInformation(information);
         }, (stream, height) -> {
             text(stream, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16, scene.title());
-            List<String> lines = Arrays.asList(exportProvenance.split("\\n"));
+            List<String> lines = Arrays.asList(displayProvenance.split("\\n"));
             for (int i = 0; i < Math.min(2, lines.size()); i++) {
                 text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33 - i * 12, lines.get(i));
             }

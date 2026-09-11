@@ -18,6 +18,8 @@
     {"fromContext":"analysis","fromPackage":"com.taxonomy.analysis.usecase","toContext":"preferences","toPackage":"com.taxonomy.preferences","classDependencyCount":1},
     {"fromContext":"analysis","fromPackage":"com.taxonomy.analysis.usecase","toContext":"workspace","toPackage":"com.taxonomy.versioning.service","classDependencyCount":2},
     {"fromContext":"analysis","fromPackage":"com.taxonomy.analysis.usecase","toContext":"workspace","toPackage":"com.taxonomy.workspace.service","classDependencyCount":2},
+    {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.architecture","toContext":"workspace","toPackage":"com.taxonomy.editor","classDependencyCount":2},
+    {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.architecture","toContext":"workspace","toPackage":"com.taxonomy.workspace.service","classDependencyCount":2},
     {"fromContext":"app-composition","fromPackage":"com.taxonomy.shared.config","toContext":"analysis","toPackage":"com.taxonomy.analysis.session","classDependencyCount":2},
     {"fromContext":"app-composition","fromPackage":"com.taxonomy.shared.config","toContext":"knowledge","toPackage":"com.taxonomy.catalog.service","classDependencyCount":1},
     {"fromContext":"app-composition","fromPackage":"com.taxonomy.shared.config","toContext":"preferences","toPackage":"com.taxonomy.preferences","classDependencyCount":2},
