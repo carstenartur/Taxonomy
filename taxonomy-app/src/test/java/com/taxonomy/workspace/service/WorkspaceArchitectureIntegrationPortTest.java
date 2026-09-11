@@ -76,7 +76,7 @@ class WorkspaceArchitectureIntegrationPortTest {
     }
 
     @Test
-    void documentAndCheckpointRequireStateAndDocumentRequiresCanonicalDsl() {
+    void documentAndCheckpointRequireStateAndDocumentRequiresNonNullDsl() {
         WorkspaceArchitectureIntegrationPort.State state =
                 new WorkspaceArchitectureIntegrationPort.State("workspace", "commit", 7);
 
