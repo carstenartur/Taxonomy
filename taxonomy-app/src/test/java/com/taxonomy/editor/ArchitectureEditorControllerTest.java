@@ -6,7 +6,6 @@ import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.portfolio.workbench.ArchitecturePdfRenderer;
-import com.taxonomy.relations.controller.GitHttpPrecondition;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
@@ -30,8 +29,10 @@ class ArchitectureEditorControllerTest {
     @Test
     void missingAndContradictoryPreconditionsNeverReachTheCommandPort() {
         var command = wire();
-        assertThatThrownBy(() -> controller.execute(command, null, null)).isInstanceOf(GitHttpPrecondition.PreconditionRequiredException.class);
-        assertThatThrownBy(() -> controller.preview(command, "\"" + "a".repeat(40) + "\"", null)).isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> controller.execute(command, null, null))
+                .isInstanceOf(ArchitectureEditorController.PreconditionRequiredException.class);
+        assertThatThrownBy(() -> controller.preview(command, "\"" + "a".repeat(40) + "\"", null))
+                .isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(service);
     }
 
