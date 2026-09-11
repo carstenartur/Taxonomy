@@ -21,7 +21,7 @@ public class ArchitectureWorkbenchConfiguration {
     }
 
     @Bean
-    ArchitecturePdfRenderer architecturePdfRenderer() {
+    ArchitecturePdfRenderer neutralArchitecturePdfRenderer() {
         return new ArchitecturePdfRenderer();
     }
 }
