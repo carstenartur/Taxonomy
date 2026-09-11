@@ -1,9 +1,6 @@
 package com.taxonomy.workspace.service;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
+import com.taxonomy.identity.StableIdentityHash;
 
 /**
  * Explicit routing identity for every repository-sensitive operation.
@@ -66,16 +63,7 @@ public record RepositoryContext(
      * interoperability journals and is exposed as the opaque OSLC scope.</p>
      */
     public String repositoryWorkspaceScopeKey() {
-        return sha256(repositoryId + "\u0000" + workspaceId + "\u0000" + branch);
-    }
-
-    private static String sha256(String value) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        return StableIdentityHash.sha256(repositoryId + "\u0000" + workspaceId + "\u0000" + branch);
     }
 
     private static String requireText(String value, String field) {
