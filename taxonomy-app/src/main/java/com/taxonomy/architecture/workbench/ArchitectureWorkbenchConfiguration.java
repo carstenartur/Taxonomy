@@ -1,6 +1,7 @@
 package com.taxonomy.architecture.workbench;
 
 import com.taxonomy.export.LayeredDiagramLayoutService;
+import com.taxonomy.export.PdfDiagramRenderer;
 import com.taxonomy.export.SvgDiagramRenderer;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -17,5 +18,10 @@ public class ArchitectureWorkbenchConfiguration {
     @Bean
     SvgDiagramRenderer svgDiagramRenderer() {
         return new SvgDiagramRenderer();
+    }
+
+    @Bean
+    PdfDiagramRenderer pdfDiagramRenderer() {
+        return new PdfDiagramRenderer();
     }
 }
