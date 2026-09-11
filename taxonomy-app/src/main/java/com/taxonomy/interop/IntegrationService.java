@@ -217,9 +217,12 @@ public class IntegrationService {
         }
     }
     private static boolean rejectedCheckpoint(Throwable failure) {
-        // Spring's repository exception translation may wrap a durable CommandProblem on retry.
-        for (int depth = 0; failure != null && depth < 20; depth++, failure = failure.getCause())
-            if (failure instanceof ArchitectureDslCommands.CommandProblem problem && Set.of("CHECKPOINT_CONFLICT", "CHECKPOINT_REJECTED").contains(problem.code())) return true;
+        // Spring's repository exception translation may wrap a durable conflict signal on retry.
+        for (int depth = 0; failure != null && depth < 20; depth++, failure = failure.getCause()) {
+            if (failure instanceof WorkspaceRevisionConflict) return true;
+            if (failure instanceof ArchitectureDslCommands.CommandProblem problem
+                    && Set.of("CHECKPOINT_CONFLICT", "CHECKPOINT_REJECTED").contains(problem.code())) return true;
+        }
         return false;
     }
     public Operation cancel(RepositoryContext context, UUID connectionId, UUID operationId, String rationale) {
