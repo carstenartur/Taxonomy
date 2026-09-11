@@ -6,9 +6,9 @@ import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.portfolio.workbench.ArchitecturePdfRenderer;
-import com.taxonomy.relations.controller.GitHttpPrecondition;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.eclipse.jgit.lib.ObjectId;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -177,7 +177,7 @@ public class ArchitectureEditorController {
     private static ResponseEntity.BodyBuilder documentResponse(ArchitectureEditorService.Document document) {
         if ("GIT_CHECKPOINT".equals(document.source())) {
             return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, "no-store")
-                    .eTag(GitHttpPrecondition.etag(document.context().commit()))
+                    .eTag(commitEtag(document.context().commit()))
                     .header("X-Taxonomy-Source", document.source());
         }
         return response(HttpStatus.OK, document.context()).header("X-Taxonomy-Source", document.source());
@@ -192,10 +192,22 @@ public class ArchitectureEditorController {
 
     private static String etag(Context context) { return "\"workspace-revision-" + context.revision() + "\""; }
 
+    private static String commitEtag(String commitId) {
+        return '"' + ObjectId.fromString(commitId).name() + '"';
+    }
+
     private static void requireRevision(Context context, String ifMatch, String ifNoneMatch) {
-        if (ifMatch == null) throw new GitHttpPrecondition.PreconditionRequiredException("An exact semantic revision If-Match header is required");
+        if (ifMatch == null) {
+            throw new PreconditionRequiredException("An exact semantic revision If-Match header is required");
+        }
         if (ifNoneMatch != null || !etag(context).equals(ifMatch)) {
             throw new IllegalArgumentException("HTTP precondition must match the semantic workspace revision");
+        }
+    }
+
+    static final class PreconditionRequiredException extends IllegalArgumentException {
+        PreconditionRequiredException(String message) {
+            super(message);
         }
     }
 
@@ -229,7 +241,7 @@ public class ArchitectureEditorController {
                 "expectedRevision", error.expected(), "currentRevision", error.actual()));
     }
 
-    @ExceptionHandler(GitHttpPrecondition.PreconditionRequiredException.class)
+    @ExceptionHandler(PreconditionRequiredException.class)
     @ResponseBody
     public ResponseEntity<Map<String, String>> missingPrecondition(Exception error) {
         return ResponseEntity.status(428).body(Map.of("code", "PRECONDITION_REQUIRED", "detail", error.getMessage()));
