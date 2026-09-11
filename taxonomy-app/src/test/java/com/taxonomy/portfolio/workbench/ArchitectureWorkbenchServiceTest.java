@@ -59,7 +59,8 @@ class ArchitectureWorkbenchServiceTest {
                     new DiagramProjectionService(),
                     new LayeredDiagramLayoutService(),
                     new SvgDiagramRenderer(),
-                    new ArchitecturePdfRenderer());
+                    new ArchitecturePdfRenderer(
+                            new com.taxonomy.export.ArchitecturePdfRenderer()));
 
     @Test
     void replaysPersistedArchitectureForBrowserSvgAndPdfWithoutNewAnalysis() throws Exception {
