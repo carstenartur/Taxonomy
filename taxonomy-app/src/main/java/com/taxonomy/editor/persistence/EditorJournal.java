@@ -2,6 +2,7 @@ package com.taxonomy.editor.persistence;
 
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.ArchitectureCommandPort.Metadata;
+import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.workspace.service.RepositoryContext;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
@@ -14,10 +15,7 @@ import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.function.Function;
 
@@ -276,9 +274,7 @@ public class EditorJournal {
         return context.repositoryWorkspaceScopeKey();
     }
     public static String hash(String value) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }
+        return StableIdentityHash.sha256(value);
     }
     private static CommandProblem problem(String code, String detail, List<String> dependencies) {
         return new CommandProblem(code, "commandId", detail, dependencies);
