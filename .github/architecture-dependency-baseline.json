@@ -129,7 +129,6 @@
     {"fromContext":"provenance","fromPackage":"com.taxonomy.provenance.service","toContext":"knowledge","toPackage":"com.taxonomy.catalog.model","classDependencyCount":1},
     {"fromContext":"provenance","fromPackage":"com.taxonomy.provenance.service","toContext":"knowledge","toPackage":"com.taxonomy.catalog.service","classDependencyCount":1},
     {"fromContext":"workspace","fromPackage":"com.taxonomy.editor","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.storage","classDependencyCount":7},
-    {"fromContext":"workspace","fromPackage":"com.taxonomy.editor","toContext":"knowledge","toPackage":"com.taxonomy.relations.controller","classDependencyCount":2},
     {"fromContext":"workspace","fromPackage":"com.taxonomy.editor","toContext":"portfolio","toPackage":"com.taxonomy.portfolio.workbench","classDependencyCount":1},
     {"fromContext":"workspace","fromPackage":"com.taxonomy.versioning.controller","toContext":"architecture","toPackage":"com.taxonomy.architecture.decision","classDependencyCount":6},
     {"fromContext":"workspace","fromPackage":"com.taxonomy.versioning.controller","toContext":"architecture","toPackage":"com.taxonomy.architecture.model","classDependencyCount":2},
