@@ -1,6 +1,7 @@
 package com.taxonomy.catalog.model;
 
 import com.taxonomy.model.RelationType;
+import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.search.RelationEmbeddingBinder;
 import com.taxonomy.shared.model.FloatArrayConverter;
 import jakarta.persistence.Column;
@@ -53,7 +54,7 @@ import org.hibernate.search.mapper.pojo.mapping.definition.annotation.TypeBindin
 @TypeBinding(binder = @TypeBinderRef(type = RelationEmbeddingBinder.class))
 public class TaxonomyRelation {
 
-    public static final String SHARED_SCOPE_KEY = "__shared__";
+    public static final String SHARED_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -122,8 +123,7 @@ public class TaxonomyRelation {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        String normalized = normalizeOptional(workspaceId);
-        return normalized == null ? SHARED_SCOPE_KEY : normalized;
+        return WorkspaceOverlayScope.keyFor(workspaceId);
     }
 
     public Long getId() { return id; }
