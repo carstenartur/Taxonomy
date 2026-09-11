@@ -1,6 +1,7 @@
 package com.taxonomy.relations.controller;
 
 import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.http.GitHttpPrecondition;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationProjectionReadService;
