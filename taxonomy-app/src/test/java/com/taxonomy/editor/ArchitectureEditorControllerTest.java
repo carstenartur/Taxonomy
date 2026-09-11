@@ -1,7 +1,6 @@
 package com.taxonomy.editor;
 
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.export.SvgDiagramRenderer;
