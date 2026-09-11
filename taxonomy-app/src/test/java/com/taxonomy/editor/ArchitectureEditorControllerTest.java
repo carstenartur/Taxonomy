@@ -29,8 +29,12 @@ class ArchitectureEditorControllerTest {
     @Test
     void missingAndContradictoryPreconditionsNeverReachTheCommandPort() {
         var command = wire();
-        assertThatThrownBy(() -> controller.execute(command, null, null))
-                .isInstanceOf(ArchitectureEditorController.PreconditionRequiredException.class);
+        Throwable missing = catchThrowable(() -> controller.execute(command, null, null));
+        assertThat(missing).isInstanceOf(ArchitectureEditorController.PreconditionRequiredException.class);
+        var response = controller.missingPrecondition((Exception) missing);
+        assertThat(response.getStatusCode().value()).isEqualTo(428);
+        assertThat(response.getBody()).containsEntry("code", "PRECONDITION_REQUIRED")
+                .containsEntry("detail", "An exact semantic revision If-Match header is required");
         assertThatThrownBy(() -> controller.preview(command, "\"" + "a".repeat(40) + "\"", null))
                 .isInstanceOf(IllegalArgumentException.class);
         verifyNoInteractions(service);
@@ -61,9 +65,9 @@ class ArchitectureEditorControllerTest {
         assertThat(svg.getBody()).contains("System title", "arch-instance");
         assertThat(svg.getHeaders().getETag()).isEqualTo(json.getHeaders().getETag());
         assertThat(pdf.getHeaders().getETag()).isEqualTo(json.getHeaders().getETag());
-        for (var response : List.of(json, svg, pdf)) {
-            assertThat(response.getHeaders().getFirst("X-Taxonomy-Source")).isEqualTo("GIT_CHECKPOINT");
-            assertThat(response.getHeaders().getFirst("X-Taxonomy-Semantic-Revision")).isNull();
+        for (var responseItem : List.of(json, svg, pdf)) {
+            assertThat(responseItem.getHeaders().getFirst("X-Taxonomy-Source")).isEqualTo("GIT_CHECKPOINT");
+            assertThat(responseItem.getHeaders().getFirst("X-Taxonomy-Semantic-Revision")).isNull();
         }
         assertThat(svg.getHeaders().getFirst("X-Taxonomy-Layout-Source")).isEqualTo("DERIVED_SERVER_LAYOUT");
         try (var parsed = org.apache.pdfbox.Loader.loadPDF(pdf.getBody())) {
@@ -83,10 +87,10 @@ class ArchitectureEditorControllerTest {
         var json = controller.read("repo-a", "workspace-a", "draft", null, 3L);
         var svg = controller.svg("repo-a", "workspace-a", "draft", null, 3L);
         var pdf = controller.pdf("repo-a", "workspace-a", "draft", null, 3L);
-        for (var response : List.of(json, svg, pdf)) {
-            assertThat(response.getHeaders().getETag()).isEqualTo("\"workspace-revision-3\"");
-            assertThat(response.getHeaders().getFirst("X-Taxonomy-Semantic-Revision")).isEqualTo("3");
-            assertThat(response.getHeaders().getFirst("X-Taxonomy-Source")).isEqualTo("WORKSPACE_REVISION");
+        for (var responseItem : List.of(json, svg, pdf)) {
+            assertThat(responseItem.getHeaders().getETag()).isEqualTo("\"workspace-revision-3\"");
+            assertThat(responseItem.getHeaders().getFirst("X-Taxonomy-Semantic-Revision")).isEqualTo("3");
+            assertThat(responseItem.getHeaders().getFirst("X-Taxonomy-Source")).isEqualTo("WORKSPACE_REVISION");
         }
     }
 
