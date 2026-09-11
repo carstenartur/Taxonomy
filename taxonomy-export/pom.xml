@@ -61,6 +61,12 @@
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-databind</artifactId>
         </dependency>
+        <!-- Framework-neutral vector PDF rendering from the shared DiagramScene model. -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
         <!-- JUnit + AssertJ for tests -->
         <dependency>
             <groupId>org.junit.jupiter</groupId>
