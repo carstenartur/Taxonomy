@@ -2,9 +2,9 @@ package com.taxonomy.editor;
 
 import com.taxonomy.dsl.command.ArchitectureCommand;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.Change;
+import com.taxonomy.model.WorkspaceOverlayScope;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
-import com.taxonomy.workspace.service.WorkspaceOverlayScope;
 
 import java.io.IOException;
 import java.util.Objects;
