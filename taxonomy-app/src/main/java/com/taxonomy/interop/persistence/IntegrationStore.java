@@ -1,6 +1,7 @@
 package com.taxonomy.interop.persistence;
 
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.interop.IntegrationJson;
 import com.taxonomy.interop.IntegrationProblem;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -12,12 +13,8 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import java.nio.charset.StandardCharsets;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
 import java.util.Arrays;
-import java.util.HexFormat;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -250,12 +247,7 @@ public class IntegrationStore {
     }
     private static String scope(RepositoryContext context) { return context.repositoryWorkspaceScopeKey(); }
     private static String identityId(String connectionId, String externalId) {
-        try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
-                    .digest((connectionId + "\u0000" + externalId).getBytes(StandardCharsets.UTF_8)));
-        } catch (NoSuchAlgorithmException impossible) {
-            throw new IllegalStateException(impossible);
-        }
+        return StableIdentityHash.sha256(connectionId + "\u0000" + externalId);
     }
     private static UUID uuid(String value) { return value == null ? null : UUID.fromString(value); }
 }
