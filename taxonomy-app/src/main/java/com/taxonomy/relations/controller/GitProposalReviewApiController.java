@@ -1,6 +1,7 @@
 package com.taxonomy.relations.controller;
 
 import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.http.GitHttpPrecondition;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.ReadOnlyRepositoryContextException;
