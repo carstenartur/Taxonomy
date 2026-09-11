@@ -5,8 +5,8 @@ import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictExcep
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.export.SvgDiagramRenderer;
+import com.taxonomy.http.GitHttpPrecondition;
 import com.taxonomy.portfolio.workbench.ArchitecturePdfRenderer;
-import com.taxonomy.relations.controller.GitHttpPrecondition;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
