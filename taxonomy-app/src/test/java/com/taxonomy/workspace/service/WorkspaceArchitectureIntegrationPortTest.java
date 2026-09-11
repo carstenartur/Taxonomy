@@ -64,6 +64,14 @@ class WorkspaceArchitectureIntegrationPortTest {
         assertThatIllegalArgumentException().isThrownBy(() ->
                 new WorkspaceArchitectureIntegrationPort.CommandMetadata(
                         commandId, correlationId, causationId, "reason\u0000detail"));
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                new WorkspaceArchitectureIntegrationPort.CommandMetadata(
+                        commandId, correlationId, causationId, "reason\tdetail"))
+                .withMessage("Rationale must not contain control characters");
+        assertThatIllegalArgumentException().isThrownBy(() ->
+                new WorkspaceArchitectureIntegrationPort.CommandMetadata(
+                        commandId, correlationId, causationId, "reason\ndetail"))
+                .withMessage("Rationale must not contain control characters");
 
         WorkspaceArchitectureIntegrationPort.CommandMetadata metadata =
                 new WorkspaceArchitectureIntegrationPort.CommandMetadata(
