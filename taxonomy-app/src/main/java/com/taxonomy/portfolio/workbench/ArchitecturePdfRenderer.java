@@ -9,17 +9,12 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 
 /** Supplies portfolio-specific document semantics to the framework-neutral vector PDF renderer. */
 @Component
 public class ArchitecturePdfRenderer {
 
-    private final PdfDiagramRenderer renderer;
-
-    public ArchitecturePdfRenderer(PdfDiagramRenderer renderer) {
-        this.renderer = Objects.requireNonNull(renderer, "renderer");
-    }
+    private final PdfDiagramRenderer renderer = new PdfDiagramRenderer();
 
     public byte[] render(Projection projection) {
         if (projection == null || projection.scene() == null || projection.scene().isEmpty()) {
