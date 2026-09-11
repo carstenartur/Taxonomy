@@ -1,5 +1,6 @@
 package com.taxonomy.relations.model;
 
+import com.taxonomy.model.WorkspaceOverlayScope;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -60,7 +61,7 @@ public class RelationProjectionRecovery {
     private String workspaceId;
 
     @Column(name = "workspace_scope_key", nullable = false, length = 255)
-    private String workspaceScopeKey = RelationDecisionProjection.CENTRAL_SCOPE_KEY;
+    private String workspaceScopeKey = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
 
     @Column(name = "branch", nullable = false, length = 255)
     private String branch;
@@ -120,7 +121,7 @@ public class RelationProjectionRecovery {
     private void synchronize() {
         repositoryId = requireText(repositoryId, "repositoryId");
         workspaceId = normalizeOptional(workspaceId);
-        workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(workspaceId);
+        workspaceScopeKey = WorkspaceOverlayScope.keyFor(workspaceId);
         branch = requireText(branch, "branch");
         previousHeadCommit = normalizeCommitId(
                 previousHeadCommit, "previousHeadCommit", true);
@@ -193,8 +194,7 @@ public class RelationProjectionRecovery {
 
     public void setWorkspaceId(String workspaceId) {
         this.workspaceId = normalizeOptional(workspaceId);
-        this.workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(
-                this.workspaceId);
+        this.workspaceScopeKey = WorkspaceOverlayScope.keyFor(this.workspaceId);
     }
 
     public String getWorkspaceScopeKey() {
