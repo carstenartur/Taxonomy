@@ -3,6 +3,7 @@ package com.taxonomy.relations.model;
 import com.taxonomy.catalog.model.TaxonomyRelation;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationType;
+import com.taxonomy.model.WorkspaceOverlayScope;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -49,7 +50,7 @@ import java.time.Instant;
                }))
 public class RelationHypothesis {
 
-    public static final String CENTRAL_SCOPE_KEY = "__shared__";
+    public static final String CENTRAL_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
     public static final String UNSPECIFIED_SESSION_SCOPE_KEY = "__unspecified__";
 
     @Id
@@ -136,8 +137,7 @@ public class RelationHypothesis {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        String normalized = normalizeOptional(workspaceId);
-        return normalized == null ? CENTRAL_SCOPE_KEY : normalized;
+        return WorkspaceOverlayScope.keyFor(workspaceId);
     }
 
     public static String sessionScopeKeyFor(String analysisSessionId) {
