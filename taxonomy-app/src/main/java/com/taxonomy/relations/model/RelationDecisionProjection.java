@@ -1,7 +1,7 @@
 package com.taxonomy.relations.model;
 
 import com.taxonomy.model.RelationType;
-import com.taxonomy.model.WorkspaceScopeKey;
+import com.taxonomy.model.WorkspaceOverlayScopeKey;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -52,7 +52,7 @@ import java.util.Objects;
                 }))
 public class RelationDecisionProjection {
 
-    public static final String CENTRAL_SCOPE_KEY = WorkspaceScopeKey.SHARED;
+    public static final String CENTRAL_SCOPE_KEY = WorkspaceOverlayScopeKey.SHARED;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -136,7 +136,7 @@ public class RelationDecisionProjection {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        return WorkspaceScopeKey.forWorkspace(workspaceId);
+        return WorkspaceOverlayScopeKey.forWorkspace(workspaceId);
     }
 
     public Long getId() {
