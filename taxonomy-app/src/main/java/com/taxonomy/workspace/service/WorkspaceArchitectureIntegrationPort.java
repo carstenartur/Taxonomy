@@ -57,12 +57,12 @@ public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitect
             if (rationale == null || rationale.length() > 1000) {
                 throw new IllegalArgumentException("A rationale of 1–1000 characters is required");
             }
+            if (rationale.chars().anyMatch(Character::isISOControl)) {
+                throw new IllegalArgumentException("Rationale must not contain control characters");
+            }
             rationale = rationale.strip().replaceAll("\\s+", " ");
             if (rationale.isBlank()) {
                 throw new IllegalArgumentException("A rationale of 1–1000 characters is required");
-            }
-            if (rationale.chars().anyMatch(Character::isISOControl)) {
-                throw new IllegalArgumentException("Rationale must not contain control characters");
             }
         }
     }
