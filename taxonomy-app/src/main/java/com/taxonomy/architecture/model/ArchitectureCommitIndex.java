@@ -1,5 +1,6 @@
 package com.taxonomy.architecture.model;
 
+import com.taxonomy.model.WorkspaceOverlayScope;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -48,7 +49,7 @@ import java.time.Instant;
                }))
 public class ArchitectureCommitIndex {
 
-    public static final String CENTRAL_SCOPE_KEY = "__shared__";
+    public static final String CENTRAL_SCOPE_KEY = WorkspaceOverlayScope.CENTRAL_SCOPE_KEY;
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -136,8 +137,7 @@ public class ArchitectureCommitIndex {
     }
 
     public static String scopeKeyFor(String workspaceId) {
-        String normalized = normalizeOptional(workspaceId);
-        return normalized == null ? CENTRAL_SCOPE_KEY : normalized;
+        return WorkspaceOverlayScope.keyFor(workspaceId);
     }
 
     public Long getId() { return id; }
