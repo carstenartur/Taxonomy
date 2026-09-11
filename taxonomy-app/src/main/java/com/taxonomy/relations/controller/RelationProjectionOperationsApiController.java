@@ -1,6 +1,7 @@
 package com.taxonomy.relations.controller;
 
 import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.http.GitHttpPrecondition;
 import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.BranchProjectionSourceException;
 import com.taxonomy.relations.service.RelationProjectionOperationsService;
 import com.taxonomy.relations.service.RelationProjectionOperationsService.ProjectionStatus;
