@@ -21,6 +21,8 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 class EditorWorkspaceArchitectureIntegrationAdapterTest {
 
@@ -32,6 +34,42 @@ class EditorWorkspaceArchitectureIntegrationAdapterTest {
             new EditorWorkspaceArchitectureIntegrationAdapter(editor);
     private final RepositoryContext context =
             RepositoryContext.workspace("repo", "workspace", "main", "alice");
+
+    @Test
+    void readCurrentWorkspaceStateMapsEditorDocument() throws Exception {
+        String commit = "a".repeat(40);
+        var editorContext = ArchitectureCommandPort.Context.of(context, commit, EXPECTED_REVISION);
+        var editorDocument = new ArchitectureEditorService.Document(
+                editorContext, "architecture {}", "READY", List.of(), List.of(),
+                EXPECTED_REVISION, null, "WORKSPACE_REVISION");
+        when(editor.read(context, null)).thenReturn(editorDocument);
+
+        var document = adapter.read(context, null);
+
+        assertEquals(editorContext.workspaceScopeKey(), document.state().workspaceScopeKey());
+        assertEquals(commit, document.state().commitId());
+        assertEquals(EXPECTED_REVISION, document.state().semanticRevision());
+        assertEquals("architecture {}", document.dsl());
+        verify(editor).read(context, null);
+    }
+
+    @Test
+    void readExactCommitMapsHistoricalEditorDocument() throws Exception {
+        String commit = "b".repeat(40);
+        var editorContext = ArchitectureCommandPort.Context.version(context, commit);
+        var editorDocument = new ArchitectureEditorService.Document(
+                editorContext, "historical architecture {}", "HISTORICAL", List.of(), List.of(),
+                0, null, "GIT_CHECKPOINT");
+        when(editor.read(context, commit)).thenReturn(editorDocument);
+
+        var document = adapter.read(context, commit);
+
+        assertEquals(editorContext.workspaceScopeKey(), document.state().workspaceScopeKey());
+        assertEquals(commit, document.state().commitId());
+        assertEquals(0, document.state().semanticRevision());
+        assertEquals("historical architecture {}", document.dsl());
+        verify(editor).read(context, commit);
+    }
 
     @Test
     void lockedTranslatesEditorRevisionConflict() throws Exception {
