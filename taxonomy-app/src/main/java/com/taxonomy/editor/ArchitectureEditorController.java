@@ -4,8 +4,11 @@ import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
+import com.taxonomy.export.PdfDiagramRenderer;
+import com.taxonomy.export.PdfDiagramRenderer.DocumentDetails;
+import com.taxonomy.export.PdfDiagramRenderer.FooterLine;
+import com.taxonomy.export.PdfDiagramRenderer.HeaderLine;
 import com.taxonomy.export.SvgDiagramRenderer;
-import com.taxonomy.portfolio.workbench.ArchitecturePdfRenderer;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.eclipse.jgit.lib.ObjectId;
@@ -17,7 +20,7 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -29,10 +32,10 @@ public class ArchitectureEditorController {
     private final ArchitectureEditorProjection projection;
     private final WorkspaceResolver resolver;
     private final SvgDiagramRenderer svg;
-    private final ArchitecturePdfRenderer pdf;
+    private final PdfDiagramRenderer pdf;
 
     public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
-                                        WorkspaceResolver resolver, SvgDiagramRenderer svg, ArchitecturePdfRenderer pdf) {
+                                        WorkspaceResolver resolver, SvgDiagramRenderer svg, PdfDiagramRenderer pdf) {
         this.service = service;
         this.projection = projection;
         this.resolver = resolver;
@@ -81,11 +84,23 @@ public class ArchitectureEditorController {
         var provenance = document.context();
         String selected = "GIT_CHECKPOINT".equals(document.source()) ? "Checkpoint " + provenance.commit()
                 : "Revision " + provenance.revision() + " / checkpoint " + provenance.commit();
+        String provenanceText = provenance.repositoryId() + " / " + provenance.workspaceScopeKey()
+                + " / " + provenance.branch() + "\n" + selected;
+        List<HeaderLine> headerLines = new ArrayList<>();
+        String[] lines = provenanceText.split("\\n");
+        for (int index = 0; index < Math.min(2, lines.length); index++) {
+            headerLines.add(new HeaderLine(lines[index], 8, 17 + index * 12));
+        }
+        var details = new DocumentDetails(
+                provenanceText,
+                null,
+                null,
+                headerLines,
+                List.of(new FooterLine("Derived server layout · Git-authoritative architecture", 8, 16)));
         return documentResponse(document)
                 .header("X-Taxonomy-Layout-Source", view.schema().layoutMode())
                 .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
-                .body(pdf.render(view.scene(), provenance.repositoryId() + " / " + provenance.workspaceScopeKey()
-                        + " / " + provenance.branch() + "\n" + selected));
+                .body(pdf.render(view.scene(), details));
     }
 
     @PostMapping("/api/architecture/editor/preview")
