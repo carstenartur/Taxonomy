@@ -1,5 +1,6 @@
 package com.taxonomy.editor;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.export.LayeredDiagramLayoutService;
@@ -8,6 +9,7 @@ import com.taxonomy.portfolio.workbench.ArchitecturePdfRenderer;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
+import org.springframework.http.MediaType;
 
 import java.util.List;
 import java.util.Map;
@@ -15,6 +17,10 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+import static org.springframework.test.web.servlet.setup.MockMvcBuilders.standaloneSetup;
 
 class ArchitectureEditorControllerTest {
     private final ArchitectureEditorService service = mock(ArchitectureEditorService.class);
@@ -28,14 +34,24 @@ class ArchitectureEditorControllerTest {
     @Test
     void missingAndContradictoryPreconditionsNeverReachTheCommandPort() {
         var command = wire();
-        Throwable missing = catchThrowable(() -> controller.execute(command, null, null));
-        assertThat(missing).isInstanceOf(ArchitectureEditorController.PreconditionRequiredException.class);
-        var response = controller.missingPrecondition((Exception) missing);
-        assertThat(response.getStatusCode().value()).isEqualTo(428);
-        assertThat(response.getBody()).containsEntry("code", "PRECONDITION_REQUIRED")
-                .containsEntry("detail", "An exact semantic revision If-Match header is required");
+        assertThatThrownBy(() -> controller.execute(command, null, null))
+                .isInstanceOf(ArchitectureEditorController.PreconditionRequiredException.class);
         assertThatThrownBy(() -> controller.preview(command, "\"" + "a".repeat(40) + "\"", null))
                 .isInstanceOf(IllegalArgumentException.class);
+        verifyNoInteractions(service);
+    }
+
+    @Test
+    void missingIfMatchUsesTheSpecific428HandlerThroughSpringMvc() throws Exception {
+        var mvc = standaloneSetup(controller).build();
+
+        mvc.perform(post("/api/architecture/editor/commands")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(new ObjectMapper().writeValueAsBytes(wire())))
+                .andExpect(status().is(428))
+                .andExpect(jsonPath("$.code").value("PRECONDITION_REQUIRED"))
+                .andExpect(jsonPath("$.detail").value("An exact semantic revision If-Match header is required"));
+
         verifyNoInteractions(service);
     }
 
@@ -56,12 +72,15 @@ class ArchitectureEditorControllerTest {
         var document = new ArchitectureEditorService.Document(Context.of(scope, HEAD), dsl, "HISTORICAL", List.of(), List.of(), 0, null, "GIT_CHECKPOINT");
         when(service.read(scope, HEAD, null)).thenReturn(document);
         String requestedCommit = HEAD.toUpperCase(java.util.Locale.ROOT);
-        when(service.read(scope, requestedCommit, null)).thenReturn(document);
+        var uppercaseDocument = new ArchitectureEditorService.Document(Context.of(scope, requestedCommit), dsl,
+                "HISTORICAL", List.of(), List.of(), 0, null, "GIT_CHECKPOINT");
+        when(service.read(scope, requestedCommit, null)).thenReturn(uppercaseDocument);
         var json = controller.read("repo-a", "workspace-a", "draft", HEAD, null);
         var svg = controller.svg("repo-a", "workspace-a", "draft", HEAD, null);
         var pdf = controller.pdf("repo-a", "workspace-a", "draft", requestedCommit, null);
         assertThat(json.getBody().scene().nodes()).hasSize(1);
         assertThat(svg.getBody()).contains("System title", "arch-instance");
+        assertThat(json.getHeaders().getETag()).isEqualTo("\"" + HEAD + "\"");
         assertThat(svg.getHeaders().getETag()).isEqualTo(json.getHeaders().getETag());
         assertThat(pdf.getHeaders().getETag()).isEqualTo(json.getHeaders().getETag());
         for (var responseItem : List.of(json, svg, pdf)) {
@@ -70,7 +89,7 @@ class ArchitectureEditorControllerTest {
         }
         assertThat(svg.getHeaders().getFirst("X-Taxonomy-Layout-Source")).isEqualTo("DERIVED_SERVER_LAYOUT");
         try (var parsed = org.apache.pdfbox.Loader.loadPDF(pdf.getBody())) {
-            assertThat(parsed.getDocumentInformation().getSubject()).contains(HEAD, "repo-a", "workspace-a", "draft");
+            assertThat(parsed.getDocumentInformation().getSubject()).contains(requestedCommit, "repo-a", "workspace-a", "draft");
             assertThat(parsed.getDocumentInformation().getSubject()).doesNotContain("Revision 0");
             assertThat(new org.apache.pdfbox.text.PDFTextStripper().getText(parsed)).contains("System title");
         }
