@@ -1,7 +1,7 @@
 package com.taxonomy.relations.model;
 
 import com.taxonomy.model.RelationType;
-import com.taxonomy.workspace.service.WorkspaceOverlayScope;
+import com.taxonomy.model.WorkspaceOverlayScope;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
