@@ -3,8 +3,8 @@ package com.taxonomy.editor;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.export.LayeredDiagramLayoutService;
+import com.taxonomy.export.PdfDiagramRenderer;
 import com.taxonomy.export.SvgDiagramRenderer;
-import com.taxonomy.portfolio.workbench.ArchitecturePdfRenderer;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
@@ -21,7 +21,7 @@ class ArchitectureEditorControllerTest {
     private final WorkspaceResolver resolver = mock(WorkspaceResolver.class);
     private final ArchitectureEditorController controller = new ArchitectureEditorController(service,
             new ArchitectureEditorProjection(new LayeredDiagramLayoutService()), resolver,
-            new SvgDiagramRenderer(), new ArchitecturePdfRenderer());
+            new SvgDiagramRenderer(), new PdfDiagramRenderer());
     private final RepositoryContext scope = RepositoryContext.workspace("repo-a", "workspace-a", "draft", "alice");
     private static final String HEAD = "a1".repeat(20);
 
