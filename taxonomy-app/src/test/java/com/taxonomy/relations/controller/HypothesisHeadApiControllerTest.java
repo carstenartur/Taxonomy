@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.controller;
+package com.taxonomy.relations.controller;
 
 import com.taxonomy.relations.controller.RelationApiController;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;

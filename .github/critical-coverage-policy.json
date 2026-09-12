@@ -14,6 +14,8 @@
     "taxonomy-app/src/main/java/com/taxonomy/provenance/",
     "taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/",
     "taxonomy-app/src/main/java/com/taxonomy/dsl/storage/",
+    "taxonomy-app/src/main/java/com/taxonomy/relations/controller/",
+    "taxonomy-app/src/main/java/com/taxonomy/relations/service/",
     "taxonomy-app/src/main/java/com/taxonomy/versioning/",
     "taxonomy-app/src/main/java/com/taxonomy/composition/report/",
     "taxonomy-app/src/main/java/com/taxonomy/workspace/",
@@ -67,12 +69,22 @@
     },
     {
       "module": "taxonomy-app",
+      "package": "com/taxonomy/relations/controller",
+      "minimums": { "LINE": 0.81, "BRANCH": 0.58 }
+    },
+    {
+      "module": "taxonomy-app",
       "package": "com/taxonomy/composition/report",
       "minimums": { "LINE": 0.81, "BRANCH": 0.58 }
     },
     {
       "module": "taxonomy-app",
       "package": "com/taxonomy/versioning/service",
+      "minimums": { "LINE": 0.77, "BRANCH": 0.59 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/relations/service",
       "minimums": { "LINE": 0.77, "BRANCH": 0.59 }
     },
     {

@@ -32,6 +32,13 @@ The branch threshold is an explicit non-regression ratchet based on verified rea
 
 `.github/critical-coverage-policy.json` protects packages where untested negative branches can affect security, provenance, imports, Git/versioning, repository/workspace routing or portfolio decisions.
 
+Hypothesis lifecycle and HTTP authority now live in `relations.service` and
+`relations.controller`. Both destination packages retain the former versioning
+package floors (service: 77% lines / 59% branches; controller: 81% lines / 58%
+branches), and both source prefixes participate in changed-source coverage. The
+remaining versioning packages keep their existing floors. Moving authority must
+not remove it from either coverage gate.
+
 For each configured package the policy records separate line and branch minimums. The values are floors measured from a successful authoritative aggregate report; future changes may retain or raise them but may not silently reduce them.
 
 In a complete-history pull-request checkout, the same policy also identifies changed production Java files under configured critical source prefixes. Every selected source must appear as a `sourcefile` in the authoritative JaCoCo XML. A selected source with executable bytecode must meet the changed-source line minimum and, where measurable branches exist, the branch minimum.

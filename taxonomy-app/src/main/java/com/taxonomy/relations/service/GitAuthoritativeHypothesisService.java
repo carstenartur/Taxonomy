@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
@@ -8,17 +8,13 @@ import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.Comm
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
-import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
-import com.taxonomy.workspace.model.SystemRepository;
-import com.taxonomy.workspace.model.UserWorkspace;
-import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
 import com.taxonomy.workspace.service.RepositoryContext;
-import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceDslPublicationPort;
+import com.taxonomy.workspace.service.WorkspaceRepositoryContextPort;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -41,8 +37,6 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
     private final RelationHypothesisRepository hypothesisRepository;
     private final GitAuthoritativeHypothesisReviewService reviewService;
     private final RelationBranchProjectionReadinessService readinessService;
-    private final SystemRepositoryService systemRepositoryService;
-    private final UserWorkspaceRepository userWorkspaceRepository;
 
     public GitAuthoritativeHypothesisService(
             RelationHypothesisRepository hypothesisRepository,
@@ -50,8 +44,7 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
             TaxonomyRelationService relationService,
             TaxonomyNodeRepository nodeRepository,
             WorkspaceDslPublicationPort dslPublication,
-            SystemRepositoryService systemRepositoryService,
-            UserWorkspaceRepository userWorkspaceRepository,
+            WorkspaceRepositoryContextPort repositoryContexts,
             GitAuthoritativeHypothesisReviewService reviewService,
             RelationBranchProjectionReadinessService readinessService) {
         super(
@@ -60,14 +53,9 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
                 relationService,
                 nodeRepository,
                 dslPublication,
-                systemRepositoryService,
-                userWorkspaceRepository);
+                repositoryContexts);
         this.hypothesisRepository = Objects.requireNonNull(
                 hypothesisRepository, "hypothesisRepository");
-        this.systemRepositoryService = Objects.requireNonNull(
-                systemRepositoryService, "systemRepositoryService");
-        this.userWorkspaceRepository = Objects.requireNonNull(
-                userWorkspaceRepository, "userWorkspaceRepository");
         this.reviewService = Objects.requireNonNull(reviewService, "reviewService");
         this.readinessService = Objects.requireNonNull(
                 readinessService, "readinessService");
@@ -247,50 +235,8 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
         }
     }
 
-    private RepositoryContext resolveLegacyContext(WorkspaceContext workspaceContext) {
-        WorkspaceContext legacy = workspaceContext != null
-                ? workspaceContext : WorkspaceContext.SHARED;
-        String username = normalizeUsername(legacy.username());
-        String branch = normalizeOptional(legacy.currentBranch());
-        String workspaceId = normalizeOptional(legacy.workspaceId());
-
-        if (workspaceId == null) {
-            SystemRepository primary = systemRepositoryService.getPrimaryRepository();
-            return RepositoryContext.centralRead(
-                    primary.getRepositoryId(),
-                    branch != null ? branch : primary.getDefaultBranch(),
-                    username);
-        }
-
-        UserWorkspace workspace = userWorkspaceRepository.findByWorkspaceId(workspaceId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Workspace not found while resolving repository context: "
-                                + workspaceId));
-        if (workspace.getUsername() != null
-                && !workspace.getUsername().equals(username)
-                && !"system".equals(username)) {
-            throw new IllegalArgumentException(
-                    "Workspace does not belong to the active user: " + workspaceId);
-        }
-        String repositoryId = requireText(
-                workspace.getSourceRepositoryId(),
-                "workspace.sourceRepositoryId");
-        String workspaceBranch = branch != null
-                ? branch : normalizeOptional(workspace.getCurrentBranch());
-        return RepositoryContext.workspace(
-                repositoryId,
-                workspaceId,
-                workspaceBranch != null ? workspaceBranch : "draft",
-                username);
-    }
-
     private static RepositoryContext requireContext(RepositoryContext context) {
         return Objects.requireNonNull(context, "context");
-    }
-
-    private static String normalizeUsername(String value) {
-        String normalized = normalizeOptional(value);
-        return normalized != null ? normalized : "system";
     }
 
     private static String normalizeOptional(String value) {

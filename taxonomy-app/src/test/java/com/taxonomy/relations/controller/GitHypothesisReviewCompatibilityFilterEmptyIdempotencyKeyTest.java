@@ -1,7 +1,7 @@
-package com.taxonomy.versioning.controller;
+package com.taxonomy.relations.controller;
 
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisService;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisService;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceResolver;

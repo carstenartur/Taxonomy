@@ -8,7 +8,7 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
 import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
-import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.relations.service.HypothesisService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;

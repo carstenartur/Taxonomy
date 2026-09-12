@@ -10,7 +10,7 @@ import com.taxonomy.portfolio.service.PortfolioAnalysisClaimPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisPersistenceService;
 import com.taxonomy.portfolio.service.PortfolioAnalysisWorkQueue;
 import com.taxonomy.portfolio.service.PortfolioException;
-import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.relations.service.HypothesisService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;

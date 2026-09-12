@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
@@ -12,8 +12,8 @@ import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.Mu
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
@@ -65,7 +65,9 @@ class GitAuthoritativeHypothesisServiceContractTest {
     private final RelationBranchProjectionReadinessService readiness =
             mock(RelationBranchProjectionReadinessService.class);
     private final GitAuthoritativeHypothesisService service = new GitAuthoritativeHypothesisService(
-            hypotheses, evidence, relations, nodes, publication, repositories, workspaces, reviews, readiness);
+            hypotheses, evidence, relations, nodes, publication,
+            new com.taxonomy.workspace.service.LegacyWorkspaceRepositoryContextResolver(repositories, workspaces),
+            reviews, readiness);
 
     @ParameterizedTest
     @EnumSource(ReviewAction.class)
@@ -183,6 +185,37 @@ class GitAuthoritativeHypothesisServiceContractTest {
         verify(workspaces).findByWorkspaceId("workspace-a");
         verify(reviews).accept(42L, CONTEXT, HEAD, compatibilityMetadata(ReviewAction.ACCEPT));
         verifyNoInteractions(repositories, publication);
+    }
+
+    @Test
+    void explicitCentralRepositoryRetainsItsIdentityAndDefaultBranch() throws Exception {
+        SystemRepository selected = new SystemRepository();
+        selected.setRepositoryId("repo-b");
+        selected.setDefaultBranch("accepted-b");
+        when(repositories.getRepository("repo-b")).thenReturn(selected);
+        RepositoryContext context = RepositoryContext.centralRead("repo-b", "accepted-b", "alice");
+        IllegalStateException readOnly = new IllegalStateException("Read-only central context");
+        doThrow(readOnly).when(reviews).requireReviewable(42L, context, ReviewAction.ACCEPT);
+
+        assertThatThrownBy(() -> service.accept(42L,
+                new WorkspaceContext("alice", null, null, "repo-b"))).isSameAs(readOnly);
+
+        verify(repositories).getRepository("repo-b");
+        verify(repositories, never()).getPrimaryRepository();
+        verify(reviews).requireReviewable(42L, context, ReviewAction.ACCEPT);
+        verifyNoInteractions(workspaces, readiness, publication, hypotheses);
+    }
+
+    @Test
+    void explicitRepositoryMismatchFailsBeforeReviewOrBranchAccess() {
+        arrangeWorkspace("alice", "draft", "repo-a");
+
+        assertThatThrownBy(() -> service.accept(42L,
+                new WorkspaceContext("alice", "workspace-a", "review", "repo-b")))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("Workspace repository does not match the selected repository: workspace-a");
+
+        verifyNoInteractions(reviews, readiness, publication, repositories, hypotheses);
     }
 
     @Test

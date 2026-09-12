@@ -50,13 +50,16 @@ source prefix and the `versioning.controller` package floors. The new
 inherits the same **0.81 line / 0.58 branch** floors. Global changed-source floors
 and the empty exception list remain unchanged.
 
-The clean D1 checkout removes all three report-related versioning-controller
+The isolated D1 checkout removes all three report-related versioning-controller
 package edges: architecture decision (6 class pairs), architecture report (1),
 and catalog service (1). The same report/knowledge dependencies are now owned by
 composition, which additionally exposes the three previously internal workspace
 API references. Total class pairs change from 559 to 562; this is an ownership
-transfer, with no additional runtime dependency. The measured replacement is
-recorded in `.github/architecture-dependency-baseline.json`.
+transfer, with no additional runtime dependency. When composed after C2 (#1053),
+the same measured move changes class pairs from 540 to 543. That combined
+replacement is recorded in `.github/architecture-dependency-baseline.json`, while
+retaining both the hypothesis and report destination coverage rules. The D1 PR is
+stacked on C2 so these shared policy files have a reviewed, measured resolution.
 
 ## Verification checkpoint
 
@@ -69,7 +72,7 @@ changes beyond its package and the tests have no changes beyond package/imports.
 The clean Maven boundary run executes 21 tests: 20 pass, including all nine
 Spring-backed report endpoint cases, and the sole initial failure prints the
 reviewed dependency-baseline replacement. The strict cycle rule passes without
-adding exceptions. After accepting that measured replacement, the fresh-checkout
+adding exceptions. After accepting that isolated replacement, the fresh-checkout
 `./mvnw verify -DexcludedGroups=real-llm` run passed, including all 3,028 application
 tests, the strict dependency ratchet and the cycle rule. The pinned ONNX model was
 available; no application tests were skipped. Report-controller coverage is
@@ -79,3 +82,10 @@ floors; the remaining versioning controllers also retain their package floors.
 This default local command skips application integration tests and the
 post-reactor quality gate. The authoritative CI profile, database, security,
 product and UI lanes still have to pass on the published head before integration.
+
+The combined C2 + D1 checkout also includes the independently proposed module
+gate (#1054) for integration verification. It runs 74 focused cases: all 73
+behavior/ownership/gate cases pass, with only the initial exact-baseline mismatch
+remaining. After recording the measured 543 class pairs, all 50 architecture and
+module-gate invocations pass. Its 1,405-class graph still has extraction blockers;
+this composition move does not authorize a physical Maven extraction.

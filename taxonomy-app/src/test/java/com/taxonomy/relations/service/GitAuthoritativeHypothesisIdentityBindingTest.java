@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.workspace.model.SystemRepository;

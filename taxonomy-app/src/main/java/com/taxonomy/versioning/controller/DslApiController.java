@@ -16,11 +16,8 @@ import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.dto.VersionedSearchResult;
 import com.taxonomy.architecture.model.ArchitectureDslDocument;
-import com.taxonomy.model.HypothesisStatus;
-import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.versioning.service.ConflictDetectionService;
 import com.taxonomy.versioning.service.DslOperationsFacade;
-import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -42,7 +39,8 @@ import java.util.*;
  * REST API for the Architecture DSL subsystem.
  *
  * <p>Endpoints cover DSL parsing, validation, export, materialization,
- * versioning (commit/history/diff/branches), and hypothesis management.
+ * and versioning (commit/history/diff/branches). Hypothesis HTTP operations
+ * are owned by {@link com.taxonomy.relations.controller.HypothesisApiController}.
  *
  * <p>Versioning is backed by a JGit DFS repository
  * which stores DSL documents as Git objects (blobs → trees → commits)
@@ -57,7 +55,6 @@ public class DslApiController {
     private static final Logger log = LoggerFactory.getLogger(DslApiController.class);
 
     private final DslOperationsFacade dslOps;
-    private final HypothesisService hypothesisService;
     private final WorkspaceResolver workspaceResolver;
     private final RepositoryStateService repositoryStateService;
 
@@ -68,11 +65,9 @@ public class DslApiController {
     private final DslValidator validator = new DslValidator();
 
     public DslApiController(DslOperationsFacade dslOps,
-                            HypothesisService hypothesisService,
                             WorkspaceResolver workspaceResolver,
                             RepositoryStateService repositoryStateService) {
         this.dslOps = dslOps;
-        this.hypothesisService = hypothesisService;
         this.workspaceResolver = workspaceResolver;
         this.repositoryStateService = repositoryStateService;
     }
@@ -790,10 +785,6 @@ public class DslApiController {
         }
     }
 
-    private WorkspaceContext currentWorkspaceContext() {
-        return resolveWorkspaceContext(workspaceResolver.resolveCurrentUsername());
-    }
-
     private WorkspaceContext resolveWorkspaceContext(String username) {
         try {
             repositoryStateService.ensureWorkspaceState(username);
@@ -802,86 +793,6 @@ public class DslApiController {
             log.warn("Falling back to shared workspace context for user '{}' due to: {}",
                     username, e.toString(), e);
             return WorkspaceContext.SHARED;
-        }
-    }
-
-    // ── Hypothesis management ────────────────────────────────────────
-
-    @GetMapping("/hypotheses")
-    @Operation(summary = "List relation hypotheses, optionally filtered by status")
-    public ResponseEntity<List<RelationHypothesis>> listHypotheses(
-            @RequestParam(required = false) HypothesisStatus status) {
-        WorkspaceContext context = currentWorkspaceContext();
-        List<RelationHypothesis> result = status != null
-                ? hypothesisService.findByStatus(status, context)
-                : hypothesisService.findAll(context);
-        return ResponseEntity.ok(result);
-    }
-
-    @PostMapping("/hypotheses/{id}/accept")
-    @Operation(summary = "Accept a relation hypothesis",
-            description = "Promotes the hypothesis to an accepted TaxonomyRelation in the knowledge graph.")
-    public ResponseEntity<Map<String, Object>> acceptHypothesis(@PathVariable Long id) {
-        try {
-            RelationHypothesis accepted = hypothesisService.accept(id, currentWorkspaceContext());
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("id", accepted.getId());
-            result.put("status", accepted.getStatus().name());
-            result.put("sourceNodeId", accepted.getSourceNodeId());
-            result.put("targetNodeId", accepted.getTargetNodeId());
-            result.put("relationType", accepted.getRelationType().name());
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalStateException e) {
-            Map<String, Object> error = new LinkedHashMap<>();
-            error.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
-        }
-    }
-
-    @PostMapping("/hypotheses/{id}/reject")
-    @Operation(summary = "Reject a relation hypothesis")
-    public ResponseEntity<Map<String, Object>> rejectHypothesis(@PathVariable Long id) {
-        try {
-            RelationHypothesis rejected = hypothesisService.reject(id, currentWorkspaceContext());
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("id", rejected.getId());
-            result.put("status", rejected.getStatus().name());
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        } catch (IllegalStateException e) {
-            Map<String, Object> error = new LinkedHashMap<>();
-            error.put("error", e.getMessage());
-            return ResponseEntity.badRequest().body(error);
-        }
-    }
-
-    @PostMapping("/hypotheses/{id}/apply-session")
-    @Operation(summary = "Mark hypothesis as applied for current analysis session only",
-            description = "The relationship is used in the current Architecture View and exports " +
-                    "but is not permanently persisted as a TaxonomyRelation.")
-    public ResponseEntity<Map<String, Object>> applyHypothesisForSession(@PathVariable Long id) {
-        try {
-            RelationHypothesis hypothesis = hypothesisService.applyForSession(id, currentWorkspaceContext());
-            Map<String, Object> result = new LinkedHashMap<>();
-            result.put("id", hypothesis.getId());
-            result.put("appliedInCurrentAnalysis", hypothesis.isAppliedInCurrentAnalysis());
-            result.put("status", hypothesis.getStatus().name());
-            return ResponseEntity.ok(result);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
-        }
-    }
-
-    @GetMapping("/hypotheses/{id}/evidence")
-    @Operation(summary = "Get evidence records for a hypothesis")
-    public ResponseEntity<?> getHypothesisEvidence(@PathVariable Long id) {
-        try {
-            return ResponseEntity.ok(hypothesisService.findEvidence(id, currentWorkspaceContext()));
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.notFound().build();
         }
     }
 

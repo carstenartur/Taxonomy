@@ -91,6 +91,32 @@ Ein Package namens `shared` ist nicht automatisch eine Modulgrenze. Gemeinsame K
 
 ## Architektur-Fitnessfunktionen
 
+### Hypothesen-Zuständigkeit (C2 von #1043)
+
+Hypothesen-Lebenszyklus, Git-autoritative Reviews, Review-Zustand und die
+HTTP-Adapter unter `/api/dsl/hypotheses/**` gehören zu `relations`. Der verbleibende
+`DslApiController` ruft keine Hypothesen-Services auf. Historische
+`WorkspaceContext`-Argumente übersetzt der Workspace-eigene
+`WorkspaceRepositoryContextPort`: Eine explizite Repository-Auswahl bleibt
+erhalten, widersprüchliche Workspace-Herkunft scheitert vor Review oder
+Branch-Zugriff, und zentrale Kontexte bleiben schreibgeschützt.
+
+Hypothesen-Services nutzen Workspace-APIs für Repository-Kontext, exakte
+Git-Lese-/Schreiboperationen und die Publikation erzeugter DSL-Snapshots. Sie
+hängen weder von Workspace-Entities/-Repositories noch von konkretem DSL-Speicher
+oder JGit ab. Fachliche Reviews und Transaktions-Callbacks bleiben bei Relations;
+Snapshot-Publikation bleibt von Expected-Head-Commands und Editor-Checkpoints
+getrennt.
+
+Die gemessene C2-Baseline reduziert kontextübergreifende Klassenpaare von 559 auf
+540. `versioning.service -> catalog/relations` und
+`versioning.controller -> relations` sind jetzt null. Verbleibende Abhängigkeiten
+sind weiterhin sichtbar: `DecisionRationaleReportController` koordiniert
+Katalog-/Architekturberichte, die DSL-Operations-Fassaden koordinieren
+Architekturdokumente/-historie mit Workspace-Zustand. Diese Orchestrierung folgt
+in einem eigenen Schritt vor der physischen Extraktion. Keine Zyklusausnahme
+wurde hinzugefügt oder erweitert.
+
 Die Migration wird durch zwei sich ergänzende Schutzmechanismen abgesichert:
 
 1. `ArchitectureCycleBoundaryTest` verhindert undokumentierte Package-Zyklen. Temporäre Ausnahmen müssen in `.github/architecture-exceptions.json` stehen und ein Ablaufdatum besitzen.

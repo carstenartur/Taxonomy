@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.controller;
+package com.taxonomy.relations.controller;
 
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.model.HypothesisStatus;
@@ -12,9 +12,9 @@ import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.R
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionOutcome;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionResult;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisService;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
