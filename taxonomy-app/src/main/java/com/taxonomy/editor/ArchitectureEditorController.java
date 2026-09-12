@@ -4,8 +4,6 @@ import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
 import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
-import com.taxonomy.export.SvgDiagramRenderer;
-import com.taxonomy.portfolio.workbench.ArchitecturePdfRenderer;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.eclipse.jgit.lib.ObjectId;
@@ -17,7 +15,6 @@ import org.springframework.stereotype.Controller;
 import org.springframework.web.bind.annotation.*;
 
 import java.io.IOException;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -28,16 +25,12 @@ public class ArchitectureEditorController {
     private final ArchitectureEditorService service;
     private final ArchitectureEditorProjection projection;
     private final WorkspaceResolver resolver;
-    private final SvgDiagramRenderer svg;
-    private final ArchitecturePdfRenderer pdf;
 
     public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
-                                        WorkspaceResolver resolver, SvgDiagramRenderer svg, ArchitecturePdfRenderer pdf) {
+                                        WorkspaceResolver resolver) {
         this.service = service;
         this.projection = projection;
         this.resolver = resolver;
-        this.svg = svg;
-        this.pdf = pdf;
     }
 
     @GetMapping("/architecture/editor")
@@ -54,38 +47,6 @@ public class ArchitectureEditorController {
         RepositoryContext context = readContext(repositoryId, workspaceScopeKey, branch);
         var document = service.read(context, commit, revision);
         return documentResponse(document).body(projection.project(document, mayEdit()));
-    }
-
-    @GetMapping(value = "/api/architecture/editor.svg", produces = "image/svg+xml")
-    @ResponseBody
-    public ResponseEntity<String> svg(@RequestParam String repositoryId, @RequestParam String workspaceScopeKey,
-                                      @RequestParam String branch, @RequestParam(required = false) String commit,
-                                      @RequestParam(required = false) Long revision) throws IOException {
-        if (commit == null && revision == null) throw new IllegalArgumentException("An exact revision or version is required for export");
-        var document = service.read(readContext(repositoryId, workspaceScopeKey, branch), commit, revision);
-        var view = projection.project(document, false);
-        return documentResponse(document)
-                .header("X-Taxonomy-Layout-Source", view.schema().layoutMode())
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.svg")
-                .body(svg.render(view.scene()));
-    }
-
-    @GetMapping(value = "/api/architecture/editor.pdf", produces = "application/pdf")
-    @ResponseBody
-    public ResponseEntity<byte[]> pdf(@RequestParam String repositoryId, @RequestParam String workspaceScopeKey,
-                                      @RequestParam String branch, @RequestParam(required = false) String commit,
-                                      @RequestParam(required = false) Long revision) throws IOException {
-        if (commit == null && revision == null) throw new IllegalArgumentException("An exact revision or version is required for export");
-        var document = service.read(readContext(repositoryId, workspaceScopeKey, branch), commit, revision);
-        var view = projection.project(document, false);
-        var provenance = document.context();
-        String selected = "GIT_CHECKPOINT".equals(document.source()) ? "Checkpoint " + provenance.commit()
-                : "Revision " + provenance.revision() + " / checkpoint " + provenance.commit();
-        return documentResponse(document)
-                .header("X-Taxonomy-Layout-Source", view.schema().layoutMode())
-                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=architecture.pdf")
-                .body(pdf.render(view.scene(), provenance.repositoryId() + " / " + provenance.workspaceScopeKey()
-                        + " / " + provenance.branch() + "\n" + selected));
     }
 
     @PostMapping("/api/architecture/editor/preview")

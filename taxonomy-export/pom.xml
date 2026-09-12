@@ -28,6 +28,12 @@
             <artifactId>taxonomy-extension-api</artifactId>
             <version>${project.version}</version>
         </dependency>
+        <!-- Server-side vector PDF export shared by application adapters. -->
+        <dependency>
+            <groupId>org.apache.pdfbox</groupId>
+            <artifactId>pdfbox</artifactId>
+            <version>${pdfbox.version}</version>
+        </dependency>
         <!-- XStream for Visio VSDX XML serialization -->
         <dependency>
             <groupId>com.thoughtworks.xstream</groupId>

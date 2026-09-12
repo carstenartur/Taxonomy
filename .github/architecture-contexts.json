@@ -78,6 +78,7 @@
       "id": "app-composition",
       "targetModule": "taxonomy-app",
       "packages": [
+        "com.taxonomy.composition..",
         "com.taxonomy.observability..",
         "com.taxonomy.security..",
         "com.taxonomy.shared.."
