@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.controller;
+package com.taxonomy.composition.report;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReportService;
 import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
@@ -8,7 +8,7 @@ import com.taxonomy.dto.AnalysisScoreDetail;
 import com.taxonomy.dto.AnalysisScoreKind;
 import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.TaxonomyNodeDto;
-import com.taxonomy.versioning.controller.DecisionRationaleReportController.DecisionReportRequest;
+import com.taxonomy.composition.report.DecisionRationaleReportController.DecisionReportRequest;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.Test;
