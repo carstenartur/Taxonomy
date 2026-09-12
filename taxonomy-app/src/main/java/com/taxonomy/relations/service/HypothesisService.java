@@ -455,7 +455,8 @@ public class HypothesisService {
             throw new IllegalStateException(description + " is invalid: " + result);
         }
         if (result.hasWarnings()) {
-            log.warn("{} contains validation warnings: {}", description, result.getWarnings());
+            // Validation messages can contain model identifiers; log only their count.
+            log.warn("{} contains validation warnings (count={})", description, result.getWarnings().size());
         }
     }
 

@@ -42,8 +42,8 @@
 
 - [x] Run `ArchitectureContextDependencyRatchetTest`, review each changed class-pair count and commit the measured baseline; retain `ArchitectureCycleBoundaryTest` without adding exceptions.
 - [x] Record remaining workspace/knowledge edges and ownership in the architecture documentation.
-- [ ] Run the mandatory `./mvnw verify -DexcludedGroups="real-llm"`; distinguish unavailable infrastructure from successful test execution.
-- [ ] Review the diff, commit the C2 change and publish a focused PR. Keep #628/#1043 open until their full completion criteria are met.
+- [x] Run the mandatory `./mvnw verify -DexcludedGroups="real-llm"`; distinguish unavailable infrastructure from successful test execution.
+- [x] Review the diff, commit the C2 change and publish a focused PR. Keep #628/#1043 open until their full completion criteria are met.
 
 ## Review and validation evidence
 
@@ -58,4 +58,31 @@ An independent review found that package relocation would remove hypothesis code
 from critical coverage selection. The destination relations packages now inherit
 the original versioning line/branch floors and changed-source selection; existing
 versioning budgets remain in place. All four hypothesis services are covered by
-the storage/persistence boundary rules. Full reactor verification remains pending.
+the storage/persistence boundary rules.
+
+With the pinned ONNX model available, a fresh-checkout default reactor verification
+passed: 3,060 application test invocations, zero failures/errors/skips. That local
+checkout additionally contained 24 independent draft module-gate invocations;
+those test sources are not part of the C2 PR. The default command skips application
+integration tests and the post-reactor quality gate, so authoritative CI remains
+the integration requirement.
+
+The destination controller package also receives 34 behavioral contract cases for
+exact context propagation, central authorization, preconditions, review conflicts,
+projection verification and recovery. They all pass in standalone JDK 21/JUnit.
+Combining their JaCoCo execution data with the local reactor report measures
+84.14% lines / 69.74% branches for `relations.controller`, above the unchanged
+81% / 58% floors. The canonical aggregate CI report remains authoritative.
+
+The initial CI CodeQL artifact identifies full DSL validation warnings being
+written by `HypothesisService`. Logging now retains only the fixed validation
+stage and warning count. Three real persistence/DSL round-trip tests cover one
+warning, multiple warnings and a valid model: two disclosure assertions failed
+before the fix, and all three pass afterwards. Only the obsolete hypothesis
+CodeQL baseline entry is retired; the other six entries and tracking metadata
+remain unchanged. Fresh CodeQL results must confirm clearance on the new head.
+
+The final corrective Maven run passes 134 application cases plus 32 tooling/domain
+cases, with no failures/errors/skips. It includes all hypothesis-named suites, the
+34 destination HTTP contracts, the three logging regressions, the strict ratchet
+and cycle rule, and the existing CodeQL baseline/threshold/routing checks.
