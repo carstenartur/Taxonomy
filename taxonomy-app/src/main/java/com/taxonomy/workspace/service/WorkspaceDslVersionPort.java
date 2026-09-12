@@ -8,6 +8,10 @@ import java.io.IOException;
  *
  * <p>This is a Git version boundary, not the semantic editor journal. Opening a
  * version does not create an operation, advance a branch or publish a checkpoint.</p>
+ *
+ * <p>Failed head preconditions are reported as
+ * {@link BranchHeadConflictException}; ordinary storage failures remain
+ * {@link IOException}. Callers must not treat all I/O failures as conflicts.</p>
  */
 public interface WorkspaceDslVersionPort {
 

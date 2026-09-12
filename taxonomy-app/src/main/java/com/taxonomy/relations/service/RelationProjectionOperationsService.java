@@ -1,8 +1,5 @@
 package com.taxonomy.relations.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.BranchProjectionSourceException;
@@ -11,7 +8,7 @@ import com.taxonomy.relations.service.RelationProjectionRecoveryService.Reconcil
 import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -22,42 +19,23 @@ import java.util.Objects;
 @Service
 public class RelationProjectionOperationsService {
 
-    private final DslGitRepositoryFactory gitRepositoryFactory;
+    private final WorkspaceDslReadPort reads;
     private final RelationBranchProjectionReadinessService readinessService;
     private final RelationBranchProjectionRebuildService rebuildService;
     private final RelationProjectionRecoveryService recoveryService;
-    private final ExpectedHeadDslCommitter expectedHeadVerifier;
 
-    @Autowired
     public RelationProjectionOperationsService(
-            DslGitRepositoryFactory gitRepositoryFactory,
+            WorkspaceDslReadPort reads,
             RelationBranchProjectionReadinessService readinessService,
             RelationBranchProjectionRebuildService rebuildService,
             RelationProjectionRecoveryService recoveryService) {
-        this(
-                gitRepositoryFactory,
-                readinessService,
-                rebuildService,
-                recoveryService,
-                new ExpectedHeadDslCommitter());
-    }
-
-    RelationProjectionOperationsService(
-            DslGitRepositoryFactory gitRepositoryFactory,
-            RelationBranchProjectionReadinessService readinessService,
-            RelationBranchProjectionRebuildService rebuildService,
-            RelationProjectionRecoveryService recoveryService,
-            ExpectedHeadDslCommitter expectedHeadVerifier) {
-        this.gitRepositoryFactory = Objects.requireNonNull(
-                gitRepositoryFactory, "gitRepositoryFactory");
+        this.reads = Objects.requireNonNull(reads, "reads");
         this.readinessService = Objects.requireNonNull(
                 readinessService, "readinessService");
         this.rebuildService = Objects.requireNonNull(
                 rebuildService, "rebuildService");
         this.recoveryService = Objects.requireNonNull(
                 recoveryService, "recoveryService");
-        this.expectedHeadVerifier = Objects.requireNonNull(
-                expectedHeadVerifier, "expectedHeadVerifier");
     }
 
     public ProjectionStatus inspect(RepositoryContext context) {
@@ -77,12 +55,8 @@ public class RelationProjectionOperationsService {
             String expectedHeadCommit) throws IOException {
         RepositoryContext selected = requireMutable(context);
         String requiredHead = requireExistingHead(expectedHeadCommit);
-        DslGitRepository repository = gitRepositoryFactory
-                .resolveRepository(selected);
-        String verifiedHead = expectedHeadVerifier.verifyExpectedHead(
-                repository,
-                selected.branch(),
-                requiredHead);
+        WorkspaceDslReadPort.RepositoryRead repository = reads.openRead(selected);
+        String verifiedHead = repository.verifyExpectedHead(requiredHead);
         if (verifiedHead == null) {
             throw new BranchProjectionSourceException(
                     "Cannot rebuild relation projection for an absent branch");

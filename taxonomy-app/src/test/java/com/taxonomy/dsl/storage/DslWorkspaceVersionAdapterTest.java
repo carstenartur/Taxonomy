@@ -1,6 +1,6 @@
 package com.taxonomy.dsl.storage;
 
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;

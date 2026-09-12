@@ -1,7 +1,8 @@
 package com.taxonomy.relations.service;
 
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.dsl.storage.DslWorkspaceReadAdapter;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.RebuildResult;
@@ -63,7 +64,7 @@ class RelationProjectionOperationsServiceTest {
                 .thenReturn(reconciliation);
 
         var operation = new RelationProjectionOperationsService(
-                repositoryFactory,
+                new DslWorkspaceReadAdapter(repositoryFactory),
                 readinessService,
                 rebuildService,
                 recoveryService).rebuild(context, head);
@@ -92,7 +93,7 @@ class RelationProjectionOperationsServiceTest {
                 mock(RelationProjectionRecoveryService.class);
 
         assertThatThrownBy(() -> new RelationProjectionOperationsService(
-                repositoryFactory,
+                new DslWorkspaceReadAdapter(repositoryFactory),
                 readinessService,
                 rebuildService,
                 recoveryService).rebuild(context, null))
@@ -124,7 +125,7 @@ class RelationProjectionOperationsServiceTest {
                 mock(RelationProjectionRecoveryService.class);
         RelationProjectionOperationsService service =
                 new RelationProjectionOperationsService(
-                        repositoryFactory,
+                        new DslWorkspaceReadAdapter(repositoryFactory),
                         readinessService,
                         rebuildService,
                         recoveryService);
@@ -160,7 +161,7 @@ class RelationProjectionOperationsServiceTest {
         when(readinessService.inspect(context)).thenReturn(corrupt);
 
         assertThatThrownBy(() -> new RelationProjectionOperationsService(
-                repositoryFactory,
+                new DslWorkspaceReadAdapter(repositoryFactory),
                 readinessService,
                 rebuildService,
                 recoveryService).rebuild(context, head))
@@ -200,7 +201,7 @@ class RelationProjectionOperationsServiceTest {
                 .thenThrow(new IllegalStateException("recovery unavailable"));
 
         assertThatThrownBy(() -> new RelationProjectionOperationsService(
-                repositoryFactory,
+                new DslWorkspaceReadAdapter(repositoryFactory),
                 readinessService,
                 rebuildService,
                 recoveryService).rebuild(context, head))

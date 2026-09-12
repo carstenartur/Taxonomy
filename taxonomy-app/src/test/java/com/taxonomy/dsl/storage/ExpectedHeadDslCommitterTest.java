@@ -1,6 +1,6 @@
 package com.taxonomy.dsl.storage;
 
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.CommitRequest;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.lib.RefUpdate;

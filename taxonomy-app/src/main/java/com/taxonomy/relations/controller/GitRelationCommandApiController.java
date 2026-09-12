@@ -3,7 +3,7 @@ package com.taxonomy.relations.controller;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
