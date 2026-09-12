@@ -394,7 +394,7 @@
         </profile>
         <profile>
             <id>architecture-tests</id>
-            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest</test></properties>
+            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest</test></properties>
         </profile>
         <profile>
             <id>document-import-tests</id>

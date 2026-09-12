@@ -10,7 +10,9 @@ on:
       - 'pom.xml'
       - 'taxonomy-app/pom.xml'
       - 'taxonomy-app/src/main/java/com/taxonomy/dsl/storage/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/composition/persistence/**'
       - 'taxonomy-app/src/test/java/com/taxonomy/dsl/storage/**'
+      - 'taxonomy-app/src/test/java/com/taxonomy/composition/persistence/**'
       - 'taxonomy-app/src/test/java/com/taxonomy/dsl/CommitIndexHibernateSearchTest.java'
   push:
     branches: [ main ]
@@ -20,7 +22,9 @@ on:
       - 'pom.xml'
       - 'taxonomy-app/pom.xml'
       - 'taxonomy-app/src/main/java/com/taxonomy/dsl/storage/**'
+      - 'taxonomy-app/src/main/java/com/taxonomy/composition/persistence/**'
       - 'taxonomy-app/src/test/java/com/taxonomy/dsl/storage/**'
+      - 'taxonomy-app/src/test/java/com/taxonomy/composition/persistence/**'
       - 'taxonomy-app/src/test/java/com/taxonomy/dsl/CommitIndexHibernateSearchTest.java'
 
 concurrency:

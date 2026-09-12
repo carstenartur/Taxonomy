@@ -203,7 +203,7 @@ System-Repository-Auswahl, einmalige Initialisierung und Wiederholung nach Fehle
 bleiben erhalten. Über die Startlogik hängt Workspace nicht mehr direkt von
 Application-Readiness oder Knowledge-Export ab.
 
-Die aktuelle gemessene Baseline enthält **537 kontextübergreifende Klassenpaare
+Die D4-Baseline erfasste **537 kontextübergreifende Klassenpaare
 über 146 Package-Kanten**, gegenüber **539 / 147** bei D3. Die zwei Readiness-Paare
 liegen nun innerhalb der Composition; das Bootstrap-Export-Paar und seine zwei
 Storage-Paare behalten ihre bisherigen Ziele unter dem neuen Composition-Eigentümer.
@@ -214,6 +214,29 @@ die Extraktion; D4 erzeugt kein Maven-Modul und schließt #628/#1043 nicht ab.
 Context-Map, Zyklusausnahmen und Coverage-Mindestwerte bleiben unverändert. Siehe
 [Git-Bootstrap-Komposition](../dev/GIT_BOOTSTRAP_COMPOSITION.md).
 
+### Anwendungsschema in der Composition (D5a von #1043)
+
+`TaxonomySchemaMigrationConfig` gehört jetzt zu
+`com.taxonomy.composition.persistence`. Die primäre Flyway-Strategie ruft zuerst
+die exakt qualifizierte `jgitStorageFlywayMigrationStrategy` und danach die
+Anwendungsmigration auf. Ein Core-Fehler verhindert jede Anwendungsarbeit; Core
+behält seine bestehende Legacy-Adoption-Property und die package-private
+Migrationsimplementierung.
+
+Die frische Bytecode-Messung bleibt bei **537 kontextübergreifenden Klassenpaaren
+über 146 Package-Kanten**. Keine erfasste Package-Kante ändert sich: Der bisherige
+direkte Aufruf lag innerhalb von DSL Storage; die neue Composition hängt vom
+Flyway-Strategie-Interface ab. Die **42 Workspace-zu-DSL-Storage-Paare** und **117
+Knowledge-zu-Workspace-Paare** bleiben unverändert. Baseline, Context-Map und
+Zyklusausnahmen ändern sich nicht.
+
+Zehn PostgreSQL-Integrationstests des Anwendungsschemas folgen ihrem Eigentümer;
+alle bestehenden Assertions und SQL-Ressourcen bleiben erhalten. Storage und
+Composition-Persistence haben jeweils einen eigenständigen Mindestwert von
+**87% Line- / 71% Branch-Coverage**. Die Storage-Adapter werden in einem separaten
+Schritt verschoben; D5a erzeugt kein Maven-Modul und schließt #628/#1043 nicht ab.
+Siehe [Anwendungsschema-Komposition](../dev/APPLICATION_SCHEMA_COMPOSITION.md).
+
 Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
 
 1. `ArchitectureCycleBoundaryTest` verhindert undokumentierte Package-Zyklen. Temporäre Ausnahmen müssen in `.github/architecture-exceptions.json` stehen und ein Ablaufdatum besitzen.
@@ -223,6 +246,7 @@ Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
 4. `ArchitectureCommitHistoryOwnershipTest` verlangt, dass Entity, Repository und die drei Projektions-Services der Git-Commit-Historie in ihren Versioning-Owner-Packages bleiben.
 5. `ArchitectureDslCompositionBoundaryTest` verlangt Dokument-Controller/-Fassade und gemeinsamen HTTP-Kontextresolver in ihren Owner-Packages, prüft die exklusive Zuständigkeit für die acht Dokumentrouten und verhindert Architecture-/Knowledge-/Dokumentexport-Abhängigkeiten aus Workspace-Controllern und beiden Workspace-DSL-Fassaden.
 6. `ArchitectureWorkspaceAuthorityBoundaryTest` verlangt den Composition-Eigentümer der Startlogik und verhindert direkte Workspace-/Versioning-/Editor-Abhängigkeiten auf Application-Composition-, Knowledge-, Architecture-, Portfolio- und Dokumentexport-Implementierungen; repräsentative Eigentümer verhindern einen leeren Prüfbereich.
+7. `ArchitectureApplicationSchemaCompositionTest` verlangt den Anwendungsschema-Eigentümer in der Composition, erhält den Core-Storage-Eigentümer und verhindert direkte Abhängigkeiten der Anwendungskonfiguration auf Core-Implementierungsklassen.
 
 Das fokussierte Architekturprofil wird vom Repository-Root über den vollständigen
 Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
@@ -231,9 +255,9 @@ Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-Das Profil enthält alle vier Ownership-Guards für Entscheidungsberichte,
-Commit-Historie, DSL-Dokument-Komposition und Workspace-Autorität sowohl in `pom.xml` als auch in
-`.mvn/verification-suites.json`. Die neun ausgewählten Testklassen sind zwischen
+Das Profil enthält alle fünf Ownership-Guards für Entscheidungsberichte,
+Commit-Historie, DSL-Dokument-Komposition, Workspace-Autorität und Anwendungsschema-Komposition sowohl in `pom.xml` als auch in
+`.mvn/verification-suites.json`. Die zehn ausgewählten Testklassen sind zwischen
 POM und Katalog synchronisiert. Die vollständige CI-Verifikation bleibt `./mvnw -B verify -Pci`.
 
 Der Ratchet durchläuft außerdem `taxonomy-app/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb des Root-Packages muss in `.github/architecture-contexts.json` klassifiziert sein. Ein neues Feature-Package kann den Dependency-Guard daher nicht umgehen, indem es außerhalb der vorhandenen Context-Patterns angelegt wird. Root-Level-Composition-Klassen bleiben ausdrücklich zulässig.

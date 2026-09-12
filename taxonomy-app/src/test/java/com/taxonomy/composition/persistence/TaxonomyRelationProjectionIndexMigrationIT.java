@@ -1,4 +1,6 @@
-package com.taxonomy.dsl.storage;
+package com.taxonomy.composition.persistence;
+
+import com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfig;
 
 import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
@@ -68,7 +70,9 @@ class TaxonomyRelationProjectionIndexMigrationIT {
                 .locations(CoreSchemaMigrations.POSTGRESQL_LOCATION)
                 .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE)
                 .load();
-        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false);
+        new JgitStorageSchemaMigrationConfig()
+                .jgitStorageFlywayMigrationStrategy(false)
+                .migrate(flyway);
     }
 
     private static DataSource isolatedDataSource(String schema) throws SQLException {

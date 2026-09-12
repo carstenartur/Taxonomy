@@ -1,4 +1,6 @@
-package com.taxonomy.dsl.storage;
+package com.taxonomy.composition.persistence;
+
+import com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfig;
 
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
 import org.flywaydb.core.Flyway;
@@ -18,10 +20,10 @@ import java.sql.Statement;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-/** Focused migration evidence for repository-scoped committed taxonomy relations. */
+/** Focused migration evidence for repository-scoped relation proposals. */
 @Testcontainers
 @Tag("db-postgres")
-class TaxonomyRelationTenantMigrationPostgresIT {
+class RelationProposalTenantMigrationPostgresIT {
 
     @Container
     @SuppressWarnings("rawtypes")
@@ -31,116 +33,52 @@ class TaxonomyRelationTenantMigrationPostgresIT {
             .withPassword("taxonomy");
 
     @Test
-    void backfillsLegacyRelationsAndMakesUniquenessRepositoryLocal() throws Exception {
-        DataSource dataSource = isolatedDataSource("relation_tenant_upgrade");
+    void backfillsLegacyProposalsAndMakesUniquenessRepositoryLocal() throws Exception {
+        DataSource dataSource = isolatedDataSource("proposal_tenant_upgrade");
         migrateJgit(dataSource);
-        migrateApplicationTo(dataSource, "4");
+        migrateApplicationTo(dataSource, "5");
         insertRepository(dataSource, "repo-a", "repo-a", true);
         insertNodes(dataSource);
-        insertLegacyRelation(dataSource);
+        insertLegacyProposal(dataSource);
 
-        migrateApplicationTo(dataSource, "5");
+        migrateApplicationTo(dataSource, "6");
 
         assertThat(singleString(dataSource, """
                 select repository_id
-                from taxonomy_relation
+                from relation_proposal
                 where provenance = 'legacy'
                 """))
                 .isEqualTo("repo-a");
         assertThat(singleString(dataSource, """
                 select workspace_scope_key
-                from taxonomy_relation
+                from relation_proposal
                 where provenance = 'legacy'
                 """))
                 .isEqualTo("__shared__");
 
         insertRepository(dataSource, "repo-b", "repo-b", false);
-        execute(dataSource, """
-                insert into taxonomy_relation (
-                    repository_id,
-                    source_node_id,
-                    target_node_id,
-                    relation_type,
-                    workspace_scope_key,
-                    provenance,
-                    bidirectional,
-                    has_embedding)
-                select
-                    'repo-b',
-                    source.id,
-                    target.id,
-                    'SUPPORTS',
-                    '__shared__',
-                    'same-business-key-other-repository',
-                    false,
-                    false
-                from taxonomy_node source, taxonomy_node target
-                where source.code = 'BP'
-                  and target.code = 'CP'
-                """);
-        assertThat(singleLong(dataSource, "select count(*) from taxonomy_relation"))
+        insertProposal(dataSource, "repo-b", "same-key-other-repository");
+        assertThat(singleLong(dataSource, "select count(*) from relation_proposal"))
                 .isEqualTo(2L);
 
-        assertThatThrownBy(() -> execute(dataSource, """
-                insert into taxonomy_relation (
-                    repository_id,
-                    source_node_id,
-                    target_node_id,
-                    relation_type,
-                    workspace_scope_key,
-                    provenance,
-                    bidirectional,
-                    has_embedding)
-                select
-                    'repo-a',
-                    source.id,
-                    target.id,
-                    'SUPPORTS',
-                    '__shared__',
-                    'duplicate-in-same-repository',
-                    false,
-                    false
-                from taxonomy_node source, taxonomy_node target
-                where source.code = 'BP'
-                  and target.code = 'CP'
-                """))
+        assertThatThrownBy(() -> insertProposal(
+                dataSource, "repo-a", "duplicate-in-same-repository"))
                 .isInstanceOf(SQLException.class);
 
-        assertThatThrownBy(() -> execute(dataSource, """
-                insert into taxonomy_relation (
-                    repository_id,
-                    source_node_id,
-                    target_node_id,
-                    relation_type,
-                    workspace_scope_key,
-                    provenance,
-                    bidirectional,
-                    has_embedding)
-                select
-                    'missing-repository',
-                    source.id,
-                    target.id,
-                    'DEPENDS_ON',
-                    '__shared__',
-                    'invalid-repository',
-                    false,
-                    false
-                from taxonomy_node source, taxonomy_node target
-                where source.code = 'BP'
-                  and target.code = 'CP'
-                """))
+        assertThatThrownBy(() -> insertProposal(
+                dataSource, "missing-repository", "invalid-repository"))
                 .isInstanceOf(SQLException.class);
     }
 
     @Test
-    void refusesLegacyRelationBackfillWithoutExactlyOnePrimaryRepository() throws Exception {
-        DataSource dataSource = isolatedDataSource("relation_tenant_upgrade_failure");
+    void refusesLegacyProposalBackfillWithoutExactlyOnePrimaryRepository() throws Exception {
+        DataSource dataSource = isolatedDataSource("proposal_tenant_upgrade_failure");
         migrateJgit(dataSource);
-        migrateApplicationTo(dataSource, "4");
+        migrateApplicationTo(dataSource, "5");
         insertNodes(dataSource);
-        insertLegacyRelation(dataSource);
+        insertLegacyProposal(dataSource);
 
-        assertThatThrownBy(() -> migrateApplicationTo(dataSource, "5"))
+        assertThatThrownBy(() -> migrateApplicationTo(dataSource, "6"))
                 .hasStackTraceContaining("expected exactly one primary repository");
     }
 
@@ -199,28 +137,61 @@ class TaxonomyRelationTenantMigrationPostgresIT {
                 """);
     }
 
-    private static void insertLegacyRelation(DataSource dataSource) throws SQLException {
+    private static void insertLegacyProposal(DataSource dataSource) throws SQLException {
         execute(dataSource, """
-                insert into taxonomy_relation (
+                insert into relation_proposal (
                     source_node_id,
                     target_node_id,
                     relation_type,
-                    workspace_scope_key,
+                    status,
+                    confidence,
                     provenance,
-                    bidirectional,
-                    has_embedding)
+                    created_at,
+                    workspace_scope_key)
                 select
                     source.id,
                     target.id,
                     'SUPPORTS',
-                    '__shared__',
+                    'PENDING',
+                    0.75,
                     'legacy',
-                    false,
-                    false
+                    current_timestamp,
+                    '__shared__'
                 from taxonomy_node source, taxonomy_node target
                 where source.code = 'BP'
                   and target.code = 'CP'
                 """);
+    }
+
+    private static void insertProposal(
+            DataSource dataSource,
+            String repositoryId,
+            String provenance) throws SQLException {
+        execute(dataSource, """
+                insert into relation_proposal (
+                    repository_id,
+                    source_node_id,
+                    target_node_id,
+                    relation_type,
+                    status,
+                    confidence,
+                    provenance,
+                    created_at,
+                    workspace_scope_key)
+                select
+                    '%s',
+                    source.id,
+                    target.id,
+                    'SUPPORTS',
+                    'PENDING',
+                    0.75,
+                    '%s',
+                    current_timestamp,
+                    '__shared__'
+                from taxonomy_node source, taxonomy_node target
+                where source.code = 'BP'
+                  and target.code = 'CP'
+                """.formatted(repositoryId, provenance));
     }
 
     private static void migrateJgit(DataSource dataSource) {
@@ -229,7 +200,9 @@ class TaxonomyRelationTenantMigrationPostgresIT {
                 .locations(CoreSchemaMigrations.POSTGRESQL_LOCATION)
                 .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE)
                 .load();
-        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false);
+        new JgitStorageSchemaMigrationConfig()
+                .jgitStorageFlywayMigrationStrategy(false)
+                .migrate(flyway);
     }
 
     private static void migrateApplicationTo(DataSource dataSource, String version) {

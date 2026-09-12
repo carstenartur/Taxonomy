@@ -1,4 +1,6 @@
-package com.taxonomy.dsl.storage;
+package com.taxonomy.composition.persistence;
+
+import com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfig;
 
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.Tag;
