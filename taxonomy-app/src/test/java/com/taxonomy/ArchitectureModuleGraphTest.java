@@ -215,6 +215,43 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void anUnregisteredFeaturePomWithAnInheritedArtifactPropertyCannotEvadeDiscovery() throws Exception {
+        pom("", "taxonomy", """
+                <modules><module>taxonomy-app</module></modules>
+                <properties><feature.module>taxonomy-a</feature.module></properties>
+                """);
+        pom("taxonomy-app", APP, "");
+        pom("features/a", "${feature.module}", """
+                <parent><groupId>com.taxonomy</groupId><artifactId>taxonomy</artifactId><version>1</version>
+                  <relativePath>../../pom.xml</relativePath></parent>
+                """);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining(A).hasMessageContaining("outside the declared reactor");
+    }
+
+    @Test
+    void anUnregisteredPomWithAnUnresolvedPossibleFeatureArtifactFailsClosed() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("features/a", "taxonomy-${feature.name}", "");
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Unresolved")
+                .hasMessageContaining("artifactId").hasMessageContaining("features/a/pom.xml");
+    }
+
+    @Test
+    void anUnregisteredPropertyArtifactThatCannotNameAFeatureRemainsUnrelated() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("tools/resolved", "${tool.module}", "<properties><tool.module>unrelated-tool</tool.module></properties>");
+        pom("tools/unresolved", "unrelated-${tool.name}", "");
+
+        assertThat(ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY)).containsOnlyKeys("taxonomy", APP);
+    }
+
+    @Test
     void aMissingDeclaredModulePomFailsClosed() throws Exception {
         pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
         pom("taxonomy-app", APP, "");
@@ -290,6 +327,70 @@ class ArchitectureModuleGraphTest {
 
     @Test
     void realBytecodeAndPhysicalSourcesDriveTheGateTogether() throws Exception {
+        bytecodeRepository();
+        Path app = compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path domain = compile(DOMAIN, "com.taxonomy.dto.Result", "public record Result(String value) {}", List.of());
+        compile(A, A_CLASS, "public class Service { com.taxonomy.AppConfig app; com.taxonomy.dto.Result result; }",
+                List.of(app, domain));
+
+        Evaluation result = ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository);
+
+        assertThat(result.violations()).anySatisfy(message -> assertThat(message)
+                .contains("taxonomy-a -> taxonomy-app", "com.taxonomy.AppConfig", "root composition"));
+        assertThat(result.report()).contains("com.taxonomy.a.Service -> com.taxonomy.dto.Result",
+                "Present feature modules: taxonomy-a");
+    }
+
+    @Test
+    void aRemovedNestedClassCannotHideBehindItsExistingSourceFile() throws Exception {
+        staleDeclaration("public class Service { static class Old {} }", "Service$Old.class");
+    }
+
+    @Test
+    void aRemovedTopLevelClassCannotHideBehindAnotherDeclarationInItsSourceFile() throws Exception {
+        staleDeclaration("public class Service {} class Old {}", "Old.class");
+    }
+
+    @Test
+    void cleanNamedLocalAnonymousAndCompilerGeneratedClassesAreAccepted() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, """
+                public class Service {
+                    static class Nested {}
+                    int mode(java.time.DayOfWeek mode) { switch (mode) { case MONDAY: return 1; default: return 0; } }
+                    Object local() { class Local {} return new Local(); }
+                    Runnable anonymous() { return new Runnable() { public void run() {} }; }
+                }
+                class Companion {}
+                """, List.of());
+        assertThat(output.resolve("com/taxonomy/a/Service$Nested.class")).exists();
+        assertThat(output.resolve("com/taxonomy/a/Service$1Local.class")).exists();
+        assertThat(output.resolve("com/taxonomy/a/Service$1.class")).exists();
+        assertThat(output.resolve("com/taxonomy/a/Service$2.class")).exists();
+        assertThat(output.resolve("com/taxonomy/a/Companion.class")).exists();
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    private void staleDeclaration(String original, String removedBinary) throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, original, List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path stale = output.resolve("com/taxonomy/a/" + removedBinary);
+        assertThat(stale).exists();
+        Path source = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a/Service.java");
+        // A timestamp-only check must not make the obsolete declaration valid.
+        Files.setLastModifiedTime(stale, Files.getLastModifiedTime(source));
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Compiled binary inventory")
+                .hasMessageContaining(removedBinary.substring(0, removedBinary.length() - ".class".length()))
+                .hasMessageContaining("clean reactor build");
+    }
+
+    private void bytecodeRepository() throws Exception {
         pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-domain</module>"
                 + "<module>taxonomy-a</module></modules>");
         pom("taxonomy-app", APP, "");
@@ -303,17 +404,6 @@ class ArchitectureModuleGraphTest {
                    {"id":"a","targetModule":"taxonomy-a","packages":["com.taxonomy.a.."]},
                    {"id":"composition","targetModule":"taxonomy-app","packages":["com.taxonomy.composition.."]}]}
                 """);
-        Path app = compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
-        Path domain = compile(DOMAIN, "com.taxonomy.dto.Result", "public record Result(String value) {}", List.of());
-        compile(A, A_CLASS, "public class Service { com.taxonomy.AppConfig app; com.taxonomy.dto.Result result; }",
-                List.of(app, domain));
-
-        Evaluation result = ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository);
-
-        assertThat(result.violations()).anySatisfy(message -> assertThat(message)
-                .contains("taxonomy-a -> taxonomy-app", "com.taxonomy.AppConfig", "root composition"));
-        assertThat(result.report()).contains("com.taxonomy.a.Service -> com.taxonomy.dto.Result",
-                "Present feature modules: taxonomy-a");
     }
 
     @Test

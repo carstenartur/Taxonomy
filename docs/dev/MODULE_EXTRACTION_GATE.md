@@ -29,6 +29,9 @@ the extraction gate.
 A target module POM in the reactor automatically makes its assessment mandatory.
 Profile-declared modules are included. A target POM present outside the declared
 reactor fails discovery, so omitting it from `<modules>` does not evade the gate.
+Discovery resolves property-based artifact IDs through the same local POM model
+described below. An unresolved expression that could name a planned feature also
+fails discovery; it cannot make an extraction attempt invisible.
 
 Extraction means moving the whole mapped context. A present feature module must
 contain production classes, and all classes assigned to its target must have
@@ -76,7 +79,20 @@ composition classes, and app adapters under DSL/export roots are not excluded.
 
 Unmapped classes, invalid or duplicate physical owners, overlapping package
 assignments, missing reactor POMs, and source files missing from imported bytecode
-fail even before extraction. Stale compiled classes with no current source fail
-with a request for a clean reactor build. The source/bytecode inventory uses the
-repository's current `src/main/java` and `target/classes` module layout; a future
-layout change must update this inventory explicitly.
+fail even before extraction. Before importing bytecode, the running JDK compiler
+compiles the current production sources once into an in-memory inventory of
+binary names and source modules. Class bytes are discarded and no source or
+build output is written. The inventory must match the actual compiled classes;
+an obsolete nested or additional top-level class fails even when its original
+source file still exists or timestamps match. The compiler also accounts for
+legitimate local, anonymous, and synthetic classes without guessing their names.
+Missing or obsolete binaries fail with a request for a clean reactor build.
+
+This pass uses Java 21 and the complete `surefire.test.class.path` (falling back
+to `java.class.path` outside Surefire), plus reactor class directories. Annotation
+processing and implicit source compilation are disabled. The inventory uses the
+current `src/main/java` and `target/classes` module layout; generated source
+layouts, annotation-generated classes, or new compiler options require explicit
+adapter support. Compilation errors fail the gate. The pass validates binary
+declarations; normal reactor compilation remains responsible for compiling the
+current method bodies that ArchUnit inspects.
