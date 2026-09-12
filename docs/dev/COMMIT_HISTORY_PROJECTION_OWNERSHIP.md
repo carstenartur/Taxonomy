@@ -52,10 +52,10 @@ and does not permit physical extraction.
 ## Focused architecture verification
 
 The D2 branch includes D1's report-composition metadata and ownership guard.
-Both the root `pom.xml` and `.mvn/verification-suites.json` now select
-`ArchitectureCommitHistoryOwnershipTest` as well as
-`ArchitectureDecisionReportBoundaryTest`, preserving all five earlier architecture
-selectors. Run all seven selected test classes from the repository root across
+Both the root `pom.xml` and `.mvn/verification-suites.json` select
+`ArchitectureCommitHistoryOwnershipTest` in addition to the six predecessor
+selectors, which include `ArchitectureDecisionReportBoundaryTest`. The profile
+therefore selects seven test classes. Run them from the repository root across
 the full reactor, so the production output of every module is current:
 
 ```bash

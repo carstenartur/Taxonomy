@@ -65,7 +65,7 @@ graph TB
     subgraph App["Spring Boot 4 Anwendung :8080"]
         direction TB
         Controllers["REST-Controller<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport<br/>DslApi · ReportApi · RelationApi<br/>QualityApi · ExplanationTrace<br/>ArchitectureSummary"]
-        Services["Service-Schicht<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService<br/>DslGitRepository · CommitIndexService<br/>ArchitectureReportService"]
+        Services["Service-Schicht<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService<br/>DslGitRepository · versioning.service.CommitIndexService<br/>ArchitectureReportService"]
         Persistence["Persistenz<br/>HSQLDB (In-Process)<br/>Hibernate Search 8 / Lucene 9"]
     end
 
@@ -104,7 +104,7 @@ graph TB
 | `ArchitectureReportService` | Generiert Analyseberichte in den Formaten Markdown, eigenständiges HTML, DOCX und strukturiertes JSON. |
 | `ExplanationTraceService` | Erstellt Erklärungsspuren, die beschreiben, warum ein Knoten eine bestimmte Bewertung erhalten hat, einschließlich der LLM-Argumentationskette. |
 | `DslGitRepository` | Versionierte DSL-Dokumentenspeicherung auf Basis von JGit DFS, wobei alle Git-Objekte in HSQLDB persistiert werden (kein Dateisystem). Unterstützt Branches, Commits, Cherry-Pick und Merge. |
-| `CommitIndexService` | Indexiert DSL-Commit-Verlauf in Hibernate Search / Lucene für die Volltextsuche über Commit-Nachrichten und Änderungsinhalte. |
+| `CommitIndexService` | Service der Workspace-Versionierung (`com.taxonomy.versioning.service`). Indexiert DSL-Commit-Verlauf in Hibernate Search / Lucene für die Volltextsuche über Commit-Nachrichten und Änderungsinhalte. |
 | `HypothesisService` | Verwaltet Beziehungshypothesen, die während der Analyse generiert werden. Hypothesen können akzeptiert (erzeugt `TaxonomyRelation`), abgelehnt oder nur für die aktuelle Sitzung angewendet werden. |
 | `LlmResponseParser` | Zustandsloser Parser für LLM-Antworten. Verarbeitet Gemini- und OpenAI-Antwortformate, Bewertungsextraktion (Ganzzahl und Bewertung+Begründung), Bewertungsnormalisierung (Größter-Rest-Methode) und JSON-Extraktion. |
 | `DocumentAnalysisService` | KI-gestützte Dokumentenanalyse. Bietet LLM-gestützte Extraktion von Anforderungskandidaten aus Dokumenttext (`extractWithAi`) und direktes Regulation-zu-Architektur-Taxonomie-Mapping (`mapRegulationToArchitecture`). Verwendet spezialisierte Prompt-Templates (`extract-*`, `reg-map-*`). |
