@@ -1,0 +1,228 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>UserManagementService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.service</a> &gt; <span class="el_source">UserManagementService.java</span></div><h1>UserManagementService.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.service;
+
+import com.taxonomy.security.model.AppRole;
+import com.taxonomy.security.model.AppUser;
+import com.taxonomy.security.repository.RoleRepository;
+import com.taxonomy.security.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+
+/** Application service for local user and role administration. */
+@Service
+@Profile(&quot;!keycloak&quot;)
+@ConditionalOnProperty(name = &quot;taxonomy.security.local-users-enabled&quot;,
+        havingValue = &quot;true&quot;, matchIfMissing = true)
+@Transactional
+public class UserManagementService {
+
+    public static final int MIN_PASSWORD_LENGTH = 8;
+<span class="fc" id="L33">    private static final Logger log = LoggerFactory.getLogger(UserManagementService.class);</span>
+
+    private final UserRepository userRepository;
+    private final RoleRepository roleRepository;
+    private final PasswordEncoder passwordEncoder;
+
+    @Value(&quot;${taxonomy.security.require-password-change:false}&quot;)
+    private boolean requirePasswordChange;
+
+    public UserManagementService(UserRepository userRepository,
+                                 RoleRepository roleRepository,
+<span class="fc" id="L44">                                 PasswordEncoder passwordEncoder) {</span>
+<span class="fc" id="L45">        this.userRepository = userRepository;</span>
+<span class="fc" id="L46">        this.roleRepository = roleRepository;</span>
+<span class="fc" id="L47">        this.passwordEncoder = passwordEncoder;</span>
+<span class="fc" id="L48">    }</span>
+
+    @Transactional(readOnly = true)
+    public List&lt;Map&lt;String, Object&gt;&gt; listUsers() {
+<span class="fc" id="L52">        return userRepository.findAll().stream().map(this::toUserMap).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public Optional&lt;Map&lt;String, Object&gt;&gt; getUser(Long id) {
+<span class="nc" id="L57">        return userRepository.findById(id).map(this::toUserMap);</span>
+    }
+
+    public Map&lt;String, Object&gt; createUser(Map&lt;String, Object&gt; body, String actor) {
+<span class="fc" id="L61">        String username = stringValue(body.get(&quot;username&quot;));</span>
+<span class="fc" id="L62">        String password = stringValue(body.get(&quot;password&quot;));</span>
+<span class="fc" id="L63">        String displayName = stringValue(body.get(&quot;displayName&quot;));</span>
+<span class="fc" id="L64">        String email = stringValue(body.get(&quot;email&quot;));</span>
+<span class="fc" id="L65">        List&lt;String&gt; roles = stringList(body.get(&quot;roles&quot;));</span>
+
+<span class="pc bpc" id="L67" title="2 of 4 branches missed.">        if (username == null || username.isBlank()) {</span>
+<span class="nc" id="L68">            throw new ValidationException(&quot;Username is required.&quot;);</span>
+        }
+<span class="fc" id="L70">        validatePassword(password);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (userRepository.findByUsername(username).isPresent()) {</span>
+<span class="fc" id="L72">            throw new ConflictException(&quot;Username '&quot; + username + &quot;' already exists.&quot;);</span>
+        }
+
+<span class="fc" id="L75">        AppUser user = new AppUser();</span>
+<span class="fc" id="L76">        user.setUsername(username);</span>
+<span class="fc" id="L77">        user.setPasswordHash(passwordEncoder.encode(password));</span>
+<span class="fc" id="L78">        user.setEnabled(true);</span>
+<span class="fc" id="L79">        user.setMustChangePassword(requirePasswordChange);</span>
+<span class="fc" id="L80">        user.setDisplayName(displayName);</span>
+<span class="fc" id="L81">        user.setEmail(email);</span>
+<span class="fc" id="L82">        user.setRoles(resolveRoles(roles));</span>
+<span class="fc" id="L83">        AppUser saved = userRepository.save(user);</span>
+<span class="fc" id="L84">        log.info(&quot;USER_CREATED user={} roles={} passwordChangeRequired={} by={}&quot;, username,</span>
+<span class="fc" id="L85">                saved.getRoles().stream().map(AppRole::getName).sorted().toList(),</span>
+<span class="fc" id="L86">                saved.isMustChangePassword(), actor);</span>
+<span class="fc" id="L87">        return toUserMap(saved);</span>
+    }
+
+    public Map&lt;String, Object&gt; updateUser(Long id, Map&lt;String, Object&gt; body, String actor) {
+<span class="fc" id="L91">        AppUser user = requireUser(id);</span>
+
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (body.containsKey(&quot;displayName&quot;)) {</span>
+<span class="nc" id="L94">            user.setDisplayName(stringValue(body.get(&quot;displayName&quot;)));</span>
+        }
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (body.containsKey(&quot;email&quot;)) {</span>
+<span class="nc" id="L97">            user.setEmail(stringValue(body.get(&quot;email&quot;)));</span>
+        }
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (body.containsKey(&quot;enabled&quot;)) {</span>
+<span class="nc" id="L100">            boolean enabled = Boolean.TRUE.equals(body.get(&quot;enabled&quot;));</span>
+<span class="nc bnc" id="L101" title="All 4 branches missed.">            if (!enabled &amp;&amp; isLastAdmin(user)) {</span>
+<span class="nc" id="L102">                throw new ValidationException(&quot;Cannot disable the last admin user.&quot;);</span>
+            }
+<span class="nc" id="L104">            user.setEnabled(enabled);</span>
+        }
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">        if (body.containsKey(&quot;roles&quot;)) {</span>
+<span class="fc" id="L107">            Set&lt;AppRole&gt; newRoles = resolveRoles(stringList(body.get(&quot;roles&quot;)));</span>
+<span class="pc bpc" id="L108" title="1 of 2 branches missed.">            boolean removingAdmin = hasRole(user, &quot;ROLE_ADMIN&quot;)</span>
+<span class="pc bpc" id="L109" title="1 of 2 branches missed.">                    &amp;&amp; newRoles.stream().noneMatch(role -&gt; &quot;ROLE_ADMIN&quot;.equals(role.getName()));</span>
+<span class="pc bpc" id="L110" title="2 of 4 branches missed.">            if (removingAdmin &amp;&amp; isLastAdmin(user)) {</span>
+<span class="fc" id="L111">                throw new ValidationException(&quot;Cannot remove ADMIN role from the last admin user.&quot;);</span>
+            }
+<span class="nc" id="L113">            user.setRoles(newRoles);</span>
+        }
+
+<span class="nc" id="L116">        AppUser saved = userRepository.save(user);</span>
+<span class="nc" id="L117">        log.info(&quot;USER_UPDATED user={} by={}&quot;, saved.getUsername(), actor);</span>
+<span class="nc" id="L118">        return toUserMap(saved);</span>
+    }
+
+    public void changePassword(Long id, String newPassword, String actor) {
+<span class="fc" id="L122">        validatePassword(newPassword);</span>
+<span class="fc" id="L123">        AppUser user = requireUser(id);</span>
+<span class="fc" id="L124">        user.setPasswordHash(passwordEncoder.encode(newPassword));</span>
+<span class="fc" id="L125">        user.setMustChangePassword(requirePasswordChange);</span>
+<span class="fc" id="L126">        userRepository.save(user);</span>
+<span class="fc" id="L127">        log.info(&quot;USER_PASSWORD_CHANGED user={} temporary={} by={}&quot;,</span>
+<span class="fc" id="L128">                user.getUsername(), user.isMustChangePassword(), actor);</span>
+<span class="fc" id="L129">    }</span>
+
+    public String disableUser(Long id, String actor) {
+<span class="fc" id="L132">        AppUser user = requireUser(id);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (isLastAdmin(user)) {</span>
+<span class="fc" id="L134">            throw new ValidationException(&quot;Cannot disable the last admin user.&quot;);</span>
+        }
+<span class="fc" id="L136">        user.setEnabled(false);</span>
+<span class="fc" id="L137">        userRepository.save(user);</span>
+<span class="fc" id="L138">        log.info(&quot;USER_DISABLED user={} by={}&quot;, user.getUsername(), actor);</span>
+<span class="fc" id="L139">        return user.getUsername();</span>
+    }
+
+    private AppUser requireUser(Long id) {
+<span class="fc" id="L143">        return userRepository.findById(id)</span>
+<span class="fc" id="L144">                .orElseThrow(() -&gt; new NotFoundException(&quot;User not found: &quot; + id));</span>
+    }
+
+    private void validatePassword(String password) {
+<span class="pc bpc" id="L148" title="1 of 4 branches missed.">        if (password == null || password.length() &lt; MIN_PASSWORD_LENGTH) {</span>
+<span class="fc" id="L149">            throw new ValidationException(</span>
+                    &quot;Password must be at least &quot; + MIN_PASSWORD_LENGTH + &quot; characters.&quot;);
+        }
+<span class="fc" id="L152">    }</span>
+
+    private boolean isLastAdmin(AppUser user) {
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        if (!hasRole(user, &quot;ROLE_ADMIN&quot;)) {</span>
+<span class="nc" id="L156">            return false;</span>
+        }
+<span class="fc" id="L158">        long enabledAdmins = userRepository.findAll().stream()</span>
+<span class="fc" id="L159">                .filter(AppUser::isEnabled)</span>
+<span class="fc" id="L160">                .filter(candidate -&gt; hasRole(candidate, &quot;ROLE_ADMIN&quot;))</span>
+<span class="fc" id="L161">                .count();</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">        return enabledAdmins &lt;= 1;</span>
+    }
+
+    private boolean hasRole(AppUser user, String roleName) {
+<span class="fc" id="L166">        return user.getRoles().stream().anyMatch(role -&gt; roleName.equals(role.getName()));</span>
+    }
+
+    private Set&lt;AppRole&gt; resolveRoles(List&lt;String&gt; roleNames) {
+<span class="pc bpc" id="L170" title="2 of 4 branches missed.">        if (roleNames == null || roleNames.isEmpty()) {</span>
+<span class="nc" id="L171">            return roleRepository.findByName(&quot;ROLE_USER&quot;).map(Set::of).orElse(Set.of());</span>
+        }
+<span class="fc" id="L173">        Set&lt;AppRole&gt; roles = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        for (String roleName : roleNames) {</span>
+<span class="pc bpc" id="L175" title="2 of 4 branches missed.">            if (roleName == null || roleName.isBlank()) {</span>
+<span class="nc" id="L176">                continue;</span>
+            }
+<span class="pc bpc" id="L178" title="1 of 2 branches missed.">            String normalized = roleName.startsWith(&quot;ROLE_&quot;) ? roleName : &quot;ROLE_&quot; + roleName;</span>
+<span class="fc" id="L179">            roleRepository.findByName(normalized).ifPresent(roles::add);</span>
+<span class="fc" id="L180">        }</span>
+<span class="pc bpc" id="L181" title="1 of 2 branches missed.">        if (roles.isEmpty()) {</span>
+<span class="nc" id="L182">            throw new ValidationException(&quot;At least one valid role is required.&quot;);</span>
+        }
+<span class="fc" id="L184">        return roles;</span>
+    }
+
+    private Map&lt;String, Object&gt; toUserMap(AppUser user) {
+<span class="fc" id="L188">        Map&lt;String, Object&gt; map = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L189">        map.put(&quot;id&quot;, user.getId());</span>
+<span class="fc" id="L190">        map.put(&quot;username&quot;, user.getUsername());</span>
+<span class="fc" id="L191">        map.put(&quot;displayName&quot;, user.getDisplayName());</span>
+<span class="fc" id="L192">        map.put(&quot;email&quot;, user.getEmail());</span>
+<span class="fc" id="L193">        map.put(&quot;enabled&quot;, user.isEnabled());</span>
+<span class="fc" id="L194">        map.put(&quot;mustChangePassword&quot;, user.isMustChangePassword());</span>
+<span class="fc" id="L195">        map.put(&quot;roles&quot;, user.getRoles().stream().map(AppRole::getName).sorted().toList());</span>
+<span class="fc" id="L196">        return map;</span>
+    }
+
+    private String stringValue(Object value) {
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        return value instanceof String string ? string : null;</span>
+    }
+
+    private List&lt;String&gt; stringList(Object value) {
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        if (!(value instanceof List&lt;?&gt; list)) {</span>
+<span class="fc" id="L205">            return List.of();</span>
+        }
+<span class="fc" id="L207">        List&lt;String&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L208" title="All 2 branches covered.">        for (Object entry : list) {</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">            if (entry instanceof String string) {</span>
+<span class="fc" id="L210">                values.add(string);</span>
+            }
+<span class="fc" id="L212">        }</span>
+<span class="fc" id="L213">        return values;</span>
+    }
+
+    public static class ValidationException extends RuntimeException {
+<span class="fc" id="L217">        public ValidationException(String message) { super(message); }</span>
+    }
+
+    public static class ConflictException extends RuntimeException {
+<span class="fc" id="L221">        public ConflictException(String message) { super(message); }</span>
+    }
+
+    public static class NotFoundException extends RuntimeException {
+<span class="fc" id="L225">        public NotFoundException(String message) { super(message); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

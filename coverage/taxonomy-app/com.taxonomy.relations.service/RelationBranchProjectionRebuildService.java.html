@@ -1,0 +1,275 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationBranchProjectionRebuildService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationBranchProjectionRebuildService.java</span></div><h1>RelationBranchProjectionRebuildService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort.RepositoryRead;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Rebuilds one complete branch relation projection from authoritative TaxDSL.
+ *
+ * &lt;p&gt;Repository resolution, branch-head capture, DSL parsing and semantic
+ * validation happen before the transactional writer replaces any database rows.
+ * The branch head is verified again immediately before the writer is invoked.
+ * A later read boundary still compares the persisted checkpoint with the live
+ * branch head, so a commit that arrives after the rebuild cannot expose stale
+ * rows as current.&lt;/p&gt;
+ */
+@Service
+public class RelationBranchProjectionRebuildService {
+
+    private static final String RELATION_KIND = &quot;relation&quot;;
+
+    private final WorkspaceDslReadPort reads;
+    private final RelationBranchProjectionRebuildWriter rebuildWriter;
+<span class="fc" id="L38">    private final TaxDslParser parser = new TaxDslParser();</span>
+
+    public RelationBranchProjectionRebuildService(
+            WorkspaceDslReadPort reads,
+<span class="fc" id="L42">            RelationBranchProjectionRebuildWriter rebuildWriter) {</span>
+<span class="fc" id="L43">        this.reads = Objects.requireNonNull(reads, &quot;reads&quot;);</span>
+<span class="fc" id="L44">        this.rebuildWriter = Objects.requireNonNull(rebuildWriter, &quot;rebuildWriter&quot;);</span>
+<span class="fc" id="L45">    }</span>
+
+    /** Replaces the exact branch projection and writes its completion checkpoint atomically. */
+    public RebuildResult rebuild(RepositoryContext context) {
+<span class="fc" id="L49">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L50">        requireMutable(context);</span>
+<span class="fc" id="L51">        RepositoryRead repository = reads.openRead(context);</span>
+<span class="fc" id="L52">        String head = readHead(repository, context.branch());</span>
+<span class="fc" id="L53">        String dsl = readDsl(repository, head);</span>
+<span class="fc" id="L54">        List&lt;RelationSnapshot&gt; relations = parseRelations(dsl, head);</span>
+<span class="fc" id="L55">        verifyHead(repository, head);</span>
+<span class="fc" id="L56">        return rebuildWriter.replace(context, head, relations);</span>
+    }
+
+    private String readHead(RepositoryRead repository, String branch) {
+        try {
+<span class="fc" id="L61">            String head = repository.currentHead();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (head == null) {</span>
+<span class="fc" id="L63">                throw new BranchProjectionSourceException(</span>
+                        &quot;Cannot rebuild relation projection: branch '&quot;
+                                + branch + &quot;' does not exist&quot;);
+            }
+<span class="fc" id="L67">            return head;</span>
+<span class="fc" id="L68">        } catch (IOException error) {</span>
+<span class="fc" id="L69">            throw new BranchProjectionSourceException(</span>
+                    &quot;Unable to read relation projection branch head '&quot;
+                            + branch + &quot;'&quot;,
+                    error);
+        }
+    }
+
+    private String readDsl(RepositoryRead repository, String commitId) {
+        try {
+<span class="fc" id="L78">            String dsl = repository.dslAtCommit(commitId).orElse(null);</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (dsl == null) {</span>
+<span class="fc" id="L80">                throw new BranchProjectionSourceException(</span>
+                        &quot;Authoritative commit has no architecture.taxdsl: &quot;
+                                + commitId);
+            }
+<span class="fc" id="L84">            return dsl;</span>
+<span class="fc" id="L85">        } catch (IOException error) {</span>
+<span class="fc" id="L86">            throw new BranchProjectionSourceException(</span>
+                    &quot;Unable to read authoritative relation projection commit &quot;
+                            + commitId,
+                    error);
+        }
+    }
+
+    private void verifyHead(
+            RepositoryRead repository,
+            String expectedHead) {
+        try {
+<span class="fc" id="L97">            String verified = repository.verifyExpectedHead(expectedHead);</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            if (!expectedHead.equals(verified)) {</span>
+<span class="fc" id="L99">                throw new BranchProjectionSourceException(</span>
+                        &quot;Selected branch no longer has the captured projection head&quot;);
+            }
+<span class="fc" id="L102">        } catch (IOException error) {</span>
+<span class="fc" id="L103">            throw new BranchProjectionSourceException(</span>
+                    &quot;Selected branch moved during relation projection rebuild&quot;,
+                    error);
+<span class="fc" id="L106">        }</span>
+<span class="fc" id="L107">    }</span>
+
+    private List&lt;RelationSnapshot&gt; parseRelations(String dsl, String commitId) {
+        DocumentAst document;
+        try {
+<span class="fc" id="L112">            document = parser.parse(dsl, &quot;architecture.taxdsl&quot;);</span>
+<span class="nc" id="L113">        } catch (RuntimeException error) {</span>
+<span class="nc" id="L114">            throw new BranchProjectionSourceException(</span>
+                    &quot;Cannot rebuild relation projection from invalid TaxDSL commit &quot;
+                            + commitId,
+                    error);
+<span class="fc" id="L118">        }</span>
+
+<span class="fc" id="L120">        Map&lt;RelationIdentity, RelationSnapshot&gt; relations = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        for (BlockAst block : document.getBlocks()) {</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">            if (!RELATION_KIND.equals(block.getKind())) {</span>
+<span class="fc" id="L123">                continue;</span>
+            }
+<span class="fc" id="L125">            List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">            if (tokens.size() != 3) {</span>
+<span class="nc" id="L127">                throw new BranchProjectionSourceException(</span>
+                        &quot;Relation block must contain exactly source, type and target at commit &quot;
+                                + commitId);
+            }
+            RelationType relationType;
+            try {
+<span class="fc" id="L133">                relationType = RelationType.valueOf(</span>
+<span class="fc" id="L134">                        tokens.get(1).toUpperCase(Locale.ROOT));</span>
+<span class="nc" id="L135">            } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L136">                throw new BranchProjectionSourceException(</span>
+<span class="nc" id="L137">                        &quot;Unsupported relation type '&quot; + tokens.get(1)</span>
+                                + &quot;' at commit &quot; + commitId,
+                        error);
+<span class="fc" id="L140">            }</span>
+<span class="fc" id="L141">            RelationIdentity identity = new RelationIdentity(</span>
+<span class="fc" id="L142">                    requireToken(tokens.get(0), &quot;source code&quot;),</span>
+                    relationType,
+<span class="fc" id="L144">                    requireToken(tokens.get(2), &quot;target code&quot;));</span>
+<span class="fc" id="L145">            RelationSnapshot snapshot = new RelationSnapshot(</span>
+<span class="fc" id="L146">                    identity.sourceCode(),</span>
+<span class="fc" id="L147">                    identity.relationType(),</span>
+<span class="fc" id="L148">                    identity.targetCode(),</span>
+<span class="fc" id="L149">                    uniqueProperty(block, &quot;status&quot;, identity),</span>
+<span class="fc" id="L150">                    confidence(block, identity),</span>
+<span class="fc" id="L151">                    uniqueProperty(block, &quot;provenance&quot;, identity));</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">            if (relations.putIfAbsent(identity, snapshot) != null) {</span>
+<span class="fc" id="L153">                throw new BranchProjectionSourceException(</span>
+                        &quot;Duplicate relation in authoritative branch projection: &quot;
+<span class="fc" id="L155">                                + identity.display());</span>
+            }
+<span class="fc" id="L157">        }</span>
+<span class="fc" id="L158">        return List.copyOf(relations.values());</span>
+    }
+
+    private static String uniqueProperty(
+            BlockAst block,
+            String property,
+            RelationIdentity identity) {
+<span class="fc" id="L165">        List&lt;String&gt; values = block.propertyValues(property);</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">        if (values.size() &gt; 1) {</span>
+<span class="nc" id="L167">            throw new BranchProjectionSourceException(</span>
+                    &quot;Duplicate &quot; + property + &quot; property on relation &quot;
+<span class="nc" id="L169">                            + identity.display());</span>
+        }
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        return values.isEmpty() ? null : normalizeOptional(values.getFirst());</span>
+    }
+
+    private static Double confidence(
+            BlockAst block,
+            RelationIdentity identity) {
+<span class="fc" id="L177">        String value = uniqueProperty(block, &quot;confidence&quot;, identity);</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L179">            return null;</span>
+        }
+        try {
+<span class="fc" id="L182">            double parsed = Double.parseDouble(value);</span>
+<span class="pc bpc" id="L183" title="3 of 6 branches missed.">            if (!Double.isFinite(parsed) || parsed &lt; 0.0 || parsed &gt; 1.0) {</span>
+<span class="nc" id="L184">                throw new NumberFormatException(&quot;outside [0,1]&quot;);</span>
+            }
+<span class="fc" id="L186">            return parsed;</span>
+<span class="nc" id="L187">        } catch (NumberFormatException error) {</span>
+<span class="nc" id="L188">            throw new BranchProjectionSourceException(</span>
+<span class="nc" id="L189">                    &quot;Invalid confidence on relation &quot; + identity.display(),</span>
+                    error);
+        }
+    }
+
+    private static void requireMutable(RepositoryContext context) {
+<span class="fc bfc" id="L195" title="All 2 branches covered.">        if (context.scope() == RepositoryScope.CENTRAL_READ) {</span>
+<span class="fc" id="L196">            throw new BranchProjectionContextException(</span>
+                    &quot;Relation projection rebuild requires a writable repository context&quot;);
+        }
+<span class="fc" id="L199">    }</span>
+
+    private static String requireToken(String value, String field) {
+<span class="pc bpc" id="L202" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L203">            throw new BranchProjectionSourceException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L205">        String normalized = value.strip();</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">        if (normalized.chars().anyMatch(Character::isWhitespace)) {</span>
+<span class="nc" id="L207">            throw new BranchProjectionSourceException(</span>
+                    field + &quot; must be one TaxDSL token: &quot; + normalized);
+        }
+<span class="fc" id="L210">        return normalized;</span>
+    }
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L214" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    public record RelationSnapshot(
+            String sourceCode,
+            RelationType relationType,
+            String targetCode,
+            String status,
+            Double confidence,
+            String provenance) {
+<span class="fc" id="L224">        public RelationSnapshot {</span>
+<span class="fc" id="L225">            sourceCode = requireToken(sourceCode, &quot;sourceCode&quot;);</span>
+<span class="fc" id="L226">            relationType = Objects.requireNonNull(relationType, &quot;relationType&quot;);</span>
+<span class="fc" id="L227">            targetCode = requireToken(targetCode, &quot;targetCode&quot;);</span>
+<span class="fc" id="L228">            status = normalizeOptional(status);</span>
+<span class="fc" id="L229">            provenance = normalizeOptional(provenance);</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">            if (confidence != null</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">                    &amp;&amp; (!Double.isFinite(confidence)</span>
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">                    || confidence &lt; 0.0</span>
+<span class="pc bpc" id="L233" title="1 of 2 branches missed.">                    || confidence &gt; 1.0)) {</span>
+<span class="nc" id="L234">                throw new IllegalArgumentException(</span>
+                        &quot;confidence must be finite and between 0.0 and 1.0&quot;);
+            }
+<span class="fc" id="L237">        }</span>
+    }
+
+<span class="fc" id="L240">    public record RebuildResult(</span>
+            String repositoryId,
+            String workspaceId,
+            String branch,
+            String authoritativeCommitId,
+            int relationCount) {
+    }
+
+<span class="fc" id="L248">    private record RelationIdentity(</span>
+            String sourceCode,
+            RelationType relationType,
+            String targetCode) {
+        private String display() {
+<span class="fc" id="L253">            return sourceCode + &quot; &quot; + relationType + &quot; &quot; + targetCode;</span>
+        }
+    }
+
+    public static final class BranchProjectionContextException
+            extends IllegalArgumentException {
+        public BranchProjectionContextException(String message) {
+<span class="fc" id="L260">            super(message);</span>
+<span class="fc" id="L261">        }</span>
+    }
+
+    public static final class BranchProjectionSourceException
+            extends IllegalStateException {
+        public BranchProjectionSourceException(String message) {
+<span class="fc" id="L267">            super(message);</span>
+<span class="fc" id="L268">        }</span>
+
+        public BranchProjectionSourceException(String message, Throwable cause) {
+<span class="fc" id="L271">            super(message, cause);</span>
+<span class="fc" id="L272">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

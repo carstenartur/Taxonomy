@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslWorkspaceVersionAdapter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.storage</a> &gt; <span class="el_source">DslWorkspaceVersionAdapter.java</span></div><h1>DslWorkspaceVersionAdapter.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.storage;
+
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceDslVersionPort;
+import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.stereotype.Component;
+
+import java.io.IOException;
+import java.util.Objects;
+
+/**
+ * Adapts the existing repository factory and CAS committer to the workspace API.
+ * Storage lifecycle, routing and ref-update semantics remain with their existing owners.
+ */
+@Component
+public final class DslWorkspaceVersionAdapter implements WorkspaceDslVersionPort {
+
+    private final DslGitRepositoryFactory repositories;
+
+<span class="fc" id="L21">    public DslWorkspaceVersionAdapter(DslGitRepositoryFactory repositories) {</span>
+<span class="fc" id="L22">        this.repositories = Objects.requireNonNull(repositories, &quot;repositories&quot;);</span>
+<span class="fc" id="L23">    }</span>
+
+    @Override
+    public ExactVersion openVersion(RepositoryContext context, String expectedHeadCommit) {
+<span class="fc" id="L27">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L28">        String normalizedHead = normalizeExpectedHead(expectedHeadCommit);</span>
+<span class="fc" id="L29">        return new BoundVersion(repositories.resolveRepository(context), context, normalizedHead);</span>
+    }
+
+    private static String normalizeExpectedHead(String expectedHeadCommit) {
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (expectedHeadCommit == null) {</span>
+<span class="fc" id="L34">            return null;</span>
+        }
+<span class="fc" id="L36">        String normalized = expectedHeadCommit.strip();</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (normalized.isEmpty()) {</span>
+<span class="fc" id="L38">            throw new IllegalArgumentException(</span>
+                    &quot;expectedHeadCommit must be null or a full commit ID&quot;);
+        }
+<span class="fc" id="L41">        ObjectId.fromString(normalized);</span>
+<span class="fc" id="L42">        return normalized;</span>
+    }
+
+    private static final class BoundVersion implements ExactVersion {
+        private final DslGitRepository repository;
+        private final RepositoryContext context;
+        private final String expectedHead;
+<span class="fc" id="L49">        private final ExpectedHeadDslCommitter committer = new ExpectedHeadDslCommitter();</span>
+
+<span class="fc" id="L51">        private BoundVersion(DslGitRepository repository, RepositoryContext context, String expectedHead) {</span>
+<span class="fc" id="L52">            this.repository = Objects.requireNonNull(repository, &quot;repository&quot;);</span>
+<span class="fc" id="L53">            this.context = context;</span>
+<span class="fc" id="L54">            this.expectedHead = expectedHead;</span>
+<span class="fc" id="L55">        }</span>
+
+        @Override
+        public String expectedHeadCommit() {
+<span class="fc" id="L59">            return expectedHead;</span>
+        }
+
+        @Override
+        public String readDsl() throws IOException {
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (expectedHead == null) {</span>
+<span class="fc" id="L65">                return &quot;&quot;;</span>
+            }
+<span class="fc" id="L67">            String dsl = repository.getDslAtCommit(expectedHead);</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">            return dsl == null ? &quot;&quot; : dsl;</span>
+        }
+
+        @Override
+        public String verifyExpectedHead() throws IOException {
+<span class="fc" id="L73">            return committer.verifyExpectedHead(repository, context.branch(), expectedHead);</span>
+        }
+
+        @Override
+        public CommitResult commit(String dslText, String message) throws IOException {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (context.scope() == RepositoryScope.CENTRAL_READ) {</span>
+<span class="fc" id="L79">                throw new IllegalStateException(&quot;Cannot commit a read-only repository context&quot;);</span>
+            }
+<span class="fc" id="L81">            var result = committer.commit(repository, new ExpectedHeadDslCommitter.CommitRequest(</span>
+<span class="fc" id="L82">                    context.branch(), expectedHead, dslText, context.username(), message));</span>
+<span class="fc" id="L83">            return new CommitResult(result.commitId(), result.previousHeadCommit());</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

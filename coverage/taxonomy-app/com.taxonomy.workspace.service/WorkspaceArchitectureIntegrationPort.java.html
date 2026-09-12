@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceArchitectureIntegrationPort.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceArchitectureIntegrationPort.java</span></div><h1>WorkspaceArchitectureIntegrationPort.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.dsl.command.ArchitectureCommand;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.function.UnaryOperator;
+
+/**
+ * Workspace-owned boundary for external integrations that need exact architecture state,
+ * durable semantic mutations, and explicit Git checkpoints.
+ *
+ * &lt;p&gt;The boundary deliberately exposes neither editor persistence nor the concrete editor
+ * service. Accepted semantic operations remain durable workspace revisions; checkpoints
+ * remain separate, retryable Git versions.&lt;/p&gt;
+ */
+public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitectureReadPort {
+
+    /** Validated mutable-workflow state implementing the read-only state contract. */
+    record State(String workspaceScopeKey, String commitId, long semanticRevision)
+            implements WorkspaceArchitectureReadPort.State {
+<span class="fc" id="L25">        public State {</span>
+<span class="fc bfc" id="L26" title="All 4 branches covered.">            if (workspaceScopeKey == null || workspaceScopeKey.isBlank()) {</span>
+<span class="fc" id="L27">                throw new IllegalArgumentException(&quot;Workspace scope key is required&quot;);</span>
+            }
+<span class="fc" id="L29">            workspaceScopeKey = workspaceScopeKey.strip();</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">            if (semanticRevision &lt; 0) {</span>
+<span class="fc" id="L31">                throw new IllegalArgumentException(&quot;Semantic revision must not be negative&quot;);</span>
+            }
+<span class="fc bfc" id="L33" title="All 2 branches covered.">            if (commitId != null) {</span>
+<span class="fc" id="L34">                commitId = commitId.strip();</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">                if (commitId.isEmpty()) {</span>
+<span class="fc" id="L36">                    commitId = null;</span>
+                }
+            }
+<span class="fc" id="L39">        }</span>
+    }
+
+    /** Concrete integration document implementing the read-only document contract. */
+    record WorkspaceDocument(State state, String dsl)
+            implements WorkspaceArchitectureReadPort.WorkspaceDocument {
+<span class="fc" id="L45">        public WorkspaceDocument {</span>
+<span class="fc" id="L46">            Objects.requireNonNull(state, &quot;state&quot;);</span>
+<span class="fc" id="L47">            Objects.requireNonNull(dsl, &quot;dsl&quot;);</span>
+<span class="fc" id="L48">        }</span>
+    }
+
+    /** Stable command identity and audit metadata without leaking editor-specific DTOs. */
+    record CommandMetadata(UUID commandId, UUID correlationId, UUID causationId, String rationale) {
+<span class="fc" id="L53">        public CommandMetadata {</span>
+<span class="fc" id="L54">            Objects.requireNonNull(commandId, &quot;commandId&quot;);</span>
+<span class="fc" id="L55">            Objects.requireNonNull(correlationId, &quot;correlationId&quot;);</span>
+<span class="fc" id="L56">            Objects.requireNonNull(causationId, &quot;causationId&quot;);</span>
+<span class="fc bfc" id="L57" title="All 4 branches covered.">            if (rationale == null || rationale.length() &gt; 1000) {</span>
+<span class="fc" id="L58">                throw new IllegalArgumentException(&quot;A rationale of 1–1000 characters is required&quot;);</span>
+            }
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (rationale.chars().anyMatch(Character::isISOControl)) {</span>
+<span class="fc" id="L61">                throw new IllegalArgumentException(&quot;Rationale must not contain control characters&quot;);</span>
+            }
+<span class="fc" id="L63">            rationale = rationale.strip().replaceAll(&quot;\\s+&quot;, &quot; &quot;);</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            if (rationale.isBlank()) {</span>
+<span class="fc" id="L65">                throw new IllegalArgumentException(&quot;A rationale of 1–1000 characters is required&quot;);</span>
+            }
+<span class="fc" id="L67">        }</span>
+    }
+
+    /** Result of an explicit Git checkpoint; no semantic operation is implied. */
+    record Checkpoint(State state) {
+<span class="fc" id="L72">        public Checkpoint {</span>
+<span class="fc" id="L73">            Objects.requireNonNull(state, &quot;state&quot;);</span>
+<span class="fc" id="L74">        }</span>
+    }
+
+    /**
+     * Classify the workspace-owned optimistic revision signal without exposing its concrete
+     * implementation type to integration consumers. Framework exception translation may
+     * wrap the signal, so inspect a bounded cause chain.
+     */
+    static boolean isRevisionConflict(Throwable failure) {
+<span class="pc bpc" id="L83" title="1 of 4 branches missed.">        for (int depth = 0; failure != null &amp;&amp; depth &lt; 20; depth++, failure = failure.getCause()) {</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            if (failure instanceof WorkspaceRevisionConflict) {</span>
+<span class="fc" id="L85">                return true;</span>
+            }
+        }
+<span class="fc" id="L88">        return false;</span>
+    }
+
+    @Override
+    WorkspaceDocument read(RepositoryContext context, String commit) throws IOException;
+
+    /** Execute within the workspace model lock used for cross-aggregate integrations. */
+    &lt;T&gt; T locked(RepositoryContext context, Function&lt;WorkspaceDocument, T&gt; action) throws IOException;
+
+    /**
+     * Append one reviewed integration as a durable semantic revision and prepare its
+     * separately retryable checkpoint intent in the same ORM transaction.
+     */
+    State acceptIntegration(RepositoryContext context, State expected, CommandMetadata metadata,
+                            String fingerprint, List&lt;ArchitectureCommand&gt; commands,
+                            UnaryOperator&lt;String&gt; portfolioContribution,
+                            CommandMetadata checkpointMetadata) throws IOException;
+
+    /** Finish or replay the explicit Git checkpoint for already durable semantic state. */
+    Checkpoint checkpoint(RepositoryContext context, State expected,
+                          CommandMetadata checkpointMetadata) throws IOException;
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

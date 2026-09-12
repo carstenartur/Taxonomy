@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslWorkspacePreResolutionInterceptor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.controller</a> &gt; <span class="el_source">DslWorkspacePreResolutionInterceptor.java</span></div><h1>DslWorkspacePreResolutionInterceptor.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.controller;
+
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.stereotype.Component;
+import org.springframework.web.servlet.HandlerInterceptor;
+
+import java.util.Objects;
+
+/**
+ * Resolves an isolated workspace and its exact repository before entering HTTP
+ * endpoints that read or mutate workspace-scoped repository, hypothesis,
+ * analysis or relation state.
+ *
+ * &lt;p&gt;Provisioning and context resolution failures propagate before controller
+ * code runs. Successful results are request-cached by the corresponding
+ * services, so repeated controller lookups cannot later switch repository or
+ * workspace. Despite the historical class name, the interceptor is also used
+ * by analysis and graph-search endpoints whose results carry workspace-scoped
+ * hypotheses or relation visibility.&lt;/p&gt;
+ */
+@Component
+public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor {
+
+    private final WorkspaceResolver workspaceResolver;
+    private final RepositoryStateService repositoryStateService;
+
+    public DslWorkspacePreResolutionInterceptor(WorkspaceResolver workspaceResolver,
+<span class="fc" id="L33">                                                RepositoryStateService repositoryStateService) {</span>
+<span class="fc" id="L34">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L35">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L36">    }</span>
+
+    @Override
+    public boolean preHandle(HttpServletRequest request,
+                             HttpServletResponse response,
+                             Object handler) {
+<span class="fc" id="L42">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L43">        repositoryStateService.ensureWorkspaceState(username);</span>
+
+        // Resolve the repository first. Besides request-caching the mandatory
+        // tenant identity, this persists the deterministic primary provenance
+        // for any pre-migration workspace that still lacks source_repository_id.
+<span class="fc" id="L48">        RepositoryContext repositoryContext =</span>
+<span class="fc" id="L49">                workspaceResolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L50">        WorkspaceContext workspaceContext = workspaceResolver.resolveCurrentContext();</span>
+
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (repositoryContext == null) {</span>
+<span class="fc" id="L53">            throw new IllegalStateException(</span>
+                    &quot;Repository context resolver returned null for a workspace-scoped operation&quot;);
+        }
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">        if (workspaceContext == null) {</span>
+<span class="nc" id="L57">            throw new IllegalStateException(</span>
+                    &quot;Workspace context resolver returned null for a workspace-scoped operation&quot;);
+        }
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (WorkspaceContext.SHARED.equals(workspaceContext)) {</span>
+<span class="fc" id="L61">            throw new IllegalStateException(</span>
+                    &quot;Authenticated workspace-scoped operation did not resolve an isolated workspace&quot;);
+        }
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (!Objects.equals(</span>
+<span class="fc" id="L65">                repositoryContext.workspaceId(), workspaceContext.workspaceId())) {</span>
+<span class="fc" id="L66">            throw new IllegalStateException(</span>
+                    &quot;Repository and workspace resolution selected different workspace identities&quot;);
+        }
+<span class="fc" id="L69">        return true;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

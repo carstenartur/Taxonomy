@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductionSecurityGuard.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">ProductionSecurityGuard.java</span></div><h1>ProductionSecurityGuard.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.ApplicationArguments;
+import org.springframework.boot.ApplicationRunner;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.context.annotation.Profile;
+import org.springframework.stereotype.Component;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * Fails production startup before any bootstrap account can be persisted when
+ * the initial administrator credential or optional machine token is unsafe.
+ */
+@Component
+@Profile(&quot;production&quot;)
+@Order(Ordered.HIGHEST_PRECEDENCE)
+public class ProductionSecurityGuard implements ApplicationRunner {
+
+    private static final int MINIMUM_SECRET_LENGTH = 16;
+<span class="fc" id="L26">    private static final Set&lt;String&gt; FORBIDDEN_PASSWORDS = Set.of(</span>
+            &quot;admin&quot;,
+            &quot;password&quot;,
+            &quot;changeme&quot;,
+            &quot;change-me&quot;);
+
+    private final String adminPassword;
+    private final String adminToken;
+
+    public ProductionSecurityGuard(
+            @Value(&quot;${taxonomy.admin-password:}&quot;) String adminPassword,
+<span class="fc" id="L37">            @Value(&quot;${admin.token:}&quot;) String adminToken) {</span>
+<span class="fc" id="L38">        this.adminPassword = adminPassword;</span>
+<span class="fc" id="L39">        this.adminToken = adminToken;</span>
+<span class="fc" id="L40">    }</span>
+
+    @Override
+    public void run(ApplicationArguments arguments) {
+<span class="fc" id="L44">        requireStrongSecret(adminPassword, &quot;TAXONOMY_ADMIN_PASSWORD&quot;);</span>
+
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">        if (adminToken != null &amp;&amp; !adminToken.isBlank()) {</span>
+<span class="fc" id="L47">            requireStrongSecret(adminToken, &quot;ADMIN_PASSWORD&quot;);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">            if (constantTimeEquals(adminPassword, adminToken)) {</span>
+<span class="fc" id="L49">                throw new IllegalStateException(</span>
+                        &quot;Production startup refused: ADMIN_PASSWORD must be a distinct &quot;
+                                + &quot;machine token and must not reuse TAXONOMY_ADMIN_PASSWORD.&quot;);
+            }
+        }
+<span class="fc" id="L54">    }</span>
+
+    private static void requireStrongSecret(
+            String value,
+            String environmentVariable) {
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        String normalized = value == null</span>
+<span class="nc" id="L60">                ? &quot;&quot;</span>
+<span class="fc" id="L61">                : value.trim().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (normalized.isEmpty()</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                || FORBIDDEN_PASSWORDS.contains(normalized)</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                || normalized.startsWith(&quot;replace-with-&quot;)</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">                || normalized.startsWith(&quot;change-me-to-&quot;)) {</span>
+<span class="fc" id="L66">            throw unsafeSecret(environmentVariable);</span>
+        }
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (value.length() &lt; MINIMUM_SECRET_LENGTH) {</span>
+<span class="fc" id="L69">            throw new IllegalStateException(</span>
+                    &quot;Production startup refused: &quot; + environmentVariable
+                            + &quot; must contain at least &quot; + MINIMUM_SECRET_LENGTH
+                            + &quot; characters.&quot;);
+        }
+<span class="fc" id="L74">    }</span>
+
+    private static IllegalStateException unsafeSecret(String environmentVariable) {
+<span class="fc" id="L77">        return new IllegalStateException(</span>
+                &quot;Production startup refused: configure a unique, strong &quot;
+                        + environmentVariable
+                        + &quot; and do not use a documented placeholder.&quot;);
+    }
+
+    private static boolean constantTimeEquals(String left, String right) {
+<span class="fc" id="L84">        return MessageDigest.isEqual(</span>
+<span class="fc" id="L85">                left.getBytes(StandardCharsets.UTF_8),</span>
+<span class="fc" id="L86">                right.getBytes(StandardCharsets.UTF_8));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

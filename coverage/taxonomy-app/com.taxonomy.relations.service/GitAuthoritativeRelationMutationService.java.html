@@ -1,0 +1,190 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitAuthoritativeRelationMutationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">GitAuthoritativeRelationMutationService.java</span></div><h1>GitAuthoritativeRelationMutationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RelationCommand;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RemoveRelation;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.UpsertRelation;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.RebuildResult;
+import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.Objects;
+
+/**
+ * Makes one exact Git commit authoritative before attempting its rebuildable
+ * relational projection.
+ *
+ * &lt;p&gt;The method is deliberately not transactional: a failed projection must
+ * never roll back or hide the already successful Git command. The exact command
+ * state is projected first, then the complete branch is rebuilt and proven ready
+ * before any pending recovery is reconciled. Recovery is persisted in an
+ * independent transaction and callers always receive the immutable Git authority,
+ * even when that secondary persistence also fails.&lt;/p&gt;
+ */
+@Service
+public class GitAuthoritativeRelationMutationService {
+
+    private final ArchitectureRelationGitCommandService commandService;
+    private final RelationDecisionProjectionService projectionService;
+    private final RelationBranchProjectionRebuildService rebuildService;
+    private final RelationBranchProjectionReadinessService readinessService;
+    private final RelationProjectionRecoveryService recoveryService;
+
+    public GitAuthoritativeRelationMutationService(
+            ArchitectureRelationGitCommandService commandService,
+            RelationDecisionProjectionService projectionService,
+            RelationBranchProjectionRebuildService rebuildService,
+            RelationBranchProjectionReadinessService readinessService,
+<span class="fc" id="L46">            RelationProjectionRecoveryService recoveryService) {</span>
+<span class="fc" id="L47">        this.commandService = Objects.requireNonNull(</span>
+                commandService, &quot;commandService&quot;);
+<span class="fc" id="L49">        this.projectionService = Objects.requireNonNull(</span>
+                projectionService, &quot;projectionService&quot;);
+<span class="fc" id="L51">        this.rebuildService = Objects.requireNonNull(</span>
+                rebuildService, &quot;rebuildService&quot;);
+<span class="fc" id="L53">        this.readinessService = Objects.requireNonNull(</span>
+                readinessService, &quot;readinessService&quot;);
+<span class="fc" id="L55">        this.recoveryService = Objects.requireNonNull(</span>
+                recoveryService, &quot;recoveryService&quot;);
+<span class="fc" id="L57">    }</span>
+
+    public MutationResult upsert(
+            RepositoryContext context,
+            String expectedHeadCommit,
+            RelationDefinition definition,
+            CommandMetadata metadata) throws IOException {
+<span class="fc" id="L64">        return execute(</span>
+                context,
+                expectedHeadCommit,
+                new UpsertRelation(definition, metadata));
+    }
+
+    public MutationResult remove(
+            RepositoryContext context,
+            String expectedHeadCommit,
+            RelationIdentity identity,
+            CommandMetadata metadata) throws IOException {
+<span class="nc" id="L75">        return execute(</span>
+                context,
+                expectedHeadCommit,
+                new RemoveRelation(identity, metadata));
+    }
+
+    private MutationResult execute(
+            RepositoryContext context,
+            String expectedHeadCommit,
+            RelationCommand command) throws IOException {
+<span class="fc" id="L85">        CommandResult authority = commandService.execute(</span>
+                context, expectedHeadCommit, command);
+        try {
+<span class="fc" id="L88">            RelationDecisionProjectionService.ProjectionResult projection =</span>
+<span class="fc" id="L89">                    projectionService.project(context, authority, command);</span>
+<span class="fc" id="L90">            RebuildResult rebuild = rebuildService.rebuild(context);</span>
+<span class="fc" id="L91">            verifyCompleteProjection(context, authority, rebuild);</span>
+<span class="fc" id="L92">            recoveryService.reconcileAfterRebuild(</span>
+<span class="fc" id="L93">                    context, authority.authoritativeCommitId());</span>
+<span class="fc" id="L94">            return new MutationResult(authority, projection);</span>
+<span class="fc" id="L95">        } catch (RuntimeException projectionFailure) {</span>
+<span class="fc" id="L96">            RecoveryRecord recovery = null;</span>
+            try {
+<span class="fc" id="L98">                recovery = recoveryService.recordPending(</span>
+                        authority, projectionFailure);
+<span class="fc" id="L100">            } catch (RuntimeException recoveryFailure) {</span>
+<span class="fc" id="L101">                projectionFailure.addSuppressed(recoveryFailure);</span>
+<span class="fc" id="L102">            }</span>
+<span class="fc" id="L103">            throw new ProjectionPendingException(</span>
+                    authority, recovery, projectionFailure);
+        }
+    }
+
+    private void verifyCompleteProjection(
+            RepositoryContext context,
+            CommandResult authority,
+            RebuildResult rebuild) {
+<span class="fc" id="L112">        String authoritativeCommit = authority.authoritativeCommitId();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (!authoritativeCommit.equals(rebuild.authoritativeCommitId())) {</span>
+<span class="fc" id="L114">            throw new ProjectionCompletionException(</span>
+                    &quot;Complete relation projection rebuilt commit &quot;
+<span class="fc" id="L116">                            + rebuild.authoritativeCommitId()</span>
+                            + &quot; instead of command authority &quot;
+                            + authoritativeCommit);
+        }
+
+<span class="fc" id="L121">        Readiness readiness = readinessService.inspect(context);</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        boolean complete = readiness.state() == ReadinessState.READY</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">                &amp;&amp; authoritativeCommit.equals(readiness.currentHeadCommit())</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">                &amp;&amp; authoritativeCommit.equals(readiness.projectedCommit())</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">                &amp;&amp; rebuild.relationCount() == readiness.rows().size();</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if (!complete) {</span>
+<span class="fc" id="L127">            throw new ProjectionCompletionException(</span>
+                    &quot;Relation command at &quot; + authoritativeCommit
+                            + &quot; did not produce a complete readable branch projection: &quot;
+<span class="fc" id="L130">                            + readiness.state());</span>
+        }
+<span class="fc" id="L132">    }</span>
+
+    public record MutationResult(
+            CommandResult authority,
+            RelationDecisionProjectionService.ProjectionResult projection) {
+<span class="fc" id="L137">        public MutationResult {</span>
+<span class="fc" id="L138">            authority = Objects.requireNonNull(authority, &quot;authority&quot;);</span>
+<span class="fc" id="L139">            projection = Objects.requireNonNull(projection, &quot;projection&quot;);</span>
+<span class="fc" id="L140">        }</span>
+    }
+
+    public static final class ProjectionCompletionException
+            extends IllegalStateException {
+        public ProjectionCompletionException(String message) {
+<span class="fc" id="L146">            super(message);</span>
+<span class="fc" id="L147">        }</span>
+    }
+
+    public static final class ProjectionPendingException
+            extends IllegalStateException {
+        private final CommandResult authority;
+        private final RecoveryRecord recovery;
+
+        /**
+         * Compatibility form for callers that know the Git authority but do
+         * not have a durable recovery record, for example isolated tests or a
+         * secondary recovery-store failure.
+         */
+        public ProjectionPendingException(
+                CommandResult authority,
+                Throwable cause) {
+<span class="fc" id="L163">            this(authority, null, cause);</span>
+<span class="fc" id="L164">        }</span>
+
+        public ProjectionPendingException(
+                CommandResult authority,
+                RecoveryRecord recovery,
+                Throwable cause) {
+<span class="fc" id="L170">            super(&quot;Git relation command succeeded at &quot;</span>
+<span class="fc" id="L171">                    + authority.authoritativeCommitId()</span>
+                    + &quot;, but its complete projection requires recovery&quot;, cause);
+<span class="fc" id="L173">            this.authority = Objects.requireNonNull(authority, &quot;authority&quot;);</span>
+<span class="fc" id="L174">            this.recovery = recovery;</span>
+<span class="fc" id="L175">        }</span>
+
+        public CommandResult getAuthority() {
+<span class="fc" id="L178">            return authority;</span>
+        }
+
+        public RecoveryRecord getRecovery() {
+<span class="fc" id="L182">            return recovery;</span>
+        }
+
+        public boolean isRecoveryPersisted() {
+<span class="fc bfc" id="L186" title="All 2 branches covered.">            return recovery != null;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

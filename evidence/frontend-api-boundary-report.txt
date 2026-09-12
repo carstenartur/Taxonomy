@@ -1,0 +1,34 @@
+Frontend API boundary
+
+Baseline: HEAD^
+Legacy direct fetch debt: 126 call(s) in 24 file(s); baseline 126 call(s) in 24 file(s).
+
+Legacy literal /api inventory:
+- core/taxonomy-analysis.js: 8
+- core/taxonomy-browse.js: 23
+- core/taxonomy-scoring.js: 5
+- relations/taxonomy-coverage.js: 3
+- relations/taxonomy-relations.js: 3
+- shared/taxonomy-about.js: 1
+- shared/taxonomy-action-guards.js: 3
+- shared/taxonomy-dsl-editor.js: 14
+- shared/taxonomy-search.js: 2
+- taxonomy-i18n.js: 1
+- templates/index.html: 12
+- versioning/taxonomy-context-bar.js: 4
+- versioning/taxonomy-context-compare.js: 1
+- versioning/taxonomy-context-transfer.js: 2
+- versioning/taxonomy-history-search.js: 2
+- versioning/taxonomy-variants.js: 6
+- versioning/taxonomy-versions.js: 13
+- versioning/taxonomy-viewcontext.js: 1
+- workspace/taxonomy-git-status.js: 1
+- workspace/taxonomy-merge-resolution.js: 3
+- workspace/taxonomy-workspace-sync.js: 4
+
+Allowlist entries ready for removal:
+- shared/taxonomy-export.js
+- shared/taxonomy-graph.js
+- workspace/taxonomy-workspace-provisioning.js
+
+Result: PASS

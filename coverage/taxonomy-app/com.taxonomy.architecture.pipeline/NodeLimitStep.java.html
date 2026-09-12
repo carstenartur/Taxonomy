@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>NodeLimitStep.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">NodeLimitStep.java</span></div><h1>NodeLimitStep.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.dto.RequirementAnchor;
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.dto.RequirementRelationshipView;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Applies a hard output limit to the architecture-view element, anchor, and
+ * relationship lists.
+ *
+ * &lt;p&gt;When {@code maxArchitectureNodes} is positive and the element list exceeds
+ * that limit, endpoints of the strongest existing relationships are retained
+ * first. The remaining budget is filled from the already ranked element list.
+ * Anchors and relationships are then projected onto exactly that retained node
+ * set, while the complete analysis score map remains unchanged.
+ *
+ * &lt;p&gt;This graph-aware projection avoids turning a useful architecture into a
+ * disconnected collection of high-scoring nodes. It also keeps impact-relation
+ * generation bounded because this step continues to run before step 800.
+ *
+ * &lt;p&gt;This step is a pure function with no external dependencies and can be
+ * unit-tested without a Spring context.
+ *
+ * &lt;p&gt;&lt;b&gt;Core invariant&lt;/b&gt; — this step enforces the caller-requested node-count
+ * limit. Do not disable or reorder it relative to impact-relation (step 800),
+ * which must run &lt;em&gt;after&lt;/em&gt; this bounded graph projection.
+ */
+@Service
+<span class="fc" id="L37">public class NodeLimitStep implements ArchitecturePipelineStep {</span>
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = &quot;node-limit&quot;;
+
+    private static final Comparator&lt;String&gt; NULL_SAFE_TEXT =
+<span class="fc" id="L43">            Comparator.nullsLast(Comparator.naturalOrder());</span>
+
+<span class="fc" id="L45">    private static final Comparator&lt;RequirementRelationshipView&gt; RELATION_PRIORITY =</span>
+<span class="fc" id="L46">            Comparator.comparingDouble(NodeLimitStep::relationEvidence).reversed()</span>
+<span class="fc" id="L47">                    .thenComparing(RequirementRelationshipView::getSourceCode, NULL_SAFE_TEXT)</span>
+<span class="fc" id="L48">                    .thenComparing(RequirementRelationshipView::getTargetCode, NULL_SAFE_TEXT)</span>
+<span class="fc" id="L49">                    .thenComparing(RequirementRelationshipView::getRelationType, NULL_SAFE_TEXT);</span>
+
+    @Override
+<span class="fc" id="L52">    public String id() { return STEP_ID; }</span>
+
+    @Override
+<span class="fc" id="L55">    public int order() { return 700; }</span>
+
+    @Override
+    public ArchitecturePipelineStepDescriptor descriptor() {
+<span class="nc" id="L59">        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), true);</span>
+    }
+
+    /**
+     * Applies the node-count limit stored in {@code ctx.maxArchitectureNodes}.
+     * Has no effect when the limit is 0 or when the element count is within the limit.
+     */
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
+<span class="fc" id="L68">        int maxNodes = ctx.getMaxArchitectureNodes();</span>
+<span class="fc" id="L69">        List&lt;RequirementElementView&gt; elements = ctx.getElements();</span>
+<span class="fc" id="L70">        List&lt;RequirementRelationshipView&gt; relationships = ctx.getRelationships();</span>
+
+<span class="fc bfc" id="L72" title="All 4 branches covered.">        if (maxNodes &lt;= 0 || elements.size() &lt;= maxNodes) {</span>
+<span class="fc" id="L73">            return;</span>
+        }
+
+<span class="fc" id="L76">        Set&lt;String&gt; availableCodes = elements.stream()</span>
+<span class="fc" id="L77">                .map(RequirementElementView::getNodeCode)</span>
+<span class="fc" id="L78">                .collect(Collectors.toSet());</span>
+<span class="fc" id="L79">        Set&lt;String&gt; keptCodes = selectRelationshipEndpoints(</span>
+                relationships, availableCodes, maxNodes);
+
+        // Fill the remaining budget from the canonical element ranking produced
+        // by the preceding pipeline steps.
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        for (RequirementElementView element : elements) {</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">            if (keptCodes.size() &gt;= maxNodes) {</span>
+<span class="fc" id="L86">                break;</span>
+            }
+<span class="fc" id="L88">            keptCodes.add(element.getNodeCode());</span>
+<span class="fc" id="L89">        }</span>
+
+<span class="fc" id="L91">        List&lt;RequirementElementView&gt; keptElements = elements.stream()</span>
+<span class="fc" id="L92">                .filter(element -&gt; keptCodes.contains(element.getNodeCode()))</span>
+<span class="fc" id="L93">                .collect(Collectors.toCollection(ArrayList::new));</span>
+
+<span class="fc" id="L95">        List&lt;RequirementAnchor&gt; originalAnchors = ctx.getAnchors();</span>
+<span class="fc" id="L96">        List&lt;RequirementAnchor&gt; keptAnchors = originalAnchors.stream()</span>
+<span class="fc" id="L97">                .filter(anchor -&gt; keptCodes.contains(anchor.getNodeCode()))</span>
+<span class="fc" id="L98">                .collect(Collectors.toCollection(ArrayList::new));</span>
+<span class="fc" id="L99">        int omittedAnchors = originalAnchors.size() - keptAnchors.size();</span>
+
+<span class="fc" id="L101">        ctx.setElements(keptElements);</span>
+<span class="fc" id="L102">        ctx.setAnchors(keptAnchors);</span>
+        // The view receives the anchor list immediately after anchor selection.
+        // Replacing the context list therefore requires explicit synchronization.
+<span class="fc" id="L105">        ctx.getView().setAnchors(keptAnchors);</span>
+<span class="fc" id="L106">        ctx.setRelationships(relationships.stream()</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">                .filter(r -&gt; keptCodes.contains(r.getSourceCode())</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                        &amp;&amp; keptCodes.contains(r.getTargetCode()))</span>
+<span class="fc" id="L109">                .collect(Collectors.toList()));</span>
+
+<span class="fc" id="L111">        String note = &quot;Architecture view limited to &quot; + maxNodes + &quot; elements.&quot;;</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if (omittedAnchors &gt; 0) {</span>
+<span class="fc" id="L113">            note += &quot; Additional anchor nodes outside this bounded view: &quot;</span>
+                    + omittedAnchors + &quot;; their scores remain in the complete analysis.&quot;;
+        }
+<span class="fc" id="L116">        ctx.getView().getNotes().add(note);</span>
+<span class="fc" id="L117">    }</span>
+
+    private static Set&lt;String&gt; selectRelationshipEndpoints(
+            List&lt;RequirementRelationshipView&gt; relationships,
+            Set&lt;String&gt; availableCodes,
+            int maxNodes) {
+<span class="fc" id="L123">        List&lt;RequirementRelationshipView&gt; rankedRelationships =</span>
+                new ArrayList&lt;&gt;(relationships);
+<span class="fc" id="L125">        rankedRelationships.sort(RELATION_PRIORITY);</span>
+
+<span class="fc" id="L127">        Set&lt;String&gt; selectedCodes = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        for (RequirementRelationshipView relationship : rankedRelationships) {</span>
+<span class="fc" id="L129">            String sourceCode = relationship.getSourceCode();</span>
+<span class="fc" id="L130">            String targetCode = relationship.getTargetCode();</span>
+<span class="pc bpc" id="L131" title="2 of 4 branches missed.">            if (!availableCodes.contains(sourceCode) || !availableCodes.contains(targetCode)) {</span>
+<span class="nc" id="L132">                continue;</span>
+            }
+
+<span class="fc" id="L135">            int missingEndpoints = 0;</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">            if (!selectedCodes.contains(sourceCode)) {</span>
+<span class="fc" id="L137">                missingEndpoints++;</span>
+            }
+<span class="pc bpc" id="L139" title="1 of 4 branches missed.">            if (!sourceCode.equals(targetCode) &amp;&amp; !selectedCodes.contains(targetCode)) {</span>
+<span class="fc" id="L140">                missingEndpoints++;</span>
+            }
+<span class="fc bfc" id="L142" title="All 2 branches covered.">            if (selectedCodes.size() + missingEndpoints &gt; maxNodes) {</span>
+<span class="fc" id="L143">                continue;</span>
+            }
+
+<span class="fc" id="L146">            selectedCodes.add(sourceCode);</span>
+<span class="fc" id="L147">            selectedCodes.add(targetCode);</span>
+<span class="fc" id="L148">        }</span>
+<span class="fc" id="L149">        return selectedCodes;</span>
+    }
+
+    private static double relationEvidence(RequirementRelationshipView relationship) {
+<span class="fc" id="L153">        return Math.max(relationship.getConfidence(),</span>
+<span class="fc" id="L154">                relationship.getPropagatedRelevance());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

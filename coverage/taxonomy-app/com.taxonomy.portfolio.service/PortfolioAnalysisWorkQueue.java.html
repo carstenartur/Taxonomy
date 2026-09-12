@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioAnalysisWorkQueue.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioAnalysisWorkQueue.java</span></div><h1>PortfolioAnalysisWorkQueue.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.RequirementAnalysisJobItem;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobItemRepository;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Claims pending analysis items in a dedicated short persistence transaction
+ * and returns self-contained exact-tenant work payloads. External LLM execution
+ * starts only after this method's independent transaction has committed.
+ */
+@Service
+public class PortfolioAnalysisWorkQueue {
+
+<span class="fc" id="L23">    public record WorkItem(</span>
+            Long itemId,
+            String jobId,
+            Long projectId,
+            String scopeKey,
+            Long requirementId,
+            String requirementKey,
+            Long requirementVersionId,
+            int requirementVersionNumber,
+            String requirementText,
+            int attempt) {
+
+        /** Compatibility constructor for callers that create first-attempt fixtures directly. */
+        public WorkItem(Long itemId,
+                        String jobId,
+                        Long projectId,
+                        String scopeKey,
+                        Long requirementId,
+                        String requirementKey,
+                        Long requirementVersionId,
+                        int requirementVersionNumber,
+                        String requirementText) {
+<span class="nc" id="L45">            this(itemId, jobId, projectId, scopeKey, requirementId,</span>
+                    requirementKey, requirementVersionId,
+                    requirementVersionNumber, requirementText, 1);
+<span class="nc" id="L48">        }</span>
+    }
+
+    private final RequirementAnalysisJobRepository jobRepository;
+    private final RequirementAnalysisJobItemRepository itemRepository;
+
+    public PortfolioAnalysisWorkQueue(RequirementAnalysisJobRepository jobRepository,
+<span class="fc" id="L55">                                      RequirementAnalysisJobItemRepository itemRepository) {</span>
+<span class="fc" id="L56">        this.jobRepository = jobRepository;</span>
+<span class="fc" id="L57">        this.itemRepository = itemRepository;</span>
+<span class="fc" id="L58">    }</span>
+
+    /**
+     * Claims pending items with compare-and-set semantics and materializes their
+     * work payloads before the dedicated transaction ends. Competing requests
+     * can observe the same candidates, but only one can update a row from
+     * PENDING to RUNNING inside the supplied exact tenant.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public List&lt;WorkItem&gt; pending(String jobId, Long projectId, String scopeKey) {
+<span class="fc" id="L68">        String exactScope = requireScope(scopeKey);</span>
+<span class="fc" id="L69">        jobRepository.findByIdAndProjectIdAndScopeKey(jobId, projectId, exactScope)</span>
+<span class="fc" id="L70">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Analysis job not found: &quot; + jobId));
+
+<span class="fc" id="L73">        List&lt;RequirementAnalysisJobItem&gt; candidates = itemRepository</span>
+<span class="fc" id="L74">                .findByJobIdAndProjectIdAndScopeKeyAndStatusOrderByRequirementRequirementKeyAsc(</span>
+                        jobId, projectId, exactScope, AnalysisStatus.PENDING);
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (candidates.isEmpty()) {</span>
+<span class="fc" id="L77">            return List.of();</span>
+        }
+
+<span class="fc" id="L80">        Instant claimedAt = Instant.now();</span>
+<span class="fc" id="L81">        List&lt;WorkItem&gt; claimed = new ArrayList&lt;&gt;(candidates.size());</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        for (RequirementAnalysisJobItem item : candidates) {</span>
+<span class="fc" id="L83">            int updated = itemRepository.claimPending(</span>
+<span class="fc" id="L84">                    item.getId(),</span>
+                    jobId,
+                    projectId,
+                    exactScope,
+                    AnalysisStatus.PENDING,
+                    AnalysisStatus.RUNNING,
+                    claimedAt);
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">            if (updated == 1) {</span>
+<span class="fc" id="L92">                claimed.add(toWorkItem(item));</span>
+            }
+<span class="fc" id="L94">        }</span>
+<span class="fc" id="L95">        return List.copyOf(claimed);</span>
+    }
+
+    private static WorkItem toWorkItem(RequirementAnalysisJobItem item) {
+<span class="fc" id="L99">        return new WorkItem(</span>
+<span class="fc" id="L100">                item.getId(),</span>
+<span class="fc" id="L101">                item.getJobId(),</span>
+<span class="fc" id="L102">                item.getProjectId(),</span>
+<span class="fc" id="L103">                item.getScopeKey(),</span>
+<span class="fc" id="L104">                item.getRequirementId(),</span>
+<span class="fc" id="L105">                item.getRequirement().getRequirementKey(),</span>
+<span class="fc" id="L106">                item.getRequirementVersionId(),</span>
+<span class="fc" id="L107">                item.getRequirementVersion().getVersionNumber(),</span>
+<span class="fc" id="L108">                item.getRequirementVersion().getText(),</span>
+<span class="fc" id="L109">                item.getAttempt());</span>
+    }
+
+    private static String requireScope(String scopeKey) {
+<span class="pc bpc" id="L113" title="2 of 4 branches missed.">        if (scopeKey == null || scopeKey.isBlank()) {</span>
+<span class="nc" id="L114">            throw PortfolioException.validation(&quot;Exact analysis tenant scope is required&quot;);</span>
+        }
+<span class="fc" id="L116">        return scopeKey.strip();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

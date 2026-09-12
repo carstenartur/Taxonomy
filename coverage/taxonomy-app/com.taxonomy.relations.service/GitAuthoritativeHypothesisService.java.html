@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>GitAuthoritativeHypothesisService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">GitAuthoritativeHypothesisService.java</span></div><h1>GitAuthoritativeHypothesisService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
+import com.taxonomy.relations.model.RelationHypothesis;
+import com.taxonomy.relations.repository.RelationEvidenceRepository;
+import com.taxonomy.relations.repository.RelationHypothesisRepository;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceDslPublicationPort;
+import com.taxonomy.workspace.service.WorkspaceRepositoryContextPort;
+import org.springframework.context.annotation.Primary;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+
+/**
+ * Productive {@link HypothesisService} adapter that keeps historic call sites
+ * compatible while replacing their accept/reject implementation with the
+ * Git-authoritative command boundary.
+ */
+@Service
+@Primary
+public class GitAuthoritativeHypothesisService extends HypothesisService {
+
+    private final RelationHypothesisRepository hypothesisRepository;
+    private final GitAuthoritativeHypothesisReviewService reviewService;
+    private final RelationBranchProjectionReadinessService readinessService;
+
+    public GitAuthoritativeHypothesisService(
+            RelationHypothesisRepository hypothesisRepository,
+            RelationEvidenceRepository evidenceRepository,
+            TaxonomyRelationService relationService,
+            TaxonomyNodeRepository nodeRepository,
+            WorkspaceDslPublicationPort dslPublication,
+            WorkspaceRepositoryContextPort repositoryContexts,
+            GitAuthoritativeHypothesisReviewService reviewService,
+            RelationBranchProjectionReadinessService readinessService) {
+<span class="fc" id="L50">        super(</span>
+                hypothesisRepository,
+                evidenceRepository,
+                relationService,
+                nodeRepository,
+                dslPublication,
+                repositoryContexts);
+<span class="fc" id="L57">        this.hypothesisRepository = Objects.requireNonNull(</span>
+                hypothesisRepository, &quot;hypothesisRepository&quot;);
+<span class="fc" id="L59">        this.reviewService = Objects.requireNonNull(reviewService, &quot;reviewService&quot;);</span>
+<span class="fc" id="L60">        this.readinessService = Objects.requireNonNull(</span>
+                readinessService, &quot;readinessService&quot;);
+<span class="fc" id="L62">    }</span>
+
+    /**
+     * Preserve the historic return value (new rows only), while enriching every
+     * supplied DTO with the exact persisted review identity. For a stable
+     * analysis session this also resolves rows created by an earlier retry.
+     */
+    @Override
+    @Transactional
+    public List&lt;RelationHypothesis&gt; persistFromAnalysis(
+            List&lt;RelationHypothesisDto&gt; hypotheses,
+            String sessionId,
+            RepositoryContext context) {
+<span class="fc" id="L75">        RepositoryContext tenant = requireContext(context);</span>
+<span class="fc" id="L76">        List&lt;RelationHypothesis&gt; persisted = super.persistFromAnalysis(</span>
+                hypotheses, sessionId, tenant);
+<span class="fc" id="L78">        bindPersistedIds(hypotheses, sessionId, tenant, persisted);</span>
+<span class="fc" id="L79">        return persisted;</span>
+    }
+
+    @Override
+    @Transactional
+    public List&lt;RelationHypothesis&gt; persistFromAnalysis(
+            List&lt;RelationHypothesisDto&gt; hypotheses,
+            String sessionId,
+            WorkspaceContext workspaceContext) {
+<span class="fc" id="L88">        return persistFromAnalysis(</span>
+                hypotheses,
+                sessionId,
+<span class="fc" id="L91">                resolveLegacyContext(workspaceContext));</span>
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public RelationHypothesis accept(
+            Long hypothesisId,
+            RepositoryContext context) {
+<span class="fc" id="L99">        return reviewUnchecked(</span>
+                hypothesisId,
+<span class="fc" id="L101">                requireContext(context),</span>
+<span class="fc" id="L102">                ReviewAction.ACCEPT).hypothesis();</span>
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public RelationHypothesis accept(
+            Long hypothesisId,
+            WorkspaceContext workspaceContext) {
+<span class="fc" id="L110">        return accept(hypothesisId, resolveLegacyContext(workspaceContext));</span>
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public RelationHypothesis reject(
+            Long hypothesisId,
+            RepositoryContext context) {
+<span class="fc" id="L118">        return reviewUnchecked(</span>
+                hypothesisId,
+<span class="fc" id="L120">                requireContext(context),</span>
+<span class="fc" id="L121">                ReviewAction.REJECT).hypothesis();</span>
+    }
+
+    @Override
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public RelationHypothesis reject(
+            Long hypothesisId,
+            WorkspaceContext workspaceContext) {
+<span class="fc" id="L129">        return reject(hypothesisId, resolveLegacyContext(workspaceContext));</span>
+    }
+
+    @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public RelationHypothesis revert(
+            Long hypothesisId,
+            RepositoryContext context) {
+<span class="fc" id="L136">        return reviewUnchecked(</span>
+                hypothesisId,
+<span class="fc" id="L138">                requireContext(context),</span>
+<span class="fc" id="L139">                ReviewAction.REVERT).hypothesis();</span>
+    }
+
+    public ReviewResult review(
+            Long hypothesisId,
+            RepositoryContext context,
+            String expectedHeadCommit,
+            CommandMetadata metadata,
+            ReviewAction action) throws IOException {
+<span class="fc bfc" id="L148" title="All 3 branches covered.">        return switch (Objects.requireNonNull(action, &quot;action&quot;)) {</span>
+<span class="fc" id="L149">            case ACCEPT -&gt; reviewService.accept(</span>
+                    hypothesisId, context, expectedHeadCommit, metadata);
+<span class="fc" id="L151">            case REJECT -&gt; reviewService.reject(</span>
+                    hypothesisId, context, expectedHeadCommit, metadata);
+<span class="fc" id="L153">            case REVERT -&gt; reviewService.revert(</span>
+                    hypothesisId, context, expectedHeadCommit, metadata);
+        };
+    }
+
+    /** Validate exact tenant visibility and lifecycle before exposing branch state. */
+    public void requireReviewable(
+            Long hypothesisId,
+            RepositoryContext context,
+            ReviewAction action) {
+<span class="fc" id="L163">        reviewService.requireReviewable(</span>
+                hypothesisId,
+<span class="fc" id="L165">                requireContext(context),</span>
+                action);
+<span class="fc" id="L167">    }</span>
+
+    private void bindPersistedIds(
+            List&lt;RelationHypothesisDto&gt; hypotheses,
+            String sessionId,
+            RepositoryContext context,
+            List&lt;RelationHypothesis&gt; newlyPersisted) {
+<span class="fc bfc" id="L174" title="All 4 branches covered.">        if (hypotheses == null || hypotheses.isEmpty()) {</span>
+<span class="fc" id="L175">            return;</span>
+        }
+<span class="fc" id="L177">        String normalizedSession = normalizeOptional(sessionId);</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        List&lt;RelationHypothesis&gt; candidates = normalizedSession == null</span>
+<span class="fc" id="L179">                ? newlyPersisted</span>
+                : hypothesisRepository
+<span class="fc" id="L181">                        .findByAnalysisSessionIdInRepositoryWorkspace(</span>
+<span class="fc" id="L182">                                context.repositoryId(),</span>
+<span class="fc" id="L183">                                context.workspaceId(),</span>
+                                normalizedSession);
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        for (RelationHypothesisDto dto : hypotheses) {</span>
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">            if (dto == null) {</span>
+<span class="nc" id="L187">                continue;</span>
+            }
+            RelationType type;
+            try {
+<span class="fc" id="L191">                type = RelationType.valueOf(</span>
+<span class="fc" id="L192">                        requireText(dto.getRelationType(), &quot;relationType&quot;)</span>
+<span class="fc" id="L193">                                .toUpperCase(Locale.ROOT));</span>
+<span class="nc" id="L194">            } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L195">                continue;</span>
+<span class="fc" id="L196">            }</span>
+<span class="fc" id="L197">            candidates.stream()</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">                    .filter(entity -&gt; entity.getRelationType() == type)</span>
+<span class="fc" id="L199">                    .filter(entity -&gt; Objects.equals(</span>
+<span class="fc" id="L200">                            entity.getSourceNodeId(), dto.getSourceCode()))</span>
+<span class="fc" id="L201">                    .filter(entity -&gt; Objects.equals(</span>
+<span class="fc" id="L202">                            entity.getTargetNodeId(), dto.getTargetCode()))</span>
+<span class="fc" id="L203">                    .findFirst()</span>
+<span class="fc" id="L204">                    .ifPresent(entity -&gt; dto.setHypothesisId(entity.getId()));</span>
+<span class="fc" id="L205">        }</span>
+<span class="fc" id="L206">    }</span>
+
+    private ReviewResult reviewUnchecked(
+            Long hypothesisId,
+            RepositoryContext context,
+            ReviewAction action) {
+<span class="fc" id="L212">        requireReviewable(hypothesisId, context, action);</span>
+<span class="fc" id="L213">        Readiness readiness = readinessService.inspect(context);</span>
+<span class="fc" id="L214">        String expectedHead = readiness.currentHeadCommit();</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        if (expectedHead == null) {</span>
+<span class="fc" id="L216">            throw new IllegalStateException(</span>
+                    &quot;Selected hypothesis branch does not have an authoritative Git head&quot;);
+        }
+<span class="fc" id="L219">        CommandMetadata metadata = new CommandMetadata(</span>
+                &quot;legacy-hypothesis-&quot;
+<span class="fc" id="L221">                        + action.name().toLowerCase()</span>
+                        + &quot;-&quot; + hypothesisId + &quot;-&quot; + expectedHead,
+                &quot;Git-first hypothesis review through a compatibility call site&quot;);
+        try {
+<span class="fc" id="L225">            return review(</span>
+                    hypothesisId,
+                    context,
+                    expectedHead,
+                    metadata,
+                    action);
+<span class="fc" id="L231">        } catch (IOException error) {</span>
+<span class="fc" id="L232">            throw new IllegalStateException(</span>
+                    &quot;Git hypothesis review failed before an authority commit was created&quot;,
+                    error);
+        }
+    }
+
+    private static RepositoryContext requireContext(RepositoryContext context) {
+<span class="fc" id="L239">        return Objects.requireNonNull(context, &quot;context&quot;);</span>
+    }
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L243" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="fc" id="L247">        String normalized = normalizeOptional(value);</span>
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">        if (normalized == null) {</span>
+<span class="nc" id="L249">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L251">        return normalized;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

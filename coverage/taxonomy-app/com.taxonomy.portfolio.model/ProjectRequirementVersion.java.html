@@ -1,0 +1,177 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectRequirementVersion.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">ProjectRequirementVersion.java</span></div><h1>ProjectRequirementVersion.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+
+import java.time.Instant;
+import java.util.Objects;
+
+/** Immutable text/provenance version of a project requirement in one exact tenant. */
+@Entity
+@Table(name = &quot;project_req_version&quot;, indexes = {
+        @Index(name = &quot;idx_reqver_req&quot;, columnList = &quot;scope_key,requirement_id&quot;),
+        @Index(name = &quot;idx_reqver_scope&quot;, columnList = &quot;scope_key&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_reqver_number&quot;,
+                columnNames = {&quot;scope_key&quot;, &quot;requirement_id&quot;, &quot;version_number&quot;}),
+        @UniqueConstraint(name = &quot;uq_reqver_hash&quot;,
+                columnNames = {&quot;scope_key&quot;, &quot;requirement_id&quot;, &quot;content_hash&quot;}),
+        @UniqueConstraint(name = &quot;uq_reqver_id_scope&quot;, columnNames = {&quot;id&quot;, &quot;scope_key&quot;}),
+        @UniqueConstraint(name = &quot;uq_reqver_id_req_scope&quot;,
+                columnNames = {&quot;id&quot;, &quot;requirement_id&quot;, &quot;scope_key&quot;})
+})
+public class ProjectRequirementVersion {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;scope_key&quot;, nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    /** Read-only scalar parent identity for scoped queries without initializing the association. */
+    @Column(name = &quot;requirement_id&quot;, nullable = false, insertable = false, updatable = false)
+    private Long requirementId;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;requirement_id&quot;, nullable = false)
+    private ProjectRequirement requirement;
+
+    @Column(name = &quot;version_number&quot;, nullable = false)
+    private int versionNumber;
+
+    @Lob
+    @Column(name = &quot;requirement_text&quot;, nullable = false)
+    private String text;
+
+    @Column(name = &quot;content_hash&quot;, nullable = false, length = 64)
+    private String contentHash;
+
+    @Column(name = &quot;change_reason&quot;, length = 1000)
+    private String changeReason;
+
+    @Column(name = &quot;created_by&quot;, nullable = false, length = 160)
+    private String createdBy;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;source_artifact_id&quot;)
+    private Long sourceArtifactId;
+
+    @Column(name = &quot;source_version_id&quot;)
+    private Long sourceVersionId;
+
+    /** JSON array of source-fragment database IDs. */
+    @Lob
+    @Column(name = &quot;source_fragment_ids&quot;)
+    private String sourceFragmentIdsJson;
+
+    @Column(name = &quot;section_ref&quot;, length = 500)
+    private String sectionReference;
+
+    @Column(name = &quot;page_number&quot;)
+    private Integer pageNumber;
+
+    @Lob
+    @Column(name = &quot;original_text&quot;)
+    private String originalText;
+
+<span class="fc" id="L93">    protected ProjectRequirementVersion() {</span>
+<span class="fc" id="L94">    }</span>
+
+    public ProjectRequirementVersion(ProjectRequirement requirement,
+                                     int versionNumber,
+                                     String text,
+                                     String contentHash,
+                                     String changeReason,
+                                     String createdBy,
+                                     Instant createdAt,
+                                     Long sourceArtifactId,
+                                     Long sourceVersionId,
+                                     String sourceFragmentIdsJson,
+                                     String sectionReference,
+                                     Integer pageNumber,
+<span class="fc" id="L108">                                     String originalText) {</span>
+<span class="fc" id="L109">        this.requirement = requirement;</span>
+<span class="fc" id="L110">        this.versionNumber = versionNumber;</span>
+<span class="fc" id="L111">        this.text = text;</span>
+<span class="fc" id="L112">        this.contentHash = contentHash;</span>
+<span class="fc" id="L113">        this.changeReason = changeReason;</span>
+<span class="fc" id="L114">        this.createdBy = createdBy;</span>
+<span class="fc" id="L115">        this.createdAt = createdAt;</span>
+<span class="fc" id="L116">        this.sourceArtifactId = sourceArtifactId;</span>
+<span class="fc" id="L117">        this.sourceVersionId = sourceVersionId;</span>
+<span class="fc" id="L118">        this.sourceFragmentIdsJson = sourceFragmentIdsJson;</span>
+<span class="fc" id="L119">        this.sectionReference = sectionReference;</span>
+<span class="fc" id="L120">        this.pageNumber = pageNumber;</span>
+<span class="fc" id="L121">        this.originalText = originalText;</span>
+<span class="fc" id="L122">        synchronizeTenantAuthority(false);</span>
+<span class="fc" id="L123">    }</span>
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantAuthority() {
+<span class="fc" id="L128">        synchronizeTenantAuthority(true);</span>
+<span class="fc" id="L129">    }</span>
+
+    private void synchronizeTenantAuthority(boolean requirePersistentParent) {
+<span class="pc bpc" id="L132" title="2 of 4 branches missed.">        if (requirement == null || requirement.getScopeKey() == null</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">                || requirement.getScopeKey().isBlank()) {</span>
+<span class="nc" id="L134">            throw new IllegalArgumentException(</span>
+                    &quot;Requirement version must reference an exact requirement tenant&quot;);
+        }
+<span class="fc" id="L137">        String requirementScope = requirement.getScopeKey().strip();</span>
+<span class="pc bpc" id="L138" title="1 of 4 branches missed.">        if (scopeKey != null &amp;&amp; !scopeKey.isBlank()</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                &amp;&amp; !requirementScope.equals(scopeKey.strip())) {</span>
+<span class="nc" id="L140">            throw new IllegalArgumentException(</span>
+                    &quot;Requirement version tenant scope does not match its requirement&quot;);
+        }
+<span class="fc" id="L143">        scopeKey = requirementScope;</span>
+
+<span class="fc" id="L145">        Long persistentRequirementId = requirement.getId();</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">        if (persistentRequirementId == null) {</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">            if (requirePersistentParent) {</span>
+<span class="nc" id="L148">                throw new IllegalArgumentException(</span>
+                        &quot;Requirement must be persisted before its version&quot;);
+            }
+<span class="fc" id="L151">            return;</span>
+        }
+<span class="pc bpc" id="L153" title="1 of 4 branches missed.">        if (requirementId != null &amp;&amp; !Objects.equals(requirementId, persistentRequirementId)) {</span>
+<span class="nc" id="L154">            throw new IllegalArgumentException(</span>
+                    &quot;Requirement version parent ID does not match its association&quot;);
+        }
+<span class="fc" id="L157">        requirementId = persistentRequirementId;</span>
+<span class="fc" id="L158">    }</span>
+
+<span class="fc" id="L160">    public Long getId() { return id; }</span>
+<span class="fc" id="L161">    public String getScopeKey() { return scopeKey; }</span>
+<span class="fc" id="L162">    public Long getRequirementId() { return requirementId; }</span>
+<span class="nc" id="L163">    public ProjectRequirement getRequirement() { return requirement; }</span>
+<span class="fc" id="L164">    public int getVersionNumber() { return versionNumber; }</span>
+<span class="fc" id="L165">    public String getText() { return text; }</span>
+<span class="fc" id="L166">    public String getContentHash() { return contentHash; }</span>
+<span class="fc" id="L167">    public String getChangeReason() { return changeReason; }</span>
+<span class="fc" id="L168">    public String getCreatedBy() { return createdBy; }</span>
+<span class="fc" id="L169">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L170">    public Long getSourceArtifactId() { return sourceArtifactId; }</span>
+<span class="fc" id="L171">    public Long getSourceVersionId() { return sourceVersionId; }</span>
+<span class="fc" id="L172">    public String getSourceFragmentIdsJson() { return sourceFragmentIdsJson; }</span>
+<span class="fc" id="L173">    public String getSectionReference() { return sectionReference; }</span>
+<span class="fc" id="L174">    public Integer getPageNumber() { return pageNumber; }</span>
+<span class="fc" id="L175">    public String getOriginalText() { return originalText; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

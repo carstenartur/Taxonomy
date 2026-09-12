@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ActuatorSecurityFilter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">ActuatorSecurityFilter.java</span></div><h1>ActuatorSecurityFilter.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+
+/**
+ * Protects the Actuator discovery root and sensitive Actuator endpoints with the
+ * dedicated machine-token mechanism.
+ *
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code /actuator/health}, {@code /actuator/health/**}, and
+ *       {@code /actuator/info} are public for platform probes and non-sensitive
+ *       deployment metadata.&lt;/li&gt;
+ *   &lt;li&gt;The exact {@code /actuator} discovery root and every other
+ *       {@code /actuator/**} path are machine-token protected when an
+ *       {@code admin.token} value (typically {@code ADMIN_TOKEN}) is configured.&lt;/li&gt;
+ *   &lt;li&gt;Monitoring clients may use either {@code X-Admin-Token} or one strict
+ *       {@code Authorization: Bearer &lt;token&gt;} value.&lt;/li&gt;
+ *   &lt;li&gt;When no machine token is configured, this filter defers to the ordinary
+ *       local-user or Keycloak authenticated-user security chain.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;This filter is registered explicitly after Spring Security's delegating
+ * filter proxy by {@link ActuatorAdminTokenSecurityConfig}; it is not a
+ * component-scanned servlet filter.&lt;/p&gt;
+ */
+public final class ActuatorSecurityFilter extends OncePerRequestFilter {
+
+    static final int MAX_TOKEN_CANDIDATE_LENGTH = 512;
+    static final String UNAUTHORIZED_CODE = &quot;ACTUATOR_MACHINE_TOKEN_REQUIRED&quot;;
+    static final String REGISTRATION_NAME = &quot;actuatorSecurityFilterRegistration&quot;;
+
+    private static final String LEGACY_TOKEN_HEADER = &quot;X-Admin-Token&quot;;
+    private static final String BEARER_PREFIX = &quot;Bearer &quot;;
+    private static final String UNAUTHORIZED_MESSAGE =
+            &quot;A valid Actuator machine token is required.&quot;;
+
+    private final String adminToken;
+
+<span class="fc" id="L49">    ActuatorSecurityFilter(String adminToken) {</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">        this.adminToken = adminToken == null ? &quot;&quot; : adminToken;</span>
+<span class="fc" id="L51">    }</span>
+
+    @Override
+    protected void doFilterInternal(HttpServletRequest request,
+                                    HttpServletResponse response,
+                                    FilterChain filterChain)
+            throws ServletException, IOException {
+<span class="fc" id="L58">        String path = applicationPath(request);</span>
+
+<span class="fc bfc" id="L60" title="All 4 branches covered.">        if (!isActuatorPath(path) || isPublicActuatorPath(path)) {</span>
+<span class="fc" id="L61">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L62">            return;</span>
+        }
+
+        // Without a machine token, defer to the ordinary authenticated-user rule.
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (adminToken.isBlank()) {</span>
+<span class="fc" id="L67">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L68">            return;</span>
+        }
+
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (matchesToken(request.getHeader(LEGACY_TOKEN_HEADER))</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">                || matchesBearerToken(request.getHeader(HttpHeaders.AUTHORIZATION))) {</span>
+<span class="fc" id="L73">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L74">            return;</span>
+        }
+
+<span class="fc" id="L77">        writeUnauthorized(response);</span>
+<span class="fc" id="L78">    }</span>
+
+    static boolean isSensitiveActuatorPath(HttpServletRequest request) {
+<span class="fc" id="L81">        String path = applicationPath(request);</span>
+<span class="pc bpc" id="L82" title="1 of 4 branches missed.">        return isActuatorPath(path) &amp;&amp; !isPublicActuatorPath(path);</span>
+    }
+
+    static String applicationPath(HttpServletRequest request) {
+<span class="fc" id="L86">        String path = request.getRequestURI();</span>
+<span class="fc" id="L87">        String contextPath = request.getContextPath();</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (contextPath != null</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                &amp;&amp; !contextPath.isBlank()</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                &amp;&amp; path.startsWith(contextPath)) {</span>
+<span class="fc" id="L91">            return path.substring(contextPath.length());</span>
+        }
+<span class="fc" id="L93">        return path;</span>
+    }
+
+    private static boolean isActuatorPath(String path) {
+<span class="fc bfc" id="L97" title="All 4 branches covered.">        return &quot;/actuator&quot;.equals(path) || path.startsWith(&quot;/actuator/&quot;);</span>
+    }
+
+    private static boolean isPublicActuatorPath(String path) {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        return path.equals(&quot;/actuator/health&quot;)</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">                || path.startsWith(&quot;/actuator/health/&quot;)</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                || path.equals(&quot;/actuator/info&quot;);</span>
+    }
+
+    private boolean matchesBearerToken(String authorization) {
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (authorization == null</span>
+<span class="fc" id="L108">                || authorization.length()</span>
+<span class="fc bfc" id="L109" title="All 2 branches covered.">                        &gt; BEARER_PREFIX.length() + MAX_TOKEN_CANDIDATE_LENGTH</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">                || !authorization.regionMatches(</span>
+<span class="fc" id="L111">                        true, 0, BEARER_PREFIX, 0, BEARER_PREFIX.length())) {</span>
+<span class="fc" id="L112">            return false;</span>
+        }
+<span class="fc" id="L114">        String candidate = authorization.substring(BEARER_PREFIX.length());</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (candidate.isEmpty()</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                || candidate.chars().anyMatch(Character::isWhitespace)) {</span>
+<span class="fc" id="L117">            return false;</span>
+        }
+<span class="fc" id="L119">        return matchesToken(candidate);</span>
+    }
+
+    private boolean matchesToken(String candidate) {
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if (candidate == null</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">                || candidate.isEmpty()</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                || candidate.length() &gt; MAX_TOKEN_CANDIDATE_LENGTH) {</span>
+<span class="fc" id="L126">            return false;</span>
+        }
+<span class="fc" id="L128">        return MessageDigest.isEqual(</span>
+<span class="fc" id="L129">                adminToken.getBytes(StandardCharsets.UTF_8),</span>
+<span class="fc" id="L130">                candidate.getBytes(StandardCharsets.UTF_8));</span>
+    }
+
+    private static void writeUnauthorized(HttpServletResponse response)
+            throws IOException {
+<span class="fc" id="L135">        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);</span>
+<span class="fc" id="L136">        response.setHeader(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="fc" id="L137">        response.setCharacterEncoding(StandardCharsets.UTF_8.name());</span>
+<span class="fc" id="L138">        response.setContentType(MediaType.APPLICATION_JSON_VALUE);</span>
+<span class="fc" id="L139">        response.getWriter().write(&quot;{\&quot;status\&quot;:401,\&quot;code\&quot;:\&quot;&quot;</span>
+                + UNAUTHORIZED_CODE
+                + &quot;\&quot;,\&quot;error\&quot;:\&quot;&quot;
+                + UNAUTHORIZED_MESSAGE
+                + &quot;\&quot;}&quot;);
+<span class="fc" id="L144">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

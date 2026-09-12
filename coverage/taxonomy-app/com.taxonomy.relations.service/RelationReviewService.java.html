@@ -1,0 +1,160 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationReviewService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationReviewService.java</span></div><h1>RelationReviewService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.catalog.service.TaxonomyRelationService;
+import com.taxonomy.dto.RelationProposalDto;
+import com.taxonomy.dto.TaxonomyRelationDto;
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.relations.model.RelationProposal;
+import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+
+/** Handles human review of relation proposals in an explicit repository tenant. */
+@Service
+public class RelationReviewService {
+
+<span class="fc" id="L22">    private static final Logger log = LoggerFactory.getLogger(RelationReviewService.class);</span>
+
+    private final RelationProposalRepository proposalRepository;
+    private final TaxonomyRelationService relationService;
+    private final RelationProposalService proposalService;
+
+    public RelationReviewService(RelationProposalRepository proposalRepository,
+                                 TaxonomyRelationService relationService,
+<span class="fc" id="L30">                                 RelationProposalService proposalService) {</span>
+<span class="fc" id="L31">        this.proposalRepository = proposalRepository;</span>
+<span class="fc" id="L32">        this.relationService = relationService;</span>
+<span class="fc" id="L33">        this.proposalService = proposalService;</span>
+<span class="fc" id="L34">    }</span>
+
+    /** Accept a proposal and create its relation in the exact writable context. */
+    @Transactional
+    public TaxonomyRelationDto acceptProposal(
+            Long proposalId, RepositoryContext context) {
+<span class="fc" id="L40">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="fc" id="L41">        RelationProposal proposal = findProposalInContext(proposalId, tenant);</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
+<span class="nc" id="L43">            throw new IllegalStateException(</span>
+<span class="nc" id="L44">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
+        }
+
+<span class="fc" id="L47">        TaxonomyRelationDto relation = relationService.createRelationInContext(</span>
+<span class="fc" id="L48">                proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L49">                proposal.getTargetNode().getCode(),</span>
+<span class="fc" id="L50">                proposal.getRelationType(),</span>
+<span class="fc" id="L51">                proposal.getRationale(),</span>
+                &quot;proposal-pipeline&quot;,
+                tenant);
+
+<span class="fc" id="L55">        proposal.setStatus(ProposalStatus.ACCEPTED);</span>
+<span class="fc" id="L56">        proposal.setReviewedAt(Instant.now());</span>
+<span class="fc" id="L57">        proposalRepository.save(proposal);</span>
+<span class="fc" id="L58">        log.info(&quot;Accepted proposal {}: {} → {} [{}] &quot;</span>
+                        + &quot;(repository={}, workspace={})&quot;,
+                proposalId,
+<span class="fc" id="L61">                proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L62">                proposal.getTargetNode().getCode(),</span>
+<span class="fc" id="L63">                proposal.getRelationType(),</span>
+<span class="fc" id="L64">                tenant.repositoryId(),</span>
+<span class="fc" id="L65">                tenant.workspaceId());</span>
+<span class="fc" id="L66">        return relation;</span>
+    }
+
+    /** Reject a proposal in the exact writable context. */
+    @Transactional
+    public RelationProposalDto rejectProposal(
+            Long proposalId, RepositoryContext context) {
+<span class="fc" id="L73">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="fc" id="L74">        RelationProposal proposal = findProposalInContext(proposalId, tenant);</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (proposal.getStatus() != ProposalStatus.PENDING) {</span>
+<span class="nc" id="L76">            throw new IllegalStateException(</span>
+<span class="nc" id="L77">                    &quot;Proposal &quot; + proposalId + &quot; is already &quot; + proposal.getStatus());</span>
+        }
+
+<span class="fc" id="L80">        proposal.setStatus(ProposalStatus.REJECTED);</span>
+<span class="fc" id="L81">        proposal.setReviewedAt(Instant.now());</span>
+<span class="fc" id="L82">        proposalRepository.save(proposal);</span>
+<span class="fc" id="L83">        log.info(&quot;Rejected proposal {}: {} → {} [{}] &quot;</span>
+                        + &quot;(repository={}, workspace={})&quot;,
+                proposalId,
+<span class="fc" id="L86">                proposal.getSourceNode().getCode(),</span>
+<span class="fc" id="L87">                proposal.getTargetNode().getCode(),</span>
+<span class="fc" id="L88">                proposal.getRelationType(),</span>
+<span class="fc" id="L89">                tenant.repositoryId(),</span>
+<span class="fc" id="L90">                tenant.workspaceId());</span>
+<span class="fc" id="L91">        return proposalService.toDto(proposal);</span>
+    }
+
+    /**
+     * Revert a reviewed proposal in the exact writable context. If accepted,
+     * only the relation in that same repository/workspace is removed.
+     */
+    @Transactional
+    public RelationProposalDto revertProposal(
+            Long proposalId, RepositoryContext context) {
+<span class="nc" id="L101">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="nc" id="L102">        RelationProposal proposal = findProposalInContext(proposalId, tenant);</span>
+<span class="nc bnc" id="L103" title="All 2 branches missed.">        if (proposal.getStatus() == ProposalStatus.PENDING) {</span>
+<span class="nc" id="L104">            throw new IllegalStateException(&quot;Proposal &quot; + proposalId + &quot; is already PENDING&quot;);</span>
+        }
+
+<span class="nc" id="L107">        ProposalStatus oldStatus = proposal.getStatus();</span>
+<span class="nc bnc" id="L108" title="All 2 branches missed.">        if (oldStatus == ProposalStatus.ACCEPTED) {</span>
+<span class="nc" id="L109">            relationService.deleteRelationBySourceTargetTypeInContext(</span>
+<span class="nc" id="L110">                    proposal.getSourceNode().getCode(),</span>
+<span class="nc" id="L111">                    proposal.getTargetNode().getCode(),</span>
+<span class="nc" id="L112">                    proposal.getRelationType(),</span>
+                    tenant);
+        }
+
+<span class="nc" id="L116">        proposal.setStatus(ProposalStatus.PENDING);</span>
+<span class="nc" id="L117">        proposal.setReviewedAt(null);</span>
+<span class="nc" id="L118">        proposalRepository.save(proposal);</span>
+<span class="nc" id="L119">        log.info(&quot;Reverted proposal {} from {} to PENDING: {} → {} [{}] &quot;</span>
+                        + &quot;(repository={}, workspace={})&quot;,
+                proposalId,
+                oldStatus,
+<span class="nc" id="L123">                proposal.getSourceNode().getCode(),</span>
+<span class="nc" id="L124">                proposal.getTargetNode().getCode(),</span>
+<span class="nc" id="L125">                proposal.getRelationType(),</span>
+<span class="nc" id="L126">                tenant.repositoryId(),</span>
+<span class="nc" id="L127">                tenant.workspaceId());</span>
+<span class="nc" id="L128">        return proposalService.toDto(proposal);</span>
+    }
+
+    private RelationProposal findProposalInContext(
+            Long proposalId, RepositoryContext context) {
+<span class="fc" id="L133">        return proposalRepository.findByIdInRepositoryWorkspace(</span>
+<span class="fc" id="L134">                        context.repositoryId(),</span>
+                        proposalId,
+<span class="fc" id="L136">                        context.workspaceId())</span>
+<span class="fc" id="L137">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Proposal not found in active repository/workspace: &quot; + proposalId));
+    }
+
+    private static RepositoryContext requireWritableContext(
+            RepositoryContext context) {
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">        if (context == null) {</span>
+<span class="nc" id="L144">            throw new IllegalArgumentException(&quot;RepositoryContext must not be null&quot;);</span>
+        }
+<span class="pc bpc" id="L146" title="1 of 2 branches missed.">        if (context.workspaceId() == null</span>
+<span class="pc bpc" id="L147" title="1 of 2 branches missed.">                &amp;&amp; context.scope() != RepositoryScope.CENTRAL_WRITE) {</span>
+<span class="nc" id="L148">            throw new IllegalArgumentException(</span>
+                    &quot;Central proposal review requires CENTRAL_WRITE scope&quot;);
+        }
+<span class="pc bpc" id="L151" title="1 of 2 branches missed.">        if (context.workspaceId() != null</span>
+<span class="nc bnc" id="L152" title="All 2 branches missed.">                &amp;&amp; context.scope() != RepositoryScope.WORKSPACE</span>
+<span class="nc bnc" id="L153" title="All 2 branches missed.">                &amp;&amp; context.scope() != RepositoryScope.FORK) {</span>
+<span class="nc" id="L154">            throw new IllegalArgumentException(</span>
+                    &quot;Workspace proposal review requires WORKSPACE or FORK scope&quot;);
+        }
+<span class="fc" id="L157">        return context;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,360 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureRelationDslTransformer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.command</a> &gt; <span class="el_source">ArchitectureRelationDslTransformer.java</span></div><h1>ArchitectureRelationDslTransformer.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.command;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+
+/**
+ * Applies one deterministic relation command to an {@code architecture.taxdsl}
+ * document before the result is committed to JGit.
+ *
+ * &lt;p&gt;The transformer is deliberately independent of repositories, transactions,
+ * controllers and projections. It establishes the pure semantic boundary needed
+ * by Git-authoritative relation commands: exact identity, idempotent upsert,
+ * exact removal, duplicate rejection and canonical changed output.&lt;/p&gt;
+ */
+public final class ArchitectureRelationDslTransformer {
+
+    private static final String RELATION_KIND = &quot;relation&quot;;
+<span class="fc" id="L31">    private static final List&lt;String&gt; MUTABLE_PROPERTY_ORDER = List.of(</span>
+            &quot;status&quot;, &quot;confidence&quot;, &quot;provenance&quot;);
+
+    private final TaxDslParser parser;
+    private final TaxDslSerializer serializer;
+
+    public ArchitectureRelationDslTransformer() {
+<span class="fc" id="L38">        this(new TaxDslParser(), new TaxDslSerializer());</span>
+<span class="fc" id="L39">    }</span>
+
+    ArchitectureRelationDslTransformer(
+            TaxDslParser parser,
+<span class="fc" id="L43">            TaxDslSerializer serializer) {</span>
+<span class="fc" id="L44">        this.parser = Objects.requireNonNull(parser, &quot;parser&quot;);</span>
+<span class="fc" id="L45">        this.serializer = Objects.requireNonNull(serializer, &quot;serializer&quot;);</span>
+<span class="fc" id="L46">    }</span>
+
+    /**
+     * Adds the relation when absent or updates only the supplied review fields
+     * and extensions when exactly one matching relation exists.
+     */
+    public ChangeResult upsert(String sourceDsl, RelationDefinition definition) {
+<span class="fc" id="L53">        Objects.requireNonNull(definition, &quot;definition&quot;);</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        String original = sourceDsl == null ? &quot;&quot; : sourceDsl;</span>
+<span class="fc" id="L55">        DocumentAst document = parser.parse(original, &quot;architecture.taxdsl&quot;);</span>
+<span class="fc" id="L56">        List&lt;Integer&gt; matches = matchingIndexes(</span>
+<span class="fc" id="L57">                document.getBlocks(), definition.identity());</span>
+<span class="fc" id="L58">        rejectAmbiguity(definition.identity(), matches.size());</span>
+
+<span class="fc" id="L60">        List&lt;BlockAst&gt; changedBlocks = new ArrayList&lt;&gt;(document.getBlocks());</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (matches.isEmpty()) {</span>
+<span class="fc" id="L62">            changedBlocks.add(newRelationBlock(definition));</span>
+<span class="fc" id="L63">            return changed(document, changedBlocks, ChangeKind.ADDED);</span>
+        }
+
+<span class="fc" id="L66">        int index = matches.getFirst();</span>
+<span class="fc" id="L67">        BlockAst existing = changedBlocks.get(index);</span>
+<span class="fc" id="L68">        requireCanonicalHeader(existing, definition.identity());</span>
+<span class="fc" id="L69">        BlockAst replacement = merge(existing, definition);</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (canonicalBlock(existing).equals(canonicalBlock(replacement))) {</span>
+<span class="fc" id="L71">            return new ChangeResult(original, ChangeKind.UNCHANGED);</span>
+        }
+<span class="fc" id="L73">        changedBlocks.set(index, replacement);</span>
+<span class="fc" id="L74">        return changed(document, changedBlocks, ChangeKind.UPDATED);</span>
+    }
+
+    /** Removes exactly one matching relation and leaves all other blocks intact. */
+    public ChangeResult remove(String sourceDsl, RelationIdentity identity) {
+<span class="fc" id="L79">        Objects.requireNonNull(identity, &quot;identity&quot;);</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        String original = sourceDsl == null ? &quot;&quot; : sourceDsl;</span>
+<span class="fc" id="L81">        DocumentAst document = parser.parse(original, &quot;architecture.taxdsl&quot;);</span>
+<span class="fc" id="L82">        List&lt;Integer&gt; matches = matchingIndexes(document.getBlocks(), identity);</span>
+<span class="fc" id="L83">        rejectAmbiguity(identity, matches.size());</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if (matches.isEmpty()) {</span>
+<span class="fc" id="L85">            return new ChangeResult(original, ChangeKind.UNCHANGED);</span>
+        }
+
+<span class="fc" id="L88">        int index = matches.getFirst();</span>
+<span class="fc" id="L89">        requireCanonicalHeader(document.getBlocks().get(index), identity);</span>
+<span class="fc" id="L90">        List&lt;BlockAst&gt; changedBlocks = new ArrayList&lt;&gt;(document.getBlocks());</span>
+<span class="fc" id="L91">        changedBlocks.remove(index);</span>
+<span class="fc" id="L92">        return changed(document, changedBlocks, ChangeKind.REMOVED);</span>
+    }
+
+    private ChangeResult changed(
+            DocumentAst original,
+            List&lt;BlockAst&gt; blocks,
+            ChangeKind kind) {
+<span class="fc" id="L99">        DocumentAst changed = new DocumentAst(original.getMeta(), blocks);</span>
+<span class="fc" id="L100">        return new ChangeResult(serializer.serialize(changed), kind);</span>
+    }
+
+    private BlockAst newRelationBlock(RelationDefinition definition) {
+<span class="fc" id="L104">        List&lt;PropertyAst&gt; properties = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L105">        addSuppliedProperties(properties, definition);</span>
+<span class="fc" id="L106">        return new BlockAst(</span>
+                RELATION_KIND,
+<span class="fc" id="L108">                definition.identity().headerTokens(),</span>
+                properties,
+<span class="fc" id="L110">                List.of(),</span>
+<span class="fc" id="L111">                extensionMap(properties),</span>
+                null);
+    }
+
+    private BlockAst merge(
+            BlockAst existing,
+            RelationDefinition definition) {
+<span class="fc" id="L118">        Map&lt;String, String&gt; overrides = suppliedProperties(definition);</span>
+<span class="fc" id="L119">        List&lt;PropertyAst&gt; properties = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L120">        Set&lt;String&gt; emittedOverrides = new LinkedHashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        for (PropertyAst property : existing.getProperties()) {</span>
+<span class="fc" id="L123">            String key = property.key();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if (!overrides.containsKey(key)) {</span>
+<span class="fc" id="L125">                properties.add(property);</span>
+<span class="fc" id="L126">                continue;</span>
+            }
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">            if (emittedOverrides.add(key)) {</span>
+<span class="fc" id="L129">                properties.add(new PropertyAst(key, overrides.get(key), null));</span>
+            }
+<span class="fc" id="L131">        }</span>
+
+<span class="fc" id="L133">        MUTABLE_PROPERTY_ORDER.stream()</span>
+<span class="fc" id="L134">                .filter(overrides::containsKey)</span>
+<span class="fc" id="L135">                .filter(emittedOverrides::add)</span>
+<span class="pc" id="L136">                .forEach(key -&gt; properties.add(</span>
+<span class="nc" id="L137">                        new PropertyAst(key, overrides.get(key), null)));</span>
+<span class="fc" id="L138">        overrides.keySet().stream()</span>
+<span class="fc" id="L139">                .filter(key -&gt; key.startsWith(&quot;x-&quot;))</span>
+<span class="fc" id="L140">                .sorted()</span>
+<span class="fc" id="L141">                .filter(emittedOverrides::add)</span>
+<span class="fc" id="L142">                .forEach(key -&gt; properties.add(</span>
+<span class="fc" id="L143">                        new PropertyAst(key, overrides.get(key), null)));</span>
+
+<span class="fc" id="L145">        return new BlockAst(</span>
+                RELATION_KIND,
+<span class="fc" id="L147">                definition.identity().headerTokens(),</span>
+                properties,
+<span class="fc" id="L149">                existing.getChildren(),</span>
+<span class="fc" id="L150">                extensionMap(properties),</span>
+<span class="fc" id="L151">                existing.getSourceLocation());</span>
+    }
+
+    private void addSuppliedProperties(
+            List&lt;PropertyAst&gt; properties,
+            RelationDefinition definition) {
+<span class="fc" id="L157">        Map&lt;String, String&gt; supplied = suppliedProperties(definition);</span>
+<span class="fc" id="L158">        MUTABLE_PROPERTY_ORDER.stream()</span>
+<span class="fc" id="L159">                .filter(supplied::containsKey)</span>
+<span class="fc" id="L160">                .forEach(key -&gt; properties.add(</span>
+<span class="fc" id="L161">                        new PropertyAst(key, supplied.get(key), null)));</span>
+<span class="fc" id="L162">        supplied.keySet().stream()</span>
+<span class="fc" id="L163">                .filter(key -&gt; key.startsWith(&quot;x-&quot;))</span>
+<span class="fc" id="L164">                .sorted()</span>
+<span class="fc" id="L165">                .forEach(key -&gt; properties.add(</span>
+<span class="fc" id="L166">                        new PropertyAst(key, supplied.get(key), null)));</span>
+<span class="fc" id="L167">    }</span>
+
+    private Map&lt;String, String&gt; suppliedProperties(
+            RelationDefinition definition) {
+<span class="fc" id="L171">        Map&lt;String, String&gt; supplied = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">        if (definition.status() != null) {</span>
+<span class="fc" id="L173">            supplied.put(&quot;status&quot;, definition.status());</span>
+        }
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (definition.confidence() != null) {</span>
+<span class="fc" id="L176">            supplied.put(&quot;confidence&quot;, String.valueOf(definition.confidence()));</span>
+        }
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        if (definition.provenance() != null) {</span>
+<span class="fc" id="L179">            supplied.put(&quot;provenance&quot;, definition.provenance());</span>
+        }
+<span class="fc" id="L181">        supplied.putAll(definition.extensions());</span>
+<span class="fc" id="L182">        return supplied;</span>
+    }
+
+    private Map&lt;String, String&gt; extensionMap(List&lt;PropertyAst&gt; properties) {
+<span class="fc" id="L186">        Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L187">        properties.stream()</span>
+<span class="fc" id="L188">                .filter(PropertyAst::isExtension)</span>
+<span class="fc" id="L189">                .forEach(property -&gt; extensions.put(</span>
+<span class="fc" id="L190">                        property.key(), property.value()));</span>
+<span class="fc" id="L191">        return extensions;</span>
+    }
+
+    private List&lt;Integer&gt; matchingIndexes(
+            List&lt;BlockAst&gt; blocks,
+            RelationIdentity identity) {
+<span class="fc" id="L197">        List&lt;Integer&gt; matches = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        for (int index = 0; index &lt; blocks.size(); index++) {</span>
+<span class="fc" id="L199">            BlockAst block = blocks.get(index);</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">            if (RELATION_KIND.equals(block.getKind())</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                    &amp;&amp; headerStartsWith(block, identity)) {</span>
+<span class="fc" id="L202">                matches.add(index);</span>
+            }
+        }
+<span class="fc" id="L205">        return matches;</span>
+    }
+
+    private boolean headerStartsWith(
+            BlockAst block,
+            RelationIdentity identity) {
+<span class="fc" id="L211">        List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="pc bpc" id="L212" title="1 of 2 branches missed.">        return tokens.size() &gt;= 3</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">                &amp;&amp; identity.sourceId().equals(tokens.get(0))</span>
+<span class="pc bpc" id="L214" title="1 of 2 branches missed.">                &amp;&amp; identity.relationType().equals(</span>
+<span class="fc" id="L215">                        tokens.get(1).toUpperCase(Locale.ROOT))</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                &amp;&amp; identity.targetId().equals(tokens.get(2));</span>
+    }
+
+    private void requireCanonicalHeader(
+            BlockAst block,
+            RelationIdentity identity) {
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        if (block.getHeaderTokens().size() != 3) {</span>
+<span class="fc" id="L223">            throw new InvalidRelationBlockException(</span>
+<span class="fc" id="L224">                    &quot;Relation &quot; + identity.asDisplayText()</span>
+                            + &quot; has a malformed header with &quot;
+<span class="fc" id="L226">                            + block.getHeaderTokens().size() + &quot; tokens&quot;);</span>
+        }
+<span class="fc" id="L228">    }</span>
+
+    private void rejectAmbiguity(RelationIdentity identity, int matches) {
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (matches &gt; 1) {</span>
+<span class="fc" id="L232">            throw new AmbiguousRelationException(</span>
+<span class="fc" id="L233">                    &quot;Relation &quot; + identity.asDisplayText()</span>
+                            + &quot; occurs &quot; + matches + &quot; times&quot;);
+        }
+<span class="fc" id="L236">    }</span>
+
+    private String canonicalBlock(BlockAst block) {
+<span class="fc" id="L239">        return serializer.serialize(new DocumentAst(null, List.of(block)));</span>
+    }
+
+<span class="fc" id="L242">    public enum ChangeKind {</span>
+<span class="fc" id="L243">        ADDED,</span>
+<span class="fc" id="L244">        UPDATED,</span>
+<span class="fc" id="L245">        REMOVED,</span>
+<span class="fc" id="L246">        UNCHANGED</span>
+    }
+
+    public record ChangeResult(String dsl, ChangeKind kind) {
+<span class="fc" id="L250">        public ChangeResult {</span>
+<span class="fc" id="L251">            dsl = Objects.requireNonNull(dsl, &quot;dsl&quot;);</span>
+<span class="fc" id="L252">            kind = Objects.requireNonNull(kind, &quot;kind&quot;);</span>
+<span class="fc" id="L253">        }</span>
+
+        public boolean changed() {
+<span class="fc bfc" id="L256" title="All 2 branches covered.">            return kind != ChangeKind.UNCHANGED;</span>
+        }
+    }
+
+    public record RelationIdentity(
+            String sourceId,
+            String relationType,
+            String targetId) {
+
+<span class="fc" id="L265">        public RelationIdentity {</span>
+<span class="fc" id="L266">            sourceId = requireToken(sourceId, &quot;sourceId&quot;);</span>
+<span class="fc" id="L267">            relationType = requireToken(relationType, &quot;relationType&quot;)</span>
+<span class="fc" id="L268">                    .toUpperCase(Locale.ROOT);</span>
+<span class="fc" id="L269">            targetId = requireToken(targetId, &quot;targetId&quot;);</span>
+<span class="fc" id="L270">        }</span>
+
+        List&lt;String&gt; headerTokens() {
+<span class="fc" id="L273">            return List.of(sourceId, relationType, targetId);</span>
+        }
+
+        String asDisplayText() {
+<span class="fc" id="L277">            return sourceId + &quot; &quot; + relationType + &quot; &quot; + targetId;</span>
+        }
+    }
+
+    public record RelationDefinition(
+            RelationIdentity identity,
+            String status,
+            Double confidence,
+            String provenance,
+            Map&lt;String, String&gt; extensions) {
+
+<span class="fc" id="L288">        public RelationDefinition {</span>
+<span class="fc" id="L289">            identity = Objects.requireNonNull(identity, &quot;identity&quot;);</span>
+<span class="fc" id="L290">            status = normalizeOptionalToken(status, &quot;status&quot;);</span>
+<span class="fc" id="L291">            provenance = normalizeOptionalToken(provenance, &quot;provenance&quot;);</span>
+<span class="fc bfc" id="L292" title="All 2 branches covered.">            if (confidence != null</span>
+<span class="pc bpc" id="L293" title="1 of 2 branches missed.">                    &amp;&amp; (!Double.isFinite(confidence)</span>
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">                    || confidence &lt; 0.0</span>
+<span class="fc bfc" id="L295" title="All 2 branches covered.">                    || confidence &gt; 1.0)) {</span>
+<span class="fc" id="L296">                throw new IllegalArgumentException(</span>
+                        &quot;confidence must be finite and between 0.0 and 1.0&quot;);
+            }
+<span class="fc" id="L299">            Map&lt;String, String&gt; normalizedExtensions = new TreeMap&lt;&gt;();</span>
+<span class="pc bpc" id="L300" title="1 of 2 branches missed.">            if (extensions != null) {</span>
+<span class="fc" id="L301">                extensions.forEach((key, value) -&gt; {</span>
+<span class="fc" id="L302">                    String normalizedKey = requireToken(key, &quot;extension key&quot;);</span>
+<span class="fc bfc" id="L303" title="All 2 branches covered.">                    if (!normalizedKey.startsWith(&quot;x-&quot;)) {</span>
+<span class="fc" id="L304">                        throw new IllegalArgumentException(</span>
+                                &quot;extension key must start with x-: &quot; + normalizedKey);
+                    }
+<span class="fc" id="L307">                    normalizedExtensions.put(</span>
+                            normalizedKey,
+<span class="fc" id="L309">                            Objects.requireNonNull(value,</span>
+                                    &quot;extension value for &quot; + normalizedKey));
+<span class="fc" id="L311">                });</span>
+            }
+<span class="fc" id="L313">            extensions = Map.copyOf(normalizedExtensions);</span>
+<span class="fc" id="L314">        }</span>
+
+        public RelationDefinition(
+                RelationIdentity identity,
+                String status,
+                Double confidence,
+                String provenance) {
+<span class="fc" id="L321">            this(identity, status, confidence, provenance, Map.of());</span>
+<span class="fc" id="L322">        }</span>
+    }
+
+    public static final class AmbiguousRelationException
+            extends IllegalStateException {
+        public AmbiguousRelationException(String message) {
+<span class="fc" id="L328">            super(message);</span>
+<span class="fc" id="L329">        }</span>
+    }
+
+    public static final class InvalidRelationBlockException
+            extends IllegalStateException {
+        public InvalidRelationBlockException(String message) {
+<span class="fc" id="L335">            super(message);</span>
+<span class="fc" id="L336">        }</span>
+    }
+
+    private static String requireToken(String value, String field) {
+<span class="pc bpc" id="L340" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L341">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L343">        String normalized = value.strip();</span>
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        if (normalized.chars().anyMatch(Character::isWhitespace)) {</span>
+<span class="fc" id="L345">            throw new IllegalArgumentException(</span>
+                    field + &quot; must be one DSL token: &quot; + normalized);
+        }
+<span class="fc" id="L348">        return normalized;</span>
+    }
+
+    private static String normalizeOptionalToken(
+            String value,
+            String field) {
+<span class="fc bfc" id="L354" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L355">            return null;</span>
+        }
+<span class="fc" id="L357">        return requireToken(value, field).toLowerCase(Locale.ROOT);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

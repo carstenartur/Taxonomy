@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationSeedRow.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">RelationSeedRow.java</span></div><h1>RelationSeedRow.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import com.taxonomy.model.RelationType;
+import com.taxonomy.model.SeedType;
+
+/**
+ * Immutable representation of a single row in the relation seed CSV file.
+ *
+ * &lt;p&gt;The CSV file supports the following columns (new columns are optional for
+ * backward compatibility with older 4-column files):
+ *
+ * &lt;pre&gt;
+ * SourceCode,TargetCode,RelationType,Description,SourceStandard,SourceReference,Confidence,SeedType,ReviewRequired,Status
+ * &lt;/pre&gt;
+ *
+ * &lt;table&gt;
+ *   &lt;tr&gt;&lt;th&gt;Column&lt;/th&gt;&lt;th&gt;Required&lt;/th&gt;&lt;th&gt;Description&lt;/th&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;SourceCode&lt;/td&gt;&lt;td&gt;yes&lt;/td&gt;&lt;td&gt;Taxonomy code of the source element (e.g. CP, CR)&lt;/td&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;TargetCode&lt;/td&gt;&lt;td&gt;yes&lt;/td&gt;&lt;td&gt;Taxonomy code of the target element&lt;/td&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;RelationType&lt;/td&gt;&lt;td&gt;yes&lt;/td&gt;&lt;td&gt;A valid {@link RelationType} value&lt;/td&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;Description&lt;/td&gt;&lt;td&gt;no&lt;/td&gt;&lt;td&gt;Human-readable explanation of the relation&lt;/td&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;SourceStandard&lt;/td&gt;&lt;td&gt;no&lt;/td&gt;&lt;td&gt;Framework or standard that justifies this relation (e.g. TOGAF, NAF, LOCAL)&lt;/td&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;SourceReference&lt;/td&gt;&lt;td&gt;no&lt;/td&gt;&lt;td&gt;Specific reference within the standard (e.g. NCV-2, Business Architecture)&lt;/td&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;Confidence&lt;/td&gt;&lt;td&gt;no&lt;/td&gt;&lt;td&gt;Numeric confidence value between 0.0 and 1.0 (default 1.0)&lt;/td&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;SeedType&lt;/td&gt;&lt;td&gt;no&lt;/td&gt;&lt;td&gt;Classification: TYPE_DEFAULT, FRAMEWORK_SEED, or SOURCE_DERIVED (default TYPE_DEFAULT)&lt;/td&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;ReviewRequired&lt;/td&gt;&lt;td&gt;no&lt;/td&gt;&lt;td&gt;Whether human review is needed (default false)&lt;/td&gt;&lt;/tr&gt;
+ *   &lt;tr&gt;&lt;td&gt;Status&lt;/td&gt;&lt;td&gt;no&lt;/td&gt;&lt;td&gt;Current status: accepted or proposed (default accepted)&lt;/td&gt;&lt;/tr&gt;
+ * &lt;/table&gt;
+ *
+ * @param sourceCode      taxonomy code of the source element
+ * @param targetCode      taxonomy code of the target element
+ * @param relationType    the relation type
+ * @param description     human-readable description (may be {@code null})
+ * @param sourceStandard  originating standard (may be {@code null})
+ * @param sourceReference specific reference within the standard (may be {@code null})
+ * @param confidence      confidence value between 0.0 and 1.0
+ * @param seedType        classification of the seed row
+ * @param reviewRequired  whether human review is recommended
+ * @param status          current status (accepted / proposed)
+ */
+<span class="fc" id="L41">public record RelationSeedRow(</span>
+        String sourceCode,
+        String targetCode,
+        RelationType relationType,
+        String description,
+        String sourceStandard,
+        String sourceReference,
+        double confidence,
+        SeedType seedType,
+        boolean reviewRequired,
+        String status
+) {
+
+    /** Builds a provenance string from seed metadata. */
+    public String toProvenance() {
+<span class="fc bfc" id="L56" title="All 3 branches covered.">        String base = switch (seedType) {</span>
+<span class="fc" id="L57">            case TYPE_DEFAULT -&gt; &quot;csv-default&quot;;</span>
+<span class="fc" id="L58">            case FRAMEWORK_SEED -&gt; &quot;csv-framework&quot;;</span>
+<span class="fc" id="L59">            case SOURCE_DERIVED -&gt; &quot;csv-source-derived&quot;;</span>
+        };
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">        if (sourceStandard != null &amp;&amp; !sourceStandard.isBlank()) {</span>
+<span class="fc" id="L62">            return base + &quot;:&quot; + sourceStandard;</span>
+        }
+<span class="fc" id="L64">        return base;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

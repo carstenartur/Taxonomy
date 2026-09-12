@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureViewPipeline.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">ArchitectureViewPipeline.java</span></div><h1>ArchitectureViewPipeline.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.dto.RequirementRelationshipView;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * Executes the ordered architecture-view steps and validates their shared
+ * context after every stage. Extension steps may enrich the pipeline but cannot
+ * silently violate core element, relation, anchor, score, or node-limit invariants.
+ */
+@Service
+public class ArchitectureViewPipeline {
+
+<span class="fc" id="L23">    private static final Logger log = LoggerFactory.getLogger(ArchitectureViewPipeline.class);</span>
+
+    private final ArchitecturePipelineStepRegistry registry;
+    private final ArchitecturePipelineInvariantValidator invariantValidator;
+
+    public ArchitectureViewPipeline(ArchitecturePipelineStepRegistry registry,
+<span class="fc" id="L29">                                    ArchitecturePipelineInvariantValidator invariantValidator) {</span>
+<span class="fc" id="L30">        this.registry = registry;</span>
+<span class="fc" id="L31">        this.invariantValidator = invariantValidator;</span>
+<span class="fc" id="L32">    }</span>
+
+    public RequirementArchitectureView execute(ArchitectureViewContext context) {
+<span class="fc" id="L35">        RequirementArchitectureView view = context.getView();</span>
+<span class="fc" id="L36">        List&lt;ArchitecturePipelineStep&gt; enabledSteps = registry.getEnabledSteps();</span>
+
+<span class="fc" id="L38">        ArchitecturePipelineStep firstEnabledStep = enabledSteps.stream()</span>
+<span class="fc" id="L39">                .findFirst()</span>
+<span class="pc" id="L40">                .orElseThrow(() -&gt; new IllegalStateException(</span>
+                        &quot;Architecture pipeline requires at least one enabled step, specifically %s as the first step&quot;
+<span class="nc" id="L42">                                .formatted(AnchorSelectionStep.STEP_ID)));</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (!AnchorSelectionStep.STEP_ID.equals(firstEnabledStep.id())) {</span>
+<span class="fc" id="L44">            throw new IllegalStateException(</span>
+                    &quot;Architecture pipeline must execute %s first, but found %s&quot;
+<span class="fc" id="L46">                            .formatted(AnchorSelectionStep.STEP_ID, firstEnabledStep.id()));</span>
+        }
+
+<span class="fc" id="L49">        firstEnabledStep.apply(context);</span>
+<span class="fc" id="L50">        invariantValidator.afterStep(firstEnabledStep, context);</span>
+<span class="fc" id="L51">        view.setAnchors(context.getAnchors());</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if (context.getAnchors().isEmpty()) {</span>
+<span class="fc" id="L53">            view.getNotes().add(&quot;No nodes met the anchor threshold; architecture view is empty.&quot;);</span>
+<span class="fc" id="L54">            invariantValidator.beforeReturn(context);</span>
+<span class="fc" id="L55">            return view;</span>
+        }
+
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (ArchitecturePipelineStep step : enabledSteps.subList(1, enabledSteps.size())) {</span>
+<span class="fc" id="L59">            step.apply(context);</span>
+<span class="fc" id="L60">            invariantValidator.afterStep(step, context);</span>
+<span class="fc" id="L61">        }</span>
+
+<span class="fc" id="L63">        populatePresenceReasons(context.getElements(), context.getRelationships());</span>
+<span class="fc" id="L64">        populateParentNodeCodes(context.getElements());</span>
+<span class="fc" id="L65">        invariantValidator.beforeReturn(context);</span>
+
+<span class="fc" id="L67">        view.setIncludedElements(context.getElements());</span>
+<span class="fc" id="L68">        view.setIncludedRelationships(context.getRelationships());</span>
+
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (context.isUsedProvisional()) {</span>
+<span class="fc" id="L71">            view.getNotes().add(&quot;Architecture view built using AI-suggested provisional relations &quot;</span>
+                    + &quot;(not yet confirmed).&quot;);
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        } else if (context.getRelationships().isEmpty()</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">                &amp;&amp; context.getElements().size() == context.getAnchors().size()) {</span>
+<span class="fc" id="L75">            view.getNotes().add(&quot;No traversable relations found for anchor nodes; &quot;</span>
+                    + &quot;only direct matches are included.&quot;);
+        }
+
+<span class="fc" id="L79">        int maxHop = context.getElements().stream()</span>
+<span class="fc" id="L80">                .mapToInt(RequirementElementView::getHopDistance).max().orElse(0);</span>
+<span class="fc" id="L81">        view.setTotalAnchors(context.getAnchors().size());</span>
+<span class="fc" id="L82">        view.setTotalElements(context.getElements().size());</span>
+<span class="fc" id="L83">        view.setTotalRelationships(context.getRelationships().size());</span>
+<span class="fc" id="L84">        view.setMaxHopDistance(maxHop);</span>
+
+<span class="fc" id="L86">        log.info(&quot;RequirementArchitectureView summary: anchors={}, elements={}, relationships={}, maxHopDistance={}&quot;,</span>
+<span class="fc" id="L87">                context.getAnchors().size(), context.getElements().size(),</span>
+<span class="fc" id="L88">                context.getRelationships().size(), maxHop);</span>
+<span class="fc" id="L89">        logPropagationSummary(context);</span>
+<span class="fc" id="L90">        return view;</span>
+    }
+
+    private static void logPropagationSummary(ArchitectureViewContext context) {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        for (var anchor : context.getAnchors()) {</span>
+<span class="fc" id="L95">            List&lt;RequirementElementView&gt; propagated = context.getElements().stream()</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                    .filter(element -&gt; !element.isAnchor()</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">                            &amp;&amp; element.getIncludedBecause() != null</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">                            &amp;&amp; element.getIncludedBecause().contains(anchor.getNodeCode()))</span>
+<span class="fc" id="L99">                    .toList();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (propagated.isEmpty()) continue;</span>
+<span class="fc" id="L101">            StringBuilder summary = new StringBuilder(&quot;anchor &quot;).append(anchor.getNodeCode());</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">            for (RequirementElementView element : propagated) {</span>
+<span class="fc" id="L103">                summary.append(&quot;\n  → &quot;).append(element.getNodeCode())</span>
+<span class="fc" id="L104">                        .append(&quot; (&quot;)</span>
+<span class="fc" id="L105">                        .append(String.format(Locale.US, &quot;%.2f&quot;, element.getRelevance()))</span>
+<span class="fc" id="L106">                        .append(')');</span>
+<span class="fc" id="L107">            }</span>
+<span class="fc" id="L108">            log.debug(summary.toString());</span>
+<span class="fc" id="L109">        }</span>
+<span class="fc" id="L110">    }</span>
+
+    private static void populatePresenceReasons(List&lt;RequirementElementView&gt; elements,
+                                                 List&lt;RequirementRelationshipView&gt; relationships) {
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        for (RequirementElementView element : elements) {</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            if (element.getPresenceReason() != null) continue;</span>
+<span class="fc" id="L116">            StringBuilder reason = new StringBuilder();</span>
+<span class="fc" id="L117">            reason.append(element.getNodeCode());</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (element.getTitle() != null) reason.append(&quot; (&quot;).append(element.getTitle()).append(')');</span>
+<span class="fc" id="L119">            reason.append(&quot;: &quot;);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">            if (element.getOrigin() != null) {</span>
+<span class="fc" id="L121">                reason.append(element.getOrigin().name().toLowerCase().replace('_', ' '));</span>
+            } else {
+<span class="nc" id="L123">                reason.append(&quot;included via propagation&quot;);</span>
+            }
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            if (element.getDirectLlmScore() &gt; 0) {</span>
+<span class="fc" id="L126">                reason.append(&quot;, LLM score &quot;).append(element.getDirectLlmScore());</span>
+            }
+<span class="fc bfc" id="L128" title="All 2 branches covered.">            if (element.getHopDistance() &gt; 0) {</span>
+<span class="fc" id="L129">                reason.append(&quot;, &quot;).append(element.getHopDistance()).append(&quot; hop(s)&quot;);</span>
+            }
+<span class="fc" id="L131">            element.setPresenceReason(reason.toString());</span>
+<span class="fc" id="L132">        }</span>
+
+<span class="fc bfc" id="L134" title="All 2 branches covered.">        for (RequirementRelationshipView relationship : relationships) {</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            if (relationship.getPresenceReason() != null) continue;</span>
+<span class="fc" id="L136">            StringBuilder reason = new StringBuilder();</span>
+<span class="fc" id="L137">            reason.append(relationship.getSourceCode())</span>
+<span class="fc" id="L138">                    .append(&quot; → &quot;).append(relationship.getTargetCode())</span>
+<span class="fc" id="L139">                    .append(&quot;: &quot;).append(relationship.getRelationCategory());</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">            if (relationship.getOrigin() != null) {</span>
+<span class="fc" id="L141">                reason.append(&quot;, &quot;)</span>
+<span class="fc" id="L142">                        .append(relationship.getOrigin().name().toLowerCase().replace('_', ' '));</span>
+            }
+<span class="fc bfc" id="L144" title="All 2 branches covered.">            if (relationship.getConfidence() &gt; 0) {</span>
+<span class="fc" id="L145">                reason.append(String.format(&quot;, confidence %.0f%%&quot;, relationship.getConfidence() * 100));</span>
+            }
+<span class="fc" id="L147">            relationship.setPresenceReason(reason.toString());</span>
+<span class="fc" id="L148">        }</span>
+<span class="fc" id="L149">    }</span>
+
+    private static void populateParentNodeCodes(List&lt;RequirementElementView&gt; elements) {
+<span class="fc" id="L152">        Set&lt;String&gt; codes = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        for (RequirementElementView element : elements) {</span>
+<span class="fc" id="L154">            codes.add(element.getNodeCode());</span>
+<span class="fc" id="L155">        }</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        for (RequirementElementView element : elements) {</span>
+<span class="fc" id="L157">            String hierarchyPath = element.getHierarchyPath();</span>
+<span class="pc bpc" id="L158" title="2 of 4 branches missed.">            if (hierarchyPath == null || hierarchyPath.isEmpty()) continue;</span>
+<span class="fc" id="L159">            String[] parts = hierarchyPath.split(&quot;\\s*&gt;\\s*&quot;);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">            for (int index = parts.length - 2; index &gt;= 0; index--) {</span>
+<span class="fc" id="L161">                String candidate = parts[index].trim();</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">                if (codes.contains(candidate)) {</span>
+<span class="fc" id="L163">                    element.setParentNodeCode(candidate);</span>
+<span class="fc" id="L164">                    break;</span>
+                }
+            }
+<span class="fc" id="L167">        }</span>
+<span class="fc" id="L168">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

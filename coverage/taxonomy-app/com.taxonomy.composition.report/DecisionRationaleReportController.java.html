@@ -1,0 +1,401 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleReportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.report</a> &gt; <span class="el_source">DecisionRationaleReportController.java</span></div><h1>DecisionRationaleReportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.report;
+
+import com.taxonomy.architecture.decision.DecisionRationaleReport;
+import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.architecture.decision.DecisionRationaleReportService;
+import com.taxonomy.architecture.decision.DecisionRationaleScoreSemanticsAdapter;
+import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
+import com.taxonomy.architecture.decision.DecisionRationaleReportService.DecisionAnalysisInput;
+import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisScoreDetail;
+import com.taxonomy.dto.AnalysisScoreSemantics;
+import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * HTTP adapter for the hierarchical decision-rationale report extension family.
+ *
+ * &lt;p&gt;The controller owns the report-specific request and trusted runtime provenance.
+ * Format rendering is delegated exclusively to {@link ReportRendererRegistry}; adding
+ * another decision-report format therefore requires only another renderer extension.&lt;/p&gt;
+ */
+@RestController
+@RequestMapping(&quot;/api/decision-report&quot;)
+@Tag(name = &quot;Decision Rationale Report&quot;)
+public class DecisionRationaleReportController {
+
+    private static final int MAX_SCORE_ENTRIES = 25_000;
+    private static final int MAX_REASON_ENTRIES = 25_000;
+    private static final int MAX_NODE_CODE_LENGTH = 256;
+    private static final int MAX_REQUIREMENT_LENGTH = 500_000;
+    private static final int MAX_REASON_LENGTH = 50_000;
+    private static final long MAX_TOTAL_REASON_CHARACTERS = 5_000_000L;
+    private static final int MAX_DISCREPANCIES = 10_000;
+    private static final int MAX_PRODUCT_COVERAGE_GAPS = 10_000;
+    private static final int MAX_PRODUCT_GAP_CANDIDATES = 25_000;
+    private static final int MAX_METADATA_LENGTH = 256;
+
+    private final DecisionRationaleReportService reportService;
+    private final ReportRendererRegistry reportRendererRegistry;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+    private final DecisionRationaleScoreSemanticsAdapter scoreSemanticsAdapter;
+    private final TaxonomyService taxonomyService;
+
+    /** Backward-compatible constructor for focused unit tests. */
+    public DecisionRationaleReportController(
+            DecisionRationaleReportService reportService,
+            ReportRendererRegistry reportRendererRegistry,
+            RepositoryStateService repositoryStateService,
+            WorkspaceResolver workspaceResolver) {
+<span class="fc" id="L81">        this(reportService, reportRendererRegistry, repositoryStateService, workspaceResolver,</span>
+                new DecisionRationaleScoreSemanticsAdapter(), null);
+<span class="fc" id="L83">    }</span>
+
+    @Autowired
+    public DecisionRationaleReportController(
+            DecisionRationaleReportService reportService,
+            ReportRendererRegistry reportRendererRegistry,
+            RepositoryStateService repositoryStateService,
+            WorkspaceResolver workspaceResolver,
+            DecisionRationaleScoreSemanticsAdapter scoreSemanticsAdapter,
+<span class="fc" id="L92">            TaxonomyService taxonomyService) {</span>
+<span class="fc" id="L93">        this.reportService = reportService;</span>
+<span class="fc" id="L94">        this.reportRendererRegistry = reportRendererRegistry;</span>
+<span class="fc" id="L95">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L96">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L97">        this.scoreSemanticsAdapter = scoreSemanticsAdapter;</span>
+<span class="fc" id="L98">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L99">    }</span>
+
+<span class="fc" id="L101">    public record DecisionReportRequest(</span>
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, Integer&gt; rawScores,
+            Map&lt;String, Integer&gt; effectiveScores,
+            Map&lt;String, AnalysisScoreDetail&gt; scoreDetails,
+            Map&lt;String, Integer&gt; productSuitabilityScores,
+            Integer scoreSemanticsVersion,
+            Map&lt;String, String&gt; reasons,
+            String businessText,
+            String provider,
+            String analysisStatus,
+            List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+            List&lt;ProductCoverageGap&gt; productCoverageGaps,
+            String language) {
+
+        /** Legacy request constructor retained for Java callers and validation tests. */
+        public DecisionReportRequest(
+                Map&lt;String, Integer&gt; scores,
+                Map&lt;String, String&gt; reasons,
+                String businessText,
+                String provider,
+                String analysisStatus,
+                List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+                List&lt;ProductCoverageGap&gt; productCoverageGaps,
+                String language) {
+<span class="fc" id="L126">            this(scores, null, null, null, null, null, reasons, businessText, provider,</span>
+                    analysisStatus, discrepancies, productCoverageGaps, language);
+<span class="fc" id="L128">        }</span>
+    }
+
+    @Operation(
+            summary = &quot;List decision-rationale report formats&quot;,
+            description = &quot;Returns formats registered through the report-renderer extension SPI.&quot;)
+    @GetMapping(&quot;/formats&quot;)
+    public List&lt;ReportFormatDescriptor&gt; listFormats() {
+<span class="fc" id="L136">        return reportRendererRegistry.listDescriptors(</span>
+                DecisionRationaleReportPlugin.REPORT_TYPE_ID);
+    }
+
+    @Operation(
+            summary = &quot;Export hierarchical decision rationale as DOCX&quot;,
+            description = &quot;Creates a professional Word document with title page, executive summary, &quot;
+                    + &quot;one parent/children decision chapter per positive hierarchy decision, diagrams, &quot;
+                    + &quot;and account/version provenance in the footer.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;DOCX report returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Requirement or score evidence is missing, invalid or incomplete&quot;)
+    @PostMapping(&quot;/docx&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportDocx(@RequestBody DecisionReportRequest request) {
+<span class="fc" id="L149">        return render(request, &quot;docx&quot;);</span>
+    }
+
+    @Operation(
+            summary = &quot;Export hierarchical decision rationale as HTML&quot;,
+            description = &quot;Creates a self-contained, print-ready HTML report with inline SVG diagrams.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;HTML report returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Requirement or score evidence is missing, invalid or incomplete&quot;)
+    @PostMapping(&quot;/html&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportHtml(@RequestBody DecisionReportRequest request) {
+<span class="fc" id="L159">        return render(request, &quot;html&quot;);</span>
+    }
+
+    @Operation(
+            summary = &quot;Export hierarchical decision rationale as JSON&quot;,
+            description = &quot;Returns the format-neutral report model including all chapters and provenance.&quot;)
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Structured report returned&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Requirement or score evidence is missing, invalid or incomplete&quot;)
+    @PostMapping(&quot;/json&quot;)
+    public ResponseEntity&lt;byte[]&gt; exportJson(@RequestBody DecisionReportRequest request) {
+<span class="fc" id="L169">        return render(request, &quot;json&quot;);</span>
+    }
+
+    private ResponseEntity&lt;byte[]&gt; render(
+            DecisionReportRequest request,
+            String formatId) {
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (!isValid(request)) {</span>
+<span class="fc" id="L176">            return ResponseEntity.badRequest().build();</span>
+        }
+<span class="fc" id="L178">        DecisionRationaleReport report = generate(request);</span>
+<span class="fc" id="L179">        ReportRendererExtension renderer = reportRendererRegistry.getRequired(</span>
+                DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId);
+<span class="fc" id="L181">        ReportFormatDescriptor format = renderer.descriptor();</span>
+<span class="fc" id="L182">        ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));</span>
+<span class="fc" id="L183">        ResponseEntity.BodyBuilder response = ResponseEntity.ok()</span>
+<span class="fc" id="L184">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L185">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+                        &quot;attachment; filename=\&quot;&quot;
+                                + DecisionRationaleReportPlugin.BASE_FILENAME + &quot;.&quot;
+<span class="fc" id="L188">                                + format.fileExtension() + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L189">                .header(&quot;X-Taxonomy-Data-SHA256&quot;,</span>
+<span class="fc" id="L190">                        report.metadata().taxonomyDataFingerprintSha256())</span>
+<span class="fc" id="L191">                .header(&quot;X-Taxonomy-Analysis-SHA256&quot;,</span>
+<span class="fc" id="L192">                        report.metadata().analysisSnapshotFingerprintSha256());</span>
+<span class="fc" id="L193">        DecisionReportTemplateHeaders.apply(response, rendered);</span>
+<span class="fc" id="L194">        return response</span>
+<span class="fc" id="L195">                .contentType(MediaType.parseMediaType(format.contentType()))</span>
+<span class="fc" id="L196">                .body(rendered.bytes());</span>
+    }
+
+    private DecisionRationaleReport generate(DecisionReportRequest request) {
+<span class="fc" id="L200">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L201">        String branch = repositoryStateService.resolveWorkspaceBranch(context.username());</span>
+<span class="fc" id="L202">        ViewContext viewContext = repositoryStateService.getViewContext(</span>
+<span class="fc" id="L203">                context.username(), branch, context);</span>
+<span class="fc" id="L204">        Locale locale = resolveLocale(request.language());</span>
+<span class="fc" id="L205">        AnalysisScoreSemantics.Derived scoreSemantics = resolveScoreSemantics(request);</span>
+<span class="fc" id="L206">        Map&lt;String, AnalysisScoreDetail&gt; scoreDetails = scoreSemantics.scoreDetails();</span>
+<span class="fc" id="L207">        Map&lt;String, Integer&gt; effectiveScores = scoreSemantics.effectiveScores();</span>
+<span class="fc" id="L208">        Map&lt;String, String&gt; reasons = scoreSemanticsAdapter.enrichReasons(</span>
+<span class="fc" id="L209">                request.reasons(), scoreDetails, locale);</span>
+<span class="fc" id="L210">        DecisionAnalysisInput input = new DecisionAnalysisInput(</span>
+<span class="fc" id="L211">                request.businessText(),</span>
+                effectiveScores,
+                reasons,
+<span class="fc" id="L214">                request.provider(),</span>
+<span class="fc" id="L215">                request.analysisStatus(),</span>
+<span class="fc" id="L216">                request.discrepancies(),</span>
+<span class="fc" id="L217">                request.productCoverageGaps(),</span>
+<span class="fc" id="L218">                List.of(),</span>
+                null,
+                scoreDetails);
+<span class="fc" id="L221">        DecisionRationaleReport report = reportService.generate(</span>
+                input, context, viewContext, locale);
+<span class="fc" id="L223">        return scoreSemanticsAdapter.adapt(report, scoreDetails, locale);</span>
+    }
+
+    private AnalysisScoreSemantics.Derived resolveScoreSemantics(
+            DecisionReportRequest request) {
+        // Validation requires an explicit raw map to cover every selected code.
+        // Never fill missing raw evidence with possibly weighted values from scores.
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        Map&lt;String, Integer&gt; suppliedRaw = request.rawScores() != null</span>
+<span class="fc" id="L231">                ? request.rawScores() : request.scores();</span>
+<span class="fc" id="L232">        Map&lt;String, Integer&gt; authoritativeRaw = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L233">        request.scores().keySet().forEach(code -&gt; authoritativeRaw.put(</span>
+<span class="fc" id="L234">                code, suppliedRaw.get(code)));</span>
+<span class="fc" id="L235">        return AnalysisScoreSemantics.derive(</span>
+                authoritativeRaw,
+<span class="pc bpc" id="L237" title="1 of 2 branches missed.">                taxonomyService == null ? List.of() : taxonomyService.getFingerprintTree());</span>
+    }
+
+    private Locale resolveLocale(String language) {
+<span class="pc bpc" id="L241" title="2 of 4 branches missed.">        if (language == null || language.isBlank()) {</span>
+<span class="nc" id="L242">            return LocaleContextHolder.getLocale();</span>
+        }
+<span class="fc" id="L244">        Locale locale = Locale.forLanguageTag(language.strip());</span>
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">        return locale.getLanguage().isBlank()</span>
+<span class="pc" id="L246">                ? LocaleContextHolder.getLocale() : locale;</span>
+    }
+
+    private boolean isValid(DecisionReportRequest request) {
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">        if (request == null</span>
+<span class="fc bfc" id="L251" title="All 2 branches covered.">                || !boundedText(request.businessText(), MAX_REQUIREMENT_LENGTH, false)</span>
+<span class="pc bpc" id="L252" title="1 of 2 branches missed.">                || request.scores() == null</span>
+<span class="pc bpc" id="L253" title="1 of 2 branches missed.">                || request.scores().isEmpty()</span>
+<span class="pc bpc" id="L254" title="1 of 2 branches missed.">                || request.scores().size() &gt; MAX_SCORE_ENTRIES</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">                || !validScoreMap(request.scores())</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">                || !validOptionalScoreMap(request.rawScores())</span>
+<span class="fc bfc" id="L257" title="All 2 branches covered.">                || (request.rawScores() != null</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">                        &amp;&amp; !request.rawScores().keySet().containsAll(request.scores().keySet()))</span>
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">                || !validOptionalScoreMap(request.effectiveScores())</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">                || !validOptionalScoreMap(request.productSuitabilityScores())</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">                || !validScoreDetails(request.scoreDetails())</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">                || !boundedMetadata(request.provider())</span>
+<span class="pc bpc" id="L263" title="1 of 2 branches missed.">                || !boundedMetadata(request.analysisStatus())</span>
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">                || !boundedMetadata(request.language())</span>
+<span class="fc bfc" id="L265" title="All 2 branches covered.">                || (request.scoreSemanticsVersion() != null</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">                        &amp;&amp; request.scoreSemanticsVersion() &lt; 0)</span>
+<span class="fc bfc" id="L267" title="All 2 branches covered.">                || (request.discrepancies() != null</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">                        &amp;&amp; request.discrepancies().size() &gt; MAX_DISCREPANCIES)</span>
+<span class="fc bfc" id="L269" title="All 2 branches covered.">                || (request.productCoverageGaps() != null</span>
+<span class="pc bpc" id="L270" title="1 of 2 branches missed.">                        &amp;&amp; request.productCoverageGaps().size() &gt; MAX_PRODUCT_COVERAGE_GAPS)) {</span>
+<span class="fc" id="L271">            return false;</span>
+        }
+<span class="fc bfc" id="L273" title="All 2 branches covered.">        return validReasons(request.reasons())</span>
+<span class="fc bfc" id="L274" title="All 2 branches covered.">                &amp;&amp; validDiscrepancies(request.discrepancies())</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">                &amp;&amp; validProductCoverageGaps(request.productCoverageGaps());</span>
+    }
+
+    private boolean validOptionalScoreMap(Map&lt;String, Integer&gt; scores) {
+<span class="pc bpc" id="L279" title="1 of 6 branches missed.">        return scores == null || (scores.size() &lt;= MAX_SCORE_ENTRIES &amp;&amp; validScoreMap(scores));</span>
+    }
+
+    private boolean validScoreMap(Map&lt;String, Integer&gt; scores) {
+<span class="pc bpc" id="L283" title="1 of 4 branches missed.">        return scores != null &amp;&amp; scores.entrySet().stream().allMatch(entry -&gt;</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">                boundedNodeCode(entry.getKey())</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                        &amp;&amp; entry.getValue() != null</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">                        &amp;&amp; entry.getValue() &gt;= 0</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">                        &amp;&amp; entry.getValue() &lt;= 100);</span>
+    }
+
+    private boolean validScoreDetails(Map&lt;String, AnalysisScoreDetail&gt; details) {
+<span class="fc bfc" id="L291" title="All 2 branches covered.">        if (details == null) {</span>
+<span class="fc" id="L292">            return true;</span>
+        }
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">        if (details.size() &gt; MAX_SCORE_ENTRIES) {</span>
+<span class="nc" id="L295">            return false;</span>
+        }
+<span class="fc" id="L297">        return details.entrySet().stream().allMatch(entry -&gt; {</span>
+<span class="fc" id="L298">            AnalysisScoreDetail detail = entry.getValue();</span>
+<span class="pc bpc" id="L299" title="2 of 4 branches missed.">            return boundedNodeCode(entry.getKey())</span>
+                    &amp;&amp; detail != null
+<span class="pc bpc" id="L301" title="1 of 2 branches missed.">                    &amp;&amp; entry.getKey().equals(detail.nodeCode())</span>
+<span class="pc bpc" id="L302" title="1 of 2 branches missed.">                    &amp;&amp; detail.kind() != null</span>
+<span class="pc bpc" id="L303" title="2 of 4 branches missed.">                    &amp;&amp; detail.rawScore() &gt;= 0 &amp;&amp; detail.rawScore() &lt;= 100</span>
+<span class="pc bpc" id="L304" title="1 of 2 branches missed.">                    &amp;&amp; detail.effectiveRelevance() &gt;= 0</span>
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">                    &amp;&amp; detail.effectiveRelevance() &lt;= 100</span>
+<span class="pc bpc" id="L306" title="1 of 4 branches missed.">                    &amp;&amp; (detail.parentCode() == null || boundedNodeCode(detail.parentCode()))</span>
+<span class="fc bfc" id="L307" title="All 2 branches covered.">                    &amp;&amp; (detail.parentScore() == null</span>
+<span class="pc bpc" id="L308" title="2 of 4 branches missed.">                            || (detail.parentScore() &gt;= 0 &amp;&amp; detail.parentScore() &lt;= 100));</span>
+        });
+    }
+
+    private boolean validProductCoverageGaps(
+            List&lt;ProductCoverageGap&gt; productCoverageGaps) {
+<span class="fc bfc" id="L314" title="All 2 branches covered.">        if (productCoverageGaps == null) {</span>
+<span class="fc" id="L315">            return true;</span>
+        }
+<span class="fc" id="L317">        int totalCandidates = 0;</span>
+<span class="fc" id="L318">        Set&lt;String&gt; familyCodes = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L319" title="All 2 branches covered.">        for (ProductCoverageGap gap : productCoverageGaps) {</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">            if (gap == null</span>
+<span class="fc bfc" id="L321" title="All 2 branches covered.">                    || !boundedNodeCode(gap.productFamilyCode())</span>
+<span class="pc bpc" id="L322" title="1 of 2 branches missed.">                    || !boundedText(gap.productFamilyName(), MAX_REASON_LENGTH, true)</span>
+<span class="pc bpc" id="L323" title="1 of 2 branches missed.">                    || gap.familyScore() &lt; 0</span>
+<span class="pc bpc" id="L324" title="1 of 2 branches missed.">                    || gap.familyScore() &gt; 100</span>
+<span class="pc bpc" id="L325" title="1 of 2 branches missed.">                    || !boundedText(gap.reason(), MAX_REASON_LENGTH, false)</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">                    || gap.candidateCodes() == null</span>
+<span class="fc bfc" id="L327" title="All 2 branches covered.">                    || gap.candidateCodes().isEmpty()</span>
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">                    || !familyCodes.add(gap.productFamilyCode())) {</span>
+<span class="fc" id="L329">                return false;</span>
+            }
+<span class="fc" id="L331">            Set&lt;String&gt; candidateCodes = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">            for (String candidateCode : gap.candidateCodes()) {</span>
+<span class="fc" id="L333">                totalCandidates++;</span>
+<span class="pc bpc" id="L334" title="1 of 2 branches missed.">                if (totalCandidates &gt; MAX_PRODUCT_GAP_CANDIDATES</span>
+<span class="fc bfc" id="L335" title="All 2 branches covered.">                        || !boundedNodeCode(candidateCode)</span>
+<span class="pc bpc" id="L336" title="1 of 2 branches missed.">                        || !candidateCodes.add(candidateCode)) {</span>
+<span class="fc" id="L337">                    return false;</span>
+                }
+<span class="fc" id="L339">            }</span>
+<span class="fc" id="L340">        }</span>
+<span class="fc" id="L341">        return true;</span>
+    }
+
+    private boolean validDiscrepancies(
+            List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="fc bfc" id="L346" title="All 2 branches covered.">        if (discrepancies == null) {</span>
+<span class="fc" id="L347">            return true;</span>
+        }
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        for (TaxonomyDiscrepancy discrepancy : discrepancies) {</span>
+<span class="fc bfc" id="L350" title="All 2 branches covered.">            if (discrepancy == null</span>
+<span class="fc bfc" id="L351" title="All 2 branches covered.">                    || !boundedText(discrepancy.parentCode(),</span>
+                            MAX_NODE_CODE_LENGTH, false)
+<span class="fc bfc" id="L353" title="All 2 branches covered.">                    || discrepancy.expectedParentScore() &lt; 0</span>
+<span class="fc bfc" id="L354" title="All 2 branches covered.">                    || discrepancy.expectedParentScore() &gt; 100</span>
+<span class="fc bfc" id="L355" title="All 2 branches covered.">                    || discrepancy.actualChildSum() &lt; 0) {</span>
+<span class="fc" id="L356">                return false;</span>
+            }
+<span class="fc" id="L358">        }</span>
+<span class="fc" id="L359">        return true;</span>
+    }
+
+    private boolean validReasons(Map&lt;String, String&gt; reasons) {
+<span class="fc bfc" id="L363" title="All 2 branches covered.">        if (reasons == null) {</span>
+<span class="fc" id="L364">            return true;</span>
+        }
+<span class="pc bpc" id="L366" title="1 of 2 branches missed.">        if (reasons.size() &gt; MAX_REASON_ENTRIES) {</span>
+<span class="nc" id="L367">            return false;</span>
+        }
+<span class="fc" id="L369">        long totalCharacters = 0;</span>
+<span class="fc bfc" id="L370" title="All 2 branches covered.">        for (Map.Entry&lt;String, String&gt; entry : reasons.entrySet()) {</span>
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">            if (!boundedText(entry.getKey(), MAX_NODE_CODE_LENGTH, false)</span>
+<span class="fc bfc" id="L372" title="All 2 branches covered.">                    || !boundedText(entry.getValue(), MAX_REASON_LENGTH, true)) {</span>
+<span class="fc" id="L373">                return false;</span>
+            }
+<span class="pc bpc" id="L375" title="1 of 2 branches missed.">            if (entry.getValue() != null) {</span>
+<span class="fc" id="L376">                totalCharacters += entry.getValue().length();</span>
+<span class="pc bpc" id="L377" title="1 of 2 branches missed.">                if (totalCharacters &gt; MAX_TOTAL_REASON_CHARACTERS) {</span>
+<span class="nc" id="L378">                    return false;</span>
+                }
+            }
+<span class="fc" id="L381">        }</span>
+<span class="fc" id="L382">        return true;</span>
+    }
+
+    private boolean boundedNodeCode(String value) {
+<span class="fc bfc" id="L386" title="All 2 branches covered.">        return boundedText(value, MAX_NODE_CODE_LENGTH, false)</span>
+<span class="fc bfc" id="L387" title="All 2 branches covered.">                &amp;&amp; value.equals(value.strip());</span>
+    }
+
+    private boolean boundedMetadata(String value) {
+<span class="fc" id="L391">        return boundedText(value, MAX_METADATA_LENGTH, true);</span>
+    }
+
+    private boolean boundedText(String value, int maxLength, boolean nullable) {
+<span class="fc bfc" id="L395" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L396">            return nullable;</span>
+        }
+<span class="fc bfc" id="L398" title="All 6 branches covered.">        return value.length() &lt;= maxLength &amp;&amp; (nullable || !value.isBlank());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

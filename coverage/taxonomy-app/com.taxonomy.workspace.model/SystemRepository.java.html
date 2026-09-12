@@ -1,0 +1,327 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SystemRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.model</a> &gt; <span class="el_source">SystemRepository.java</span></div><h1>SystemRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.model;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/**
+ * Catalog entry for a central architecture repository.
+ *
+ * &lt;p&gt;The historic class name is retained as a compatibility boundary while the
+ * application evolves from one implicit system repository to an explicit
+ * multi-repository catalog. Every entry owns a distinct logical JGit storage
+ * name. The repository marked {@link #isPrimaryRepo()} keeps the legacy
+ * {@code taxonomy-dsl} storage name.&lt;/p&gt;
+ *
+ * &lt;p&gt;Credentials are deliberately not part of the public entity contract. The
+ * legacy plaintext column remains mapped only so startup migration can erase
+ * values written by older releases. New credentials are supplied exclusively
+ * through deployment secret configuration.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;system_repository&quot;)
+public class SystemRepository {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;repository_id&quot;, nullable = false, unique = true)
+    private String repositoryId;
+
+    @Column(name = &quot;storage_repository_name&quot;, unique = true)
+    private String storageRepositoryName;
+
+    @Column(name = &quot;slug&quot;, unique = true)
+    private String slug;
+
+    @Column(name = &quot;display_name&quot;)
+    private String displayName;
+
+    @Column(name = &quot;description&quot;, length = 1000)
+    private String description;
+
+<span class="fc" id="L52">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;visibility&quot;)
+    private RepositoryVisibility visibility = RepositoryVisibility.PRIVATE;
+
+<span class="fc" id="L56">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;lifecycle_state&quot;)
+    private RepositoryLifecycleState lifecycleState = RepositoryLifecycleState.ACTIVE;
+
+    @Column(name = &quot;provisioning_error&quot;, length = 2000)
+    private String provisioningError;
+
+<span class="fc" id="L63">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;owner_type&quot;)
+    private RepositoryOwnerType ownerType = RepositoryOwnerType.USER;
+
+    @Column(name = &quot;owner_id&quot;)
+    private String ownerId;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;topology_mode&quot;, nullable = false)
+    private RepositoryTopologyMode topologyMode;
+
+<span class="fc" id="L74">    @Column(name = &quot;default_branch&quot;, nullable = false)</span>
+    private String defaultBranch = &quot;draft&quot;;
+
+    @Column(name = &quot;external_url&quot;)
+    private String externalUrl;
+
+    /** Legacy cleanup-only mapping. Never expose or use this value for authentication. */
+    @Column(name = &quot;external_auth_token&quot;)
+    private String legacyExternalAuthToken;
+
+    @Column(name = &quot;upstream_repository_id&quot;)
+    private String upstreamRepositoryId;
+
+    @Column(name = &quot;upstream_branch&quot;)
+    private String upstreamBranch;
+
+    @Column(name = &quot;fork_point_commit&quot;)
+    private String forkPointCommit;
+
+    @Column(name = &quot;last_fetch_at&quot;)
+    private Instant lastFetchAt;
+
+    @Column(name = &quot;last_push_at&quot;)
+    private Instant lastPushAt;
+
+    @Column(name = &quot;last_fetch_commit&quot;)
+    private String lastFetchCommit;
+
+    @Column(name = &quot;primary_repo&quot;, nullable = false)
+    private boolean primaryRepo;
+
+    @Column(name = &quot;created_by&quot;)
+    private String createdBy;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;updated_at&quot;)
+    private Instant updatedAt;
+
+    @Version
+    @Column(name = &quot;version&quot;)
+    private long version;
+
+<span class="fc" id="L118">    public SystemRepository() {</span>
+<span class="fc" id="L119">    }</span>
+
+    public Long getId() {
+<span class="nc" id="L122">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="nc" id="L126">        this.id = id;</span>
+<span class="nc" id="L127">    }</span>
+
+    public String getRepositoryId() {
+<span class="fc" id="L130">        return repositoryId;</span>
+    }
+
+    public void setRepositoryId(String repositoryId) {
+<span class="fc" id="L134">        this.repositoryId = repositoryId;</span>
+<span class="fc" id="L135">    }</span>
+
+    public String getStorageRepositoryName() {
+<span class="fc" id="L138">        return storageRepositoryName;</span>
+    }
+
+    public void setStorageRepositoryName(String storageRepositoryName) {
+<span class="fc" id="L142">        this.storageRepositoryName = storageRepositoryName;</span>
+<span class="fc" id="L143">    }</span>
+
+    public String getSlug() {
+<span class="fc" id="L146">        return slug;</span>
+    }
+
+    public void setSlug(String slug) {
+<span class="fc" id="L150">        this.slug = slug;</span>
+<span class="fc" id="L151">    }</span>
+
+    public String getDisplayName() {
+<span class="fc" id="L154">        return displayName;</span>
+    }
+
+    public void setDisplayName(String displayName) {
+<span class="fc" id="L158">        this.displayName = displayName;</span>
+<span class="fc" id="L159">    }</span>
+
+    public String getDescription() {
+<span class="fc" id="L162">        return description;</span>
+    }
+
+    public void setDescription(String description) {
+<span class="fc" id="L166">        this.description = description;</span>
+<span class="fc" id="L167">    }</span>
+
+    public RepositoryVisibility getVisibility() {
+<span class="fc" id="L170">        return visibility;</span>
+    }
+
+    public void setVisibility(RepositoryVisibility visibility) {
+<span class="fc" id="L174">        this.visibility = visibility;</span>
+<span class="fc" id="L175">    }</span>
+
+    public RepositoryLifecycleState getLifecycleState() {
+<span class="fc" id="L178">        return lifecycleState;</span>
+    }
+
+    public void setLifecycleState(RepositoryLifecycleState lifecycleState) {
+<span class="fc" id="L182">        this.lifecycleState = lifecycleState;</span>
+<span class="fc" id="L183">    }</span>
+
+    public String getProvisioningError() {
+<span class="fc" id="L186">        return provisioningError;</span>
+    }
+
+    public void setProvisioningError(String provisioningError) {
+<span class="fc" id="L190">        this.provisioningError = provisioningError;</span>
+<span class="fc" id="L191">    }</span>
+
+    public RepositoryOwnerType getOwnerType() {
+<span class="fc" id="L194">        return ownerType;</span>
+    }
+
+    public void setOwnerType(RepositoryOwnerType ownerType) {
+<span class="fc" id="L198">        this.ownerType = ownerType;</span>
+<span class="fc" id="L199">    }</span>
+
+    public String getOwnerId() {
+<span class="fc" id="L202">        return ownerId;</span>
+    }
+
+    public void setOwnerId(String ownerId) {
+<span class="fc" id="L206">        this.ownerId = ownerId;</span>
+<span class="fc" id="L207">    }</span>
+
+    public RepositoryTopologyMode getTopologyMode() {
+<span class="fc" id="L210">        return topologyMode;</span>
+    }
+
+    public void setTopologyMode(RepositoryTopologyMode topologyMode) {
+<span class="fc" id="L214">        this.topologyMode = topologyMode;</span>
+<span class="fc" id="L215">    }</span>
+
+    public String getDefaultBranch() {
+<span class="fc" id="L218">        return defaultBranch;</span>
+    }
+
+    public void setDefaultBranch(String defaultBranch) {
+<span class="fc" id="L222">        this.defaultBranch = defaultBranch;</span>
+<span class="fc" id="L223">    }</span>
+
+    public String getExternalUrl() {
+<span class="fc" id="L226">        return externalUrl;</span>
+    }
+
+    public void setExternalUrl(String externalUrl) {
+<span class="fc" id="L230">        this.externalUrl = externalUrl;</span>
+<span class="fc" id="L231">    }</span>
+
+    /** Whether an older release left a plaintext credential that must be erased. */
+    public boolean hasLegacyPlaintextCredential() {
+<span class="pc bpc" id="L235" title="1 of 4 branches missed.">        return legacyExternalAuthToken != null &amp;&amp; !legacyExternalAuthToken.isBlank();</span>
+    }
+
+    /** Clear a legacy plaintext value without ever returning it to application code. */
+    public void clearLegacyPlaintextCredential() {
+<span class="fc" id="L240">        legacyExternalAuthToken = null;</span>
+<span class="fc" id="L241">    }</span>
+
+    public String getUpstreamRepositoryId() {
+<span class="nc" id="L244">        return upstreamRepositoryId;</span>
+    }
+
+    public void setUpstreamRepositoryId(String upstreamRepositoryId) {
+<span class="nc" id="L248">        this.upstreamRepositoryId = upstreamRepositoryId;</span>
+<span class="nc" id="L249">    }</span>
+
+    public String getUpstreamBranch() {
+<span class="nc" id="L252">        return upstreamBranch;</span>
+    }
+
+    public void setUpstreamBranch(String upstreamBranch) {
+<span class="nc" id="L256">        this.upstreamBranch = upstreamBranch;</span>
+<span class="nc" id="L257">    }</span>
+
+    public String getForkPointCommit() {
+<span class="nc" id="L260">        return forkPointCommit;</span>
+    }
+
+    public void setForkPointCommit(String forkPointCommit) {
+<span class="nc" id="L264">        this.forkPointCommit = forkPointCommit;</span>
+<span class="nc" id="L265">    }</span>
+
+    public Instant getLastFetchAt() {
+<span class="fc" id="L268">        return lastFetchAt;</span>
+    }
+
+    public void setLastFetchAt(Instant lastFetchAt) {
+<span class="fc" id="L272">        this.lastFetchAt = lastFetchAt;</span>
+<span class="fc" id="L273">    }</span>
+
+    public Instant getLastPushAt() {
+<span class="fc" id="L276">        return lastPushAt;</span>
+    }
+
+    public void setLastPushAt(Instant lastPushAt) {
+<span class="fc" id="L280">        this.lastPushAt = lastPushAt;</span>
+<span class="fc" id="L281">    }</span>
+
+    public String getLastFetchCommit() {
+<span class="fc" id="L284">        return lastFetchCommit;</span>
+    }
+
+    public void setLastFetchCommit(String lastFetchCommit) {
+<span class="fc" id="L288">        this.lastFetchCommit = lastFetchCommit;</span>
+<span class="fc" id="L289">    }</span>
+
+    public boolean isPrimaryRepo() {
+<span class="fc" id="L292">        return primaryRepo;</span>
+    }
+
+    public void setPrimaryRepo(boolean primaryRepo) {
+<span class="fc" id="L296">        this.primaryRepo = primaryRepo;</span>
+<span class="fc" id="L297">    }</span>
+
+    public String getCreatedBy() {
+<span class="fc" id="L300">        return createdBy;</span>
+    }
+
+    public void setCreatedBy(String createdBy) {
+<span class="fc" id="L304">        this.createdBy = createdBy;</span>
+<span class="fc" id="L305">    }</span>
+
+    public Instant getCreatedAt() {
+<span class="fc" id="L308">        return createdAt;</span>
+    }
+
+    public void setCreatedAt(Instant createdAt) {
+<span class="fc" id="L312">        this.createdAt = createdAt;</span>
+<span class="fc" id="L313">    }</span>
+
+    public Instant getUpdatedAt() {
+<span class="fc" id="L316">        return updatedAt;</span>
+    }
+
+    public void setUpdatedAt(Instant updatedAt) {
+<span class="fc" id="L320">        this.updatedAt = updatedAt;</span>
+<span class="fc" id="L321">    }</span>
+
+    public long getVersion() {
+<span class="nc" id="L324">        return version;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

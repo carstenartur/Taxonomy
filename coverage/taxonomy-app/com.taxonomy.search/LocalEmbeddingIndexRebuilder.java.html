@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LocalEmbeddingIndexRebuilder.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.search</a> &gt; <span class="el_source">LocalEmbeddingIndexRebuilder.java</span></div><h1>LocalEmbeddingIndexRebuilder.java</h1><pre class="source lang-java linenums">package com.taxonomy.search;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.search.mapper.orm.Search;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+
+/**
+ * Runs bounded Hibernate Search mass-indexing phases for the two entity types
+ * that own local embedding vectors.
+ *
+ * &lt;p&gt;Keeping nodes and relations explicit is intentional: node semantic search
+ * is the user-facing readiness boundary and must not wait behind relation or
+ * unrelated indexed entity types selected through an {@code Object.class}
+ * scope.&lt;/p&gt;
+ */
+@Service
+public class LocalEmbeddingIndexRebuilder {
+
+    private final EntityManagerFactory entityManagerFactory;
+    private final int loaderThreads;
+    private final int batchSize;
+
+    public LocalEmbeddingIndexRebuilder(
+            EntityManagerFactory entityManagerFactory,
+            @Value(&quot;${embedding.index.loader-threads:2}&quot;) int loaderThreads,
+<span class="fc" id="L29">            @Value(&quot;${embedding.index.batch-size:16}&quot;) int batchSize) {</span>
+<span class="fc" id="L30">        this.entityManagerFactory = entityManagerFactory;</span>
+<span class="fc" id="L31">        this.loaderThreads = Math.max(1, loaderThreads);</span>
+<span class="fc" id="L32">        this.batchSize = Math.max(1, batchSize);</span>
+<span class="fc" id="L33">    }</span>
+
+    public void rebuildNodeIndex() throws InterruptedException {
+<span class="fc" id="L36">        Search.mapping(entityManagerFactory)</span>
+<span class="fc" id="L37">                .scope(TaxonomyNode.class)</span>
+<span class="fc" id="L38">                .massIndexer()</span>
+<span class="fc" id="L39">                .typesToIndexInParallel(1)</span>
+<span class="fc" id="L40">                .threadsToLoadObjects(loaderThreads)</span>
+<span class="fc" id="L41">                .batchSizeToLoadObjects(batchSize)</span>
+<span class="fc" id="L42">                .startAndWait();</span>
+<span class="fc" id="L43">    }</span>
+
+    public void rebuildRelationIndex() throws InterruptedException {
+<span class="fc" id="L46">        Search.mapping(entityManagerFactory)</span>
+<span class="fc" id="L47">                .scope(TaxonomyRelation.class)</span>
+<span class="fc" id="L48">                .massIndexer()</span>
+<span class="fc" id="L49">                .typesToIndexInParallel(1)</span>
+<span class="fc" id="L50">                .threadsToLoadObjects(loaderThreads)</span>
+<span class="fc" id="L51">                .batchSizeToLoadObjects(batchSize)</span>
+<span class="fc" id="L52">                .startAndWait();</span>
+<span class="fc" id="L53">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

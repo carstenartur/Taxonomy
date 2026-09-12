@@ -1,0 +1,235 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioOpcValidator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioOpcValidator.java</span></div><h1>VisioOpcValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.microsoft.schemas.office.visio.x2012.main.PageContentsDocument;
+import com.microsoft.schemas.office.visio.x2012.main.PagesDocument;
+import com.microsoft.schemas.office.visio.x2012.main.VisioDocumentDocument1;
+import org.apache.xmlbeans.XmlError;
+import org.apache.xmlbeans.XmlObject;
+import org.apache.xmlbeans.XmlOptions;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.ByteArrayInputStream;
+import java.net.URI;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** Validates the generated OPC graph and the pinned XMLBeans Visio schema before ZIP creation. */
+final class VisioOpcValidator {
+    static final String VISIO = &quot;http://schemas.microsoft.com/office/visio/2012/main&quot;;
+    private static final String REL = &quot;http://schemas.openxmlformats.org/package/2006/relationships&quot;;
+    private static final String OFFICE_REL = &quot;http://schemas.openxmlformats.org/officeDocument/2006/relationships&quot;;
+    private static final String CONTENT_TYPES = &quot;http://schemas.openxmlformats.org/package/2006/content-types&quot;;
+<span class="fc" id="L30">    private static final Map&lt;String, String&gt; RELATION_CONTENT_TYPES = Map.of(</span>
+            &quot;http://schemas.microsoft.com/visio/2010/relationships/document&quot;, &quot;application/vnd.ms-visio.drawing.main+xml&quot;,
+            &quot;http://schemas.microsoft.com/visio/2010/relationships/pages&quot;, &quot;application/vnd.ms-visio.pages+xml&quot;,
+            &quot;http://schemas.microsoft.com/visio/2010/relationships/page&quot;, &quot;application/vnd.ms-visio.page+xml&quot;,
+            &quot;http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties&quot;, &quot;application/vnd.openxmlformats-package.core-properties+xml&quot;,
+            OFFICE_REL + &quot;/extended-properties&quot;, &quot;application/vnd.openxmlformats-officedocument.extended-properties+xml&quot;,
+            OFFICE_REL + &quot;/custom-properties&quot;, &quot;application/vnd.openxmlformats-officedocument.custom-properties+xml&quot;,
+            &quot;https://github.com/carstenartur/Taxonomy/relationships/export-manifest&quot;, &quot;application/json&quot;,
+            &quot;https://github.com/carstenartur/Taxonomy/relationships/mapping-profile&quot;, &quot;application/json&quot;);
+
+    private VisioOpcValidator() { }
+
+    static void validate(Map&lt;String, String&gt; parts) {
+        try {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">            check(parts.size() &lt;= 64, &quot;Too many OPC parts&quot;);</span>
+<span class="fc" id="L45">            Map&lt;String, Document&gt; xml = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L46">            long bytes = 0;</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">            for (var entry : parts.entrySet()) {</span>
+<span class="fc" id="L48">                safePart(entry.getKey());</span>
+<span class="fc" id="L49">                byte[] value = entry.getValue().getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L50">                bytes += value.length;</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">                check(bytes &lt;= VisioHandoffProfile.MAX_XML_BYTES, &quot;Visio package exceeds 32 MiB uncompressed&quot;);</span>
+<span class="fc bfc" id="L52" title="All 4 branches covered.">                if (entry.getKey().endsWith(&quot;.xml&quot;) || entry.getKey().endsWith(&quot;.rels&quot;)) xml.put(entry.getKey(), parse(value));</span>
+<span class="fc" id="L53">            }</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            for (String required : List.of(&quot;[Content_Types].xml&quot;, &quot;_rels/.rels&quot;, &quot;docProps/core.xml&quot;, &quot;docProps/app.xml&quot;,</span>
+                    &quot;docProps/custom.xml&quot;, &quot;visio/document.xml&quot;, &quot;visio/_rels/document.xml.rels&quot;, &quot;visio/pages/pages.xml&quot;,
+                    &quot;visio/pages/_rels/pages.xml.rels&quot;, &quot;taxonomy/manifest.json&quot;, &quot;taxonomy/mapping-profile.json&quot;)) {
+<span class="fc" id="L57">                check(parts.containsKey(required), &quot;Missing required OPC part &quot; + required);</span>
+<span class="fc" id="L58">            }</span>
+<span class="fc" id="L59">            Map&lt;String, String&gt; types = contentTypes(xml.get(&quot;[Content_Types].xml&quot;), parts);</span>
+<span class="fc" id="L60">            Map&lt;String, Map&lt;String, String&gt;&gt; references = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L61">            Map&lt;String, Set&lt;String&gt;&gt; graph = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            for (var entry : xml.entrySet()) {</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">                if (!entry.getKey().endsWith(&quot;.rels&quot;)) continue;</span>
+<span class="fc" id="L64">                String source = sourcePart(entry.getKey());</span>
+<span class="pc bpc" id="L65" title="1 of 4 branches missed.">                check(source.isEmpty() || parts.containsKey(source), &quot;Relationship source missing: &quot; + source);</span>
+<span class="fc" id="L66">                root(entry.getValue(), REL, &quot;Relationships&quot;);</span>
+<span class="fc" id="L67">                Map&lt;String, String&gt; ids = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                for (Element relation : children(entry.getValue().getDocumentElement())) {</span>
+<span class="pc bpc" id="L69" title="2 of 4 branches missed.">                    check(REL.equals(relation.getNamespaceURI()) &amp;&amp; relation.getLocalName().equals(&quot;Relationship&quot;), &quot;Invalid relationship element&quot;);</span>
+<span class="fc" id="L70">                    String id = relation.getAttribute(&quot;Id&quot;);</span>
+<span class="fc" id="L71">                    check(id.matches(&quot;[A-Za-z_][A-Za-z0-9_.-]*&quot;), &quot;Unsafe relationship ID&quot;);</span>
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">                    check(!relation.hasAttribute(&quot;TargetMode&quot;) || relation.getAttribute(&quot;TargetMode&quot;).equals(&quot;Internal&quot;), &quot;External relationship forbidden&quot;);</span>
+<span class="fc" id="L73">                    String target = resolve(source, relation.getAttribute(&quot;Target&quot;));</span>
+<span class="fc" id="L74">                    check(parts.containsKey(target), &quot;Unresolved relationship target &quot; + target);</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                    check(ids.putIfAbsent(id, target) == null, &quot;Duplicate relationship ID &quot; + id);</span>
+<span class="fc" id="L76">                    String expectedType = RELATION_CONTENT_TYPES.get(relation.getAttribute(&quot;Type&quot;));</span>
+<span class="pc bpc" id="L77" title="1 of 4 branches missed.">                    check(expectedType != null &amp;&amp; expectedType.equals(types.get(target)), &quot;Relationship/content type mismatch for &quot; + target);</span>
+<span class="fc" id="L78">                    graph.computeIfAbsent(source, ignored -&gt; new HashSet&lt;&gt;()).add(target);</span>
+<span class="fc" id="L79">                }</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                check(references.putIfAbsent(source, ids) == null, &quot;Duplicate relationship source&quot;);</span>
+<span class="fc" id="L81">            }</span>
+<span class="fc" id="L82">            Set&lt;String&gt; reachable = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L83">            visit(&quot;&quot;, graph, reachable);</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">            for (String part : parts.keySet()) {</span>
+<span class="fc bfc" id="L85" title="All 4 branches covered.">                if (!part.endsWith(&quot;.rels&quot;) &amp;&amp; !part.equals(&quot;[Content_Types].xml&quot;)) check(reachable.contains(part), &quot;Orphan OPC part &quot; + part);</span>
+<span class="fc" id="L86">            }</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            for (var entry : xml.entrySet()) {</span>
+<span class="fc" id="L88">                var elements = entry.getValue().getElementsByTagName(&quot;*&quot;);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                for (int i = 0; i &lt; elements.getLength(); i++) {</span>
+<span class="fc" id="L90">                    Element element = (Element) elements.item(i);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                    if (element.hasAttributeNS(OFFICE_REL, &quot;id&quot;)) {</span>
+<span class="fc" id="L92">                        check(references.getOrDefault(entry.getKey(), Map.of()).containsKey(element.getAttributeNS(OFFICE_REL, &quot;id&quot;)),</span>
+<span class="fc" id="L93">                                &quot;Unresolved XML relationship reference in &quot; + entry.getKey());</span>
+                    }
+                }
+<span class="fc" id="L96">            }</span>
+<span class="fc" id="L97">            validateSchema(VisioDocumentDocument1.Factory.parse(xml.get(&quot;visio/document.xml&quot;)));</span>
+<span class="fc" id="L98">            validateSchema(PagesDocument.Factory.parse(xml.get(&quot;visio/pages/pages.xml&quot;)));</span>
+<span class="fc" id="L99">            validateSchema(org.openxmlformats.schemas.officeDocument.x2006.customProperties.PropertiesDocument.Factory.parse(xml.get(&quot;docProps/custom.xml&quot;)));</span>
+<span class="fc" id="L100">            validateSchema(org.openxmlformats.schemas.officeDocument.x2006.extendedProperties.PropertiesDocument.Factory.parse(xml.get(&quot;docProps/app.xml&quot;)));</span>
+<span class="fc" id="L101">            root(xml.get(&quot;docProps/core.xml&quot;), &quot;http://schemas.openxmlformats.org/package/2006/metadata/core-properties&quot;, &quot;coreProperties&quot;);</span>
+
+<span class="fc" id="L103">            Set&lt;String&gt; styleIds = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L104">            var styles = xml.get(&quot;visio/document.xml&quot;).getElementsByTagNameNS(VISIO, &quot;StyleSheet&quot;);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            for (int i = 0; i &lt; styles.getLength(); i++) check(styleIds.add(((Element) styles.item(i)).getAttribute(&quot;ID&quot;)), &quot;Duplicate style ID&quot;);</span>
+<span class="fc" id="L106">            var settings = xml.get(&quot;visio/document.xml&quot;).getElementsByTagNameNS(VISIO, &quot;DocumentSettings&quot;);</span>
+<span class="pc bpc" id="L107" title="1 of 2 branches missed.">            check(settings.getLength() == 1, &quot;Missing default document styles&quot;);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">            for (String name : List.of(&quot;DefaultLineStyle&quot;, &quot;DefaultFillStyle&quot;, &quot;DefaultTextStyle&quot;)) {</span>
+<span class="fc" id="L109">                check(styleIds.contains(((Element) settings.item(0)).getAttribute(name)), &quot;Unresolved default style reference&quot;);</span>
+<span class="fc" id="L110">            }</span>
+
+<span class="fc" id="L112">            Set&lt;String&gt; pageIds = new HashSet&lt;&gt;(), pageTargets = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">            for (Element page : children(xml.get(&quot;visio/pages/pages.xml&quot;).getDocumentElement())) {</span>
+<span class="fc" id="L114">                check(pageIds.add(page.getAttribute(&quot;ID&quot;)), &quot;Duplicate page ID&quot;);</span>
+<span class="fc" id="L115">                var rels = page.getElementsByTagNameNS(VISIO, &quot;Rel&quot;);</span>
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">                check(rels.getLength() == 1, &quot;Page must reference exactly one contents part&quot;);</span>
+<span class="fc" id="L117">                String rid = ((Element) rels.item(0)).getAttributeNS(OFFICE_REL, &quot;id&quot;);</span>
+<span class="fc" id="L118">                String target = references.get(&quot;visio/pages/pages.xml&quot;).get(rid);</span>
+<span class="pc bpc" id="L119" title="2 of 4 branches missed.">                check(pageTargets.add(target) &amp;&amp; &quot;application/vnd.ms-visio.page+xml&quot;.equals(types.get(target)), &quot;Invalid or duplicate page contents reference&quot;);</span>
+<span class="fc" id="L120">                Document contents = xml.get(target);</span>
+<span class="fc" id="L121">                validateSchema(PageContentsDocument.Factory.parse(contents));</span>
+<span class="fc" id="L122">                validateShapes(contents, styleIds);</span>
+<span class="fc" id="L123">            }</span>
+<span class="pc bpc" id="L124" title="2 of 4 branches missed.">            check(!pageIds.isEmpty() &amp;&amp; pageIds.size() &lt;= 32, &quot;Visio profile requires 1 to 32 pages&quot;);</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            check(pageTargets.size() == types.values().stream().filter(&quot;application/vnd.ms-visio.page+xml&quot;::equals).count(), &quot;Unindexed page contents&quot;);</span>
+<span class="fc" id="L126">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L127">            throw e;</span>
+<span class="fc" id="L128">        } catch (Exception e) {</span>
+<span class="fc" id="L129">            throw new IllegalArgumentException(&quot;Invalid generated Visio OPC/schema profile&quot;, e);</span>
+<span class="fc" id="L130">        }</span>
+<span class="fc" id="L131">    }</span>
+
+    private static Map&lt;String, String&gt; contentTypes(Document document, Map&lt;String, String&gt; parts) {
+<span class="fc" id="L134">        root(document, CONTENT_TYPES, &quot;Types&quot;);</span>
+<span class="fc" id="L135">        Map&lt;String, String&gt; defaults = new HashMap&lt;&gt;(), overrides = new HashMap&lt;&gt;(), result = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        for (Element child : children(document.getDocumentElement())) {</span>
+<span class="fc" id="L137">            check(CONTENT_TYPES.equals(child.getNamespaceURI()), &quot;Invalid content type namespace&quot;);</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">            if (child.getLocalName().equals(&quot;Default&quot;)) {</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                check(defaults.putIfAbsent(child.getAttribute(&quot;Extension&quot;), child.getAttribute(&quot;ContentType&quot;)) == null, &quot;Duplicate default content type&quot;);</span>
+            } else {
+<span class="fc" id="L141">                check(child.getLocalName().equals(&quot;Override&quot;), &quot;Invalid content type declaration&quot;);</span>
+<span class="fc" id="L142">                String name = child.getAttribute(&quot;PartName&quot;);</span>
+<span class="pc bpc" id="L143" title="2 of 4 branches missed.">                check(name.startsWith(&quot;/&quot;) &amp;&amp; parts.containsKey(name.substring(1)), &quot;Content type references missing part&quot;);</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">                check(overrides.putIfAbsent(name.substring(1), child.getAttribute(&quot;ContentType&quot;)) == null, &quot;Duplicate content type override&quot;);</span>
+            }
+<span class="fc" id="L146">        }</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        for (String part : parts.keySet()) {</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">            if (part.equals(&quot;[Content_Types].xml&quot;)) continue;</span>
+<span class="fc" id="L149">            String type = overrides.getOrDefault(part, defaults.get(part.substring(part.lastIndexOf('.') + 1)));</span>
+<span class="pc bpc" id="L150" title="2 of 4 branches missed.">            check(type != null &amp;&amp; !type.isBlank(), &quot;Missing content type for &quot; + part);</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">            if (part.endsWith(&quot;.rels&quot;)) check(type.equals(&quot;application/vnd.openxmlformats-package.relationships+xml&quot;), &quot;Invalid relationship content type&quot;);</span>
+<span class="fc" id="L152">            result.put(part, type);</span>
+<span class="fc" id="L153">        }</span>
+<span class="fc" id="L154">        return result;</span>
+    }
+
+    private static void validateShapes(Document page, Set&lt;String&gt; styleIds) {
+<span class="fc" id="L158">        Map&lt;String, Element&gt; shapes = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L159">        var entries = page.getElementsByTagNameNS(VISIO, &quot;Shape&quot;);</span>
+<span class="fc" id="L160">        Set&lt;String&gt; connectors = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        for (int i = 0; i &lt; entries.getLength(); i++) {</span>
+<span class="fc" id="L162">            Element shape = (Element) entries.item(i);</span>
+<span class="fc" id="L163">            String id = shape.getAttribute(&quot;ID&quot;);</span>
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">            check(id.matches(&quot;[1-9][0-9]*&quot;) &amp;&amp; shapes.putIfAbsent(id, shape) == null, &quot;Invalid or duplicate shape ID&quot;);</span>
+<span class="pc bpc" id="L165" title="1 of 4 branches missed.">            check(!shape.hasAttribute(&quot;Master&quot;) &amp;&amp; !shape.hasAttribute(&quot;MasterShape&quot;), &quot;Master references are outside the masterless profile&quot;);</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            for (String style : List.of(&quot;LineStyle&quot;, &quot;FillStyle&quot;, &quot;TextStyle&quot;)) check(styleIds.contains(shape.getAttribute(style)), &quot;Unresolved shape style reference&quot;);</span>
+<span class="pc bpc" id="L167" title="1 of 8 branches missed.">            for (Element cell : children(shape)) if (cell.getLocalName().equals(&quot;Cell&quot;) &amp;&amp; cell.getAttribute(&quot;N&quot;).equals(&quot;OneD&quot;) &amp;&amp; cell.getAttribute(&quot;V&quot;).equals(&quot;1&quot;)) connectors.add(id);</span>
+        }
+<span class="fc" id="L169">        Map&lt;String, Set&lt;String&gt;&gt; endpoints = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L170">        var glue = page.getElementsByTagNameNS(VISIO, &quot;Connect&quot;);</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        for (int i = 0; i &lt; glue.getLength(); i++) {</span>
+<span class="fc" id="L172">            Element connection = (Element) glue.item(i);</span>
+<span class="fc" id="L173">            String from = connection.getAttribute(&quot;FromSheet&quot;), to = connection.getAttribute(&quot;ToSheet&quot;), cell = connection.getAttribute(&quot;FromCell&quot;);</span>
+<span class="pc bpc" id="L174" title="2 of 6 branches missed.">            check(connectors.contains(from) &amp;&amp; shapes.containsKey(to) &amp;&amp; !connectors.contains(to), &quot;Unresolved connector endpoint&quot;);</span>
+<span class="pc bpc" id="L175" title="2 of 6 branches missed.">            check((cell.equals(&quot;BeginX&quot;) || cell.equals(&quot;EndX&quot;)) &amp;&amp; connection.getAttribute(&quot;ToCell&quot;).equals(&quot;PinX&quot;), &quot;Invalid dynamic glue endpoint&quot;);</span>
+<span class="fc" id="L176">            check(endpoints.computeIfAbsent(from, ignored -&gt; new HashSet&lt;&gt;()).add(cell), &quot;Duplicate connector glue endpoint&quot;);</span>
+        }
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        for (String id : connectors) check(endpoints.getOrDefault(id, Set.of()).equals(Set.of(&quot;BeginX&quot;, &quot;EndX&quot;)), &quot;Incomplete connector glue&quot;);</span>
+<span class="fc" id="L179">    }</span>
+
+    private static Document parse(byte[] xml) throws Exception {
+<span class="fc" id="L182">        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();</span>
+<span class="fc" id="L183">        factory.setNamespaceAware(true);</span>
+<span class="fc" id="L184">        factory.setFeature(XMLConstants.FEATURE_SECURE_PROCESSING, true);</span>
+<span class="fc" id="L185">        factory.setFeature(&quot;http://apache.org/xml/features/disallow-doctype-decl&quot;, true);</span>
+<span class="fc" id="L186">        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, &quot;&quot;);</span>
+<span class="fc" id="L187">        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, &quot;&quot;);</span>
+<span class="fc" id="L188">        return factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml));</span>
+    }
+
+    private static void validateSchema(XmlObject object) {
+<span class="fc" id="L192">        List&lt;XmlError&gt; errors = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L193">        check(object.validate(new XmlOptions().setErrorListener(errors)), &quot;Visio schema errors: &quot; + errors);</span>
+<span class="fc" id="L194">    }</span>
+
+    private static String sourcePart(String rels) {
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        if (rels.equals(&quot;_rels/.rels&quot;)) return &quot;&quot;;</span>
+<span class="fc" id="L198">        int marker = rels.lastIndexOf(&quot;/_rels/&quot;);</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">        check(marker &gt;= 0, &quot;Invalid relationship part path&quot;);</span>
+<span class="fc" id="L200">        return rels.substring(0, marker + 1) + rels.substring(marker + 7, rels.length() - 5);</span>
+    }
+
+    private static String resolve(String source, String target) {
+<span class="pc bpc" id="L204" title="3 of 6 branches missed.">        check(!target.isBlank() &amp;&amp; target.matches(&quot;[A-Za-z0-9_./-]+&quot;) &amp;&amp; !target.startsWith(&quot;/&quot;), &quot;Unsafe relationship target&quot;);</span>
+<span class="fc" id="L205">        String resolved = URI.create(&quot;/&quot; + source).resolve(target).normalize().getPath().substring(1);</span>
+<span class="fc" id="L206">        safePart(resolved);</span>
+<span class="fc" id="L207">        return resolved;</span>
+    }
+
+    private static void safePart(String name) {
+<span class="pc bpc" id="L211" title="4 of 8 branches missed.">        check(name != null &amp;&amp; !name.isBlank() &amp;&amp; !name.startsWith(&quot;/&quot;) &amp;&amp; !name.endsWith(&quot;/&quot;)</span>
+<span class="pc bpc" id="L212" title="2 of 4 branches missed.">                &amp;&amp; name.matches(&quot;[A-Za-z0-9_\\[\\]./-]+&quot;) &amp;&amp; !name.contains(&quot;//&quot;), &quot;Unsafe OPC part name&quot;);</span>
+<span class="pc bpc" id="L213" title="2 of 6 branches missed.">        for (String component : name.split(&quot;/&quot;)) check(!component.equals(&quot;.&quot;) &amp;&amp; !component.equals(&quot;..&quot;), &quot;Unsafe OPC path segment&quot;);</span>
+<span class="fc" id="L214">    }</span>
+
+    private static List&lt;Element&gt; children(Element element) {
+<span class="fc" id="L217">        List&lt;Element&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L218" title="All 4 branches covered.">        for (var child = element.getFirstChild(); child != null; child = child.getNextSibling()) if (child instanceof Element e) result.add(e);</span>
+<span class="fc" id="L219">        return result;</span>
+    }
+
+    private static void visit(String part, Map&lt;String, Set&lt;String&gt;&gt; graph, Set&lt;String&gt; visited) {
+<span class="pc bpc" id="L223" title="1 of 4 branches missed.">        if (visited.add(part)) for (String target : graph.getOrDefault(part, Set.of())) visit(target, graph, visited);</span>
+<span class="fc" id="L224">    }</span>
+
+    private static void root(Document document, String namespace, String name) {
+<span class="pc bpc" id="L227" title="2 of 4 branches missed.">        check(document != null &amp;&amp; namespace.equals(document.getDocumentElement().getNamespaceURI())</span>
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">                &amp;&amp; name.equals(document.getDocumentElement().getLocalName()), &quot;Invalid OPC XML root &quot; + name);</span>
+<span class="fc" id="L229">    }</span>
+
+    private static void check(boolean condition, String message) {
+<span class="fc bfc" id="L232" title="All 2 branches covered.">        if (!condition) throw new IllegalArgumentException(message);</span>
+<span class="fc" id="L233">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

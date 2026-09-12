@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioHandoffProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">VisioHandoffProfile.java</span></div><h1>VisioHandoffProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.json.JsonMapper;
+import com.taxonomy.visio.VisioDocument;
+import com.taxonomy.visio.VisioLoss;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Map;
+
+/** Executable metadata/loss contract shared by the OPC package and downloadable handoff bundle. */
+public final class VisioHandoffProfile {
+    public static final String ID = &quot;visio-2012-opc-supported-subset-v2&quot;;
+    static final int MAX_XML_BYTES = 32 * 1024 * 1024;
+<span class="fc" id="L22">    private static final JsonMapper JSON = JsonMapper.builder()</span>
+<span class="fc" id="L23">            .enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();</span>
+<span class="fc" id="L24">    private static final String PROFILE = loadProfile();</span>
+
+    private VisioHandoffProfile() { }
+
+<span class="fc" id="L28">    public static String profileJson() { return PROFILE; }</span>
+
+    public static String manifest(VisioDocument document) {
+<span class="fc" id="L31">        List&lt;Object&gt; pages = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L32">        List&lt;VisioLoss&gt; losses = new ArrayList&lt;&gt;(document.getLosses());</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (var page : document.getPages()) {</span>
+<span class="fc" id="L34">            List&lt;Object&gt; shapes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            for (var shape : page.getShapes()) {</span>
+<span class="fc" id="L36">                shapes.add(Map.of(&quot;shapeId&quot;, shape.getId(), &quot;label&quot;, shape.getText(), &quot;properties&quot;, shape.getProperties()));</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">                if (!shape.getProperties().containsKey(&quot;taxonomy.id&quot;)) losses.add(new VisioLoss(&quot;shape&quot;, page.getId() + &quot;:&quot; + shape.getId(),</span>
+                        &quot;semanticIdentity&quot;, &quot;OMITTED&quot;, &quot;Direct Visio model contains no original Taxonomy identity.&quot;));
+<span class="fc" id="L39">            }</span>
+<span class="fc" id="L40">            List&lt;Object&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L41">            long connectorId = page.getShapes().stream().mapToLong(s -&gt; Long.parseLong(s.getId())).max().orElse(0);</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">            for (var connector : page.getConnects()) {</span>
+<span class="fc" id="L43">                relationships.add(Map.of(&quot;shapeId&quot;, Long.toString(++connectorId), &quot;sourceShapeId&quot;, connector.getFromShape(),</span>
+<span class="fc" id="L44">                        &quot;targetShapeId&quot;, connector.getToShape(), &quot;label&quot;, connector.getRelationType(), &quot;properties&quot;, connector.getProperties()));</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">                if (!connector.getProperties().containsKey(&quot;taxonomy.id&quot;)) losses.add(new VisioLoss(&quot;connector&quot;, page.getId() + &quot;:&quot; + connectorId,</span>
+                        &quot;semanticIdentity&quot;, &quot;OMITTED&quot;, &quot;Direct Visio model contains no original Taxonomy relationship identity.&quot;));
+<span class="fc" id="L47">            }</span>
+<span class="fc" id="L48">            pages.add(Map.of(&quot;pageId&quot;, page.getId(), &quot;name&quot;, page.getName(), &quot;shapes&quot;, shapes, &quot;relationships&quot;, relationships));</span>
+<span class="fc" id="L49">        }</span>
+<span class="fc" id="L50">        losses.sort(Comparator.comparing(VisioLoss::scope).thenComparing(VisioLoss::id)</span>
+<span class="fc" id="L51">                .thenComparing(VisioLoss::field).thenComparing(VisioLoss::kind).thenComparing(VisioLoss::rationale));</span>
+<span class="fc" id="L52">        return json(Map.of(&quot;schemaVersion&quot;, 1, &quot;exportProfile&quot;, ID,</span>
+<span class="fc" id="L53">                &quot;profileSha256&quot;, sha256(PROFILE.getBytes(StandardCharsets.UTF_8)),</span>
+<span class="fc" id="L54">                &quot;authority&quot;, document.getProperties(), &quot;pages&quot;, pages, &quot;losses&quot;, losses,</span>
+                &quot;certification&quot;, &quot;EXPERIMENTAL_NOT_MICROSOFT_VISIO_CERTIFIED&quot;));
+    }
+
+    static String bundleManifest(byte[] vsdx, String handoff) {
+        try {
+<span class="fc" id="L60">            return json(Map.of(&quot;schemaVersion&quot;, 1, &quot;artifact&quot;, Map.of(&quot;file&quot;, &quot;diagram.vsdx&quot;, &quot;sha256&quot;, sha256(vsdx)),</span>
+<span class="fc" id="L61">                    &quot;mappingProfile&quot;, Map.of(&quot;file&quot;, &quot;mapping-profile.json&quot;, &quot;sha256&quot;, sha256(PROFILE.getBytes(StandardCharsets.UTF_8))),</span>
+<span class="fc" id="L62">                    &quot;handoff&quot;, JSON.readTree(handoff)));</span>
+<span class="nc" id="L63">        } catch (IOException e) {</span>
+<span class="nc" id="L64">            throw new IllegalStateException(&quot;Could not construct Visio manifest&quot;, e);</span>
+        }
+    }
+
+    public static String json(Object value) {
+<span class="fc" id="L69">        try { return JSON.writeValueAsString(value); }</span>
+<span class="nc" id="L70">        catch (IOException e) { throw new IllegalArgumentException(&quot;Could not serialize Visio metadata&quot;, e); }</span>
+    }
+
+    public static String sha256(byte[] value) {
+<span class="fc" id="L74">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(value)); }</span>
+<span class="nc" id="L75">        catch (NoSuchAlgorithmException e) { throw new IllegalStateException(e); }</span>
+    }
+
+    private static String loadProfile() {
+<span class="fc" id="L79">        try (var input = VisioHandoffProfile.class.getResourceAsStream(&quot;/visio/handoff-profile-v2.json&quot;)) {</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">            if (input == null) throw new IllegalStateException(&quot;Missing Visio profile&quot;);</span>
+<span class="fc" id="L81">            String profile = new String(input.readAllBytes(), StandardCharsets.UTF_8);</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            if (!ID.equals(JSON.readTree(profile).path(&quot;profileVersion&quot;).asText())) throw new IllegalStateException(&quot;Visio profile version mismatch&quot;);</span>
+<span class="fc" id="L83">            return profile;</span>
+<span class="nc" id="L84">        } catch (IOException e) { throw new IllegalStateException(&quot;Could not load Visio profile&quot;, e); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

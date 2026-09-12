@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceResolver.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceResolver.java</span></div><h1>WorkspaceResolver.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Component;
+import org.springframework.web.context.request.RequestAttributes;
+import org.springframework.web.context.request.RequestContextHolder;
+
+/**
+ * Resolves the current username plus request-bound workspace and repository contexts.
+ *
+ * &lt;p&gt;Successfully resolved contexts are cached for the lifetime of the HTTP request.
+ * All collaborators in one request therefore observe the same logical repository
+ * even when active-workspace metadata changes concurrently.&lt;/p&gt;
+ */
+@Component
+public class WorkspaceResolver {
+
+<span class="fc" id="L19">    private static final String REQUEST_CONTEXT_ATTRIBUTE =</span>
+<span class="fc" id="L20">            WorkspaceResolver.class.getName() + &quot;.resolvedContext&quot;;</span>
+<span class="fc" id="L21">    private static final String REQUEST_REPOSITORY_CONTEXT_ATTRIBUTE =</span>
+<span class="fc" id="L22">            WorkspaceResolver.class.getName() + &quot;.resolvedRepositoryContext&quot;;</span>
+
+    private final WorkspaceContextResolver contextResolver;
+
+<span class="fc" id="L26">    public WorkspaceResolver(WorkspaceContextResolver contextResolver) {</span>
+<span class="fc" id="L27">        this.contextResolver = contextResolver;</span>
+<span class="fc" id="L28">    }</span>
+
+    /** Resolve the authenticated username or the configured default user. */
+    public String resolveCurrentUsername() {
+<span class="fc" id="L32">        Authentication auth = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L33" title="1 of 4 branches missed.">        if (auth != null &amp;&amp; auth.isAuthenticated()</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">                &amp;&amp; !&quot;anonymousUser&quot;.equals(auth.getPrincipal())) {</span>
+<span class="fc" id="L35">            return auth.getName();</span>
+        }
+<span class="fc" id="L37">        return WorkspaceManager.DEFAULT_USER;</span>
+    }
+
+    /**
+     * Resolve the compatibility workspace context for the current request.
+     *
+     * &lt;p&gt;The returned value is enriched from the same request-stable
+     * {@link RepositoryContext}. Legacy callers therefore cannot lose the logical
+     * repository identity or continue with a branch that differs from the
+     * canonical repository selection.&lt;/p&gt;
+     */
+    public WorkspaceContext resolveCurrentContext() {
+<span class="fc" id="L49">        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (attributes != null) {</span>
+<span class="fc" id="L51">            Object cached = attributes.getAttribute(</span>
+                    REQUEST_CONTEXT_ATTRIBUTE, RequestAttributes.SCOPE_REQUEST);
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            if (cached instanceof WorkspaceContext context) {</span>
+<span class="fc" id="L54">                return context;</span>
+            }
+        }
+
+<span class="fc" id="L58">        RepositoryContext repository = resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L59">        WorkspaceContext resolved = new WorkspaceContext(</span>
+<span class="fc" id="L60">                repository.username(),</span>
+<span class="fc" id="L61">                repository.workspaceId(),</span>
+<span class="fc" id="L62">                repository.branch(),</span>
+<span class="fc" id="L63">                repository.repositoryId());</span>
+<span class="fc" id="L64">        cache(attributes, REQUEST_CONTEXT_ATTRIBUTE, resolved);</span>
+<span class="fc" id="L65">        return resolved;</span>
+    }
+
+    /**
+     * Resolve the mandatory logical repository identity for the current request.
+     * A central context always carries a repository ID; it never reuses the
+     * ambiguous legacy {@link WorkspaceContext#SHARED} sentinel.
+     */
+    public RepositoryContext resolveCurrentRepositoryContext() {
+<span class="fc" id="L74">        RequestAttributes attributes = RequestContextHolder.getRequestAttributes();</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (attributes != null) {</span>
+<span class="fc" id="L76">            Object cached = attributes.getAttribute(</span>
+                    REQUEST_REPOSITORY_CONTEXT_ATTRIBUTE, RequestAttributes.SCOPE_REQUEST);
+<span class="fc bfc" id="L78" title="All 2 branches covered.">            if (cached instanceof RepositoryContext context) {</span>
+<span class="fc" id="L79">                return context;</span>
+            }
+        }
+
+<span class="fc" id="L83">        RepositoryContext resolved = contextResolver.resolveRepositoryContextForUser(</span>
+<span class="fc" id="L84">                resolveCurrentUsername());</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (resolved == null) {</span>
+<span class="nc" id="L86">            throw new IllegalStateException(&quot;Repository context resolver returned null&quot;);</span>
+        }
+<span class="fc" id="L88">        cache(attributes, REQUEST_REPOSITORY_CONTEXT_ATTRIBUTE, resolved);</span>
+<span class="fc" id="L89">        return resolved;</span>
+    }
+
+    private static void cache(
+            RequestAttributes attributes, String attributeName, Object value) {
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (attributes != null) {</span>
+<span class="fc" id="L95">            attributes.setAttribute(</span>
+                    attributeName, value, RequestAttributes.SCOPE_REQUEST);
+        }
+<span class="fc" id="L98">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

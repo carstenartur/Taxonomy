@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExchangeConnectorRegistry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">ExchangeConnectorRegistry.java</span></div><h1>ExchangeConnectorRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.exchange.ArchiMateExchangeCodec;
+import com.taxonomy.exchange.ReqifExchangeCodec;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.LifecycleIntegrationConnector;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/** One registry and capability contract for standards profiles and optional injected vendor adapters. */
+@Component
+public class ExchangeConnectorRegistry {
+    private final Map&lt;String, LifecycleIntegrationConnector&gt; connectors;
+<span class="fc" id="L17">    public ExchangeConnectorRegistry(List&lt;LifecycleIntegrationConnector&gt; extensions) {</span>
+<span class="fc" id="L18">        var values = new java.util.TreeMap&lt;String, LifecycleIntegrationConnector&gt;();</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        for (LifecycleIntegrationConnector connector : List.of(new Reqif(), new ArchiMate())) values.put(connector.descriptor().id(), connector);</span>
+<span class="pc bpc" id="L20" title="1 of 4 branches missed.">        for (LifecycleIntegrationConnector extension : extensions) if (values.putIfAbsent(extension.descriptor().id(), extension) != null)</span>
+<span class="nc" id="L21">            throw new IllegalStateException(&quot;Duplicate integration connector id&quot;);</span>
+<span class="fc" id="L22">        connectors = Map.copyOf(values);</span>
+<span class="fc" id="L23">    }</span>
+<span class="fc" id="L24">    public List&lt;IntegrationDescriptor&gt; descriptors() { return connectors.values().stream().map(LifecycleIntegrationConnector::descriptor).sorted(java.util.Comparator.comparing(IntegrationDescriptor::id)).toList(); }</span>
+    public LifecycleIntegrationConnector require(String id) {
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">        var connector = connectors.get(id); if (connector == null) throw new IntegrationProblem(&quot;UNKNOWN_CONNECTOR&quot;, 400, &quot;Choose a supported integration profile&quot;); return connector;</span>
+    }
+<span class="fc" id="L28">    private static final class Reqif implements LifecycleIntegrationConnector {</span>
+<span class="fc" id="L29">        private final ReqifExchangeCodec codec = new ReqifExchangeCodec();</span>
+<span class="fc" id="L30">        @Override public IntegrationDescriptor descriptor() { return new IntegrationDescriptor(ReqifExchangeCodec.PROFILE, ReqifExchangeCodec.VERSION, &quot;ReqIF 1.2&quot;, Set.of(Capability.FILE_IMPORT, Capability.FILE_EXPORT), Set.of(&quot;application/reqif+xml&quot;, &quot;application/xml&quot;)); }</span>
+<span class="fc" id="L31">        @Override public ExchangeDocument previewInbound(InboundRequest request) { return codec.read(request.content(), request.externalVersion(), request.completeScope()); }</span>
+<span class="fc" id="L32">        @Override public ExchangeFile previewOutbound(OutboundRequest request) { return new ExchangeFile(&quot;application/reqif+xml&quot;, &quot;requirements.reqif&quot;, codec.write(request.document()), request.document().losses()); }</span>
+    }
+<span class="fc" id="L34">    private static final class ArchiMate implements LifecycleIntegrationConnector {</span>
+<span class="fc" id="L35">        private final ArchiMateExchangeCodec codec = new ArchiMateExchangeCodec();</span>
+<span class="fc" id="L36">        @Override public IntegrationDescriptor descriptor() { return new IntegrationDescriptor(ArchiMateExchangeCodec.PROFILE, ArchiMateExchangeCodec.VERSION, &quot;ArchiMate Exchange 3.1&quot;, Set.of(Capability.FILE_IMPORT, Capability.FILE_EXPORT), Set.of(&quot;application/archimate+xml&quot;, &quot;application/xml&quot;)); }</span>
+<span class="nc" id="L37">        @Override public ExchangeDocument previewInbound(InboundRequest request) { return codec.read(request.content(), request.externalVersion(), request.completeScope()); }</span>
+<span class="nc" id="L38">        @Override public ExchangeFile previewOutbound(OutboundRequest request) { return new ExchangeFile(&quot;application/archimate+xml&quot;, &quot;architecture.xml&quot;, codec.write(request.document()), request.document().losses()); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

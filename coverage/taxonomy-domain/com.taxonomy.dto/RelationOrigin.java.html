@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationOrigin.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">RelationOrigin.java</span></div><h1>RelationOrigin.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+/**
+ * Classifies how a relationship was derived or discovered.
+ *
+ * &lt;p&gt;Each value identifies the provenance of a relation in the
+ * architecture view, enabling the UI to distinguish confirmed
+ * seed relations from inferred or suggested ones.
+ *
+ * &lt;p&gt;Use {@link #messageKey()} to obtain the i18n property key for
+ * the display label (e.g. {@code relation.origin.taxonomy.seed}).
+ *
+ * &lt;p&gt;Use {@link #category()} to obtain the coarse display category
+ * ({@code &quot;seed&quot;}, {@code &quot;trace&quot;}, or {@code &quot;impact&quot;}) that the
+ * UI uses to partition relations into sections.
+ */
+<span class="fc" id="L17">public enum RelationOrigin {</span>
+
+    /** Loaded from the seed CSV (TYPE_DEFAULT, FRAMEWORK_SEED, or SOURCE_DERIVED). */
+<span class="fc" id="L20">    TAXONOMY_SEED(&quot;relation.origin.taxonomy.seed&quot;, RequirementRelationshipView.CATEGORY_SEED),</span>
+
+    /** Discovered through BFS traversal during relevance propagation. */
+<span class="fc" id="L23">    PROPAGATED_TRACE(&quot;relation.origin.propagated.trace&quot;, RequirementRelationshipView.CATEGORY_TRACE),</span>
+
+    /** Derived as a cross-category leaf-to-leaf impact relation. */
+<span class="fc" id="L26">    IMPACT_DERIVED(&quot;relation.origin.impact.derived&quot;, RequirementRelationshipView.CATEGORY_IMPACT),</span>
+
+    /** Proposed by gap analysis or embedding-based similarity. */
+<span class="fc" id="L29">    SUGGESTED_CANDIDATE(&quot;relation.origin.suggested.candidate&quot;, RequirementRelationshipView.CATEGORY_IMPACT),</span>
+
+    /** Supported or confirmed by LLM inference. */
+<span class="fc" id="L32">    LLM_SUPPORTED(&quot;relation.origin.llm.supported&quot;, RequirementRelationshipView.CATEGORY_IMPACT);</span>
+
+    private final String messageKey;
+    private final String category;
+
+<span class="fc" id="L37">    RelationOrigin(String messageKey, String category) {</span>
+<span class="fc" id="L38">        this.messageKey = messageKey;</span>
+<span class="fc" id="L39">        this.category = category;</span>
+<span class="fc" id="L40">    }</span>
+
+    /** Returns the i18n message key for the display label of this origin. */
+    public String messageKey() {
+<span class="fc" id="L44">        return messageKey;</span>
+    }
+
+    /**
+     * Returns the coarse display category for this origin.
+     *
+     * &lt;p&gt;The three categories map directly to the UI sections:
+     * &lt;ul&gt;
+     *   &lt;li&gt;{@code &quot;seed&quot;}   — structural seed relations (root-to-root)&lt;/li&gt;
+     *   &lt;li&gt;{@code &quot;trace&quot;}  — scoring-trace / propagation relations&lt;/li&gt;
+     *   &lt;li&gt;{@code &quot;impact&quot;} — cross-category leaf-to-leaf impact relations&lt;/li&gt;
+     * &lt;/ul&gt;
+     */
+    public String category() {
+<span class="fc" id="L58">        return category;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

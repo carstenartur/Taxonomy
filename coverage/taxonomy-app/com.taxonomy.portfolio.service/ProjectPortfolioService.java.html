@@ -1,0 +1,578 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectPortfolioService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">ProjectPortfolioService.java</span></div><h1>ProjectPortfolioService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ImportRequirementCandidate;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SourceReference;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateRequirementRequest;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.model.PortfolioTypes.ConflictStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.Criticality;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProjectStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
+import com.taxonomy.portfolio.repository.ProjectConflictRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
+import com.taxonomy.portfolio.repository.ProjectSolutionRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+/** Application service for exact-tenant projects and immutable requirement versions. */
+@Service
+public class ProjectPortfolioService {
+
+<span class="fc" id="L43">    private static final Pattern BUSINESS_KEY =</span>
+<span class="fc" id="L44">            Pattern.compile(&quot;[A-Za-z0-9][A-Za-z0-9._-]{0,63}&quot;);</span>
+<span class="fc" id="L45">    private static final List&lt;ConflictStatus&gt; CLOSED_CONFLICT_STATUSES =</span>
+<span class="fc" id="L46">            List.of(ConflictStatus.REJECTED, ConflictStatus.RESOLVED);</span>
+
+    private final ArchitectureProjectRepository projectRepository;
+    private final ProjectRequirementRepository requirementRepository;
+    private final ProjectRequirementVersionRepository versionRepository;
+    private final ProjectSolutionRepository projectSolutionRepository;
+    private final ProjectConflictRepository conflictRepository;
+    private final PortfolioFingerprintService fingerprintService;
+    private final PortfolioJsonCodec jsonCodec;
+
+    public ProjectPortfolioService(ArchitectureProjectRepository projectRepository,
+                                   ProjectRequirementRepository requirementRepository,
+                                   ProjectRequirementVersionRepository versionRepository,
+                                   ProjectSolutionRepository projectSolutionRepository,
+                                   ProjectConflictRepository conflictRepository,
+                                   PortfolioFingerprintService fingerprintService,
+<span class="fc" id="L62">                                   PortfolioJsonCodec jsonCodec) {</span>
+<span class="fc" id="L63">        this.projectRepository = projectRepository;</span>
+<span class="fc" id="L64">        this.requirementRepository = requirementRepository;</span>
+<span class="fc" id="L65">        this.versionRepository = versionRepository;</span>
+<span class="fc" id="L66">        this.projectSolutionRepository = projectSolutionRepository;</span>
+<span class="fc" id="L67">        this.conflictRepository = conflictRepository;</span>
+<span class="fc" id="L68">        this.fingerprintService = fingerprintService;</span>
+<span class="fc" id="L69">        this.jsonCodec = jsonCodec;</span>
+<span class="fc" id="L70">    }</span>
+
+    @Transactional
+    public ProjectView createProject(CreateProjectRequest request,
+                                     String username,
+                                     WorkspaceContext context) {
+<span class="fc" id="L76">        requireNonNull(request, &quot;project request&quot;);</span>
+<span class="fc" id="L77">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L78">        String projectKey = normalizeBusinessKey(request.projectKey(), &quot;projectKey&quot;);</span>
+<span class="fc" id="L79">        String title = requireText(request.title(), &quot;title&quot;, 240);</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (projectRepository.existsByScopeKeyAndProjectKeyIgnoreCase(scopeKey, projectKey)) {</span>
+<span class="nc" id="L81">            throw PortfolioException.conflict(&quot;Project key already exists in this workspace: &quot; + projectKey);</span>
+        }
+
+<span class="fc" id="L84">        var budgetAmount = PortfolioValueValidator.money(request.budgetAmount(), &quot;budgetAmount&quot;);</span>
+<span class="fc" id="L85">        String budgetCurrency = normalizeCurrency(request.budgetCurrency());</span>
+<span class="fc" id="L86">        PortfolioValueValidator.requireMoneyPair(</span>
+                budgetAmount, budgetCurrency, &quot;budgetAmount&quot;, &quot;budgetCurrency&quot;);
+
+<span class="fc" id="L89">        Instant now = Instant.now();</span>
+<span class="fc" id="L90">        ArchitectureProject project = new ArchitectureProject(</span>
+                scopeKey,
+<span class="fc" id="L92">                PortfolioScope.workspaceId(context),</span>
+<span class="fc" id="L93">                PortfolioScope.username(username, context),</span>
+                projectKey,
+                title,
+<span class="fc" id="L96">                limited(request.description(), 4000, &quot;description&quot;),</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">                request.status() != null ? request.status() : ProjectStatus.PLANNING,</span>
+                now);
+<span class="fc" id="L99">        project.update(</span>
+                null,
+                null,
+                null,
+<span class="fc" id="L103">                limited(request.targetArchitecture(), 4000, &quot;targetArchitecture&quot;),</span>
+<span class="fc" id="L104">                request.targetDate(),</span>
+                budgetAmount,
+                budgetCurrency,
+                now);
+<span class="fc" id="L108">        return toProjectView(projectRepository.save(project));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;ProjectView&gt; listProjects(String username, WorkspaceContext context) {
+<span class="fc" id="L113">        return projectRepository.findByScopeKeyOrderByUpdatedAtDesc(PortfolioScope.key(username, context))</span>
+<span class="fc" id="L114">                .stream().map(this::toProjectView).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectView getProject(Long projectId, String username, WorkspaceContext context) {
+<span class="fc" id="L119">        return toProjectView(requireProject(projectId, username, context));</span>
+    }
+
+    @Transactional
+    public ProjectView updateProject(Long projectId,
+                                     UpdateProjectRequest request,
+                                     String username,
+                                     WorkspaceContext context) {
+<span class="fc" id="L127">        requireNonNull(request, &quot;project update&quot;);</span>
+<span class="fc" id="L128">        ArchitectureProject project = requireProjectForUpdate(projectId, username, context);</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        var requestedAmount = request.budgetAmount() != null</span>
+<span class="pc" id="L130">                ? PortfolioValueValidator.money(request.budgetAmount(), &quot;budgetAmount&quot;) : null;</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        String requestedCurrency = request.budgetCurrency() != null</span>
+<span class="pc" id="L132">                ? normalizeCurrency(request.budgetCurrency()) : null;</span>
+<span class="pc bpc" id="L133" title="1 of 2 branches missed.">        var effectiveAmount = request.budgetAmount() != null</span>
+<span class="pc" id="L134">                ? requestedAmount : project.getBudgetAmount();</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">        String effectiveCurrency = request.budgetCurrency() != null</span>
+<span class="pc" id="L136">                ? requestedCurrency : project.getBudgetCurrency();</span>
+<span class="fc" id="L137">        PortfolioValueValidator.requireMoneyPair(</span>
+                effectiveAmount, effectiveCurrency, &quot;budgetAmount&quot;, &quot;budgetCurrency&quot;);
+
+<span class="fc" id="L140">        project.update(</span>
+<span class="pc bpc" id="L141" title="1 of 2 branches missed.">                request.title() != null ? requireText(request.title(), &quot;title&quot;, 240) : null,</span>
+<span class="fc" id="L142">                limited(request.description(), 4000, &quot;description&quot;),</span>
+<span class="fc" id="L143">                request.status(),</span>
+<span class="fc" id="L144">                limited(request.targetArchitecture(), 4000, &quot;targetArchitecture&quot;),</span>
+<span class="fc" id="L145">                request.targetDate(),</span>
+                requestedAmount,
+                requestedCurrency,
+<span class="fc" id="L148">                Instant.now());</span>
+<span class="fc" id="L149">        return toProjectView(project);</span>
+    }
+
+    @Transactional
+    public RequirementView createRequirement(Long projectId,
+                                             CreateRequirementRequest request,
+                                             String username,
+                                             WorkspaceContext context) {
+<span class="fc" id="L157">        requireNonNull(request, &quot;requirement request&quot;);</span>
+<span class="fc" id="L158">        ArchitectureProject project = requireProjectForUpdate(projectId, username, context);</span>
+<span class="fc" id="L159">        String scopeKey = project.getScopeKey();</span>
+<span class="fc" id="L160">        String requirementKey = normalizeBusinessKey(request.requirementKey(), &quot;requirementKey&quot;);</span>
+<span class="fc" id="L161">        if (requirementRepository</span>
+<span class="fc" id="L162">                .findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(</span>
+                        projectId, scopeKey, requirementKey)
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">                .isPresent()) {</span>
+<span class="nc" id="L165">            throw PortfolioException.conflict(</span>
+<span class="nc" id="L166">                    &quot;Requirement key already exists in project &quot; + project.getProjectKey() + &quot;: &quot; + requirementKey);</span>
+        }
+
+<span class="fc" id="L169">        int priority = normalizePriority(request.priority());</span>
+<span class="fc" id="L170">        Instant now = Instant.now();</span>
+<span class="fc" id="L171">        ProjectRequirement requirement = new ProjectRequirement(</span>
+                project,
+                requirementKey,
+<span class="fc" id="L174">                requireText(request.title(), &quot;title&quot;, 240),</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">                request.status() != null ? request.status() : RequirementStatus.DRAFT,</span>
+                priority,
+<span class="fc bfc" id="L177" title="All 2 branches covered.">                request.criticality() != null ? request.criticality() : Criticality.MEDIUM,</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">                request.requirementType() != null ? request.requirementType() : RequirementType.FUNCTIONAL,</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">                request.reviewStatus() != null ? request.reviewStatus() : ReviewStatus.PROPOSED,</span>
+<span class="pc bpc" id="L180" title="1 of 4 branches missed.">                request.ownerUsername() != null &amp;&amp; !request.ownerUsername().isBlank()</span>
+<span class="fc" id="L181">                        ? requireText(request.ownerUsername(), &quot;ownerUsername&quot;, 160)</span>
+<span class="fc" id="L182">                        : PortfolioScope.username(username, context),</span>
+                now);
+<span class="fc" id="L184">        requirementRepository.save(requirement);</span>
+<span class="fc" id="L185">        ProjectRequirementVersion version = createVersionEntity(</span>
+                requirement,
+<span class="fc" id="L187">                requireText(request.text(), &quot;text&quot;, 100_000),</span>
+<span class="fc" id="L188">                request.changeReason(),</span>
+<span class="fc" id="L189">                request.source(),</span>
+<span class="fc" id="L190">                PortfolioScope.username(username, context),</span>
+                1,
+                now);
+<span class="fc" id="L193">        versionRepository.save(version);</span>
+<span class="fc" id="L194">        requirement.pointToVersion(version.getId(), now);</span>
+<span class="fc" id="L195">        return toRequirementView(requirement, version);</span>
+    }
+
+    @Transactional
+    public List&lt;RequirementView&gt; importRequirements(Long projectId,
+                                                    List&lt;ImportRequirementCandidate&gt; candidates,
+                                                    String username,
+                                                    WorkspaceContext context) {
+<span class="nc bnc" id="L203" title="All 4 branches missed.">        if (candidates == null || candidates.isEmpty()) {</span>
+<span class="nc" id="L204">            throw PortfolioException.validation(&quot;At least one requirement candidate is required&quot;);</span>
+        }
+<span class="nc" id="L206">        List&lt;RequirementView&gt; imported = new ArrayList&lt;&gt;(candidates.size());</span>
+<span class="nc bnc" id="L207" title="All 2 branches missed.">        for (ImportRequirementCandidate candidate : candidates) {</span>
+<span class="nc bnc" id="L208" title="All 2 branches missed.">            if (candidate == null) continue;</span>
+<span class="nc" id="L209">            imported.add(createRequirement(projectId, new CreateRequirementRequest(</span>
+<span class="nc" id="L210">                    candidate.requirementKey(),</span>
+<span class="nc" id="L211">                    candidate.title(),</span>
+<span class="nc" id="L212">                    candidate.text(),</span>
+                    RequirementStatus.DRAFT,
+<span class="nc" id="L214">                    candidate.priority(),</span>
+<span class="nc" id="L215">                    candidate.criticality(),</span>
+<span class="nc" id="L216">                    candidate.requirementType(),</span>
+                    ReviewStatus.PROPOSED,
+                    username,
+                    &quot;Imported as an individual requirement candidate&quot;,
+<span class="nc" id="L220">                    candidate.source()), username, context));</span>
+<span class="nc" id="L221">        }</span>
+<span class="nc bnc" id="L222" title="All 2 branches missed.">        if (imported.isEmpty()) {</span>
+<span class="nc" id="L223">            throw PortfolioException.validation(&quot;No valid requirement candidates were supplied&quot;);</span>
+        }
+<span class="nc" id="L225">        return List.copyOf(imported);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RequirementView&gt; listRequirements(Long projectId,
+                                                  String username,
+                                                  WorkspaceContext context) {
+<span class="fc" id="L232">        ArchitectureProject project = requireProject(projectId, username, context);</span>
+<span class="fc" id="L233">        return requirementRepository</span>
+<span class="fc" id="L234">                .findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(</span>
+<span class="fc" id="L235">                        projectId, project.getScopeKey())</span>
+<span class="fc" id="L236">                .stream()</span>
+<span class="fc" id="L237">                .map(requirement -&gt; toRequirementView(requirement, currentVersion(requirement)))</span>
+<span class="fc" id="L238">                .toList();</span>
+    }
+
+    public record RequirementPage(List&lt;RequirementView&gt; requirements, boolean hasNext) {
+<span class="fc" id="L242">        public RequirementPage { requirements = List.copyOf(requirements); }</span>
+    }
+
+    /** Bound approved reads in the database, including the exact project and tenant predicates. */
+    @Transactional(readOnly = true)
+    public RequirementPage listApprovedRequirements(Long projectId, String username,
+                                                     WorkspaceContext context, int page, int pageSize) {
+<span class="fc bfc" id="L249" title="All 8 branches covered.">        if (page &lt; 0 || page &gt; 100000 || pageSize &lt; 1 || pageSize &gt; 100)</span>
+<span class="fc" id="L250">            throw PortfolioException.validation(&quot;Requirement page is outside supported bounds&quot;);</span>
+<span class="fc" id="L251">        ArchitectureProject project = requireProject(projectId, username, context);</span>
+<span class="fc" id="L252">        var slice = requirementRepository.findByProjectIdAndScopeKeyAndStatusOrderByRequirementKeyAscIdAsc(</span>
+<span class="fc" id="L253">                projectId, project.getScopeKey(), RequirementStatus.APPROVED, PageRequest.of(page, pageSize));</span>
+<span class="fc" id="L254">        return new RequirementPage(slice.getContent().stream()</span>
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">                .map(requirement -&gt; toRequirementView(requirement, requirement.getCurrentVersion() != null</span>
+<span class="pc" id="L256">                        ? requirement.getCurrentVersion() : currentVersion(requirement)))</span>
+<span class="fc" id="L257">                .toList(), slice.hasNext());</span>
+    }
+
+    @Transactional(readOnly = true)
+    public RequirementView getRequirement(Long projectId,
+                                          Long requirementId,
+                                          String username,
+                                          WorkspaceContext context) {
+<span class="fc" id="L265">        ProjectRequirement requirement = requireRequirement(projectId, requirementId, username, context);</span>
+<span class="fc" id="L266">        return toRequirementView(requirement, currentVersion(requirement));</span>
+    }
+
+    @Transactional
+    public RequirementView updateRequirement(Long projectId,
+                                             Long requirementId,
+                                             UpdateRequirementRequest request,
+                                             String username,
+                                             WorkspaceContext context) {
+<span class="fc" id="L275">        requireNonNull(request, &quot;requirement update&quot;);</span>
+<span class="fc" id="L276">        ProjectRequirement requirement = requireRequirementForUpdate(projectId, requirementId, username, context);</span>
+<span class="fc" id="L277">        requirement.updateMetadata(</span>
+<span class="pc bpc" id="L278" title="1 of 2 branches missed.">                request.title() != null ? requireText(request.title(), &quot;title&quot;, 240) : null,</span>
+<span class="fc" id="L279">                request.status(),</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">                request.priority() != null ? normalizePriority(request.priority()) : null,</span>
+<span class="fc" id="L281">                request.criticality(),</span>
+<span class="fc" id="L282">                request.requirementType(),</span>
+<span class="fc" id="L283">                request.reviewStatus(),</span>
+<span class="pc bpc" id="L284" title="1 of 4 branches missed.">                request.ownerUsername() != null &amp;&amp; !request.ownerUsername().isBlank()</span>
+<span class="fc" id="L285">                        ? requireText(request.ownerUsername(), &quot;ownerUsername&quot;, 160) : null,</span>
+<span class="fc" id="L286">                Instant.now());</span>
+<span class="fc" id="L287">        return toRequirementView(requirement, currentVersion(requirement));</span>
+    }
+
+    @Transactional
+    public RequirementVersionView addRequirementVersion(Long projectId,
+                                                        Long requirementId,
+                                                        CreateRequirementVersionRequest request,
+                                                        String username,
+                                                        WorkspaceContext context) {
+<span class="fc" id="L296">        requireNonNull(request, &quot;requirement version request&quot;);</span>
+<span class="fc" id="L297">        ProjectRequirement requirement = requireRequirementForUpdate(</span>
+                projectId, requirementId, username, context);
+<span class="fc" id="L299">        String scopeKey = requirement.getScopeKey();</span>
+<span class="fc" id="L300">        String text = requireText(request.text(), &quot;text&quot;, 100_000);</span>
+<span class="fc" id="L301">        String contentHash = fingerprintService.contentFingerprint(text);</span>
+<span class="fc" id="L302">        ProjectRequirementVersion existing = versionRepository</span>
+<span class="fc" id="L303">                .findByRequirementIdAndScopeKeyAndContentHash(</span>
+                        requirementId, scopeKey, contentHash)
+<span class="fc" id="L305">                .orElse(null);</span>
+<span class="fc bfc" id="L306" title="All 2 branches covered.">        if (existing != null) {</span>
+<span class="fc" id="L307">            requirement.pointToVersion(existing.getId(), Instant.now());</span>
+<span class="fc" id="L308">            return toVersionView(existing);</span>
+        }
+
+<span class="fc" id="L311">        int nextVersion = versionRepository</span>
+<span class="fc" id="L312">                .findFirstByRequirementIdAndScopeKeyOrderByVersionNumberDesc(</span>
+                        requirementId, scopeKey)
+<span class="fc" id="L314">                .map(last -&gt; last.getVersionNumber() + 1)</span>
+<span class="fc" id="L315">                .orElse(1);</span>
+<span class="fc" id="L316">        Instant now = Instant.now();</span>
+<span class="fc" id="L317">        ProjectRequirementVersion version = createVersionEntity(</span>
+                requirement,
+                text,
+<span class="fc" id="L320">                request.changeReason(),</span>
+<span class="fc" id="L321">                request.source(),</span>
+<span class="fc" id="L322">                PortfolioScope.username(username, context),</span>
+                nextVersion,
+                now);
+<span class="fc" id="L325">        versionRepository.save(version);</span>
+<span class="fc" id="L326">        requirement.pointToVersion(version.getId(), now);</span>
+<span class="fc" id="L327">        return toVersionView(version);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RequirementVersionView&gt; listRequirementVersions(Long projectId,
+                                                               Long requirementId,
+                                                               String username,
+                                                               WorkspaceContext context) {
+<span class="fc" id="L335">        ProjectRequirement requirement = requireRequirement(</span>
+                projectId, requirementId, username, context);
+<span class="fc" id="L337">        return versionRepository</span>
+<span class="fc" id="L338">                .findByRequirementIdAndScopeKeyOrderByVersionNumberDesc(</span>
+<span class="fc" id="L339">                        requirementId, requirement.getScopeKey())</span>
+<span class="fc" id="L340">                .stream().map(this::toVersionView).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public ArchitectureProject requireProject(Long projectId,
+                                              String username,
+                                              WorkspaceContext context) {
+<span class="pc bpc" id="L347" title="1 of 2 branches missed.">        if (projectId == null) throw PortfolioException.validation(&quot;projectId is required&quot;);</span>
+<span class="fc" id="L348">        return projectRepository.findByIdAndScopeKey(projectId, PortfolioScope.key(username, context))</span>
+<span class="fc" id="L349">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Project not found: &quot; + projectId));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectRequirement requireRequirement(Long projectId,
+                                                 Long requirementId,
+                                                 String username,
+                                                 WorkspaceContext context) {
+<span class="fc" id="L357">        ArchitectureProject project = requireProject(projectId, username, context);</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">        if (requirementId == null) throw PortfolioException.validation(&quot;requirementId is required&quot;);</span>
+<span class="fc" id="L359">        return requirementRepository</span>
+<span class="fc" id="L360">                .findByIdAndProjectIdAndScopeKey(</span>
+<span class="fc" id="L361">                        requirementId, projectId, project.getScopeKey())</span>
+<span class="fc" id="L362">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Requirement &quot; + requirementId + &quot; was not found in project &quot; + projectId));
+    }
+
+    private ProjectRequirement requireRequirementForUpdate(Long projectId,
+                                                           Long requirementId,
+                                                           String username,
+                                                           WorkspaceContext context) {
+<span class="fc" id="L370">        ArchitectureProject project = requireProjectForUpdate(projectId, username, context);</span>
+<span class="pc bpc" id="L371" title="1 of 2 branches missed.">        if (requirementId == null) throw PortfolioException.validation(&quot;requirementId is required&quot;);</span>
+<span class="fc" id="L372">        return requirementRepository</span>
+<span class="fc" id="L373">                .findByIdAndProjectIdAndScopeKeyForUpdate(</span>
+<span class="fc" id="L374">                        requirementId, projectId, project.getScopeKey())</span>
+<span class="fc" id="L375">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Requirement &quot; + requirementId + &quot; was not found in project &quot; + projectId));
+    }
+
+    /** Common aggregate lock, including integration previews applied against a frozen project fingerprint. */
+    @Transactional
+    public ArchitectureProject requireProjectForUpdate(Long projectId, String username, WorkspaceContext context) {
+<span class="pc bpc" id="L382" title="1 of 2 branches missed.">        if (projectId == null) throw PortfolioException.validation(&quot;projectId is required&quot;);</span>
+<span class="fc" id="L383">        return projectRepository.findByIdAndScopeKeyForUpdate(projectId, PortfolioScope.key(username, context))</span>
+<span class="pc" id="L384">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Project not found: &quot; + projectId));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectRequirementVersion currentVersion(ProjectRequirement requirement) {
+<span class="fc" id="L389">        Objects.requireNonNull(requirement, &quot;requirement&quot;);</span>
+<span class="fc" id="L390">        String scopeKey = requirement.getScopeKey();</span>
+<span class="pc bpc" id="L391" title="1 of 2 branches missed.">        if (requirement.getCurrentVersionId() != null) {</span>
+<span class="fc" id="L392">            return versionRepository.findByIdAndRequirementIdAndScopeKey(</span>
+<span class="fc" id="L393">                            requirement.getCurrentVersionId(), requirement.getId(), scopeKey)</span>
+<span class="pc" id="L394">                    .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+<span class="nc" id="L395">                            &quot;Current requirement version not found: &quot; + requirement.getCurrentVersionId()));</span>
+        }
+<span class="nc" id="L397">        return versionRepository</span>
+<span class="nc" id="L398">                .findFirstByRequirementIdAndScopeKeyOrderByVersionNumberDesc(</span>
+<span class="nc" id="L399">                        requirement.getId(), scopeKey)</span>
+<span class="nc" id="L400">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+<span class="nc" id="L401">                        &quot;Requirement has no text version: &quot; + requirement.getRequirementKey()));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public ProjectView toProjectView(ArchitectureProject project) {
+<span class="fc" id="L406">        int requirementCount = Math.toIntExact(</span>
+<span class="fc" id="L407">                requirementRepository.countByProjectIdAndScopeKey(</span>
+<span class="fc" id="L408">                        project.getId(), project.getScopeKey()));</span>
+<span class="fc" id="L409">        int solutionCount = Math.toIntExact(projectSolutionRepository.countByProjectId(project.getId()));</span>
+<span class="fc" id="L410">        int openConflicts = Math.toIntExact(conflictRepository.countByProjectIdAndStatusNotIn(</span>
+<span class="fc" id="L411">                project.getId(), CLOSED_CONFLICT_STATUSES));</span>
+<span class="fc" id="L412">        return new ProjectView(</span>
+<span class="fc" id="L413">                project.getId(),</span>
+<span class="fc" id="L414">                project.getProjectKey(),</span>
+<span class="fc" id="L415">                project.getTitle(),</span>
+<span class="fc" id="L416">                project.getDescription(),</span>
+<span class="fc" id="L417">                project.getStatus(),</span>
+<span class="fc" id="L418">                project.getOwnerUsername(),</span>
+<span class="fc" id="L419">                project.getWorkspaceId(),</span>
+<span class="fc" id="L420">                project.getTargetArchitecture(),</span>
+<span class="fc" id="L421">                project.getTargetDate(),</span>
+<span class="fc" id="L422">                project.getBudgetAmount(),</span>
+<span class="fc" id="L423">                project.getBudgetCurrency(),</span>
+<span class="fc" id="L424">                project.getCreatedAt(),</span>
+<span class="fc" id="L425">                project.getUpdatedAt(),</span>
+                requirementCount,
+                solutionCount,
+                openConflicts);
+    }
+
+    public RequirementView toRequirementView(ProjectRequirement requirement,
+                                             ProjectRequirementVersion currentVersion) {
+<span class="fc" id="L433">        return new RequirementView(</span>
+<span class="fc" id="L434">                requirement.getId(),</span>
+<span class="fc" id="L435">                requirement.getProject().getId(),</span>
+<span class="fc" id="L436">                requirement.getRequirementKey(),</span>
+<span class="fc" id="L437">                requirement.getTitle(),</span>
+<span class="fc" id="L438">                requirement.getStatus(),</span>
+<span class="fc" id="L439">                requirement.getPriority(),</span>
+<span class="fc" id="L440">                requirement.getCriticality(),</span>
+<span class="fc" id="L441">                requirement.getRequirementType(),</span>
+<span class="fc" id="L442">                requirement.getReviewStatus(),</span>
+<span class="fc" id="L443">                requirement.getOwnerUsername(),</span>
+<span class="fc" id="L444">                requirement.getCurrentVersionId(),</span>
+<span class="fc" id="L445">                requirement.getCurrentAnalysisSnapshotId(),</span>
+<span class="fc" id="L446">                requirement.getCreatedAt(),</span>
+<span class="fc" id="L447">                requirement.getUpdatedAt(),</span>
+<span class="pc bpc" id="L448" title="1 of 2 branches missed.">                currentVersion != null ? toVersionView(currentVersion) : null);</span>
+    }
+
+    public RequirementVersionView toVersionView(ProjectRequirementVersion version) {
+<span class="fc" id="L452">        return new RequirementVersionView(</span>
+<span class="fc" id="L453">                version.getId(),</span>
+<span class="fc" id="L454">                version.getVersionNumber(),</span>
+<span class="fc" id="L455">                version.getText(),</span>
+<span class="fc" id="L456">                version.getContentHash(),</span>
+<span class="fc" id="L457">                version.getChangeReason(),</span>
+<span class="fc" id="L458">                version.getCreatedBy(),</span>
+<span class="fc" id="L459">                version.getCreatedAt(),</span>
+                new SourceReference(
+<span class="fc" id="L461">                        version.getSourceArtifactId(),</span>
+<span class="fc" id="L462">                        version.getSourceVersionId(),</span>
+<span class="fc" id="L463">                        jsonCodec.readLongList(version.getSourceFragmentIdsJson()),</span>
+<span class="fc" id="L464">                        version.getSectionReference(),</span>
+<span class="fc" id="L465">                        version.getPageNumber(),</span>
+<span class="fc" id="L466">                        version.getOriginalText()));</span>
+    }
+
+    private ProjectRequirementVersion createVersionEntity(ProjectRequirement requirement,
+                                                           String text,
+                                                           String changeReason,
+                                                           SourceReference source,
+                                                           String createdBy,
+                                                           int versionNumber,
+                                                           Instant now) {
+<span class="fc" id="L476">        List&lt;Long&gt; fragmentIds = sourceFragmentIds(source);</span>
+<span class="fc bfc" id="L477" title="All 2 branches covered.">        Long sourceArtifactId = source != null</span>
+<span class="fc" id="L478">                ? positiveIdentifier(source.sourceArtifactId(), &quot;sourceArtifactId&quot;) : null;</span>
+<span class="fc bfc" id="L479" title="All 2 branches covered.">        Long sourceVersionId = source != null</span>
+<span class="fc" id="L480">                ? positiveIdentifier(source.sourceVersionId(), &quot;sourceVersionId&quot;) : null;</span>
+<span class="fc bfc" id="L481" title="All 2 branches covered.">        Integer pageNumber = source != null ? positivePageNumber(source.pageNumber()) : null;</span>
+<span class="fc" id="L482">        return new ProjectRequirementVersion(</span>
+                requirement,
+                versionNumber,
+                text,
+<span class="fc" id="L486">                fingerprintService.contentFingerprint(text),</span>
+<span class="fc" id="L487">                limited(changeReason, 1000, &quot;changeReason&quot;),</span>
+                createdBy,
+                now,
+                sourceArtifactId,
+                sourceVersionId,
+<span class="fc" id="L492">                jsonCodec.write(fragmentIds),</span>
+<span class="fc bfc" id="L493" title="All 2 branches covered.">                source != null ? limited(source.sectionReference(), 500, &quot;sectionReference&quot;) : null,</span>
+                pageNumber,
+<span class="fc bfc" id="L495" title="All 2 branches covered.">                source != null</span>
+<span class="fc" id="L496">                        ? limited(source.originalText(),</span>
+                                PortfolioValueValidator.MAX_ORIGINAL_TEXT_CHARACTERS,
+                                &quot;originalText&quot;)
+<span class="fc" id="L499">                        : null);</span>
+    }
+
+    private static List&lt;Long&gt; sourceFragmentIds(SourceReference source) {
+<span class="pc bpc" id="L503" title="1 of 4 branches missed.">        if (source == null || source.sourceFragmentIds() == null) return List.of();</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">        if (source.sourceFragmentIds().size() &gt; PortfolioValueValidator.MAX_SOURCE_FRAGMENT_IDS) {</span>
+<span class="fc" id="L505">            throw PortfolioException.validation(</span>
+                    &quot;sourceFragmentIds contains more than &quot;
+                            + PortfolioValueValidator.MAX_SOURCE_FRAGMENT_IDS + &quot; entries&quot;);
+        }
+<span class="fc" id="L509">        List&lt;Long&gt; fragmentIds = source.sourceFragmentIds().stream()</span>
+<span class="fc" id="L510">                .filter(Objects::nonNull)</span>
+<span class="fc" id="L511">                .distinct()</span>
+<span class="fc" id="L512">                .toList();</span>
+<span class="pc bpc" id="L513" title="2 of 4 branches missed.">        if (fragmentIds.stream().anyMatch(id -&gt; id &lt;= 0)) {</span>
+<span class="nc" id="L514">            throw PortfolioException.validation(&quot;sourceFragmentIds must contain only positive identifiers&quot;);</span>
+        }
+<span class="fc" id="L516">        return fragmentIds;</span>
+    }
+
+    private static Long positiveIdentifier(Long value, String field) {
+<span class="pc bpc" id="L520" title="1 of 4 branches missed.">        if (value != null &amp;&amp; value &lt;= 0) {</span>
+<span class="nc" id="L521">            throw PortfolioException.validation(field + &quot; must be a positive identifier&quot;);</span>
+        }
+<span class="fc" id="L523">        return value;</span>
+    }
+
+    private static Integer positivePageNumber(Integer value) {
+<span class="pc bpc" id="L527" title="1 of 4 branches missed.">        if (value != null &amp;&amp; value &lt; 1) {</span>
+<span class="nc" id="L528">            throw PortfolioException.validation(&quot;pageNumber must be positive&quot;);</span>
+        }
+<span class="fc" id="L530">        return value;</span>
+    }
+
+    private static int normalizePriority(Integer priority) {
+<span class="fc bfc" id="L534" title="All 2 branches covered.">        int normalized = priority != null ? priority : 50;</span>
+<span class="pc bpc" id="L535" title="2 of 4 branches missed.">        if (normalized &lt; 0 || normalized &gt; 100) {</span>
+<span class="nc" id="L536">            throw PortfolioException.validation(&quot;priority must be between 0 and 100&quot;);</span>
+        }
+<span class="fc" id="L538">        return normalized;</span>
+    }
+
+    private static String normalizeBusinessKey(String value, String field) {
+<span class="fc" id="L542">        String normalized = requireText(value, field, 64).toUpperCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L543" title="1 of 2 branches missed.">        if (!BUSINESS_KEY.matcher(normalized).matches()) {</span>
+<span class="nc" id="L544">            throw PortfolioException.validation(</span>
+                    field + &quot; must start with a letter or digit and contain only letters, digits, '.', '_' or '-'&quot;);
+        }
+<span class="fc" id="L547">        return normalized;</span>
+    }
+
+    private static String normalizeCurrency(String currency) {
+<span class="fc" id="L551">        return PortfolioValueValidator.currency(currency, &quot;budgetCurrency&quot;);</span>
+    }
+
+    static String requireText(String value, String field, int maximumLength) {
+<span class="pc bpc" id="L555" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L556">            throw PortfolioException.validation(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L558">        String normalized = value.strip();</span>
+<span class="pc bpc" id="L559" title="1 of 2 branches missed.">        if (normalized.length() &gt; maximumLength) {</span>
+<span class="nc" id="L560">            throw PortfolioException.validation(field + &quot; exceeds &quot; + maximumLength + &quot; characters&quot;);</span>
+        }
+<span class="fc" id="L562">        return normalized;</span>
+    }
+
+    static String limited(String value, int maximumLength, String field) {
+<span class="fc bfc" id="L566" title="All 2 branches covered.">        if (value == null) return null;</span>
+<span class="fc" id="L567">        String normalized = value.strip();</span>
+<span class="fc bfc" id="L568" title="All 2 branches covered.">        if (normalized.length() &gt; maximumLength) {</span>
+<span class="fc" id="L569">            throw PortfolioException.validation(field + &quot; exceeds &quot; + maximumLength + &quot; characters&quot;);</span>
+        }
+<span class="fc" id="L571">        return normalized;</span>
+    }
+
+    private static void requireNonNull(Object value, String label) {
+<span class="pc bpc" id="L575" title="1 of 2 branches missed.">        if (value == null) throw PortfolioException.validation(label + &quot; is required&quot;);</span>
+<span class="fc" id="L576">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

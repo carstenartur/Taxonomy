@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>VisioProperty.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.visio</a> &gt; <span class="el_source">VisioProperty.java</span></div><h1>VisioProperty.java</h1><pre class="source lang-java linenums">package com.taxonomy.visio;
+
+import java.math.BigDecimal;
+import java.util.Objects;
+
+/** Literal Shape Data values; user values are never written as ShapeSheet formulas. */
+public record VisioProperty(Kind kind, String value) {
+<span class="fc" id="L8">    public enum Kind { STRING, NUMBER, BOOLEAN }</span>
+
+<span class="fc" id="L10">    public VisioProperty {</span>
+<span class="fc" id="L11">        Objects.requireNonNull(kind, &quot;property kind&quot;);</span>
+<span class="fc" id="L12">        Objects.requireNonNull(value, &quot;property value&quot;);</span>
+<span class="fc bfc" id="L13" title="All 2 branches covered.">        if (kind == Kind.NUMBER) {</span>
+<span class="fc bfc" id="L14" title="All 2 branches covered.">            if (value.length() &gt; 350) throw new IllegalArgumentException(&quot;Property number is too long&quot;);</span>
+            BigDecimal number;
+            try {
+<span class="fc" id="L17">                number = new BigDecimal(value).stripTrailingZeros();</span>
+<span class="fc" id="L18">            } catch (NumberFormatException exception) {</span>
+<span class="fc" id="L19">                throw new IllegalArgumentException(&quot;Invalid numeric Visio property&quot;, exception);</span>
+<span class="fc" id="L20">            }</span>
+<span class="pc bpc" id="L21" title="1 of 4 branches missed.">            if (Math.abs((long) number.scale()) &gt; 350 || number.precision() &gt; 350</span>
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">                    || !Double.isFinite(number.doubleValue())) {</span>
+<span class="fc" id="L23">                throw new IllegalArgumentException(&quot;Property number is outside the supported finite range&quot;);</span>
+            }
+<span class="fc" id="L25">            value = number.toPlainString();</span>
+        }
+<span class="pc bpc" id="L27" title="1 of 6 branches missed.">        if (kind == Kind.BOOLEAN &amp;&amp; !value.equals(&quot;true&quot;) &amp;&amp; !value.equals(&quot;false&quot;)) {</span>
+<span class="nc" id="L28">            throw new IllegalArgumentException(&quot;Invalid Boolean property&quot;);</span>
+        }
+<span class="fc" id="L30">    }</span>
+
+    public static VisioProperty text(Object value) {
+<span class="fc" id="L33">        return new VisioProperty(Kind.STRING, Objects.requireNonNull(value, &quot;property value&quot;).toString());</span>
+    }
+    public static VisioProperty number(double value) {
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">        if (!Double.isFinite(value)) throw new IllegalArgumentException(&quot;Property number must be finite&quot;);</span>
+<span class="fc" id="L37">        return new VisioProperty(Kind.NUMBER, BigDecimal.valueOf(value).toPlainString());</span>
+    }
+<span class="fc" id="L39">    public static VisioProperty bool(boolean value) { return new VisioProperty(Kind.BOOLEAN, Boolean.toString(value)); }</span>
+<span class="fc bfc" id="L40" title="All 3 branches covered.">    public String shapeType() { return switch (kind) { case STRING -&gt; &quot;0&quot;; case NUMBER -&gt; &quot;2&quot;; case BOOLEAN -&gt; &quot;3&quot;; }; }</span>
+<span class="fc bfc" id="L41" title="All 4 branches covered.">    public String shapeValue() { return kind == Kind.BOOLEAN ? (value.equals(&quot;true&quot;) ? &quot;1&quot; : &quot;0&quot;) : value; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

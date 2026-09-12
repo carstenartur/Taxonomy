@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateModel.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.archimate</a> &gt; <span class="el_source">ArchiMateModel.java</span></div><h1>ArchiMateModel.java</h1><pre class="source lang-java linenums">package com.taxonomy.archimate;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Top-level ArchiMate model containing elements, relationships, organization groups,
+ * and zero or more diagram views. Original identities are distinct from XML IDs.
+ */
+public record ArchiMateModel(
+        String id,
+        String title,
+        List&lt;ArchiMateElement&gt; elements,
+        List&lt;ArchiMateRelationship&gt; relationships,
+        Map&lt;String, List&lt;String&gt;&gt; organizations,
+        List&lt;ArchiMateView&gt; views,
+        Map&lt;String, ArchiMateProperty&gt; properties,
+        List&lt;ArchiMateLoss&gt; losses) {
+<span class="fc" id="L19">    public ArchiMateModel {</span>
+<span class="fc" id="L20">        elements = List.copyOf(elements);</span>
+<span class="fc" id="L21">        relationships = List.copyOf(relationships);</span>
+<span class="pc bpc" id="L22" title="1 of 2 branches missed.">        organizations = organizations == null ? Map.of() : organizations.entrySet().stream()</span>
+<span class="fc" id="L23">                .collect(java.util.stream.Collectors.toUnmodifiableMap(Map.Entry::getKey,</span>
+<span class="fc" id="L24">                        entry -&gt; List.copyOf(entry.getValue())));</span>
+<span class="fc" id="L25">        views = List.copyOf(views);</span>
+<span class="fc" id="L26">        properties = Map.copyOf(properties);</span>
+<span class="fc" id="L27">        losses = List.copyOf(losses);</span>
+<span class="fc" id="L28">    }</span>
+
+    public ArchiMateModel(String title, List&lt;ArchiMateElement&gt; elements,
+                         List&lt;ArchiMateRelationship&gt; relationships,
+                         Map&lt;String, List&lt;String&gt;&gt; organizations, ArchiMateView view) {
+<span class="nc" id="L33">        this(&quot;architecture&quot;, title, elements, relationships, organizations,</span>
+<span class="nc bnc" id="L34" title="All 2 branches missed.">                view == null ? List.of() : List.of(view), Map.of(), List.of());</span>
+<span class="nc" id="L35">    }</span>
+
+    public ArchiMateView view() {
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        return views.isEmpty() ? null : views.getFirst();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

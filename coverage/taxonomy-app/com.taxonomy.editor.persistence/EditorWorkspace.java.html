@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>EditorWorkspace.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor.persistence</a> &gt; <span class="el_source">EditorWorkspace.java</span></div><h1>EditorWorkspace.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor.persistence;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** Durable editor persistence; mutations occur only under the workspace transaction lock. */
+@Entity
+@Table(name = &quot;editor_workspace&quot;)
+public class EditorWorkspace {
+    @Id
+    @Column(name = &quot;scope_id&quot;, nullable = false, length = 64)
+    String scopeId;
+
+    @Column(name = &quot;repository_id&quot;, nullable = false, length = 320)
+    String repositoryId;
+
+    @Column(name = &quot;workspace_id&quot;, nullable = false, length = 320)
+    String workspaceId;
+
+    @Column(name = &quot;branch&quot;, nullable = false, length = 255)
+    String branch;
+
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;dsl&quot;, nullable = false)
+    String dsl;
+
+    @Column(name = &quot;semantic_revision&quot;, nullable = false)
+    long revision;
+
+    @Column(name = &quot;checkpoint_commit&quot;, nullable = true, length = 40)
+    String checkpointCommit;
+
+    @Column(name = &quot;checkpoint_revision&quot;, nullable = false)
+    long checkpointRevision;
+
+    @Column(name = &quot;pending_checkpoint&quot;, nullable = true, length = 36)
+    String pendingCheckpoint;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    long rowVersion;
+
+<span class="fc" id="L44">    protected EditorWorkspace() {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

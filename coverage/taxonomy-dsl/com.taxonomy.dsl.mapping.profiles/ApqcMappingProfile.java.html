@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ApqcMappingProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.mapping.profiles</a> &gt; <span class="el_source">ApqcMappingProfile.java</span></div><h1>ApqcMappingProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.mapping.profiles;
+
+import com.taxonomy.dsl.mapping.MappingProfile;
+
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Mapping profile for APQC Process Classification Framework (PCF).
+ *
+ * &lt;p&gt;APQC organizes processes in a hierarchy of levels (1 through 5).
+ * Each level is mapped to one of the existing taxonomy root codes.
+ *
+ * &lt;ul&gt;
+ *   &lt;li&gt;Level 1 (Category) → {@code CP} (Capability)&lt;/li&gt;
+ *   &lt;li&gt;Level 2 (Process Group) → {@code BP} (Business Process)&lt;/li&gt;
+ *   &lt;li&gt;Level 3 (Process) → {@code CR} (Core Service)&lt;/li&gt;
+ *   &lt;li&gt;Level 4 (Activity) → {@code CI} (COI Service)&lt;/li&gt;
+ *   &lt;li&gt;Level 5 (Task) → {@code BR} (Business Role)&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+<span class="fc" id="L22">public class ApqcMappingProfile implements MappingProfile {</span>
+
+<span class="fc" id="L24">    private static final Map&lt;String, String&gt; ELEMENT_MAP = Map.of(</span>
+            &quot;Category&quot;, &quot;CP&quot;,
+            &quot;ProcessGroup&quot;, &quot;BP&quot;,
+            &quot;Process&quot;, &quot;CR&quot;,
+            &quot;Activity&quot;, &quot;CI&quot;,
+            &quot;Task&quot;, &quot;BR&quot;
+    );
+
+<span class="fc" id="L32">    private static final Map&lt;String, String&gt; RELATION_MAP = Map.of(</span>
+            &quot;ParentChild&quot;, &quot;SUPPORTS&quot;,
+            &quot;Enables&quot;, &quot;SUPPORTS&quot;,
+            &quot;Consumes&quot;, &quot;CONSUMES&quot;,
+            &quot;Produces&quot;, &quot;PRODUCES&quot;
+    );
+
+    @Override
+    public String profileId() {
+<span class="fc" id="L41">        return &quot;apqc&quot;;</span>
+    }
+
+    @Override
+    public String displayName() {
+<span class="fc" id="L46">        return &quot;APQC PCF&quot;;</span>
+    }
+
+    @Override
+    public String mapElementType(String externalType) {
+<span class="fc" id="L51">        return ELEMENT_MAP.get(externalType);</span>
+    }
+
+    @Override
+    public String mapRelationType(String externalType) {
+<span class="fc" id="L56">        return RELATION_MAP.get(externalType);</span>
+    }
+
+    @Override
+    public Map&lt;String, String&gt; elementExtensions(String externalType,
+                                                  Map&lt;String, String&gt; externalProperties) {
+<span class="fc" id="L62">        var extensions = new java.util.LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L63">        extensions.put(&quot;x-apqc-level&quot;, externalType);</span>
+<span class="fc" id="L64">        String parentId = externalProperties.get(&quot;parentId&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (parentId != null) {</span>
+<span class="fc" id="L66">            extensions.put(&quot;x-apqc-parent&quot;, parentId);</span>
+        }
+<span class="fc" id="L68">        String pcfId = externalProperties.get(&quot;pcfId&quot;);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (pcfId != null) {</span>
+<span class="fc" id="L70">            extensions.put(&quot;x-apqc-pcf-id&quot;, pcfId);</span>
+        }
+<span class="fc" id="L72">        return extensions;</span>
+    }
+
+    @Override
+    public Map&lt;String, String&gt; relationExtensions(String externalRelType,
+                                                   Map&lt;String, String&gt; externalProperties) {
+<span class="fc" id="L78">        return Map.of(&quot;x-apqc-rel&quot;, externalRelType);</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; supportedElementTypes() {
+<span class="fc" id="L83">        return ELEMENT_MAP.keySet();</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; supportedRelationTypes() {
+<span class="fc" id="L88">        return RELATION_MAP.keySet();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

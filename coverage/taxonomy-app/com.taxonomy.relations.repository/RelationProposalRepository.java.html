@@ -1,0 +1,402 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationProposalRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.repository</a> &gt; <span class="el_source">RelationProposalRepository.java</span></div><h1>RelationProposalRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.repository;
+
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationProposal;
+import jakarta.persistence.LockModeType;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface RelationProposalRepository extends JpaRepository&lt;RelationProposal, Long&gt; {
+
+    String PRIMARY_SCOPE = &quot; p.repositoryId IN (&quot;
+            + &quot;SELECT repository.repositoryId FROM SystemRepository repository &quot;
+            + &quot;WHERE repository.primaryRepo = true)&quot;;
+
+    // ── Explicit repository/workspace tenant scope ─────────────────
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND p.workspaceId IS NULL
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findCentralByRepository(
+            @Param(&quot;repositoryId&quot;) String repositoryId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND p.workspaceId IS NULL
+              AND p.status = :status
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findCentralByRepositoryAndStatus(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;status&quot;) ProposalStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND p.workspaceId IS NULL
+              AND p.sourceNode.code = :sourceCode
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findCentralByRepositoryAndSourceNodeCode(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;sourceCode&quot;) String sourceCode);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND (p.workspaceId = :workspaceId OR p.workspaceId IS NULL)
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findVisibleByRepositoryAndWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND (p.workspaceId = :workspaceId OR p.workspaceId IS NULL)
+              AND p.status = :status
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findVisibleByRepositoryAndWorkspaceAndStatus(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;status&quot;) ProposalStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND (p.workspaceId = :workspaceId OR p.workspaceId IS NULL)
+              AND p.sourceNode.code = :sourceCode
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findVisibleByRepositoryAndWorkspaceAndSourceNodeCode(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;sourceCode&quot;) String sourceCode);
+
+    /**
+     * Counts reviewed history visible in one selected context. A null workspace
+     * intentionally means central rows only; a workspace inherits central rows
+     * plus rows from that exact workspace and never sibling workspaces.
+     */
+    @Query(&quot;&quot;&quot;
+            SELECT COUNT(p) FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND (p.workspaceId IS NULL OR p.workspaceId = :workspaceId)
+              AND p.sourceNode.taxonomyRoot = :sourceRoot
+              AND p.targetNode.taxonomyRoot = :targetRoot
+              AND p.relationType = :relationType
+              AND p.status = :status
+            &quot;&quot;&quot;)
+    long countVisibleReviewHistory(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;sourceRoot&quot;) String sourceRoot,
+            @Param(&quot;targetRoot&quot;) String targetRoot,
+            @Param(&quot;relationType&quot;) RelationType relationType,
+            @Param(&quot;status&quot;) ProposalStatus status);
+
+    /** Looks up a proposal in exactly one mutable repository/workspace scope. */
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND p.id = :id
+              AND ((:workspaceId IS NULL AND p.workspaceId IS NULL)
+                   OR p.workspaceId = :workspaceId)
+            &quot;&quot;&quot;)
+    Optional&lt;RelationProposal&gt; findByIdInRepositoryWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;id&quot;) Long id,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    /** Locks one exact mutable proposal row for the final review-state transition. */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND p.id = :id
+              AND ((:workspaceId IS NULL AND p.workspaceId IS NULL)
+                   OR p.workspaceId = :workspaceId)
+            &quot;&quot;&quot;)
+    Optional&lt;RelationProposal&gt; findByIdInRepositoryWorkspaceForUpdate(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;id&quot;) Long id,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    /** Checks a proposal triple in exactly one repository/workspace scope. */
+    @Query(&quot;&quot;&quot;
+            SELECT CASE WHEN COUNT(p) &gt; 0 THEN true ELSE false END
+            FROM RelationProposal p
+            WHERE p.repositoryId = :repositoryId
+              AND p.sourceNode.code = :sourceCode
+              AND p.targetNode.code = :targetCode
+              AND p.relationType = :relationType
+              AND ((:workspaceId IS NULL AND p.workspaceId IS NULL)
+                   OR p.workspaceId = :workspaceId)
+            &quot;&quot;&quot;)
+    boolean existsInRepositoryWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;relationType&quot;) RelationType relationType,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    List&lt;RelationProposal&gt; findByRepositoryIdAndWorkspaceId(
+            String repositoryId, String workspaceId);
+
+    // ── Primary-repository compatibility boundary ──────────────────
+    // Historic signatures remain available for internal metrics/tests while
+    // callers migrate. They are deliberately primary-scoped, never global.
+
+    @Override
+    @Query(&quot;SELECT p FROM RelationProposal p WHERE &quot; + PRIMARY_SCOPE + &quot; ORDER BY p.id&quot;)
+    List&lt;RelationProposal&gt; findAll();
+
+    @Override
+    @Query(&quot;SELECT COUNT(p) FROM RelationProposal p WHERE &quot; + PRIMARY_SCOPE)
+    long count();
+
+    @Override
+    @Query(&quot;SELECT p FROM RelationProposal p WHERE p.id = :id AND &quot; + PRIMARY_SCOPE)
+    Optional&lt;RelationProposal&gt; findById(@Param(&quot;id&quot;) Long id);
+
+    @Override
+    default void deleteAll() {
+<span class="fc" id="L178">        deleteAll(findAll());</span>
+<span class="fc" id="L179">    }</span>
+
+    @Override
+    default void deleteAllInBatch() {
+<span class="nc" id="L183">        deleteAll(findAll());</span>
+<span class="nc" id="L184">    }</span>
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.status = :status
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findByStatus(@Param(&quot;status&quot;) ProposalStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.sourceNode.code = :sourceCode
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findBySourceNodeCode(
+            @Param(&quot;sourceCode&quot;) String sourceCode);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.sourceNode.code = :sourceCode
+              AND p.relationType = :relationType
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findBySourceNodeCodeAndRelationType(
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;relationType&quot;) RelationType relationType);
+
+    @Query(&quot;&quot;&quot;
+            SELECT CASE WHEN COUNT(p) &gt; 0 THEN true ELSE false END
+            FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.sourceNode.code = :sourceCode
+              AND p.targetNode.code = :targetCode
+              AND p.relationType = :relationType
+            &quot;&quot;&quot;)
+    boolean existsBySourceNodeCodeAndTargetNodeCodeAndRelationType(
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;relationType&quot;) RelationType relationType);
+
+    @Query(&quot;&quot;&quot;
+            SELECT COUNT(p) FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.status = :status
+            &quot;&quot;&quot;)
+    long countByStatus(@Param(&quot;status&quot;) ProposalStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT COUNT(p) FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.relationType = :relationType
+              AND p.status = :status
+            &quot;&quot;&quot;)
+    long countByRelationTypeAndStatus(
+            @Param(&quot;relationType&quot;) RelationType relationType,
+            @Param(&quot;status&quot;) ProposalStatus status);
+
+    @Query(&quot;SELECT DISTINCT p.relationType FROM RelationProposal p WHERE &quot; + PRIMARY_SCOPE)
+    List&lt;RelationType&gt; findDistinctRelationTypes();
+
+    @Query(&quot;SELECT DISTINCT p.provenance FROM RelationProposal p WHERE &quot; + PRIMARY_SCOPE)
+    List&lt;String&gt; findDistinctProvenances();
+
+    @Query(&quot;&quot;&quot;
+            SELECT COUNT(p) FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.provenance = :provenance
+              AND p.status = :status
+            &quot;&quot;&quot;)
+    long countByProvenanceAndStatus(
+            @Param(&quot;provenance&quot;) String provenance,
+            @Param(&quot;status&quot;) ProposalStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT AVG(p.confidence) FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.status = :status
+            &quot;&quot;&quot;)
+    Double avgConfidenceByStatus(@Param(&quot;status&quot;) ProposalStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.status = :status
+            ORDER BY p.confidence DESC, p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findByStatusOrderByConfidenceDesc(
+            @Param(&quot;status&quot;) ProposalStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT COUNT(p) FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.sourceNode.taxonomyRoot = :sourceRoot
+              AND p.targetNode.taxonomyRoot = :targetRoot
+              AND p.relationType = :relationType
+              AND p.status = :status
+            &quot;&quot;&quot;)
+    long countBySourceNodeTaxonomyRootAndTargetNodeTaxonomyRootAndRelationTypeAndStatus(
+            @Param(&quot;sourceRoot&quot;) String sourceRoot,
+            @Param(&quot;targetRoot&quot;) String targetRoot,
+            @Param(&quot;relationType&quot;) RelationType relationType,
+            @Param(&quot;status&quot;) ProposalStatus status);
+
+    // ── Legacy workspace aliases, constrained to the primary repository ──
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE p.id = :id
+              AND &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND ((:workspaceId IS NULL AND p.workspaceId IS NULL)
+                   OR p.workspaceId = :workspaceId)
+            &quot;&quot;&quot;)
+    Optional&lt;RelationProposal&gt; findByIdInWorkspace(
+            @Param(&quot;id&quot;) Long id,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT CASE WHEN COUNT(p) &gt; 0 THEN true ELSE false END
+            FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.sourceNode.code = :sourceCode
+              AND p.targetNode.code = :targetCode
+              AND p.relationType = :relationType
+              AND ((:workspaceId IS NULL AND p.workspaceId IS NULL)
+                   OR p.workspaceId = :workspaceId)
+            &quot;&quot;&quot;)
+    boolean existsInWorkspace(
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;relationType&quot;) RelationType relationType,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT CASE WHEN COUNT(p) &gt; 0 THEN true ELSE false END
+            FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.sourceNode.code = :sourceCode
+              AND p.targetNode.code = :targetCode
+              AND p.relationType = :relationType
+              AND p.workspaceId = :workspaceId
+            &quot;&quot;&quot;)
+    boolean existsBySourceNodeCodeAndTargetNodeCodeAndRelationTypeAndWorkspaceId(
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;relationType&quot;) RelationType relationType,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.workspaceId = :workspaceId
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findByWorkspaceId(
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.workspaceId IS NULL
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findByWorkspaceIdIsNull();
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.status = :status
+              AND p.workspaceId IS NULL
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findByStatusAndWorkspaceIdIsNull(
+            @Param(&quot;status&quot;) ProposalStatus status);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.sourceNode.code = :sourceCode
+              AND p.workspaceId IS NULL
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findBySourceNodeCodeAndWorkspaceIdIsNull(
+            @Param(&quot;sourceCode&quot;) String sourceCode);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND (p.workspaceId = :workspaceId OR p.workspaceId IS NULL)
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findByWorkspaceIdIsNullOrWorkspaceId(
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.status = :status
+              AND (p.workspaceId = :workspaceId OR p.workspaceId IS NULL)
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findByStatusAndWorkspace(
+            @Param(&quot;status&quot;) ProposalStatus status,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT p FROM RelationProposal p
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND p.sourceNode.code = :sourceCode
+              AND (p.workspaceId = :workspaceId OR p.workspaceId IS NULL)
+            ORDER BY p.id
+            &quot;&quot;&quot;)
+    List&lt;RelationProposal&gt; findBySourceNodeCodeAndWorkspace(
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

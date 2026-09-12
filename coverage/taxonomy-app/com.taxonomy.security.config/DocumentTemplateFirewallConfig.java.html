@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateFirewallConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.config</a> &gt; <span class="el_source">DocumentTemplateFirewallConfig.java</span></div><h1>DocumentTemplateFirewallConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.config;
+
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.security.web.firewall.FirewalledRequest;
+import org.springframework.security.web.firewall.HttpFirewall;
+import org.springframework.security.web.firewall.RequestRejectedException;
+import org.springframework.security.web.firewall.StrictHttpFirewall;
+
+import java.util.List;
+import java.util.Set;
+
+/** Allows the implemented WebDAV verbs only on the virtual template collection. */
+@Configuration(proxyBeanMethods = false)
+<span class="fc" id="L16">public class DocumentTemplateFirewallConfig {</span>
+
+    @Bean
+    HttpFirewall documentTemplateHttpFirewall() {
+<span class="fc" id="L20">        return new TemplateHttpFirewall();</span>
+    }
+
+    /** Keeps all StrictHttpFirewall URL, header, parameter and response checks. */
+    static final class TemplateHttpFirewall extends StrictHttpFirewall {
+<span class="fc" id="L25">        private static final Set&lt;String&gt; DAV_METHODS = Set.of(&quot;PROPFIND&quot;, &quot;LOCK&quot;, &quot;UNLOCK&quot;);</span>
+
+<span class="fc" id="L27">        TemplateHttpFirewall() {</span>
+<span class="fc" id="L28">            setAllowedHttpMethods(List.of(</span>
+                    &quot;DELETE&quot;, &quot;GET&quot;, &quot;HEAD&quot;, &quot;OPTIONS&quot;, &quot;PATCH&quot;, &quot;POST&quot;, &quot;PUT&quot;,
+                    &quot;PROPFIND&quot;, &quot;LOCK&quot;, &quot;UNLOCK&quot;));
+<span class="fc" id="L31">        }</span>
+
+        @Override
+        public FirewalledRequest getFirewalledRequest(HttpServletRequest request) {
+            // Validate first; never normalize an unsafe URL into an allowed DAV path.
+<span class="fc" id="L36">            FirewalledRequest checked = super.getFirewalledRequest(request);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            if (DAV_METHODS.contains(checked.getMethod())) {</span>
+<span class="fc" id="L38">                String path = checked.getRequestURI().substring(checked.getContextPath().length());</span>
+<span class="fc bfc" id="L39" title="All 4 branches covered.">                if (!path.equals(&quot;/dav/templates&quot;) &amp;&amp; !path.startsWith(&quot;/dav/templates/&quot;)) {</span>
+<span class="fc" id="L40">                    throw new RequestRejectedException(&quot;WebDAV method outside template collection&quot;);</span>
+                }
+            }
+<span class="fc" id="L43">            return checked;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

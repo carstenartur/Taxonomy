@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BrowserSessionController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.security.controller</a> &gt; <span class="el_source">BrowserSessionController.java</span></div><h1>BrowserSessionController.java</h1><pre class="source lang-java linenums">package com.taxonomy.security.controller;
+
+import com.taxonomy.security.service.BrowserSessionInventory;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.stereotype.Controller;
+import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.ResponseBody;
+
+/** Administrator-only inventory. No session IDs, credentials, roles or client addresses. */
+@Controller
+@PreAuthorize(&quot;hasRole('ADMIN')&quot;)
+public class BrowserSessionController {
+    private final BrowserSessionInventory inventory;
+
+<span class="fc" id="L19">    public BrowserSessionController(BrowserSessionInventory inventory) {</span>
+<span class="fc" id="L20">        this.inventory = inventory;</span>
+<span class="fc" id="L21">    }</span>
+
+    @GetMapping(&quot;/admin/sessions&quot;)
+    public String page(Model model, HttpServletResponse response) {
+<span class="fc" id="L25">        response.setHeader(&quot;Cache-Control&quot;, &quot;no-store&quot;);</span>
+<span class="fc" id="L26">        model.addAttribute(&quot;snapshot&quot;, inventory.snapshot());</span>
+<span class="fc" id="L27">        return &quot;browser-sessions&quot;;</span>
+    }
+
+    @GetMapping(&quot;/api/admin/sessions&quot;)
+    @ResponseBody
+    public ResponseEntity&lt;BrowserSessionInventory.Snapshot&gt; sessions() {
+<span class="fc" id="L33">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(inventory.snapshot());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LegacyWorkspaceRepositoryContextResolver.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">LegacyWorkspaceRepositoryContextResolver.java</span></div><h1>LegacyWorkspaceRepositoryContextResolver.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.springframework.stereotype.Service;
+
+import java.util.Objects;
+
+/** Workspace-owned resolution for callers that already supply a compatibility selection. */
+@Service
+public class LegacyWorkspaceRepositoryContextResolver implements WorkspaceRepositoryContextPort {
+
+    private final SystemRepositoryService repositories;
+    private final UserWorkspaceRepository workspaces;
+
+    public LegacyWorkspaceRepositoryContextResolver(
+<span class="fc" id="L18">            SystemRepositoryService repositories, UserWorkspaceRepository workspaces) {</span>
+<span class="fc" id="L19">        this.repositories = Objects.requireNonNull(repositories, &quot;repositories&quot;);</span>
+<span class="fc" id="L20">        this.workspaces = Objects.requireNonNull(workspaces, &quot;workspaces&quot;);</span>
+<span class="fc" id="L21">    }</span>
+
+    @Override
+    public RepositoryContext resolve(WorkspaceContext selection) {
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        WorkspaceContext legacy = selection != null ? selection : WorkspaceContext.SHARED;</span>
+<span class="fc" id="L26">        String username = normalizeOptional(legacy.username());</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        username = username != null ? username : &quot;system&quot;;</span>
+<span class="fc" id="L28">        String branch = normalizeOptional(legacy.currentBranch());</span>
+<span class="fc" id="L29">        String workspaceId = normalizeOptional(legacy.workspaceId());</span>
+<span class="fc" id="L30">        String requestedRepositoryId = requireText(</span>
+<span class="fc" id="L31">                legacy.repositoryId(), &quot;workspaceContext.repositoryId&quot;);</span>
+<span class="fc" id="L32">        boolean primarySelection = WorkspaceContext.LEGACY_REPOSITORY_ID.equals(requestedRepositoryId);</span>
+
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (workspaceId == null) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            SystemRepository selectedRepository = primarySelection</span>
+<span class="fc" id="L36">                    ? repositories.getPrimaryRepository()</span>
+<span class="fc" id="L37">                    : repositories.getRepository(requestedRepositoryId);</span>
+<span class="fc" id="L38">            return RepositoryContext.centralRead(</span>
+<span class="fc" id="L39">                    selectedRepository.getRepositoryId(),</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                    branch != null ? branch : selectedRepository.getDefaultBranch(),</span>
+                    username);
+        }
+
+<span class="fc" id="L44">        UserWorkspace workspace = workspaces.findByWorkspaceId(workspaceId)</span>
+<span class="fc" id="L45">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Workspace not found while resolving repository context: &quot; + workspaceId));
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        if (workspace.getUsername() != null</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                &amp;&amp; !workspace.getUsername().equals(username)</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">                &amp;&amp; !&quot;system&quot;.equals(username)) {</span>
+<span class="fc" id="L50">            throw new IllegalArgumentException(</span>
+                    &quot;Workspace does not belong to the active user: &quot; + workspaceId);
+        }
+<span class="fc" id="L53">        String repositoryId = requireText(workspace.getSourceRepositoryId(), &quot;workspace.sourceRepositoryId&quot;);</span>
+<span class="pc bpc" id="L54" title="1 of 4 branches missed.">        if (!primarySelection &amp;&amp; !repositoryId.equals(requestedRepositoryId)) {</span>
+<span class="fc" id="L55">            throw new IllegalArgumentException(</span>
+                    &quot;Workspace repository does not match the selected repository: &quot; + workspaceId);
+        }
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        String workspaceBranch = branch != null ? branch : normalizeOptional(workspace.getCurrentBranch());</span>
+<span class="fc" id="L59">        return RepositoryContext.workspace(</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">                repositoryId, workspaceId, workspaceBranch != null ? workspaceBranch : &quot;draft&quot;, username);</span>
+    }
+
+    private static String normalizeOptional(String value) {
+<span class="fc bfc" id="L64" title="All 4 branches covered.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+    private static String requireText(String value, String field) {
+<span class="fc" id="L68">        String normalized = normalizeOptional(value);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (normalized == null) {</span>
+<span class="fc" id="L70">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L72">        return normalized;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

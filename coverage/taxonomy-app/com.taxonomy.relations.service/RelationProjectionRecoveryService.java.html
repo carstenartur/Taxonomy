@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationProjectionRecoveryService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationProjectionRecoveryService.java</span></div><h1>RelationProjectionRecoveryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
+import com.taxonomy.relations.model.RelationDecisionProjection;
+import com.taxonomy.relations.model.RelationProjectionRecovery;
+import com.taxonomy.relations.model.RelationProjectionRecovery.RecoveryStatus;
+import com.taxonomy.relations.repository.RelationProjectionRecoveryRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/** Durable recovery ledger for failed relation decision projections. */
+@Service
+public class RelationProjectionRecoveryService {
+
+    private final RelationProjectionRecoveryRepository recoveryRepository;
+    private final WorkspaceDslReadPort gitReads;
+
+    public RelationProjectionRecoveryService(
+            RelationProjectionRecoveryRepository recoveryRepository,
+<span class="fc" id="L28">            WorkspaceDslReadPort gitReads) {</span>
+<span class="fc" id="L29">        this.recoveryRepository = Objects.requireNonNull(</span>
+                recoveryRepository, &quot;recoveryRepository&quot;);
+<span class="fc" id="L31">        this.gitReads = Objects.requireNonNull(gitReads, &quot;gitReads&quot;);</span>
+<span class="fc" id="L32">    }</span>
+
+    /**
+     * Records projection failure in an independent transaction after Git has
+     * already committed the authoritative decision.
+     */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public RecoveryRecord recordPending(
+            CommandResult authority,
+            Throwable failure) {
+<span class="fc" id="L42">        Objects.requireNonNull(authority, &quot;authority&quot;);</span>
+<span class="fc" id="L43">        Objects.requireNonNull(failure, &quot;failure&quot;);</span>
+<span class="fc" id="L44">        String scopeKey = RelationDecisionProjection.scopeKeyFor(</span>
+<span class="fc" id="L45">                authority.workspaceId());</span>
+<span class="fc" id="L46">        RelationProjectionRecovery recovery = recoveryRepository</span>
+<span class="fc" id="L47">                .findAuthorityForUpdate(</span>
+<span class="fc" id="L48">                        authority.repositoryId(),</span>
+                        scopeKey,
+<span class="fc" id="L50">                        authority.branch(),</span>
+<span class="fc" id="L51">                        authority.authoritativeCommitId())</span>
+<span class="fc" id="L52">                .orElseGet(RelationProjectionRecovery::new);</span>
+<span class="fc" id="L53">        recovery.setRepositoryId(authority.repositoryId());</span>
+<span class="fc" id="L54">        recovery.setWorkspaceId(authority.workspaceId());</span>
+<span class="fc" id="L55">        recovery.setBranch(authority.branch());</span>
+<span class="fc" id="L56">        recovery.setPreviousHeadCommit(authority.previousHeadCommit());</span>
+<span class="fc" id="L57">        recovery.setAuthoritativeCommitId(authority.authoritativeCommitId());</span>
+<span class="fc" id="L58">        recovery.setCausationId(authority.causationId());</span>
+<span class="fc" id="L59">        recovery.recordFailure(failure);</span>
+<span class="fc" id="L60">        return RecoveryRecord.from(recoveryRepository.save(recovery));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;RecoveryRecord&gt; pending(RepositoryContext context) {
+<span class="nc" id="L65">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="nc" id="L66">        return recoveryRepository</span>
+<span class="nc" id="L67">                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchAndStatusOrderByIdAsc(</span>
+<span class="nc" id="L68">                        selected.repositoryId(),</span>
+<span class="nc" id="L69">                        RelationDecisionProjection.scopeKeyFor(</span>
+<span class="nc" id="L70">                                selected.workspaceId()),</span>
+<span class="nc" id="L71">                        selected.branch(),</span>
+                        RecoveryStatus.PENDING)
+<span class="nc" id="L73">                .stream()</span>
+<span class="nc" id="L74">                .map(RecoveryRecord::from)</span>
+<span class="nc" id="L75">                .toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public long pendingCount(RepositoryContext context) {
+<span class="fc" id="L80">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L81">        return recoveryRepository</span>
+<span class="fc" id="L82">                .countByRepositoryIdAndWorkspaceScopeKeyAndBranchAndStatus(</span>
+<span class="fc" id="L83">                        selected.repositoryId(),</span>
+<span class="fc" id="L84">                        RelationDecisionProjection.scopeKeyFor(</span>
+<span class="fc" id="L85">                                selected.workspaceId()),</span>
+<span class="fc" id="L86">                        selected.branch(),</span>
+                        RecoveryStatus.PENDING);
+    }
+
+    /**
+     * Completes pending records only when the rebuilt commit is the same commit
+     * or demonstrably descends from the failed authoritative commit.
+     */
+    @Transactional
+    public ReconciliationResult reconcileAfterRebuild(
+            RepositoryContext context,
+            String rebuiltCommitId) {
+<span class="fc" id="L98">        RepositoryContext selected = requireMutable(context);</span>
+<span class="fc" id="L99">        String rebuilt = requireCommitId(rebuiltCommitId);</span>
+<span class="fc" id="L100">        String scopeKey = RelationDecisionProjection.scopeKeyFor(</span>
+<span class="fc" id="L101">                selected.workspaceId());</span>
+<span class="fc" id="L102">        List&lt;RelationProjectionRecovery&gt; pending = recoveryRepository</span>
+<span class="fc" id="L103">                .findStatusForUpdate(</span>
+<span class="fc" id="L104">                        selected.repositoryId(),</span>
+                        scopeKey,
+<span class="fc" id="L106">                        selected.branch(),</span>
+                        RecoveryStatus.PENDING);
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (pending.isEmpty()) {</span>
+<span class="fc" id="L109">            return new ReconciliationResult(rebuilt, 0, 0, 0);</span>
+        }
+
+<span class="fc" id="L112">        var history = gitReads.openRead(selected);</span>
+<span class="fc" id="L113">        int recovered = 0;</span>
+<span class="fc" id="L114">        int superseded = 0;</span>
+        try {
+<span class="fc" id="L116">            var relationships = history.relationshipsTo(rebuilt, pending.stream()</span>
+<span class="fc" id="L117">                    .map(RelationProjectionRecovery::getAuthoritativeCommitId).toList());</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">            if (relationships.size() != pending.size()) {</span>
+<span class="fc" id="L119">                throw new IOException(&quot;Incomplete commit relationship evidence&quot;);</span>
+            }
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            for (int index = 0; index &lt; pending.size(); index++) {</span>
+<span class="fc" id="L122">                RelationProjectionRecovery recovery = pending.get(index);</span>
+<span class="fc" id="L123">                var relationship = relationships.get(index);</span>
+                RecoveryStatus completion;
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                if (relationship == WorkspaceDslReadPort.CommitRelationship.SAME) {</span>
+<span class="fc" id="L126">                    completion = RecoveryStatus.RECOVERED;</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                } else if (relationship == WorkspaceDslReadPort.CommitRelationship.ANCESTOR) {</span>
+<span class="fc" id="L128">                    completion = RecoveryStatus.SUPERSEDED;</span>
+                } else {
+                    continue;
+                }
+<span class="fc" id="L132">                recovery.complete(completion);</span>
+<span class="fc" id="L133">                recoveryRepository.save(recovery);</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                if (completion == RecoveryStatus.RECOVERED) {</span>
+<span class="fc" id="L135">                    recovered++;</span>
+                } else {
+<span class="fc" id="L137">                    superseded++;</span>
+                }
+            }
+<span class="fc" id="L140">        } catch (IOException error) {</span>
+<span class="fc" id="L141">            throw new ProjectionRecoveryReconciliationException(</span>
+                    &quot;Unable to reconcile relation projection recovery at &quot;
+                            + rebuilt,
+                    error);
+<span class="fc" id="L145">        }</span>
+<span class="fc" id="L146">        return new ReconciliationResult(</span>
+                rebuilt,
+                recovered,
+                superseded,
+<span class="fc" id="L150">                pending.size() - recovered - superseded);</span>
+    }
+
+    private static RepositoryContext requireMutable(RepositoryContext context) {
+<span class="fc" id="L154">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (selected.scope() == RepositoryScope.CENTRAL_READ) {</span>
+<span class="fc" id="L156">            throw new IllegalArgumentException(</span>
+                    &quot;Projection recovery reconciliation requires a writable context&quot;);
+        }
+<span class="fc" id="L159">        return selected;</span>
+    }
+
+    private static String requireCommitId(String value) {
+<span class="pc bpc" id="L163" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="fc" id="L164">            throw new IllegalArgumentException(</span>
+                    &quot;rebuiltCommitId must not be blank&quot;);
+        }
+<span class="fc" id="L167">        return WorkspaceDslReadPort.normalizeCommitId(value.strip());</span>
+    }
+
+<span class="fc" id="L170">    public record RecoveryRecord(</span>
+            Long id,
+            String repositoryId,
+            String workspaceId,
+            String branch,
+            String previousHeadCommit,
+            String authoritativeCommitId,
+            String causationId,
+            RecoveryStatus status,
+            int attemptCount,
+            String failureType,
+            String failureMessage,
+            java.time.Instant firstObservedAt,
+            java.time.Instant lastObservedAt,
+            java.time.Instant completedAt) {
+
+        static RecoveryRecord from(RelationProjectionRecovery recovery) {
+<span class="fc" id="L187">            return new RecoveryRecord(</span>
+<span class="fc" id="L188">                    recovery.getId(),</span>
+<span class="fc" id="L189">                    recovery.getRepositoryId(),</span>
+<span class="fc" id="L190">                    recovery.getWorkspaceId(),</span>
+<span class="fc" id="L191">                    recovery.getBranch(),</span>
+<span class="fc" id="L192">                    recovery.getPreviousHeadCommit(),</span>
+<span class="fc" id="L193">                    recovery.getAuthoritativeCommitId(),</span>
+<span class="fc" id="L194">                    recovery.getCausationId(),</span>
+<span class="fc" id="L195">                    recovery.getStatus(),</span>
+<span class="fc" id="L196">                    recovery.getAttemptCount(),</span>
+<span class="fc" id="L197">                    recovery.getFailureType(),</span>
+<span class="fc" id="L198">                    recovery.getFailureMessage(),</span>
+<span class="fc" id="L199">                    recovery.getFirstObservedAt(),</span>
+<span class="fc" id="L200">                    recovery.getLastObservedAt(),</span>
+<span class="fc" id="L201">                    recovery.getCompletedAt());</span>
+        }
+    }
+
+<span class="fc" id="L205">    public record ReconciliationResult(</span>
+            String rebuiltCommitId,
+            int recoveredCount,
+            int supersededCount,
+            int remainingPendingCount) {
+    }
+
+    public static final class ProjectionRecoveryReconciliationException
+            extends IllegalStateException {
+        public ProjectionRecoveryReconciliationException(
+                String message,
+                Throwable cause) {
+<span class="fc" id="L217">            super(message, cause);</span>
+<span class="fc" id="L218">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

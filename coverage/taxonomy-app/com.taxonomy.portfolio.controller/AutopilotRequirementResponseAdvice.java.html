@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AutopilotRequirementResponseAdvice.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.controller</a> &gt; <span class="el_source">AutopilotRequirementResponseAdvice.java</span></div><h1>AutopilotRequirementResponseAdvice.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.controller;
+
+import com.taxonomy.portfolio.dto.CopilotDtos.AiAutomationStatus;
+import com.taxonomy.portfolio.dto.CopilotDtos.CopilotOperationView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ImportRequirementsResult;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.service.CopilotAutomationService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.MethodParameter;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.server.ServerHttpRequest;
+import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
+
+import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+/**
+ * Starts Autopilot only after a requirement write has returned successfully.
+ * Failure to queue optional automation never rolls back the authoritative save.
+ */
+@ControllerAdvice(assignableTypes = ProjectPortfolioController.class)
+public class AutopilotRequirementResponseAdvice implements ResponseBodyAdvice&lt;Object&gt; {
+
+<span class="fc" id="L32">    private static final Logger LOGGER = LoggerFactory.getLogger(</span>
+            AutopilotRequirementResponseAdvice.class);
+<span class="fc" id="L34">    private static final Pattern PROJECT_REQUIREMENT_PATH = Pattern.compile(</span>
+            &quot;/api/projects/(\\d+)/requirements(?:/(\\d+)(?:/versions)?)?(?:/import)?$&quot;);
+    private static final String OPERATION_HEADER = &quot;X-Taxonomy-Autopilot-Operation&quot;;
+    private static final String OPERATION_COUNT_HEADER = &quot;X-Taxonomy-Autopilot-Operation-Count&quot;;
+
+    private final CopilotAutomationService automationService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public AutopilotRequirementResponseAdvice(
+            CopilotAutomationService automationService,
+<span class="fc" id="L44">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L45">        this.automationService = automationService;</span>
+<span class="fc" id="L46">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L47">    }</span>
+
+    @Override
+    public boolean supports(
+            MethodParameter returnType,
+            Class&lt;? extends HttpMessageConverter&lt;?&gt;&gt; converterType) {
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">        String method = returnType.getMethod() != null</span>
+<span class="pc" id="L54">                ? returnType.getMethod().getName() : &quot;&quot;;</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        return &quot;createRequirement&quot;.equals(method)</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">                || &quot;addRequirementVersion&quot;.equals(method)</span>
+<span class="pc bpc" id="L57" title="1 of 2 branches missed.">                || &quot;importRequirements&quot;.equals(method);</span>
+    }
+
+    @Override
+    public Object beforeBodyWrite(
+            Object body,
+            MethodParameter returnType,
+            MediaType selectedContentType,
+            Class&lt;? extends HttpMessageConverter&lt;?&gt;&gt; selectedConverterType,
+            ServerHttpRequest request,
+            ServerHttpResponse response) {
+<span class="fc" id="L68">        AiAutomationStatus status = automationService.status();</span>
+<span class="fc bfc" id="L69" title="All 4 branches covered.">        if (!status.autopilotReady() || !status.runAfterRequirementSave()) {</span>
+<span class="fc" id="L70">            return body;</span>
+        }
+        try {
+<span class="fc" id="L73">            RequestIdentity identity = identity(request.getURI().getPath());</span>
+<span class="pc bpc" id="L74" title="1 of 2 branches missed.">            if (identity == null) return body;</span>
+<span class="fc" id="L75">            String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L76">            WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L77">            DispatchSummary dispatch = new DispatchSummary();</span>
+
+<span class="fc bfc" id="L79" title="All 2 branches covered.">            if (body instanceof RequirementView requirement) {</span>
+<span class="fc" id="L80">                dispatch.record(enqueue(</span>
+<span class="fc" id="L81">                        identity.projectId(), requirement.id(), username, context));</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            } else if (body instanceof RequirementVersionView) {</span>
+<span class="nc bnc" id="L83" title="All 2 branches missed.">                if (identity.requirementId() != null) {</span>
+<span class="nc" id="L84">                    dispatch.record(enqueue(</span>
+<span class="nc" id="L85">                            identity.projectId(), identity.requirementId(), username, context));</span>
+                }
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">            } else if (body instanceof ImportRequirementsResult imported</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                    &amp;&amp; imported.analysisJob() == null</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                    &amp;&amp; imported.requirements() != null) {</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                for (RequirementView requirement : imported.requirements()) {</span>
+<span class="fc" id="L91">                    dispatch.record(enqueue(</span>
+<span class="fc" id="L92">                            identity.projectId(), requirement.id(), username, context));</span>
+<span class="fc" id="L93">                }</span>
+            }
+
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">            if (dispatch.count() &gt; 0) {</span>
+<span class="fc" id="L97">                response.getHeaders().set(</span>
+<span class="fc" id="L98">                        OPERATION_COUNT_HEADER, Integer.toString(dispatch.count()));</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                if (dispatch.singleOperationId() != null) {</span>
+<span class="fc" id="L100">                    response.getHeaders().set(</span>
+<span class="fc" id="L101">                            OPERATION_HEADER, dispatch.singleOperationId());</span>
+                }
+            }
+<span class="nc" id="L104">        } catch (RuntimeException failure) {</span>
+<span class="nc" id="L105">            LOGGER.warn(&quot;Requirement save succeeded, but optional Autopilot dispatch failed&quot;, failure);</span>
+<span class="fc" id="L106">        }</span>
+<span class="fc" id="L107">        return body;</span>
+    }
+
+    private Optional&lt;String&gt; enqueue(
+            Long projectId,
+            Long requirementId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L115">        return automationService.tryAutopilot(</span>
+                        projectId, requirementId, username, context)
+<span class="fc" id="L117">                .map(CopilotOperationView::operationId);</span>
+    }
+
+    private static RequestIdentity identity(String path) {
+<span class="fc" id="L121">        Matcher matcher = PROJECT_REQUIREMENT_PATH.matcher(path);</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        if (!matcher.matches()) return null;</span>
+<span class="fc" id="L123">        Long projectId = Long.valueOf(matcher.group(1));</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        Long requirementId = matcher.group(2) != null</span>
+<span class="pc" id="L125">                ? Long.valueOf(matcher.group(2)) : null;</span>
+<span class="fc" id="L126">        return new RequestIdentity(projectId, requirementId);</span>
+    }
+
+<span class="fc" id="L129">    private record RequestIdentity(Long projectId, Long requirementId) {</span>
+    }
+
+    private static final class DispatchSummary {
+        private int count;
+        private String singleOperationId;
+
+        void record(Optional&lt;String&gt; operationId) {
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">            if (operationId.isEmpty()) return;</span>
+<span class="fc" id="L138">            count++;</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            singleOperationId = count == 1 ? operationId.orElseThrow() : null;</span>
+<span class="fc" id="L140">        }</span>
+
+        int count() {
+<span class="fc" id="L143">            return count;</span>
+        }
+
+        String singleOperationId() {
+<span class="fc" id="L147">            return singleOperationId;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

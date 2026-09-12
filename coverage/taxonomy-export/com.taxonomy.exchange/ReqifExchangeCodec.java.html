@@ -1,0 +1,410 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReqifExchangeCodec.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange</a> &gt; <span class="el_source">ReqifExchangeCodec.java</span></div><h1>ReqifExchangeCodec.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+import static com.taxonomy.exchange.ExchangeXml.*;
+
+/** ReqIF 1.2's normative 2011 XML vocabulary. Original type systems and safe extensions remain exchange evidence. */
+<span class="fc" id="L22">public final class ReqifExchangeCodec {</span>
+    public static final String PROFILE = &quot;reqif-1.2&quot;;
+    public static final String VERSION = &quot;1&quot;;
+    public static final String NS = &quot;http://www.omg.org/spec/ReqIF/20110401/reqif.xsd&quot;;
+    public static final String XHTML = &quot;http://www.w3.org/1999/xhtml&quot;;
+    private static final String FIXED_TIME = &quot;2000-01-01T00:00:00Z&quot;;
+
+    public ExchangeDocument read(byte[] content, String externalVersion, boolean completeScope) {
+<span class="fc" id="L30">        Document doc = parse(content);</span>
+<span class="pc bpc" id="L31" title="2 of 4 branches missed.">        if (!NS.equals(doc.getDocumentElement().getNamespaceURI()) || !&quot;REQ-IF&quot;.equals(doc.getDocumentElement().getLocalName()))</span>
+<span class="nc" id="L32">            throw invalid(&quot;WRONG_FORMAT&quot;, &quot;Expected a ReqIF document&quot;);</span>
+<span class="fc" id="L33">        validate(doc, PROFILE);</span>
+<span class="fc" id="L34">        List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L35">        Map&lt;String, Element&gt; definitions = identities(doc);</span>
+<span class="fc" id="L36">        checkReferences(doc, definitions);</span>
+<span class="fc" id="L37">        List&lt;Artifact&gt; artifacts = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (Element object : all(doc, NS, &quot;SPEC-OBJECT&quot;)) {</span>
+<span class="fc" id="L39">            Fields fields = fields(object, definitions);</span>
+<span class="fc" id="L40">            String id = required(object, &quot;IDENTIFIER&quot;);</span>
+<span class="fc" id="L41">            String titleKey = findField(fields, List.of(&quot;ReqIF.ChapterName&quot;, &quot;ReqIF.Name&quot;, &quot;Title&quot;, &quot;Name&quot;));</span>
+<span class="fc" id="L42">            String textKey = findField(fields, List.of(&quot;ReqIF.Text&quot;, &quot;ReqIF.Description&quot;, &quot;Text&quot;, &quot;Description&quot;));</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            if (textKey == null) {</span>
+<span class="fc bfc" id="L44" title="All 4 branches covered.">                List&lt;String&gt; rich = fields.extensions.entrySet().stream().filter(e -&gt; e.getKey().startsWith(&quot;kind:&quot;) &amp;&amp; e.getValue().equals(&quot;XHTML&quot;))</span>
+<span class="fc" id="L45">                        .map(e -&gt; e.getKey().substring(5)).sorted().toList();</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">                if (rich.size() == 1) textKey = rich.getFirst();</span>
+<span class="nc bnc" id="L47" title="All 2 branches missed.">                else if (rich.size() &gt; 1) losses.add(loss(id, &quot;text&quot;, &quot;AMBIGUOUS_TEXT_ATTRIBUTE&quot;, LossDisposition.UNSUPPORTED,</span>
+                        &quot;Several XHTML attributes have no recognized text mapping; select a mapping profile before applying&quot;));
+            }
+<span class="pc bpc" id="L50" title="1 of 4 branches missed.">            if (textKey != null &amp;&amp; textKey.equals(titleKey)) {</span>
+<span class="fc" id="L51">                titleKey = null;</span>
+<span class="fc" id="L52">                losses.add(loss(id, &quot;title&quot;, &quot;TITLE_USES_LONG_NAME&quot;, LossDisposition.TRANSFORMED,</span>
+                        &quot;The sole rich-text attribute supplies the body; LONG-NAME independently supplies the title&quot;));
+            }
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            String title = titleKey == null ? object.getAttribute(&quot;LONG-NAME&quot;) : plain(fields.values.get(titleKey), fields.extensions.get(&quot;kind:&quot; + titleKey));</span>
+<span class="pc bpc" id="L56" title="1 of 2 branches missed.">            String body = textKey == null ? &quot;&quot; : plain(fields.values.get(textKey), fields.extensions.get(&quot;kind:&quot; + textKey));</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            if (title.isBlank()) title = id;</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            if (body.isBlank()) losses.add(loss(id, &quot;text&quot;, &quot;EMPTY_REQUIREMENT_TEXT&quot;, LossDisposition.UNSUPPORTED,</span>
+                    &quot;This object has no mapped requirement text; its source and attributes remain available for review&quot;));
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            if (titleKey != null) fields.extensions.put(&quot;titleAttribute&quot;, titleKey);</span>
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">            if (textKey != null) fields.extensions.put(&quot;textAttribute&quot;, textKey);</span>
+<span class="fc" id="L62">            fields.extensions.put(&quot;lastChange&quot;, object.getAttribute(&quot;LAST-CHANGE&quot;));</span>
+<span class="fc" id="L63">            fields.extensions.put(&quot;longName&quot;, object.getAttribute(&quot;LONG-NAME&quot;));</span>
+<span class="fc" id="L64">            fields.extensions.put(&quot;xml&quot;, xml(object));</span>
+<span class="fc" id="L65">            artifacts.add(new Artifact(id, ArtifactKind.REQUIREMENT, ref(object, &quot;TYPE&quot;), title, body, fields.values, fields.extensions));</span>
+<span class="fc" id="L66">        }</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (Element specification : all(doc, NS, &quot;SPECIFICATION&quot;)) {</span>
+<span class="fc" id="L68">            Fields fields = fields(specification, definitions);</span>
+<span class="fc" id="L69">            Element evidence = (Element) specification.cloneNode(true);</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            Element hierarchy = child(evidence, &quot;CHILDREN&quot;); if (hierarchy != null) evidence.removeChild(hierarchy);</span>
+<span class="fc" id="L71">            fields.extensions.put(&quot;xml&quot;, xml(evidence));</span>
+<span class="fc" id="L72">            artifacts.add(new Artifact(required(specification, &quot;IDENTIFIER&quot;), ArtifactKind.SPECIFICATION, ref(specification, &quot;TYPE&quot;),</span>
+<span class="fc" id="L73">                    specification.getAttribute(&quot;LONG-NAME&quot;), specification.getAttribute(&quot;DESC&quot;), fields.values, fields.extensions));</span>
+<span class="fc" id="L74">        }</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if (artifacts.size() &gt; MAX_ARTIFACTS) throw invalid(&quot;ITEM_LIMIT&quot;, &quot;ReqIF exceeds the supported item count&quot;);</span>
+<span class="fc" id="L76">        List&lt;Relation&gt; relations = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">        for (Element relation : all(doc, NS, &quot;SPEC-RELATION&quot;)) {</span>
+<span class="nc" id="L78">            Fields fields = fields(relation, definitions);</span>
+<span class="nc" id="L79">            fields.extensions.put(&quot;xml&quot;, xml(relation));</span>
+<span class="nc" id="L80">            fields.extensions.put(&quot;longName&quot;, relation.getAttribute(&quot;LONG-NAME&quot;));</span>
+<span class="nc" id="L81">            relations.add(new Relation(required(relation, &quot;IDENTIFIER&quot;), ref(relation, &quot;TYPE&quot;), ref(relation, &quot;SOURCE&quot;), ref(relation, &quot;TARGET&quot;), fields.values, fields.extensions));</span>
+<span class="nc" id="L82">        }</span>
+<span class="fc" id="L83">        List&lt;Placement&gt; placements = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        for (Element spec : all(doc, NS, &quot;SPECIFICATION&quot;)) hierarchy(child(spec, &quot;CHILDREN&quot;), required(spec, &quot;IDENTIFIER&quot;), null, placements);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        for (Element extension : all(doc, NS, &quot;REQ-IF-TOOL-EXTENSION&quot;))</span>
+<span class="nc" id="L86">            losses.add(loss(null, &quot;toolExtensions&quot;, &quot;TOOL_EXTENSION_PRESERVED&quot;, LossDisposition.PRESERVED_EXTENSION,</span>
+                    &quot;Safe tool-specific XML is retained without interpreting vendor behavior&quot;));
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (!all(doc, NS, &quot;RELATION-GROUP&quot;).isEmpty())</span>
+<span class="nc" id="L89">            losses.add(loss(null, &quot;relationGroups&quot;, &quot;RELATION_GROUP_PRESERVED&quot;, LossDisposition.PRESERVED_EXTENSION,</span>
+                    &quot;Relation groups are preserved in exchange evidence; no portfolio group authoring is implied&quot;));
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        for (Element object : all(doc, XHTML, &quot;object&quot;))</span>
+<span class="nc" id="L92">            losses.add(loss(null, &quot;xhtml.object&quot;, &quot;ATTACHMENT_NOT_FETCHED&quot;, LossDisposition.UNSUPPORTED,</span>
+                    &quot;Embedded-object references are retained as inert source; binary payloads are not fetched or executed&quot;));
+<span class="fc" id="L94">        String safe = xml(doc);</span>
+<span class="fc" id="L95">        Map&lt;String, String&gt; metadata = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L96">        metadata.put(&quot;sourceTool&quot;, text(all(doc, NS, &quot;REQ-IF-HEADER&quot;).getFirst(), &quot;SOURCE-TOOL-ID&quot;));</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        Element tools = child(doc.getDocumentElement(), &quot;TOOL-EXTENSIONS&quot;); if (tools != null) metadata.put(&quot;TOOL-EXTENSIONS&quot;, xml(tools));</span>
+<span class="fc" id="L98">        Element core = all(doc, NS, &quot;REQ-IF-CONTENT&quot;).getFirst();</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        for (String name : List.of(&quot;DATATYPES&quot;, &quot;SPEC-TYPES&quot;, &quot;SPEC-RELATION-GROUPS&quot;)) {</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            Element node = child(core, name); if (node != null) metadata.put(name, xml(node));</span>
+<span class="fc" id="L101">        }</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        return new ExchangeDocument(PROFILE, VERSION, externalVersion == null ? digest(content) : externalVersion, completeScope, safe,</span>
+                artifacts, relations, placements, metadata, losses);
+    }
+
+    public byte[] write(ExchangeDocument source) {
+<span class="fc" id="L107">        validatePlacements(source);</span>
+<span class="pc bpc" id="L108" title="1 of 6 branches missed.">        if ((source.source() == null || source.source().isBlank()) &amp;&amp; !source.metadata().containsKey(&quot;DATATYPES&quot;)) {</span>
+<span class="fc" id="L109">            ExchangeDocument initial = read(ExchangeXml.write(generated(source)), source.externalVersion(), source.completeScope());</span>
+<span class="fc" id="L110">            List&lt;Placement&gt; placements = source.placements();</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">            if (placements.isEmpty()) {</span>
+<span class="fc" id="L112">                List&lt;Placement&gt; flat = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                String specification = initial.artifacts().stream().filter(a -&gt; a.kind() == ArtifactKind.SPECIFICATION).findFirst().orElseThrow().id();</span>
+<span class="fc" id="L114">                int position = 0;</span>
+<span class="fc bfc" id="L115" title="All 4 branches covered.">                for (Artifact artifact : initial.artifacts()) if (artifact.kind() == ArtifactKind.REQUIREMENT)</span>
+<span class="fc" id="L116">                    flat.add(new Placement(&quot;hierarchy-&quot; + artifact.id(), specification, null, artifact.id(), position++, Map.of(&quot;LAST-CHANGE&quot;, FIXED_TIME)));</span>
+<span class="fc" id="L117">                placements = flat;</span>
+            }
+<span class="fc" id="L119">            return write(new ExchangeDocument(initial.profile(), initial.profileVersion(), initial.externalVersion(), initial.completeScope(), initial.source(),</span>
+<span class="fc" id="L120">                    initial.artifacts(), initial.relations(), placements, initial.metadata(), source.losses()));</span>
+        }
+<span class="pc bpc" id="L122" title="1 of 4 branches missed.">        Document doc = source.source() == null || source.source().isBlank() ? generated(source) : parse(source.source().getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L123">        Element core = all(doc, NS, &quot;REQ-IF-CONTENT&quot;).getFirst();</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (source.metadata().containsKey(&quot;TOOL-EXTENSIONS&quot;)) {</span>
+<span class="nc bnc" id="L125" title="All 2 branches missed.">            Element tools = child(doc.getDocumentElement(), &quot;TOOL-EXTENSIONS&quot;); if (tools != null) doc.getDocumentElement().removeChild(tools);</span>
+<span class="nc" id="L126">            doc.getDocumentElement().appendChild(doc.importNode(parse(source.metadata().get(&quot;TOOL-EXTENSIONS&quot;).getBytes(StandardCharsets.UTF_8)).getDocumentElement(), true));</span>
+        }
+<span class="fc bfc" id="L128" title="All 4 branches covered.">        for (String name : List.of(&quot;DATATYPES&quot;, &quot;SPEC-TYPES&quot;, &quot;SPEC-RELATION-GROUPS&quot;)) if (source.metadata().containsKey(name)) {</span>
+<span class="fc" id="L129">            Element previous = child(core, name);</span>
+<span class="fc" id="L130">            Node replacement = doc.importNode(parse(source.metadata().get(name).getBytes(StandardCharsets.UTF_8)).getDocumentElement(), true);</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (previous != null) core.replaceChild(replacement, previous); else core.appendChild(replacement);</span>
+        }
+<span class="fc bfc" id="L133" title="All 4 branches covered.">        List&lt;Artifact&gt; nativeRequirements = source.artifacts().stream().filter(a -&gt; a.kind() == ArtifactKind.REQUIREMENT &amp;&amp; !a.extensions().containsKey(&quot;xml&quot;)).toList();</span>
+<span class="fc" id="L134">        Map&lt;String, Element&gt; generatedObjects = Map.of();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        if (!nativeRequirements.isEmpty()) {</span>
+<span class="fc" id="L136">            Document generated = generated(new ExchangeDocument(PROFILE, VERSION, source.externalVersion(), true, &quot;&quot;, nativeRequirements,</span>
+<span class="fc" id="L137">                    List.of(), List.of(), Map.of(), List.of()));</span>
+<span class="fc" id="L138">            Map&lt;String, Element&gt; present = identities(doc);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            for (String group : List.of(&quot;DATATYPES&quot;, &quot;SPEC-TYPES&quot;)) {</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                Element target = child(core, group); if (target == null) target = append(core, NS, group);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                for (Element definition : children(all(generated, NS, group).getFirst())) {</span>
+<span class="fc" id="L142">                    Element previous = present.get(required(definition, &quot;IDENTIFIER&quot;));</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">                    if (previous == null) target.appendChild(doc.importNode(definition, true));</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">                    else if (!ExchangeXml.semantic(xml(previous)).equals(ExchangeXml.semantic(xml(definition))))</span>
+<span class="nc" id="L145">                        throw invalid(&quot;TYPE_IDENTITY_COLLISION&quot;, &quot;A native export type collides with an existing external identity&quot;);</span>
+<span class="fc" id="L146">                }</span>
+<span class="fc" id="L147">            }</span>
+<span class="fc" id="L148">            generatedObjects = identities(generated);</span>
+        }
+<span class="fc" id="L150">        Map&lt;String, Element&gt; ids = identities(doc);</span>
+<span class="fc" id="L151">        Map&lt;String, Artifact&gt; artifacts = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L152" title="1 of 2 branches missed.">        source.artifacts().forEach(a -&gt; { if (artifacts.putIfAbsent(a.id(), a) != null) throw invalid(&quot;DUPLICATE_IDENTITY&quot;, &quot;Duplicate exchange identity&quot;); });</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">        Element objects = child(core, &quot;SPEC-OBJECTS&quot;); if (objects == null) objects = append(core, NS, &quot;SPEC-OBJECTS&quot;);</span>
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        while (objects.hasChildNodes()) objects.removeChild(objects.getFirstChild());</span>
+<span class="fc bfc" id="L155" title="All 4 branches covered.">        for (Artifact artifact : source.artifacts()) if (artifact.kind() == ArtifactKind.REQUIREMENT) {</span>
+            Element object;
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (artifact.extensions().containsKey(&quot;xml&quot;)) {</span>
+<span class="fc" id="L158">                object = (Element) doc.importNode(parse(artifact.extensions().get(&quot;xml&quot;).getBytes(StandardCharsets.UTF_8)).getDocumentElement(), true);</span>
+<span class="pc bpc" id="L159" title="2 of 4 branches missed.">                if (!NS.equals(object.getNamespaceURI()) || !&quot;SPEC-OBJECT&quot;.equals(object.getLocalName())) throw invalid(&quot;EVIDENCE_TYPE&quot;, &quot;Incompatible requirement evidence&quot;);</span>
+<span class="fc" id="L160">                objects.appendChild(object);</span>
+            } else {
+<span class="fc" id="L162">                object = (Element) doc.importNode(generatedObjects.get(artifact.id()), true);</span>
+<span class="fc" id="L163">                objects.appendChild(object);</span>
+<span class="fc" id="L164">                continue;</span>
+            }
+<span class="fc" id="L166">            updateObject(object, artifact, ids);</span>
+        }
+<span class="fc" id="L168">        Element specifications = child(core, &quot;SPECIFICATIONS&quot;);</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">        if (specifications == null) specifications = append(core, NS, &quot;SPECIFICATIONS&quot;);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        while (specifications.hasChildNodes()) specifications.removeChild(specifications.getFirstChild());</span>
+<span class="fc bfc" id="L171" title="All 4 branches covered.">        for (Artifact artifact : source.artifacts()) if (artifact.kind() == ArtifactKind.SPECIFICATION) {</span>
+            Element specification;
+<span class="fc bfc" id="L173" title="All 2 branches covered.">            if (artifact.extensions().containsKey(&quot;xml&quot;)) {</span>
+<span class="fc" id="L174">                specification = (Element) doc.importNode(parse(artifact.extensions().get(&quot;xml&quot;).getBytes(StandardCharsets.UTF_8)).getDocumentElement(), true);</span>
+<span class="pc bpc" id="L175" title="2 of 4 branches missed.">                if (!NS.equals(specification.getNamespaceURI()) || !&quot;SPECIFICATION&quot;.equals(specification.getLocalName())) throw invalid(&quot;EVIDENCE_TYPE&quot;, &quot;Incompatible specification evidence&quot;);</span>
+<span class="fc" id="L176">                specifications.appendChild(specification);</span>
+            } else {
+<span class="fc" id="L178">                specification = definition(specifications, &quot;SPECIFICATION&quot;, artifact.id());</span>
+<span class="fc" id="L179">                setRef(specification, &quot;TYPE&quot;, &quot;SPECIFICATION-TYPE-REF&quot;, artifact.type());</span>
+            }
+        }
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (Element specification : all(doc, NS, &quot;SPECIFICATION&quot;)) {</span>
+<span class="fc" id="L183">            Artifact artifact = artifacts.get(required(specification, &quot;IDENTIFIER&quot;));</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">            if (artifact != null) {</span>
+<span class="fc" id="L185">                specification.setAttribute(&quot;LONG-NAME&quot;, artifact.title());</span>
+<span class="fc" id="L186">                applyValues(specification, artifact.attributes(), artifact.extensions(), ids);</span>
+            }
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">            Element old = child(specification, &quot;CHILDREN&quot;); if (old != null) specification.removeChild(old);</span>
+<span class="pc bpc" id="L189" title="1 of 4 branches missed.">            List&lt;Placement&gt; roots = source.placements().stream().filter(p -&gt; p.containerId().equals(specification.getAttribute(&quot;IDENTIFIER&quot;)) &amp;&amp; p.parentId() == null)</span>
+<span class="fc" id="L190">                    .sorted(Comparator.comparingInt(Placement::position).thenComparing(Placement::id)).toList();</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">            if (!roots.isEmpty()) {</span>
+<span class="fc" id="L192">                Element children = append(specification, NS, &quot;CHILDREN&quot;);</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">                for (Placement root : roots) writeHierarchy(children, root, source.placements(), new HashSet&lt;&gt;());</span>
+            }
+<span class="fc" id="L195">        }</span>
+<span class="pc" id="L196">        Map&lt;String, Relation&gt; relations = new LinkedHashMap&lt;&gt;(); source.relations().forEach(r -&gt; relations.put(r.id(), r));</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        Element relationGroup = child(core, &quot;SPEC-RELATIONS&quot;); if (relationGroup == null) relationGroup = append(core, NS, &quot;SPEC-RELATIONS&quot;);</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">        while (relationGroup.hasChildNodes()) relationGroup.removeChild(relationGroup.getFirstChild());</span>
+<span class="pc bpc" id="L199" title="1 of 2 branches missed.">        for (Relation relation : source.relations()) {</span>
+            Element node;
+<span class="nc bnc" id="L201" title="All 2 branches missed.">            if (relation.extensions().containsKey(&quot;xml&quot;)) {</span>
+<span class="nc" id="L202">                node = (Element) doc.importNode(parse(relation.extensions().get(&quot;xml&quot;).getBytes(StandardCharsets.UTF_8)).getDocumentElement(), true);</span>
+<span class="nc bnc" id="L203" title="All 4 branches missed.">                if (!NS.equals(node.getNamespaceURI()) || !&quot;SPEC-RELATION&quot;.equals(node.getLocalName())) throw invalid(&quot;EVIDENCE_TYPE&quot;, &quot;Incompatible relation evidence&quot;);</span>
+<span class="nc" id="L204">                relationGroup.appendChild(node);</span>
+<span class="nc" id="L205">            } else node = definition(relationGroup, &quot;SPEC-RELATION&quot;, relation.id());</span>
+<span class="nc" id="L206">            setRef(node, &quot;TYPE&quot;, &quot;SPEC-RELATION-TYPE-REF&quot;, relation.type());</span>
+<span class="nc" id="L207">            setRef(node, &quot;SOURCE&quot;, &quot;SPEC-OBJECT-REF&quot;, relation.source());</span>
+<span class="nc" id="L208">            setRef(node, &quot;TARGET&quot;, &quot;SPEC-OBJECT-REF&quot;, relation.target());</span>
+<span class="nc" id="L209">            applyValues(node, relation.attributes(), relation.extensions(), ids);</span>
+<span class="nc" id="L210">        }</span>
+        // Re-establish the normative content-group order after optional groups were inserted.
+<span class="fc bfc" id="L212" title="All 2 branches covered.">        for (String name : List.of(&quot;DATATYPES&quot;, &quot;SPEC-TYPES&quot;, &quot;SPEC-OBJECTS&quot;, &quot;SPEC-RELATIONS&quot;, &quot;SPECIFICATIONS&quot;, &quot;SPEC-RELATION-GROUPS&quot;)) {</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">            Element node = child(core, name); if (node != null) core.appendChild(node);</span>
+<span class="fc" id="L214">        }</span>
+<span class="fc" id="L215">        validate(doc, PROFILE); checkReferences(doc, identities(doc));</span>
+<span class="fc" id="L216">        return ExchangeXml.write(doc);</span>
+    }
+
+    private static void updateObject(Element object, Artifact artifact, Map&lt;String, Element&gt; definitions) {
+<span class="fc" id="L220">        String titleAttribute = artifact.extensions().get(&quot;titleAttribute&quot;);</span>
+<span class="fc" id="L221">        String textAttribute = artifact.extensions().get(&quot;textAttribute&quot;);</span>
+<span class="fc" id="L222">        Map&lt;String, String&gt; values = new LinkedHashMap&lt;&gt;(artifact.attributes());</span>
+<span class="fc bfc" id="L223" title="All 2 branches covered.">        if (titleAttribute == null) object.setAttribute(&quot;LONG-NAME&quot;, artifact.title());</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">        else if (!artifact.title().equals(plain(values.get(titleAttribute), artifact.extensions().get(&quot;kind:&quot; + titleAttribute))))</span>
+<span class="nc" id="L225">            values.put(titleAttribute, valueFor(artifact.title(), artifact.extensions().get(&quot;kind:&quot; + titleAttribute)));</span>
+<span class="pc bpc" id="L226" title="1 of 4 branches missed.">        if (textAttribute != null &amp;&amp; !artifact.text().equals(plain(values.get(textAttribute), artifact.extensions().get(&quot;kind:&quot; + textAttribute))))</span>
+<span class="fc" id="L227">            values.put(textAttribute, valueFor(artifact.text(), artifact.extensions().get(&quot;kind:&quot; + textAttribute)));</span>
+<span class="fc" id="L228">        applyValues(object, values, artifact.extensions(), definitions);</span>
+<span class="fc" id="L229">    }</span>
+
+    private static void applyValues(Element object, Map&lt;String, String&gt; values, Map&lt;String, String&gt; extensions, Map&lt;String, Element&gt; definitions) {
+<span class="fc" id="L232">        Element container = child(object, &quot;VALUES&quot;);</span>
+<span class="pc bpc" id="L233" title="1 of 4 branches missed.">        if (container == null &amp;&amp; !values.isEmpty()) container = append(object, NS, &quot;VALUES&quot;);</span>
+<span class="fc" id="L234">        Map&lt;String, Element&gt; existing = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">        for (Element value : children(container)) existing.put(ref(value, &quot;DEFINITION&quot;), value);</span>
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        existing.forEach((id, value) -&gt; { if (!values.containsKey(id)) value.getParentNode().removeChild(value); });</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">        for (var entry : values.entrySet()) {</span>
+<span class="fc" id="L238">            Element definition = definitions.get(entry.getKey());</span>
+<span class="pc bpc" id="L239" title="1 of 2 branches missed.">            if (definition == null) throw invalid(&quot;MISSING_DEFINITION&quot;, &quot;Attribute definition is not in the selected type system&quot;);</span>
+<span class="fc" id="L240">            String kind = definition.getLocalName().replace(&quot;ATTRIBUTE-DEFINITION-&quot;, &quot;&quot;);</span>
+<span class="fc" id="L241">            Element value = existing.get(entry.getKey());</span>
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">            if (value == null) {</span>
+<span class="nc" id="L243">                value = append(container, NS, &quot;ATTRIBUTE-VALUE-&quot; + kind);</span>
+<span class="nc" id="L244">                text(append(value, NS, &quot;DEFINITION&quot;), NS, &quot;ATTRIBUTE-DEFINITION-&quot; + kind + &quot;-REF&quot;, entry.getKey());</span>
+            }
+<span class="fc bfc" id="L246" title="All 2 branches covered.">            if (kind.equals(&quot;XHTML&quot;)) {</span>
+<span class="pc bpc" id="L247" title="1 of 2 branches missed.">                Element old = child(value, &quot;THE-VALUE&quot;); if (old != null) value.removeChild(old);</span>
+<span class="fc" id="L248">                Document fragment = parse(entry.getValue().getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L249">                append(value, NS, &quot;THE-VALUE&quot;).appendChild(value.getOwnerDocument().importNode(fragment.getDocumentElement(), true));</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">            } else if (kind.equals(&quot;ENUMERATION&quot;)) {</span>
+<span class="pc bpc" id="L251" title="1 of 2 branches missed.">                Element old = child(value, &quot;VALUES&quot;); if (old != null) value.removeChild(old);</span>
+<span class="fc" id="L252">                Element selected = append(value, NS, &quot;VALUES&quot;);</span>
+<span class="pc bpc" id="L253" title="1 of 4 branches missed.">                for (String id : entry.getValue().split(&quot;\n&quot;)) if (!id.isBlank()) text(selected, NS, &quot;ENUM-VALUE-REF&quot;, id);</span>
+<span class="fc" id="L254">            } else value.setAttribute(&quot;THE-VALUE&quot;, entry.getValue());</span>
+<span class="fc" id="L255">        }</span>
+<span class="fc" id="L256">    }</span>
+
+<span class="fc" id="L258">    private record Fields(Map&lt;String, String&gt; values, Map&lt;String, String&gt; extensions) {}</span>
+    private static Fields fields(Element object, Map&lt;String, Element&gt; ids) {
+<span class="fc" id="L260">        Map&lt;String, String&gt; values = new LinkedHashMap&lt;&gt;(); Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L261">        Element type = ids.get(ref(object, &quot;TYPE&quot;));</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        if (type == null) throw invalid(&quot;TYPE_REFERENCE&quot;, &quot;ReqIF type reference is missing&quot;);</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        for (Element definition : children(child(type, &quot;SPEC-ATTRIBUTES&quot;))) {</span>
+<span class="fc" id="L264">            String id = required(definition, &quot;IDENTIFIER&quot;);</span>
+<span class="fc" id="L265">            extensions.put(&quot;definition:&quot; + id, definition.getAttribute(&quot;LONG-NAME&quot;));</span>
+<span class="fc" id="L266">            extensions.put(&quot;kind:&quot; + id, definition.getLocalName().replace(&quot;ATTRIBUTE-DEFINITION-&quot;, &quot;&quot;));</span>
+<span class="fc" id="L267">            extensions.put(&quot;datatype:&quot; + id, ref(definition, &quot;TYPE&quot;));</span>
+<span class="fc" id="L268">            List&lt;Element&gt; defaults = children(child(definition, &quot;DEFAULT-VALUE&quot;));</span>
+<span class="pc bpc" id="L269" title="1 of 2 branches missed.">            if (!defaults.isEmpty()) values.put(id, value(defaults.getFirst()));</span>
+<span class="fc" id="L270">        }</span>
+<span class="fc bfc" id="L271" title="All 2 branches covered.">        for (Element value : children(child(object, &quot;VALUES&quot;))) {</span>
+<span class="fc" id="L272">            String id = ref(value, &quot;DEFINITION&quot;);</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">            if (!extensions.containsKey(&quot;kind:&quot; + id)) throw invalid(&quot;ATTRIBUTE_TYPE&quot;, &quot;Attribute does not belong to the object's selected type&quot;);</span>
+<span class="fc" id="L274">            values.put(id, value(value));</span>
+<span class="fc" id="L275">        }</span>
+<span class="fc" id="L276">        return new Fields(values, extensions);</span>
+    }
+
+    private static String value(Element value) {
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        if (value.getLocalName().equals(&quot;ATTRIBUTE-VALUE-XHTML&quot;)) {</span>
+<span class="fc" id="L281">            List&lt;Element&gt; content = children(child(value, &quot;THE-VALUE&quot;));</span>
+<span class="pc bpc" id="L282" title="1 of 2 branches missed.">            return content.isEmpty() ? &quot;&lt;div xmlns=\&quot;&quot; + XHTML + &quot;\&quot;/&gt;&quot; : xml(content.getFirst());</span>
+        }
+<span class="fc bfc" id="L284" title="All 2 branches covered.">        if (value.getLocalName().equals(&quot;ATTRIBUTE-VALUE-ENUMERATION&quot;))</span>
+<span class="fc" id="L285">            return String.join(&quot;\n&quot;, children(child(value, &quot;VALUES&quot;)).stream().map(Node::getTextContent).sorted().toList());</span>
+<span class="fc" id="L286">        return value.getAttribute(&quot;THE-VALUE&quot;);</span>
+    }
+
+    private static String findField(Fields fields, List&lt;String&gt; names) {
+<span class="fc bfc" id="L290" title="All 4 branches covered.">        for (String name : names) for (var entry : fields.extensions.entrySet())</span>
+<span class="fc bfc" id="L291" title="All 4 branches covered.">            if (entry.getKey().startsWith(&quot;definition:&quot;) &amp;&amp; entry.getValue().equalsIgnoreCase(name)) return entry.getKey().substring(11);</span>
+<span class="fc" id="L292">        return null;</span>
+    }
+    private static String plain(String value, String kind) {
+<span class="pc bpc" id="L295" title="1 of 2 branches missed.">        if (value == null) return &quot;&quot;;</span>
+<span class="fc bfc" id="L296" title="All 2 branches covered.">        return &quot;XHTML&quot;.equals(kind) ? parse(value.getBytes(StandardCharsets.UTF_8)).getDocumentElement().getTextContent() : value;</span>
+    }
+    private static String valueFor(String value, String kind) {
+<span class="pc bpc" id="L299" title="1 of 2 branches missed.">        if (!&quot;XHTML&quot;.equals(kind)) return value;</span>
+<span class="fc" id="L300">        Document doc = parse((&quot;&lt;div xmlns=\&quot;&quot; + XHTML + &quot;\&quot;/&gt;&quot;).getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L301">        text(doc.getDocumentElement(), XHTML, &quot;p&quot;, value); return xml(doc.getDocumentElement());</span>
+    }
+    private static String ref(Element parent, String wrapper) {
+<span class="fc" id="L304">        List&lt;Element&gt; references = children(child(parent, wrapper));</span>
+<span class="pc bpc" id="L305" title="1 of 2 branches missed.">        return references.isEmpty() ? &quot;&quot; : references.getFirst().getTextContent().strip();</span>
+    }
+    private static void setRef(Element parent, String wrapper, String tag, String id) {
+<span class="fc" id="L308">        Element node = child(parent, wrapper);</span>
+<span class="pc bpc" id="L309" title="3 of 4 branches missed.">        if (node == null) node = append(parent, NS, wrapper); else while (node.hasChildNodes()) node.removeChild(node.getFirstChild());</span>
+<span class="fc" id="L310">        text(node, NS, tag, id);</span>
+<span class="fc" id="L311">    }</span>
+    private static Map&lt;String, Element&gt; identities(Document doc) {
+<span class="fc" id="L313">        Map&lt;String, Element&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L314" title="1 of 6 branches missed.">        for (Element element : all(doc, NS, &quot;*&quot;)) if (element.hasAttribute(&quot;IDENTIFIER&quot;) &amp;&amp; !element.getLocalName().equals(&quot;ALTERNATIVE-ID&quot;)) {</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">            if (result.putIfAbsent(required(element, &quot;IDENTIFIER&quot;), element) != null)</span>
+<span class="nc" id="L316">                throw invalid(&quot;DUPLICATE_IDENTITY&quot;, &quot;ReqIF reuses a stable identity&quot;);</span>
+        }
+<span class="fc" id="L318">        return result;</span>
+    }
+    private static void checkReferences(Document doc, Map&lt;String, Element&gt; ids) {
+<span class="fc bfc" id="L321" title="All 4 branches covered.">        for (Element element : all(doc, NS, &quot;*&quot;)) if (element.getLocalName().endsWith(&quot;-REF&quot;)) {</span>
+<span class="fc" id="L322">            Element target = ids.get(element.getTextContent().strip());</span>
+<span class="fc" id="L323">            String type = element.getLocalName().substring(0, element.getLocalName().length() - 4);</span>
+<span class="pc bpc" id="L324" title="2 of 4 branches missed.">            if (target == null || !target.getLocalName().equals(type)) throw invalid(&quot;DANGLING_REFERENCE&quot;, &quot;ReqIF contains a missing or incompatible typed reference&quot;);</span>
+        }
+<span class="fc" id="L326">    }</span>
+    private static void hierarchy(Element children, String specification, String parent, List&lt;Placement&gt; result) {
+<span class="fc" id="L328">        int position = 0;</span>
+<span class="fc bfc" id="L329" title="All 2 branches covered.">        for (Element node : children(children)) {</span>
+<span class="fc" id="L330">            String id = required(node, &quot;IDENTIFIER&quot;); Map&lt;String, String&gt; attributes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L331" title="All 2 branches covered.">            for (String name : List.of(&quot;LAST-CHANGE&quot;, &quot;LONG-NAME&quot;, &quot;DESC&quot;, &quot;IS-EDITABLE&quot;, &quot;IS-TABLE-INTERNAL&quot;))</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">                if (node.hasAttribute(name)) attributes.put(name, node.getAttribute(name));</span>
+<span class="pc bpc" id="L333" title="1 of 2 branches missed.">            Element editable = child(node, &quot;EDITABLE-ATTS&quot;); if (editable != null) attributes.put(&quot;editableXml&quot;, xml(editable));</span>
+<span class="fc" id="L334">            result.add(new Placement(id, specification, parent, ref(node, &quot;OBJECT&quot;), position++, attributes));</span>
+<span class="fc" id="L335">            hierarchy(child(node, &quot;CHILDREN&quot;), specification, id, result);</span>
+<span class="fc" id="L336">        }</span>
+<span class="fc" id="L337">    }</span>
+    private static void writeHierarchy(Element parent, Placement placement, List&lt;Placement&gt; all, Set&lt;String&gt; visiting) {
+<span class="pc bpc" id="L339" title="2 of 4 branches missed.">        if (!visiting.add(placement.id()) || visiting.size() &gt; 90) throw invalid(&quot;HIERARCHY_CYCLE&quot;, &quot;Invalid requirement hierarchy&quot;);</span>
+<span class="fc" id="L340">        Element node = append(parent, NS, &quot;SPEC-HIERARCHY&quot;); node.setAttribute(&quot;IDENTIFIER&quot;, placement.id());</span>
+<span class="fc" id="L341">        node.setAttribute(&quot;LAST-CHANGE&quot;, placement.attributes().getOrDefault(&quot;LAST-CHANGE&quot;, FIXED_TIME));</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">        for (String name : List.of(&quot;LONG-NAME&quot;, &quot;DESC&quot;, &quot;IS-EDITABLE&quot;, &quot;IS-TABLE-INTERNAL&quot;))</span>
+<span class="pc bpc" id="L343" title="1 of 2 branches missed.">            if (placement.attributes().containsKey(name)) node.setAttribute(name, placement.attributes().get(name));</span>
+<span class="fc" id="L344">        setRef(node, &quot;OBJECT&quot;, &quot;SPEC-OBJECT-REF&quot;, placement.artifactId());</span>
+<span class="fc" id="L345">        String editable = placement.attributes().get(&quot;editableXml&quot;);</span>
+<span class="pc bpc" id="L346" title="1 of 2 branches missed.">        if (editable != null) node.appendChild(node.getOwnerDocument().importNode(parse(editable.getBytes(StandardCharsets.UTF_8)).getDocumentElement(), true));</span>
+<span class="fc" id="L347">        List&lt;Placement&gt; descendants = all.stream().filter(p -&gt; placement.id().equals(p.parentId()))</span>
+<span class="fc" id="L348">                .sorted(Comparator.comparingInt(Placement::position).thenComparing(Placement::id)).toList();</span>
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">        if (!descendants.isEmpty()) {</span>
+<span class="nc" id="L350">            Element group = append(node, NS, &quot;CHILDREN&quot;);</span>
+<span class="nc bnc" id="L351" title="All 2 branches missed.">            for (Placement child : descendants) writeHierarchy(group, child, all, visiting);</span>
+        }
+<span class="fc" id="L353">        visiting.remove(placement.id());</span>
+<span class="fc" id="L354">    }</span>
+
+    /** Deterministic initial profile for a project which has never been exchanged with this connection. */
+    private static Document generated(ExchangeDocument source) {
+<span class="fc" id="L358">        Document doc = parse((&quot;&lt;REQ-IF xmlns=\&quot;&quot; + NS + &quot;\&quot;/&gt;&quot;).getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L359">        Element root = doc.getDocumentElement();</span>
+<span class="fc" id="L360">        Element header = append(append(root, NS, &quot;THE-HEADER&quot;), NS, &quot;REQ-IF-HEADER&quot;); header.setAttribute(&quot;IDENTIFIER&quot;, &quot;taxonomy-header&quot;);</span>
+<span class="fc" id="L361">        text(header, NS, &quot;CREATION-TIME&quot;, FIXED_TIME); text(header, NS, &quot;REQ-IF-TOOL-ID&quot;, &quot;Taxonomy ReqIF 1.2 profile 1&quot;);</span>
+<span class="fc" id="L362">        text(header, NS, &quot;REQ-IF-VERSION&quot;, &quot;1.0&quot;); text(header, NS, &quot;SOURCE-TOOL-ID&quot;, &quot;Taxonomy&quot;); text(header, NS, &quot;TITLE&quot;, source.metadata().getOrDefault(&quot;title&quot;, &quot;Requirements&quot;));</span>
+<span class="fc" id="L363">        Element content = append(append(root, NS, &quot;CORE-CONTENT&quot;), NS, &quot;REQ-IF-CONTENT&quot;);</span>
+<span class="fc" id="L364">        Element datatypes = append(content, NS, &quot;DATATYPES&quot;);</span>
+<span class="fc" id="L365">        definition(datatypes, &quot;DATATYPE-DEFINITION-STRING&quot;, &quot;taxonomy-string&quot;).setAttribute(&quot;MAX-LENGTH&quot;, &quot;100000&quot;);</span>
+<span class="fc" id="L366">        definition(datatypes, &quot;DATATYPE-DEFINITION-XHTML&quot;, &quot;taxonomy-xhtml&quot;);</span>
+<span class="fc" id="L367">        Element types = append(content, NS, &quot;SPEC-TYPES&quot;); Element objectType = definition(types, &quot;SPEC-OBJECT-TYPE&quot;, &quot;taxonomy-object&quot;);</span>
+<span class="fc" id="L368">        Element definitions = append(objectType, NS, &quot;SPEC-ATTRIBUTES&quot;);</span>
+<span class="fc" id="L369">        Element title = definition(definitions, &quot;ATTRIBUTE-DEFINITION-STRING&quot;, &quot;taxonomy-title&quot;); title.setAttribute(&quot;LONG-NAME&quot;, &quot;ReqIF.ChapterName&quot;);</span>
+<span class="fc" id="L370">        setRef(title, &quot;TYPE&quot;, &quot;DATATYPE-DEFINITION-STRING-REF&quot;, &quot;taxonomy-string&quot;);</span>
+<span class="fc" id="L371">        Element body = definition(definitions, &quot;ATTRIBUTE-DEFINITION-XHTML&quot;, &quot;taxonomy-text&quot;); body.setAttribute(&quot;LONG-NAME&quot;, &quot;ReqIF.Text&quot;);</span>
+<span class="fc" id="L372">        setRef(body, &quot;TYPE&quot;, &quot;DATATYPE-DEFINITION-XHTML-REF&quot;, &quot;taxonomy-xhtml&quot;);</span>
+<span class="fc" id="L373">        definition(types, &quot;SPECIFICATION-TYPE&quot;, &quot;taxonomy-specification-type&quot;);</span>
+<span class="fc" id="L374">        definition(types, &quot;SPEC-RELATION-TYPE&quot;, &quot;taxonomy-relation-type&quot;);</span>
+<span class="fc" id="L375">        Element objects = append(content, NS, &quot;SPEC-OBJECTS&quot;);</span>
+<span class="fc bfc" id="L376" title="All 4 branches covered.">        for (Artifact artifact : source.artifacts()) if (artifact.kind() == ArtifactKind.REQUIREMENT) {</span>
+<span class="fc" id="L377">            Element object = definition(objects, &quot;SPEC-OBJECT&quot;, artifact.id()); object.setAttribute(&quot;LONG-NAME&quot;, artifact.title());</span>
+<span class="fc" id="L378">            setRef(object, &quot;TYPE&quot;, &quot;SPEC-OBJECT-TYPE-REF&quot;, &quot;taxonomy-object&quot;);</span>
+<span class="fc" id="L379">            Element values = append(object, NS, &quot;VALUES&quot;);</span>
+<span class="fc" id="L380">            Element nameValue = append(values, NS, &quot;ATTRIBUTE-VALUE-STRING&quot;); nameValue.setAttribute(&quot;THE-VALUE&quot;, artifact.title());</span>
+<span class="fc" id="L381">            setRef(nameValue, &quot;DEFINITION&quot;, &quot;ATTRIBUTE-DEFINITION-STRING-REF&quot;, &quot;taxonomy-title&quot;);</span>
+<span class="fc" id="L382">            Element textValue = append(values, NS, &quot;ATTRIBUTE-VALUE-XHTML&quot;);</span>
+<span class="fc" id="L383">            setRef(textValue, &quot;DEFINITION&quot;, &quot;ATTRIBUTE-DEFINITION-XHTML-REF&quot;, &quot;taxonomy-text&quot;);</span>
+<span class="fc" id="L384">            Element value = append(textValue, NS, &quot;THE-VALUE&quot;); text(append(value, XHTML, &quot;div&quot;), XHTML, &quot;p&quot;, artifact.text());</span>
+        }
+<span class="fc" id="L386">        Element relations = append(content, NS, &quot;SPEC-RELATIONS&quot;);</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">        for (Relation relation : source.relations()) {</span>
+<span class="nc" id="L388">            Element node = definition(relations, &quot;SPEC-RELATION&quot;, relation.id());</span>
+<span class="nc" id="L389">            setRef(node, &quot;TYPE&quot;, &quot;SPEC-RELATION-TYPE-REF&quot;, &quot;taxonomy-relation-type&quot;);</span>
+<span class="nc" id="L390">            setRef(node, &quot;SOURCE&quot;, &quot;SPEC-OBJECT-REF&quot;, relation.source()); setRef(node, &quot;TARGET&quot;, &quot;SPEC-OBJECT-REF&quot;, relation.target());</span>
+<span class="nc" id="L391">        }</span>
+<span class="fc" id="L392">        Element specs = append(content, NS, &quot;SPECIFICATIONS&quot;);</span>
+<span class="fc bfc" id="L393" title="All 2 branches covered.">        List&lt;Artifact&gt; specifications = source.artifacts().stream().filter(a -&gt; a.kind() == ArtifactKind.SPECIFICATION).toList();</span>
+<span class="fc bfc" id="L394" title="All 2 branches covered.">        if (specifications.isEmpty()) specifications = List.of(new Artifact(&quot;taxonomy-specification&quot;, ArtifactKind.SPECIFICATION, &quot;taxonomy-specification-type&quot;, &quot;Requirements&quot;, &quot;&quot;, Map.of(), Map.of()));</span>
+<span class="fc bfc" id="L395" title="All 2 branches covered.">        for (Artifact specification : specifications) {</span>
+<span class="fc" id="L396">            Element node = definition(specs, &quot;SPECIFICATION&quot;, specification.id()); node.setAttribute(&quot;LONG-NAME&quot;, specification.title());</span>
+<span class="fc" id="L397">            setRef(node, &quot;TYPE&quot;, &quot;SPECIFICATION-TYPE-REF&quot;, &quot;taxonomy-specification-type&quot;);</span>
+<span class="fc" id="L398">        }</span>
+<span class="fc" id="L399">        return doc;</span>
+    }
+    private static Element definition(Element parent, String type, String id) {
+<span class="fc" id="L402">        Element element = append(parent, NS, type); element.setAttribute(&quot;IDENTIFIER&quot;, id); element.setAttribute(&quot;LAST-CHANGE&quot;, FIXED_TIME); return element;</span>
+    }
+<span class="fc" id="L404">    private static MappingLoss loss(String id, String field, String code, LossDisposition disposition, String detail) { return new MappingLoss(id, field, code, disposition, detail); }</span>
+    public static String digest(byte[] content) {
+<span class="fc" id="L406">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(content)); }</span>
+<span class="nc" id="L407">        catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

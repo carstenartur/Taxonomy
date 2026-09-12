@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.controller</a> &gt; <span class="el_source">IntegrationController.java</span></div><h1>IntegrationController.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.controller;
+
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.exchange.ExchangeFormatException;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.interop.IntegrationService;
+import com.taxonomy.interop.IntegrationService.*;
+import com.taxonomy.interop.persistence.IntegrationStore.*;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceRevisionConflict;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+@Controller
+public class IntegrationController {
+    private final IntegrationService service;
+    private final WorkspaceResolver resolver;
+<span class="fc" id="L27">    public IntegrationController(IntegrationService service, WorkspaceResolver resolver) { this.service = service; this.resolver = resolver; }</span>
+    @GetMapping(&quot;/integrations&quot;) public String page(jakarta.servlet.http.HttpServletRequest request, org.springframework.ui.Model model) {
+<span class="nc bnc" id="L29" title="All 4 branches missed.">        model.addAttribute(&quot;mayWrite&quot;, request.isUserInRole(&quot;ADMIN&quot;) || request.isUserInRole(&quot;ARCHITECT&quot;));</span>
+<span class="nc" id="L30">        return &quot;integrations&quot;;</span>
+    }
+    @GetMapping(&quot;/api/integrations/profiles&quot;) @ResponseBody
+<span class="fc" id="L33">    public List&lt;IntegrationDescriptor&gt; profiles() { return service.profiles(resolver.resolveCurrentRepositoryContext()); }</span>
+    @GetMapping(&quot;/api/integrations&quot;) @ResponseBody
+<span class="nc" id="L35">    public List&lt;Connection&gt; connections() { return service.connections(resolver.resolveCurrentRepositoryContext()); }</span>
+    @PostMapping(&quot;/api/integrations&quot;) @ResponseBody
+<span class="nc" id="L37">    public Connection create(@RequestBody CreateConnection request) { return service.create(resolver.resolveCurrentRepositoryContext(), request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}&quot;) @ResponseBody
+<span class="nc" id="L39">    public Overview overview(@PathVariable UUID connection) { return service.overview(resolver.resolveCurrentRepositoryContext(), connection); }</span>
+    @PostMapping(value=&quot;/api/integrations/{connection}/previews&quot;, consumes=&quot;multipart/form-data&quot;) @ResponseBody
+    public Operation preview(@PathVariable UUID connection, @RequestPart(&quot;request&quot;) PreviewRequest request, @RequestPart(&quot;file&quot;) MultipartFile file) throws IOException {
+<span class="nc bnc" id="L42" title="All 2 branches missed.">        if (file.getSize() &gt; com.taxonomy.exchange.ExchangeXml.MAX_BYTES) throw new IntegrationProblem(&quot;PAYLOAD_LIMIT&quot;, 413, &quot;Exchange exceeds 16 MiB&quot;);</span>
+<span class="nc" id="L43">        return service.preview(resolver.resolveCurrentRepositoryContext(), connection, request, file.getBytes());</span>
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/export-previews&quot;) @ResponseBody
+<span class="nc" id="L46">    public Operation previewExport(@PathVariable UUID connection, @RequestBody ExportRequest request) { return service.previewExport(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/remote-previews&quot;) @ResponseBody
+<span class="nc" id="L48">    public Operation previewRemote(@PathVariable UUID connection, @RequestBody RemoteRequest request) { return service.previewRemote(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}&quot;) @ResponseBody
+<span class="nc" id="L50">    public Operation operation(@PathVariable UUID connection, @PathVariable UUID operation) { return service.operation(resolver.resolveCurrentRepositoryContext(), connection, operation); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/events&quot;) @ResponseBody
+<span class="nc" id="L52">    public List&lt;Event&gt; events(@PathVariable UUID connection, @PathVariable UUID operation) { return service.events(resolver.resolveCurrentRepositoryContext(), connection, operation); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/identities&quot;) @ResponseBody
+<span class="nc" id="L54">    public List&lt;Identity&gt; identities(@PathVariable UUID connection) { return service.identities(resolver.resolveCurrentRepositoryContext(), connection); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/apply&quot;) @ResponseBody
+<span class="nc" id="L56">    public Operation apply(@PathVariable UUID connection, @RequestBody ReviewedChangeSet request) { return service.apply(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @PostMapping(&quot;/api/integrations/{connection}/files&quot;) @ResponseBody
+<span class="nc" id="L58">    public Operation prepareFile(@PathVariable UUID connection, @RequestBody ReviewedChangeSet request) { return service.prepareFile(resolver.resolveCurrentRepositoryContext(), connection, request); }</span>
+    @GetMapping(&quot;/api/integrations/{connection}/operations/{operation}/file&quot;) @ResponseBody
+    public ResponseEntity&lt;byte[]&gt; file(@PathVariable UUID connection, @PathVariable UUID operation) {
+<span class="fc" id="L61">        var context = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L62">        var file = service.file(context, connection, operation); var authority = service.operation(context, connection, operation).context().internalState();</span>
+<span class="fc" id="L63">        return ResponseEntity.ok().header(HttpHeaders.CONTENT_TYPE, file.mediaType())</span>
+<span class="fc" id="L64">                .header(HttpHeaders.CONTENT_DISPOSITION, org.springframework.http.ContentDisposition.attachment().filename(file.filename(), java.nio.charset.StandardCharsets.UTF_8).build().toString())</span>
+<span class="fc" id="L65">                .header(HttpHeaders.CACHE_CONTROL, &quot;private, no-store&quot;).header(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;)</span>
+<span class="fc" id="L66">                .header(&quot;X-Taxonomy-Semantic-Revision&quot;, Long.toString(authority.semanticRevision()))</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                .header(&quot;X-Taxonomy-Checkpoint&quot;, authority.commitId() == null ? &quot;none&quot; : authority.commitId()).body(file.content());</span>
+    }
+    @PostMapping(&quot;/api/integrations/{connection}/operations/{operation}/retry&quot;) @ResponseBody
+<span class="nc" id="L70">    public Operation retry(@PathVariable UUID connection, @PathVariable UUID operation) { return service.retry(resolver.resolveCurrentRepositoryContext(), connection, operation); }</span>
+<span class="nc" id="L71">    public record Cancel(String rationale) {}</span>
+    @PostMapping(&quot;/api/integrations/{connection}/operations/{operation}/cancel&quot;) @ResponseBody
+<span class="nc" id="L73">    public Operation cancel(@PathVariable UUID connection, @PathVariable UUID operation, @RequestBody Cancel request) { return service.cancel(resolver.resolveCurrentRepositoryContext(), connection, operation, request.rationale()); }</span>
+
+    @ExceptionHandler(IntegrationProblem.class) @ResponseBody
+<span class="nc" id="L76">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; problem(IntegrationProblem problem) { return ResponseEntity.status(problem.status()).body(Map.of(&quot;code&quot;, problem.code(), &quot;message&quot;, problem.getMessage())); }</span>
+    @ExceptionHandler(ExchangeFormatException.class) @ResponseBody
+<span class="nc" id="L78">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; format(ExchangeFormatException problem) { return ResponseEntity.unprocessableContent().body(Map.of(&quot;code&quot;, problem.code(), &quot;message&quot;, problem.getMessage())); }</span>
+    @ExceptionHandler(CommandProblem.class) @ResponseBody
+<span class="nc" id="L80">    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; command(CommandProblem problem) { return ResponseEntity.unprocessableContent().body(Map.of(&quot;code&quot;, problem.code(), &quot;message&quot;, problem.getMessage(), &quot;dependencies&quot;, problem.dependencies())); }</span>
+    @ExceptionHandler(WorkspaceRevisionConflict.class) @ResponseBody
+<span class="nc" id="L82">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; revision() { return ResponseEntity.status(409).body(Map.of(&quot;code&quot;, &quot;INTERNAL_STATE_CHANGED&quot;, &quot;message&quot;, &quot;Refresh the exact workspace state and preview again&quot;)); }</span>
+    @ExceptionHandler(IllegalArgumentException.class) @ResponseBody
+<span class="nc" id="L84">    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid() { return ResponseEntity.badRequest().body(Map.of(&quot;code&quot;, &quot;INVALID_REQUEST&quot;, &quot;message&quot;, &quot;Check the required bounded integration fields&quot;)); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

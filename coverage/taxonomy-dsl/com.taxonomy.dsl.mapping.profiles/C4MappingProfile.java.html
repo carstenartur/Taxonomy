@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>C4MappingProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.mapping.profiles</a> &gt; <span class="el_source">C4MappingProfile.java</span></div><h1>C4MappingProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.mapping.profiles;
+
+import com.taxonomy.dsl.mapping.MappingProfile;
+
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Mapping profile for C4 / Structurizr architecture models.
+ *
+ * &lt;p&gt;Maps the four C4 abstraction levels plus the Person concept:
+ * &lt;ul&gt;
+ *   &lt;li&gt;Person → {@code BR} (Business Role)&lt;/li&gt;
+ *   &lt;li&gt;SoftwareSystem → {@code SY} (System)&lt;/li&gt;
+ *   &lt;li&gt;Container → {@code UA} (User Application)&lt;/li&gt;
+ *   &lt;li&gt;Component → {@code CM} (Component)&lt;/li&gt;
+ *   &lt;li&gt;DeploymentNode → {@code CO} (Communications Service)&lt;/li&gt;
+ *   &lt;li&gt;InfrastructureNode → {@code CO} (Communications Service)&lt;/li&gt;
+ *   &lt;li&gt;ContainerInstance → {@code UA} (User Application)&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+<span class="fc" id="L22">public class C4MappingProfile implements MappingProfile {</span>
+
+<span class="fc" id="L24">    private static final Map&lt;String, String&gt; ELEMENT_MAP = Map.of(</span>
+            &quot;Person&quot;, &quot;BR&quot;,
+            &quot;SoftwareSystem&quot;, &quot;SY&quot;,
+            &quot;Container&quot;, &quot;UA&quot;,
+            &quot;Component&quot;, &quot;CM&quot;,
+            &quot;DeploymentNode&quot;, &quot;CO&quot;,
+            &quot;InfrastructureNode&quot;, &quot;CO&quot;,
+            &quot;ContainerInstance&quot;, &quot;UA&quot;
+    );
+
+<span class="fc" id="L34">    private static final Map&lt;String, String&gt; RELATION_MAP = Map.of(</span>
+            &quot;Uses&quot;, &quot;USES&quot;,
+            &quot;Delivers&quot;, &quot;PRODUCES&quot;,
+            &quot;InteractsWith&quot;, &quot;COMMUNICATES_WITH&quot;,
+            &quot;DependsOn&quot;, &quot;DEPENDS_ON&quot;,
+            &quot;Contains&quot;, &quot;CONTAINS&quot;,
+            &quot;Realizes&quot;, &quot;REALIZES&quot;,
+            &quot;Supports&quot;, &quot;SUPPORTS&quot;
+    );
+
+    @Override
+    public String profileId() {
+<span class="fc" id="L46">        return &quot;c4&quot;;</span>
+    }
+
+    @Override
+    public String displayName() {
+<span class="fc" id="L51">        return &quot;C4 / Structurizr&quot;;</span>
+    }
+
+    @Override
+    public String mapElementType(String externalType) {
+<span class="fc" id="L56">        return ELEMENT_MAP.get(externalType);</span>
+    }
+
+    @Override
+    public String mapRelationType(String externalType) {
+<span class="fc" id="L61">        return RELATION_MAP.get(externalType);</span>
+    }
+
+    @Override
+    public Map&lt;String, String&gt; elementExtensions(String externalType,
+                                                  Map&lt;String, String&gt; externalProperties) {
+<span class="fc" id="L67">        var extensions = new java.util.LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L68">        extensions.put(&quot;x-c4-kind&quot;, externalType);</span>
+<span class="fc" id="L69">        String technology = externalProperties.get(&quot;technology&quot;);</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (technology != null) {</span>
+<span class="fc" id="L71">            extensions.put(&quot;x-c4-technology&quot;, technology);</span>
+        }
+<span class="fc" id="L73">        return extensions;</span>
+    }
+
+    @Override
+    public Map&lt;String, String&gt; relationExtensions(String externalRelType,
+                                                   Map&lt;String, String&gt; externalProperties) {
+<span class="fc" id="L79">        var extensions = new java.util.LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc" id="L80">        extensions.put(&quot;x-c4-rel&quot;, externalRelType);</span>
+<span class="fc" id="L81">        String technology = externalProperties.get(&quot;technology&quot;);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (technology != null) {</span>
+<span class="fc" id="L83">            extensions.put(&quot;x-c4-technology&quot;, technology);</span>
+        }
+<span class="fc" id="L85">        return extensions;</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; supportedElementTypes() {
+<span class="fc" id="L90">        return ELEMENT_MAP.keySet();</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; supportedRelationTypes() {
+<span class="fc" id="L95">        return RELATION_MAP.keySet();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

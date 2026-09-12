@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RepositoryWorkspaceService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">RepositoryWorkspaceService.java</span></div><h1>RepositoryWorkspaceService.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.model.RepositoryLifecycleState;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.model.WorkspaceRelationshipType;
+import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.time.Instant;
+import java.util.UUID;
+
+/** Creates isolated working copies from an explicitly selected central repository. */
+@Service
+public class RepositoryWorkspaceService {
+
+    private static final String WORKSPACE_BRANCH = &quot;draft&quot;;
+    private static final String TRACKING_BRANCH = &quot;sync-base&quot;;
+
+    private final UserWorkspaceRepository workspaceRepository;
+    private final SystemRepositoryService systemRepositoryService;
+    private final DslGitRepositoryFactory repositoryFactory;
+
+    public RepositoryWorkspaceService(
+            UserWorkspaceRepository workspaceRepository,
+            SystemRepositoryService systemRepositoryService,
+<span class="fc" id="L31">            DslGitRepositoryFactory repositoryFactory) {</span>
+<span class="fc" id="L32">        this.workspaceRepository = workspaceRepository;</span>
+<span class="fc" id="L33">        this.systemRepositoryService = systemRepositoryService;</span>
+<span class="fc" id="L34">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L35">    }</span>
+
+    /**
+     * Create and provision a personal working copy from the requested repository and branch.
+     *
+     * &lt;p&gt;This method deliberately has no surrounding Spring transaction. The initial
+     * {@link WorkspaceProvisioningStatus#PROVISIONING} metadata must commit before JGit
+     * allocation starts, and a later {@link WorkspaceProvisioningStatus#FAILED} update must
+     * remain durable even though the caller receives an exception. Each Spring Data
+     * {@code save} operation supplies its own transaction boundary.&lt;/p&gt;
+     *
+     * &lt;p&gt;The factory performs the one and only initial DSL seed on the historic
+     * {@code draft} workspace branch. The service records that commit and creates the
+     * semantic {@code sync-base} ref at exactly the same commit; it must not manufacture a
+     * second, unrelated initial commit on another branch.&lt;/p&gt;
+     */
+    public UserWorkspace createWorkingCopy(
+            String username,
+            String sourceRepositoryId,
+            String requestedSourceBranch,
+            String displayName,
+            String description) {
+<span class="fc" id="L57">        String user = requireText(username, &quot;username&quot;);</span>
+<span class="fc" id="L58">        SystemRepository source = systemRepositoryService.getRepository(sourceRepositoryId);</span>
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (source.getLifecycleState() != RepositoryLifecycleState.ACTIVE) {</span>
+<span class="nc" id="L60">            throw new IllegalStateException(</span>
+                    &quot;Source repository is not active: &quot; + sourceRepositoryId);
+        }
+
+<span class="pc bpc" id="L64" title="2 of 4 branches missed.">        String sourceBranch = requestedSourceBranch == null || requestedSourceBranch.isBlank()</span>
+<span class="nc" id="L65">                ? source.getDefaultBranch()</span>
+<span class="fc" id="L66">                : requestedSourceBranch.strip();</span>
+<span class="fc" id="L67">        String name = requireText(displayName, &quot;displayName&quot;);</span>
+<span class="fc" id="L68">        Instant now = Instant.now();</span>
+
+<span class="fc" id="L70">        UserWorkspace workspace = new UserWorkspace();</span>
+<span class="fc" id="L71">        workspace.setWorkspaceId(UUID.randomUUID().toString());</span>
+<span class="fc" id="L72">        workspace.setUsername(user);</span>
+<span class="fc" id="L73">        workspace.setDisplayName(name);</span>
+<span class="fc" id="L74">        workspace.setDescription(description);</span>
+<span class="fc" id="L75">        workspace.setCurrentBranch(WORKSPACE_BRANCH);</span>
+<span class="fc" id="L76">        workspace.setBaseBranch(sourceBranch);</span>
+<span class="fc" id="L77">        workspace.setSourceBranch(sourceBranch);</span>
+<span class="fc" id="L78">        workspace.setSourceRepositoryId(source.getRepositoryId());</span>
+<span class="fc" id="L79">        workspace.setRelationshipType(WorkspaceRelationshipType.WORKING_COPY);</span>
+<span class="fc" id="L80">        workspace.setShared(false);</span>
+<span class="fc" id="L81">        workspace.setDefault(false);</span>
+<span class="fc" id="L82">        workspace.setArchived(false);</span>
+<span class="fc" id="L83">        workspace.setTopologyMode(source.getTopologyMode());</span>
+<span class="fc" id="L84">        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);</span>
+<span class="fc" id="L85">        workspace.setSyncTargetBranch(sourceBranch);</span>
+<span class="fc" id="L86">        workspace.setCreatedAt(now);</span>
+<span class="fc" id="L87">        workspace.setLastAccessedAt(now);</span>
+<span class="fc" id="L88">        workspaceRepository.save(workspace);</span>
+
+<span class="fc" id="L90">        boolean workspaceStorageAttempted = false;</span>
+        try {
+<span class="fc" id="L92">            DslGitRepository sourceGit =</span>
+<span class="fc" id="L93">                    repositoryFactory.getCentralRepository(source.getRepositoryId());</span>
+<span class="fc" id="L94">            String sourceDsl = sourceGit.getDslAtHead(sourceBranch);</span>
+<span class="fc" id="L95">            String sourceCommit = sourceGit.getHeadCommit(sourceBranch);</span>
+<span class="pc bpc" id="L96" title="3 of 6 branches missed.">            if (sourceDsl == null || sourceDsl.isBlank() || sourceCommit == null) {</span>
+<span class="nc" id="L97">                throw new IllegalStateException(</span>
+                        &quot;Source branch has no architecture content: &quot; + sourceBranch);
+            }
+
+<span class="fc" id="L101">            workspaceStorageAttempted = true;</span>
+<span class="fc" id="L102">            DslGitRepository workspaceGit = repositoryFactory.createWorkspaceRepository(</span>
+<span class="fc" id="L103">                    workspace.getWorkspaceId(), source.getRepositoryId(), sourceBranch);</span>
+<span class="fc" id="L104">            String workspaceCommit = workspaceGit.getHeadCommit(WORKSPACE_BRANCH);</span>
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">            if (workspaceCommit == null) {</span>
+<span class="nc" id="L106">                throw new IllegalStateException(</span>
+                        &quot;Workspace seed did not create branch &quot; + WORKSPACE_BRANCH);
+            }
+<span class="fc" id="L109">            String trackingCommit = workspaceGit.createBranch(</span>
+                    TRACKING_BRANCH, WORKSPACE_BRANCH);
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">            if (trackingCommit == null) {</span>
+<span class="nc" id="L112">                throw new IllegalStateException(</span>
+                        &quot;Workspace seed did not create tracking branch &quot; + TRACKING_BRANCH);
+            }
+
+<span class="fc" id="L116">            workspace.setBaseCommit(sourceCommit);</span>
+<span class="fc" id="L117">            workspace.setCurrentCommit(workspaceCommit);</span>
+<span class="fc" id="L118">            workspace.setLastFetchedCommit(sourceCommit);</span>
+<span class="fc" id="L119">            workspace.setLastIntegratedCommit(sourceCommit);</span>
+<span class="fc" id="L120">            workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);</span>
+<span class="fc" id="L121">            workspace.setProvisionedAt(Instant.now());</span>
+<span class="fc" id="L122">            workspace.setProvisioningError(null);</span>
+<span class="fc" id="L123">            return workspaceRepository.save(workspace);</span>
+<span class="fc" id="L124">        } catch (IOException | RuntimeException exception) {</span>
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            if (workspaceStorageAttempted) {</span>
+                try {
+<span class="fc" id="L127">                    repositoryFactory.deleteWorkspaceRepository(workspace.getWorkspaceId());</span>
+<span class="nc" id="L128">                } catch (RuntimeException cleanupException) {</span>
+<span class="nc" id="L129">                    exception.addSuppressed(cleanupException);</span>
+<span class="fc" id="L130">                }</span>
+            }
+<span class="fc" id="L132">            workspace.setProvisioningStatus(WorkspaceProvisioningStatus.FAILED);</span>
+<span class="fc" id="L133">            workspace.setProvisioningError(safeMessage(exception));</span>
+<span class="fc" id="L134">            workspace.setLastAccessedAt(Instant.now());</span>
+<span class="fc" id="L135">            workspaceRepository.save(workspace);</span>
+<span class="fc" id="L136">            throw new IllegalStateException(</span>
+                    &quot;Could not provision working copy from repository &quot; + sourceRepositoryId,
+                    exception);
+        }
+    }
+
+    private static String requireText(String value, String field) {
+<span class="pc bpc" id="L143" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L144">            throw new IllegalArgumentException(field + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L146">        return value.strip();</span>
+    }
+
+    private static String safeMessage(Throwable throwable) {
+<span class="pc bpc" id="L150" title="1 of 2 branches missed.">        return throwable.getMessage() == null</span>
+<span class="nc" id="L151">                ? throwable.getClass().getSimpleName()</span>
+<span class="fc" id="L152">                : throwable.getMessage();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

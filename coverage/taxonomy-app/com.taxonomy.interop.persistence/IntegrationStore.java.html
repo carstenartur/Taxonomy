@@ -1,0 +1,254 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.persistence</a> &gt; <span class="el_source">IntegrationStore.java</span></div><h1>IntegrationStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.persistence;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.interop.IntegrationJson;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.workspace.service.RepositoryContext;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.persistence.LockModeType;
+import org.springframework.orm.jpa.SharedEntityManagerCreator;
+import org.springframework.stereotype.Repository;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+
+import java.time.Instant;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.function.Function;
+
+/** Durable operation authority, shared by every connector. Git and remote transport are separate recoverable phases. */
+@Repository
+public class IntegrationStore {
+    private final EntityManager em;
+    private final TransactionTemplate transaction;
+    private final IntegrationJson json;
+<span class="fc" id="L29">    public IntegrationStore(EntityManagerFactory factory, PlatformTransactionManager manager, IntegrationJson json) {</span>
+<span class="fc" id="L30">        this.em = SharedEntityManagerCreator.createSharedEntityManager(factory); this.transaction = new TransactionTemplate(manager); this.json = json;</span>
+<span class="fc" id="L31">    }</span>
+<span class="fc" id="L32">    public record Connection(UUID id, String organizationId, String displayName, String connectorId, String profileVersion,</span>
+                             AuthorityMode authority, ExternalScope externalScope, Long projectId, String remoteProfile,
+                             long revision, UUID checkpointId, UUID activeOperationId, String createdBy) {}
+<span class="fc" id="L35">    public record Operation(UUID id, UUID connectionId, IntegrationContext context, String direction, OperationStatus status,</span>
+                            String fingerprint, long connectionRevision, ExchangeDocument document, List&lt;IntegrationChange&gt; changes,
+                            ReviewedChangeSet review, String reviewFingerprint, String resultCommit, Long resultRevision,
+                            ExchangeDocument resultDocument, InternalState resultState, @com.fasterxml.jackson.annotation.JsonIgnore ExchangeFile resultFile, String failureCode, Instant createdAt) {}
+<span class="fc" id="L39">    public record OperationSummary(UUID id, UUID connectionId, String direction, OperationStatus status, String fingerprint,</span>
+                                   String resultCommit, Long resultRevision, String failureCode, Instant createdAt) {}
+<span class="fc" id="L41">    public record Identity(String externalId, String businessIdentity, Long requirementId, String externalVersion,</span>
+                           String fingerprint, Artifact external, Artifact internal, UUID operationId, boolean removed) {}
+<span class="fc" id="L43">    public record Checkpoint(UUID id, UUID operationId, String gitCommit, String externalVersion,</span>
+                             String fingerprint, InternalState state, Instant createdAt) {}
+<span class="fc" id="L45">    public record Event(String type, String actor, Instant occurredAt, String rationale, String failureCode) {}</span>
+
+    public Connection create(RepositoryContext context, UUID id, String organization, String name, String connector,
+                             String profileVersion, AuthorityMode authority, ExternalScope externalScope, Long projectId, String remoteProfile) {
+<span class="fc" id="L49">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L50">            IntegrationConnectionEntity prior = em.find(IntegrationConnectionEntity.class, id.toString());</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">            if (prior != null) {</span>
+<span class="nc bnc" id="L52" title="All 2 branches missed.">                if (!prior.scopeId.equals(scope(context))) throw IntegrationProblem.missing();</span>
+<span class="nc bnc" id="L53" title="All 6 branches missed.">                if (!Objects.equals(prior.displayName, name) || !prior.connectorId.equals(connector) || !prior.authorityMode.equals(authority.name())</span>
+<span class="nc bnc" id="L54" title="All 4 branches missed.">                        || !Objects.equals(prior.projectId, projectId) || !Objects.equals(prior.remoteProfile, remoteProfile)</span>
+<span class="nc bnc" id="L55" title="All 2 branches missed.">                        || !json.read(prior.externalScope, ExternalScope.class).equals(externalScope)) throw IntegrationProblem.conflict(&quot;CONNECTION_ID_REUSED&quot;);</span>
+<span class="nc" id="L56">                return connection(prior);</span>
+            }
+<span class="fc" id="L58">            var entity = new IntegrationConnectionEntity(); entity.id = id.toString(); entity.scopeId = scope(context);</span>
+<span class="fc" id="L59">            entity.repositoryId = context.repositoryId(); entity.organizationId = organization; entity.displayName = name;</span>
+<span class="fc" id="L60">            entity.connectorId = connector; entity.profileVersion = profileVersion; entity.authorityMode = authority.name();</span>
+<span class="fc" id="L61">            entity.externalScope = json.write(externalScope); entity.projectId = projectId; entity.remoteProfile = remoteProfile;</span>
+<span class="fc" id="L62">            entity.createdBy = context.username(); entity.createdAt = Instant.now().toString(); em.persist(entity); em.flush();</span>
+<span class="fc" id="L63">            return connection(entity);</span>
+        });
+    }
+    public List&lt;Connection&gt; list(RepositoryContext context) {
+<span class="nc" id="L67">        return transaction.execute(status -&gt; em.createQuery(&quot;select c from IntegrationConnectionEntity c where c.scopeId=:scope order by c.displayName,c.id&quot;, IntegrationConnectionEntity.class)</span>
+<span class="nc" id="L68">                .setParameter(&quot;scope&quot;, scope(context)).setMaxResults(200).getResultList().stream().map(this::connection).toList());</span>
+    }
+<span class="fc" id="L70">    public Connection read(RepositoryContext context, UUID id) { return transaction.execute(status -&gt; connection(requireConnection(context, id, false))); }</span>
+    public &lt;T&gt; T locked(RepositoryContext context, UUID connectionId, Function&lt;Session, T&gt; action) {
+<span class="fc" id="L72">        return transaction.execute(status -&gt; { T result = action.apply(new Session(context, requireConnection(context, connectionId, true))); em.flush(); return result; });</span>
+    }
+<span class="fc" id="L74">    public Operation operation(RepositoryContext context, UUID connectionId, UUID id) { return locked(context, connectionId, session -&gt; session.operation(id)); }</span>
+<span class="fc" id="L75">    public List&lt;Identity&gt; identities(RepositoryContext context, UUID connectionId) { return locked(context, connectionId, Session::identities); }</span>
+    public List&lt;OperationSummary&gt; history(RepositoryContext context, UUID connectionId) {
+<span class="fc" id="L77">        return transaction.execute(status -&gt; {</span>
+<span class="fc" id="L78">            requireConnection(context, connectionId, false);</span>
+<span class="fc" id="L79">            return em.createQuery(&quot;select o.id,o.connectionId,o.direction,o.status,o.fingerprint,o.resultCommit,o.resultRevision,o.failureCode,o.createdAt &quot;</span>
+                            + &quot;from IntegrationOperationEntity o where o.scopeId=:scope and o.connectionId=:connection order by o.createdAt desc,o.id&quot;, Object[].class)
+<span class="fc" id="L81">                    .setParameter(&quot;scope&quot;, scope(context)).setParameter(&quot;connection&quot;, connectionId.toString()).setMaxResults(100).getResultList().stream()</span>
+<span class="fc" id="L82">                    .map(row -&gt; new OperationSummary(uuid((String) row[0]), uuid((String) row[1]), (String) row[2], OperationStatus.valueOf((String) row[3]),</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                            (String) row[4], (String) row[5], row[6] == null ? null : ((Number) row[6]).longValue(), (String) row[7], Instant.parse((String) row[8]))).toList();</span>
+        });
+    }
+    public List&lt;Event&gt; events(RepositoryContext context, UUID connectionId, UUID operationId) {
+<span class="fc" id="L87">        return locked(context, connectionId, session -&gt; {</span>
+<span class="fc" id="L88">            session.operation(operationId);</span>
+<span class="fc" id="L89">            return em.createQuery(&quot;select e from IntegrationEventEntity e where e.scopeId=:scope and e.operationId=:operation order by e.occurredAt,e.id&quot;, IntegrationEventEntity.class)</span>
+<span class="fc" id="L90">                    .setParameter(&quot;scope&quot;, scope(context)).setParameter(&quot;operation&quot;, operationId.toString()).getResultList().stream()</span>
+<span class="fc" id="L91">                    .map(e -&gt; new Event(e.eventType, e.actor, Instant.parse(e.occurredAt), e.rationale, e.failureCode)).toList();</span>
+        });
+    }
+    public Checkpoint checkpoint(RepositoryContext context, UUID connectionId) {
+<span class="fc" id="L95">        return locked(context, connectionId, session -&gt; {</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">            if (session.connection.checkpointId == null) return null;</span>
+<span class="fc" id="L97">            var value = em.find(IntegrationCheckpointEntity.class, session.connection.checkpointId);</span>
+<span class="fc" id="L98">            return new Checkpoint(uuid(value.id), uuid(value.operationId), value.gitCommit, value.externalVersion, value.fingerprint,</span>
+<span class="fc" id="L99">                    json.read(value.contextJson, InternalState.class), Instant.parse(value.createdAt));</span>
+        });
+    }
+
+    public final class Session {
+        private final RepositoryContext context;
+        private final IntegrationConnectionEntity connection;
+<span class="fc" id="L106">        private Session(RepositoryContext context, IntegrationConnectionEntity connection) { this.context = context; this.connection = connection; }</span>
+<span class="fc" id="L107">        public Connection connection() { return IntegrationStore.this.connection(connection); }</span>
+<span class="fc" id="L108">        public Operation operation(UUID id) { return view(requireOperation(id)); }</span>
+        public Operation find(UUID id) {
+<span class="fc" id="L110">            IntegrationOperationEntity entity = em.find(IntegrationOperationEntity.class, id.toString());</span>
+<span class="fc bfc" id="L111" title="All 2 branches covered.">            if (entity == null) return null;</span>
+<span class="fc" id="L112">            requireScope(entity); return view(entity);</span>
+        }
+        public List&lt;Identity&gt; identities() {
+<span class="fc" id="L115">            return em.createQuery(&quot;select m from ExternalIdentityMappingEntity m where m.scopeId=:scope and m.connectionId=:connection order by m.externalId&quot;, ExternalIdentityMappingEntity.class)</span>
+<span class="fc" id="L116">                    .setParameter(&quot;scope&quot;, connection.scopeId).setParameter(&quot;connection&quot;, connection.id).getResultList().stream().map(IntegrationStore.this::identity).toList();</span>
+        }
+        public Operation preview(UUID id, IntegrationContext authority, String direction, String fingerprint,
+                                 ExchangeDocument document, List&lt;IntegrationChange&gt; changes) {
+<span class="fc" id="L120">            Operation existing = find(id);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">            if (existing != null) {</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">                if (!existing.fingerprint.equals(fingerprint)) throw IntegrationProblem.conflict(&quot;OPERATION_ID_REUSED&quot;);</span>
+<span class="nc" id="L123">                return existing;</span>
+            }
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">            if (connection.activeOperationId != null) throw IntegrationProblem.conflict(&quot;INTEGRATION_PENDING&quot;);</span>
+<span class="fc" id="L126">            var entity = new IntegrationOperationEntity(); entity.id = id.toString(); entity.scopeId = connection.scopeId;</span>
+<span class="fc" id="L127">            entity.connectionId = connection.id; entity.actor = context.username(); entity.status = OperationStatus.PREVIEWED.name();</span>
+<span class="fc" id="L128">            entity.direction = direction; entity.fingerprint = fingerprint; entity.connectionRevision = connection.revision;</span>
+<span class="fc" id="L129">            entity.contextJson = json.write(authority); entity.documentJson = json.write(document); entity.changesJson = json.write(changes);</span>
+<span class="fc" id="L130">            entity.createdAt = Instant.now().toString(); entity.updatedAt = entity.createdAt; em.persist(entity);</span>
+<span class="fc" id="L131">            event(entity, &quot;PREVIEWED&quot;, null, null); return view(entity);</span>
+        }
+        public void beginReview(ReviewedChangeSet review) {
+<span class="fc" id="L134">            IntegrationOperationEntity operation = requireOperation(review.operationId());</span>
+<span class="pc bpc" id="L135" title="1 of 2 branches missed.">            if (!operation.fingerprint.equals(review.previewFingerprint())) throw IntegrationProblem.conflict(&quot;PREVIEW_CHANGED&quot;);</span>
+<span class="fc" id="L136">            String fingerprint = json.fingerprint(review);</span>
+<span class="pc bpc" id="L137" title="3 of 4 branches missed.">            if (operation.reviewFingerprint != null &amp;&amp; !operation.reviewFingerprint.equals(fingerprint)) throw IntegrationProblem.conflict(&quot;REVIEW_ID_REUSED&quot;);</span>
+<span class="pc bpc" id="L138" title="1 of 2 branches missed.">            if (!operation.actor.equals(context.username())) throw new IntegrationProblem(&quot;REVIEW_ACTOR&quot;, 403, &quot;Only the preview actor may apply this review&quot;);</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">            if (!operation.status.equals(OperationStatus.PREVIEWED.name())) throw IntegrationProblem.conflict(&quot;OPERATION_STATE&quot;);</span>
+<span class="pc bpc" id="L140" title="3 of 6 branches missed.">            if (operation.connectionRevision != connection.revision || (connection.activeOperationId != null &amp;&amp; !connection.activeOperationId.equals(operation.id)))</span>
+<span class="fc" id="L141">                throw IntegrationProblem.conflict(&quot;CHECKPOINT_CHANGED&quot;);</span>
+<span class="fc" id="L142">            operation.reviewJson = json.write(review); operation.reviewFingerprint = fingerprint;</span>
+<span class="fc" id="L143">            connection.activeOperationId = operation.id;</span>
+<span class="fc" id="L144">            transition(operation, OperationStatus.APPLYING, &quot;REVIEW_ACCEPTED&quot;, review.rationale(), null);</span>
+<span class="fc" id="L145">        }</span>
+<span class="fc" id="L146">        public void fetching(UUID id) { transition(requireOperation(id), OperationStatus.FETCH_PENDING, &quot;FETCH_REQUESTED&quot;, null, null); }</span>
+        public void fetched(UUID id, ExchangeDocument document, List&lt;IntegrationChange&gt; changes) {
+<span class="fc" id="L148">            var operation = requireOperation(id);</span>
+<span class="pc bpc" id="L149" title="1 of 2 branches missed.">            if (!List.of(OperationStatus.FETCH_PENDING.name(), OperationStatus.FETCH_FAILED.name()).contains(operation.status)) throw IntegrationProblem.conflict(&quot;OPERATION_STATE&quot;);</span>
+<span class="fc" id="L150">            operation.documentJson = json.write(document); operation.changesJson = json.write(changes);</span>
+<span class="fc" id="L151">            transition(operation, OperationStatus.PREVIEWED, &quot;FETCH_COMPLETED&quot;, null, null);</span>
+<span class="fc" id="L152">        }</span>
+        public void fetchFailed(UUID id, String code) {
+<span class="nc" id="L154">            var operation = requireOperation(id);</span>
+<span class="nc bnc" id="L155" title="All 2 branches missed.">            if (operation.status.equals(OperationStatus.FETCH_PENDING.name())) transition(operation, OperationStatus.FETCH_FAILED, &quot;FETCH_FAILED&quot;, null, code);</span>
+<span class="nc" id="L156">        }</span>
+        public void applied(UUID id, InternalState state, ExchangeDocument result, boolean checkpointNeeded) {
+<span class="fc" id="L158">            IntegrationOperationEntity operation = requireOperation(id); operation.resultRevision = state.semanticRevision(); operation.resultJson = json.write(result);</span>
+<span class="fc" id="L159">            operation.resultStateJson = json.write(state);</span>
+<span class="fc" id="L160">            connection.revision++;</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            transition(operation, checkpointNeeded ? OperationStatus.CHECKPOINT_PENDING : OperationStatus.APPLIED, &quot;APPLIED&quot;, null, null);</span>
+<span class="fc" id="L162">        }</span>
+        public void mapping(UUID operationId, String externalId, String businessIdentity, Long requirementId,
+                            String externalVersion, Artifact external, Artifact internal, boolean removed) {
+<span class="fc" id="L165">            String id = identityId(connection.id, externalId);</span>
+<span class="fc" id="L166">            ExternalIdentityMappingEntity entity = em.find(ExternalIdentityMappingEntity.class, id);</span>
+<span class="fc bfc" id="L167" title="All 2 branches covered.">            boolean created = entity == null;</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            if (entity == null) {</span>
+<span class="fc" id="L169">                entity = new ExternalIdentityMappingEntity(); entity.id = id; entity.scopeId = connection.scopeId;</span>
+<span class="fc" id="L170">                entity.connectionId = connection.id; entity.externalId = externalId;</span>
+            }
+<span class="fc" id="L172">            entity.businessIdentity = businessIdentity; entity.requirementId = requirementId; entity.externalVersion = externalVersion;</span>
+<span class="fc" id="L173">            entity.externalJson = json.write(external); entity.internalJson = json.write(internal);</span>
+<span class="fc" id="L174">            entity.fingerprint = json.fingerprint(external); entity.operationId = operationId.toString(); entity.removed = removed;</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">            if (created) em.persist(entity);</span>
+<span class="fc" id="L176">        }</span>
+        public void file(UUID operationId, ExchangeFile file) {
+<span class="fc" id="L178">            var operation = requireOperation(operationId);</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">            if (!operation.status.equals(OperationStatus.APPLIED.name())) throw IntegrationProblem.conflict(&quot;OPERATION_STATE&quot;);</span>
+<span class="fc" id="L180">            operation.resultFileJson = json.write(file);</span>
+<span class="fc" id="L181">        }</span>
+        public void complete(UUID id, InternalState state, String externalVersion, String fingerprint, boolean synchronizedState) {
+<span class="fc" id="L183">            IntegrationOperationEntity operation = requireOperation(id);</span>
+<span class="pc bpc" id="L184" title="1 of 2 branches missed.">            if (operation.status.equals(OperationStatus.COMPLETED.name())) return;</span>
+<span class="fc" id="L185">            operation.resultCommit = state.commitId(); operation.resultRevision = state.semanticRevision();</span>
+<span class="fc" id="L186">            operation.resultStateJson = json.write(state);</span>
+            // Delivery of a file is auditable but never a claim that an external server applied it.
+<span class="fc bfc" id="L188" title="All 2 branches covered.">            if (synchronizedState) {</span>
+<span class="fc" id="L189">                var checkpoint = new IntegrationCheckpointEntity(); checkpoint.id = id.toString(); checkpoint.scopeId = connection.scopeId;</span>
+<span class="fc" id="L190">                checkpoint.connectionId = connection.id; checkpoint.operationId = operation.id; checkpoint.contextJson = json.write(state);</span>
+<span class="fc" id="L191">                checkpoint.gitCommit = state.commitId(); checkpoint.externalVersion = externalVersion; checkpoint.fingerprint = fingerprint;</span>
+<span class="fc" id="L192">                checkpoint.createdAt = Instant.now().toString(); em.persist(checkpoint); connection.checkpointId = checkpoint.id;</span>
+            }
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            connection.activeOperationId = null; transition(operation, OperationStatus.COMPLETED, synchronizedState ? &quot;CHECKPOINT_COMPLETED&quot; : &quot;FILE_READY&quot;, null, null);</span>
+<span class="fc" id="L195">        }</span>
+        public void cancel(UUID id, String rationale) {
+<span class="fc" id="L197">            var operation = requireOperation(id);</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">            if (!List.of(OperationStatus.PREVIEWED.name(), OperationStatus.FETCH_PENDING.name(), OperationStatus.FETCH_FAILED.name()).contains(operation.status)) throw IntegrationProblem.conflict(&quot;CANNOT_CANCEL_APPLIED_OPERATION&quot;);</span>
+<span class="fc" id="L199">            transition(operation, OperationStatus.CANCELLED, &quot;CANCELLED&quot;, rationale, null);</span>
+<span class="fc" id="L200">        }</span>
+        public void failure(UUID id, String code) {
+<span class="nc" id="L202">            var operation = requireOperation(id);</span>
+<span class="nc" id="L203">            operation.failureCode = code; event(operation, &quot;ATTEMPT_FAILED&quot;, null, code);</span>
+            // Preserve the recoverable phase and reservation; a transport failure does not undo accepted data.
+<span class="nc" id="L205">        }</span>
+        public void checkpointConflict(UUID id) {
+<span class="fc" id="L207">            var operation = requireOperation(id);</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">            if (!operation.status.equals(OperationStatus.CHECKPOINT_PENDING.name())) throw IntegrationProblem.conflict(&quot;OPERATION_STATE&quot;);</span>
+<span class="fc" id="L209">            connection.activeOperationId = null;</span>
+<span class="fc" id="L210">            transition(operation, OperationStatus.CONFLICT, &quot;MODEL_APPLIED_CHECKPOINT_CONFLICT&quot;, json.read(operation.reviewJson, ReviewedChangeSet.class).rationale(), &quot;CHECKPOINT_CONFLICT&quot;);</span>
+<span class="fc" id="L211">        }</span>
+        private IntegrationOperationEntity requireOperation(UUID id) {
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">            var entity = em.find(IntegrationOperationEntity.class, id.toString()); if (entity == null) throw IntegrationProblem.missing(); requireScope(entity); return entity;</span>
+        }
+        private void requireScope(IntegrationOperationEntity entity) {
+<span class="pc bpc" id="L216" title="2 of 4 branches missed.">            if (!entity.scopeId.equals(connection.scopeId) || !entity.connectionId.equals(connection.id)) throw IntegrationProblem.missing();</span>
+<span class="fc" id="L217">        }</span>
+        private void transition(IntegrationOperationEntity entity, OperationStatus status, String event, String rationale, String code) {
+<span class="fc" id="L219">            entity.status = status.name(); entity.updatedAt = Instant.now().toString(); entity.failureCode = code; event(entity, event, rationale, code);</span>
+<span class="fc" id="L220">        }</span>
+        private void event(IntegrationOperationEntity operation, String type, String rationale, String code) {
+<span class="fc" id="L222">            var event = new IntegrationEventEntity(); event.id = UUID.randomUUID().toString(); event.scopeId = connection.scopeId;</span>
+<span class="fc" id="L223">            event.connectionId = connection.id; event.operationId = operation.id; event.eventType = type; event.actor = context.username();</span>
+<span class="fc" id="L224">            event.occurredAt = Instant.now().toString(); event.rationale = rationale; event.failureCode = code; em.persist(event);</span>
+<span class="fc" id="L225">        }</span>
+    }
+
+    private IntegrationConnectionEntity requireConnection(RepositoryContext context, UUID id, boolean lock) {
+<span class="fc" id="L229">        var query = em.createQuery(&quot;select c from IntegrationConnectionEntity c where c.id=:id and c.scopeId=:scope&quot;, IntegrationConnectionEntity.class)</span>
+<span class="fc" id="L230">                .setParameter(&quot;id&quot;, id.toString()).setParameter(&quot;scope&quot;, scope(context));</span>
+<span class="fc bfc" id="L231" title="All 2 branches covered.">        if (lock) query.setLockMode(LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="fc" id="L232">        return query.getResultList().stream().findFirst().orElseThrow(IntegrationProblem::missing);</span>
+    }
+    private Connection connection(IntegrationConnectionEntity c) {
+<span class="fc" id="L235">        return new Connection(uuid(c.id), c.organizationId, c.displayName, c.connectorId, c.profileVersion, AuthorityMode.valueOf(c.authorityMode),</span>
+<span class="fc" id="L236">                json.read(c.externalScope, ExternalScope.class), c.projectId, c.remoteProfile, c.revision, uuid(c.checkpointId), uuid(c.activeOperationId), c.createdBy);</span>
+    }
+    private Operation view(IntegrationOperationEntity o) {
+<span class="fc" id="L239">        return new Operation(uuid(o.id), uuid(o.connectionId), json.read(o.contextJson, IntegrationContext.class), o.direction, OperationStatus.valueOf(o.status),</span>
+<span class="fc" id="L240">                o.fingerprint, o.connectionRevision, json.read(o.documentJson, ExchangeDocument.class), Arrays.asList(json.read(o.changesJson, IntegrationChange[].class)),</span>
+<span class="fc" id="L241">                json.read(o.reviewJson, ReviewedChangeSet.class), o.reviewFingerprint, o.resultCommit, o.resultRevision, json.read(o.resultJson, ExchangeDocument.class),</span>
+<span class="fc" id="L242">                json.read(o.resultStateJson, InternalState.class), json.read(o.resultFileJson, ExchangeFile.class), o.failureCode, Instant.parse(o.createdAt));</span>
+    }
+    private Identity identity(ExternalIdentityMappingEntity m) {
+<span class="fc" id="L245">        return new Identity(m.externalId, m.businessIdentity, m.requirementId, m.externalVersion, m.fingerprint,</span>
+<span class="fc" id="L246">                json.read(m.externalJson, Artifact.class), json.read(m.internalJson, Artifact.class), uuid(m.operationId), m.removed);</span>
+    }
+<span class="fc" id="L248">    private static String scope(RepositoryContext context) { return context.repositoryWorkspaceScopeKey(); }</span>
+    private static String identityId(String connectionId, String externalId) {
+<span class="fc" id="L250">        return StableIdentityHash.sha256(connectionId + &quot;\u0000&quot; + externalId);</span>
+    }
+<span class="fc bfc" id="L252" title="All 2 branches covered.">    private static UUID uuid(String value) { return value == null ? null : UUID.fromString(value); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

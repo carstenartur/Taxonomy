@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationOperationEntity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.persistence</a> &gt; <span class="el_source">IntegrationOperationEntity.java</span></div><h1>IntegrationOperationEntity.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.persistence;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** Mutations are owned by IntegrationStore under an exact connection/tenant lock. */
+@Entity
+@Table(name = &quot;interop_operation&quot;, indexes = {@Index(name=&quot;ix_interop_operation_scope&quot;, columnList=&quot;scope_id,connection_id,created_at&quot;)})
+public class IntegrationOperationEntity {
+    @Id @Column(name=&quot;id&quot;, length=36) String id;
+    @Column(name=&quot;scope_id&quot;, nullable=false, length=64) String scopeId;
+    @Column(name=&quot;connection_id&quot;, nullable=false, length=36) String connectionId;
+    @Column(name=&quot;actor&quot;, nullable=false, length=160) String actor;
+    @Column(name=&quot;status&quot;, nullable=false, length=32) String status;
+    @Column(name=&quot;direction&quot;, nullable=false, length=16) String direction;
+    @Column(name=&quot;fingerprint&quot;, nullable=false, length=64) String fingerprint;
+    @Column(name=&quot;review_fingerprint&quot;, length=64) String reviewFingerprint;
+    @Column(name=&quot;connection_revision&quot;, nullable=false) long connectionRevision;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;context_json&quot;, nullable=false) String contextJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;document_json&quot;, nullable=false) String documentJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;changes_json&quot;, nullable=false) String changesJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;review_json&quot;) String reviewJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;result_json&quot;) String resultJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;result_state_json&quot;) String resultStateJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;result_file_json&quot;) String resultFileJson;
+    @Column(name=&quot;result_commit&quot;, length=40) String resultCommit;
+    @Column(name=&quot;result_revision&quot;) Long resultRevision;
+    @Column(name=&quot;failure_code&quot;, length=64) String failureCode;
+    @Column(name=&quot;created_at&quot;, nullable=false, length=40) String createdAt;
+    @Column(name=&quot;updated_at&quot;, nullable=false, length=40) String updatedAt;
+    @Version @Column(name=&quot;row_version&quot;, nullable=false) long rowVersion;
+<span class="fc" id="L33">    protected IntegrationOperationEntity() {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

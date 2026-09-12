@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectAutopilotController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.controller</a> &gt; <span class="el_source">ProjectAutopilotController.java</span></div><h1>ProjectAutopilotController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.controller;
+
+import com.taxonomy.portfolio.dto.CopilotDtos.ProjectAutopilotRunRequest;
+import com.taxonomy.portfolio.dto.CopilotDtos.ProjectAutopilotRunView;
+import com.taxonomy.portfolio.dto.CopilotDtos.ProjectAutopilotStatus;
+import com.taxonomy.portfolio.service.ProjectAutopilotService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/** Exact-tenant, bounded project-wide Autopilot surface. */
+@RestController
+@RequestMapping(&quot;/api/projects/{projectId}/autopilot&quot;)
+@Tag(name = &quot;Project Autopilot&quot;)
+public class ProjectAutopilotController {
+
+    private final ProjectAutopilotService autopilotService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public ProjectAutopilotController(
+            ProjectAutopilotService autopilotService,
+<span class="fc" id="L30">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L31">        this.autopilotService = autopilotService;</span>
+<span class="fc" id="L32">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L33">    }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;Read effective project Autopilot readiness and batch limit&quot;)
+    public ProjectAutopilotStatus status(@PathVariable Long projectId) {
+<span class="fc" id="L38">        RequestScope scope = scope();</span>
+<span class="fc" id="L39">        return autopilotService.status(</span>
+<span class="fc" id="L40">                projectId, scope.username(), scope.context());</span>
+    }
+
+    @PostMapping(&quot;/run&quot;)
+    @Operation(summary = &quot;Start bounded Autopilot operations for project requirements&quot;)
+    public ResponseEntity&lt;ProjectAutopilotRunView&gt; run(
+            @PathVariable Long projectId,
+            @RequestBody(required = false) ProjectAutopilotRunRequest request) {
+<span class="fc" id="L48">        RequestScope scope = scope();</span>
+<span class="fc" id="L49">        return ResponseEntity.accepted().body(autopilotService.run(</span>
+<span class="fc" id="L50">                projectId, request, scope.username(), scope.context()));</span>
+    }
+
+    private RequestScope scope() {
+<span class="fc" id="L54">        return new RequestScope(</span>
+<span class="fc" id="L55">                workspaceResolver.resolveCurrentUsername(),</span>
+<span class="fc" id="L56">                workspaceResolver.resolveCurrentContext());</span>
+    }
+
+<span class="fc" id="L59">    private record RequestScope(String username, WorkspaceContext context) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,164 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureEditorExportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.architecture</a> &gt; <span class="el_source">ArchitectureEditorExportController.java</span></div><h1>ArchitectureEditorExportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.architecture;
+
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.editor.ArchitectureEditorExportPort;
+import com.taxonomy.editor.ArchitectureEditorExportPort.ExportDocument;
+import com.taxonomy.export.ArchitecturePdfRenderer;
+import com.taxonomy.export.SvgDiagramRenderer;
+import com.taxonomy.model.WorkspaceOverlayScope;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Spring composition for immutable architecture exports.
+ *
+ * &lt;p&gt;Workspace/editor owns exact document state and the neutral render-ready scene;
+ * this controller owns the cross-boundary HTTP/export orchestration.&lt;/p&gt;
+ */
+@RestController
+public final class ArchitectureEditorExportController {
+
+    private final ArchitectureEditorExportPort exports;
+    private final WorkspaceResolver resolver;
+    private final SvgDiagramRenderer svg;
+    private final ArchitecturePdfRenderer pdf;
+
+    public ArchitectureEditorExportController(
+            ArchitectureEditorExportPort exports,
+            WorkspaceResolver resolver,
+            SvgDiagramRenderer svg,
+<span class="fc" id="L43">            ArchitecturePdfRenderer pdf) {</span>
+<span class="fc" id="L44">        this.exports = Objects.requireNonNull(exports, &quot;exports&quot;);</span>
+<span class="fc" id="L45">        this.resolver = Objects.requireNonNull(resolver, &quot;resolver&quot;);</span>
+<span class="fc" id="L46">        this.svg = Objects.requireNonNull(svg, &quot;svg&quot;);</span>
+<span class="fc" id="L47">        this.pdf = Objects.requireNonNull(pdf, &quot;pdf&quot;);</span>
+<span class="fc" id="L48">    }</span>
+
+    @GetMapping(value = &quot;/api/architecture/editor.svg&quot;, produces = &quot;image/svg+xml&quot;)
+    public ResponseEntity&lt;String&gt; svg(
+            @RequestParam String repositoryId,
+            @RequestParam String workspaceScopeKey,
+            @RequestParam String branch,
+            @RequestParam(required = false) String commit,
+            @RequestParam(required = false) Long revision) throws IOException {
+<span class="fc" id="L57">        requireExactSelection(commit, revision);</span>
+<span class="fc" id="L58">        ExportDocument document = exports.read(</span>
+<span class="fc" id="L59">                readContext(repositoryId, workspaceScopeKey, branch), commit, revision);</span>
+<span class="fc" id="L60">        return documentResponse(document)</span>
+<span class="fc" id="L61">                .header(&quot;X-Taxonomy-Layout-Source&quot;, document.layoutMode())</span>
+<span class="fc" id="L62">                .header(HttpHeaders.CONTENT_DISPOSITION, &quot;attachment; filename=architecture.svg&quot;)</span>
+<span class="fc" id="L63">                .body(svg.render(document.scene()));</span>
+    }
+
+    @GetMapping(value = &quot;/api/architecture/editor.pdf&quot;, produces = &quot;application/pdf&quot;)
+    public ResponseEntity&lt;byte[]&gt; pdf(
+            @RequestParam String repositoryId,
+            @RequestParam String workspaceScopeKey,
+            @RequestParam String branch,
+            @RequestParam(required = false) String commit,
+            @RequestParam(required = false) Long revision) throws IOException {
+<span class="fc" id="L73">        requireExactSelection(commit, revision);</span>
+<span class="fc" id="L74">        ExportDocument document = exports.read(</span>
+<span class="fc" id="L75">                readContext(repositoryId, workspaceScopeKey, branch), commit, revision);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        String selected = &quot;GIT_CHECKPOINT&quot;.equals(document.source())</span>
+<span class="fc" id="L77">                ? &quot;Checkpoint &quot; + document.commit()</span>
+<span class="fc" id="L78">                : &quot;Revision &quot; + document.revision() + &quot; / checkpoint &quot; + document.commit();</span>
+<span class="fc" id="L79">        String provenance = document.repositoryId() + &quot; / &quot; + document.workspaceScopeKey()</span>
+<span class="fc" id="L80">                + &quot; / &quot; + document.branch() + &quot;\n&quot; + selected;</span>
+<span class="fc" id="L81">        return documentResponse(document)</span>
+<span class="fc" id="L82">                .header(&quot;X-Taxonomy-Layout-Source&quot;, document.layoutMode())</span>
+<span class="fc" id="L83">                .header(HttpHeaders.CONTENT_DISPOSITION, &quot;attachment; filename=architecture.pdf&quot;)</span>
+<span class="fc" id="L84">                .body(pdf.render(document.scene(), provenance));</span>
+    }
+
+    private RepositoryContext readContext(
+            String repositoryId,
+            String workspaceScopeKey,
+            String branch) {
+<span class="fc" id="L91">        RepositoryContext context = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L92">        String selectedScope = WorkspaceOverlayScope.keyFor(context.workspaceId());</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">        if (!context.repositoryId().equals(repositoryId)</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">                || !selectedScope.equals(workspaceScopeKey)</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                || !context.branch().equals(branch)) {</span>
+<span class="fc" id="L96">            throw new CommandProblem(</span>
+                    &quot;NOT_FOUND&quot;,
+                    &quot;context&quot;,
+                    &quot;This exact context is not selected or accessible&quot;,
+<span class="fc" id="L100">                    List.of());</span>
+        }
+<span class="fc" id="L102">        return context;</span>
+    }
+
+    private static void requireExactSelection(String commit, Long revision) {
+<span class="fc bfc" id="L106" title="All 4 branches covered.">        if (commit == null &amp;&amp; revision == null) {</span>
+<span class="fc" id="L107">            throw new IllegalArgumentException(</span>
+                    &quot;An exact revision or version is required for export&quot;);
+        }
+<span class="fc" id="L110">    }</span>
+
+    private static ResponseEntity.BodyBuilder documentResponse(ExportDocument document) {
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (&quot;GIT_CHECKPOINT&quot;.equals(document.source())) {</span>
+<span class="fc" id="L114">            return ResponseEntity.ok()</span>
+<span class="fc" id="L115">                    .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L116">                    .eTag(commitEtag(document.commit()))</span>
+<span class="fc" id="L117">                    .header(&quot;X-Taxonomy-Source&quot;, document.source());</span>
+        }
+<span class="fc" id="L119">        return ResponseEntity.ok()</span>
+<span class="fc" id="L120">                .header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L121">                .header(HttpHeaders.ETAG, revisionEtag(document.revision()))</span>
+<span class="fc" id="L122">                .header(&quot;X-Taxonomy-Semantic-Revision&quot;, Long.toString(document.revision()))</span>
+<span class="fc" id="L123">                .header(&quot;X-Taxonomy-Source&quot;, document.source());</span>
+    }
+
+    private static String revisionEtag(long revision) {
+<span class="fc" id="L127">        return &quot;\&quot;workspace-revision-&quot; + revision + &quot;\&quot;&quot;;</span>
+    }
+
+    private static String commitEtag(String commitId) {
+<span class="fc" id="L131">        return '&quot;' + ObjectId.fromString(commitId).name() + '&quot;';</span>
+    }
+
+    @ExceptionHandler(CommandProblem.class)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; problem(CommandProblem error) {
+<span class="nc bnc" id="L136" title="All 4 branches missed.">        int status = switch (error.code()) {</span>
+<span class="nc" id="L137">            case &quot;NOT_FOUND&quot; -&gt; 404;</span>
+<span class="nc" id="L138">            case &quot;READ_ONLY&quot; -&gt; 403;</span>
+            case &quot;CONTEXT_CHANGED&quot;, &quot;UNDO_CONFLICT&quot;, &quot;ALREADY_INVERTED&quot;, &quot;COMMAND_ID_REUSED&quot;,
+<span class="nc" id="L140">                    &quot;DEPENDENCIES_EXIST&quot;, &quot;CHECKPOINT_PENDING&quot;, &quot;CHECKPOINT_CONFLICT&quot;, &quot;VERSION_CHANGED&quot; -&gt; 409;</span>
+<span class="nc" id="L141">            default -&gt; 422;</span>
+        };
+<span class="nc" id="L143">        return ResponseEntity.status(status).body(Map.of(</span>
+<span class="nc" id="L144">                &quot;code&quot;, error.code(),</span>
+<span class="nc" id="L145">                &quot;field&quot;, error.field(),</span>
+<span class="nc" id="L146">                &quot;detail&quot;, error.getMessage(),</span>
+<span class="nc" id="L147">                &quot;dependencies&quot;, error.dependencies()));</span>
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid(IllegalArgumentException error) {
+<span class="fc" id="L152">        return ResponseEntity.badRequest().body(Map.of(</span>
+                &quot;code&quot;, &quot;INVALID_COMMAND&quot;,
+<span class="pc bpc" id="L154" title="1 of 2 branches missed.">                &quot;detail&quot;, error.getMessage() == null ? &quot;Invalid command&quot; : error.getMessage()));</span>
+    }
+
+    @ExceptionHandler(IOException.class)
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; unavailable() {
+<span class="nc" id="L159">        return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(</span>
+                &quot;code&quot;, &quot;GIT_UNAVAILABLE&quot;,
+                &quot;detail&quot;, &quot;Git storage is unavailable; refresh before retrying the same command identity&quot;));
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

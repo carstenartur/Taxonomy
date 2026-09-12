@@ -1,0 +1,158 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LegacyScopeIdentityNormalizer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">LegacyScopeIdentityNormalizer.java</span></div><h1>LegacyScopeIdentityNormalizer.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.Locale;
+
+/**
+ * Canonicalizes legacy tenant identifiers before repository constraints are
+ * derived by {@link SchemaContractMigrator}.
+ *
+ * &lt;p&gt;Repository and entity contexts strip surrounding whitespace. Persisting the
+ * same representation during upgrade prevents rows from becoming invisible
+ * after restart. Duplicate workspace metadata that collapses to one normalized
+ * identity is rejected because its source-repository provenance is ambiguous.&lt;/p&gt;
+ */
+final class LegacyScopeIdentityNormalizer {
+
+<span class="fc" id="L25">    private static final Logger log = LoggerFactory.getLogger(</span>
+            LegacyScopeIdentityNormalizer.class);
+
+<span class="fc" id="L28">    private static final String[] TENANT_TABLES = {</span>
+            &quot;taxonomy_relation&quot;,
+            &quot;relation_proposal&quot;,
+            &quot;relation_hypothesis&quot;
+    };
+
+    private final DataSource dataSource;
+
+<span class="fc" id="L36">    LegacyScopeIdentityNormalizer(DataSource dataSource) {</span>
+<span class="fc" id="L37">        this.dataSource = dataSource;</span>
+<span class="fc" id="L38">    }</span>
+
+    void normalize() {
+<span class="fc" id="L41">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L42">            boolean previousAutoCommit = connection.getAutoCommit();</span>
+<span class="fc" id="L43">            connection.setAutoCommit(false);</span>
+            try {
+<span class="fc" id="L45">                rejectAmbiguousWorkspaceMetadata(connection);</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                for (String table : TENANT_TABLES) {</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">                    if (tableExists(connection, table)</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">                            &amp;&amp; columnExists(connection, table, &quot;workspace_id&quot;)) {</span>
+<span class="fc" id="L49">                        execute(connection, &quot;UPDATE &quot; + table</span>
+                                + &quot; SET workspace_id = TRIM(workspace_id)&quot;
+                                + &quot; WHERE workspace_id IS NOT NULL&quot;);
+<span class="fc" id="L52">                        execute(connection, &quot;UPDATE &quot; + table</span>
+                                + &quot; SET workspace_id = NULL&quot;
+                                + &quot; WHERE workspace_id = ''&quot;);
+                    }
+                }
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                if (tableExists(connection, &quot;relation_hypothesis&quot;)</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">                        &amp;&amp; columnExists(</span>
+                                connection,
+                                &quot;relation_hypothesis&quot;,
+                                &quot;analysis_session_id&quot;)) {
+<span class="fc" id="L62">                    execute(connection, &quot;UPDATE relation_hypothesis&quot;</span>
+                            + &quot; SET analysis_session_id = TRIM(analysis_session_id)&quot;
+                            + &quot; WHERE analysis_session_id IS NOT NULL&quot;);
+<span class="fc" id="L65">                    execute(connection, &quot;UPDATE relation_hypothesis&quot;</span>
+                            + &quot; SET analysis_session_id = NULL&quot;
+                            + &quot; WHERE analysis_session_id = ''&quot;);
+                }
+<span class="fc" id="L69">                connection.commit();</span>
+<span class="fc" id="L70">                log.debug(&quot;Normalized legacy workspace and analysis-session identities&quot;);</span>
+<span class="nc" id="L71">            } catch (SQLException | RuntimeException error) {</span>
+<span class="nc" id="L72">                rollbackQuietly(connection, error);</span>
+<span class="nc" id="L73">                throw new IllegalStateException(</span>
+                        &quot;Unable to normalize legacy tenant identities safely&quot;, error);
+            } finally {
+<span class="fc" id="L76">                connection.setAutoCommit(previousAutoCommit);</span>
+            }
+<span class="nc" id="L78">        } catch (SQLException error) {</span>
+<span class="nc" id="L79">            throw new IllegalStateException(</span>
+                    &quot;Unable to open database for tenant identity normalization&quot;, error);
+<span class="fc" id="L81">        }</span>
+<span class="fc" id="L82">    }</span>
+
+    private void rejectAmbiguousWorkspaceMetadata(Connection connection) throws SQLException {
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (!tableExists(connection, &quot;user_workspace&quot;)</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                || !columnExists(connection, &quot;user_workspace&quot;, &quot;workspace_id&quot;)) {</span>
+<span class="fc" id="L87">            return;</span>
+        }
+<span class="fc" id="L89">        String sql = &quot;SELECT COUNT(*) FROM (SELECT TRIM(workspace_id) AS workspace_key&quot;</span>
+                + &quot; FROM user_workspace&quot;
+                + &quot; WHERE workspace_id IS NOT NULL&quot;
+                + &quot; AND TRIM(workspace_id) IS NOT NULL&quot;
+                + &quot; GROUP BY TRIM(workspace_id)&quot;
+                + &quot; HAVING COUNT(*) &gt; 1) normalized_workspaces&quot;;
+<span class="fc" id="L95">        try (Statement statement = connection.createStatement();</span>
+<span class="fc" id="L96">             ResultSet result = statement.executeQuery(sql)) {</span>
+<span class="fc" id="L97">            result.next();</span>
+<span class="fc" id="L98">            long duplicates = result.getLong(1);</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (duplicates &gt; 0) {</span>
+<span class="nc" id="L100">                throw new IllegalStateException(</span>
+                        &quot;Cannot normalize workspace provenance: found &quot; + duplicates
+                                + &quot; ambiguous normalized workspace identity group(s)&quot;);
+            }
+        }
+<span class="fc" id="L105">    }</span>
+
+    private static boolean tableExists(Connection connection, String logicalName)
+            throws SQLException {
+<span class="fc" id="L109">        DatabaseMetaData metadata = connection.getMetaData();</span>
+<span class="fc" id="L110">        try (ResultSet tables = metadata.getTables(</span>
+<span class="fc" id="L111">                connection.getCatalog(), null, &quot;%&quot;, new String[]{&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            while (tables.next()) {</span>
+<span class="fc" id="L113">                String name = tables.getString(&quot;TABLE_NAME&quot;);</span>
+<span class="pc bpc" id="L114" title="1 of 4 branches missed.">                if (name != null &amp;&amp; name.equalsIgnoreCase(logicalName)) {</span>
+<span class="fc" id="L115">                    return true;</span>
+                }
+<span class="fc" id="L117">            }</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">        }</span>
+<span class="fc" id="L119">        return false;</span>
+    }
+
+    private static boolean columnExists(
+            Connection connection,
+            String logicalTable,
+            String logicalColumn) throws SQLException {
+<span class="fc" id="L126">        DatabaseMetaData metadata = connection.getMetaData();</span>
+<span class="fc" id="L127">        try (ResultSet columns = metadata.getColumns(</span>
+<span class="fc" id="L128">                connection.getCatalog(), null, &quot;%&quot;, &quot;%&quot;)) {</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">            while (columns.next()) {</span>
+<span class="fc" id="L130">                String table = columns.getString(&quot;TABLE_NAME&quot;);</span>
+<span class="fc" id="L131">                String column = columns.getString(&quot;COLUMN_NAME&quot;);</span>
+<span class="pc bpc" id="L132" title="2 of 4 branches missed.">                if (table != null &amp;&amp; column != null</span>
+<span class="fc" id="L133">                        &amp;&amp; table.toLowerCase(Locale.ROOT)</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                                .equals(logicalTable.toLowerCase(Locale.ROOT))</span>
+<span class="fc" id="L135">                        &amp;&amp; column.toLowerCase(Locale.ROOT)</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                                .equals(logicalColumn.toLowerCase(Locale.ROOT))) {</span>
+<span class="fc" id="L137">                    return true;</span>
+                }
+<span class="fc" id="L139">            }</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">        }</span>
+<span class="nc" id="L141">        return false;</span>
+    }
+
+    private static void execute(Connection connection, String sql) throws SQLException {
+<span class="fc" id="L145">        try (Statement statement = connection.createStatement()) {</span>
+<span class="fc" id="L146">            statement.execute(sql);</span>
+        }
+<span class="fc" id="L148">    }</span>
+
+    private static void rollbackQuietly(Connection connection, Throwable original) {
+        try {
+<span class="nc" id="L152">            connection.rollback();</span>
+<span class="nc" id="L153">        } catch (SQLException rollbackFailure) {</span>
+<span class="nc" id="L154">            original.addSuppressed(rollbackFailure);</span>
+<span class="nc" id="L155">        }</span>
+<span class="nc" id="L156">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

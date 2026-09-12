@@ -1,0 +1,390 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleTemplateRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.decision</a> &gt; <span class="el_source">DecisionRationaleTemplateRenderer.java</span></div><h1>DecisionRationaleTemplateRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.decision;
+
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.templates.DecisionRationaleTemplateContract;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
+import com.taxonomy.templates.DocumentTemplateService;
+import com.taxonomy.templates.DocumentTemplateService.TemplateFile;
+import com.taxonomy.templates.OoxmlTemplatePackageCodec;
+import org.apache.poi.ooxml.POIXMLProperties;
+import org.apache.poi.xwpf.usermodel.BodyElementType;
+import org.apache.poi.xwpf.usermodel.IBodyElement;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.usermodel.XWPFFooter;
+import org.apache.poi.xwpf.usermodel.XWPFHeader;
+import org.apache.poi.xwpf.usermodel.XWPFParagraph;
+import org.apache.poi.xwpf.usermodel.XWPFRun;
+import org.apache.poi.xwpf.usermodel.XWPFTable;
+import org.apache.poi.xwpf.usermodel.XWPFTableCell;
+import org.apache.poi.xwpf.usermodel.XWPFTableRow;
+import org.springframework.stereotype.Component;
+
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipInputStream;
+import java.util.zip.ZipOutputStream;
+
+/**
+ * Materializes the hierarchical decision report into the currently versioned DOTX template.
+ *
+ * &lt;p&gt;The existing renderer remains the single implementation of dynamic chapters, tables,
+ * diagrams, and appendix semantics. This adapter opens the editable cover/header/footer
+ * template, replaces stable tokens, removes the body marker, and invokes those proven
+ * rendering stages through its package-level typed body writer.&lt;/p&gt;
+ */
+@Component
+public final class DecisionRationaleTemplateRenderer {
+
+    private static final String DOCX_MAIN_CONTENT_TYPE =
+            &quot;application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml&quot;;
+    private static final String TEMPLATE_ID_PROPERTY = &quot;Taxonomy.Template.Id&quot;;
+    private static final String TEMPLATE_COMMIT_PROPERTY = &quot;Taxonomy.Template.Commit&quot;;
+    private static final String TEMPLATE_SHA256_PROPERTY =
+            &quot;Taxonomy.Template.PackageSha256&quot;;
+    private static final String TEMPLATE_SCHEMA_VERSION_PROPERTY =
+            &quot;Taxonomy.Template.SchemaVersion&quot;;
+
+    private final DocumentTemplateService templates;
+    private final DecisionRationaleTemplateContract contract;
+
+    public DecisionRationaleTemplateRenderer(
+            DocumentTemplateService templates,
+<span class="fc" id="L65">            DecisionRationaleTemplateContract contract) {</span>
+<span class="fc" id="L66">        this.templates = Objects.requireNonNull(templates, &quot;templates&quot;);</span>
+<span class="fc" id="L67">        this.contract = Objects.requireNonNull(contract, &quot;contract&quot;);</span>
+<span class="fc" id="L68">    }</span>
+
+    public byte[] render(
+            DecisionRationaleDocxRenderer delegate,
+            DecisionRationaleReport report) {
+<span class="nc" id="L73">        return renderArtifact(delegate, report).bytes();</span>
+    }
+
+    ReportRenderResult renderArtifact(
+            DecisionRationaleDocxRenderer delegate,
+            DecisionRationaleReport report) {
+<span class="fc" id="L79">        Objects.requireNonNull(delegate, &quot;delegate&quot;);</span>
+<span class="fc" id="L80">        Objects.requireNonNull(report, &quot;report&quot;);</span>
+
+        TemplateFile template;
+        try {
+<span class="fc" id="L84">            template = templates.downloadCurrentValidated(</span>
+                    DecisionRationaleTemplateContract.TEMPLATE_ID);
+<span class="nc" id="L86">        } catch (TemplateNotFoundException exception) {</span>
+<span class="nc" id="L87">            throw unavailable(</span>
+                    &quot;Required template is missing. Restart Taxonomy to seed the bundled &quot;
+                            + &quot;default or upload a valid template with ID '&quot;
+                            + DecisionRationaleTemplateContract.TEMPLATE_ID + &quot;'.&quot;,
+                    exception);
+<span class="fc" id="L92">        } catch (Exception exception) {</span>
+<span class="fc" id="L93">            throw unavailable(&quot;Required template could not be validated: &quot;</span>
+<span class="fc" id="L94">                    + safeMessage(exception), exception);</span>
+<span class="fc" id="L95">        }</span>
+
+<span class="fc" id="L97">        DecisionReportTemplateProvenance provenance =</span>
+<span class="fc" id="L98">                DecisionReportTemplateProvenance.from(template);</span>
+<span class="fc" id="L99">        DecisionReportLabels labels = new DecisionReportLabels(report.languageTag());</span>
+<span class="fc" id="L100">        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(</span>
+<span class="fc" id="L101">                    convertDotxToDocx(template.content())));</span>
+<span class="fc" id="L102">             ByteArrayOutputStream output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L103">            contract.validateDocument(document);</span>
+<span class="fc" id="L104">            replaceTokens(document, tokenValues(report, labels, template));</span>
+<span class="fc" id="L105">            removeBodyMarker(document);</span>
+
+<span class="fc" id="L107">            delegate.writeReportBody(document, report, labels);</span>
+<span class="fc" id="L108">            writeTemplateProvenanceProperties(document, provenance);</span>
+
+<span class="fc" id="L110">            document.write(output);</span>
+<span class="fc" id="L111">            return new ReportRenderResult(</span>
+<span class="fc" id="L112">                    output.toByteArray(), provenance.artifactMetadata());</span>
+<span class="nc" id="L113">        } catch (Exception exception) {</span>
+<span class="nc" id="L114">            throw unavailable(</span>
+<span class="nc" id="L115">                    &quot;Could not materialize template commit &quot; + template.commitId()</span>
+<span class="nc" id="L116">                            + &quot;: &quot; + safeMessage(exception),</span>
+                    exception);
+        }
+    }
+
+    private static Map&lt;String, String&gt; tokenValues(
+            DecisionRationaleReport report,
+            DecisionReportLabels labels,
+            TemplateFile template) {
+<span class="fc" id="L125">        Map&lt;String, String&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L126">        values.put(DecisionRationaleTemplateContract.TITLE_TOKEN, value(report.title()));</span>
+<span class="fc" id="L127">        values.put(&quot;{{taxonomy.report.subtitle}}&quot;, labels.subtitle());</span>
+<span class="fc" id="L128">        values.put(&quot;{{taxonomy.report.status}}&quot;, statusLabel(report, labels));</span>
+<span class="fc" id="L129">        values.put(DecisionRationaleTemplateContract.REQUIREMENT_TOKEN,</span>
+<span class="fc" id="L130">                value(report.requirement()));</span>
+<span class="fc" id="L131">        values.put(&quot;{{taxonomy.report.generatedAt}}&quot;,</span>
+<span class="fc" id="L132">                formatInstant(report.metadata().generatedAt(),</span>
+<span class="fc" id="L133">                        report.metadata().reportTimeZone(),</span>
+<span class="fc" id="L134">                        labels.german()));</span>
+<span class="fc" id="L135">        values.put(&quot;{{taxonomy.report.generatedBy}}&quot;,</span>
+<span class="fc" id="L136">                value(report.metadata().generatedBy()));</span>
+<span class="fc" id="L137">        values.put(&quot;{{taxonomy.report.taxonomyVersion}}&quot;,</span>
+<span class="fc" id="L138">                value(report.metadata().taxonomyDataVersion()));</span>
+<span class="fc" id="L139">        values.put(&quot;{{taxonomy.report.applicationVersion}}&quot;,</span>
+<span class="fc" id="L140">                value(report.metadata().taxonomyApplicationVersion()));</span>
+<span class="fc" id="L141">        values.put(&quot;{{taxonomy.report.commit}}&quot;,</span>
+<span class="fc" id="L142">                value(report.metadata().taxonomyBuildCommit()));</span>
+<span class="fc" id="L143">        values.put(&quot;{{taxonomy.report.repository}}&quot;,</span>
+<span class="fc" id="L144">                value(report.metadata().repositoryId()));</span>
+<span class="fc" id="L145">        values.put(&quot;{{taxonomy.report.workspace}}&quot;,</span>
+<span class="fc" id="L146">                value(report.metadata().workspaceId()));</span>
+<span class="fc" id="L147">        values.put(&quot;{{taxonomy.report.branch}}&quot;,</span>
+<span class="fc" id="L148">                value(report.metadata().branch()));</span>
+<span class="fc" id="L149">        values.put(&quot;{{taxonomy.report.basedOnCommit}}&quot;,</span>
+<span class="fc" id="L150">                value(report.metadata().basedOnCommit()));</span>
+<span class="fc" id="L151">        values.put(&quot;{{taxonomy.report.analysisProvider}}&quot;,</span>
+<span class="fc" id="L152">                value(report.metadata().analysisProvider()));</span>
+<span class="fc" id="L153">        values.put(&quot;{{taxonomy.template.id}}&quot;,</span>
+                DecisionRationaleTemplateContract.TEMPLATE_ID);
+<span class="fc" id="L155">        values.put(&quot;{{taxonomy.template.commit}}&quot;,</span>
+<span class="fc" id="L156">                abbreviate(template.commitId()));</span>
+<span class="fc" id="L157">        values.put(&quot;{{taxonomy.template.sha256}}&quot;,</span>
+<span class="fc" id="L158">                value(template.manifest().packageSha256()));</span>
+<span class="fc" id="L159">        return Map.copyOf(values);</span>
+    }
+
+    private static void writeTemplateProvenanceProperties(
+            XWPFDocument document,
+            DecisionReportTemplateProvenance provenance) {
+<span class="fc" id="L165">        POIXMLProperties.CustomProperties properties =</span>
+<span class="fc" id="L166">                document.getProperties().getCustomProperties();</span>
+<span class="fc" id="L167">        replaceCustomProperty(</span>
+                properties,
+                TEMPLATE_ID_PROPERTY,
+<span class="fc" id="L170">                provenance.templateId());</span>
+<span class="fc" id="L171">        replaceCustomProperty(</span>
+                properties,
+                TEMPLATE_COMMIT_PROPERTY,
+<span class="fc" id="L174">                provenance.commitId());</span>
+<span class="fc" id="L175">        replaceCustomProperty(</span>
+                properties,
+                TEMPLATE_SHA256_PROPERTY,
+<span class="fc" id="L178">                provenance.packageSha256());</span>
+<span class="fc" id="L179">        replaceCustomProperty(</span>
+                properties,
+                TEMPLATE_SCHEMA_VERSION_PROPERTY,
+<span class="fc" id="L182">                Integer.toString(provenance.schemaVersion()));</span>
+<span class="fc" id="L183">    }</span>
+
+    private static void replaceCustomProperty(
+            POIXMLProperties.CustomProperties properties,
+            String name,
+            String value) {
+<span class="fc" id="L189">        var underlying = properties.getUnderlyingProperties();</span>
+<span class="fc" id="L190">        for (int index = underlying.sizeOfPropertyArray() - 1;</span>
+<span class="fc bfc" id="L191" title="All 2 branches covered.">                index &gt;= 0;</span>
+<span class="fc" id="L192">                index--) {</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">            if (name.equals(underlying.getPropertyArray(index).getName())) {</span>
+<span class="nc" id="L194">                underlying.removeProperty(index);</span>
+            }
+        }
+<span class="fc" id="L197">        properties.addProperty(name, value);</span>
+<span class="fc" id="L198">    }</span>
+
+    private static void replaceTokens(
+            XWPFDocument document,
+            Map&lt;String, String&gt; values) {
+<span class="fc" id="L203">        replaceContainer(document.getParagraphs(), document.getTables(), values);</span>
+<span class="fc bfc" id="L204" title="All 2 branches covered.">        for (XWPFHeader header : document.getHeaderList()) {</span>
+<span class="fc" id="L205">            replaceContainer(header.getParagraphs(), header.getTables(), values);</span>
+<span class="fc" id="L206">        }</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">        for (XWPFFooter footer : document.getFooterList()) {</span>
+<span class="fc" id="L208">            replaceContainer(footer.getParagraphs(), footer.getTables(), values);</span>
+<span class="fc" id="L209">        }</span>
+<span class="fc" id="L210">    }</span>
+
+    private static void replaceContainer(
+            List&lt;XWPFParagraph&gt; paragraphs,
+            List&lt;XWPFTable&gt; tables,
+            Map&lt;String, String&gt; values) {
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        for (XWPFParagraph paragraph : paragraphs) {</span>
+<span class="fc" id="L217">            replaceParagraph(paragraph, values);</span>
+<span class="fc" id="L218">        }</span>
+<span class="fc bfc" id="L219" title="All 2 branches covered.">        for (XWPFTable table : tables) {</span>
+<span class="fc" id="L220">            replaceTable(table, values);</span>
+<span class="fc" id="L221">        }</span>
+<span class="fc" id="L222">    }</span>
+
+    private static void replaceTable(
+            XWPFTable table,
+            Map&lt;String, String&gt; values) {
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        for (XWPFTableRow row : table.getRows()) {</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">            for (XWPFTableCell cell : row.getTableCells()) {</span>
+<span class="fc" id="L229">                replaceContainer(cell.getParagraphs(), cell.getTables(), values);</span>
+<span class="fc" id="L230">            }</span>
+<span class="fc" id="L231">        }</span>
+<span class="fc" id="L232">    }</span>
+
+    /**
+     * Replace tokens across run boundaries while retaining the first run's formatting.
+     *
+     * &lt;p&gt;Word may split a visually contiguous placeholder into several runs after an
+     * administrator edits its formatting. Reconstructing the paragraph text makes that
+     * common case deterministic rather than relying on one token per run.&lt;/p&gt;
+     */
+    private static void replaceParagraph(
+            XWPFParagraph paragraph,
+            Map&lt;String, String&gt; values) {
+<span class="fc" id="L244">        String original = paragraph.getText();</span>
+<span class="pc bpc" id="L245" title="2 of 4 branches missed.">        if (original == null || original.isEmpty()) {</span>
+<span class="nc" id="L246">            return;</span>
+        }
+<span class="fc" id="L248">        String replaced = original;</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        for (Map.Entry&lt;String, String&gt; token : values.entrySet()) {</span>
+<span class="fc" id="L250">            replaced = replaced.replace(token.getKey(), token.getValue());</span>
+<span class="fc" id="L251">        }</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">        if (replaced.equals(original)) {</span>
+<span class="fc" id="L253">            return;</span>
+        }
+
+<span class="fc" id="L256">        List&lt;XWPFRun&gt; runs = paragraph.getRuns();</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        XWPFRun first = runs.isEmpty() ? paragraph.createRun() : runs.get(0);</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">        for (int index = paragraph.getRuns().size() - 1; index &gt;= 1; index--) {</span>
+<span class="nc" id="L259">            paragraph.removeRun(index);</span>
+        }
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">        while (first.getCTR().sizeOfTArray() &gt; 1) {</span>
+<span class="nc" id="L262">            first.getCTR().removeT(first.getCTR().sizeOfTArray() - 1);</span>
+        }
+<span class="pc bpc" id="L264" title="1 of 2 branches missed.">        if (first.getCTR().sizeOfTArray() == 0) {</span>
+<span class="nc" id="L265">            first.setText(replaced);</span>
+        } else {
+<span class="fc" id="L267">            first.setText(replaced, 0);</span>
+        }
+<span class="fc" id="L269">    }</span>
+
+    private static void removeBodyMarker(XWPFDocument document) {
+<span class="fc" id="L272">        List&lt;IBodyElement&gt; elements = new ArrayList&lt;&gt;(document.getBodyElements());</span>
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">        for (int index = 0; index &lt; elements.size(); index++) {</span>
+<span class="fc" id="L274">            IBodyElement element = elements.get(index);</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">            if (element.getElementType() != BodyElementType.PARAGRAPH) {</span>
+<span class="fc" id="L276">                continue;</span>
+            }
+<span class="fc" id="L278">            XWPFParagraph paragraph = (XWPFParagraph) element;</span>
+<span class="fc" id="L279">            if (DecisionRationaleTemplateContract.BODY_MARKER</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">                    .equals(paragraph.getText().strip())) {</span>
+<span class="fc" id="L281">                document.removeBodyElement(index);</span>
+<span class="fc" id="L282">                return;</span>
+            }
+        }
+<span class="nc" id="L285">        throw new IllegalArgumentException(</span>
+                &quot;Required body marker &quot;
+                        + DecisionRationaleTemplateContract.BODY_MARKER
+                        + &quot; was not found&quot;);
+    }
+
+    /**
+     * A DOTX and a DOCX use the same package structure but different main-part content
+     * types. Convert before Apache POI opens the package so the emitted artifact is a
+     * genuine DOCX rather than a template with a misleading file extension.
+     */
+    private static byte[] convertDotxToDocx(byte[] dotx) throws IOException {
+<span class="fc" id="L297">        ByteArrayOutputStream output = new ByteArrayOutputStream(dotx.length);</span>
+<span class="fc" id="L298">        boolean contentTypeChanged = false;</span>
+<span class="fc" id="L299">        try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(dotx));</span>
+<span class="fc" id="L300">             ZipOutputStream zip = new ZipOutputStream(output)) {</span>
+            ZipEntry entry;
+<span class="fc bfc" id="L302" title="All 2 branches covered.">            while ((entry = input.getNextEntry()) != null) {</span>
+<span class="fc" id="L303">                byte[] content = input.readAllBytes();</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">                if (&quot;[Content_Types].xml&quot;.equals(entry.getName())) {</span>
+<span class="fc" id="L305">                    String xml = new String(content, StandardCharsets.UTF_8);</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">                    if (!xml.contains(OoxmlTemplatePackageCodec.DOTX_MAIN_CONTENT_TYPE)) {</span>
+<span class="nc" id="L307">                        throw new IOException(</span>
+                                &quot;Template package does not declare the DOTX main content type&quot;);
+                    }
+<span class="fc" id="L310">                    xml = xml.replace(</span>
+                            OoxmlTemplatePackageCodec.DOTX_MAIN_CONTENT_TYPE,
+                            DOCX_MAIN_CONTENT_TYPE);
+<span class="fc" id="L313">                    content = xml.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L314">                    contentTypeChanged = true;</span>
+                }
+<span class="fc" id="L316">                ZipEntry copy = new ZipEntry(entry.getName());</span>
+<span class="pc bpc" id="L317" title="1 of 2 branches missed.">                if (entry.getComment() != null) {</span>
+<span class="nc" id="L318">                    copy.setComment(entry.getComment());</span>
+                }
+<span class="fc" id="L320">                zip.putNextEntry(copy);</span>
+<span class="pc bpc" id="L321" title="1 of 2 branches missed.">                if (!entry.isDirectory()) {</span>
+<span class="fc" id="L322">                    zip.write(content);</span>
+                }
+<span class="fc" id="L324">                zip.closeEntry();</span>
+<span class="fc" id="L325">                input.closeEntry();</span>
+<span class="fc" id="L326">            }</span>
+        }
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">        if (!contentTypeChanged) {</span>
+<span class="nc" id="L329">            throw new IOException(&quot;Template package is missing [Content_Types].xml&quot;);</span>
+        }
+<span class="fc" id="L331">        return output.toByteArray();</span>
+    }
+
+    private static String statusLabel(
+            DecisionRationaleReport report,
+            DecisionReportLabels labels) {
+<span class="pc bpc" id="L337" title="2 of 4 branches missed.">        return switch (report.status()) {</span>
+<span class="fc" id="L338">            case FINAL -&gt; labels.finalStatus();</span>
+<span class="fc" id="L339">            case FINAL_WITH_WARNINGS -&gt; labels.finalWarnings();</span>
+<span class="nc" id="L340">            case DRAFT_INCOMPLETE -&gt; labels.draft();</span>
+<span class="nc" id="L341">            case NO_RESULT -&gt; labels.noResult();</span>
+        };
+    }
+
+    private static String formatInstant(
+            Instant instant,
+            String zoneId,
+            boolean german) {
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">        if (instant == null) {</span>
+<span class="nc" id="L350">            return &quot;unknown&quot;;</span>
+        }
+        ZoneId zone;
+        try {
+<span class="fc" id="L354">            zone = ZoneId.of(value(zoneId));</span>
+<span class="nc" id="L355">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L356">            zone = ZoneOffset.UTC;</span>
+<span class="fc" id="L357">        }</span>
+<span class="fc" id="L358">        DateTimeFormatter formatter = DateTimeFormatter.ofPattern(</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">                german ? &quot;dd.MM.yyyy HH:mm z&quot; : &quot;yyyy-MM-dd HH:mm z&quot;,</span>
+<span class="fc bfc" id="L360" title="All 2 branches covered.">                german ? Locale.GERMAN : Locale.ENGLISH);</span>
+<span class="fc" id="L361">        return formatter.withZone(zone).format(instant);</span>
+    }
+
+    private static String value(String value) {
+<span class="pc bpc" id="L365" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? &quot;unknown&quot; : value.strip();</span>
+    }
+
+    private static String abbreviate(String value) {
+<span class="fc" id="L369">        String normalized = value(value);</span>
+<span class="pc bpc" id="L370" title="1 of 2 branches missed.">        return normalized.length() &lt;= 12 ? normalized : normalized.substring(0, 12);</span>
+    }
+
+    private static IllegalStateException unavailable(
+            String detail,
+            Exception cause) {
+<span class="fc" id="L376">        return new IllegalStateException(</span>
+                &quot;Decision report template '&quot;
+                        + DecisionRationaleTemplateContract.TEMPLATE_ID
+                        + &quot;' is unavailable: &quot; + detail,
+                cause);
+    }
+
+    private static String safeMessage(Exception exception) {
+<span class="fc" id="L384">        String message = exception.getMessage();</span>
+<span class="pc bpc" id="L385" title="2 of 4 branches missed.">        return message == null || message.isBlank()</span>
+<span class="nc" id="L386">                ? exception.getClass().getSimpleName()</span>
+<span class="fc" id="L387">                : message;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

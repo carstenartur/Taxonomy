@@ -1,0 +1,269 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioAggregationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioAggregationService.java</span></div><h1>PortfolioAggregationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.AggregatedTaxonomyNode;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ConflictView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.MatrixView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.PortfolioMetrics;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectPortfolioView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectSolutionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.model.PortfolioTypes.ActionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ConflictStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProductSelectionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
+import com.taxonomy.portfolio.model.RequirementElementMapping;
+import com.taxonomy.portfolio.model.RequirementSolutionLink;
+import com.taxonomy.portfolio.model.SolutionProductCandidate;
+import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
+import com.taxonomy.portfolio.repository.RequirementElementMappingRepository;
+import com.taxonomy.portfolio.repository.RequirementSolutionLinkRepository;
+import com.taxonomy.portfolio.repository.SolutionProductCandidateRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.EnumMap;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.stream.Collectors;
+
+/** Builds deduplicated project views without losing requirement and snapshot provenance. */
+@Service
+public class PortfolioAggregationService {
+
+    private final ProjectPortfolioService projectService;
+    private final SolutionPortfolioService solutionService;
+    private final ProjectConflictService conflictService;
+    private final RequirementElementMappingRepository elementRepository;
+    private final RequirementSolutionLinkRepository requirementSolutionRepository;
+    private final SolutionProductCandidateRepository productCandidateRepository;
+    private final RequirementAnalysisSnapshotRepository snapshotRepository;
+    private final int staleAfterDays;
+
+    public PortfolioAggregationService(ProjectPortfolioService projectService,
+                                       SolutionPortfolioService solutionService,
+                                       ProjectConflictService conflictService,
+                                       RequirementElementMappingRepository elementRepository,
+                                       RequirementSolutionLinkRepository requirementSolutionRepository,
+                                       SolutionProductCandidateRepository productCandidateRepository,
+                                       RequirementAnalysisSnapshotRepository snapshotRepository,
+                                       @Value(&quot;${taxonomy.portfolio.snapshot-stale-after-days:30}&quot;)
+<span class="fc" id="L63">                                       int staleAfterDays) {</span>
+<span class="fc" id="L64">        this.projectService = projectService;</span>
+<span class="fc" id="L65">        this.solutionService = solutionService;</span>
+<span class="fc" id="L66">        this.conflictService = conflictService;</span>
+<span class="fc" id="L67">        this.elementRepository = elementRepository;</span>
+<span class="fc" id="L68">        this.requirementSolutionRepository = requirementSolutionRepository;</span>
+<span class="fc" id="L69">        this.productCandidateRepository = productCandidateRepository;</span>
+<span class="fc" id="L70">        this.snapshotRepository = snapshotRepository;</span>
+<span class="fc" id="L71">        this.staleAfterDays = Math.max(1, staleAfterDays);</span>
+<span class="fc" id="L72">    }</span>
+
+    @Transactional(readOnly = true)
+    public ProjectPortfolioView build(Long projectId,
+                                      String username,
+                                      WorkspaceContext context) {
+<span class="fc" id="L78">        ProjectView project = projectService.getProject(projectId, username, context);</span>
+<span class="fc" id="L79">        List&lt;RequirementView&gt; requirements = projectService.listRequirements(projectId, username, context);</span>
+<span class="fc" id="L80">        List&lt;RequirementElementMapping&gt; mappings = elementRepository.findCurrentMappingsForProject(projectId);</span>
+<span class="fc" id="L81">        List&lt;ProjectSolutionView&gt; solutions = solutionService.listProjectSolutions(</span>
+                projectId, username, context);
+<span class="fc" id="L83">        List&lt;ConflictView&gt; conflicts = conflictService.list(projectId, username, context);</span>
+<span class="fc" id="L84">        List&lt;RequirementSolutionLink&gt; solutionLinks = requirementSolutionRepository.findByProjectId(projectId);</span>
+<span class="fc" id="L85">        List&lt;SolutionProductCandidate&gt; productCandidates = productCandidateRepository.findByProjectId(projectId);</span>
+
+<span class="fc" id="L87">        List&lt;AggregatedTaxonomyNode&gt; taxonomyNodes = aggregateTaxonomy(mappings);</span>
+<span class="fc" id="L88">        MatrixView requirementTaxonomy = requirementTaxonomyMatrix(requirements, mappings);</span>
+<span class="fc" id="L89">        MatrixView requirementSolution = requirementSolutionMatrix(requirements, solutions, solutionLinks);</span>
+<span class="fc" id="L90">        MatrixView solutionProduct = solutionProductMatrix(solutions, productCandidates);</span>
+<span class="fc" id="L91">        PortfolioMetrics metrics = metrics(</span>
+                requirements, solutions, conflicts, solutionLinks, productCandidates);
+
+<span class="fc" id="L94">        return new ProjectPortfolioView(</span>
+                project,
+                metrics,
+                requirements,
+                taxonomyNodes,
+                solutions,
+                conflicts,
+                requirementTaxonomy,
+                requirementSolution,
+                solutionProduct);
+    }
+
+    private List&lt;AggregatedTaxonomyNode&gt; aggregateTaxonomy(
+            List&lt;RequirementElementMapping&gt; mappings) {
+<span class="fc" id="L108">        Map&lt;String, List&lt;RequirementElementMapping&gt;&gt; byNode = mappings.stream()</span>
+<span class="fc" id="L109">                .collect(Collectors.groupingBy(</span>
+                        RequirementElementMapping::getNodeCode,
+                        LinkedHashMap::new,
+<span class="fc" id="L112">                        Collectors.toList()));</span>
+<span class="fc" id="L113">        return byNode.entrySet().stream()</span>
+<span class="fc" id="L114">                .map(entry -&gt; {</span>
+<span class="fc" id="L115">                    List&lt;RequirementElementMapping&gt; nodeMappings = entry.getValue();</span>
+<span class="fc" id="L116">                    RequirementElementMapping first = nodeMappings.get(0);</span>
+<span class="fc" id="L117">                    Set&lt;String&gt; requirementKeys = nodeMappings.stream()</span>
+<span class="fc" id="L118">                            .map(mapping -&gt; mapping.getSnapshot().getRequirement().getRequirementKey())</span>
+<span class="fc" id="L119">                            .collect(Collectors.toCollection(TreeSet::new));</span>
+<span class="fc" id="L120">                    Set&lt;String&gt; snapshotIds = nodeMappings.stream()</span>
+<span class="fc" id="L121">                            .map(mapping -&gt; mapping.getSnapshot().getId())</span>
+<span class="fc" id="L122">                            .collect(Collectors.toCollection(TreeSet::new));</span>
+<span class="fc" id="L123">                    Map&lt;ActionStatus, Integer&gt; actions = new EnumMap&lt;&gt;(ActionStatus.class);</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">                    for (RequirementElementMapping mapping : nodeMappings) {</span>
+<span class="fc" id="L125">                        actions.merge(mapping.getActionStatus(), 1, Integer::sum);</span>
+<span class="fc" id="L126">                    }</span>
+<span class="fc" id="L127">                    double average = nodeMappings.stream()</span>
+<span class="fc" id="L128">                            .mapToDouble(RequirementElementMapping::getRelevance)</span>
+<span class="fc" id="L129">                            .average().orElse(0.0);</span>
+<span class="fc" id="L130">                    int maximum = nodeMappings.stream()</span>
+<span class="fc" id="L131">                            .mapToInt(RequirementElementMapping::getDirectScore)</span>
+<span class="fc" id="L132">                            .max().orElse(0);</span>
+<span class="fc" id="L133">                    return new AggregatedTaxonomyNode(</span>
+<span class="fc" id="L134">                            entry.getKey(),</span>
+<span class="fc" id="L135">                            first.getNodeTitle(),</span>
+<span class="fc" id="L136">                            first.getTaxonomyRoot(),</span>
+<span class="fc" id="L137">                            requirementKeys.size(),</span>
+                            average,
+                            maximum,
+<span class="fc" id="L140">                            List.copyOf(requirementKeys),</span>
+<span class="fc" id="L141">                            List.copyOf(snapshotIds),</span>
+<span class="fc" id="L142">                            Map.copyOf(actions));</span>
+                })
+<span class="fc" id="L144">                .sorted(Comparator.comparing(AggregatedTaxonomyNode::taxonomyRoot)</span>
+<span class="fc" id="L145">                        .thenComparing(AggregatedTaxonomyNode::nodeCode))</span>
+<span class="fc" id="L146">                .toList();</span>
+    }
+
+    private PortfolioMetrics metrics(List&lt;RequirementView&gt; requirements,
+                                     List&lt;ProjectSolutionView&gt; solutions,
+                                     List&lt;ConflictView&gt; conflicts,
+                                     List&lt;RequirementSolutionLink&gt; solutionLinks,
+                                     List&lt;SolutionProductCandidate&gt; productCandidates) {
+<span class="fc" id="L154">        int analyzed = (int) requirements.stream()</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">                .filter(requirement -&gt; requirement.currentAnalysisSnapshotId() != null)</span>
+<span class="fc" id="L156">                .count();</span>
+<span class="fc" id="L157">        int confirmedRequirements = (int) requirements.stream()</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">                .filter(requirement -&gt; requirement.reviewStatus() == ReviewStatus.CONFIRMED)</span>
+<span class="fc" id="L159">                .count();</span>
+<span class="fc" id="L160">        Set&lt;Long&gt; requirementsWithConfirmedSolution = solutionLinks.stream()</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                .filter(link -&gt; link.getReviewStatus() == ReviewStatus.CONFIRMED)</span>
+<span class="fc" id="L162">                .map(link -&gt; link.getRequirement().getId())</span>
+<span class="fc" id="L163">                .collect(Collectors.toSet());</span>
+<span class="fc" id="L164">        int withoutConfirmedSolution = (int) requirements.stream()</span>
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                .filter(requirement -&gt; !requirementsWithConfirmedSolution.contains(requirement.id()))</span>
+<span class="fc" id="L166">                .count();</span>
+<span class="fc" id="L167">        Map&lt;ActionStatus, Integer&gt; solutionsByAction = new EnumMap&lt;&gt;(ActionStatus.class);</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">        for (ProjectSolutionView solution : solutions) {</span>
+<span class="fc" id="L169">            solutionsByAction.merge(solution.actionStatus(), 1, Integer::sum);</span>
+<span class="fc" id="L170">        }</span>
+<span class="fc" id="L171">        int selectedProducts = (int) productCandidates.stream()</span>
+<span class="pc bpc" id="L172" title="1 of 2 branches missed.">                .filter(candidate -&gt; candidate.getSelectionStatus() == ProductSelectionStatus.SELECTED)</span>
+<span class="fc" id="L173">                .count();</span>
+<span class="fc" id="L174">        int openConflicts = (int) conflicts.stream()</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">                .filter(conflict -&gt; conflict.status() != ConflictStatus.REJECTED</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">                        &amp;&amp; conflict.status() != ConflictStatus.RESOLVED)</span>
+<span class="fc" id="L177">                .count();</span>
+<span class="fc" id="L178">        int staleSnapshots = countStaleSnapshots(requirements);</span>
+
+<span class="fc" id="L180">        return new PortfolioMetrics(</span>
+<span class="fc" id="L181">                requirements.size(),</span>
+                analyzed,
+                confirmedRequirements,
+                withoutConfirmedSolution,
+<span class="fc" id="L185">                solutions.size(),</span>
+<span class="fc" id="L186">                Map.copyOf(solutionsByAction),</span>
+<span class="fc" id="L187">                productCandidates.size(),</span>
+                selectedProducts,
+                openConflicts,
+                staleSnapshots);
+    }
+
+    private int countStaleSnapshots(List&lt;RequirementView&gt; requirements) {
+<span class="fc" id="L194">        Instant threshold = Instant.now().minus(Duration.ofDays(staleAfterDays));</span>
+<span class="fc" id="L195">        int stale = 0;</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        for (RequirementView requirement : requirements) {</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">            if (requirement.currentAnalysisSnapshotId() == null) continue;</span>
+<span class="fc" id="L198">            RequirementAnalysisSnapshot snapshot = snapshotRepository</span>
+<span class="fc" id="L199">                    .findById(requirement.currentAnalysisSnapshotId()).orElse(null);</span>
+<span class="pc bpc" id="L200" title="2 of 4 branches missed.">            if (snapshot == null || snapshot.getCreatedAt().isBefore(threshold)</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">                    || !Objects.equals(snapshot.getRequirementVersion().getId(), requirement.currentVersionId())) {</span>
+<span class="nc" id="L202">                stale++;</span>
+            }
+<span class="fc" id="L204">        }</span>
+<span class="fc" id="L205">        return stale;</span>
+    }
+
+    private MatrixView requirementTaxonomyMatrix(List&lt;RequirementView&gt; requirements,
+                                                 List&lt;RequirementElementMapping&gt; mappings) {
+<span class="fc" id="L210">        List&lt;String&gt; rows = requirements.stream().map(RequirementView::requirementKey).toList();</span>
+<span class="fc" id="L211">        List&lt;String&gt; columns = mappings.stream().map(RequirementElementMapping::getNodeCode)</span>
+<span class="fc" id="L212">                .distinct().sorted().toList();</span>
+<span class="fc" id="L213">        Map&lt;String, Map&lt;String, Integer&gt;&gt; values = initializeRows(rows);</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        for (RequirementElementMapping mapping : mappings) {</span>
+<span class="fc" id="L215">            String requirementKey = mapping.getSnapshot().getRequirement().getRequirementKey();</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            int value = mapping.getDirectScore() &gt; 0</span>
+<span class="pc" id="L217">                    ? mapping.getDirectScore() : (int) Math.round(mapping.getRelevance() * 100.0);</span>
+<span class="pc" id="L218">            values.computeIfAbsent(requirementKey, ignored -&gt; new LinkedHashMap&lt;&gt;())</span>
+<span class="fc" id="L219">                    .merge(mapping.getNodeCode(), value, Math::max);</span>
+<span class="fc" id="L220">        }</span>
+<span class="fc" id="L221">        return immutableMatrix(rows, columns, values);</span>
+    }
+
+    private MatrixView requirementSolutionMatrix(List&lt;RequirementView&gt; requirements,
+                                                 List&lt;ProjectSolutionView&gt; solutions,
+                                                 List&lt;RequirementSolutionLink&gt; links) {
+<span class="fc" id="L227">        List&lt;String&gt; rows = solutions.stream().map(solution -&gt; solution.solution().solutionKey()).toList();</span>
+<span class="fc" id="L228">        List&lt;String&gt; columns = requirements.stream().map(RequirementView::requirementKey).toList();</span>
+<span class="fc" id="L229">        Map&lt;String, Map&lt;String, Integer&gt;&gt; values = initializeRows(rows);</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        for (RequirementSolutionLink link : links) {</span>
+<span class="fc" id="L231">            values.computeIfAbsent(</span>
+<span class="fc" id="L232">                            link.getProjectSolution().getSolution().getSolutionKey(),</span>
+<span class="nc" id="L233">                            ignored -&gt; new LinkedHashMap&lt;&gt;())</span>
+<span class="fc" id="L234">                    .put(link.getRequirement().getRequirementKey(), link.getCoveragePercent());</span>
+<span class="fc" id="L235">        }</span>
+<span class="fc" id="L236">        return immutableMatrix(rows, columns, values);</span>
+    }
+
+    private MatrixView solutionProductMatrix(List&lt;ProjectSolutionView&gt; solutions,
+                                             List&lt;SolutionProductCandidate&gt; candidates) {
+<span class="fc" id="L241">        List&lt;String&gt; rows = solutions.stream().map(solution -&gt; solution.solution().solutionKey()).toList();</span>
+<span class="fc" id="L242">        List&lt;String&gt; columns = candidates.stream()</span>
+<span class="fc" id="L243">                .map(candidate -&gt; candidate.getProduct().getProductKey())</span>
+<span class="fc" id="L244">                .distinct().sorted().toList();</span>
+<span class="fc" id="L245">        Map&lt;String, Map&lt;String, Integer&gt;&gt; values = initializeRows(rows);</span>
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        for (SolutionProductCandidate candidate : candidates) {</span>
+<span class="fc" id="L247">            values.computeIfAbsent(</span>
+<span class="fc" id="L248">                            candidate.getProjectSolution().getSolution().getSolutionKey(),</span>
+<span class="nc" id="L249">                            ignored -&gt; new LinkedHashMap&lt;&gt;())</span>
+<span class="fc" id="L250">                    .put(candidate.getProduct().getProductKey(), candidate.getCoveragePercent());</span>
+<span class="fc" id="L251">        }</span>
+<span class="fc" id="L252">        return immutableMatrix(rows, columns, values);</span>
+    }
+
+    private static Map&lt;String, Map&lt;String, Integer&gt;&gt; initializeRows(List&lt;String&gt; rows) {
+<span class="fc" id="L256">        Map&lt;String, Map&lt;String, Integer&gt;&gt; values = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L257">        rows.forEach(row -&gt; values.put(row, new LinkedHashMap&lt;&gt;()));</span>
+<span class="fc" id="L258">        return values;</span>
+    }
+
+    private static MatrixView immutableMatrix(List&lt;String&gt; rows,
+                                              List&lt;String&gt; columns,
+                                              Map&lt;String, Map&lt;String, Integer&gt;&gt; values) {
+<span class="fc" id="L264">        Map&lt;String, Map&lt;String, Integer&gt;&gt; immutableValues = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L265">        values.forEach((row, rowValues) -&gt; immutableValues.put(row, Map.copyOf(rowValues)));</span>
+<span class="fc" id="L266">        return new MatrixView(List.copyOf(rows), List.copyOf(columns), Map.copyOf(immutableValues));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

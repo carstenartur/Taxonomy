@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationValidationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationValidationService.java</span></div><h1>RelationValidationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.workspace.service.RepositoryContext;
+import org.springframework.stereotype.Service;
+
+/**
+ * Validates a candidate relation and computes a confidence score.
+ *
+ * &lt;p&gt;Repository/workspace/branch duplicate detection is performed by
+ * {@link RelationProposalService} against one immutable identity snapshot.
+ * Review-history feedback is delegated with the same explicit context.&lt;/p&gt;
+ */
+@Service
+public class RelationValidationService {
+
+    private final RelationCompatibilityMatrix compatibilityMatrix;
+    private final RelationQualityService qualityService;
+
+    public RelationValidationService(
+            RelationCompatibilityMatrix compatibilityMatrix,
+<span class="fc" id="L24">            RelationQualityService qualityService) {</span>
+<span class="fc" id="L25">        this.compatibilityMatrix = compatibilityMatrix;</span>
+<span class="fc" id="L26">        this.qualityService = qualityService;</span>
+<span class="fc" id="L27">    }</span>
+
+    /** Validates and scores a candidate in the proposal-generation context. */
+    public ValidationResult validate(
+            TaxonomyNode source,
+            TaxonomyNodeDto candidateTarget,
+            RelationType relationType,
+            int rank,
+            int totalCandidates,
+            RepositoryContext context) {
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if (source.getCode().equals(candidateTarget.getCode())) {</span>
+<span class="fc" id="L38">            return ValidationResult.fail(&quot;Self-relation not allowed&quot;);</span>
+        }
+
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        if (!compatibilityMatrix.isCompatible(</span>
+<span class="fc" id="L42">                source.getTaxonomyRoot(),</span>
+<span class="fc" id="L43">                candidateTarget.getTaxonomyRoot(),</span>
+                relationType)) {
+<span class="fc" id="L45">            return ValidationResult.fail(</span>
+<span class="fc" id="L46">                    &quot;Incompatible roots: &quot; + source.getTaxonomyRoot()</span>
+<span class="fc" id="L47">                    + &quot; to &quot; + candidateTarget.getTaxonomyRoot()</span>
+                    + &quot; for &quot; + relationType);
+        }
+
+<span class="fc" id="L51">        double rankConfidence = computeConfidence(rank, totalCandidates);</span>
+<span class="fc" id="L52">        double historyWeight = qualityService.acceptanceHistoryWeight(</span>
+<span class="fc" id="L53">                source.getTaxonomyRoot(),</span>
+<span class="fc" id="L54">                candidateTarget.getTaxonomyRoot(),</span>
+                relationType,
+                context);
+<span class="fc" id="L57">        double confidence = 0.80 * rankConfidence + 0.20 * historyWeight;</span>
+
+<span class="fc" id="L59">        String rationale = String.format(</span>
+                &quot;%s [%s] to %s [%s] (%s), rank %d/%d&quot;,
+<span class="fc" id="L61">                source.getCode(), source.getTaxonomyRoot(),</span>
+<span class="fc" id="L62">                candidateTarget.getCode(), candidateTarget.getTaxonomyRoot(),</span>
+<span class="fc" id="L63">                relationType, rank + 1, totalCandidates);</span>
+
+<span class="fc" id="L65">        return ValidationResult.pass(confidence, rationale);</span>
+    }
+
+    /**
+     * Computes confidence from the rank position.
+     * Rank 0 has the highest confidence, later ranks decline to 0.3.
+     */
+    public double computeConfidence(int rank, int totalCandidates) {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (totalCandidates &lt;= 1) {</span>
+<span class="fc" id="L74">            return 0.9;</span>
+        }
+<span class="fc" id="L76">        double ratio = (double) rank / (totalCandidates - 1);</span>
+<span class="fc" id="L77">        return 0.95 - (0.65 * ratio);</span>
+    }
+
+    public static class ValidationResult {
+        private final boolean valid;
+        private final double confidence;
+        private final String rationale;
+
+        private ValidationResult(
+                boolean valid,
+                double confidence,
+<span class="fc" id="L88">                String rationale) {</span>
+<span class="fc" id="L89">            this.valid = valid;</span>
+<span class="fc" id="L90">            this.confidence = confidence;</span>
+<span class="fc" id="L91">            this.rationale = rationale;</span>
+<span class="fc" id="L92">        }</span>
+
+        public static ValidationResult pass(
+                double confidence,
+                String rationale) {
+<span class="fc" id="L97">            return new ValidationResult(true, confidence, rationale);</span>
+        }
+
+        public static ValidationResult fail(String reason) {
+<span class="fc" id="L101">            return new ValidationResult(false, 0.0, reason);</span>
+        }
+
+        public boolean isValid() {
+<span class="fc" id="L105">            return valid;</span>
+        }
+
+        public double getConfidence() {
+<span class="fc" id="L109">            return confidence;</span>
+        }
+
+        public String getRationale() {
+<span class="fc" id="L113">            return rationale;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

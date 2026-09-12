@@ -1,0 +1,140 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OslcTransport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.oslc</a> &gt; <span class="el_source">OslcTransport.java</span></div><h1>OslcTransport.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.oslc;
+
+import com.taxonomy.exchange.ExchangeXml;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.interop.persistence.IntegrationStore.Connection;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import org.apache.hc.client5.http.DnsResolver;
+import org.apache.hc.client5.http.classic.methods.HttpGet;
+import org.apache.hc.client5.http.config.ConnectionConfig;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManagerBuilder;
+import org.apache.hc.core5.util.Timeout;
+import org.springframework.core.env.Environment;
+import org.springframework.stereotype.Component;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.net.*;
+import java.util.*;
+
+/** Scoped HTTPS transport with DNS validation in the actual connection path, bounded responses and no redirect/retry. */
+@Component
+public class OslcTransport {
+    private final OslcRemoteProfiles profiles;
+    private final SystemRepositoryService repositories;
+    private final Environment environment;
+<span class="fc" id="L29">    private final java.util.concurrent.ScheduledExecutorService deadlines = java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r -&gt; {</span>
+<span class="fc" id="L30">        Thread thread = new Thread(r, &quot;oslc-deadline&quot;); thread.setDaemon(true); return thread;</span>
+    });
+<span class="fc" id="L32">    @jakarta.annotation.PreDestroy public void close() { deadlines.shutdownNow(); }</span>
+<span class="fc" id="L33">    public OslcTransport(OslcRemoteProfiles profiles, SystemRepositoryService repositories, Environment environment) {</span>
+<span class="fc" id="L34">        this.profiles = profiles; this.repositories = repositories; this.environment = environment;</span>
+<span class="fc" id="L35">    }</span>
+<span class="fc" id="L36">    public record Response(URI resource, String etag, byte[] content) { public Response { content = content.clone(); } @Override public byte[] content() { return content.clone(); } }</span>
+    public URI validate(RepositoryContext context, Connection connection, String resource) {
+<span class="fc" id="L38">        return target(profile(context, connection), resource);</span>
+    }
+    public Response read(RepositoryContext context, Connection connection, String resource, String expectedVersion) {
+<span class="fc" id="L41">        var profile = profile(context, connection); URI target = target(profile, resource);</span>
+<span class="fc" id="L42">        DnsResolver resolver = new DnsResolver() {</span>
+            @Override public InetAddress[] resolve(String hostname) throws UnknownHostException {
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">                if (!target.getHost().equalsIgnoreCase(hostname)) throw new UnknownHostException(&quot;Host outside configured integration origin&quot;);</span>
+<span class="fc" id="L45">                InetAddress[] addresses = InetAddress.getAllByName(hostname);</span>
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">                for (InetAddress address : addresses) if (!allowedAddress(address, profile.allowPrivateNetworks())) throw new UnknownHostException(&quot;Address outside integration network policy&quot;);</span>
+<span class="fc" id="L47">                return addresses;</span>
+            }
+<span class="nc" id="L49">            @Override public String resolveCanonicalHostname(String hostname) throws UnknownHostException { resolve(hostname); return hostname; }</span>
+        };
+<span class="fc" id="L51">        var manager = PoolingHttpClientConnectionManagerBuilder.create().setDnsResolver(resolver)</span>
+<span class="fc" id="L52">                .setDefaultConnectionConfig(ConnectionConfig.custom().setConnectTimeout(Timeout.ofSeconds(3)).setSocketTimeout(Timeout.ofSeconds(5)).build())</span>
+<span class="fc" id="L53">                .setMaxConnTotal(1).setMaxConnPerRoute(1).build();</span>
+<span class="fc" id="L54">        try (var client = HttpClients.custom().setConnectionManager(manager).disableRedirectHandling().disableAutomaticRetries().disableCookieManagement()</span>
+<span class="fc" id="L55">                .disableContentCompression().setDefaultRequestConfig(RequestConfig.custom().setConnectionRequestTimeout(Timeout.ofSeconds(2)).setResponseTimeout(Timeout.ofSeconds(5)).build()).build()) {</span>
+<span class="fc" id="L56">            HttpGet request = new HttpGet(target); request.setHeader(&quot;Accept&quot;, &quot;application/rdf+xml&quot;); request.setHeader(&quot;OSLC-Core-Version&quot;, &quot;3.0&quot;);</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            if (expectedVersion != null) {</span>
+<span class="pc bpc" id="L58" title="2 of 4 branches missed.">                if (expectedVersion.length() &gt; 2048 || expectedVersion.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException(&quot;Invalid external version&quot;);</span>
+<span class="fc" id="L59">                request.setHeader(&quot;If-Match&quot;, expectedVersion);</span>
+            }
+<span class="fc" id="L61">            String configuration = connection.externalScope().configuration();</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">            if (configuration != null) {</span>
+<span class="fc" id="L63">                URI uri = URI.create(configuration);</span>
+<span class="pc bpc" id="L64" title="3 of 6 branches missed.">                if (!uri.isAbsolute() || configuration.length() &gt; 2048 || configuration.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException(&quot;Invalid configuration&quot;);</span>
+<span class="fc" id="L65">                request.setHeader(&quot;Configuration-Context&quot;, configuration);</span>
+            }
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">            if (profile.credentialEnvironmentVariable() != null) {</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">                if (!profile.credentialEnvironmentVariable().matches(&quot;[A-Z][A-Z0-9_]{0,127}&quot;)) throw new IllegalStateException(&quot;Invalid credential reference&quot;);</span>
+<span class="fc" id="L69">                String token = environment.getProperty(profile.credentialEnvironmentVariable());</span>
+<span class="pc bpc" id="L70" title="2 of 4 branches missed.">                if (token == null || !token.matches(&quot;[A-Za-z0-9._~+/=-]{1,8192}&quot;)) throw new IntegrationProblem(&quot;REMOTE_CREDENTIAL_UNAVAILABLE&quot;, 503, &quot;Configured credential is unavailable&quot;);</span>
+<span class="fc" id="L71">                request.setHeader(&quot;Authorization&quot;, &quot;Bearer &quot; + token);</span>
+            }
+<span class="fc" id="L73">            long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(15);</span>
+<span class="pc" id="L74">            var cancellation = deadlines.schedule(() -&gt; request.cancel(), 15, java.util.concurrent.TimeUnit.SECONDS);</span>
+<span class="fc" id="L75">            try { return client.execute(request, response -&gt; {</span>
+<span class="fc" id="L76">                int code = response.getCode();</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                if (code != 200) throw remoteFailure(code);</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">                String media = response.getFirstHeader(&quot;Content-Type&quot;) == null ? &quot;&quot; : response.getFirstHeader(&quot;Content-Type&quot;).getValue().split(&quot;;&quot;, 2)[0].strip();</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                if (!media.equalsIgnoreCase(&quot;application/rdf+xml&quot;)) throw new IntegrationProblem(&quot;REMOTE_MEDIA_TYPE&quot;, 502, &quot;OSLC provider did not return the requested RDF/XML representation&quot;);</span>
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">                if (response.getEntity() == null || response.getEntity().getContentLength() &gt; ExchangeXml.MAX_BYTES) throw new IntegrationProblem(&quot;REMOTE_RESPONSE_LIMIT&quot;, 502, &quot;Remote response exceeds the supported bound&quot;);</span>
+<span class="fc" id="L81">                try (var input = response.getEntity().getContent(); var output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L82">                    byte[] buffer = new byte[8192]; int count;</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                    while ((count = input.read(buffer)) != -1) {</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                        if (System.nanoTime() &gt; deadline) throw new IntegrationProblem(&quot;REMOTE_TIMEOUT&quot;, 504, &quot;Remote response deadline exceeded&quot;);</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">                        if (output.size() + count &gt; ExchangeXml.MAX_BYTES) throw new IntegrationProblem(&quot;REMOTE_RESPONSE_LIMIT&quot;, 502, &quot;Remote response exceeds the supported bound&quot;);</span>
+<span class="fc" id="L86">                        output.write(buffer, 0, count);</span>
+                    }
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">                    String etag = response.getFirstHeader(&quot;ETag&quot;) == null ? null : response.getFirstHeader(&quot;ETag&quot;).getValue();</span>
+<span class="pc bpc" id="L89" title="3 of 6 branches missed.">                    if (etag != null &amp;&amp; (etag.length() &gt; 2048 || etag.chars().anyMatch(Character::isISOControl))) throw new IntegrationProblem(&quot;REMOTE_VERSION_INVALID&quot;, 502, &quot;Invalid remote version metadata&quot;);</span>
+<span class="fc" id="L90">                    return new Response(target, etag, output.toByteArray());</span>
+                }
+<span class="fc" id="L92">            }); } finally { cancellation.cancel(false); }</span>
+<span class="fc" id="L93">        } catch (SocketTimeoutException failure) { throw new IntegrationProblem(&quot;REMOTE_TIMEOUT&quot;, 504, &quot;Remote request timed out&quot;); }</span>
+<span class="nc" id="L94">        catch (IOException failure) { throw new IntegrationProblem(&quot;REMOTE_UNAVAILABLE&quot;, 502, &quot;Remote resource is unavailable under the configured network policy&quot;); }</span>
+    }
+    private OslcRemoteProfiles.RemoteProfile profile(RepositoryContext context, Connection connection) {
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        var value = connection.remoteProfile() == null ? null : profiles.getRemotes().get(connection.remoteProfile());</span>
+<span class="fc" id="L98">        var repository = repositories.getRepository(context.repositoryId());</span>
+<span class="fc" id="L99">        String owner = repository.getOwnerType() + &quot;:&quot; + repository.getOwnerId();</span>
+<span class="pc bpc" id="L100" title="3 of 8 branches missed.">        if (value == null || !context.repositoryId().equals(value.repositoryId()) || !owner.equals(value.organizationId()) || !owner.equals(connection.organizationId())) throw IntegrationProblem.missing();</span>
+<span class="fc" id="L101">        return value;</span>
+    }
+    public static URI target(OslcRemoteProfiles.RemoteProfile profile, String resource) {
+<span class="fc" id="L104">        URI base = profile.baseUri();</span>
+<span class="pc bpc" id="L105" title="5 of 10 branches missed.">        if (base == null || base.getHost() == null || base.getRawUserInfo() != null || base.getRawQuery() != null || base.getRawFragment() != null</span>
+<span class="pc bpc" id="L106" title="4 of 8 branches missed.">                || !base.getPath().endsWith(&quot;/&quot;) || !(base.getScheme().equals(&quot;https&quot;) || profile.allowInsecureHttp() &amp;&amp; base.getScheme().equals(&quot;http&quot;)))</span>
+<span class="nc" id="L107">            throw new IntegrationProblem(&quot;REMOTE_PROFILE_INVALID&quot;, 503, &quot;Configured endpoint must define an explicit origin and path boundary&quot;);</span>
+        URI uri;
+<span class="pc bpc" id="L109" title="2 of 4 branches missed.">        try { uri = resource == null || resource.isBlank() ? base : base.resolve(URI.create(resource)); }</span>
+<span class="pc" id="L110">        catch (IllegalArgumentException invalid) { throw new IntegrationProblem(&quot;REMOTE_URI_REJECTED&quot;, 400, &quot;Invalid remote resource identity&quot;); }</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        String rawPath = uri.getRawPath() == null ? &quot;&quot; : uri.getRawPath().toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L112" title="1 of 6 branches missed.">        if (!Objects.equals(uri.getScheme(), base.getScheme()) || !Objects.equals(uri.getHost(), base.getHost()) || port(uri) != port(base)</span>
+<span class="pc bpc" id="L113" title="2 of 6 branches missed.">                || uri.getUserInfo() != null || uri.getFragment() != null || !uri.normalize().getPath().startsWith(base.getPath())</span>
+<span class="pc bpc" id="L114" title="3 of 10 branches missed.">                || rawPath.contains(&quot;%2e&quot;) || rawPath.contains(&quot;%2f&quot;) || rawPath.contains(&quot;%5c&quot;) || rawPath.contains(&quot;%25&quot;) || rawPath.contains(&quot;\\&quot;)</span>
+<span class="pc bpc" id="L115" title="2 of 4 branches missed.">                || uri.getPath().chars().anyMatch(Character::isISOControl) || uri.toString().length() &gt; 2048)</span>
+<span class="fc" id="L116">            throw new IntegrationProblem(&quot;REMOTE_URI_REJECTED&quot;, 400, &quot;Resource is outside the configured integration boundary&quot;);</span>
+<span class="fc bfc" id="L117" title="All 4 branches covered.">        if (uri.getRawQuery() != null) for (String parameter : uri.getRawQuery().split(&quot;&amp;&quot;)) {</span>
+<span class="fc" id="L118">            String name = URLDecoder.decode(parameter.split(&quot;=&quot;, 2)[0], java.nio.charset.StandardCharsets.UTF_8);</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (!Set.of(&quot;oslc.where&quot;, &quot;oslc.select&quot;, &quot;oslc.searchTerms&quot;, &quot;oslc.prefix&quot;, &quot;oslc.orderBy&quot;, &quot;oslc.paging&quot;, &quot;oslc.pageSize&quot;, &quot;page&quot;, &quot;pageToken&quot;, &quot;configuration&quot;, &quot;oslc_config.context&quot;, &quot;repositoryId&quot;, &quot;workspaceId&quot;, &quot;branch&quot;).contains(name))</span>
+<span class="fc" id="L120">                throw new IntegrationProblem(&quot;REMOTE_QUERY_REJECTED&quot;, 400, &quot;Remote query parameter is outside the declared OSLC profile&quot;);</span>
+        }
+<span class="fc" id="L122">        return uri.normalize();</span>
+    }
+<span class="pc bpc" id="L124" title="1 of 4 branches missed.">    private static int port(URI uri) { return uri.getPort() &lt; 0 ? uri.getScheme().equals(&quot;https&quot;) ? 443 : 80 : uri.getPort(); }</span>
+    public static boolean allowedAddress(InetAddress address, boolean privateNetworks) {
+<span class="pc bpc" id="L126" title="2 of 6 branches missed.">        if (address.isAnyLocalAddress() || address.isLinkLocalAddress() || address.isMulticastAddress()) return false;</span>
+<span class="fc" id="L127">        byte[] bytes = address.getAddress();</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if (bytes.length == 4) {</span>
+<span class="fc" id="L129">            int a = Byte.toUnsignedInt(bytes[0]), b = Byte.toUnsignedInt(bytes[1]);</span>
+<span class="pc bpc" id="L130" title="5 of 8 branches missed.">            if (a == 0 || a &gt;= 240 || a == 169 &amp;&amp; b == 254) return false;</span>
+<span class="pc bpc" id="L131" title="7 of 14 branches missed.">            if (!privateNetworks &amp;&amp; (a == 100 &amp;&amp; b &gt;= 64 &amp;&amp; b &lt;= 127 || a == 198 &amp;&amp; (b == 18 || b == 19))) return false;</span>
+<span class="pc bpc" id="L132" title="1 of 4 branches missed.">        } else if (!privateNetworks &amp;&amp; (bytes[0] &amp; 0xfe) == 0xfc) return false;</span>
+<span class="fc bfc" id="L133" title="All 6 branches covered.">        return privateNetworks || !(address.isLoopbackAddress() || address.isSiteLocalAddress());</span>
+    }
+    private static IntegrationProblem remoteFailure(int status) {
+<span class="fc bfc" id="L136" title="All 6 branches covered.">        String code = switch (status) { case 401, 403 -&gt; &quot;REMOTE_UNAUTHORIZED&quot;; case 404, 410 -&gt; &quot;REMOTE_MISSING&quot;; case 412 -&gt; &quot;REMOTE_STALE&quot;; case 429 -&gt; &quot;REMOTE_RATE_LIMITED&quot;; case 301, 302, 303, 307, 308 -&gt; &quot;REMOTE_MOVED&quot;; default -&gt; &quot;REMOTE_UNAVAILABLE&quot;; };</span>
+<span class="fc bfc" id="L137" title="All 4 branches covered.">        return new IntegrationProblem(code, status == 412 ? 409 : status == 429 ? 429 : 502, &quot;Remote request was not accepted; no synchronization success was recorded&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

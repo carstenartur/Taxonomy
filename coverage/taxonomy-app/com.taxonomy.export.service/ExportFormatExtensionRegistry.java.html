@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExportFormatExtensionRegistry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.service</a> &gt; <span class="el_source">ExportFormatExtensionRegistry.java</span></div><h1>ExportFormatExtensionRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.service;
+
+import com.taxonomy.export.spi.ExportFormatDescriptor;
+import com.taxonomy.export.spi.ExportFormatExtension;
+import org.springframework.stereotype.Service;
+
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Optional;
+
+/** Spring registry for diagram export adapters implemented in the application layer. */
+@Service
+public class ExportFormatExtensionRegistry {
+
+    private final Map&lt;String, ExportFormatExtension&gt; byFormatId;
+
+<span class="fc" id="L20">    public ExportFormatExtensionRegistry(List&lt;ExportFormatExtension&gt; extensions) {</span>
+<span class="fc" id="L21">        Map&lt;String, ExportFormatExtension&gt; map = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L22">        extensions.stream()</span>
+<span class="fc" id="L23">                .sorted(Comparator.comparing(extension -&gt; extension.descriptor().id()))</span>
+<span class="fc" id="L24">                .forEach(extension -&gt; {</span>
+<span class="fc" id="L25">                    String key = normalize(extension.descriptor().id());</span>
+<span class="fc" id="L26">                    ExportFormatExtension previous = map.putIfAbsent(key, extension);</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                    if (previous != null) {</span>
+<span class="fc" id="L28">                        throw new IllegalStateException(&quot;Duplicate export format ID: &quot; + key);</span>
+                    }
+<span class="fc" id="L30">                });</span>
+<span class="fc" id="L31">        this.byFormatId = Map.copyOf(map);</span>
+<span class="fc" id="L32">    }</span>
+
+    public ExportFormatExtension getRequired(String formatId) {
+<span class="fc" id="L35">        return findByFormatId(formatId)</span>
+<span class="fc" id="L36">                .orElseThrow(() -&gt; new IllegalArgumentException(&quot;Unknown export format: &quot; + formatId));</span>
+    }
+
+    public Optional&lt;ExportFormatExtension&gt; findByFormatId(String formatId) {
+<span class="fc bfc" id="L40" title="All 4 branches covered.">        if (formatId == null || formatId.isBlank()) {</span>
+<span class="fc" id="L41">            return Optional.empty();</span>
+        }
+<span class="fc" id="L43">        return Optional.ofNullable(byFormatId.get(normalize(formatId)));</span>
+    }
+
+    public List&lt;ExportFormatDescriptor&gt; listDescriptors() {
+<span class="fc" id="L47">        return byFormatId.values().stream()</span>
+<span class="fc" id="L48">                .map(ExportFormatExtension::descriptor)</span>
+<span class="fc" id="L49">                .toList();</span>
+    }
+
+    private String normalize(String formatId) {
+<span class="fc" id="L53">        return formatId.trim().toLowerCase(Locale.ROOT);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

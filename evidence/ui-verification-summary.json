@@ -1,0 +1,54 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "746e1ce6d9c33eabef1cff06618e8802876949a2",
+  "sourceTree": "bc51530bfa75818d3c47d1dd820b28f55b946624",
+  "applicationJar": "taxonomy-app-1.4.0-SNAPSHOT.jar",
+  "applicationArtifactSha256": "8cb28daf4437b09a3d5c5e2957a77e65fbde601401417955078810c3eec522d6",
+  "shardCount": 6,
+  "scenarioCount": 18,
+  "outcome": "passed",
+  "shards": [
+    {
+      "id": "mobile-admin-and-browser",
+      "scenarioCount": 5,
+      "applicationStartCount": 2,
+      "durationMs": 499661,
+      "outcome": "passed"
+    },
+    {
+      "id": "landscape-special-and-primary-user",
+      "scenarioCount": 3,
+      "applicationStartCount": 3,
+      "durationMs": 517159,
+      "outcome": "passed"
+    },
+    {
+      "id": "architect-and-a11y-desktop",
+      "scenarioCount": 2,
+      "applicationStartCount": 2,
+      "durationMs": 379712,
+      "outcome": "passed"
+    },
+    {
+      "id": "zoom-200-a11y-tablet-and-primary-architect",
+      "scenarioCount": 3,
+      "applicationStartCount": 3,
+      "durationMs": 294836,
+      "outcome": "passed"
+    },
+    {
+      "id": "zoom-400-a11y-mobile-and-primary-admin",
+      "scenarioCount": 3,
+      "applicationStartCount": 3,
+      "durationMs": 432242,
+      "outcome": "passed"
+    },
+    {
+      "id": "desktop-user-and-forced-colors",
+      "scenarioCount": 2,
+      "applicationStartCount": 2,
+      "durationMs": 436425,
+      "outcome": "passed"
+    }
+  ]
+}

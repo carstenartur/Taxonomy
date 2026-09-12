@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TransferSelection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">TransferSelection.java</span></div><h1>TransferSelection.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.Set;
+
+/**
+ * Selection of elements and relations to transfer between contexts.
+ *
+ * @param sourceContextId     the context to copy from
+ * @param targetContextId     the context to copy into
+ * @param selectedElementIds  which elements to transfer
+ * @param selectedRelationIds which relations to transfer
+ * @param mode                how to perform the transfer
+ */
+<span class="fc" id="L14">public record TransferSelection(</span>
+    String sourceContextId,
+    String targetContextId,
+    Set&lt;String&gt; selectedElementIds,
+    Set&lt;String&gt; selectedRelationIds,
+    TransferMode mode
+) {
+
+    /**
+     * How the selective transfer is performed.
+     */
+<span class="fc" id="L25">    public enum TransferMode {</span>
+        /** Copy selected items into the target, overwriting any conflicts. */
+<span class="fc" id="L27">        COPY,</span>
+        /** Cherry-pick the commit containing the selected items. */
+<span class="fc" id="L29">        CHERRY_PICK,</span>
+        /** Merge only the selected items from the source. */
+<span class="fc" id="L31">        MERGE_SELECTED</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

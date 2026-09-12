@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisScoreDiff.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">AnalysisScoreDiff.java</span></div><h1>AnalysisScoreDiff.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScoreDetail;
+import com.taxonomy.dto.AnalysisScoreKind;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ScoreChange;
+
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeSet;
+
+/** Builds a deterministic snapshot diff over effective values and their complete score meaning. */
+final class AnalysisScoreDiff {
+
+    private AnalysisScoreDiff() {
+    }
+
+    static Map&lt;String, ScoreChange&gt; between(
+            AnalysisResult older,
+            AnalysisResult newer) {
+<span class="fc bfc" id="L24" title="All 2 branches covered.">        Map&lt;String, Integer&gt; oldEffective = safeScores(older == null ? null : older.getScores());</span>
+<span class="pc bpc" id="L25" title="1 of 2 branches missed.">        Map&lt;String, Integer&gt; newEffective = safeScores(newer == null ? null : newer.getScores());</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        Map&lt;String, Integer&gt; oldRaw = safeScores(older == null ? null : older.getRawScores());</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">        Map&lt;String, Integer&gt; newRaw = safeScores(newer == null ? null : newer.getRawScores());</span>
+        Map&lt;String, AnalysisScoreDetail&gt; oldDetails =
+<span class="fc bfc" id="L29" title="All 2 branches covered.">                safeDetails(older == null ? null : older.getScoreDetails());</span>
+        Map&lt;String, AnalysisScoreDetail&gt; newDetails =
+<span class="pc bpc" id="L31" title="1 of 2 branches missed.">                safeDetails(newer == null ? null : newer.getScoreDetails());</span>
+
+<span class="fc" id="L33">        Set&lt;String&gt; codes = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L34">        codes.addAll(oldEffective.keySet());</span>
+<span class="fc" id="L35">        codes.addAll(newEffective.keySet());</span>
+<span class="fc" id="L36">        codes.addAll(oldRaw.keySet());</span>
+<span class="fc" id="L37">        codes.addAll(newRaw.keySet());</span>
+<span class="fc" id="L38">        codes.addAll(oldDetails.keySet());</span>
+<span class="fc" id="L39">        codes.addAll(newDetails.keySet());</span>
+
+<span class="fc" id="L41">        Map&lt;String, ScoreChange&gt; changes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (String code : codes) {</span>
+<span class="fc" id="L43">            AnalysisScoreDetail oldDetail = oldDetails.get(code);</span>
+<span class="fc" id="L44">            AnalysisScoreDetail newDetail = newDetails.get(code);</span>
+<span class="fc" id="L45">            Integer oldEffectiveValue = oldEffective.get(code);</span>
+<span class="fc" id="L46">            Integer newEffectiveValue = newEffective.get(code);</span>
+<span class="fc" id="L47">            Integer oldRawValue = rawValue(oldRaw.get(code), oldDetail);</span>
+<span class="fc" id="L48">            Integer newRawValue = rawValue(newRaw.get(code), newDetail);</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            AnalysisScoreKind oldKind = oldDetail == null ? null : oldDetail.kind();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            AnalysisScoreKind newKind = newDetail == null ? null : newDetail.kind();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            String oldParentCode = oldDetail == null ? null : oldDetail.parentCode();</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            String newParentCode = newDetail == null ? null : newDetail.parentCode();</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">            Integer oldParentScore = oldDetail == null ? null : oldDetail.parentScore();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            Integer newParentScore = newDetail == null ? null : newDetail.parentScore();</span>
+
+<span class="fc bfc" id="L56" title="All 2 branches covered.">            if (Objects.equals(oldEffectiveValue, newEffectiveValue)</span>
+<span class="pc bpc" id="L57" title="1 of 4 branches missed.">                    &amp;&amp; Objects.equals(oldRawValue, newRawValue)</span>
+                    &amp;&amp; oldKind == newKind
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                    &amp;&amp; Objects.equals(oldParentCode, newParentCode)</span>
+<span class="pc bpc" id="L60" title="1 of 2 branches missed.">                    &amp;&amp; Objects.equals(oldParentScore, newParentScore)) {</span>
+<span class="fc" id="L61">                continue;</span>
+            }
+<span class="fc" id="L63">            changes.put(code, new ScoreChange(</span>
+                    oldEffectiveValue,
+                    newEffectiveValue,
+                    oldRawValue,
+                    newRawValue,
+                    oldKind,
+                    newKind,
+                    oldParentCode,
+                    newParentCode,
+                    oldParentScore,
+                    newParentScore));
+<span class="fc" id="L74">        }</span>
+<span class="fc" id="L75">        return Collections.unmodifiableMap(new LinkedHashMap&lt;&gt;(changes));</span>
+    }
+
+    private static Integer rawValue(
+            Integer rawScore,
+            AnalysisScoreDetail detail) {
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (detail != null) {</span>
+<span class="fc" id="L82">            return detail.rawScore();</span>
+        }
+<span class="fc" id="L84">        return rawScore;</span>
+    }
+
+    private static Map&lt;String, Integer&gt; safeScores(Map&lt;String, Integer&gt; scores) {
+<span class="fc bfc" id="L88" title="All 2 branches covered.">        return scores == null ? Map.of() : scores;</span>
+    }
+
+    private static Map&lt;String, AnalysisScoreDetail&gt; safeDetails(
+            Map&lt;String, AnalysisScoreDetail&gt; details) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        return details == null ? Map.of() : details;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

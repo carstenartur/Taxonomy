@@ -1,0 +1,223 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PreferencesGitRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.preferences.storage</a> &gt; <span class="el_source">PreferencesGitRepository.java</span></div><h1>PreferencesGitRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.preferences.storage;
+
+import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
+import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
+import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
+import org.eclipse.jgit.lib.CommitBuilder;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
+import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.TreeFormatter;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * JGit facade that versions preferences as one JSON document.
+ *
+ * &lt;p&gt;The Taxonomy-specific file and branch conventions remain here. Persistent
+ * object, ref and reflog storage is supplied by {@code jgit-storage-hibernate-core}
+ * through its public factory contract.&lt;/p&gt;
+ */
+public class PreferencesGitRepository implements AutoCloseable {
+
+<span class="fc" id="L42">    private static final Logger log = LoggerFactory.getLogger(PreferencesGitRepository.class);</span>
+    private static final String REPOSITORY_NAME = &quot;taxonomy-preferences&quot;;
+
+    /** The single JSON file stored in every commit tree. */
+    static final String PREFERENCES_FILENAME = &quot;preferences.json&quot;;
+
+    /** The single branch used for preferences history. */
+    static final String MAIN_BRANCH = &quot;main&quot;;
+
+    private final Repository gitRepo;
+    private final HibernateGitStorage storageHandle;
+    private final boolean databaseBacked;
+    private final boolean closeRepository;
+<span class="fc" id="L55">    private final AtomicBoolean closed = new AtomicBoolean();</span>
+
+    /** Open the persistent preferences repository through the reusable storage library. */
+    public PreferencesGitRepository(HibernateRepositoryFactory storageFactory) {
+<span class="fc" id="L59">        this(Objects.requireNonNull(storageFactory, &quot;storageFactory&quot;)</span>
+<span class="fc" id="L60">                .open(new RepositoryName(REPOSITORY_NAME)));</span>
+<span class="fc" id="L61">    }</span>
+
+<span class="fc" id="L63">    private PreferencesGitRepository(HibernateGitStorage storageHandle) {</span>
+<span class="fc" id="L64">        this.gitRepo = storageHandle.repository();</span>
+<span class="fc" id="L65">        this.storageHandle = storageHandle;</span>
+<span class="fc" id="L66">        this.databaseBacked = true;</span>
+<span class="fc" id="L67">        this.closeRepository = false;</span>
+<span class="fc" id="L68">        log.info(&quot;Initialised database-backed PreferencesGitRepository&quot;);</span>
+<span class="fc" id="L69">    }</span>
+
+    /** Create an owned, volatile in-memory repository for unit tests. */
+    public PreferencesGitRepository() {
+<span class="fc" id="L73">        this(new InMemoryRepository(new DfsRepositoryDescription(REPOSITORY_NAME)), true);</span>
+<span class="fc" id="L74">    }</span>
+
+    /** Use a caller-supplied JGit repository without taking ownership of it. */
+    public PreferencesGitRepository(Repository gitRepo) {
+<span class="nc" id="L78">        this(gitRepo, false);</span>
+<span class="nc" id="L79">    }</span>
+
+<span class="fc" id="L81">    PreferencesGitRepository(Repository gitRepo, boolean closeRepository) {</span>
+<span class="fc" id="L82">        this.gitRepo = Objects.requireNonNull(gitRepo, &quot;gitRepo&quot;);</span>
+<span class="fc" id="L83">        this.storageHandle = null;</span>
+<span class="fc" id="L84">        this.databaseBacked = false;</span>
+<span class="fc" id="L85">        this.closeRepository = closeRepository;</span>
+<span class="fc" id="L86">        log.info(&quot;Initialised PreferencesGitRepository ({})&quot;, gitRepo.getClass().getSimpleName());</span>
+<span class="fc" id="L87">    }</span>
+
+    /**
+     * Commit preferences JSON to the {@code main} branch.
+     *
+     * @return the new commit SHA
+     * @throws IOException if object insertion or the optimistic ref update fails
+     */
+    public String commit(String jsonContent, String author, String message) throws IOException {
+<span class="fc" id="L96">        PersonIdent personIdent = personIdent(author);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">        String commitMessage = message != null ? message : &quot;Preferences update&quot;;</span>
+
+<span class="fc" id="L99">        try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+<span class="fc" id="L100">            ObjectId blobId = inserter.insert(Constants.OBJ_BLOB,</span>
+<span class="fc" id="L101">                    jsonContent.getBytes(StandardCharsets.UTF_8));</span>
+
+<span class="fc" id="L103">            TreeFormatter tree = new TreeFormatter();</span>
+<span class="fc" id="L104">            tree.append(PREFERENCES_FILENAME, FileMode.REGULAR_FILE, blobId);</span>
+<span class="fc" id="L105">            ObjectId treeId = inserter.insert(tree);</span>
+
+<span class="fc" id="L107">            String refName = Constants.R_HEADS + MAIN_BRANCH;</span>
+<span class="fc" id="L108">            Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);</span>
+
+<span class="fc" id="L110">            CommitBuilder commitBuilder = new CommitBuilder();</span>
+<span class="fc" id="L111">            commitBuilder.setTreeId(treeId);</span>
+<span class="fc" id="L112">            commitBuilder.setAuthor(personIdent);</span>
+<span class="fc" id="L113">            commitBuilder.setCommitter(personIdent);</span>
+<span class="fc" id="L114">            commitBuilder.setMessage(commitMessage);</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">            if (branchRef != null) {</span>
+<span class="fc" id="L116">                commitBuilder.setParentId(branchRef.getObjectId());</span>
+            }
+
+<span class="fc" id="L119">            ObjectId commitId = inserter.insert(commitBuilder);</span>
+<span class="fc" id="L120">            inserter.flush();</span>
+
+<span class="fc" id="L122">            RefUpdate update = gitRepo.updateRef(refName);</span>
+<span class="fc" id="L123">            update.setNewObjectId(commitId);</span>
+<span class="fc" id="L124">            update.setExpectedOldObjectId(</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                    branchRef != null ? branchRef.getObjectId() : ObjectId.zeroId());</span>
+<span class="fc" id="L126">            update.setForceUpdate(false);</span>
+<span class="fc" id="L127">            update.setRefLogIdent(personIdent);</span>
+<span class="fc" id="L128">            update.setRefLogMessage(&quot;commit: &quot; + commitMessage, true);</span>
+<span class="fc" id="L129">            RefUpdate.Result result = update.update();</span>
+<span class="fc" id="L130">            requireSuccessfulUpdate(refName, result);</span>
+
+<span class="fc" id="L132">            log.info(&quot;Committed preferences to '{}': {} (ref update: {})&quot;,</span>
+<span class="fc" id="L133">                    MAIN_BRANCH, commitId.name(), result);</span>
+<span class="fc" id="L134">            return commitId.name();</span>
+        }
+    }
+
+    /** Read the preferences JSON at the HEAD of {@code main}. */
+    public String readHead() throws IOException {
+<span class="fc" id="L140">        String refName = Constants.R_HEADS + MAIN_BRANCH;</span>
+<span class="fc" id="L141">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (ref == null) {</span>
+<span class="fc" id="L143">            return null;</span>
+        }
+
+<span class="fc" id="L146">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L147">            return readJsonFromTree(walk.parseCommit(ref.getObjectId()).getTree());</span>
+        }
+    }
+
+    /** Return preference commits newest first. */
+    public List&lt;PreferencesCommit&gt; getHistory() throws IOException {
+<span class="fc" id="L153">        String refName = Constants.R_HEADS + MAIN_BRANCH;</span>
+<span class="fc" id="L154">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        if (ref == null) {</span>
+<span class="fc" id="L156">            return List.of();</span>
+        }
+
+<span class="fc" id="L159">        List&lt;PreferencesCommit&gt; history = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L160">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L161">            walk.markStart(walk.parseCommit(ref.getObjectId()));</span>
+<span class="fc bfc" id="L162" title="All 2 branches covered.">            for (RevCommit commit : walk) {</span>
+<span class="fc" id="L163">                PersonIdent authorIdent = commit.getAuthorIdent();</span>
+<span class="fc" id="L164">                history.add(new PreferencesCommit(</span>
+<span class="fc" id="L165">                        commit.name(),</span>
+<span class="fc" id="L166">                        authorIdent.getName(),</span>
+<span class="fc" id="L167">                        Instant.ofEpochSecond(commit.getCommitTime()),</span>
+<span class="fc" id="L168">                        commit.getFullMessage()));</span>
+<span class="fc" id="L169">            }</span>
+        }
+<span class="fc" id="L171">        return history;</span>
+    }
+
+    private String readJsonFromTree(org.eclipse.jgit.revwalk.RevTree tree) throws IOException {
+<span class="fc" id="L175">        try (TreeWalk treeWalk = TreeWalk.forPath(gitRepo, PREFERENCES_FILENAME, tree)) {</span>
+<span class="pc bpc" id="L176" title="1 of 2 branches missed.">            if (treeWalk == null) {</span>
+<span class="nc" id="L177">                return null;</span>
+            }
+<span class="fc" id="L179">            ObjectLoader loader = gitRepo.open(treeWalk.getObjectId(0), Constants.OBJ_BLOB);</span>
+<span class="fc" id="L180">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
+<span class="nc bnc" id="L181" title="All 2 branches missed.">        }</span>
+    }
+
+    private static PersonIdent personIdent(String author) {
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        String name = author != null ? author : &quot;taxonomy&quot;;</span>
+<span class="fc bfc" id="L186" title="All 2 branches covered.">        String email = author != null ? author : &quot;taxonomy@system&quot;;</span>
+<span class="fc" id="L187">        return new PersonIdent(name, email);</span>
+    }
+
+    private static void requireSuccessfulUpdate(String refName, RefUpdate.Result result)
+            throws IOException {
+<span class="pc bpc" id="L192" title="5 of 8 branches missed.">        if (result != RefUpdate.Result.NEW</span>
+                &amp;&amp; result != RefUpdate.Result.FAST_FORWARD
+                &amp;&amp; result != RefUpdate.Result.FORCED
+                &amp;&amp; result != RefUpdate.Result.NO_CHANGE) {
+<span class="nc" id="L196">            throw new IOException(&quot;Ref update failed for &quot; + refName + &quot;: &quot; + result);</span>
+        }
+<span class="fc" id="L198">    }</span>
+
+    /** Expose the underlying public JGit repository for advanced read operations. */
+    public Repository getGitRepository() {
+<span class="nc" id="L202">        return gitRepo;</span>
+    }
+
+    /** Return whether this instance uses persistent Hibernate-backed storage. */
+    public boolean isDatabaseBacked() {
+<span class="fc" id="L207">        return databaseBacked;</span>
+    }
+
+    /** Close the library handle or an owned in-memory repository exactly once. */
+    @Override
+    public void close() {
+<span class="pc bpc" id="L213" title="1 of 2 branches missed.">        if (!closed.compareAndSet(false, true)) {</span>
+<span class="nc" id="L214">            return;</span>
+        }
+<span class="fc bfc" id="L216" title="All 2 branches covered.">        if (storageHandle != null) {</span>
+<span class="fc" id="L217">            storageHandle.close();</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        } else if (closeRepository) {</span>
+<span class="fc" id="L219">            gitRepo.close();</span>
+        }
+<span class="fc" id="L221">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>EdgeRerouteStrategy.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">EdgeRerouteStrategy.java</span></div><h1>EdgeRerouteStrategy.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramNode;
+
+import java.util.*;
+
+/**
+ * Determines the best reroute target for a suppressed node during edge rerouting.
+ *
+ * &lt;p&gt;Instead of always routing to the single highest-relevance survivor (which
+ * can leave other survivors edge-less), this strategy distributes rerouted edges
+ * across all survivors in the same layer using a load-balancing approach:
+ * &lt;ol&gt;
+ *   &lt;li&gt;If the suppressed node is a known parent of a survivor (via parentId chain),
+ *       route to the direct descendant.&lt;/li&gt;
+ *   &lt;li&gt;If multiple survivors exist, route to the highest-scoring survivor that
+ *       has not yet received more than {@value #MAX_REROUTES_PER_TARGET} rerouted edges.&lt;/li&gt;
+ *   &lt;li&gt;Fallback: highest relevance, same as the original behaviour.&lt;/li&gt;
+ * &lt;/ol&gt;
+ */
+<span class="fc" id="L21">class EdgeRerouteStrategy {</span>
+
+    /** Maximum number of rerouted edges before a survivor is deprioritised. */
+    static final int MAX_REROUTES_PER_TARGET = 3;
+
+<span class="fc" id="L26">    private final Map&lt;String, Integer&gt; rerouteCount = new LinkedHashMap&lt;&gt;();</span>
+
+    /**
+     * Selects the best reroute target for a suppressed node from the given
+     * same-type survivors.
+     *
+     * @param suppressedNode the original node that was suppressed
+     * @param sameTypeSurvivors surviving nodes in the same type/layer
+     * @return the target node ID, or empty if no suitable target exists
+     */
+    Optional&lt;String&gt; selectTarget(DiagramNode suppressedNode, List&lt;DiagramNode&gt; sameTypeSurvivors) {
+<span class="fc bfc" id="L37" title="All 4 branches covered.">        if (sameTypeSurvivors == null || sameTypeSurvivors.isEmpty()) {</span>
+<span class="fc" id="L38">            return Optional.empty();</span>
+        }
+
+        // Strategy 1: Direct descendant (parentId match)
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (DiagramNode survivor : sameTypeSurvivors) {</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">            if (suppressedNode.id().equals(survivor.parentId())) {</span>
+<span class="fc" id="L44">                return recordAndReturn(survivor.id());</span>
+            }
+<span class="fc" id="L46">        }</span>
+
+        // Strategy 2: Load-balanced — prefer high-relevance survivors that haven't
+        // already accumulated too many rerouted edges
+<span class="fc" id="L50">        Optional&lt;DiagramNode&gt; balanced = sameTypeSurvivors.stream()</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">                .filter(s -&gt; rerouteCount.getOrDefault(s.id(), 0) &lt; MAX_REROUTES_PER_TARGET)</span>
+<span class="fc" id="L52">                .max(Comparator.comparingDouble(DiagramNode::relevance));</span>
+
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        if (balanced.isPresent()) {</span>
+<span class="fc" id="L55">            return recordAndReturn(balanced.get().id());</span>
+        }
+
+        // Strategy 3: Fallback — highest relevance regardless of load
+<span class="fc" id="L59">        return sameTypeSurvivors.stream()</span>
+<span class="fc" id="L60">                .max(Comparator.comparingDouble(DiagramNode::relevance))</span>
+<span class="fc" id="L61">                .map(n -&gt; {</span>
+<span class="fc" id="L62">                    rerouteCount.merge(n.id(), 1, Integer::sum);</span>
+<span class="fc" id="L63">                    return n.id();</span>
+                });
+    }
+
+    private Optional&lt;String&gt; recordAndReturn(String id) {
+<span class="fc" id="L68">        rerouteCount.merge(id, 1, Integer::sum);</span>
+<span class="fc" id="L69">        return Optional.of(id);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

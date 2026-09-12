@@ -1,0 +1,168 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationContracts.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.integration</a> &gt; <span class="el_source">IntegrationContracts.java</span></div><h1>IntegrationContracts.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.integration;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.UUID;
+
+/** Framework-neutral exchange values. These are transport/evidence values, never a second authoring model. */
+public final class IntegrationContracts {
+    private IntegrationContracts() {}
+
+<span class="fc" id="L14">    public enum AuthorityMode { LINK_ONLY, IMPORT_COPY, MIRROR_READ, PUBLISH_TARGET, BIDIRECTIONAL }</span>
+<span class="fc" id="L15">    public enum Capability { FILE_IMPORT, FILE_EXPORT, DISCOVERY, READ_LINK, CONDITIONAL_PUBLISH }</span>
+<span class="fc" id="L16">    public enum ArtifactKind { REQUIREMENT, ELEMENT, VIEW, SPECIFICATION, RELATION, PLACEMENT, METADATA }</span>
+<span class="fc" id="L17">    public enum ChangeKind { ADD, UPDATE, MOVE, REMOVE_CANDIDATE, RELATION, CONFLICT, UNCHANGED }</span>
+<span class="fc" id="L18">    public enum Decision { ACCEPT, REJECT, TAKE_EXTERNAL, KEEP_INTERNAL }</span>
+<span class="fc" id="L19">    public enum OperationStatus { FETCH_PENDING, FETCH_FAILED, PREVIEWED, APPLYING, APPLIED, CHECKPOINT_PENDING, COMPLETED, CONFLICT, CANCELLED, FAILED, PARTIAL }</span>
+<span class="fc" id="L20">    public enum LossDisposition { MAPPED, PRESERVED_EXTENSION, TRANSFORMED, UNSUPPORTED }</span>
+
+    public record IntegrationDescriptor(String id, String version, String title,
+                                        Set&lt;Capability&gt; capabilities, Set&lt;String&gt; mediaTypes) {
+<span class="fc" id="L24">        public IntegrationDescriptor {</span>
+<span class="fc" id="L25">            require(id, &quot;connector id&quot;); require(version, &quot;connector version&quot;);</span>
+<span class="fc" id="L26">            capabilities = Set.copyOf(capabilities); mediaTypes = Set.copyOf(mediaTypes);</span>
+<span class="fc" id="L27">        }</span>
+    }
+
+    /** Both editing revision and checkpoint matter; a Git SHA is never a semantic operation identity. */
+    public record InternalState(String repositoryId, String workspaceScopeKey, String branch,
+                                String commitId, long semanticRevision, Long projectId,
+                                String projectFingerprint) {
+<span class="fc" id="L34">        public InternalState {</span>
+<span class="fc" id="L35">            require(repositoryId, &quot;repositoryId&quot;); require(workspaceScopeKey, &quot;workspaceScopeKey&quot;);</span>
+<span class="fc" id="L36">            require(branch, &quot;branch&quot;);</span>
+<span class="pc bpc" id="L37" title="1 of 2 branches missed.">            if (semanticRevision &lt; 0) throw new IllegalArgumentException(&quot;Negative semantic revision&quot;);</span>
+<span class="fc" id="L38">        }</span>
+    }
+
+    public record ExternalScope(String systemType, String repository, String configuration) {
+<span class="fc" id="L42">        public ExternalScope { require(systemType, &quot;external system&quot;); require(repository, &quot;external repository&quot;); }</span>
+    }
+
+    /** Credentials and private endpoint settings deliberately have no fields in this value. */
+    public record IntegrationContext(UUID connectionId, AuthorityMode authority, ExternalScope externalScope,
+                                     InternalState internalState, String actor, String profile, String profileVersion) {
+<span class="fc" id="L48">        public IntegrationContext {</span>
+<span class="fc" id="L49">            Objects.requireNonNull(connectionId); Objects.requireNonNull(authority);</span>
+<span class="fc" id="L50">            Objects.requireNonNull(externalScope); Objects.requireNonNull(internalState);</span>
+<span class="fc" id="L51">            require(actor, &quot;actor&quot;); require(profile, &quot;profile&quot;); require(profileVersion, &quot;profileVersion&quot;);</span>
+<span class="fc" id="L52">        }</span>
+    }
+
+<span class="nc" id="L55">    public record ExternalArtifactReference(UUID connectionId, ExternalScope scope, String resourceId,</span>
+                                            String externalVersion, String contentFingerprint,
+                                            InternalState internalState, String businessIdentity,
+                                            String profile, String profileVersion, UUID lastOperationId) {}
+
+    public record Artifact(String id, ArtifactKind kind, String type, String title, String text,
+                           Map&lt;String, String&gt; attributes, Map&lt;String, String&gt; extensions) {
+<span class="fc" id="L62">        public Artifact {</span>
+<span class="fc" id="L63">            require(id, &quot;external id&quot;); Objects.requireNonNull(kind);</span>
+<span class="fc" id="L64">            attributes = immutable(attributes); extensions = immutable(extensions);</span>
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">            title = title == null ? &quot;&quot; : title; text = text == null ? &quot;&quot; : text;</span>
+<span class="fc" id="L66">        }</span>
+    }
+
+    public record Relation(String id, String type, String source, String target,
+                           Map&lt;String, String&gt; attributes, Map&lt;String, String&gt; extensions) {
+<span class="fc" id="L71">        public Relation {</span>
+<span class="fc" id="L72">            require(id, &quot;relation id&quot;); require(source, &quot;source&quot;); require(target, &quot;target&quot;);</span>
+<span class="fc" id="L73">            attributes = immutable(attributes); extensions = immutable(extensions);</span>
+<span class="fc" id="L74">        }</span>
+    }
+
+    /** Occurrence identity preserves repeated requirements and independently named specification hierarchies. */
+    public record Placement(String id, String containerId, String parentId, String artifactId, int position,
+                            Map&lt;String, String&gt; attributes) {
+<span class="fc" id="L80">        public Placement {</span>
+<span class="fc" id="L81">            require(id, &quot;occurrence id&quot;); require(containerId, &quot;container id&quot;);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            if (position &lt; 0) throw new IllegalArgumentException(&quot;Occurrence position must not be negative&quot;);</span>
+<span class="fc" id="L83">            attributes = immutable(attributes);</span>
+<span class="fc" id="L84">        }</span>
+    }
+
+<span class="fc" id="L87">    public record MappingLoss(String artifactId, String field, String code,</span>
+                              LossDisposition disposition, String detail) {}
+
+    /** Safe source is retained as exchange evidence; outbound adapters must overlay the frozen canonical values. */
+    public record ExchangeDocument(String profile, String profileVersion, String externalVersion,
+                                   boolean completeScope, String source,
+                                   List&lt;Artifact&gt; artifacts, List&lt;Relation&gt; relations, List&lt;Placement&gt; placements,
+                                   Map&lt;String, String&gt; metadata, List&lt;MappingLoss&gt; losses) {
+<span class="fc" id="L95">        public ExchangeDocument {</span>
+<span class="fc" id="L96">            artifacts = List.copyOf(artifacts); relations = List.copyOf(relations);</span>
+<span class="fc" id="L97">            placements = List.copyOf(placements); metadata = immutable(metadata); losses = List.copyOf(losses);</span>
+<span class="fc" id="L98">        }</span>
+    }
+
+    public record IntegrationChange(String id, String externalId, ChangeKind kind, Set&lt;String&gt; fields,
+                                    String expectedInternalFingerprint, String expectedExternalFingerprint,
+                                    Artifact before, Artifact after, List&lt;String&gt; conflicts) {
+<span class="fc" id="L104">        public IntegrationChange { fields = Set.copyOf(fields); conflicts = List.copyOf(conflicts); }</span>
+    }
+
+    public record IntegrationChangeSet(UUID operationId, IntegrationContext context, String fingerprint,
+                                       List&lt;IntegrationChange&gt; changes, List&lt;MappingLoss&gt; losses,
+                                       OperationStatus status, String resultCommit, Instant createdAt) {
+<span class="nc" id="L110">        public IntegrationChangeSet { changes = List.copyOf(changes); losses = List.copyOf(losses); }</span>
+    }
+
+<span class="fc" id="L113">    public record MappingOverride(String canonicalType, String titleAttribute, String textAttribute, String internalIdentity) {}</span>
+    public record ReviewedChangeSet(UUID operationId, String previewFingerprint,
+                                    Map&lt;String, Decision&gt; decisions, String rationale, Map&lt;String, MappingOverride&gt; mappings) {
+        public ReviewedChangeSet(UUID id, String fingerprint, Map&lt;String, Decision&gt; decisions, String rationale) {
+<span class="fc" id="L117">            this(id, fingerprint, decisions, rationale, Map.of());</span>
+<span class="fc" id="L118">        }</span>
+<span class="fc" id="L119">        public ReviewedChangeSet {</span>
+<span class="fc" id="L120">            Objects.requireNonNull(operationId); require(previewFingerprint, &quot;preview fingerprint&quot;);</span>
+<span class="fc" id="L121">            decisions = Map.copyOf(decisions); require(rationale, &quot;rationale&quot;);</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            mappings = mappings == null ? Map.of() : Map.copyOf(mappings);</span>
+<span class="pc bpc" id="L123" title="2 of 4 branches missed.">            if (rationale.length() &gt; 1000 || rationale.chars().anyMatch(Character::isISOControl))</span>
+<span class="nc" id="L124">                throw new IllegalArgumentException(&quot;Rationale must be bounded plain text&quot;);</span>
+<span class="fc" id="L125">        }</span>
+    }
+
+    public record InboundRequest(IntegrationContext context, String mediaType, byte[] content,
+                                 String externalVersion, boolean completeScope) {
+<span class="fc" id="L130">        public InboundRequest { content = content.clone(); }</span>
+<span class="fc" id="L131">        @Override public byte[] content() { return content.clone(); }</span>
+    }
+<span class="fc" id="L133">    public record OutboundRequest(IntegrationContext context, ExchangeDocument document, String expectedExternalVersion) {}</span>
+    public record ExchangeFile(String mediaType, String filename, byte[] content, List&lt;MappingLoss&gt; losses) {
+<span class="fc" id="L135">        public ExchangeFile {</span>
+<span class="fc" id="L136">            require(filename, &quot;filename&quot;);</span>
+<span class="fc bfc" id="L137" title="All 10 branches covered.">            if (filename.length() &gt; 240 || filename.equals(&quot;.&quot;) || filename.equals(&quot;..&quot;) || filename.contains(&quot;/&quot;) || filename.contains(&quot;\\&quot;)</span>
+<span class="fc bfc" id="L138" title="All 2 branches covered.">                    || filename.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException(&quot;Unsafe exchange filename&quot;);</span>
+<span class="fc" id="L139">            content = content.clone(); losses = List.copyOf(losses);</span>
+<span class="fc" id="L140">        }</span>
+<span class="fc" id="L141">        @Override public byte[] content() { return content.clone(); }</span>
+    }
+<span class="fc" id="L143">    public record DiscoveryResource(String uri, String type, String title, String version, String configuration) {}</span>
+    public record DiscoveryResult(List&lt;DiscoveryResource&gt; resources, boolean complete, String version) {
+<span class="fc" id="L145">        public DiscoveryResult { resources = List.copyOf(resources); }</span>
+    }
+    /** Per-item outcomes make partial publication explicit; a timeout is never a successful checkpoint. */
+<span class="nc" id="L148">    public record PublishItem(String resourceId, String expectedVersion, String resultVersion,</span>
+                              String contentFingerprint, OperationStatus status, String failureCode) {}
+    public record PublishResult(UUID operationId, OperationStatus status, List&lt;PublishItem&gt; items) {
+<span class="nc" id="L151">        public PublishResult { items = List.copyOf(items); }</span>
+    }
+
+    private static Map&lt;String, String&gt; immutable(Map&lt;String, String&gt; value) {
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        if (value == null) return Map.of();</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">        for (var entry : value.entrySet()) {</span>
+<span class="pc bpc" id="L157" title="1 of 4 branches missed.">            if (entry.getKey() == null || entry.getValue() == null) {</span>
+<span class="fc" id="L158">                throw new IllegalArgumentException(&quot;Integration maps must not contain null keys or values&quot;);</span>
+            }
+<span class="fc" id="L160">        }</span>
+<span class="fc" id="L161">        return Map.copyOf(value);</span>
+    }
+    private static void require(String value, String field) {
+<span class="fc bfc" id="L164" title="All 6 branches covered.">        if (value == null || value.isBlank() || value.length() &gt; 2048)</span>
+<span class="fc" id="L165">            throw new IllegalArgumentException(&quot;Missing or oversized &quot; + field);</span>
+<span class="fc" id="L166">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
