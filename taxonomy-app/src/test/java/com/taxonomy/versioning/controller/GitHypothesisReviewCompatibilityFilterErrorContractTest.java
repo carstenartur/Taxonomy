@@ -1,7 +1,7 @@
 package com.taxonomy.versioning.controller;
 
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
