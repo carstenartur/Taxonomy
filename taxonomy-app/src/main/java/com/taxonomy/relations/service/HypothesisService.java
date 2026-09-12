@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
@@ -20,17 +20,13 @@ import com.taxonomy.relations.model.RelationEvidence;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
-import com.taxonomy.workspace.model.SystemRepository;
-import com.taxonomy.workspace.model.UserWorkspace;
-import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
-import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceDslPublicationPort;
+import com.taxonomy.workspace.service.WorkspaceRepositoryContextPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -41,6 +37,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -56,15 +53,13 @@ import java.util.UUID;
 public class HypothesisService {
 
     private static final Logger log = LoggerFactory.getLogger(HypothesisService.class);
-    private static final String TEST_REPOSITORY_ID = "test-primary";
 
     private final RelationHypothesisRepository hypothesisRepository;
     private final RelationEvidenceRepository evidenceRepository;
     private final TaxonomyRelationService relationService;
     private final TaxonomyNodeRepository nodeRepository;
     private final WorkspaceDslPublicationPort dslPublication;
-    private final SystemRepositoryService systemRepositoryService;
-    private final UserWorkspaceRepository userWorkspaceRepository;
+    private final WorkspaceRepositoryContextPort repositoryContexts;
 
     private final ModelToAstMapper modelToAstMapper = new ModelToAstMapper();
     private final AstToModelMapper astToModelMapper = new AstToModelMapper();
@@ -72,31 +67,18 @@ public class HypothesisService {
     private final TaxDslParser parser = new TaxDslParser();
     private final DslValidator validator = new DslValidator();
 
-    @Autowired
     public HypothesisService(RelationHypothesisRepository hypothesisRepository,
                              RelationEvidenceRepository evidenceRepository,
                              TaxonomyRelationService relationService,
                              TaxonomyNodeRepository nodeRepository,
                              WorkspaceDslPublicationPort dslPublication,
-                             SystemRepositoryService systemRepositoryService,
-                             UserWorkspaceRepository userWorkspaceRepository) {
+                             WorkspaceRepositoryContextPort repositoryContexts) {
         this.hypothesisRepository = hypothesisRepository;
         this.evidenceRepository = evidenceRepository;
         this.relationService = relationService;
         this.nodeRepository = nodeRepository;
         this.dslPublication = dslPublication;
-        this.systemRepositoryService = systemRepositoryService;
-        this.userWorkspaceRepository = userWorkspaceRepository;
-    }
-
-    /** Test-only compatibility constructor for isolated mapper/DSL tests. */
-    public HypothesisService(RelationHypothesisRepository hypothesisRepository,
-                             RelationEvidenceRepository evidenceRepository,
-                             TaxonomyRelationService relationService,
-                             TaxonomyNodeRepository nodeRepository,
-                             WorkspaceDslPublicationPort dslPublication) {
-        this(hypothesisRepository, evidenceRepository, relationService, nodeRepository,
-                dslPublication, null, null);
+        this.repositoryContexts = Objects.requireNonNull(repositoryContexts, "repositoryContexts");
     }
 
     /** Persist provisional hypotheses and version their canonical DSL immediately. */
@@ -477,65 +459,8 @@ public class HypothesisService {
         }
     }
 
-    private RepositoryContext resolveLegacyContext(WorkspaceContext workspaceContext) {
-        WorkspaceContext legacy = workspaceContext != null
-                ? workspaceContext : WorkspaceContext.SHARED;
-        String username = normalizeUsername(legacy.username());
-        String branch = normalizeBranch(legacy.currentBranch());
-        String workspaceId = normalizeOptional(legacy.workspaceId());
-        String requestedRepositoryId = requireText(
-                legacy.repositoryId(), "workspaceContext.repositoryId");
-        boolean legacyRepositorySelection = WorkspaceContext.LEGACY_REPOSITORY_ID
-                .equals(requestedRepositoryId);
-
-        // Isolated mapper tests use the five-argument constructor. Preserve the
-        // historic fixture repository only for the explicit legacy sentinel.
-        if (systemRepositoryService == null || userWorkspaceRepository == null) {
-            String repositoryId = legacyRepositorySelection
-                    ? TEST_REPOSITORY_ID : requestedRepositoryId;
-            String effectiveBranch = branch != null ? branch : "draft";
-            return workspaceId == null
-                    ? RepositoryContext.centralRead(
-                            repositoryId, effectiveBranch, username)
-                    : RepositoryContext.workspace(
-                            repositoryId, workspaceId, effectiveBranch, username);
-        }
-
-        if (workspaceId == null) {
-            SystemRepository selectedRepository = legacyRepositorySelection
-                    ? systemRepositoryService.getPrimaryRepository()
-                    : systemRepositoryService.getRepository(requestedRepositoryId);
-            return RepositoryContext.centralRead(
-                    selectedRepository.getRepositoryId(),
-                    branch != null
-                            ? branch : selectedRepository.getDefaultBranch(),
-                    username);
-        }
-
-        UserWorkspace workspace = userWorkspaceRepository.findByWorkspaceId(workspaceId)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Workspace not found while resolving repository context: " + workspaceId));
-        if (workspace.getUsername() != null
-                && !workspace.getUsername().equals(username)
-                && !"system".equals(username)) {
-            throw new IllegalArgumentException(
-                    "Workspace does not belong to the active user: " + workspaceId);
-        }
-        String repositoryId = requireText(
-                workspace.getSourceRepositoryId(), "workspace.sourceRepositoryId");
-        if (!legacyRepositorySelection
-                && !repositoryId.equals(requestedRepositoryId)) {
-            throw new IllegalArgumentException(
-                    "Workspace repository does not match the selected repository: "
-                            + workspaceId);
-        }
-        String workspaceBranch = branch != null
-                ? branch : normalizeBranch(workspace.getCurrentBranch());
-        return RepositoryContext.workspace(
-                repositoryId,
-                workspaceId,
-                workspaceBranch != null ? workspaceBranch : "draft",
-                username);
+    protected final RepositoryContext resolveLegacyContext(WorkspaceContext workspaceContext) {
+        return repositoryContexts.resolve(workspaceContext);
     }
 
     private static RepositoryContext requireContext(RepositoryContext context) {
@@ -557,15 +482,6 @@ public class HypothesisService {
     private static String normalizeSessionId(String value) {
         String normalized = normalizeOptional(value);
         return normalized != null ? normalized : UUID.randomUUID().toString();
-    }
-
-    private static String normalizeUsername(String value) {
-        String normalized = normalizeOptional(value);
-        return normalized != null ? normalized : "system";
-    }
-
-    private static String normalizeBranch(String value) {
-        return normalizeOptional(value);
     }
 
     private static String normalizeOptional(String value) {

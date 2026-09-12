@@ -3,7 +3,6 @@ package com.taxonomy.versioning.controller;
 import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.versioning.service.DslOperationsFacade;
-import com.taxonomy.versioning.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -33,9 +32,6 @@ class DslApiControllerContextBoundaryTest {
     private DslOperationsFacade dslOperationsFacade;
 
     @Mock
-    private HypothesisService hypothesisService;
-
-    @Mock
     private WorkspaceResolver workspaceResolver;
 
     @Mock
@@ -47,7 +43,6 @@ class DslApiControllerContextBoundaryTest {
     void setUp() {
         controller = new DslApiController(
                 dslOperationsFacade,
-                hypothesisService,
                 workspaceResolver,
                 repositoryStateService);
     }

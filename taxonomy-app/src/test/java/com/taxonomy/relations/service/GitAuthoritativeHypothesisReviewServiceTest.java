@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
@@ -13,10 +13,10 @@ import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.Mu
 import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.ProjectionPendingException;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionOutcome;
 import com.taxonomy.relations.service.RelationDecisionProjectionService.ProjectionResult;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.HypothesisReviewPendingException;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.PendingPhase;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
-import com.taxonomy.versioning.service.HypothesisReviewStateStore.HypothesisSnapshot;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.HypothesisReviewPendingException;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.PendingPhase;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
+import com.taxonomy.relations.service.HypothesisReviewStateStore.HypothesisSnapshot;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

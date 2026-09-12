@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
@@ -35,7 +35,8 @@ class HypothesisMutationScopeTest {
         TaxonomyNodeRepository nodes = mock(TaxonomyNodeRepository.class);
         DslGitRepositoryFactory repositories = mock(DslGitRepositoryFactory.class);
         HypothesisService service = new HypothesisService(
-                hypotheses, evidence, relations, nodes, new DslWorkspacePublicationAdapter(repositories));
+                hypotheses, evidence, relations, nodes, new DslWorkspacePublicationAdapter(repositories),
+                mock(com.taxonomy.workspace.service.WorkspaceRepositoryContextPort.class));
 
         assertThatThrownBy(() -> service.persistFromAnalysis(
                 List.of(mock(RelationHypothesisDto.class)),
@@ -58,7 +59,8 @@ class HypothesisMutationScopeTest {
         TaxonomyNodeRepository nodes = mock(TaxonomyNodeRepository.class);
         DslGitRepositoryFactory repositories = mock(DslGitRepositoryFactory.class);
         HypothesisService service = new HypothesisService(
-                hypotheses, evidence, relations, nodes, new DslWorkspacePublicationAdapter(repositories));
+                hypotheses, evidence, relations, nodes, new DslWorkspacePublicationAdapter(repositories),
+                mock(com.taxonomy.workspace.service.WorkspaceRepositoryContextPort.class));
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "draft", "alice");
 
@@ -119,7 +121,8 @@ class HypothesisMutationScopeTest {
         TaxonomyNodeRepository nodes = mock(TaxonomyNodeRepository.class);
         DslGitRepositoryFactory repositories = mock(DslGitRepositoryFactory.class);
         HypothesisService service = new HypothesisService(
-                hypotheses, evidence, relations, nodes, new DslWorkspacePublicationAdapter(repositories));
+                hypotheses, evidence, relations, nodes, new DslWorkspacePublicationAdapter(repositories),
+                mock(com.taxonomy.workspace.service.WorkspaceRepositoryContextPort.class));
 
         assertThatThrownBy(() -> service.findAll((RepositoryContext) null))
                 .isInstanceOf(IllegalArgumentException.class)
