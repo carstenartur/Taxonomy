@@ -148,7 +148,7 @@ class ArchitectureModuleExtractionTest {
         List<ClassOwner> ownership = new ArrayList<>();
         classOwners.forEach((name, physical) -> physical.forEach(module -> ownership.add(new ClassOwner(name, module))));
         return ArchitectureModuleGraph.evaluate(policy, SUPPORT_MODULES, modules.keySet(), ownership, dependencies,
-                readProductionModuleDependencies(modules, policy));
+                readProductionModuleDependencies(root, modules, policy));
     }
 
     private static void verifyCompiledBinaryInventory(Map<Path, String> sources, List<Path> outputs,
@@ -238,9 +238,9 @@ class ArchitectureModuleExtractionTest {
         });
         Map<Path, LocalPom> models = new TreeMap<>();
         for (Path pom : poms.stream().sorted().toList()) {
-            String artifact = childText(readPom(pom), "artifactId");
+            String artifact = childText(readPom(pom, root), "artifactId");
             if (artifact.contains("${")) {
-                LocalPom model = localPom(pom, modules, models, new HashSet<>());
+                LocalPom model = localPom(pom, root, modules, models, new HashSet<>());
                 artifact = interpolate(model.artifact(), model.values(), new HashSet<>());
                 for (String feature : featureNames.stream().sorted().toList()) {
                     if (artifact.contains("${") && couldResolveTo(artifact, feature)) {
@@ -255,14 +255,16 @@ class ArchitectureModuleExtractionTest {
         return java.util.Collections.unmodifiableSortedMap(modules);
     }
 
-    static List<ModuleDependency> readProductionModuleDependencies(Map<String, Path> modules, Policy policy) throws Exception {
+    static List<ModuleDependency> readProductionModuleDependencies(Path repositoryRoot, Map<String, Path> modules,
+                                                                  Policy policy) throws Exception {
+        Path root = repositoryRoot.toAbsolutePath().normalize();
         Set<String> origins = new HashSet<>(SUPPORT_MODULES);
         origins.add(policy.compositionModule());
         policy.contexts().stream().map(Context::targetModule).filter(target -> target != null).forEach(origins::add);
         Map<Path, LocalPom> models = new TreeMap<>();
         Map<String, String> groups = new TreeMap<>();
         for (var module : modules.entrySet()) {
-            LocalPom model = localPom(module.getValue().resolve("pom.xml"), modules, models, new HashSet<>());
+            LocalPom model = localPom(module.getValue().resolve("pom.xml"), root, modules, models, new HashSet<>());
             groups.put(module.getKey(), resolved(model.group(), model.values(), "project groupId", module.getKey()));
         }
         Set<String> internalGroups = new HashSet<>(groups.values());
@@ -357,16 +359,16 @@ class ArchitectureModuleExtractionTest {
         }
     }
 
-    private static LocalPom localPom(Path file, Map<String, Path> modules, Map<Path, LocalPom> cache,
+    private static LocalPom localPom(Path file, Path root, Map<String, Path> modules, Map<Path, LocalPom> cache,
                                      Set<Path> resolving) throws Exception {
-        file = file.toAbsolutePath().normalize();
+        file = repositoryPomPath(file, root);
         if (cache.containsKey(file)) {
             return cache.get(file);
         }
         if (!resolving.add(file)) {
             throw new IllegalStateException("Cyclic local parent POM inheritance: " + file);
         }
-        Element project = readPom(file);
+        Element project = readPom(file, root);
         Map<String, String> ownProperties = pomProperties(project);
         List<Element> parents = children(project, "parent");
         Element parent = parents.isEmpty() ? null : parents.getFirst();
@@ -376,20 +378,37 @@ class ArchitectureModuleExtractionTest {
         LocalPom inherited = null;
         if (parent != null) {
             List<Path> candidates = new ArrayList<>();
+            Path reactorParent = modules.containsKey(parentArtifact)
+                    ? modules.get(parentArtifact).resolve("pom.xml").toAbsolutePath().normalize() : null;
+            boolean matchingReactorParent = false;
             String relative = children(parent, "relativePath").isEmpty() ? "../pom.xml" : childText(parent, "relativePath");
             if (!relative.isEmpty()) {
-                Path candidate = file.getParent().resolve(resolved(relative, ownProperties, "parent relativePath", file.toString())).normalize();
+                Path candidate = repositoryPomPath(file.getParent().resolve(
+                        resolved(relative, ownProperties, "parent relativePath", file.toString())), root);
                 candidates.add(Files.isDirectory(candidate) ? candidate.resolve("pom.xml") : candidate);
             }
-            if (modules.containsKey(parentArtifact)) {
-                candidates.add(modules.get(parentArtifact).resolve("pom.xml"));
+            if (reactorParent != null) {
+                candidates.add(reactorParent);
             }
             for (Path candidate : candidates) {
-                if (!Files.isRegularFile(candidate) || !childText(readPom(candidate), "artifactId").equals(parentArtifact)) {
+                candidate = repositoryPomPath(candidate, root);
+                if (!Files.isRegularFile(candidate)) {
                     continue;
                 }
-                LocalPom possible = localPom(candidate, modules, cache, resolving);
-                if (resolved(possible.group(), possible.values(), "parent groupId", candidate.toString()).equals(parentGroup)) {
+                Element candidateProject = readPom(candidate, root);
+                boolean sameRawGroup = declaredGroup(candidateProject).equals(childText(parent, "groupId"));
+                if (!childText(candidateProject, "artifactId").equals(parentArtifact)
+                        || (!sameRawGroup && !couldHaveGroup(candidateProject, parentGroup))) {
+                    continue;
+                }
+                LocalPom possible = localPom(candidate, root, modules, cache, resolving);
+                String candidateGroup = resolved(possible.group(), possible.values(), "parent groupId", candidate.toString());
+                if (sameRawGroup && !candidateGroup.equals(parentGroup)) {
+                    throw new IllegalStateException("Unsupported context-dependent local parent groupId in " + file
+                            + ": parent resolves to " + candidateGroup + ", child resolves to " + parentGroup);
+                }
+                if (candidateGroup.equals(parentGroup)) {
+                    matchingReactorParent |= candidate.equals(reactorParent);
                     if (parentVersion.startsWith("[") || parentVersion.startsWith("(")) {
                         throw new IllegalStateException("Unsupported local-parent version range " + parentVersion
                                 + " in " + file + "; matching local parent: " + candidate);
@@ -400,7 +419,7 @@ class ArchitectureModuleExtractionTest {
                     }
                 }
             }
-            if (inherited == null && (parentGroup.equals("com.taxonomy") || modules.containsKey(parentArtifact))) {
+            if (inherited == null && (parentGroup.equals("com.taxonomy") || matchingReactorParent)) {
                 throw new IllegalStateException("Cannot resolve local reactor parent " + parentGroup + ":" + parentArtifact
                         + ":" + parentVersion + " for " + file);
             }
@@ -410,18 +429,7 @@ class ArchitectureModuleExtractionTest {
             properties.putAll(inherited.properties());
         }
         properties.putAll(ownProperties);
-        // All profile dependencies are checked conservatively. A profile-specific
-        // property could select another internal edge; do not silently assume an
-        // activation state when its value differs from the base model.
-        for (Element profiles : children(project, "profiles")) {
-            for (Element profile : children(profiles, "profile")) {
-                pomProperties(profile).forEach((name, value) -> {
-                    if (!value.equals(properties.get(name))) {
-                        properties.put(name, "${unresolved-profile-property:" + name + "}");
-                    }
-                });
-            }
-        }
+        markProfileDependentProperties(project, properties);
         List<PomDependency> dependencies = inheritedDependencies(inherited == null ? List.of() : inherited.dependencies(), project, false);
         List<PomDependency> managed = inheritedDependencies(inherited == null ? List.of() : inherited.managed(), project, true);
         String group = childText(project, "groupId");
@@ -432,6 +440,37 @@ class ArchitectureModuleExtractionTest {
         cache.put(file, model);
         resolving.remove(file);
         return model;
+    }
+
+    private static String declaredGroup(Element project) {
+        String candidate = childText(project, "groupId");
+        if (candidate.isBlank() && !children(project, "parent").isEmpty()) {
+            candidate = childText(children(project, "parent").getFirst(), "groupId");
+        }
+        return candidate;
+    }
+
+    private static boolean couldHaveGroup(Element project, String group) {
+        String candidate = declaredGroup(project);
+        Map<String, String> properties = pomProperties(project);
+        markProfileDependentProperties(project, properties);
+        // Exclude a known different group before recursion, including when an
+        // external parent's artifactId happens to equal the child's own name.
+        return candidate.isBlank() || couldResolveTo(interpolate(candidate, properties, new HashSet<>()), group);
+    }
+
+    private static void markProfileDependentProperties(Element project, Map<String, String> properties) {
+        // Both parent filtering and dependency projection must retain uncertainty
+        // when a profile can change a property used by a local parent or edge.
+        for (Element profiles : children(project, "profiles")) {
+            for (Element profile : children(profiles, "profile")) {
+                pomProperties(profile).forEach((name, value) -> {
+                    if (!value.equals(properties.get(name))) {
+                        properties.put(name, "${unresolved-profile-property:" + name + "}");
+                    }
+                });
+            }
+        }
     }
 
     private static Map<String, String> pomProperties(Element project) {
@@ -546,7 +585,7 @@ class ArchitectureModuleExtractionTest {
         if (!visited.add(pom)) {
             throw new IllegalStateException("Duplicate or cyclic reactor module declaration: " + pom);
         }
-        Element project = readPom(pom);
+        Element project = readPom(pom, root);
         String artifact = childText(project, "artifactId");
         if (artifact.isBlank() || artifact.contains("${") || modules.putIfAbsent(artifact, pom.getParent()) != null) {
             throw new IllegalStateException("Invalid or duplicate reactor artifactId: " + artifact + " in " + pom);
@@ -570,7 +609,25 @@ class ArchitectureModuleExtractionTest {
         }
     }
 
-    private static Element readPom(Path pom) throws Exception {
+    private static Path repositoryPomPath(Path pom, Path repositoryRoot) throws IOException {
+        Path root = repositoryRoot.toAbsolutePath().normalize();
+        Path path = pom.toAbsolutePath().normalize();
+        if (!path.startsWith(root)) {
+            throw new IllegalStateException("POM path is outside repository: " + path);
+        }
+        Path realRoot = root.toRealPath();
+        Path current = root;
+        for (Path part : root.relativize(path)) {
+            current = current.resolve(part);
+            if (Files.isSymbolicLink(current) && !current.toRealPath().startsWith(realRoot)) {
+                throw new IllegalStateException("POM path is outside repository through a symlink: " + path);
+            }
+        }
+        return path;
+    }
+
+    private static Element readPom(Path pom, Path root) throws Exception {
+        pom = repositoryPomPath(pom, root);
         DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);

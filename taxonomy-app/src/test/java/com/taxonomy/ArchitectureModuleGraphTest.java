@@ -313,7 +313,7 @@ class ArchitectureModuleGraphTest {
                 """);
         var modules = ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY);
 
-        assertThat(ArchitectureModuleExtractionTest.readProductionModuleDependencies(modules, POLICY))
+        assertThat(ArchitectureModuleExtractionTest.readProductionModuleDependencies(temporaryRepository, modules, POLICY))
                 .containsExactly(new ModuleDependency(A, B), new ModuleDependency(A, DOMAIN));
     }
 
@@ -651,6 +651,185 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void anExternalParentMayShareAReactorArtifactName() throws Exception {
+        externalParentPoms(APP, "");
+
+        assertThat(fixturePomDependencies()).isEmpty();
+    }
+
+    @Test
+    void anExternalParentMayShareItsChildArtifactNameWithoutCreatingALocalCycle() throws Exception {
+        externalParentPoms(A, "");
+
+        assertThat(fixturePomDependencies()).isEmpty();
+    }
+
+    @Test
+    void aProfileDependentParentGroupCannotHideItsBaseRuntimeDependency() throws Exception {
+        propertyGroupParentPoms(true, false);
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unresolved parent groupId").hasMessageContaining("unresolved-profile-property:local.group");
+    }
+
+    @Test
+    void aProfileDependentParentGroupCannotHideItsProfileRuntimeDependency() throws Exception {
+        propertyGroupParentPoms(true, true);
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unresolved parent groupId").hasMessageContaining("unresolved-profile-property:local.group");
+    }
+
+    @Test
+    void identicalRawParentGroupsWithDifferentChildResolutionCannotLoseInheritance() throws Exception {
+        // Maven matches the raw ${local.group} strings before inheritance and
+        // child interpolation, then retains the parent's runtime dependency.
+        propertyGroupParentPoms(false, false);
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unsupported context-dependent local parent groupId")
+                .hasMessageContaining("org.other").hasMessageContaining("org.example");
+    }
+
+    @Test
+    void identicalRawParentGroupsWithTheSameResolutionStillInherit() throws Exception {
+        propertyGroupParentPoms(false, false);
+        Path parent = temporaryRepository.resolve("local-parent/pom.xml");
+        Files.writeString(parent, Files.readString(parent)
+                .replace("<local.group>org.other</local.group>", "<local.group>org.example</local.group>"));
+
+        assertThat(fixturePomDependencies()).containsExactly(new ModuleDependency(A, APP));
+    }
+
+    @Test
+    void unrelatedProfilePropertiesDoNotInventALocalParentArtifactCollision() throws Exception {
+        externalParentPoms(A, "");
+        pom("taxonomy-a", A, """
+                <parent><groupId>org.example</groupId><artifactId>taxonomy-a</artifactId><version>1</version>
+                  <relativePath/></parent><groupId>${module.group}</groupId><version>1</version>
+                <properties><module.group>com.taxonomy</module.group></properties>
+                <profiles><profile><id>unrelated</id><properties><unrelated.property>value</unrelated.property></properties></profile></profiles>
+                """);
+
+        assertThat(fixturePomDependencies()).isEmpty();
+    }
+
+    private void propertyGroupParentPoms(boolean profile, boolean dependencyInProfile) throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        String dependency = """
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                """;
+        String profiles = profile ? """
+                <profiles><profile><id>choose-parent-group</id><properties><local.group>org.example</local.group></properties>
+                %s</profile></profiles>
+                """.formatted(dependencyInProfile ? dependency : "") : "";
+        pom("local-parent", "${local.group}", "local-parent", """
+                <packaging>pom</packaging><properties><local.group>org.other</local.group></properties>
+                """ + (dependencyInProfile ? "" : dependency) + profiles);
+        pom("taxonomy-a", A, """
+                <parent><groupId>${local.group}</groupId><artifactId>local-parent</artifactId><version>1</version>
+                  <relativePath>../local-parent/pom.xml</relativePath></parent>
+                <groupId>com.taxonomy</groupId><version>1</version><properties><local.group>org.example</local.group></properties>
+                """);
+    }
+
+    @Test
+    void anUnknownTaxonomyParentStillFailsClosed() throws Exception {
+        inheritedPoms("", "");
+        parentReference("artifactId", "missing-parent", "");
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Cannot resolve local reactor parent com.taxonomy:missing-parent:1");
+    }
+
+    @Test
+    void aMatchingReactorParentGroupStillRequiresTheDeclaredVersion() throws Exception {
+        inheritedPoms("", "");
+        pom("taxonomy-parent", "org.example.build", "taxonomy-parent", "<packaging>pom</packaging>");
+        pom("taxonomy-a", A, """
+                <parent><groupId>org.example.build</groupId><artifactId>taxonomy-parent</artifactId><version>2</version>
+                  <relativePath>../taxonomy-parent/pom.xml</relativePath></parent><groupId>com.taxonomy</groupId>
+                """);
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Cannot resolve local reactor parent org.example.build:taxonomy-parent:2");
+    }
+
+    @Test
+    void parentPathsOutsideTheRepositoryAreRejectedBeforeReading() throws Exception {
+        Path outside = outsideParentFixture();
+        for (String relative : List.of("../../outside/pom.xml", outside.toString(), "../../outside/missing-pom.xml")) {
+            externalParentPoms("external-parent", relative);
+
+            assertOutsidePomIsRejected();
+        }
+    }
+
+    @Test
+    void aPomFileSymlinkCannotReadAnOutsideParent() throws Exception {
+        Path outside = outsideParentFixture();
+        Path link = temporaryRepository.resolve("linked-parent/pom.xml");
+        Files.createDirectories(link.getParent());
+        Files.createSymbolicLink(link, outside);
+        externalParentPoms("external-parent", "../linked-parent/pom.xml");
+
+        assertOutsidePomIsRejected();
+    }
+
+    @Test
+    void aDirectorySymlinkCannotReadOrProbeAnOutsideParent() throws Exception {
+        Path outside = outsideParentFixture();
+        Files.createSymbolicLink(temporaryRepository.resolve("linked-parent"), outside.getParent());
+        for (String name : List.of("pom.xml", "missing-pom.xml")) {
+            externalParentPoms("external-parent", "../linked-parent/" + name);
+
+            assertOutsidePomIsRejected();
+        }
+    }
+
+    @Test
+    void aParentSymlinkInsideTheRepositoryRemainsLocal() throws Exception {
+        localParentPoms("1", """
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                """, "");
+        Path link = temporaryRepository.resolve("linked-parent/pom.xml");
+        Files.createDirectories(link.getParent());
+        Files.createSymbolicLink(link, temporaryRepository.resolve("local-parent/pom.xml"));
+        Path child = temporaryRepository.resolve(A + "/pom.xml");
+        Files.writeString(child, Files.readString(child).replace("../local-parent/pom.xml", "../linked-parent/pom.xml"));
+
+        assertThat(fixturePomDependencies()).containsExactly(new ModuleDependency(A, APP));
+    }
+
+    private void externalParentPoms(String artifact, String relative) throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("taxonomy-a", A, """
+                <parent><groupId>org.example</groupId><artifactId>%s</artifactId><version>1</version>
+                  <relativePath>%s</relativePath></parent><groupId>com.taxonomy</groupId><version>1</version>
+                """.formatted(artifact, relative));
+    }
+
+    private Path outsideParentFixture() throws Exception {
+        Path outside = temporaryRepository.resolve("outside/pom.xml");
+        Files.createDirectories(outside.getParent());
+        // Malformed sentinel: a parser error would prove that content was read
+        // before the checkout boundary was enforced.
+        Files.writeString(outside, "Outside fixture content must not be parsed");
+        temporaryRepository = temporaryRepository.resolve("checkout");
+        Files.createDirectories(temporaryRepository);
+        return outside;
+    }
+
+    private void assertOutsidePomIsRejected() {
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("POM path is outside repository");
+    }
+
+    @Test
     void aLocalParentVersionRangeCannotHideAnInheritedRuntimeApplicationEdge() throws Exception {
         localParentPoms("[1,2)", """
                 <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
@@ -728,7 +907,7 @@ class ArchitectureModuleGraphTest {
 
     private List<ModuleDependency> fixturePomDependencies() throws Exception {
         return ArchitectureModuleExtractionTest.readProductionModuleDependencies(
-                ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY), POLICY);
+                temporaryRepository, ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY), POLICY);
     }
 
     private Path compile(String module, String name, String declaration, List<Path> classpath) throws Exception {

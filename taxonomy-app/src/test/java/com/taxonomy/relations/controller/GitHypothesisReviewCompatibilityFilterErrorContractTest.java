@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.controller;
+package com.taxonomy.relations.controller;
 
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.workspace.service.BranchHeadConflictException;
@@ -8,11 +8,11 @@ import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.Comm
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.HypothesisReviewPendingException;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.PendingPhase;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisService;
-import com.taxonomy.versioning.service.HypothesisReviewStateStore.HypothesisReviewConflictException;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.HypothesisReviewPendingException;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.PendingPhase;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisService;
+import com.taxonomy.relations.service.HypothesisReviewStateStore.HypothesisReviewConflictException;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;

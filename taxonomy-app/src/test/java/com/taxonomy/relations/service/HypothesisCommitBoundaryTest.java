@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
@@ -60,7 +60,8 @@ class HypothesisCommitBoundaryTest {
                 evidenceRepository,
                 relationService,
                 nodeRepository,
-                new DslWorkspacePublicationAdapter(repositoryFactory));
+                new DslWorkspacePublicationAdapter(repositoryFactory),
+                org.mockito.Mockito.mock(com.taxonomy.workspace.service.WorkspaceRepositoryContextPort.class));
         context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "draft", "alice");
         hypothesis = new RelationHypothesisDto(

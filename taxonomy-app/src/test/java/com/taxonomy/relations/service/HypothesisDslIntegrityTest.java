@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
@@ -54,7 +54,8 @@ class HypothesisDslIntegrityTest {
                 evidenceRepository,
                 relationService,
                 nodeRepository,
-                new DslWorkspacePublicationAdapter(repositoryFactory));
+                new DslWorkspacePublicationAdapter(repositoryFactory),
+                org.mockito.Mockito.mock(com.taxonomy.workspace.service.WorkspaceRepositoryContextPort.class));
         when(hypothesisRepository.existsInRepositoryWorkspaceSession(
                 anyString(), anyString(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(false);

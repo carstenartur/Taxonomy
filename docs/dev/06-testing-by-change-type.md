@@ -14,7 +14,7 @@ publication are documented separately in
 | DSL parser/serializer | `./mvnw test -pl taxonomy-dsl` | App/editor tests when materialization changes |
 | Export model/serializer | `./mvnw test -pl taxonomy-export` | App endpoint tests when adapters change |
 | Spring service/controller | `./mvnw test -pl taxonomy-app` | `./mvnw verify` |
-| Architecture boundary | `./mvnw test -Parchitecture-tests -pl taxonomy-app` | `./mvnw -B verify -Pci` |
+| Architecture boundary | `./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false` | `./mvnw -B verify -Pci` |
 | Document import | `./mvnw test -Pdocument-import-tests -pl taxonomy-app` | `./mvnw -B verify -Pci` |
 | ArchiMate import | `./mvnw test -Parchimate-import-tests -pl taxonomy-app` | `./mvnw -B verify -Pci` |
 | Persistence/core containers | `./mvnw -B verify -Pcore-integration` | `./mvnw -B verify -Pci` |

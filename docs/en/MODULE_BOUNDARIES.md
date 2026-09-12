@@ -91,6 +91,30 @@ A package named `shared` is not automatically a module boundary. Shared classes 
 
 ## Dependency fitness functions
 
+### Hypothesis authority (C2 of #1043)
+
+Hypothesis lifecycle, Git-authoritative review, review-state storage and the
+`/api/dsl/hypotheses/**` HTTP adapters are owned by `relations`. The remaining
+`DslApiController` does not call hypothesis services. Legacy `WorkspaceContext`
+arguments are translated by the workspace-owned `WorkspaceRepositoryContextPort`;
+an explicitly selected repository is retained, workspace provenance mismatches
+fail before review or branch access, and central contexts remain read-only.
+
+Hypothesis services consume workspace APIs for repository context, exact Git
+reads/commands and generated DSL publication. They do not depend on workspace
+entities/repositories, concrete DSL storage or JGit. Semantic review and
+transaction callbacks remain relation responsibilities; generated-snapshot
+publication remains separate from expected-head commands and editor checkpoints.
+
+The measured C2 baseline reduces cross-context class pairs from 559 to 540.
+`versioning.service -> catalog/relations` and
+`versioning.controller -> relations` are now zero. Remaining workspace-to-feature
+coupling is still explicit: `DecisionRationaleReportController` coordinates
+catalogue/architecture reports, while the DSL operations facades coordinate
+architecture documents/history with workspace state. These require the separate
+C2-following orchestration slice before physical extraction. No cycle exception
+was added or expanded.
+
 The migration uses two complementary protections:
 
 1. `ArchitectureCycleBoundaryTest` rejects undocumented package cycles. Temporary exceptions must exist in `.github/architecture-exceptions.json` and expire.

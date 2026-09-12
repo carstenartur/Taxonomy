@@ -7,7 +7,7 @@ import com.taxonomy.relations.model.RelationEvidence;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
-import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.relations.service.HypothesisService;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;

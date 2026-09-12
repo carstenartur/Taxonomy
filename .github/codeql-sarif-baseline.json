@@ -37,12 +37,6 @@
       "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java",
       "primaryLocationLineHash": "64c585095996ba6b:1",
       "rationale": "Existing DSL hypothesis diagnostic dataflow remains tracked for a consistent non-disclosing logging contract in #857."
-    },
-    {
-      "ruleId": "java/sensitive-log",
-      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/versioning/service/HypothesisService.java",
-      "primaryLocationLineHash": "64d3fb8a5c0e0545:1",
-      "rationale": "Existing hypothesis diagnostic dataflow remains tracked for a consistent non-disclosing logging contract in #857."
     }
   ]
 }

@@ -15,6 +15,10 @@ and post-reactor gates and is not equivalent to CI. The generated report is
 printed in the test output and written to
 `taxonomy-app/target/architecture-module-graph.txt`.
 
+Run the architecture suite from the repository root across the complete reactor.
+An app-only `-pl taxonomy-app` invocation does not compile the sibling outputs
+required by this inventory.
+
 The report includes every class-derived module edge with a deterministic
 representative class pair, declared production POM edges, application dependencies,
 one cycle witness and all members of each cyclic group, and an extraction
@@ -61,6 +65,14 @@ The `project.groupId`/`pom.groupId` aliases and corresponding artifact, version,
 and parent coordinate aliases resolve in the child model. Raw inheritance keys are preserved before interpolation, matching
 [Maven's model-building order](https://maven.apache.org/ref/3.9.16/maven-model-builder/index.html).
 
+Reactor parent identity includes both group and artifact; an external parent may
+share a reactor artifact name. Unknown `com.taxonomy` parents still fail closed.
+Every POM path is checked against the checkout before content is read, including
+normalized traversal and symlink targets. A `relativePath` outside the checkout
+fails even when Maven would allow it; symlinks that remain inside are permitted.
+Use Maven's explicit empty `<relativePath/>` for an external parent with no local
+lookup. External-parent content remains outside this projection.
+
 Declared parent coordinates must resolve before any external-parent fallback;
 unknown or cyclic expressions fail immediately. Matching local parents require
 exact versions. A Maven version range on a matching local parent fails explicitly,
@@ -71,6 +83,11 @@ Unresolved expressions that could identify an internal group, or that affect an
 internal dependency's coordinates or scope, fail explicitly. Profile-dependent
 property or managed-scope choices also fail when they could change an internal
 edge; a profile-only managed `test` scope cannot hide the base `compile` default.
+Parent-candidate filtering preserves this same profile uncertainty. Identical raw
+parent group expressions are retained as possible local matches; if their
+parent-only and child resolutions disagree, the adapter fails explicitly instead
+of discarding inheritance. This projection does not guess a profile activation
+state or implement Maven's complete context-dependent parent interpolation.
 External-parent and imported-BOM inheritance is outside this local projection and
 is not fetched or inspected. New internal edges or scope settings supplied through
 those mechanisms require extending the adapter before extraction.

@@ -69,12 +69,17 @@ Test selection is stored in POM profiles or cataloged Maven commands, never in
 workflow YAML:
 
 ```bash
-./mvnw test -Parchitecture-tests -pl taxonomy-app
+./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw test -Pdocument-import-tests -pl taxonomy-app
 ./mvnw test -Parchimate-import-tests -pl taxonomy-app
 ./mvnw -B verify -pl taxonomy-app -am \
   -DskipITs=false -Dit.test=KeycloakSecurityContainerIT
 ```
+
+The architecture suite needs the complete reactor's production outputs for its
+module-extraction inventory. Run it from the repository root without selecting
+only `taxonomy-app`; modules without matching test classes use
+`surefire.failIfNoSpecifiedTests=false` while their production code is compiled.
 
 Browser failures can be reproduced without editing a workflow:
 

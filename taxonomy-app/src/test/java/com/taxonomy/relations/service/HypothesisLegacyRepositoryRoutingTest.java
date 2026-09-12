@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
@@ -61,8 +61,8 @@ class HypothesisLegacyRepositoryRoutingTest {
                 relationService,
                 nodeRepository,
                 new DslWorkspacePublicationAdapter(repositoryFactory),
-                systemRepositoryService,
-                userWorkspaceRepository);
+                new com.taxonomy.workspace.service.LegacyWorkspaceRepositoryContextResolver(
+                        systemRepositoryService, userWorkspaceRepository));
     }
 
     @Test

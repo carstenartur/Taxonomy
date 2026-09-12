@@ -10,7 +10,7 @@ import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.export.DiagramViewMetadata;
 import com.taxonomy.preferences.PreferencesService;
 import com.taxonomy.shared.config.ExportConfig;
-import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.relations.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import org.springframework.stereotype.Service;
 

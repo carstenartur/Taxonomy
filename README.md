@@ -177,7 +177,7 @@ Authoritative CI-equivalent verification, including integration, browser, qualit
 Focused profiles include:
 
 ```bash
-./mvnw verify -Parchitecture-tests
+./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw verify -Pdocument-import-tests
 ./mvnw verify -Parchimate-import-tests
 ./mvnw verify -Pdatabase-postgres
