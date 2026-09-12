@@ -1,9 +1,6 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.versioning.service.CommitIndexService;
-import com.taxonomy.dsl.export.DslMaterializeService;
-import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.service.RepositoryContext;
@@ -40,8 +37,7 @@ class DslOperationsFacadeRationaleTest {
                 return action.run();
             }
         };
-        var facade = new DslOperationsFacade(mock(TaxDslExportService.class), mock(DslMaterializeService.class),
-                mock(ArchitectureDslDocumentRepository.class), repositories, mock(CommitIndexService.class),
+        var facade = new DslOperationsFacade(repositories, mock(CommitIndexService.class),
                 mock(ConflictDetectionService.class), mock(RepositoryStateGuard.class),
                 mock(RepositoryStateService.class), resolver, versions);
 

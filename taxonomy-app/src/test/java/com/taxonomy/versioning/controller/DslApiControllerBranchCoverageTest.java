@@ -1,6 +1,5 @@
 package com.taxonomy.versioning.controller;
 
-import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.storage.DslBranch;
 import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.versioning.service.RepositoryStateService;
@@ -46,31 +45,9 @@ class DslApiControllerBranchCoverageTest {
 
     @BeforeEach
     void setUp() {
-        controller = new DslApiController(dslOps, workspaceResolver, repositoryStateService);
+        controller = new DslApiController(dslOps, workspaceResolver, new DslReadWorkspaceContextResolver(workspaceResolver, repositoryStateService));
         lenient().when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
         lenient().when(workspaceResolver.resolveCurrentContext()).thenReturn(context);
-    }
-
-    @Test
-    void materializeIncrementalCoversSuccessWithDocumentBranchAndBadRequest() {
-        DslMaterializeService.MaterializeResult result =
-                new DslMaterializeService.MaterializeResult(true, List.of(), List.of("warning"), 2, 1, 42L);
-        com.taxonomy.architecture.model.ArchitectureDslDocument document =
-                new com.taxonomy.architecture.model.ArchitectureDslDocument();
-        document.setBranch("review");
-        when(dslOps.materializeIncremental(1L, 2L)).thenReturn(result);
-        when(dslOps.findDocumentById(2L)).thenReturn(Optional.of(document));
-
-        var success = controller.materializeIncremental(1L, 2L);
-        assertThat(success.getStatusCode()).isEqualTo(HttpStatus.OK);
-        assertThat(success.getBody()).containsEntry("relationsCreated", 2).containsEntry("hypothesesCreated", 1);
-        verify(dslOps).getViewContext("review");
-
-        reset(dslOps);
-        when(dslOps.materializeIncremental(1L, 2L)).thenThrow(new IllegalArgumentException("missing document"));
-        var failure = controller.materializeIncremental(1L, 2L);
-        assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
-        assertThat(failure.getBody()).containsEntry("error", "missing document");
     }
 
     @Test
@@ -223,8 +200,6 @@ class DslApiControllerBranchCoverageTest {
         when(dslOps.aggregateElementHistory("E1")).thenReturn(null);
         assertThat(controller.elementHistoryAggregation("E1").getBody())
                 .isEqualTo(Map.of("elementId", "E1", "message", "No history found for element E1"));
-        when(dslOps.listDocuments()).thenReturn(List.of());
-        assertThat(controller.listDocuments().getBody()).isEmpty();
         assertThat(controller.getMergeConflictDetails("a", "b").getBody())
                 .isEqualTo(Map.of("conflict", false, "message", "No conflict detected"));
         assertThat(controller.getCherryPickConflictDetails("c", "review").getBody())
