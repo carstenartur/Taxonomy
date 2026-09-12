@@ -1,12 +1,11 @@
 package com.taxonomy.relations.command;
 
-import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
+import com.taxonomy.dsl.storage.DslWorkspaceVersionAdapter;
 import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.ReadOnlyRepositoryContextException;
@@ -98,9 +97,7 @@ class ArchitectureRelationGitCommandServiceTest {
         DslGitRepositoryFactory factory = mock(DslGitRepositoryFactory.class);
         ArchitectureRelationGitCommandService service =
                 new ArchitectureRelationGitCommandService(
-                        factory,
-                        new ArchitectureRelationDslTransformer(),
-                        new ExpectedHeadDslCommitter());
+                        new DslWorkspaceVersionAdapter(factory));
         RepositoryContext context = RepositoryContext.centralRead(
                 "repo-a", "accepted", "reader");
 
@@ -279,9 +276,7 @@ class ArchitectureRelationGitCommandServiceTest {
     private ArchitectureRelationGitCommandService service() {
         repositoryFactory = new DslGitRepositoryFactory(null);
         return new ArchitectureRelationGitCommandService(
-                repositoryFactory,
-                new ArchitectureRelationDslTransformer(),
-                new ExpectedHeadDslCommitter());
+                new DslWorkspaceVersionAdapter(repositoryFactory));
     }
 
     private static RelationIdentity identity() {
