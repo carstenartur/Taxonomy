@@ -50,16 +50,26 @@ source prefix and the `versioning.controller` package floors. The new
 inherits the same **0.81 line / 0.58 branch** floors. Global changed-source floors
 and the empty exception list remain unchanged.
 
-The isolated D1 checkout removes all three report-related versioning-controller
-package edges: architecture decision (6 class pairs), architecture report (1),
-and catalog service (1). The same report/knowledge dependencies are now owned by
-composition, which additionally exposes the three previously internal workspace
-API references. Total class pairs change from 559 to 562; this is an ownership
-transfer, with no additional runtime dependency. When composed after C2 (#1053),
-the same measured move changes class pairs from 540 to 543. That combined
-replacement is recorded in `.github/architecture-dependency-baseline.json`, while
-retaining both the hypothesis and report destination coverage rules. The D1 PR is
-stacked on C2 so these shared policy files have a reviewed, measured resolution.
+The current D1 baseline after C2 (#1053) records **543 class pairs**, up from
+**540** at the C2 baseline. This **540 to 543** ownership transfer is the current
+state recorded in `.github/architecture-dependency-baseline.json`, retaining both
+the hypothesis and report destination coverage rules.
+
+D1 removes all three report-related versioning-controller package edges:
+architecture decision (6 class pairs), architecture report (1), and catalog
+service (1). Composition now owns those report/knowledge dependencies and exposes
+three previously internal workspace API references. No runtime dependency is
+added. The earlier isolated D1 checkout, before composition with C2, measured
+**559 to 562** class pairs; that is historical validation evidence, not the current
+baseline.
+
+Both the root `pom.xml` and `.mvn/verification-suites.json` include
+`ArchitectureDecisionReportBoundaryTest` in the `architecture-tests` profile.
+Run that profile from the repository root across the full reactor:
+
+```bash
+./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
+```
 
 ## Verification checkpoint
 
@@ -89,3 +99,20 @@ behavior/ownership/gate cases pass, with only the initial exact-baseline mismatc
 remaining. After recording the measured 543 class pairs, all 50 architecture and
 module-gate invocations pass. Its 1,405-class graph still has extraction blockers;
 this composition move does not authorize a physical Maven extraction.
+
+## Main-based review correction
+
+After C2 merged, both architecture-test selectors were updated to include the
+report ownership guard, and the canonical English/German module-boundary pages
+were corrected to the current composition owner and 543-pair baseline. The real
+`HelpController` rendered both updated source documents; the existing Maven
+`copy-docs` step supplies those same sources to the application.
+
+A fresh main-based `clean verify -DexcludedGroups=real-llm` completed successfully
+in 9:59 with 3,074 application invocations and zero application failures, errors
+or skips. No independent module-gate fixtures were added to this checkout. Report
+coverage remains 97.63% lines / 75.84% branches, and the remaining versioning
+controllers retain 85.51% / 62.50%, above their unchanged 81% / 58% floors. The
+default build still skips application integration and post-reactor quality gates.
+The documented full-reactor architecture-profile command also passes: 18 tests,
+zero failures/errors/skips, in 36.451 seconds, including the report ownership rule.

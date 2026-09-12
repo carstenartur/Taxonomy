@@ -76,7 +76,7 @@ Sie sind **nicht** der Anfang eines generischen `taxonomy-adapters`-Moduls. Jede
 
 ## Zielrolle von `taxonomy-app`
 
-Nach der Extraktion der Feature-Kontexte bleibt `taxonomy-app` der ausführbare Composition Root. Die Context-Map klassifiziert derzeit `observability`, `security` und `shared` als `app-composition`; auch die Root-Klassen `AppConfig` und `TaxonomyApplication` sind Composition-Klassen.
+Nach der Extraktion der Feature-Kontexte bleibt `taxonomy-app` der ausführbare Composition Root. Die Context-Map klassifiziert derzeit `composition`, `observability`, `security` und `shared` als `app-composition`; auch die Root-Klassen `AppConfig` und `TaxonomyApplication` sind Composition-Klassen.
 
 Langfristig sollen dort nur tatsächlich anwendungsweite Verantwortlichkeiten verbleiben, insbesondere:
 
@@ -108,19 +108,45 @@ oder JGit ab. Fachliche Reviews und Transaktions-Callbacks bleiben bei Relations
 Snapshot-Publikation bleibt von Expected-Head-Commands und Editor-Checkpoints
 getrennt.
 
-Die gemessene C2-Baseline reduziert kontextübergreifende Klassenpaare von 559 auf
-540. `versioning.service -> catalog/relations` und
-`versioning.controller -> relations` sind jetzt null. Verbleibende Abhängigkeiten
-sind weiterhin sichtbar: `DecisionRationaleReportController` koordiniert
-Katalog-/Architekturberichte, die DSL-Operations-Fassaden koordinieren
-Architekturdokumente/-historie mit Workspace-Zustand. Diese Orchestrierung folgt
-in einem eigenen Schritt vor der physischen Extraktion. Keine Zyklusausnahme
-wurde hinzugefügt oder erweitert.
+C2 reduzierte kontextübergreifende Klassenpaare von 559 auf 540.
+`versioning.service -> catalog/relations` und
+`versioning.controller -> relations` sind jetzt null. Keine Zyklusausnahme wurde
+hinzugefügt oder erweitert.
 
-Die Migration wird durch zwei sich ergänzende Schutzmechanismen abgesichert:
+### Entscheidungsberichte in der Composition (D1 von #1043)
+
+`DecisionRationaleReportController` gehört jetzt zu
+`com.taxonomy.composition.report` in `taxonomy-app`. Er kombiniert
+Berichtserzeugung/-darstellung aus Architecture, Katalog-Scores aus Knowledge und
+Workspace-Herkunft. Die Versioning-HTTP-Adapter hängen über diesen Controller
+nicht mehr von Architecture-Decision-/Report- oder Katalog-Services ab.
+
+Die aktuelle D1-Baseline enthält **543 kontextübergreifende Klassenpaare** gegenüber
+540 nach C2. Die Änderung von **540 auf 543** macht drei Workspace-API-Referenzen
+sichtbar, die zuvor innerhalb des Workspace-Kontexts lagen; es entsteht keine
+zusätzliche Runtime-Abhängigkeit. `ArchitectureDecisionReportBoundaryTest` sichert
+den Composition-Eigentümer und die Versioning-HTTP-Grenze ab. Die verbleibende
+Workspace-zu-Feature-Kopplung in den DSL-Operations-Fassaden koordiniert weiterhin
+Architekturdokumente/-historie mit Workspace-Zustand und benötigt einen separat
+geprüften Schritt vor der physischen Extraktion.
+
+Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
 
 1. `ArchitectureCycleBoundaryTest` verhindert undokumentierte Package-Zyklen. Temporäre Ausnahmen müssen in `.github/architecture-exceptions.json` stehen und ein Ablaufdatum besitzen.
 2. `ArchitectureContextDependencyRatchetTest` zählt eindeutige direkte Class-to-Class-Abhängigkeiten zwischen geplanten, verbleibenden und übergangsweisen Kontexten je Package-Paar. Neue Kanten oder steigende Zähler schlagen fehl. Entfernt ein Refactoring Abhängigkeiten, muss die niedrigere Baseline im selben Change festgeschrieben werden, damit die Verbesserung später nicht unbemerkt zurückgeht.
+
+3. `ArchitectureDecisionReportBoundaryTest` verhindert Berichtsorchestrierung in Versioning-HTTP-Adaptern und verlangt, dass der Bericht-Controller in `composition.report` bleibt.
+
+Das fokussierte Architekturprofil wird vom Repository-Root über den vollständigen
+Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
+
+```bash
+./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+Das Profil enthält den Ownership-Guard für Entscheidungsberichte sowohl in
+`pom.xml` als auch in `.mvn/verification-suites.json`. Die vollständige
+CI-Verifikation bleibt `./mvnw -B verify -Pci`.
 
 Der Ratchet durchläuft außerdem `taxonomy-app/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb des Root-Packages muss in `.github/architecture-contexts.json` klassifiziert sein. Ein neues Feature-Package kann den Dependency-Guard daher nicht umgehen, indem es außerhalb der vorhandenen Context-Patterns angelegt wird. Root-Level-Composition-Klassen bleiben ausdrücklich zulässig.
 
