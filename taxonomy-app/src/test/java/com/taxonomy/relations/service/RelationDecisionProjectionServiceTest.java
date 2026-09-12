@@ -5,6 +5,7 @@ import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefin
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.DslWorkspaceReadAdapter;
 import com.taxonomy.dsl.storage.DslWorkspaceVersionAdapter;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService;
@@ -68,7 +69,7 @@ class RelationDecisionProjectionServiceTest {
 
         RelationDecisionProjectionService service =
                 new RelationDecisionProjectionService(
-                        writer, gitRepositoryFactory);
+                        writer, new DslWorkspaceReadAdapter(gitRepositoryFactory));
         var result = service.project(context, commandResult, command);
 
         ArgumentCaptor<ProjectionRequest> projected =
@@ -129,7 +130,7 @@ class RelationDecisionProjectionServiceTest {
 
         RelationDecisionProjectionService service =
                 new RelationDecisionProjectionService(
-                        writer, gitRepositoryFactory);
+                        writer, new DslWorkspaceReadAdapter(gitRepositoryFactory));
         var result = service.project(context, commandResult, command);
 
         ArgumentCaptor<ProjectionRequest> projected =
@@ -153,7 +154,7 @@ class RelationDecisionProjectionServiceTest {
         DslGitRepositoryFactory gitFactory =
                 mock(DslGitRepositoryFactory.class);
         RelationDecisionProjectionService service =
-                new RelationDecisionProjectionService(writer, gitFactory);
+                new RelationDecisionProjectionService(writer, new DslWorkspaceReadAdapter(gitFactory));
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "draft", "alice");
         UpsertRelation command = upsert(
@@ -182,7 +183,7 @@ class RelationDecisionProjectionServiceTest {
         DslGitRepositoryFactory gitFactory =
                 mock(DslGitRepositoryFactory.class);
         RelationDecisionProjectionService service =
-                new RelationDecisionProjectionService(writer, gitFactory);
+                new RelationDecisionProjectionService(writer, new DslWorkspaceReadAdapter(gitFactory));
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "draft", "alice");
         UpsertRelation command = upsert(
@@ -212,7 +213,7 @@ class RelationDecisionProjectionServiceTest {
         DslGitRepositoryFactory gitFactory =
                 mock(DslGitRepositoryFactory.class);
         RelationDecisionProjectionService service =
-                new RelationDecisionProjectionService(writer, gitFactory);
+                new RelationDecisionProjectionService(writer, new DslWorkspaceReadAdapter(gitFactory));
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "draft", "alice");
         UpsertRelation command = upsert(
@@ -262,7 +263,7 @@ class RelationDecisionProjectionServiceTest {
                 "proposal-43");
         RelationDecisionProjectionService service =
                 new RelationDecisionProjectionService(
-                        writer, gitRepositoryFactory);
+                        writer, new DslWorkspaceReadAdapter(gitRepositoryFactory));
 
         assertThatThrownBy(() -> service.project(context, forged, command))
                 .isInstanceOf(ProjectionSourceException.class)
@@ -294,7 +295,7 @@ class RelationDecisionProjectionServiceTest {
                 "Concurrent edit");
         RelationDecisionProjectionService service =
                 new RelationDecisionProjectionService(
-                        writer, gitRepositoryFactory);
+                        writer, new DslWorkspaceReadAdapter(gitRepositoryFactory));
 
         assertThatThrownBy(() -> service.project(
                 context, commandResult, command))
@@ -341,7 +342,7 @@ class RelationDecisionProjectionServiceTest {
                 "proposal-45");
         RelationDecisionProjectionService service =
                 new RelationDecisionProjectionService(
-                        writer, gitRepositoryFactory);
+                        writer, new DslWorkspaceReadAdapter(gitRepositoryFactory));
 
         assertThatThrownBy(() -> service.project(context, forged, command))
                 .isInstanceOf(ProjectionSourceException.class)

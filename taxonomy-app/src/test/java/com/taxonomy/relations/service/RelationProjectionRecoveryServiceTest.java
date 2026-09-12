@@ -3,6 +3,7 @@ package com.taxonomy.relations.service;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.DslWorkspaceReadAdapter;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.model.RelationProjectionRecovery;
 import com.taxonomy.relations.model.RelationProjectionRecovery.RecoveryStatus;
@@ -49,7 +50,7 @@ class RelationProjectionRecoveryServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         var record = new RelationProjectionRecoveryService(
-                repository, repositoryFactory).recordPending(authority, failure);
+                repository, new DslWorkspaceReadAdapter(repositoryFactory)).recordPending(authority, failure);
 
         ArgumentCaptor<RelationProjectionRecovery> saved =
                 ArgumentCaptor.forClass(RelationProjectionRecovery.class);
@@ -94,7 +95,7 @@ class RelationProjectionRecoveryServiceTest {
                 .thenAnswer(invocation -> invocation.getArgument(0));
 
         var result = new RelationProjectionRecoveryService(
-                repository, repositoryFactory)
+                repository, new DslWorkspaceReadAdapter(repositoryFactory))
                 .reconcileAfterRebuild(context, second);
 
         assertThat(ancestor.getStatus()).isEqualTo(RecoveryStatus.SUPERSEDED);
