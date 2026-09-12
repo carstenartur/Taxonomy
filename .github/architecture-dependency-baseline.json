@@ -29,7 +29,8 @@
     {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.dsl.controller","toContext":"workspace","toPackage":"com.taxonomy.workspace.service","classDependencyCount":2},
     {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.dsl.service","toContext":"architecture","toPackage":"com.taxonomy.architecture.model","classDependencyCount":1},
     {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.dsl.service","toContext":"architecture","toPackage":"com.taxonomy.architecture.repository","classDependencyCount":1},
-    {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.dsl.service","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.export","classDependencyCount":3},
+    {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.dsl.service","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.export","classDependencyCount":4},
+    {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.dsl.service","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.storage","classDependencyCount":2},
     {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.dsl.service","toContext":"workspace","toPackage":"com.taxonomy.versioning.service","classDependencyCount":1},
     {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.report","toContext":"architecture","toPackage":"com.taxonomy.architecture.decision","classDependencyCount":6},
     {"fromContext":"app-composition","fromPackage":"com.taxonomy.composition.report","toContext":"architecture","toPackage":"com.taxonomy.architecture.report","classDependencyCount":1},
@@ -144,9 +145,7 @@
     {"fromContext":"provenance","fromPackage":"com.taxonomy.provenance.service","toContext":"knowledge","toPackage":"com.taxonomy.catalog.service","classDependencyCount":1},
     {"fromContext":"workspace","fromPackage":"com.taxonomy.editor","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.storage","classDependencyCount":5},
     {"fromContext":"workspace","fromPackage":"com.taxonomy.versioning.controller","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.storage","classDependencyCount":1},
-    {"fromContext":"workspace","fromPackage":"com.taxonomy.versioning.service","toContext":"app-composition","toPackage":"com.taxonomy.shared.service","classDependencyCount":2},
-    {"fromContext":"workspace","fromPackage":"com.taxonomy.versioning.service","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.export","classDependencyCount":1},
-    {"fromContext":"workspace","fromPackage":"com.taxonomy.versioning.service","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.storage","classDependencyCount":24},
+    {"fromContext":"workspace","fromPackage":"com.taxonomy.versioning.service","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.storage","classDependencyCount":22},
     {"fromContext":"workspace","fromPackage":"com.taxonomy.workspace.service","toContext":"dsl-adapters","toPackage":"com.taxonomy.dsl.storage","classDependencyCount":14}
   ]
 }
