@@ -49,6 +49,23 @@ DSL document archive in the controller and facades. DSL adapter ownership and
 startup composition also remain unresolved; the proposed graph is still cyclic
 and does not permit physical extraction.
 
+## Focused architecture verification
+
+The D2 branch includes D1's report-composition metadata and ownership guard.
+Both the root `pom.xml` and `.mvn/verification-suites.json` now select
+`ArchitectureCommitHistoryOwnershipTest` as well as
+`ArchitectureDecisionReportBoundaryTest`, preserving all five earlier architecture
+selectors. Run all seven selected test classes from the repository root across
+the full reactor, so the production output of every module is current:
+
+```bash
+./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+This focused command does not replace canonical `./mvnw -B verify -Pci` or remove
+the CI constraints of a stacked branch. The current D2 dependency measurement is
+**543 to 537**; D1's **540 to 543** remains its historical slice result.
+
 ## Validation and integration limits
 
 - The new strict `ArchitectureCommitHistoryOwnershipTest` failed for all five types before relocation, then passed after relocation; `allowEmptyShould(false)` prevents a missing type from passing silently.
@@ -60,4 +77,31 @@ and does not permit physical extraction.
 - Aggregate JaCoCo measures `versioning.service` at 79.77% lines / 67.36% branches, above the unchanged 77% / 59% floors. Each relocated executable source meets the existing 75% line / 60% branch changed-source floor; the repository interface has no executable counters. The context map, exception ledger and coverage policy remain unchanged, and the existing versioning changed-source prefix protects the relocated sources.
 - The default local reactor skips application integration tests and the post-reactor quality gate. Canonical CI and PostgreSQL integration profiles remain required on the final main-targeting head.
 
-Stacked PRs cannot receive full repository CI until their base reaches `main`. Standalone checks do not claim that full repository CI, profile-specific database gates, the C2 manual review, or module extraction are complete.
+## Current upstream and metadata checkpoint
+
+C2 is merged in `main` at `66db4e8526691f18b4e83d9ebcef7ff12c65e3ed`.
+This D2 branch also incorporates D1's reviewed head
+`46615e245a60055a3a11bb67bc8a25f7fdb47dca`, including its canonical English/German
+documentation and focused ownership selector. D2 remains stacked on D1 until
+that PR merges. The metadata integration changes no production source,
+dependency baseline, coverage rule or workflow.
+
+Fresh `clean verify -DexcludedGroups=real-llm` with the pinned ONNX model passed
+in **10:22**. Maven reported **3,120 application test invocations**, zero
+failures/errors/skips; 44 of these were retained compiled validation tests from
+the independent module-gate checkpoint (43 fixtures and its actual gate).
+Their sources are absent from this PR, and these retained test binaries were
+removed after the run. All production class files were freshly compiled by
+this build. The unchanged versioning service package again measured
+**79.77% lines / 67.36% branches**.
+
+The corrected full-reactor architecture profile separately selected all seven
+current test classes and passed **19 tests**, zero failures/errors/skips, in
+**35.629 seconds**. Both ownership guards ran. The actual `HelpController`
+rendered the canonical English and German pages with historical D1 ownership,
+current D2 ownership and the four remaining archive pairs.
+
+Stacked PRs cannot receive full repository CI until their base reaches `main`.
+Default local verification does not replace canonical CI, profile-specific
+database gates or the final exact-head review. The proposed graph remains
+cyclic, so no physical module extraction is claimed.

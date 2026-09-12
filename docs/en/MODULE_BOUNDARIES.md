@@ -76,7 +76,7 @@ They are **not** the seed of a generic `taxonomy-adapters` module. Each adapter 
 
 ## `taxonomy-app` target role
 
-After the feature contexts are extracted, `taxonomy-app` remains the executable composition root. The context map currently classifies `observability`, `security`, and `shared` as `app-composition`; the root `AppConfig` and `TaxonomyApplication` classes are composition classes as well.
+After the feature contexts are extracted, `taxonomy-app` remains the executable composition root. The context map currently classifies `composition`, `observability`, `security`, and `shared` as `app-composition`; the root `AppConfig` and `TaxonomyApplication` classes are composition classes as well.
 
 The long-term application module should contain only genuinely application-wide responsibilities such as:
 
@@ -106,19 +106,65 @@ entities/repositories, concrete DSL storage or JGit. Semantic review and
 transaction callbacks remain relation responsibilities; generated-snapshot
 publication remains separate from expected-head commands and editor checkpoints.
 
-The measured C2 baseline reduces cross-context class pairs from 559 to 540.
+C2 reduced cross-context class pairs from 559 to 540.
 `versioning.service -> catalog/relations` and
-`versioning.controller -> relations` are now zero. Remaining workspace-to-feature
-coupling is still explicit: `DecisionRationaleReportController` coordinates
-catalogue/architecture reports, while the DSL operations facades coordinate
-architecture documents/history with workspace state. These require the separate
-C2-following orchestration slice before physical extraction. No cycle exception
-was added or expanded.
+`versioning.controller -> relations` are now zero. No cycle exception was added
+or expanded.
 
-The migration uses two complementary protections:
+### Decision-report composition (D1 of #1043)
+
+`DecisionRationaleReportController` now belongs to
+`com.taxonomy.composition.report` in `taxonomy-app`. It combines architecture
+report generation/rendering, knowledge-owned catalogue scores and workspace
+provenance. The versioning HTTP adapters no longer depend on architecture
+decision/report or catalogue services through this controller.
+
+The D1 slice recorded **543 cross-context class pairs**, compared with 540 after
+C2. This historical change from **540 to 543** exposed three workspace API
+references that were previously internal to the workspace context; it added no
+runtime dependency. `ArchitectureDecisionReportBoundaryTest` enforces the
+composition owner and the versioning HTTP boundary.
+
+### Git commit-history ownership (D2 of #1043)
+
+The current D2 baseline records **537 cross-context class pairs**, down from
+**543** after D1. The change from **543 to 537** places the Git commit-history
+projection under workspace versioning:
+
+| Types | Owner package |
+|---|---|
+| `ArchitectureCommitIndex` | `com.taxonomy.versioning.model` |
+| `ArchitectureCommitIndexRepository` | `com.taxonomy.versioning.repository` |
+| `CommitIndexService`, `CommitIndexSearchLifecycle`, `CommitIndexSearchRebuilder` | `com.taxonomy.versioning.service` |
+
+The Git index no longer contributes workspace-to-architecture dependencies.
+Its entity, table, search-index and analyzer names, tenant/branch scope and
+recovery behavior are unchanged. `ArchitectureCommitHistoryOwnershipTest`
+requires all five projection types to remain with their versioning owners.
+
+The **four remaining workspace-to-architecture class pairs** concern the imported
+`ArchitectureDslDocument` archive and its repository, accessed by the DSL
+controller and operations facades. That archive remains in its existing owner;
+this slice does not complete a physical module extraction.
+
+The migration uses complementary protections:
 
 1. `ArchitectureCycleBoundaryTest` rejects undocumented package cycles. Temporary exceptions must exist in `.github/architecture-exceptions.json` and expire.
 2. `ArchitectureContextDependencyRatchetTest` records distinct direct class-to-class dependencies between planned, residual and transitional contexts per package pair. New edges or increased counts fail. When refactoring removes dependencies, the lower baseline must be committed in the same change so the improvement cannot regress silently.
+
+3. `ArchitectureDecisionReportBoundaryTest` rejects report orchestration in versioning HTTP adapters and requires the report controller to remain in `composition.report`.
+4. `ArchitectureCommitHistoryOwnershipTest` requires the Git commit-history entity, repository and three projection services to remain in their versioning owner packages.
+
+Run the focused architecture profile from the repository root across the full
+reactor so every module's production output is current:
+
+```bash
+./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+The profile includes both the decision-report and commit-history ownership
+guards in `pom.xml` and `.mvn/verification-suites.json`. Full CI verification remains
+`./mvnw -B verify -Pci`.
 
 The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.
 
