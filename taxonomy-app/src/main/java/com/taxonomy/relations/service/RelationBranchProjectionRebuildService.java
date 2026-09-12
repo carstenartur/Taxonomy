@@ -3,15 +3,11 @@ package com.taxonomy.relations.service;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.parser.TaxDslParser;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
-import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.Ref;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort.RepositoryRead;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -37,58 +33,38 @@ public class RelationBranchProjectionRebuildService {
 
     private static final String RELATION_KIND = "relation";
 
-    private final DslGitRepositoryFactory gitRepositoryFactory;
+    private final WorkspaceDslReadPort reads;
     private final RelationBranchProjectionRebuildWriter rebuildWriter;
-    private final TaxDslParser parser;
-    private final ExpectedHeadDslCommitter expectedHeadVerifier;
+    private final TaxDslParser parser = new TaxDslParser();
 
-    @Autowired
     public RelationBranchProjectionRebuildService(
-            DslGitRepositoryFactory gitRepositoryFactory,
+            WorkspaceDslReadPort reads,
             RelationBranchProjectionRebuildWriter rebuildWriter) {
-        this(
-                gitRepositoryFactory,
-                rebuildWriter,
-                new TaxDslParser(),
-                new ExpectedHeadDslCommitter());
-    }
-
-    RelationBranchProjectionRebuildService(
-            DslGitRepositoryFactory gitRepositoryFactory,
-            RelationBranchProjectionRebuildWriter rebuildWriter,
-            TaxDslParser parser,
-            ExpectedHeadDslCommitter expectedHeadVerifier) {
-        this.gitRepositoryFactory = Objects.requireNonNull(
-                gitRepositoryFactory, "gitRepositoryFactory");
-        this.rebuildWriter = Objects.requireNonNull(
-                rebuildWriter, "rebuildWriter");
-        this.parser = Objects.requireNonNull(parser, "parser");
-        this.expectedHeadVerifier = Objects.requireNonNull(
-                expectedHeadVerifier, "expectedHeadVerifier");
+        this.reads = Objects.requireNonNull(reads, "reads");
+        this.rebuildWriter = Objects.requireNonNull(rebuildWriter, "rebuildWriter");
     }
 
     /** Replaces the exact branch projection and writes its completion checkpoint atomically. */
     public RebuildResult rebuild(RepositoryContext context) {
         Objects.requireNonNull(context, "context");
         requireMutable(context);
-        DslGitRepository repository = gitRepositoryFactory.resolveRepository(context);
+        RepositoryRead repository = reads.openRead(context);
         String head = readHead(repository, context.branch());
         String dsl = readDsl(repository, head);
         List<RelationSnapshot> relations = parseRelations(dsl, head);
-        verifyHead(repository, context.branch(), head);
+        verifyHead(repository, head);
         return rebuildWriter.replace(context, head, relations);
     }
 
-    private String readHead(DslGitRepository repository, String branch) {
+    private String readHead(RepositoryRead repository, String branch) {
         try {
-            Ref ref = repository.getGitRepository().getRefDatabase()
-                    .exactRef(Constants.R_HEADS + branch);
-            if (ref == null || ref.getObjectId() == null) {
+            String head = repository.currentHead();
+            if (head == null) {
                 throw new BranchProjectionSourceException(
                         "Cannot rebuild relation projection: branch '"
                                 + branch + "' does not exist");
             }
-            return ref.getObjectId().name();
+            return head;
         } catch (IOException error) {
             throw new BranchProjectionSourceException(
                     "Unable to read relation projection branch head '"
@@ -97,9 +73,9 @@ public class RelationBranchProjectionRebuildService {
         }
     }
 
-    private String readDsl(DslGitRepository repository, String commitId) {
+    private String readDsl(RepositoryRead repository, String commitId) {
         try {
-            String dsl = repository.getDslAtCommit(commitId);
+            String dsl = repository.dslAtCommit(commitId).orElse(null);
             if (dsl == null) {
                 throw new BranchProjectionSourceException(
                         "Authoritative commit has no architecture.taxdsl: "
@@ -115,12 +91,10 @@ public class RelationBranchProjectionRebuildService {
     }
 
     private void verifyHead(
-            DslGitRepository repository,
-            String branch,
+            RepositoryRead repository,
             String expectedHead) {
         try {
-            String verified = expectedHeadVerifier.verifyExpectedHead(
-                    repository, branch, expectedHead);
+            String verified = repository.verifyExpectedHead(expectedHead);
             if (!expectedHead.equals(verified)) {
                 throw new BranchProjectionSourceException(
                         "Selected branch no longer has the captured projection head");
