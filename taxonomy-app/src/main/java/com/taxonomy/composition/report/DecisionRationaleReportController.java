@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.controller;
+package com.taxonomy.composition.report;
 
 import com.taxonomy.architecture.decision.DecisionRationaleReport;
 import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
