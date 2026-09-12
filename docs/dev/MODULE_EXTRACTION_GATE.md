@@ -6,9 +6,13 @@ production source files, and imports the compiled production classes with
 ArchUnit. It projects their direct class dependencies onto the proposed Maven
 modules. It does not read the dependency ratchet baseline or the exception ledger.
 
-Run the normal test suite with `./mvnw test`. The authoritative CI command remains
-`./mvnw verify -DexcludedGroups="real-llm"`. The generated report is printed in
-the test output and written to
+Run the normal test suite with `./mvnw test`. The focused architecture command is
+`./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false`; its
+Maven-owned selection includes both gate test classes. The canonical CI command
+is `./mvnw -B verify -Pci`. Core CI adds `-DrunOnnxTests=true -Dtaxonomy.ui.skip=true`
+and runs UI verification in separate lanes. Plain local `verify` skips integration
+and post-reactor gates and is not equivalent to CI. The generated report is
+printed in the test output and written to
 `taxonomy-app/target/architecture-module-graph.txt`.
 
 The report includes every class-derived module edge with a deterministic
@@ -56,6 +60,12 @@ scopes use local or inherited managed scopes before defaulting to `compile`.
 The `project.groupId`/`pom.groupId` aliases and corresponding artifact, version,
 and parent coordinate aliases resolve in the child model. Raw inheritance keys are preserved before interpolation, matching
 [Maven's model-building order](https://maven.apache.org/ref/3.9.16/maven-model-builder/index.html).
+
+Declared parent coordinates must resolve before any external-parent fallback;
+unknown or cyclic expressions fail immediately. Matching local parents require
+exact versions. A Maven version range on a matching local parent fails explicitly,
+so unsupported range selection cannot silently discard inherited dependencies or
+managed scopes.
 
 Unresolved expressions that could identify an internal group, or that affect an
 internal dependency's coordinates or scope, fail explicitly. Profile-dependent

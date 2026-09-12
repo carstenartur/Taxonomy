@@ -389,10 +389,15 @@ class ArchitectureModuleExtractionTest {
                     continue;
                 }
                 LocalPom possible = localPom(candidate, modules, cache, resolving);
-                if (resolved(possible.group(), possible.values(), "parent groupId", candidate.toString()).equals(parentGroup)
-                        && resolved(possible.version(), possible.values(), "parent version", candidate.toString()).equals(parentVersion)) {
-                    inherited = possible;
-                    break;
+                if (resolved(possible.group(), possible.values(), "parent groupId", candidate.toString()).equals(parentGroup)) {
+                    if (parentVersion.startsWith("[") || parentVersion.startsWith("(")) {
+                        throw new IllegalStateException("Unsupported local-parent version range " + parentVersion
+                                + " in " + file + "; matching local parent: " + candidate);
+                    }
+                    if (resolved(possible.version(), possible.values(), "parent version", candidate.toString()).equals(parentVersion)) {
+                        inherited = possible;
+                        break;
+                    }
                 }
             }
             if (inherited == null && (parentGroup.equals("com.taxonomy") || modules.containsKey(parentArtifact))) {

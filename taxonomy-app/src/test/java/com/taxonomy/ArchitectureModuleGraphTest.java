@@ -604,6 +604,118 @@ class ArchitectureModuleGraphTest {
                 .hasMessageContaining("Unresolved").hasMessageContaining("scope");
     }
 
+    @Test
+    void unresolvedParentCoordinatesFailClosedBeforeTheExternalFallback() throws Exception {
+        for (String coordinate : List.of("groupId", "artifactId", "version")) {
+            inheritedPoms("", "");
+            parentReference(coordinate, "${missing.parent.coordinate}", "");
+
+            assertThatThrownBy(this::fixturePomDependencies).as("unresolved parent %s", coordinate)
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("Unresolved parent " + coordinate);
+        }
+    }
+
+    @Test
+    void cyclicParentCoordinatesFailClosedBeforeTheExternalFallback() throws Exception {
+        for (String coordinate : List.of("groupId", "artifactId", "version")) {
+            inheritedPoms("", "");
+            parentReference(coordinate, "${parent.coordinate}", """
+                    <properties><parent.coordinate>${parent.other}</parent.coordinate>
+                      <parent.other>${parent.coordinate}</parent.other></properties>
+                    """);
+
+            assertThatThrownBy(this::fixturePomDependencies).as("cyclic parent %s", coordinate)
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("Unresolved parent " + coordinate);
+        }
+    }
+
+    @Test
+    void aMismatchedLocalReactorParentCannotFallThroughAsExternal() throws Exception {
+        inheritedPoms("", "");
+        parentReference("version", "2", "");
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Cannot resolve local reactor parent com.taxonomy:taxonomy-parent:2");
+    }
+
+    @Test
+    void aGenuineExternalParentRemainsOutsideTheLocalProjection() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("taxonomy-a", A, """
+                <parent><groupId>org.external</groupId><artifactId>external-parent</artifactId><version>1</version>
+                  <relativePath/></parent><groupId>com.taxonomy</groupId>
+                """);
+
+        assertThat(fixturePomDependencies()).isEmpty();
+    }
+
+    @Test
+    void aLocalParentVersionRangeCannotHideAnInheritedRuntimeApplicationEdge() throws Exception {
+        localParentPoms("[1,2)", """
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                """, "");
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unsupported local-parent version range").hasMessageContaining("[1,2)");
+    }
+
+    @Test
+    void aLocalParentVersionRangeCannotTurnInheritedManagedTestsIntoProduction() throws Exception {
+        localParentPoms("[1,2)", """
+                <dependencyManagement><dependencies><dependency>
+                  <groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId><version>1</version><scope>test</scope>
+                </dependency></dependencies></dependencyManagement>
+                """, """
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId></dependency></dependencies>
+                """);
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unsupported local-parent version range").hasMessageContaining("[1,2)");
+    }
+
+    @Test
+    void anExactLocalParentOutsideTheReactorInheritsDependenciesAndManagedScopes() throws Exception {
+        localParentPoms("1", """
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                <dependencyManagement><dependencies><dependency>
+                  <groupId>com.taxonomy</groupId><artifactId>taxonomy-domain</artifactId><version>1</version><scope>test</scope>
+                </dependency></dependencies></dependencyManagement>
+                """, """
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-domain</artifactId></dependency></dependencies>
+                """);
+
+        assertThat(fixturePomDependencies()).containsExactly(new ModuleDependency(A, APP));
+    }
+
+    private void parentReference(String coordinate, String value, String body) throws Exception {
+        String parent = """
+                <parent><groupId>com.taxonomy</groupId><artifactId>taxonomy-parent</artifactId><version>1</version>
+                  <relativePath>../taxonomy-parent/pom.xml</relativePath></parent>
+                """;
+        String original = switch (coordinate) {
+            case "groupId" -> "com.taxonomy";
+            case "artifactId" -> "taxonomy-parent";
+            case "version" -> "1";
+            default -> throw new IllegalArgumentException(coordinate);
+        };
+        pom("taxonomy-a", A, parent.replace("<" + coordinate + ">" + original + "</" + coordinate + ">",
+                "<" + coordinate + ">" + value + "</" + coordinate + ">") + body);
+    }
+
+    private void localParentPoms(String version, String parentBody, String childBody) throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("local-parent", "org.example.build", "local-build-parent", "<packaging>pom</packaging>" + parentBody);
+        pom("taxonomy-a", A, """
+                <parent><groupId>org.example.build</groupId><artifactId>local-build-parent</artifactId><version>%s</version>
+                  <relativePath>../local-parent/pom.xml</relativePath></parent>
+                <groupId>com.taxonomy</groupId><version>1</version>
+                """.formatted(version) + childBody);
+    }
+
     private void inheritedPoms(String parentBody, String childBody) throws Exception {
         pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-parent</module><module>taxonomy-a</module></modules>");
         pom("taxonomy-app", APP, "");
@@ -636,10 +748,14 @@ class ArchitectureModuleGraphTest {
     }
 
     private void pom(String directory, String artifact, String body) throws Exception {
+        pom(directory, "com.taxonomy", artifact, body);
+    }
+
+    private void pom(String directory, String group, String artifact, String body) throws Exception {
         Path path = temporaryRepository.resolve(directory).resolve("pom.xml");
         Files.createDirectories(path.getParent());
         Files.writeString(path, "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion>"
-                + (body.contains("<parent>") ? "" : "<groupId>com.taxonomy</groupId><version>1</version>")
+                + (body.contains("<parent>") ? "" : "<groupId>" + group + "</groupId><version>1</version>")
                 + "<artifactId>" + artifact + "</artifactId>" + body + "</project>");
     }
 
