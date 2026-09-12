@@ -1,9 +1,8 @@
 package com.taxonomy.relations.command;
 
-import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
+import com.taxonomy.dsl.storage.DslWorkspaceVersionAdapter;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.MissingAuthoritativeHeadException;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RemoveRelation;
@@ -22,9 +21,7 @@ class ArchitectureRelationGitCommandMissingHeadTest {
                      new DslGitRepositoryFactory(null)) {
             ArchitectureRelationGitCommandService service =
                     new ArchitectureRelationGitCommandService(
-                            repositoryFactory,
-                            new ArchitectureRelationDslTransformer(),
-                            new ExpectedHeadDslCommitter());
+                            new DslWorkspaceVersionAdapter(repositoryFactory));
             RepositoryContext context = RepositoryContext.workspace(
                     "repo-a", "workspace-a", "draft", "alice");
 

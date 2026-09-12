@@ -5,14 +5,9 @@ import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeResult;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.CommitRequest;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
-import org.eclipse.jgit.lib.ObjectId;
-import org.springframework.beans.factory.annotation.Autowired;
+import com.taxonomy.workspace.service.WorkspaceDslVersionPort;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -21,7 +16,7 @@ import java.util.Objects;
 
 /**
  * Executes one relation command against the exact repository context and makes
- * the resulting JGit commit the authority token.
+ * the resulting Git commit the authority token through a workspace-owned port.
  *
  * <p>This service deliberately has no relational repository dependency. A later
  * projection stage may consume {@link CommandResult#authoritativeCommitId()},
@@ -30,26 +25,12 @@ import java.util.Objects;
 @Service
 public class ArchitectureRelationGitCommandService {
 
-    private final DslGitRepositoryFactory repositoryFactory;
+    private final WorkspaceDslVersionPort versions;
     private final ArchitectureRelationDslTransformer transformer;
-    private final ExpectedHeadDslCommitter committer;
 
-    @Autowired
-    public ArchitectureRelationGitCommandService(
-            DslGitRepositoryFactory repositoryFactory) {
-        this(repositoryFactory,
-                new ArchitectureRelationDslTransformer(),
-                new ExpectedHeadDslCommitter());
-    }
-
-    ArchitectureRelationGitCommandService(
-            DslGitRepositoryFactory repositoryFactory,
-            ArchitectureRelationDslTransformer transformer,
-            ExpectedHeadDslCommitter committer) {
-        this.repositoryFactory = Objects.requireNonNull(
-                repositoryFactory, "repositoryFactory");
-        this.transformer = Objects.requireNonNull(transformer, "transformer");
-        this.committer = Objects.requireNonNull(committer, "committer");
+    public ArchitectureRelationGitCommandService(WorkspaceDslVersionPort versions) {
+        this.versions = Objects.requireNonNull(versions, "versions");
+        this.transformer = new ArchitectureRelationDslTransformer();
     }
 
     /**
@@ -63,22 +44,12 @@ public class ArchitectureRelationGitCommandService {
         Objects.requireNonNull(context, "context");
         Objects.requireNonNull(command, "command");
         requireMutable(context);
-        String normalizedExpectedHead = normalizeExpectedHead(expectedHeadCommit);
 
-        DslGitRepository repository = repositoryFactory.resolveRepository(context);
-        String sourceDsl = normalizedExpectedHead == null
-                ? ""
-                : repository.getDslAtCommit(normalizedExpectedHead);
-        if (sourceDsl == null) {
-            sourceDsl = "";
-        }
-
-        ChangeResult change = apply(sourceDsl, command);
+        WorkspaceDslVersionPort.ExactVersion version = versions.openVersion(context, expectedHeadCommit);
+        String normalizedExpectedHead = version.expectedHeadCommit();
+        ChangeResult change = apply(version.readDsl(), command);
         if (!change.changed()) {
-            String authoritativeHead = committer.verifyExpectedHead(
-                    repository,
-                    context.branch(),
-                    normalizedExpectedHead);
+            String authoritativeHead = version.verifyExpectedHead();
             if (authoritativeHead == null) {
                 throw new MissingAuthoritativeHeadException(
                         "Semantic no-op has no existing Git commit on branch '"
@@ -93,14 +64,8 @@ public class ArchitectureRelationGitCommandService {
                     command.metadata().causationId());
         }
 
-        ExpectedHeadDslCommitter.CommitResult commit = committer.commit(
-                repository,
-                new CommitRequest(
-                        context.branch(),
-                        normalizedExpectedHead,
-                        change.dsl(),
-                        context.username(),
-                        commitMessage(command, change.kind())));
+        WorkspaceDslVersionPort.CommitResult commit =
+                version.commit(change.dsl(), commitMessage(command, change.kind()));
         return result(
                 context,
                 commit.previousHeadCommit(),
@@ -162,19 +127,6 @@ public class ArchitectureRelationGitCommandService {
             throw new ReadOnlyRepositoryContextException(
                     "Relation commands require CENTRAL_WRITE, WORKSPACE or FORK scope");
         }
-    }
-
-    private static String normalizeExpectedHead(String expectedHeadCommit) {
-        if (expectedHeadCommit == null) {
-            return null;
-        }
-        String normalized = expectedHeadCommit.strip();
-        if (normalized.isEmpty()) {
-            throw new IllegalArgumentException(
-                    "expectedHeadCommit must be null or a full commit ID");
-        }
-        ObjectId.fromString(normalized);
-        return normalized;
     }
 
     public sealed interface RelationCommand

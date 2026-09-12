@@ -5,6 +5,7 @@ import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefin
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.DslWorkspaceVersionAdapter;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
@@ -350,7 +351,8 @@ class RelationDecisionProjectionServiceTest {
 
     private ArchitectureRelationGitCommandService commandService() {
         gitRepositoryFactory = new DslGitRepositoryFactory(null);
-        return new ArchitectureRelationGitCommandService(gitRepositoryFactory);
+        return new ArchitectureRelationGitCommandService(
+                new DslWorkspaceVersionAdapter(gitRepositoryFactory));
     }
 
     private static UpsertRelation upsert(
