@@ -1,13 +1,8 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.versioning.model.ArchitectureCommitIndex;
-import com.taxonomy.architecture.model.ArchitectureDslDocument;
-import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.versioning.service.CommitIndexService;
 import com.taxonomy.dsl.diff.ModelDiff;
-import com.taxonomy.dsl.export.DslMaterializeService;
-import com.taxonomy.dsl.export.TaxDslExportService;
-import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.storage.DslBranch;
 import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dsl.storage.DslGitRepository;
@@ -25,13 +20,12 @@ import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Optional;
 
 /**
- * High-level facade that aggregates the DSL operation services.
+ * Workspace-owned Git versioning and history facade.
  *
- * <p>Provides coarse-grained operations for Git versioning, DSL export,
- * materialization, commit indexing, and conflict detection, so that
+ * <p>Provides coarse-grained operations for Git versioning, commit indexing,
+ * and conflict detection, so that
  * the {@code DslApiController} does not need direct access to
  * repositories or low-level services.</p>
  */
@@ -40,9 +34,6 @@ public class DslOperationsFacade {
 
     private static final Logger log = LoggerFactory.getLogger(DslOperationsFacade.class);
 
-    private final TaxDslExportService exportService;
-    private final DslMaterializeService materializeService;
-    private final ArchitectureDslDocumentRepository documentRepository;
     private final DslGitRepositoryFactory repositoryFactory;
     private final CommitIndexService commitIndexService;
     private final ConflictDetectionService conflictDetectionService;
@@ -51,18 +42,12 @@ public class DslOperationsFacade {
     private final WorkspaceResolver workspaceResolver;
     private final WorkspaceArchitectureVersionPort editorVersions;
 
-    public DslOperationsFacade(TaxDslExportService exportService,
-                               DslMaterializeService materializeService,
-                               ArchitectureDslDocumentRepository documentRepository,
-                               DslGitRepositoryFactory repositoryFactory,
+    public DslOperationsFacade(DslGitRepositoryFactory repositoryFactory,
                                CommitIndexService commitIndexService,
                                ConflictDetectionService conflictDetectionService,
                                RepositoryStateGuard stateGuard,
                                RepositoryStateService repositoryStateService,
                                WorkspaceResolver workspaceResolver, WorkspaceArchitectureVersionPort editorVersions) {
-        this.exportService = exportService;
-        this.materializeService = materializeService;
-        this.documentRepository = documentRepository;
         this.repositoryFactory = repositoryFactory;
         this.commitIndexService = commitIndexService;
         this.conflictDetectionService = conflictDetectionService;
@@ -109,32 +94,6 @@ public class DslOperationsFacade {
         return context;
     }
 
-    // ── Export ───────────────────────────────────────────────────────
-
-    public String exportAll(String namespace) {
-        return exportService.exportAll(namespace);
-    }
-
-    public CanonicalArchitectureModel buildCanonicalModel() {
-        return exportService.buildCanonicalModel();
-    }
-
-    // ── Materialization ─────────────────────────────────────────────
-
-    public DslMaterializeService.MaterializeResult materialize(
-            String dslText, String path, String branch, String commitId) {
-        return materializeService.materialize(dslText, path, branch, commitId);
-    }
-
-    public DslMaterializeService.MaterializeResult materializeIncremental(
-            Long beforeDocId, Long afterDocId) {
-        return materializeService.materializeIncremental(beforeDocId, afterDocId);
-    }
-
-    public Optional<ArchitectureDslDocument> findDocumentById(Long id) {
-        return documentRepository.findById(id);
-    }
-
     // ── Git operations ──────────────────────────────────────────────
 
     public String commitDsl(String branch, String dslText, String author, String message)
@@ -175,17 +134,8 @@ public class DslOperationsFacade {
         return resolveRepository(workspaceContext).getDslHistory(branch);
     }
 
-    public Optional<Long> findDocumentIdByCommitId(String commitId) {
-        return documentRepository.findByCommitId(commitId)
-                .map(ArchitectureDslDocument::getId);
-    }
-
     public ModelDiff diffBetween(String beforeId, String afterId) throws Exception {
-        if (looksLikeGitSha(beforeId) && looksLikeGitSha(afterId)) {
-            return resolveRepository().diffBetween(beforeId, afterId);
-        }
-        return materializeService.diffDocuments(
-                Long.valueOf(beforeId), Long.valueOf(afterId));
+        return resolveRepository().diffBetween(beforeId, afterId);
     }
 
     public String textDiff(String beforeId, String afterId) throws Exception {
@@ -305,12 +255,6 @@ public class DslOperationsFacade {
         return repositoryStateService.resolveWorkspaceBranch(username);
     }
 
-    // ── Document listing ────────────────────────────────────────────
-
-    public List<ArchitectureDslDocument> listDocuments() {
-        return documentRepository.findAll();
-    }
-
     // ── History search ──────────────────────────────────────────────
 
     public int indexBranch(String branch) {
@@ -344,11 +288,5 @@ public class DslOperationsFacade {
     public ElementHistoryAggregation aggregateElementHistory(String elementId) {
         return commitIndexService.aggregateElementHistory(
                 elementId, resolveRepositoryContext());
-    }
-
-    private static boolean looksLikeGitSha(String value) {
-        return value != null
-                && value.length() == 40
-                && value.matches("[0-9a-f]+");
     }
 }

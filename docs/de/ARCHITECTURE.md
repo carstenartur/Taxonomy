@@ -192,7 +192,7 @@ DSL-Text  →  JGit-Commit  →  HibernateRepository  →  HSQLDB (git_packs- & 
 | Reflog-Entität | `GitReflogEntity` | JPA-Entität für die `git_reflog`-Tabelle |
 | Konfiguration | `DslStorageConfig` | Spring-`@Configuration`, die die `DslGitRepository`-Bean verdrahtet |
 
-DSL-Dokumente werden unter dem Dateinamen `architecture.taxdsl` gespeichert. Der `DslApiController` stellt Endpunkte für Commit, Verlauf, Diff, Branching, Merge und Cherry-Pick-Operationen bereit. Provenienz-Blöcke (`source`, `sourceVersion`, `sourceFragment`, `requirementSourceLink`) werden im selben JGit-DFS-Repository zusammen mit Architekturblöcken gespeichert.
+DSL-Dokumente werden unter dem Dateinamen `architecture.taxdsl` gespeichert. `DslApiController` besitzt Git-Kommandos, Text-Diff, Branching, Merge und Cherry-Pick. `composition.dsl` besitzt Export/Current, Materialisierung, archivangereicherten Verlauf, strukturellen/semantischen Vergleich und Dokumentlisten über `DslDocumentApiController` und `DslDocumentOperationsFacade`; Git-Autorität und Archivpolitik bleiben unverändert. Siehe [DSL-Dokument-Komposition](../dev/DSL_DOCUMENT_COMPOSITION.md). Provenienz-Blöcke (`source`, `sourceVersion`, `sourceFragment`, `requirementSourceLink`) werden im selben JGit-DFS-Repository zusammen mit Architekturblöcken gespeichert.
 
 ---
 
