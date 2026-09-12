@@ -49,7 +49,7 @@ round-trip invariant (`parse → serialize → parse → serialize` must be idem
 **If the new property/block is used in the provenance layer**, also update:
 
 - `taxonomy-app/…/versioning/service/DslOperationsFacade.java` — if the new block is stored/retrieved
-- `taxonomy-app/…/architecture/service/CommitIndexService.java` — if the new block is indexed
+- `taxonomy-app/…/versioning/service/CommitIndexService.java` — if the new block is indexed
 
 ---
 

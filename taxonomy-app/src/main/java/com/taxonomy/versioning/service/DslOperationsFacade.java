@@ -1,9 +1,9 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.architecture.model.ArchitectureCommitIndex;
+import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import com.taxonomy.architecture.model.ArchitectureDslDocument;
 import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
-import com.taxonomy.architecture.service.CommitIndexService;
+import com.taxonomy.versioning.service.CommitIndexService;
 import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.export.TaxDslExportService;

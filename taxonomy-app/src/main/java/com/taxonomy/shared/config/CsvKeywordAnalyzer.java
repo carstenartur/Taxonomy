@@ -7,14 +7,14 @@ import org.apache.lucene.analysis.Tokenizer;
 import org.apache.lucene.analysis.pattern.PatternTokenizer;
 
 import java.util.regex.Pattern;
-import com.taxonomy.architecture.model.ArchitectureCommitIndex;
+import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 
 /**
  * Custom Lucene {@link Analyzer} for comma/semicolon-separated keyword fields.
  *
  * <p>Used for {@code affectedElementIds} (comma-separated) and
  * {@code affectedRelationIds} (semicolon-separated) fields in
- * {@link com.taxonomy.architecture.model.ArchitectureCommitIndex}.
+ * {@link com.taxonomy.versioning.model.ArchitectureCommitIndex}.
  *
  * <p>Splits on commas and semicolons, trims whitespace, and lowercases
  * so that individual IDs like {@code "CP-1023"} become searchable tokens.

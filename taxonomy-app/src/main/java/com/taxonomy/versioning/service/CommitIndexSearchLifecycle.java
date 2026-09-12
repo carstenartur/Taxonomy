@@ -1,6 +1,6 @@
-package com.taxonomy.architecture.service;
+package com.taxonomy.versioning.service;
 
-import com.taxonomy.architecture.repository.ArchitectureCommitIndexRepository;
+import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.boot.ApplicationArguments;
