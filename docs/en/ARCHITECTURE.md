@@ -65,7 +65,7 @@ graph TB
     subgraph App["Spring Boot 4 Application :8080"]
         direction TB
         Controllers["REST Controllers<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport<br/>DslApi · ReportApi · RelationApi<br/>QualityApi · ExplanationTrace<br/>ArchitectureSummary"]
-        Services["Service Layer<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService<br/>DslGitRepository · CommitIndexService<br/>ArchitectureReportService"]
+        Services["Service Layer<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService<br/>DslGitRepository · versioning.service.CommitIndexService<br/>ArchitectureReportService"]
         Persistence["Persistence<br/>HSQLDB (in-process)<br/>Hibernate Search 8 / Lucene 9"]
     end
 
@@ -104,7 +104,7 @@ graph TB
 | `ArchitectureReportService` | Generates analysis reports in Markdown, standalone HTML, DOCX, and structured JSON formats. |
 | `ExplanationTraceService` | Builds explanation traces that describe why a node received a given score, including the LLM reasoning chain. |
 | `DslGitRepository` | Versioned DSL document storage backed by JGit DFS, with all Git objects persisted in HSQLDB (no filesystem). Supports branches, commits, cherry-pick, and merge. |
-| `CommitIndexService` | Indexes DSL commit history into Hibernate Search / Lucene for full-text search across commit messages and change content. |
+| `CommitIndexService` | Workspace versioning service (`com.taxonomy.versioning.service`). Indexes DSL commit history into Hibernate Search / Lucene for full-text search across commit messages and change content. |
 | `HypothesisService` | Manages relation hypotheses generated during analysis. Hypotheses can be accepted (creating `TaxonomyRelation`), rejected, or applied for the current session only. |
 | `LlmResponseParser` | Stateless parser for LLM responses. Handles Gemini and OpenAI response formats, score extraction (integer and score+reason), score normalisation (largest-remainder method), and JSON extraction. |
 | `DocumentAnalysisService` | AI-powered document analysis. Provides LLM-assisted extraction of requirement candidates from document text (`extractWithAi`) and direct regulation-to-architecture taxonomy mapping (`mapRegulationToArchitecture`). Uses specialized prompt templates (`extract-*`, `reg-map-*`). |

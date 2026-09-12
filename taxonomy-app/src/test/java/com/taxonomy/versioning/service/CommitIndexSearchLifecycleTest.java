@@ -1,6 +1,6 @@
-package com.taxonomy.architecture.service;
+package com.taxonomy.versioning.service;
 
-import com.taxonomy.architecture.repository.ArchitectureCommitIndexRepository;
+import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;

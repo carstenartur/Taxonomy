@@ -11,7 +11,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class WorkspaceOverlayScopeOwnershipTest {
 
     private static final List<String> WORKSPACE_SCOPED_MODELS = List.of(
-            "src/main/java/com/taxonomy/architecture/model/ArchitectureCommitIndex.java",
+            "src/main/java/com/taxonomy/versioning/model/ArchitectureCommitIndex.java",
             "src/main/java/com/taxonomy/relations/model/RelationDecisionProjection.java",
             "src/main/java/com/taxonomy/relations/model/RelationDecisionProjectionCheckpoint.java",
             "src/main/java/com/taxonomy/relations/model/RelationProjectionRecovery.java",

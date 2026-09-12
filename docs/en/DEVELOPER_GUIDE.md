@@ -158,7 +158,10 @@ The main Spring Boot application:
 |---|---|
 | `controller/` | REST controllers |
 | `service/` | Service classes — LLM, search, architecture, graph, proposals, reports, etc. |
-| `model/` | JPA entities — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis`, `ArchitectureCommitIndex`, etc. |
+| `model/` | JPA entities — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis`, etc. |
+| `versioning/model/` | Workspace Git commit-history projection entity — `ArchitectureCommitIndex` |
+| `versioning/repository/` | Scoped Git commit-history projection repository — `ArchitectureCommitIndexRepository` |
+| `versioning/service/` | Git history indexing and search lifecycle — `CommitIndexService`, `CommitIndexSearchLifecycle`, `CommitIndexSearchRebuilder` |
 | `repository/` | Spring Data JPA repositories |
 | `config/` | Configuration classes — security, rate limiting, Hibernate Search analysers, OpenAPI, actuator |
 | `search/` | Hibernate Search configuration |

@@ -1,6 +1,6 @@
-package com.taxonomy.architecture.service;
+package com.taxonomy.versioning.service;
 
-import com.taxonomy.architecture.model.ArchitectureCommitIndex;
+import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import jakarta.persistence.EntityManagerFactory;
 import org.hibernate.search.mapper.orm.Search;
 import org.springframework.stereotype.Service;

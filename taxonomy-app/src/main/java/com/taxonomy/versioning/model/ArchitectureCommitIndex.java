@@ -1,4 +1,4 @@
-package com.taxonomy.architecture.model;
+package com.taxonomy.versioning.model;
 
 import com.taxonomy.model.WorkspaceOverlayScope;
 import jakarta.persistence.Column;

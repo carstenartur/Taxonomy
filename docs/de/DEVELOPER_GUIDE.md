@@ -158,7 +158,10 @@ Die Haupt-Spring-Boot-Anwendung:
 |---|---|
 | `controller/` | REST-Controller |
 | `service/` | Service-Klassen — LLM, Suche, Architektur, Graph, Proposals, Reports usw. |
-| `model/` | JPA-Entitäten — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis`, `ArchitectureCommitIndex` usw. |
+| `model/` | JPA-Entitäten — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis` usw. |
+| `versioning/model/` | Workspace-Projektionsentität für die Git-Commit-Historie — `ArchitectureCommitIndex` |
+| `versioning/repository/` | Repository für die Git-Commit-Historienprojektion mit explizitem Scope — `ArchitectureCommitIndexRepository` |
+| `versioning/service/` | Git-Historienindizierung und Suchindex-Lebenszyklus — `CommitIndexService`, `CommitIndexSearchLifecycle`, `CommitIndexSearchRebuilder` |
 | `repository/` | Spring Data JPA Repositories |
 | `config/` | Konfigurationsklassen — Sicherheit, Rate Limiting, Hibernate-Search-Analysatoren, OpenAPI, Actuator |
 | `search/` | Hibernate-Search-Konfiguration |
