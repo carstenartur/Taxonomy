@@ -1,14 +1,12 @@
 package com.taxonomy.relations.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.relations.model.RelationDecisionProjection;
 import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
 import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRepository;
 import com.taxonomy.relations.repository.RelationDecisionProjectionRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
-import org.eclipse.jgit.lib.Constants;
-import org.eclipse.jgit.lib.Ref;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort.RepositoryRead;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,16 +23,15 @@ import java.util.Objects;
 @Service
 public class RelationBranchProjectionReadinessService {
 
-    private final DslGitRepositoryFactory gitRepositoryFactory;
+    private final WorkspaceDslReadPort reads;
     private final RelationDecisionProjectionRepository projectionRepository;
     private final RelationDecisionProjectionCheckpointRepository checkpointRepository;
 
     public RelationBranchProjectionReadinessService(
-            DslGitRepositoryFactory gitRepositoryFactory,
+            WorkspaceDslReadPort reads,
             RelationDecisionProjectionRepository projectionRepository,
             RelationDecisionProjectionCheckpointRepository checkpointRepository) {
-        this.gitRepositoryFactory = Objects.requireNonNull(
-                gitRepositoryFactory, "gitRepositoryFactory");
+        this.reads = Objects.requireNonNull(reads, "reads");
         this.projectionRepository = Objects.requireNonNull(
                 projectionRepository, "projectionRepository");
         this.checkpointRepository = Objects.requireNonNull(
@@ -47,15 +44,15 @@ public class RelationBranchProjectionReadinessService {
      */
     public String readCurrentHead(RepositoryContext context) {
         Objects.requireNonNull(context, "context");
-        DslGitRepository repository = gitRepositoryFactory.resolveRepository(context);
-        return readHead(repository, context.branch());
+        RepositoryRead repository = reads.openRead(context);
+        return readHead(repository);
     }
 
     @Transactional(readOnly = true)
     public Readiness inspect(RepositoryContext context) {
         Objects.requireNonNull(context, "context");
-        DslGitRepository repository = gitRepositoryFactory.resolveRepository(context);
-        String headBefore = readHead(repository, context.branch());
+        RepositoryRead repository = reads.openRead(context);
+        String headBefore = readHead(repository);
         if (headBefore == null) {
             return Readiness.notReady(
                     ReadinessState.BRANCH_MISSING,
@@ -103,7 +100,7 @@ public class RelationBranchProjectionReadinessService {
                     List.of());
         }
 
-        String headAfter = readHead(repository, context.branch());
+        String headAfter = readHead(repository);
         if (!Objects.equals(headBefore, headAfter)) {
             return Readiness.notReady(
                     ReadinessState.STALE,
@@ -134,14 +131,9 @@ public class RelationBranchProjectionReadinessService {
     }
 
     private static String readHead(
-            DslGitRepository repository,
-            String branch) {
+            RepositoryRead repository) {
         try {
-            Ref ref = repository.getGitRepository().getRefDatabase()
-                    .exactRef(Constants.R_HEADS + branch);
-            return ref == null || ref.getObjectId() == null
-                    ? null
-                    : ref.getObjectId().name();
+            return repository.currentHead();
         } catch (IOException error) {
             throw new RelationProjectionNotReadyException(
                     "Unable to read selected relation projection branch head",

@@ -2,6 +2,7 @@ package com.taxonomy.relations.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.DslWorkspaceReadAdapter;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.BranchProjectionContextException;
 import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.BranchProjectionSourceException;
@@ -72,7 +73,7 @@ class RelationBranchProjectionRebuildServiceTest {
 
         RelationBranchProjectionRebuildService service =
                 new RelationBranchProjectionRebuildService(
-                        repositoryFactory, writer);
+                        new DslWorkspaceReadAdapter(repositoryFactory), writer);
         RebuildResult result = service.rebuild(context);
 
         @SuppressWarnings("unchecked")
@@ -125,7 +126,7 @@ class RelationBranchProjectionRebuildServiceTest {
 
         RelationBranchProjectionRebuildService service =
                 new RelationBranchProjectionRebuildService(
-                        repositoryFactory, writer);
+                        new DslWorkspaceReadAdapter(repositoryFactory), writer);
 
         assertThatThrownBy(() -> service.rebuild(context))
                 .isInstanceOf(BranchProjectionSourceException.class)
@@ -139,7 +140,7 @@ class RelationBranchProjectionRebuildServiceTest {
         RelationBranchProjectionRebuildWriter writer =
                 mock(RelationBranchProjectionRebuildWriter.class);
         RelationBranchProjectionRebuildService service =
-                new RelationBranchProjectionRebuildService(factory, writer);
+                new RelationBranchProjectionRebuildService(new DslWorkspaceReadAdapter(factory), writer);
         RepositoryContext context = RepositoryContext.centralRead(
                 "repo-a", "accepted", "reader");
 

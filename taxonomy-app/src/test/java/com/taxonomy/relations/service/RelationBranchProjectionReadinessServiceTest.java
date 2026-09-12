@@ -2,6 +2,7 @@ package com.taxonomy.relations.service;
 
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.DslWorkspaceReadAdapter;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationDecisionProjection;
 import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
@@ -61,7 +62,7 @@ class RelationBranchProjectionReadinessServiceTest {
 
         RelationBranchProjectionReadinessService service =
                 new RelationBranchProjectionReadinessService(
-                        repositoryFactory, projections, checkpoints);
+                        new DslWorkspaceReadAdapter(repositoryFactory), projections, checkpoints);
         var readiness = service.inspect(context);
 
         assertThat(readiness.state()).isEqualTo(ReadinessState.READY);
@@ -93,7 +94,7 @@ class RelationBranchProjectionReadinessServiceTest {
 
         RelationBranchProjectionReadinessService service =
                 new RelationBranchProjectionReadinessService(
-                        repositoryFactory, projections, checkpoints);
+                        new DslWorkspaceReadAdapter(repositoryFactory), projections, checkpoints);
         var readiness = service.inspect(context);
 
         assertThat(readiness.state()).isEqualTo(ReadinessState.STALE);
@@ -134,7 +135,7 @@ class RelationBranchProjectionReadinessServiceTest {
                 .thenReturn(List.of(projection(context, head, false)));
 
         var readiness = new RelationBranchProjectionReadinessService(
-                repositoryFactory, projections, checkpoints).inspect(context);
+                new DslWorkspaceReadAdapter(repositoryFactory), projections, checkpoints).inspect(context);
 
         assertThat(readiness.state()).isEqualTo(ReadinessState.CORRUPT);
         assertThat(readiness.rows()).isEmpty();
@@ -151,7 +152,7 @@ class RelationBranchProjectionReadinessServiceTest {
                 mock(RelationDecisionProjectionRepository.class);
 
         var readiness = new RelationBranchProjectionReadinessService(
-                repositoryFactory, projections, checkpoints).inspect(context);
+                new DslWorkspaceReadAdapter(repositoryFactory), projections, checkpoints).inspect(context);
 
         assertThat(readiness.state()).isEqualTo(ReadinessState.BRANCH_MISSING);
         assertThat(readiness.rows()).isEmpty();
