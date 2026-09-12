@@ -1,19 +1,17 @@
-package com.taxonomy.versioning.controller;
+package com.taxonomy.relations.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
-import com.taxonomy.relations.controller.GitHttpPrecondition;
 import com.taxonomy.relations.controller.GitHttpPrecondition.InvalidPreconditionException;
-import com.taxonomy.relations.controller.RelationApiController;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.HypothesisReviewPendingException;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
-import com.taxonomy.versioning.service.GitAuthoritativeHypothesisService;
-import com.taxonomy.versioning.service.HypothesisReviewStateStore.HypothesisReviewConflictException;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.HypothesisReviewPendingException;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewAction;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.ReviewResult;
+import com.taxonomy.relations.service.GitAuthoritativeHypothesisService;
+import com.taxonomy.relations.service.HypothesisReviewStateStore.HypothesisReviewConflictException;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
@@ -44,9 +42,9 @@ import java.util.regex.Pattern;
 /**
  * Preserves the established {@code /api/dsl/hypotheses/...} browser contract
  * while moving it in front of the legacy MVC methods to the Git-authoritative
- * command path. The filter belongs to the versioning boundary because it adapts
- * an existing DSL/versioning route; relation commands remain a dependency of
- * versioning rather than creating a reverse package cycle.
+ * command path. Hypothesis review belongs to relations even though its public
+ * route retains the historical DSL prefix. Workspace APIs retain repository
+ * routing and version authority.
  */
 @Component
 @Order(Ordered.LOWEST_PRECEDENCE - 100)

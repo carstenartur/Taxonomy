@@ -1,7 +1,5 @@
-package com.taxonomy.versioning.controller;
+package com.taxonomy.relations.controller;
 
-import com.taxonomy.relations.controller.GitHttpPrecondition;
-import com.taxonomy.relations.controller.RelationApiController;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
 import com.taxonomy.workspace.service.RepositoryContext;

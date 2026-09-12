@@ -11,7 +11,7 @@ import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.preferences.PreferencesService;
-import com.taxonomy.versioning.service.HypothesisService;
+import com.taxonomy.relations.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;

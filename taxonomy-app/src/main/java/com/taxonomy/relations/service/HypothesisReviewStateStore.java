@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationType;

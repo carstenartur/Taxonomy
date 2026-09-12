@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.relations.service;
 
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationDefinition;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
@@ -6,10 +6,9 @@ import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.model.RelationHypothesis;
-import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService;
 import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.MutationResult;
 import com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.ProjectionPendingException;
-import com.taxonomy.versioning.service.HypothesisReviewStateStore.HypothesisSnapshot;
+import com.taxonomy.relations.service.HypothesisReviewStateStore.HypothesisSnapshot;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.stereotype.Service;
 
