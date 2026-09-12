@@ -12,8 +12,6 @@ import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.model.TaxonomyRootTypes;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dsl.validation.DslValidationResult;
 import com.taxonomy.dsl.validation.DslValidator;
 import com.taxonomy.model.HypothesisStatus;
@@ -29,6 +27,7 @@ import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceDslPublicationPort;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -63,7 +62,7 @@ public class HypothesisService {
     private final RelationEvidenceRepository evidenceRepository;
     private final TaxonomyRelationService relationService;
     private final TaxonomyNodeRepository nodeRepository;
-    private final DslGitRepositoryFactory repositoryFactory;
+    private final WorkspaceDslPublicationPort dslPublication;
     private final SystemRepositoryService systemRepositoryService;
     private final UserWorkspaceRepository userWorkspaceRepository;
 
@@ -78,14 +77,14 @@ public class HypothesisService {
                              RelationEvidenceRepository evidenceRepository,
                              TaxonomyRelationService relationService,
                              TaxonomyNodeRepository nodeRepository,
-                             DslGitRepositoryFactory repositoryFactory,
+                             WorkspaceDslPublicationPort dslPublication,
                              SystemRepositoryService systemRepositoryService,
                              UserWorkspaceRepository userWorkspaceRepository) {
         this.hypothesisRepository = hypothesisRepository;
         this.evidenceRepository = evidenceRepository;
         this.relationService = relationService;
         this.nodeRepository = nodeRepository;
-        this.repositoryFactory = repositoryFactory;
+        this.dslPublication = dslPublication;
         this.systemRepositoryService = systemRepositoryService;
         this.userWorkspaceRepository = userWorkspaceRepository;
     }
@@ -95,9 +94,9 @@ public class HypothesisService {
                              RelationEvidenceRepository evidenceRepository,
                              TaxonomyRelationService relationService,
                              TaxonomyNodeRepository nodeRepository,
-                             DslGitRepositoryFactory repositoryFactory) {
+                             WorkspaceDslPublicationPort dslPublication) {
         this(hypothesisRepository, evidenceRepository, relationService, nodeRepository,
-                repositoryFactory, null, null);
+                dslPublication, null, null);
     }
 
     /** Persist provisional hypotheses and version their canonical DSL immediately. */
@@ -390,12 +389,11 @@ public class HypothesisService {
         String branch = hypotheses.stream()
                 .anyMatch(h -> h.getStatus() == HypothesisStatus.ACCEPTED)
                 ? "accepted" : "draft";
-        DslGitRepository repository = repositoryFactory.resolveRepository(context);
         try {
-            String commitId = repository.commitDsl(
+            String commitId = dslPublication.publishSnapshot(
+                    context,
                     branch,
                     dslText,
-                    context.username(),
                     "Auto-generated from analysis session " + sessionId);
             log.info("Committed {} hypotheses as canonical DSL to repository {} workspace {} "
                             + "branch '{}': {}",

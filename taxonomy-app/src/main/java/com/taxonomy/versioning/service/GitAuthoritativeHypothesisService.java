@@ -2,7 +2,6 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
@@ -19,6 +18,7 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceDslPublicationPort;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
@@ -49,7 +49,7 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
             RelationEvidenceRepository evidenceRepository,
             TaxonomyRelationService relationService,
             TaxonomyNodeRepository nodeRepository,
-            DslGitRepositoryFactory repositoryFactory,
+            WorkspaceDslPublicationPort dslPublication,
             SystemRepositoryService systemRepositoryService,
             UserWorkspaceRepository userWorkspaceRepository,
             GitAuthoritativeHypothesisReviewService reviewService,
@@ -59,7 +59,7 @@ public class GitAuthoritativeHypothesisService extends HypothesisService {
                 evidenceRepository,
                 relationService,
                 nodeRepository,
-                repositoryFactory,
+                dslPublication,
                 systemRepositoryService,
                 userWorkspaceRepository);
         this.hypothesisRepository = Objects.requireNonNull(

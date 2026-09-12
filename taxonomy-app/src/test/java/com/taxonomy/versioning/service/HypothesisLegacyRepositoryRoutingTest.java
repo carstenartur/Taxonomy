@@ -3,6 +3,7 @@ package com.taxonomy.versioning.service;
 import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.DslWorkspacePublicationAdapter;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -59,7 +60,7 @@ class HypothesisLegacyRepositoryRoutingTest {
                 evidenceRepository,
                 relationService,
                 nodeRepository,
-                repositoryFactory,
+                new DslWorkspacePublicationAdapter(repositoryFactory),
                 systemRepositoryService,
                 userWorkspaceRepository);
     }

@@ -8,6 +8,7 @@ import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.DslWorkspacePublicationAdapter;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
@@ -53,7 +54,7 @@ class HypothesisDslIntegrityTest {
                 evidenceRepository,
                 relationService,
                 nodeRepository,
-                repositoryFactory);
+                new DslWorkspacePublicationAdapter(repositoryFactory));
         when(hypothesisRepository.existsInRepositoryWorkspaceSession(
                 anyString(), anyString(), anyString(), anyString(), anyString(), any()))
                 .thenReturn(false);
