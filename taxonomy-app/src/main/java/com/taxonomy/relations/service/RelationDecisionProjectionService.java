@@ -5,9 +5,6 @@ import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
 import com.taxonomy.dsl.parser.TaxDslParser;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RelationCommand;
@@ -15,9 +12,8 @@ import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.Remo
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.UpsertRelation;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.revwalk.RevWalk;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort.RepositoryRead;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
@@ -44,33 +40,27 @@ public class RelationDecisionProjectionService {
     private static final String RELATION_KIND = "relation";
 
     private final RelationDecisionProjectionWriter projectionWriter;
-    private final DslGitRepositoryFactory gitRepositoryFactory;
+    private final WorkspaceDslReadPort gitReads;
     private final TaxDslParser parser;
-    private final ExpectedHeadDslCommitter expectedHeadVerifier;
 
     @Autowired
     public RelationDecisionProjectionService(
             RelationDecisionProjectionWriter projectionWriter,
-            DslGitRepositoryFactory gitRepositoryFactory) {
+            WorkspaceDslReadPort gitReads) {
         this(
                 projectionWriter,
-                gitRepositoryFactory,
-                new TaxDslParser(),
-                new ExpectedHeadDslCommitter());
+                gitReads,
+                new TaxDslParser());
     }
 
     RelationDecisionProjectionService(
             RelationDecisionProjectionWriter projectionWriter,
-            DslGitRepositoryFactory gitRepositoryFactory,
-            TaxDslParser parser,
-            ExpectedHeadDslCommitter expectedHeadVerifier) {
+            WorkspaceDslReadPort gitReads,
+            TaxDslParser parser) {
         this.projectionWriter = Objects.requireNonNull(
                 projectionWriter, "projectionWriter");
-        this.gitRepositoryFactory = Objects.requireNonNull(
-                gitRepositoryFactory, "gitRepositoryFactory");
+        this.gitReads = Objects.requireNonNull(gitReads, "gitReads");
         this.parser = Objects.requireNonNull(parser, "parser");
-        this.expectedHeadVerifier = Objects.requireNonNull(
-                expectedHeadVerifier, "expectedHeadVerifier");
     }
 
     /**
@@ -176,7 +166,7 @@ public class RelationDecisionProjectionService {
             CommandResult commandResult,
             RelationCommand command) {
         String authoritativeCommitId = validated.authoritativeCommitId();
-        DslGitRepository repository = gitRepositoryFactory.resolveRepository(context);
+        RepositoryRead repository = gitReads.openRead(context);
         verifyAuthority(
                 repository,
                 context,
@@ -185,7 +175,7 @@ public class RelationDecisionProjectionService {
                 authoritativeCommitId);
         String dsl;
         try {
-            dsl = repository.getDslAtCommit(authoritativeCommitId);
+            dsl = repository.dslAtCommit(authoritativeCommitId).orElse(null);
         } catch (IOException error) {
             throw new ProjectionSourceException(
                     "Unable to read authoritative relation commit "
@@ -244,16 +234,13 @@ public class RelationDecisionProjectionService {
     }
 
     private void verifyAuthority(
-            DslGitRepository repository,
+            RepositoryRead repository,
             RepositoryContext context,
             CommandResult commandResult,
             RelationCommand command,
             String authoritativeCommitId) {
         try {
-            String verifiedHead = expectedHeadVerifier.verifyExpectedHead(
-                    repository,
-                    context.branch(),
-                    authoritativeCommitId);
+            String verifiedHead = repository.verifyExpectedHead(authoritativeCommitId);
             if (!authoritativeCommitId.equals(verifiedHead)) {
                 throw new ProjectionSourceException(
                         "Authoritative commit is not the selected branch head: "
@@ -276,45 +263,42 @@ public class RelationDecisionProjectionService {
     }
 
     private static void verifyCreatedCommit(
-            DslGitRepository repository,
+            RepositoryRead repository,
             RepositoryContext context,
             CommandResult commandResult,
             RelationCommand command,
             String authoritativeCommitId) throws IOException {
-        try (RevWalk walk = new RevWalk(repository.getGitRepository())) {
-            RevCommit commit = walk.parseCommit(
-                    ObjectId.fromString(authoritativeCommitId));
-            String expectedSummary = "relation: "
-                    + commandResult.changeKind().name().toLowerCase(Locale.ROOT)
-                    + " " + display(command.identity());
-            if (!expectedSummary.equals(commit.getShortMessage())) {
-                throw new ProjectionSourceException(
-                        "Authoritative commit summary does not match the relation command");
-            }
-            if (!context.username().equals(commit.getAuthorIdent().getName())) {
-                throw new ProjectionSourceException(
-                        "Authoritative commit author does not match the repository context");
-            }
-            String expectedCausation = "Causation-Id: "
-                    + command.metadata().causationId();
-            boolean causationPresent = commit.getFullMessage().lines()
-                    .anyMatch(expectedCausation::equals);
-            if (!causationPresent) {
-                throw new ProjectionSourceException(
-                        "Authoritative commit does not contain the command causation ID");
-            }
+        var commit = repository.commitMetadata(authoritativeCommitId);
+        String expectedSummary = "relation: "
+                + commandResult.changeKind().name().toLowerCase(Locale.ROOT)
+                + " " + display(command.identity());
+        if (!expectedSummary.equals(commit.summary())) {
+            throw new ProjectionSourceException(
+                    "Authoritative commit summary does not match the relation command");
+        }
+        if (!context.username().equals(commit.author())) {
+            throw new ProjectionSourceException(
+                    "Authoritative commit author does not match the repository context");
+        }
+        String expectedCausation = "Causation-Id: "
+                + command.metadata().causationId();
+        boolean causationPresent = commit.message().lines()
+                .anyMatch(expectedCausation::equals);
+        if (!causationPresent) {
+            throw new ProjectionSourceException(
+                    "Authoritative commit does not contain the command causation ID");
+        }
 
-            String previousHeadCommit = commandResult.previousHeadCommit();
-            if (previousHeadCommit == null) {
-                if (commit.getParentCount() != 0) {
-                    throw new ProjectionSourceException(
-                            "Initial relation command commit unexpectedly has a parent");
-                }
-            } else if (commit.getParentCount() != 1
-                    || !previousHeadCommit.equals(commit.getParent(0).name())) {
+        String previousHeadCommit = commandResult.previousHeadCommit();
+        if (previousHeadCommit == null) {
+            if (commit.parents().size() != 0) {
                 throw new ProjectionSourceException(
-                        "Authoritative commit parent does not match the command result");
+                        "Initial relation command commit unexpectedly has a parent");
             }
+        } else if (commit.parents().size() != 1
+                || !previousHeadCommit.equals(commit.parents().getFirst())) {
+            throw new ProjectionSourceException(
+                    "Authoritative commit parent does not match the command result");
         }
     }
 
@@ -375,7 +359,7 @@ public class RelationDecisionProjectionService {
                     field + " must not be null");
         }
         try {
-            return ObjectId.fromString(value).name();
+            return WorkspaceDslReadPort.normalizeCommitId(value);
         } catch (IllegalArgumentException error) {
             throw new ProjectionContextMismatchException(
                     field + " must be a full Git object ID",

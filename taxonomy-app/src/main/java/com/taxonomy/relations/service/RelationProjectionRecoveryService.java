@@ -1,7 +1,5 @@
 package com.taxonomy.relations.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.model.RelationDecisionProjection;
 import com.taxonomy.relations.model.RelationProjectionRecovery;
@@ -9,16 +7,13 @@ import com.taxonomy.relations.model.RelationProjectionRecovery.RecoveryStatus;
 import com.taxonomy.relations.repository.RelationProjectionRecoveryRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryScope;
-import org.eclipse.jgit.lib.ObjectId;
-import org.eclipse.jgit.revwalk.RevCommit;
-import org.eclipse.jgit.revwalk.RevWalk;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.io.IOException;
 import java.util.List;
-import java.util.Locale;
 import java.util.Objects;
 
 /** Durable recovery ledger for failed relation decision projections. */
@@ -26,15 +21,14 @@ import java.util.Objects;
 public class RelationProjectionRecoveryService {
 
     private final RelationProjectionRecoveryRepository recoveryRepository;
-    private final DslGitRepositoryFactory gitRepositoryFactory;
+    private final WorkspaceDslReadPort gitReads;
 
     public RelationProjectionRecoveryService(
             RelationProjectionRecoveryRepository recoveryRepository,
-            DslGitRepositoryFactory gitRepositoryFactory) {
+            WorkspaceDslReadPort gitReads) {
         this.recoveryRepository = Objects.requireNonNull(
                 recoveryRepository, "recoveryRepository");
-        this.gitRepositoryFactory = Objects.requireNonNull(
-                gitRepositoryFactory, "gitRepositoryFactory");
+        this.gitReads = Objects.requireNonNull(gitReads, "gitReads");
     }
 
     /**
@@ -115,18 +109,24 @@ public class RelationProjectionRecoveryService {
             return new ReconciliationResult(rebuilt, 0, 0, 0);
         }
 
-        DslGitRepository dslRepository = gitRepositoryFactory
-                .resolveRepository(selected);
+        var history = gitReads.openRead(selected);
         int recovered = 0;
         int superseded = 0;
-        try (RevWalk walk = new RevWalk(dslRepository.getGitRepository())) {
-            RevCommit rebuiltCommit = walk.parseCommit(ObjectId.fromString(rebuilt));
-            for (RelationProjectionRecovery recovery : pending) {
-                RecoveryStatus completion = completion(
-                        walk,
-                        rebuiltCommit,
-                        recovery.getAuthoritativeCommitId());
-                if (completion == null) {
+        try {
+            var relationships = history.relationshipsTo(rebuilt, pending.stream()
+                    .map(RelationProjectionRecovery::getAuthoritativeCommitId).toList());
+            if (relationships.size() != pending.size()) {
+                throw new IOException("Incomplete commit relationship evidence");
+            }
+            for (int index = 0; index < pending.size(); index++) {
+                RelationProjectionRecovery recovery = pending.get(index);
+                var relationship = relationships.get(index);
+                RecoveryStatus completion;
+                if (relationship == WorkspaceDslReadPort.CommitRelationship.SAME) {
+                    completion = RecoveryStatus.RECOVERED;
+                } else if (relationship == WorkspaceDslReadPort.CommitRelationship.ANCESTOR) {
+                    completion = RecoveryStatus.SUPERSEDED;
+                } else {
                     continue;
                 }
                 recovery.complete(completion);
@@ -150,24 +150,6 @@ public class RelationProjectionRecoveryService {
                 pending.size() - recovered - superseded);
     }
 
-    private static RecoveryStatus completion(
-            RevWalk walk,
-            RevCommit rebuiltCommit,
-            String pendingCommitId) {
-        try {
-            RevCommit pendingCommit = walk.parseCommit(
-                    ObjectId.fromString(pendingCommitId));
-            if (pendingCommit.equals(rebuiltCommit)) {
-                return RecoveryStatus.RECOVERED;
-            }
-            return walk.isMergedInto(pendingCommit, rebuiltCommit)
-                    ? RecoveryStatus.SUPERSEDED
-                    : null;
-        } catch (IOException | IllegalArgumentException error) {
-            return null;
-        }
-    }
-
     private static RepositoryContext requireMutable(RepositoryContext context) {
         RepositoryContext selected = Objects.requireNonNull(context, "context");
         if (selected.scope() == RepositoryScope.CENTRAL_READ) {
@@ -182,8 +164,7 @@ public class RelationProjectionRecoveryService {
             throw new IllegalArgumentException(
                     "rebuiltCommitId must not be blank");
         }
-        return ObjectId.fromString(value.strip()).name()
-                .toLowerCase(Locale.ROOT);
+        return WorkspaceDslReadPort.normalizeCommitId(value.strip());
     }
 
     public record RecoveryRecord(
