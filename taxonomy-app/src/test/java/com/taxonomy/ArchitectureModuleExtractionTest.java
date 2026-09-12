@@ -80,13 +80,7 @@ class ArchitectureModuleExtractionTest {
         List<Path> outputs = new ArrayList<>();
         for (var module : modules.entrySet()) {
             Path sourceRoot = module.getValue().resolve("src/main/java");
-            if (!Files.isDirectory(sourceRoot)) {
-                continue;
-            }
-            List<Path> sourceFiles = javaSources(sourceRoot);
-            if (sourceFiles.isEmpty()) {
-                continue;
-            }
+            List<Path> sourceFiles = Files.isDirectory(sourceRoot) ? javaSources(sourceRoot) : List.of();
             for (Path source : sourceFiles) {
                 String relative = portable(sourceRoot.relativize(source));
                 if (!relative.startsWith("com/taxonomy/")) {
@@ -97,9 +91,13 @@ class ArchitectureModuleExtractionTest {
             }
             Path output = module.getValue().resolve("target/classes");
             if (!Files.isDirectory(output)) {
-                throw new IllegalStateException("Production classes are missing for " + module.getKey()
-                        + "; compile the complete reactor before evaluating extraction");
+                if (!sourceFiles.isEmpty()) {
+                    throw new IllegalStateException("Production classes are missing for " + module.getKey()
+                            + "; compile the complete reactor before evaluating extraction");
+                }
+                continue;
             }
+            // An emptied source tree can still leave stale binaries behind.
             outputs.add(output);
             try (var files = Files.walk(output)) {
                 for (Path file : files.filter(Files::isRegularFile).toList()) {

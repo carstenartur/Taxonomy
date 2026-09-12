@@ -87,6 +87,9 @@ an obsolete nested or additional top-level class fails even when its original
 source file still exists or timestamps match. The compiler also accounts for
 legitimate local, anonymous, and synthetic classes without guessing their names.
 Missing or obsolete binaries fail with a request for a clean reactor build.
+Every reactor module's existing output directory is inspected, even when its
+source directory is absent or contains no Java sources. Genuinely empty support
+and POM modules remain valid; their leftover binaries do not.
 
 This pass uses Java 21 and the complete `surefire.test.class.path` (falling back
 to `java.class.path` outside Surefire), plus reactor class directories. Annotation

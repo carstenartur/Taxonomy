@@ -352,6 +352,55 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void anAbsentSourceDirectoryCannotHideStaleSupportModuleBinaries() throws Exception {
+        Path sourceRoot = compiledSupportModule();
+        try (var files = Files.walk(sourceRoot)) {
+            for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                Files.delete(file);
+            }
+        }
+        assertThat(sourceRoot).doesNotExist();
+
+        assertStaleSupportModuleIsRejected();
+    }
+
+    @Test
+    void anEmptyJavaSourceInventoryCannotHideStaleSupportModuleBinaries() throws Exception {
+        Path sourceRoot = compiledSupportModule();
+        Files.delete(sourceRoot.resolve("com/taxonomy/dto/Result.java"));
+        assertThat(sourceRoot).isDirectory();
+
+        assertStaleSupportModuleIsRejected();
+    }
+
+    @Test
+    void genuinelyEmptySupportAndPomModulesRemainValid() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Files.createDirectories(temporaryRepository.resolve(DOMAIN + "/src/main/java"));
+        Files.createDirectories(temporaryRepository.resolve(DOMAIN + "/target/classes"));
+        Files.createDirectories(temporaryRepository.resolve("target/classes"));
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    private Path compiledSupportModule() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        compile(DOMAIN, "com.taxonomy.dto.Result", "public record Result(String value) {}", List.of());
+        return temporaryRepository.resolve(DOMAIN + "/src/main/java");
+    }
+
+    private void assertStaleSupportModuleIsRejected() {
+        assertThat(temporaryRepository.resolve(DOMAIN + "/target/classes/com/taxonomy/dto/Result.class")).exists();
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Compiled binary inventory")
+                .hasMessageContaining(DOMAIN + ":com.taxonomy.dto.Result").hasMessageContaining("clean reactor build");
+    }
+
+    @Test
     void cleanNamedLocalAnonymousAndCompilerGeneratedClassesAreAccepted() throws Exception {
         bytecodeRepository();
         compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
