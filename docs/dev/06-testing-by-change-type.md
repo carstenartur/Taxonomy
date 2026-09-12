@@ -37,6 +37,14 @@ activates core/PostgreSQL integration, quality gates and browser/accessibility
 verification. SQL Server and Oracle remain scheduled/manual because their
 container cost is materially higher. Real LLM tests always remain opt-in.
 
+The module-extraction gate lives in `taxonomy-build`, downstream of
+`taxonomy-app`, `taxonomy-coverage`, and `taxonomy-tooling`. The root-level
+architecture command and ordinary full-reactor `verify` therefore compile every
+inventory producer before the gate runs. App-only selections, including the
+Keycloak-only command, remain supported and do not claim to enforce the
+whole-repository graph. The generated graph report is
+`taxonomy-build/target/architecture-module-graph.txt`.
+
 ## Browser and accessibility reproduction
 
 The Java application lifecycle, pinned Node installation, npm dependency lock,

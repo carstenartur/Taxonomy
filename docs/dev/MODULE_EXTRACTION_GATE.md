@@ -1,10 +1,12 @@
 # Context module extraction gate
 
-`ArchitectureModuleExtractionTest` runs with the ordinary application tests.
-It reads `.github/architecture-contexts.json`, discovers reactor POMs and
-production source files, and imports the compiled production classes with
-ArchUnit. It projects their direct class dependencies onto the proposed Maven
-modules. It does not read the dependency ratchet baseline or the exception ledger.
+`ArchitectureModuleExtractionTest` is an ordinary Surefire test owned by
+`taxonomy-build`, downstream of `taxonomy-app`, `taxonomy-coverage`, and
+`taxonomy-tooling`. In a full-reactor test or verify it reads
+`.github/architecture-contexts.json`, discovers reactor POMs and production
+source files, and imports the compiled production classes with ArchUnit. It
+projects their direct class dependencies onto the proposed Maven modules. It
+does not read the dependency ratchet baseline or the exception ledger.
 
 Run the normal test suite with `./mvnw test`. The focused architecture command is
 `./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false`; its
@@ -13,11 +15,13 @@ is `./mvnw -B verify -Pci`. Core CI adds `-DrunOnnxTests=true -Dtaxonomy.ui.skip
 and runs UI verification in separate lanes. Plain local `verify` skips integration
 and post-reactor gates and is not equivalent to CI. The generated report is
 printed in the test output and written to
-`taxonomy-app/target/architecture-module-graph.txt`.
+`taxonomy-build/target/architecture-module-graph.txt`.
 
 Run the architecture suite from the repository root across the complete reactor.
-An app-only `-pl taxonomy-app` invocation does not compile the sibling outputs
-required by this inventory.
+App-only commands, including the documented Keycloak-only selection, do not run
+this whole-repository test. They remain supported focused lanes; ordinary
+full-reactor verification and the complete architecture profile enforce the
+module graph after every inventory producer has been compiled.
 
 The report includes every class-derived module edge with a deterministic
 representative class pair, declared production POM edges, application dependencies,
@@ -129,6 +133,12 @@ Missing or obsolete binaries fail with a request for a clean reactor build.
 Every reactor module's existing output directory is inspected, even when its
 source directory is absent or contains no Java sources. Genuinely empty support
 and POM modules remain valid; their leftover binaries do not.
+
+Every consumed production source root, source file, output root, and output file
+must resolve inside the checkout before javac or ArchUnit can use it. This check
+applies independently of POM discovery, including source packages named
+`target`, individual linked class files, and linked output directories. Symlink
+aliases whose targets remain inside the checkout continue to be valid.
 
 This pass uses Java 21 and the complete `surefire.test.class.path` (falling back
 to `java.class.path` outside Surefire), plus reactor class directories. Annotation

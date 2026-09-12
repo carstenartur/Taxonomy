@@ -1,15 +1,24 @@
 package com.taxonomy;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.CleanupMode;
 import org.junit.jupiter.api.io.TempDir;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
 
 import javax.tools.ToolProvider;
+import javax.xml.XMLConstants;
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.File;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import static com.taxonomy.ArchitectureModuleGraph.*;
@@ -20,6 +29,9 @@ class ArchitectureModuleGraphTest {
 
     @TempDir
     Path temporaryRepository;
+
+    @TempDir(cleanup = CleanupMode.ALWAYS)
+    Path externalFixtureRoot;
 
     private static final String APP = "taxonomy-app";
     private static final String A = "taxonomy-a";
@@ -488,6 +500,113 @@ class ArchitectureModuleGraphTest {
                 .contains("taxonomy-a -> taxonomy-app", "com.taxonomy.AppConfig", "root composition"));
         assertThat(result.report()).contains("com.taxonomy.a.Service -> com.taxonomy.dto.Result",
                 "Present feature modules: taxonomy-a");
+    }
+
+    @Test
+    void anExternalSourceLinkUnderAnExcludedPackageDirectoryIsRejectedBeforeCompilation() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, "com.taxonomy.a.target.Service", "public class Service {}", List.of());
+        Path source = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a/target/Service.java");
+        Path outside = externalFixture("outside-source").resolve("Service.java");
+        Files.move(source, outside);
+        Files.writeString(outside, "OUTSIDE_SOURCE_MUST_NOT_REACH_JAVAC");
+        Files.createSymbolicLink(source, outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Production source path is outside repository through a symlink")
+                .hasMessageContaining("target/Service.java");
+    }
+
+    @Test
+    void anExternalCompiledClassLinkIsRejectedBeforeImport() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        Path compiledClass = output.resolve("com/taxonomy/a/Service.class");
+        Path outside = externalFixture("outside-class").resolve("Service.class");
+        Files.move(compiledClass, outside);
+        Files.createSymbolicLink(compiledClass, outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Production output path is outside repository through a symlink")
+                .hasMessageContaining("Service.class");
+    }
+
+    @Test
+    void anExternalTargetDirectoryLinkIsRejectedBeforeClasspathUse() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path target = temporaryRepository.resolve(A + "/target");
+        Path outside = externalFixture("outside-target").resolve("target");
+        Files.move(target, outside);
+        Files.createSymbolicLink(target, outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Production output path is outside repository through a symlink")
+                .hasMessageContaining(A + "/target/classes");
+    }
+
+    @Test
+    void anOrdinaryExternalSourceLinkRemainsRejectedDuringRepositoryDiscovery() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path source = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a/Service.java");
+        Path outside = externalFixture("ordinary-outside-source").resolve("Service.java");
+        Files.move(source, outside);
+        Files.createSymbolicLink(source, outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("POM path is outside repository through a symlink")
+                .hasMessageContaining("Service.java");
+    }
+
+    @Test
+    void sourceAndClassFileAliasesWhoseTargetsRemainInTheCheckoutAreAccepted() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        Path aliases = temporaryRepository.resolve("fixture-alias-targets");
+        Files.createDirectories(aliases);
+        Path source = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a/Service.java");
+        Path sourceTarget = aliases.resolve("Service.java");
+        Files.move(source, sourceTarget);
+        Files.createSymbolicLink(source, sourceTarget);
+        Path compiledClass = output.resolve("com/taxonomy/a/Service.class");
+        Path classTarget = aliases.resolve("Service.class");
+        Files.move(compiledClass, classTarget);
+        Files.createSymbolicLink(compiledClass, classTarget);
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    @Test
+    void moduleGateIsOwnedByBuildPolicyAfterEveryInventoryProducerWithCompleteSelectors() throws Exception {
+        Path root = checkoutRoot();
+        for (String source : List.of("ArchitectureModuleGraph.java", "ArchitectureModuleGraphTest.java",
+                "ArchitectureModuleExtractionTest.java")) {
+            assertThat(root.resolve("taxonomy-app/src/test/java/com/taxonomy").resolve(source)).doesNotExist();
+            assertThat(root.resolve("taxonomy-build/src/test/java/com/taxonomy").resolve(source)).isRegularFile();
+        }
+        Map<String, String> dependencies = directProjectDependencies(root.resolve("taxonomy-build/pom.xml"));
+        assertThat(dependencies).containsEntry(APP, "jar:compile")
+                .containsEntry("taxonomy-coverage", "pom:compile")
+                .containsEntry("taxonomy-tooling", "jar:test")
+                .containsEntry("archunit-junit5", "jar:test");
+
+        String pomSelector = profileProperty(root.resolve("pom.xml"), "architecture-tests", "test");
+        JsonNode catalog = new ObjectMapper().readTree(Files.readString(root.resolve(".mvn/verification-suites.json")));
+        String catalogSelector = catalog.path("profiles").path("architecture-tests").path("test").asString();
+        for (String gate : List.of("ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest")) {
+            assertThat(pomSelector.split(",")).contains(gate);
+            assertThat(catalogSelector.split(",")).contains(gate);
+        }
     }
 
     @Test
@@ -992,6 +1111,38 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void propertyArtifactParentAliasesRetainRuntimeDependenciesInAllModelBuilderControls() throws Exception {
+        Path cases = temporaryRepository;
+        for (String alias : List.of("file", "directory", "registered-directory")) {
+            temporaryRepository = cases.resolve(alias);
+            aliasedPropertyParentPoms(alias, """
+                    <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                      <version>1</version><scope>runtime</scope></dependency></dependencies>
+                    """, "");
+
+            assertThat(fixturePomDependencies()).as(alias)
+                    .containsExactly(new ModuleDependency(A, APP));
+        }
+    }
+
+    @Test
+    void propertyArtifactParentAliasesRetainManagedTestScopesInAllModelBuilderControls() throws Exception {
+        Path cases = temporaryRepository;
+        for (String alias : List.of("file", "directory", "registered-directory")) {
+            temporaryRepository = cases.resolve(alias);
+            aliasedPropertyParentPoms(alias, """
+                    <dependencyManagement><dependencies><dependency>
+                      <groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId><version>1</version><scope>test</scope>
+                    </dependency></dependencies></dependencyManagement>
+                    """, """
+                    <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId></dependency></dependencies>
+                    """);
+
+            assertThat(fixturePomDependencies()).as(alias).isEmpty();
+        }
+    }
+
+    @Test
     void aRegisteredPropertyArtifactCannotOverrideAForeignParentWithTheSameArtifact() throws Exception {
         registeredPropertyParentPoms(false, """
                 <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
@@ -1016,6 +1167,30 @@ class ArchitectureModuleGraphTest {
                 <parent><groupId>org.example.build</groupId><artifactId>build-local-parent</artifactId><version>1</version>
                   <relativePath/></parent><groupId>com.taxonomy</groupId><version>1</version>
                 """ + childBody);
+    }
+
+    private void aliasedPropertyParentPoms(String alias, String parentBody, String childBody) throws Exception {
+        boolean registeredAlias = alias.equals("registered-directory");
+        String registeredParent = registeredAlias ? "parent-alias" : "parent-real";
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module><module>"
+                + registeredParent + "</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("parent-real", "org.example.build", "build-${parent.module}", """
+                <packaging>pom</packaging><properties><parent.module>local-parent</parent.module></properties>
+                """ + parentBody);
+        if (alias.equals("file")) {
+            Files.createDirectories(temporaryRepository.resolve("parent-alias"));
+            Files.createSymbolicLink(temporaryRepository.resolve("parent-alias/pom.xml"),
+                    temporaryRepository.resolve("parent-real/pom.xml"));
+        } else {
+            Files.createSymbolicLink(temporaryRepository.resolve("parent-alias"),
+                    temporaryRepository.resolve("parent-real"));
+        }
+        String relativeParent = registeredAlias ? "../parent-real/pom.xml" : "../parent-alias/pom.xml";
+        pom("taxonomy-a", A, """
+                <parent><groupId>org.example.build</groupId><artifactId>build-local-parent</artifactId><version>1</version>
+                  <relativePath>%s</relativePath></parent><groupId>com.taxonomy</groupId><version>1</version>
+                """.formatted(relativeParent) + childBody);
     }
 
     @Test
@@ -1233,6 +1408,79 @@ class ArchitectureModuleGraphTest {
         assertThat(ToolProvider.getSystemJavaCompiler().run(null, null, null, arguments.toArray(String[]::new)))
                 .as("compile module fixture %s", module).isZero();
         return output;
+    }
+
+    private Path externalFixture(String name) throws Exception {
+        if (!name.matches("[a-z][a-z0-9-]*")) {
+            throw new IllegalArgumentException("Invalid external fixture name: " + name);
+        }
+        Path managedRoot = externalFixtureRoot.toAbsolutePath().normalize();
+        Path outside = managedRoot.resolve(name).normalize();
+        if (!managedRoot.equals(outside.getParent())) {
+            throw new IllegalArgumentException("External fixture must be a direct child of its managed root: " + name);
+        }
+        return Files.createDirectory(outside);
+    }
+
+    private static Path checkoutRoot() {
+        Path current = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+        while (current != null && !Files.isRegularFile(current.resolve(".github/architecture-contexts.json"))) {
+            current = current.getParent();
+        }
+        if (current == null) {
+            throw new IllegalStateException("Cannot locate repository root for module gate owner contract");
+        }
+        return current;
+    }
+
+    private static Map<String, String> directProjectDependencies(Path pom) throws Exception {
+        Element project = xml(pom);
+        Map<String, String> result = new HashMap<>();
+        for (Element dependencies : directChildren(project, "dependencies")) {
+            for (Element dependency : directChildren(dependencies, "dependency")) {
+                String artifact = directChildText(dependency, "artifactId");
+                String type = directChildText(dependency, "type");
+                String scope = directChildText(dependency, "scope");
+                result.put(artifact, (type.isBlank() ? "jar" : type) + ":" + (scope.isBlank() ? "compile" : scope));
+            }
+        }
+        return result;
+    }
+
+    private static String profileProperty(Path pom, String profileId, String property) throws Exception {
+        for (Element profiles : directChildren(xml(pom), "profiles")) {
+            for (Element profile : directChildren(profiles, "profile")) {
+                if (profileId.equals(directChildText(profile, "id"))) {
+                    List<Element> properties = directChildren(profile, "properties");
+                    return properties.isEmpty() ? "" : directChildText(properties.getFirst(), property);
+                }
+            }
+        }
+        return "";
+    }
+
+    private static Element xml(Path file) throws Exception {
+        DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+        factory.setNamespaceAware(true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
+        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
+        return factory.newDocumentBuilder().parse(file.toFile()).getDocumentElement();
+    }
+
+    private static List<Element> directChildren(Element parent, String name) {
+        List<Element> result = new ArrayList<>();
+        for (Node child = parent.getFirstChild(); child != null; child = child.getNextSibling()) {
+            if (child instanceof Element element && name.equals(element.getLocalName())) {
+                result.add(element);
+            }
+        }
+        return result;
+    }
+
+    private static String directChildText(Element parent, String name) {
+        List<Element> result = directChildren(parent, name);
+        return result.isEmpty() ? "" : result.getFirst().getTextContent().trim();
     }
 
     private void pom(String directory, String artifact, String body) throws Exception {

@@ -77,9 +77,17 @@ workflow YAML:
 ```
 
 The architecture suite needs the complete reactor's production outputs for its
-module-extraction inventory. Run it from the repository root without selecting
-only `taxonomy-app`; modules without matching test classes use
-`surefire.failIfNoSpecifiedTests=false` while their production code is compiled.
+module-extraction inventory. `ArchitectureModuleExtractionTest` is owned by
+`taxonomy-build`, downstream of the application, coverage aggregator, and
+tooling modules. Run the suite from the repository root; modules without
+matching test classes use `surefire.failIfNoSpecifiedTests=false` while their
+production code is compiled. The report is written to
+`taxonomy-build/target/architecture-module-graph.txt`.
+
+App-only selections do not execute this whole-repository gate. In particular,
+the Keycloak-only command above ends at `taxonomy-app` and remains a supported
+focused integration lane; ordinary full-reactor verification and the complete
+architecture profile own module-graph enforcement.
 
 Browser failures can be reproduced without editing a workflow:
 

@@ -61,7 +61,7 @@ class ArchitectureModuleExtractionTest {
     void physicalFeatureModulesHaveNoExtractionBlockers() throws Exception {
         Path root = findRepositoryRoot();
         Evaluation evaluation = evaluateRepository(root);
-        Path report = root.resolve("taxonomy-app/target/architecture-module-graph.txt");
+        Path report = root.resolve("taxonomy-build/target/architecture-module-graph.txt");
         Files.createDirectories(report.getParent());
         Files.writeString(report, evaluation.report());
         System.out.println(evaluation.report());
@@ -69,6 +69,7 @@ class ArchitectureModuleExtractionTest {
     }
 
     static Evaluation evaluateRepository(Path root) throws Exception {
+        Path checkout = root.toAbsolutePath().normalize();
         Policy policy = readPolicy(root.resolve(".github/architecture-contexts.json"));
         Map<String, Path> modules = discoverModules(root, policy);
         SortedMap<String, SortedSet<String>> classOwners = new TreeMap<>();
@@ -76,8 +77,9 @@ class ArchitectureModuleExtractionTest {
         Map<Path, String> sourceOwners = new TreeMap<>();
         List<Path> outputs = new ArrayList<>();
         for (var module : modules.entrySet()) {
-            Path sourceRoot = module.getValue().resolve("src/main/java");
-            List<Path> sourceFiles = Files.isDirectory(sourceRoot) ? javaSources(sourceRoot) : List.of();
+            Path sourceRoot = repositoryPath(module.getValue().resolve("src/main/java"), checkout,
+                    "Production source");
+            List<Path> sourceFiles = Files.isDirectory(sourceRoot) ? javaSources(sourceRoot, checkout) : List.of();
             for (Path source : sourceFiles) {
                 String relative = portable(sourceRoot.relativize(source));
                 if (!relative.startsWith("com/taxonomy/")) {
@@ -86,7 +88,8 @@ class ArchitectureModuleExtractionTest {
                 sources.add(module.getKey() + ":" + relative);
                 sourceOwners.put(source.toAbsolutePath().normalize(), module.getKey());
             }
-            Path output = module.getValue().resolve("target/classes");
+            Path output = repositoryPath(module.getValue().resolve("target/classes"), checkout,
+                    "Production output");
             if (!Files.isDirectory(output)) {
                 if (!sourceFiles.isEmpty()) {
                     throw new IllegalStateException("Production classes are missing for " + module.getKey()
@@ -96,15 +99,13 @@ class ArchitectureModuleExtractionTest {
             }
             // An emptied source tree can still leave stale binaries behind.
             outputs.add(output);
-            try (var files = Files.walk(output)) {
-                for (Path file : files.filter(Files::isRegularFile).toList()) {
-                    String relative = portable(output.relativize(file));
-                    if (relative.startsWith("com/taxonomy/") && relative.endsWith(".class")
-                            && !relative.endsWith("/package-info.class")) {
-                        String className = relative.substring(0, relative.length() - ".class".length())
-                                .replace('/', '.');
-                        classOwners.computeIfAbsent(className, ignored -> new TreeSet<>()).add(module.getKey());
-                    }
+            for (Path file : repositoryFiles(output, checkout, "Production output")) {
+                String relative = portable(output.relativize(file));
+                if (relative.startsWith("com/taxonomy/") && relative.endsWith(".class")
+                        && !relative.endsWith("/package-info.class")) {
+                    String className = relative.substring(0, relative.length() - ".class".length())
+                            .replace('/', '.');
+                    classOwners.computeIfAbsent(className, ignored -> new TreeSet<>()).add(module.getKey());
                 }
             }
         }
@@ -651,17 +652,21 @@ class ArchitectureModuleExtractionTest {
     }
 
     private static Path repositoryPomPath(Path pom, Path repositoryRoot) throws IOException {
+        return repositoryPath(pom, repositoryRoot, "POM");
+    }
+
+    private static Path repositoryPath(Path candidate, Path repositoryRoot, String description) throws IOException {
         Path root = repositoryRoot.toAbsolutePath().normalize();
-        Path path = pom.toAbsolutePath().normalize();
+        Path path = candidate.toAbsolutePath().normalize();
         if (!path.startsWith(root)) {
-            throw new IllegalStateException("POM path is outside repository: " + path);
+            throw new IllegalStateException(description + " path is outside repository: " + path);
         }
         Path realRoot = root.toRealPath();
         Path current = root;
         for (Path part : root.relativize(path)) {
             current = current.resolve(part);
             if (Files.isSymbolicLink(current) && !current.toRealPath().startsWith(realRoot)) {
-                throw new IllegalStateException("POM path is outside repository through a symlink: " + path);
+                throw new IllegalStateException(description + " path is outside repository through a symlink: " + path);
             }
         }
         return path;
@@ -725,12 +730,25 @@ class ArchitectureModuleExtractionTest {
         return array;
     }
 
-    private static List<Path> javaSources(Path root) throws IOException {
+    private static List<Path> javaSources(Path root, Path repositoryRoot) throws IOException {
+        return repositoryFiles(root, repositoryRoot, "Production source").stream()
+                .filter(file -> file.toString().endsWith(".java"))
+                .filter(file -> !Set.of("package-info.java", "module-info.java").contains(file.getFileName().toString()))
+                .toList();
+    }
+
+    private static List<Path> repositoryFiles(Path root, Path repositoryRoot, String description) throws IOException {
+        repositoryPath(root, repositoryRoot, description);
+        List<Path> result = new ArrayList<>();
         try (var files = Files.walk(root)) {
-            return files.filter(Files::isRegularFile).filter(file -> file.toString().endsWith(".java"))
-                    .filter(file -> !Set.of("package-info.java", "module-info.java").contains(file.getFileName().toString()))
-                    .sorted().toList();
+            for (Path file : files.sorted().toList()) {
+                repositoryPath(file, repositoryRoot, description);
+                if (Files.isRegularFile(file)) {
+                    result.add(file);
+                }
+            }
         }
+        return List.copyOf(result);
     }
 
     private static String portable(Path relative) {

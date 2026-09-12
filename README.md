@@ -185,6 +185,14 @@ Focused profiles include:
 ./mvnw verify -Pui-tests
 ```
 
+The whole-repository module-extraction gate is owned by `taxonomy-build`, which
+is ordered after the application, aggregate coverage, and tooling modules. It
+runs in ordinary full-reactor verification and in the root-level
+`architecture-tests` profile. Its report is written to
+`taxonomy-build/target/architecture-module-graph.txt`. Focused selections that
+end at `taxonomy-app`, including the Keycloak-only lane, do not run this
+whole-reactor inventory; the full reactor remains its enforcement boundary.
+
 The build generates:
 
 - JUnit and Failsafe reports
