@@ -4,6 +4,7 @@ import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
 import com.taxonomy.catalog.service.TaxonomyRelationService;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.DslWorkspacePublicationAdapter;
 import com.taxonomy.model.HypothesisStatus;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationHypothesis;
@@ -34,7 +35,7 @@ class HypothesisMutationScopeTest {
         TaxonomyNodeRepository nodes = mock(TaxonomyNodeRepository.class);
         DslGitRepositoryFactory repositories = mock(DslGitRepositoryFactory.class);
         HypothesisService service = new HypothesisService(
-                hypotheses, evidence, relations, nodes, repositories);
+                hypotheses, evidence, relations, nodes, new DslWorkspacePublicationAdapter(repositories));
 
         assertThatThrownBy(() -> service.persistFromAnalysis(
                 List.of(mock(RelationHypothesisDto.class)),
@@ -57,7 +58,7 @@ class HypothesisMutationScopeTest {
         TaxonomyNodeRepository nodes = mock(TaxonomyNodeRepository.class);
         DslGitRepositoryFactory repositories = mock(DslGitRepositoryFactory.class);
         HypothesisService service = new HypothesisService(
-                hypotheses, evidence, relations, nodes, repositories);
+                hypotheses, evidence, relations, nodes, new DslWorkspacePublicationAdapter(repositories));
         RepositoryContext context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "draft", "alice");
 
@@ -118,7 +119,7 @@ class HypothesisMutationScopeTest {
         TaxonomyNodeRepository nodes = mock(TaxonomyNodeRepository.class);
         DslGitRepositoryFactory repositories = mock(DslGitRepositoryFactory.class);
         HypothesisService service = new HypothesisService(
-                hypotheses, evidence, relations, nodes, repositories);
+                hypotheses, evidence, relations, nodes, new DslWorkspacePublicationAdapter(repositories));
 
         assertThatThrownBy(() -> service.findAll((RepositoryContext) null))
                 .isInstanceOf(IllegalArgumentException.class)

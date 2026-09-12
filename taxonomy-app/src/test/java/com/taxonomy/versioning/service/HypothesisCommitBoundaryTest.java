@@ -5,6 +5,7 @@ import com.taxonomy.catalog.service.TaxonomyRelationService;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.dsl.storage.DslWorkspacePublicationAdapter;
 import com.taxonomy.relations.model.RelationHypothesis;
 import com.taxonomy.relations.repository.RelationEvidenceRepository;
 import com.taxonomy.relations.repository.RelationHypothesisRepository;
@@ -18,10 +19,12 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
+import java.io.IOException;
 import java.util.List;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -57,7 +60,7 @@ class HypothesisCommitBoundaryTest {
                 evidenceRepository,
                 relationService,
                 nodeRepository,
-                repositoryFactory);
+                new DslWorkspacePublicationAdapter(repositoryFactory));
         context = RepositoryContext.workspace(
                 "repo-a", "workspace-a", "draft", "alice");
         hypothesis = new RelationHypothesisDto(
@@ -136,5 +139,50 @@ class HypothesisCommitBoundaryTest {
         verify(repositoryFactory, never()).resolveRepository(context);
         verify(workspaceRepository, never()).commitDsl(
                 anyString(), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void immediatePublicationFailureRetainsTheOriginalCause() throws Exception {
+        IOException failure = new IOException("Storage unavailable");
+        when(workspaceRepository.commitDsl(anyString(), anyString(), anyString(), anyString()))
+                .thenThrow(failure);
+
+        assertThatThrownBy(() -> service.persistFromAnalysis(
+                List.of(hypothesis), "analysis-failure", context))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessage("Failed to commit canonical hypothesis DSL")
+                .hasCause(failure);
+        verify(repositoryFactory).resolveRepository(context);
+        verify(workspaceRepository).commitDsl(
+                org.mockito.ArgumentMatchers.eq("draft"),
+                org.mockito.ArgumentMatchers.contains("analysis-session:analysis-failure"),
+                org.mockito.ArgumentMatchers.eq("alice"),
+                org.mockito.ArgumentMatchers.contains("analysis-failure"));
+    }
+
+    @Test
+    void afterCommitPublicationFailureDoesNotInvalidateTheCommittedResultOrRetry() throws Exception {
+        TransactionSynchronizationManager.initSynchronization();
+        IOException failure = new IOException("Storage unavailable after commit");
+        when(workspaceRepository.commitDsl(anyString(), anyString(), anyString(), anyString()))
+                .thenThrow(failure);
+
+        List<RelationHypothesis> persisted = service.persistFromAnalysisAfterCommit(
+                List.of(hypothesis), "analysis-committed", context);
+        assertThat(persisted).hasSize(1);
+        assertThat(TransactionSynchronizationManager.getSynchronizations()).hasSize(1);
+        verify(repositoryFactory, never()).resolveRepository(context);
+
+        assertThatCode(() -> TransactionSynchronizationManager.getSynchronizations()
+                .forEach(TransactionSynchronization::afterCommit)).doesNotThrowAnyException();
+
+        assertThat(persisted.get(0).getRepositoryId()).isEqualTo("repo-a");
+        assertThat(persisted.get(0).getWorkspaceId()).isEqualTo("workspace-a");
+        verify(repositoryFactory).resolveRepository(context);
+        verify(workspaceRepository).commitDsl(
+                org.mockito.ArgumentMatchers.eq("draft"),
+                org.mockito.ArgumentMatchers.contains("analysis-session:analysis-committed"),
+                org.mockito.ArgumentMatchers.eq("alice"),
+                org.mockito.ArgumentMatchers.contains("analysis-committed"));
     }
 }
