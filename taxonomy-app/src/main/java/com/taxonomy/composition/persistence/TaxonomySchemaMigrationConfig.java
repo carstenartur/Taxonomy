@@ -1,9 +1,9 @@
-package com.taxonomy.dsl.storage;
+package com.taxonomy.composition.persistence;
 
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.configuration.Configuration;
 import org.flywaydb.core.api.configuration.FluentConfiguration;
-import org.springframework.beans.factory.annotation.Value;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
 import org.springframework.context.annotation.Bean;
@@ -62,11 +62,10 @@ public class TaxonomySchemaMigrationConfig {
     @Bean
     @Primary
     public FlywayMigrationStrategy taxonomyFlywayMigrationStrategy(
-            @Value("${taxonomy.jgit-storage.legacy-adoption:false}")
-            boolean legacyAdoptionEnabled) {
+            @Qualifier("jgitStorageFlywayMigrationStrategy")
+            FlywayMigrationStrategy coreMigrationStrategy) {
         return flyway -> {
-            JgitStorageSchemaMigrationConfig.migrateCoreSchema(
-                    flyway, legacyAdoptionEnabled);
+            coreMigrationStrategy.migrate(flyway);
             migrateApplicationSchema(flyway.getConfiguration());
         };
     }

@@ -1,4 +1,6 @@
-package com.taxonomy.dsl.storage;
+package com.taxonomy.composition.persistence;
+
+import com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfig;
 
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
 import org.flywaydb.core.Flyway;
@@ -187,7 +189,9 @@ class ArchitectureCommitIndexTenantMigrationPostgresIT {
                 .locations(CoreSchemaMigrations.POSTGRESQL_LOCATION)
                 .table(CoreSchemaMigrations.SCHEMA_HISTORY_TABLE)
                 .load();
-        JgitStorageSchemaMigrationConfig.migrateCoreSchema(flyway, false);
+        new JgitStorageSchemaMigrationConfig()
+                .jgitStorageFlywayMigrationStrategy(false)
+                .migrate(flyway);
     }
 
     private static void migrateApplicationTo(DataSource dataSource, String version) {
