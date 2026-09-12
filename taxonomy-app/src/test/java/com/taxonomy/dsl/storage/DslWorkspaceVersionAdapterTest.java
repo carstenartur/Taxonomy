@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -212,16 +213,24 @@ class DslWorkspaceVersionAdapterTest {
 
     @Test
     void concurrentWritersCannotBothAdvanceTheSameExpectedVersion() throws Exception {
-        try (var factory = new DslGitRepositoryFactory(null); var executor = Executors.newFixedThreadPool(2)) {
+        try (var factory = new DslGitRepositoryFactory(null)) {
             var repository = factory.resolveRepository(WORKSPACE);
             String head = repository.commitDsl("review", "# original", "seed", "Seed");
             var version = new DslWorkspaceVersionAdapter(factory).openVersion(WORKSPACE, head);
             var start = new CountDownLatch(1);
-            var first = executor.submit(() -> competingCommit(version, start, "first"));
-            var second = executor.submit(() -> competingCommit(version, start, "second"));
-            start.countDown();
+            // ExecutorService.close() waits indefinitely after a writer deadlocks.
+            // Daemon workers and explicit cancellation let CI report the timeout.
+            var executor = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+            try {
+                var first = executor.submit(() -> competingCommit(version, start, "first"));
+                var second = executor.submit(() -> competingCommit(version, start, "second"));
+                start.countDown();
 
-            assertThat(List.of(first.get(), second.get())).containsExactlyInAnyOrder(true, false);
+                assertThat(List.of(first.get(30, TimeUnit.SECONDS), second.get(30, TimeUnit.SECONDS)))
+                        .containsExactlyInAnyOrder(true, false);
+            } finally {
+                executor.shutdownNow();
+            }
             assertThat(repository.getCommitCount("review")).isEqualTo(2);
         }
     }
