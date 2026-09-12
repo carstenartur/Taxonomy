@@ -1,5 +1,7 @@
 package com.taxonomy.editor;
 
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
 import com.taxonomy.editor.persistence.EditorJournal;
@@ -61,7 +63,7 @@ public class ArchitectureCheckpointWriter {
             if (applied(repository, branch, id)) return new Result(id.name(), true);
             try {
                 new ExpectedHeadDslCommitter().verifyExpectedHead(source, branch, previous);
-            } catch (ExpectedHeadDslCommitter.BranchHeadConflictException conflict) {
+            } catch (BranchHeadConflictException conflict) {
                 // A concurrent retry of this SAME durable intent may have won between the read and CAS.
                 if (applied(repository, branch, id)) return new Result(id.name(), true);
                 throw conflict;

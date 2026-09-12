@@ -1,5 +1,7 @@
 package com.taxonomy.editor;
 
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
 import com.taxonomy.dsl.command.ArchitectureDslCommands.Change;
@@ -210,7 +212,7 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         try {
             var written = checkpointWriter.write(repositories.resolveRepository(context), EditorJournal.scope(context), context.branch(), intent);
             return journal.locked(context, initial, session -> session.complete(intent.commandId(), written.commitId(), written.created()));
-        } catch (com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException conflict) {
+        } catch (BranchHeadConflictException conflict) {
             // Deterministic commit recovery ran first: this exception proves the intent did not advance the ref.
             journal.locked(context, initial, session -> { session.rejectCheckpoint(intent.commandId()); return null; });
             throw problem("CHECKPOINT_CONFLICT", "checkpoint", "Git changed before this checkpoint could be applied; reconcile the versions", List.of(intent.commandId()));

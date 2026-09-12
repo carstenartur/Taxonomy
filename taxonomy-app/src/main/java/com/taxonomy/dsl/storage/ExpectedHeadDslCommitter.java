@@ -1,5 +1,7 @@
 package com.taxonomy.dsl.storage;
 
+import com.taxonomy.workspace.service.BranchHeadConflictException;
+
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.FileMode;
@@ -233,32 +235,5 @@ public final class ExpectedHeadDslCommitter {
             RefUpdate.Result refUpdateResult) {
     }
 
-    public static final class BranchHeadConflictException extends IOException {
-        private final String branch;
-        private final String expectedHeadCommit;
-        private final String actualHeadCommit;
 
-        BranchHeadConflictException(
-                String branch,
-                String expectedHeadCommit,
-                String actualHeadCommit,
-                String message) {
-            super(message);
-            this.branch = branch;
-            this.expectedHeadCommit = expectedHeadCommit;
-            this.actualHeadCommit = actualHeadCommit;
-        }
-
-        public String getBranch() {
-            return branch;
-        }
-
-        public String getExpectedHeadCommit() {
-            return expectedHeadCommit;
-        }
-
-        public String getActualHeadCommit() {
-            return actualHeadCommit;
-        }
-    }
 }

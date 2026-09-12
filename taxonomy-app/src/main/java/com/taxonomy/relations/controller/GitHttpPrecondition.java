@@ -1,6 +1,8 @@
 package com.taxonomy.relations.controller;
 
-import org.eclipse.jgit.lib.ObjectId;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+
+import java.util.Objects;
 
 /** Parses strong HTTP entity-tag preconditions into an exact Git branch head. */
 public final class GitHttpPrecondition {
@@ -46,7 +48,7 @@ public final class GitHttpPrecondition {
         }
         String commit = match.substring(1, match.length() - 1);
         try {
-            return ObjectId.fromString(commit).name();
+            return WorkspaceDslReadPort.normalizeCommitId(commit);
         } catch (IllegalArgumentException error) {
             throw new InvalidPreconditionException(
                     "If-Match must be a quoted full Git commit ID", error);
@@ -54,7 +56,7 @@ public final class GitHttpPrecondition {
     }
 
     public static String etag(String commitId) {
-        return '"' + ObjectId.fromString(commitId).name() + '"';
+        return '"' + WorkspaceDslReadPort.normalizeCommitId(Objects.requireNonNull(commitId, "commitId")) + '"';
     }
 
     private static String normalize(String value) {

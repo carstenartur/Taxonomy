@@ -6,7 +6,7 @@ import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdent
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.dsl.storage.DslWorkspaceVersionAdapter;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter.BranchHeadConflictException;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.ReadOnlyRepositoryContextException;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RemoveRelation;

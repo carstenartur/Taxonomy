@@ -11,6 +11,10 @@ import java.util.Optional;
  * Workspace-owned, read-only access to an explicitly selected repository branch.
  * It exposes neither storage handles nor JGit types and never resolves implicit
  * current-user/current-workspace state.
+ *
+ * <p>Failed head preconditions are reported as
+ * {@link BranchHeadConflictException}; ordinary storage failures remain
+ * {@link IOException}. Callers must not treat all I/O failures as conflicts.</p>
  */
 public interface WorkspaceDslReadPort {
 
