@@ -37,9 +37,14 @@ the extraction gate.
 A target module POM in the reactor automatically makes its assessment mandatory.
 Profile-declared modules are included. A target POM present outside the declared
 reactor fails discovery, so omitting it from `<modules>` does not evade the gate.
-Discovery resolves property-based artifact IDs through the same local POM model
-described below. An unresolved expression that could name a planned feature also
-fails discovery; it cannot make an extraction attempt invisible.
+Discovery resolves declared and unregistered property-based artifact IDs through
+the same local POM model described below. Declared artifact IDs must resolve
+uniquely; constant reactor coordinates are collected first so local parent lookup
+does not depend on their declaration order. An unresolved expression that could name an unregistered planned feature
+also fails discovery; it cannot make an extraction attempt invisible.
+Directory symlinks are checked against the checkout before traversal, including
+aliases into otherwise excluded build directories. Safe aliases use the same POM
+file identity as the declared reactor entry; directory-link cycles fail discovery.
 
 Extraction means moving the whole mapped context. A present feature module must
 contain production classes, and all classes assigned to its target must have
@@ -61,12 +66,17 @@ explicit `relativePath` and reactor-coordinate lookup. It inherits properties,
 dependencies, and dependency management before resolving expressions. Child
 properties and explicit dependency scopes override inherited values; omitted
 scopes use local or inherited managed scopes before defaulting to `compile`.
+Dependency-management matching uses effective group, artifact, type, and classifier
+coordinates on both sides; unresolved internal coordinates fail before matching.
 The `project.groupId`/`pom.groupId` aliases and corresponding artifact, version,
 and parent coordinate aliases resolve in the child model. Raw inheritance keys are preserved before interpolation, matching
 [Maven's model-building order](https://maven.apache.org/ref/3.9.16/maven-model-builder/index.html).
 
 Reactor parent identity includes both group and artifact; an external parent may
 share a reactor artifact name. Unknown `com.taxonomy` parents still fail closed.
+Registered reactor parents are also matched through their resolved artifact IDs;
+a literal reference to a property-based parent name retains its inherited edges
+and managed scopes after the effective group and artifact are checked.
 Every POM path is checked against the checkout before content is read, including
 normalized traversal and symlink targets. A `relativePath` outside the checkout
 fails even when Maven would allow it; symlinks that remain inside are permitted.
@@ -84,7 +94,7 @@ internal dependency's coordinates or scope, fail explicitly. Profile-dependent
 property or managed-scope choices also fail when they could change an internal
 edge; a profile-only managed `test` scope cannot hide the base `compile` default.
 Parent-candidate filtering preserves this same profile uncertainty. Identical raw
-parent group expressions are retained as possible local matches; if their
+parent group or artifact expressions are retained as possible local matches; if their
 parent-only and child resolutions disagree, the adapter fails explicitly instead
 of discarding inheritance. This projection does not guess a profile activation
 state or implement Maven's complete context-dependent parent interpolation.
@@ -100,7 +110,9 @@ remain application-owned and are named as unresolved in the report.
 
 The existing `taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`,
 `taxonomy-extension-api`, and `taxonomy-tooling` libraries keep exact physical
-class ownership. Their real dependencies remain in the graph. In particular,
+class ownership. A support module named by a production POM edge must also be
+present in the reactor; a cached dependency artifact is not evidence of ownership.
+Their real dependencies remain in the graph. In particular,
 existing library classes under shared package roots are not mistaken for app
 composition classes, and app adapters under DSL/export roots are not excluded.
 

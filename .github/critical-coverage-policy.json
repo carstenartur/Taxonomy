@@ -17,6 +17,7 @@
     "taxonomy-app/src/main/java/com/taxonomy/relations/controller/",
     "taxonomy-app/src/main/java/com/taxonomy/relations/service/",
     "taxonomy-app/src/main/java/com/taxonomy/versioning/",
+    "taxonomy-app/src/main/java/com/taxonomy/composition/report/",
     "taxonomy-app/src/main/java/com/taxonomy/workspace/",
     "taxonomy-app/src/main/java/com/taxonomy/portfolio/"
   ],
@@ -69,6 +70,11 @@
     {
       "module": "taxonomy-app",
       "package": "com/taxonomy/relations/controller",
+      "minimums": { "LINE": 0.81, "BRANCH": 0.58 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/composition/report",
       "minimums": { "LINE": 0.81, "BRANCH": 0.58 }
     },
     {

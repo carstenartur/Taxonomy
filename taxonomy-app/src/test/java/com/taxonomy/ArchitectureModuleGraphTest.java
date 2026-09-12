@@ -80,6 +80,34 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void aSupportPomDependencyCannotSubstituteForReactorOwnership() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module></modules>");
+        pom("taxonomy-app", APP, """
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-domain</artifactId>
+                  <scope>runtime</scope></dependency></dependencies>
+                """);
+        var modules = ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY);
+        var dependencies = fixturePomDependencies();
+        assertThat(dependencies).containsExactly(new ModuleDependency(APP, DOMAIN));
+
+        Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(DOMAIN), modules.keySet(),
+                List.of(owner("com.taxonomy.AppConfig", APP)), List.of(), dependencies);
+
+        assertThat(result.violations()).anySatisfy(message -> assertThat(message)
+                .contains("support module absent from the reactor", "taxonomy-app -> taxonomy-domain"));
+    }
+
+    @Test
+    void aPresentSupportPomTargetRemainsALegitimateLeaf() {
+        Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(DOMAIN), Set.of(A, DOMAIN),
+                List.of(owner(A_CLASS, A)), List.of(), List.of(new ModuleDependency(A, DOMAIN)));
+
+        assertThat(result.violations()).isEmpty();
+        assertThat(result.blockers().get(A)).isEmpty();
+        assertThat(result.report()).contains("taxonomy-a -> taxonomy-domain");
+    }
+
+    @Test
     void disconnectedUnextractedCycleIsReportedWithoutBlockingSafeExtraction() {
         Evaluation result = evaluate(Set.of(A), List.of(
                 owner(A_CLASS, A), owner(B_CLASS, APP), owner(C_CLASS, APP)), List.of(
@@ -205,6 +233,84 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void aDeclaredFeatureArtifactPropertyResolvesThroughItsLocalParent() throws Exception {
+        pom("", "taxonomy", """
+                <modules><module>taxonomy-app</module><module>features/a</module></modules>
+                <properties><feature.module>taxonomy-a</feature.module></properties>
+                """);
+        pom("taxonomy-app", APP, "");
+        pom("features/a", "${feature.module}", """
+                <parent><groupId>com.taxonomy</groupId><artifactId>taxonomy</artifactId><version>1</version>
+                  <relativePath>../../pom.xml</relativePath></parent>
+                """);
+
+        var modules = ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY);
+
+        assertThat(modules).containsEntry(A, temporaryRepository.resolve("features/a"));
+        assertThat(evaluate(modules.keySet(), List.of(owner(A_CLASS, A)), List.of()).violations()).isEmpty();
+    }
+
+    @Test
+    void aDeclaredArtifactPropertyCanUseALaterDeclaredLocalReactorParent() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>features/a</module><module>taxonomy-parent</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("taxonomy-parent", "taxonomy-parent", "<properties><feature.module>taxonomy-a</feature.module></properties>");
+        pom("features/a", "${feature.module}", """
+                <parent><groupId>com.taxonomy</groupId><artifactId>taxonomy-parent</artifactId><version>1</version>
+                  <relativePath/></parent>
+                """);
+
+        assertThat(ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .containsEntry(A, temporaryRepository.resolve("features/a"));
+    }
+
+    @Test
+    void aDeclaredPropertyArtifactRetainsItsRuntimeApplicationDependency() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>features/a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("features/a", "${feature.module}", """
+                <properties><feature.module>taxonomy-a</feature.module></properties>
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <scope>runtime</scope></dependency></dependencies>
+                """);
+
+        var modules = ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY);
+        var dependencies = fixturePomDependencies();
+
+        assertThat(dependencies).containsExactly(new ModuleDependency(A, APP));
+        assertThat(ArchitectureModuleGraph.evaluate(POLICY, Set.of(), modules.keySet(),
+                List.of(owner(A_CLASS, A)), List.of(), dependencies).violations())
+                .anyMatch(message -> message.contains("taxonomy-a -> taxonomy-app"));
+    }
+
+    @Test
+    void declaredPropertyArtifactsCannotResolveToDuplicateReactorNames() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>first</module><module>second</module></modules>");
+        pom("taxonomy-app", APP, "");
+        for (String directory : List.of("first", "second")) {
+            pom(directory, "${feature.module}", "<properties><feature.module>taxonomy-a</feature.module></properties>");
+        }
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("duplicate reactor artifactId: taxonomy-a");
+    }
+
+    @Test
+    void unresolvedOrProfileDependentDeclaredArtifactPropertiesFailClosed() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>features/a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        for (String properties : List.of("", "<properties><feature.module>${feature.module}</feature.module></properties>", """
+                <properties><feature.module>taxonomy-a</feature.module></properties>
+                <profiles><profile><id>other-name</id><properties><feature.module>taxonomy-b</feature.module></properties></profile></profiles>
+                """)) {
+            pom("features/a", "${feature.module}", properties);
+
+            assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                    .isInstanceOf(IllegalStateException.class).hasMessageContaining("artifactId");
+        }
+    }
+
+    @Test
     void anUnregisteredFeaturePomCannotEvadeExtractionDiscovery() throws Exception {
         pom("", "taxonomy", "<modules><module>taxonomy-app</module></modules>");
         pom("taxonomy-app", APP, "");
@@ -212,6 +318,49 @@ class ArchitectureModuleGraphTest {
 
         assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
                 .isInstanceOf(IllegalStateException.class).hasMessageContaining(A).hasMessageContaining("reactor");
+    }
+
+    @Test
+    void aFeatureDirectorySymlinkIntoAnExcludedBuildTreeCannotEvadeDiscovery() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("target/staged-feature", A, "");
+        Files.createSymbolicLink(temporaryRepository.resolve("feature-alias"), temporaryRepository.resolve("target/staged-feature"));
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining(A).hasMessageContaining("outside the declared reactor");
+    }
+
+    @Test
+    void anOutsideDirectorySymlinkIsRejectedBeforeDiscoveryReadsItsPom() throws Exception {
+        Path outside = outsideParentFixture();
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module></modules>");
+        pom("taxonomy-app", APP, "");
+        Files.createSymbolicLink(temporaryRepository.resolve("feature-alias"), outside.getParent());
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("POM path is outside repository");
+    }
+
+    @Test
+    void aSafeDirectorySymlinkCanReferToADeclaredFeature() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>feature-alias</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("local-feature", A, "");
+        Files.createSymbolicLink(temporaryRepository.resolve("feature-alias"), temporaryRepository.resolve("local-feature"));
+
+        assertThat(ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .containsEntry(A, temporaryRepository.resolve("feature-alias"));
+    }
+
+    @Test
+    void aDirectorySymlinkCycleFailsClosed() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module></modules>");
+        pom("taxonomy-app", APP, "");
+        Files.createSymbolicLink(temporaryRepository.resolve("loop"), temporaryRepository);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .isInstanceOf(java.nio.file.FileSystemLoopException.class).hasMessageContaining("loop");
     }
 
     @Test
@@ -552,6 +701,65 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void managedTestScopeMatchesEffectiveDependencyKeysOnBothSides() throws Exception {
+        String properties = """
+                <properties><app.module>taxonomy-app</app.module><dependency.type>jar</dependency.type>
+                  <dependency.classifier>tests</dependency.classifier></properties>
+                """;
+        String constant = """
+                <groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId><type>jar</type><classifier>tests</classifier>
+                """;
+        String expression = """
+                <groupId>${project.groupId}</groupId><artifactId>${app.module}</artifactId>
+                  <type>${dependency.type}</type><classifier>${dependency.classifier}</classifier>
+                """;
+        for (boolean managedExpression : List.of(false, true)) {
+            inheritedPoms("<dependencyManagement><dependencies><dependency>"
+                    + (managedExpression ? expression : constant)
+                    + "<scope>test</scope></dependency></dependencies></dependencyManagement>",
+                    properties + "<dependencies><dependency>" + (managedExpression ? constant : expression)
+                            + "</dependency></dependencies>");
+
+            assertThat(fixturePomDependencies()).isEmpty();
+        }
+    }
+
+    @Test
+    void managedScopeDoesNotMatchADifferentEffectiveTypeOrClassifier() throws Exception {
+        for (String[] coordinates : List.of(new String[]{"test-jar", "tests"}, new String[]{"jar", "runtime"})) {
+            inheritedPoms("""
+                    <dependencyManagement><dependencies><dependency>
+                      <groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId><type>jar</type><classifier>tests</classifier>
+                      <scope>test</scope></dependency></dependencies></dependencyManagement>
+                    """, """
+                    <properties><dependency.type>%s</dependency.type><dependency.classifier>%s</dependency.classifier></properties>
+                    <dependencies><dependency><groupId>${project.groupId}</groupId><artifactId>taxonomy-app</artifactId>
+                      <type>${dependency.type}</type><classifier>${dependency.classifier}</classifier></dependency></dependencies>
+                    """.formatted(coordinates[0], coordinates[1]));
+
+            assertThat(fixturePomDependencies()).containsExactly(new ModuleDependency(A, APP));
+        }
+    }
+
+    @Test
+    void unresolvedInternalDependencyKeyComponentsFailClosedBeforeManagement() throws Exception {
+        String coordinates = """
+                <groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId><type>jar</type><classifier>tests</classifier>
+                """;
+        for (String[] component : List.of(new String[]{"groupId", "com.taxonomy"}, new String[]{"artifactId", APP},
+                new String[]{"type", "jar"}, new String[]{"classifier", "tests"})) {
+            String unresolved = coordinates.replace("<" + component[0] + ">" + component[1] + "</" + component[0] + ">",
+                    "<" + component[0] + ">${missing}</" + component[0] + ">");
+            inheritedPoms("<dependencyManagement><dependencies><dependency>" + coordinates
+                    + "<scope>test</scope></dependency></dependencies></dependencyManagement>",
+                    "<dependencies><dependency>" + unresolved + "</dependency></dependencies>");
+
+            assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                    .hasMessageContaining("Unresolved").hasMessageContaining(component[0]);
+        }
+    }
+
+    @Test
     void childPropertyOverrideCanMakeInheritedManagedScopeRuntime() throws Exception {
         inheritedPoms("""
                 <properties><managed.scope>test</managed.scope><taxonomy.groupId>org.external</taxonomy.groupId></properties>
@@ -742,6 +950,107 @@ class ArchitectureModuleGraphTest {
 
         assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("Cannot resolve local reactor parent com.taxonomy:missing-parent:1");
+    }
+
+    @Test
+    void identicalLocalParentArtifactExpressionsRetainInheritedRuntimeDependencies() throws Exception {
+        propertyArtifactParentPoms("local-parent", "");
+
+        assertThat(fixturePomDependencies()).containsExactly(new ModuleDependency(A, APP));
+    }
+
+    @Test
+    void aRegisteredPropertyArtifactParentMatchesALiteralReferenceInEitherDeclarationOrder() throws Exception {
+        for (boolean parentFirst : List.of(false, true)) {
+            registeredPropertyParentPoms(parentFirst, """
+                    <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                      <version>1</version><scope>runtime</scope></dependency></dependencies>
+                    """, "");
+            var modules = ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY);
+            var dependencies = fixturePomDependencies();
+
+            assertThat(dependencies).containsExactly(new ModuleDependency(A, APP));
+            assertThat(ArchitectureModuleGraph.evaluate(POLICY, Set.of(), modules.keySet(),
+                    List.of(owner(A_CLASS, A)), List.of(), dependencies).violations())
+                    .anyMatch(message -> message.contains("taxonomy-a -> taxonomy-app"));
+        }
+    }
+
+    @Test
+    void aRegisteredPropertyArtifactParentRetainsManagedTestScopesInEitherDeclarationOrder() throws Exception {
+        for (boolean parentFirst : List.of(false, true)) {
+            registeredPropertyParentPoms(parentFirst, """
+                    <dependencyManagement><dependencies><dependency>
+                      <groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId><version>1</version><scope>test</scope>
+                    </dependency></dependencies></dependencyManagement>
+                    """, """
+                    <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId></dependency></dependencies>
+                    """);
+
+            assertThat(fixturePomDependencies()).isEmpty();
+        }
+    }
+
+    @Test
+    void aRegisteredPropertyArtifactCannotOverrideAForeignParentWithTheSameArtifact() throws Exception {
+        registeredPropertyParentPoms(false, """
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                """, "");
+        Path child = temporaryRepository.resolve(A + "/pom.xml");
+        Files.writeString(child, Files.readString(child).replace("<groupId>org.example.build</groupId>",
+                "<groupId>org.foreign.build</groupId>"));
+
+        assertThat(fixturePomDependencies()).isEmpty();
+    }
+
+    private void registeredPropertyParentPoms(boolean parentFirst, String parentBody, String childBody) throws Exception {
+        String modules = parentFirst ? "<module>local-parent</module><module>taxonomy-a</module>"
+                : "<module>taxonomy-a</module><module>local-parent</module>";
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module>" + modules + "</modules>");
+        pom("taxonomy-app", APP, "");
+        pom("local-parent", "org.example.build", "build-${parent.module}", """
+                <packaging>pom</packaging><properties><parent.module>local-parent</parent.module></properties>
+                """ + parentBody);
+        pom("taxonomy-a", A, """
+                <parent><groupId>org.example.build</groupId><artifactId>build-local-parent</artifactId><version>1</version>
+                  <relativePath/></parent><groupId>com.taxonomy</groupId><version>1</version>
+                """ + childBody);
+    }
+
+    @Test
+    void contextDependentLocalParentArtifactExpressionsFailClosed() throws Exception {
+        propertyArtifactParentPoms("other-parent", "");
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unsupported context-dependent local parent artifactId")
+                .hasMessageContaining("other-parent").hasMessageContaining("local-parent");
+    }
+
+    @Test
+    void profileDependentLocalParentArtifactExpressionsFailClosed() throws Exception {
+        propertyArtifactParentPoms("other-parent", """
+                <profiles><profile><id>choose-parent-artifact</id><properties>
+                  <parent.module>local-parent</parent.module></properties></profile></profiles>
+                """);
+
+        assertThatThrownBy(this::fixturePomDependencies).isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unresolved parent artifactId").hasMessageContaining("unresolved-profile-property");
+    }
+
+    private void propertyArtifactParentPoms(String parentArtifact, String profiles) throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("local-parent", "org.example.build", "build-${parent.module}", """
+                <packaging>pom</packaging><properties><parent.module>%s</parent.module></properties>
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                """.formatted(parentArtifact) + profiles);
+        pom("taxonomy-a", A, """
+                <parent><groupId>org.example.build</groupId><artifactId>build-${parent.module}</artifactId><version>1</version>
+                  <relativePath>../local-parent/pom.xml</relativePath></parent>
+                <groupId>com.taxonomy</groupId><version>1</version><properties><parent.module>local-parent</parent.module></properties>
+                """);
     }
 
     @Test

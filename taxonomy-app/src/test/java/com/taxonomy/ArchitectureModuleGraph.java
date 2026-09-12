@@ -122,6 +122,9 @@ final class ArchitectureModuleGraph {
                         && !featureModules.contains(module)) {
                     violations.add("Unmapped internal production POM dependency: " + edge);
                 }
+                if (supportModules.contains(module) && !presentModules.contains(module)) {
+                    violations.add("Internal production POM dependency names a support module absent from the reactor: " + edge);
+                }
             }
             pomEdges.add(edge);
             graph.computeIfAbsent(edge.from(), ignored -> new TreeSet<>()).add(edge.to());

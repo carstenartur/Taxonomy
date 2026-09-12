@@ -26,11 +26,8 @@ import java.io.OutputStream;
 import java.io.StringWriter;
 import java.net.URI;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -211,7 +208,15 @@ class ArchitectureModuleExtractionTest {
     static Map<String, Path> discoverModules(Path repositoryRoot, Policy policy) throws Exception {
         Path root = repositoryRoot.toAbsolutePath().normalize();
         SortedMap<String, Path> modules = new TreeMap<>();
-        collectModules(root.resolve("pom.xml"), root, modules, new HashSet<>());
+        List<Path> propertyModulePoms = new ArrayList<>();
+        collectModules(root.resolve("pom.xml"), root, modules, propertyModulePoms, new HashSet<>());
+        // Local reactor parents may be declared after the child that inherits
+        // its artifact property. Collect constant coordinates before resolving.
+        Map<Path, LocalPom> declarationModels = new TreeMap<>();
+        for (Path pom : propertyModulePoms) {
+            LocalPom model = localPom(pom, root, modules, declarationModels, new HashSet<>());
+            registerModule(resolved(model.artifact(), model.values(), "reactor artifactId", pom.toString()), pom, modules);
+        }
         if (!modules.containsKey(policy.compositionModule())) {
             throw new IllegalStateException("Composition module is missing from the reactor: " + policy.compositionModule());
         }
@@ -221,21 +226,7 @@ class ArchitectureModuleExtractionTest {
         // Detect a target POM even when it has not been added to <modules> yet.
         // Ignoring build/dependency directories keeps this a repository-source scan.
         List<Path> poms = new ArrayList<>();
-        Files.walkFileTree(root, new SimpleFileVisitor<>() {
-            @Override
-            public FileVisitResult preVisitDirectory(Path directory, BasicFileAttributes attributes) {
-                return Set.of(".git", "target", "node_modules").contains(directory.getFileName().toString())
-                        ? FileVisitResult.SKIP_SUBTREE : FileVisitResult.CONTINUE;
-            }
-
-            @Override
-            public FileVisitResult visitFile(Path file, BasicFileAttributes attributes) {
-                if (file.getFileName().toString().equals("pom.xml")) {
-                    poms.add(file);
-                }
-                return FileVisitResult.CONTINUE;
-            }
-        });
+        collectRepositoryPoms(root, root, new HashSet<>(), poms);
         Map<Path, LocalPom> models = new TreeMap<>();
         for (Path pom : poms.stream().sorted().toList()) {
             String artifact = childText(readPom(pom, root), "artifactId");
@@ -248,11 +239,43 @@ class ArchitectureModuleExtractionTest {
                     }
                 }
             }
-            if (featureNames.contains(artifact) && !pom.getParent().equals(modules.get(artifact))) {
+            if (featureNames.contains(artifact) && (!modules.containsKey(artifact)
+                    || !Files.isSameFile(pom, modules.get(artifact).resolve("pom.xml")))) {
                 throw new IllegalStateException("Feature module " + artifact + " has a POM outside the declared reactor: " + pom);
             }
         }
         return java.util.Collections.unmodifiableSortedMap(modules);
+    }
+
+    private static void collectRepositoryPoms(Path directory, Path root, Set<Path> ancestors, List<Path> poms) throws IOException {
+        repositoryPomPath(directory, root);
+        Path realDirectory = directory.toRealPath();
+        if (!ancestors.add(realDirectory)) {
+            throw new java.nio.file.FileSystemLoopException(directory.toString());
+        }
+        try {
+            List<Path> entries;
+            try (var files = Files.list(directory)) {
+                entries = files.sorted().toList();
+            }
+            for (Path entry : entries) {
+                if (Set.of(".git", "target", "node_modules").contains(entry.getFileName().toString())) {
+                    continue;
+                }
+                // Verify before even probing a link's target type. A following
+                // file-tree walker would open linked directories before its callback.
+                if (Files.isSymbolicLink(entry)) {
+                    repositoryPomPath(entry, root);
+                }
+                if (Files.isDirectory(entry)) {
+                    collectRepositoryPoms(entry, root, ancestors, poms);
+                } else if (entry.getFileName().toString().equals("pom.xml")) {
+                    poms.add(entry);
+                }
+            }
+        } finally {
+            ancestors.remove(realDirectory);
+        }
     }
 
     static List<ModuleDependency> readProductionModuleDependencies(Path repositoryRoot, Map<String, Path> modules,
@@ -397,18 +420,27 @@ class ArchitectureModuleExtractionTest {
                 }
                 Element candidateProject = readPom(candidate, root);
                 boolean sameRawGroup = declaredGroup(candidateProject).equals(childText(parent, "groupId"));
-                if (!childText(candidateProject, "artifactId").equals(parentArtifact)
+                boolean sameRawArtifact = childText(candidateProject, "artifactId").equals(childText(parent, "artifactId"));
+                // Reactor registration already resolved artifact expressions;
+                // a literal parent reference must retain that candidate too.
+                boolean registeredReactorParent = candidate.equals(reactorParent);
+                if ((!registeredReactorParent && !sameRawArtifact && !childText(candidateProject, "artifactId").equals(parentArtifact))
                         || (!sameRawGroup && !couldHaveGroup(candidateProject, parentGroup))) {
                     continue;
                 }
                 LocalPom possible = localPom(candidate, root, modules, cache, resolving);
                 String candidateGroup = resolved(possible.group(), possible.values(), "parent groupId", candidate.toString());
+                String candidateArtifact = resolved(possible.artifact(), possible.values(), "parent artifactId", candidate.toString());
                 if (sameRawGroup && !candidateGroup.equals(parentGroup)) {
                     throw new IllegalStateException("Unsupported context-dependent local parent groupId in " + file
                             + ": parent resolves to " + candidateGroup + ", child resolves to " + parentGroup);
                 }
-                if (candidateGroup.equals(parentGroup)) {
-                    matchingReactorParent |= candidate.equals(reactorParent);
+                if (sameRawArtifact && !candidateArtifact.equals(parentArtifact)) {
+                    throw new IllegalStateException("Unsupported context-dependent local parent artifactId in " + file
+                            + ": parent resolves to " + candidateArtifact + ", child resolves to " + parentArtifact);
+                }
+                if (candidateGroup.equals(parentGroup) && candidateArtifact.equals(parentArtifact)) {
+                    matchingReactorParent |= registeredReactorParent;
                     if (parentVersion.startsWith("[") || parentVersion.startsWith("(")) {
                         throw new IllegalStateException("Unsupported local-parent version range " + parentVersion
                                 + " in " + file + "; matching local parent: " + candidate);
@@ -577,7 +609,8 @@ class ArchitectureModuleExtractionTest {
         return target.matches(pattern.append(Pattern.quote(expression.substring(previous))).toString());
     }
 
-    private static void collectModules(Path pom, Path root, Map<String, Path> modules, Set<Path> visited) throws Exception {
+    private static void collectModules(Path pom, Path root, Map<String, Path> modules,
+                                       List<Path> propertyModulePoms, Set<Path> visited) throws Exception {
         pom = pom.toAbsolutePath().normalize();
         if (!pom.startsWith(root) || !Files.isRegularFile(pom)) {
             throw new IllegalStateException("Reactor module POM is missing or outside the repository: " + pom);
@@ -587,8 +620,10 @@ class ArchitectureModuleExtractionTest {
         }
         Element project = readPom(pom, root);
         String artifact = childText(project, "artifactId");
-        if (artifact.isBlank() || artifact.contains("${") || modules.putIfAbsent(artifact, pom.getParent()) != null) {
-            throw new IllegalStateException("Invalid or duplicate reactor artifactId: " + artifact + " in " + pom);
+        if (artifact.contains("${")) {
+            propertyModulePoms.add(pom);
+        } else {
+            registerModule(artifact, pom, modules);
         }
         List<Element> moduleLists = new ArrayList<>(children(project, "modules"));
         // Profile-declared feature modules are also extraction attempts. An
@@ -604,8 +639,14 @@ class ArchitectureModuleExtractionTest {
                 if (directory.isEmpty() || directory.contains("${")) {
                     throw new IllegalStateException("Unresolved reactor module directory: " + directory + " in " + pom);
                 }
-                collectModules(pom.getParent().resolve(directory).resolve("pom.xml"), root, modules, visited);
+                collectModules(pom.getParent().resolve(directory).resolve("pom.xml"), root, modules, propertyModulePoms, visited);
             }
+        }
+    }
+
+    private static void registerModule(String artifact, Path pom, Map<String, Path> modules) {
+        if (artifact.isBlank() || modules.putIfAbsent(artifact, pom.getParent()) != null) {
+            throw new IllegalStateException("Invalid or duplicate reactor artifactId: " + artifact + " in " + pom);
         }
     }
 
