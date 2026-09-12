@@ -82,8 +82,9 @@ the CI constraints of a stacked branch. The current D2 dependency measurement is
 C2 is merged in `main` at `66db4e8526691f18b4e83d9ebcef7ff12c65e3ed`.
 This D2 branch also incorporates D1's reviewed head
 `46615e245a60055a3a11bb67bc8a25f7fdb47dca`, including its canonical English/German
-documentation and focused ownership selector. D2 remains stacked on D1 until
-that PR merges. The metadata integration changes no production source,
+documentation and focused ownership selector. D1 is now merged as
+`746e1ce6d9c33eabef1cff06618e8802876949a2`; D2 incorporates that actual `main`
+ancestry and targets `main` for authoritative CI. The metadata integration changes no production source,
 dependency baseline, coverage rule or workflow.
 
 Fresh `clean verify -DexcludedGroups=real-llm` with the pinned ONNX model passed
