@@ -3,9 +3,11 @@ package com.taxonomy.workspace.service;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
+import org.eclipse.jgit.transport.Transport;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.MockedStatic;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -16,6 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.mockStatic;
 import static org.mockito.Mockito.when;
 
 /** Focused service tests for external synchronization guards and status. */
@@ -161,12 +164,17 @@ class ExternalGitSyncServiceTest {
         systemRepository.setExternalUrl("https://example.test/team/repo.git");
         when(systemRepositoryService.getPrimaryRepository()).thenReturn(systemRepository);
 
-        assertThrows(IllegalArgumentException.class,
-                () -> externalSyncService.pushToExternal(null));
-        assertThrows(IllegalArgumentException.class,
-                () -> externalSyncService.pushToExternal("  "));
-        assertThrows(IllegalArgumentException.class,
-                () -> externalSyncService.pushToExternal("bad branch"));
+        try (MockedStatic<Transport> transport = mockStatic(Transport.class)) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> externalSyncService.pushToExternal(null));
+            transport.verifyNoInteractions();
+            assertThrows(IllegalArgumentException.class,
+                    () -> externalSyncService.pushToExternal("  "));
+            transport.verifyNoInteractions();
+            assertThrows(IllegalArgumentException.class,
+                    () -> externalSyncService.pushToExternal("bad branch"));
+            transport.verifyNoInteractions();
+        }
     }
 
     private SystemRepository createSystemRepository(RepositoryTopologyMode mode) {
