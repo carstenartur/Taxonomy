@@ -224,11 +224,13 @@ class ArchitectureModuleExtractionTest {
         SortedMap<String, Path> modules = new TreeMap<>();
         List<Path> propertyModulePoms = new ArrayList<>();
         collectModules(root.resolve("pom.xml"), root, modules, propertyModulePoms, new HashSet<>());
-        // Local reactor parents may be declared after the child that inherits
-        // its artifact property. Collect constant coordinates before resolving.
+        // Keep every declared POM available while resolving coordinates. A
+        // later property-artifact parent must be visible even with relativePath disabled.
+        List<Path> declaredPoms = new ArrayList<>(propertyModulePoms);
+        modules.values().forEach(directory -> declaredPoms.add(directory.resolve("pom.xml")));
         Map<Path, LocalPom> declarationModels = new TreeMap<>();
         for (Path pom : propertyModulePoms) {
-            LocalPom model = localPom(pom, root, modules, declarationModels, new HashSet<>());
+            LocalPom model = localPom(pom, root, modules, declarationModels, new HashSet<>(), declaredPoms);
             registerModule(resolved(model.artifact(), model.values(), "reactor artifactId", pom.toString()), pom, modules);
         }
         if (!modules.containsKey(policy.compositionModule())) {
@@ -398,6 +400,12 @@ class ArchitectureModuleExtractionTest {
 
     private static LocalPom localPom(Path file, Path root, Map<String, Path> modules, Map<Path, LocalPom> cache,
                                      Set<Path> resolving) throws Exception {
+        return localPom(file, root, modules, cache, resolving,
+                modules.values().stream().map(directory -> directory.resolve("pom.xml")).toList());
+    }
+
+    private static LocalPom localPom(Path file, Path root, Map<String, Path> modules, Map<Path, LocalPom> cache,
+                                     Set<Path> resolving, List<Path> declaredPoms) throws Exception {
         file = repositoryPomPath(file, root);
         if (cache.containsKey(file)) {
             return cache.get(file);
@@ -429,7 +437,15 @@ class ArchitectureModuleExtractionTest {
                 if (reactorParent != null) {
                     candidates.add(reactorParent);
                 }
-                for (Path candidate : candidates) {
+                for (Path declared : declaredPoms) {
+                    Path candidate = repositoryPomPath(declared, root);
+                    // A registry fallback is not a self-parent declaration. Explicit
+                    // relative/ref self-cycles still go through the normal cycle check.
+                    if (!Files.isSameFile(candidate, file)) {
+                        candidates.add(candidate);
+                    }
+                }
+                for (Path candidate : candidates.stream().distinct().toList()) {
                     candidate = repositoryPomPath(candidate, root);
                     if (!Files.isRegularFile(candidate)) {
                         continue;
@@ -444,7 +460,7 @@ class ArchitectureModuleExtractionTest {
                             || (!sameRawGroup && !couldHaveGroup(candidateProject, parentGroup))) {
                         continue;
                     }
-                    LocalPom possible = localPom(candidate, root, modules, cache, resolving);
+                    LocalPom possible = localPom(candidate, root, modules, cache, resolving, declaredPoms);
                     String candidateGroup = resolved(possible.group(), possible.values(), "parent groupId", candidate.toString());
                     String candidateArtifact = resolved(possible.artifact(), possible.values(), "parent artifactId", candidate.toString());
                     if (sameRawGroup && !candidateGroup.equals(parentGroup)) {
@@ -456,7 +472,7 @@ class ArchitectureModuleExtractionTest {
                                 + ": parent resolves to " + candidateArtifact + ", child resolves to " + parentArtifact);
                     }
                     if (candidateGroup.equals(parentGroup) && candidateArtifact.equals(parentArtifact)) {
-                        matchingReactorParent |= registeredReactorParent;
+                        matchingReactorParent |= registeredReactorParent || declaredPoms.contains(candidate);
                         if (parentVersion.startsWith("[") || parentVersion.startsWith("(")) {
                             throw new IllegalStateException("Unsupported local-parent version range " + parentVersion
                                     + " in " + file + "; matching local parent: " + candidate);

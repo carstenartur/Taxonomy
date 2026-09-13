@@ -144,6 +144,48 @@ class ArchitectureSelectorSynchronizationTest {
         assertThatCode(() -> assertSelectors(fixture)).doesNotThrowAnyException();
     }
 
+    @ParameterizedTest
+    @MethodSource("selectedGuards")
+    void renamedSelectedGuardDeclarationIsRejected(String guard) throws Exception {
+        writeSelectors(EXPECTED, EXPECTED);
+        Files.writeString(sourcePath(fixture, guard), "package com.taxonomy; class RenamedGuard {}\n");
+        assertThatThrownBy(() -> assertSelectors(fixture))
+                .isInstanceOf(AssertionError.class).hasMessageContaining(guard);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"comment", "nested", "wrong-package", "interface", "malformed"})
+    void aGuardFilenameDoesNotSubstituteForItsDeclaration(String kind) throws Exception {
+        writeSelectors(EXPECTED, EXPECTED);
+        String guard = "ArchitectureCycleBoundaryTest";
+        String source = switch (kind) {
+            case "comment" -> "package com.taxonomy; /* class " + guard + " {} */";
+            case "nested" -> "package com.taxonomy; class Other { class " + guard + " {} }";
+            case "wrong-package" -> "package other; class " + guard + " {}";
+            case "interface" -> "package com.taxonomy; interface " + guard + " {}";
+            case "malformed" -> "package com.taxonomy; class " + guard + " {";
+            default -> throw new IllegalArgumentException(kind);
+        };
+        Files.writeString(sourcePath(fixture, guard), source);
+        assertThatThrownBy(() -> assertSelectors(fixture))
+                .isInstanceOf(AssertionError.class).hasMessageContaining(guard);
+    }
+
+    @Test
+    void annotatedPackagePrivateGuardWithCommentsIsAccepted() throws Exception {
+        writeSelectors(EXPECTED, EXPECTED);
+        String guard = "ArchitectureCycleBoundaryTest";
+        Files.writeString(sourcePath(fixture, guard), """
+                /* class NotTheGuard {} */
+                package com.taxonomy;
+                @Deprecated
+                class ArchitectureCycleBoundaryTest {
+                    String example = "class Another {}";
+                }
+                """);
+        assertThatCode(() -> assertSelectors(fixture)).doesNotThrowAnyException();
+    }
+
     private static Stream<String> selectedGuards() {
         return EXPECTED.stream();
     }
@@ -210,6 +252,35 @@ class ArchitectureSelectorSynchronizationTest {
             assertThat(source.toRealPath().startsWith(checkout))
                     .as("selected architecture guard %s must remain inside the checkout", guard)
                     .isTrue();
+            assertGuardDeclaration(source, guard);
+        }
+    }
+
+    private static void assertGuardDeclaration(Path source, String guard) throws Exception {
+        var compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+        assertThat(compiler).as("JDK parser for selected architecture guard %s", guard).isNotNull();
+        var diagnostics = new javax.tools.DiagnosticCollector<javax.tools.JavaFileObject>();
+        try (var files = compiler.getStandardFileManager(diagnostics, java.util.Locale.ROOT,
+                java.nio.charset.StandardCharsets.UTF_8)) {
+            var task = (com.sun.source.util.JavacTask) compiler.getTask(new java.io.StringWriter(), files,
+                    diagnostics, List.of("--release", "21", "-proc:none"), null,
+                    files.getJavaFileObjectsFromPaths(List.of(source)));
+            List<String> declarations = new ArrayList<>();
+            for (var unit : task.parse()) {
+                if (unit.getPackageName() != null && unit.getPackageName().toString().equals("com.taxonomy")) {
+                    for (var declaration : unit.getTypeDecls()) {
+                        if (declaration instanceof com.sun.source.tree.ClassTree type
+                                && type.getKind() == com.sun.source.tree.Tree.Kind.CLASS) {
+                            declarations.add(type.getSimpleName().toString());
+                        }
+                    }
+                }
+            }
+            assertThat(diagnostics.getDiagnostics().stream()
+                    .filter(diagnostic -> diagnostic.getKind() == javax.tools.Diagnostic.Kind.ERROR).toList())
+                    .as("valid Java declaration for selected architecture guard %s", guard).isEmpty();
+            assertThat(declarations).as("selected architecture guard %s must be declared in com.taxonomy", guard)
+                    .contains(guard);
         }
     }
 

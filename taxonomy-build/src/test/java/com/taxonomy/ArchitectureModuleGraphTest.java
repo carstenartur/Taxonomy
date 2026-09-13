@@ -1723,6 +1723,66 @@ class ArchitectureModuleGraphTest {
                 new ModuleDependency(A, APP), new ModuleDependency(B, APP));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"child-first", "parent-first", "external-child-first"})
+    void propertyReactorParentLookupDoesNotDependOnDeclarationOrder(String order) throws Exception {
+        String group = order.startsWith("external") ? "org.example.build" : "com.taxonomy";
+        String modules = order.equals("parent-first")
+                ? "<module>build-parent</module><module>taxonomy-a</module>"
+                : "<module>taxonomy-a</module><module>build-parent</module>";
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module>" + modules + "</modules>");
+        pom("taxonomy-app", APP, "");
+        pom("taxonomy-a", "${feature.module}", """
+                <parent><groupId>%s</groupId><artifactId>build-parent</artifactId><version>1</version>
+                  <relativePath/></parent>
+                <groupId>com.taxonomy</groupId><version>1</version>
+                <properties><feature.module>taxonomy-a</feature.module></properties>
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-domain</artifactId>
+                  <version>1</version></dependency></dependencies>
+                """.formatted(group));
+        pom("build-parent", group, "build-${parent.name}", """
+                <packaging>pom</packaging>
+                <properties><parent.name>parent</parent.name></properties>
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                <dependencyManagement><dependencies><dependency><groupId>com.taxonomy</groupId>
+                  <artifactId>taxonomy-domain</artifactId><version>1</version><scope>test</scope>
+                </dependency></dependencies></dependencyManagement>
+                """);
+
+        assertThatCode(() -> {
+            var discovered = ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY);
+            assertThat(discovered).containsEntry(A, temporaryRepository.resolve("taxonomy-a"))
+                    .containsEntry("build-parent", temporaryRepository.resolve("build-parent"));
+            assertThat(ArchitectureModuleExtractionTest.readProductionModuleDependencies(
+                    temporaryRepository, discovered, POLICY)).containsExactly(new ModuleDependency(A, APP));
+        }).doesNotThrowAnyException();
+    }
+
+    @Test
+    void laterPropertyParentCanInheritItsOwnArtifactPropertyThroughAnotherReactorParent() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module>"
+                + "<module>build-parent</module><module>build-grandparent</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("taxonomy-a", "${feature.module}", """
+                <parent><groupId>com.taxonomy</groupId><artifactId>build-parent</artifactId><version>1</version>
+                  <relativePath/></parent>
+                <properties><feature.module>taxonomy-a</feature.module></properties>
+                """);
+        pom("build-parent", "build-${parent.name}", """
+                <parent><groupId>com.taxonomy</groupId><artifactId>build-grandparent</artifactId><version>1</version>
+                  <relativePath/></parent><packaging>pom</packaging>
+                """);
+        pom("build-grandparent", "build-${grandparent.name}", """
+                <packaging>pom</packaging>
+                <properties><grandparent.name>grandparent</grandparent.name><parent.name>parent</parent.name></properties>
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                """);
+        assertThatCode(() -> assertThat(fixturePomDependencies())
+                .containsExactly(new ModuleDependency(A, APP))).doesNotThrowAnyException();
+    }
+
     private void externalParentPoms(String artifact, String relative) throws Exception {
         pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
         pom("taxonomy-app", APP, "");
