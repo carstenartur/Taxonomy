@@ -1,0 +1,33 @@
+name: Workspace source tree for review
+on:
+  push:
+    branches: [verification/628-physical-workspace]
+    paths: [.github/workflows/628-workspace-source-tree.yml]
+permissions:
+  contents: write
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 0c28a1a5208f95c9d9592bfd5965e57d3b75ae29
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 8cd4395d93ba56c80ae6ea5dff031944772e7771
+          path: source
+          persist-credentials: false
+      - name: Reproduce immutable extraction source without a test claim
+        run: python3 verification/workspace_direct.py prepare "$GITHUB_WORKSPACE/source"
+      - name: Preserve source tree without creating a commit or moving a branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 verification/workspace_direct.py publish "$GITHUB_WORKSPACE/source"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: physical-workspace-source-identity
+          path: ${{ runner.temp }}/workspace-extraction-evidence/
+          retention-days: 7
+          if-no-files-found: error
