@@ -6,7 +6,7 @@ on:
       - .github/workflows/628-physical-workspace.yml
       - verification/physical_workspace.py
 permissions:
-  contents: read
+  contents: write
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -15,29 +15,35 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Inspect workspace inputs
-        shell: bash
-        run: |
-          python3 - <<'PY'
-          import pathlib,re,collections
-          root=pathlib.Path('.')
-          parts=('workspace','versioning','editor')
-          sources=[p for part in parts for p in (root/'taxonomy-app/src/main/java/com/taxonomy'/part).rglob('*.java')]
-          imports=sorted({m for p in sources for m in re.findall(r'^import (?:static )?([^;]+);',p.read_text(),re.M)})
-          print('PRODUCTION_COUNTS',collections.Counter(p.parts[7] if len(p.parts)>7 else str(p) for p in sources),'TOTAL',len(sources))
-          print('INTERNAL_IMPORTS', '\n'.join(i for i in imports if i.startswith('com.taxonomy.') and not i.startswith(tuple('com.taxonomy.'+part+'.' for part in parts))))
-          print('EXTERNAL_IMPORTS','\n'.join(sorted({'.'.join(i.split('.')[:4]) for i in imports if not i.startswith(('com.taxonomy.','java.','javax.'))})))
-          for part in parts:
-            for p in sorted((root/'taxonomy-app/src/test/java/com/taxonomy'/part).rglob('*.java')):
-              t=p.read_text()
-              refs=re.findall(r'^import (?:static )?(com\.taxonomy\.[^;]+);',t,re.M)
-              if not any(x in t for x in ('@SpringBootTest','@WebMvcTest','@DataJpaTest','@Testcontainers','extends Abstract','extends Base')):
-                print('UNIT_CANDIDATE',p, 'refs=',','.join(refs))
-          patterns=('taxonomy-app/src/main/java/com/taxonomy/workspace','taxonomy-app/src/main/java/com/taxonomy/versioning','taxonomy-app/src/main/java/com/taxonomy/editor','taxonomy-app/target/classes','taxonomy-app/src/main/java','taxonomy-domain", "taxonomy-dsl','taxonomy-domain taxonomy-dsl')
-          for p in sorted(root.rglob('*')):
-            if not p.is_file() or '.git' in p.parts or p.suffix not in ('.java','.xml','.json','.yml','.sh'): continue
-            if 'src/main/java' in str(p) and p.parts[0]=='taxonomy-app': continue
-            t=p.read_text(errors='replace')
-            lines=[f'{n}: {line.strip()}' for n,line in enumerate(t.splitlines(),1) if any(x in line for x in patterns)]
-            if lines: print('PATH_REFERENCE',p,'\n'+'\n'.join(lines))
-          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: c0d7bd654ba774daa0701b6e18dfa3fb85c3a92c
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: RED - require the physical workspace module
+        run: python3 verification/physical_workspace.py red "$GITHUB_WORKSPACE/source"
+      - name: Extract workspace implementation and unit tests
+        id: apply
+        run: python3 verification/physical_workspace.py apply "$GITHUB_WORKSPACE/source"
+      - name: Compile full reactor and enforce architecture
+        run: python3 verification/physical_workspace.py architecture "$GITHUB_WORKSPACE/source"
+      - name: Verify complete default reactor and Boot JAR packaging
+        run: python3 verification/physical_workspace.py verify "$GITHUB_WORKSPACE/source"
+      - name: Preserve prepared source tree without changing any branch
+        if: always() && steps.apply.outcome == 'success'
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 verification/physical_workspace.py publish "$GITHUB_WORKSPACE/source"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: physical-workspace-evidence
+          path: ${{ runner.temp }}/workspace-extraction-evidence/
+          retention-days: 7
+          if-no-files-found: error
