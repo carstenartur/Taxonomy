@@ -21,11 +21,28 @@ jobs:
           persist-credentials: false
       - name: Reproduce immutable extraction source without a test claim
         run: python3 verification/workspace_direct.py prepare "$GITHUB_WORKSPACE/source"
-      - name: Preserve source tree without creating a commit or moving a branch
+      - name: Retain code and export workflow blob identities for authorized publication
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 verification/workspace_direct.py publish "$GITHUB_WORKSPACE/source"
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('verification/physical_workspace.py')
+          text=p.read_text()
+          old="    tree=api('git/trees',{'base_tree':git('rev-parse',BASE+'^{tree}'),'tree':entries})['sha']\n    assert tree==git('write-tree')"
+          new="""    workflows=[entry for entry in entries if entry['path'].startswith('.github/workflows/')]
+              code_entries=[entry for entry in entries if not entry['path'].startswith('.github/workflows/')]
+              code_tree=api('git/trees',{'base_tree':git('rev-parse',BASE+'^{tree}'),'tree':code_entries})['sha']
+              tree=git('write-tree')
+              print('SOURCE_PUBLICATION '+json.dumps({'base':BASE,'codeTree':code_tree,'fullTree':tree,'workflowEntries':workflows}),flush=True)
+              (out/'workflow-publication.json').write_text(json.dumps({'base':BASE,'codeTree':code_tree,'fullTree':tree,'workflowEntries':workflows},indent=2)+'\\n')"""
+          new='\n'.join(line[10:] if line.startswith('          ') else line for line in new.splitlines())
+          assert text.count(old)==1
+          p.write_text(text.replace(old,new,1))
+          PY
+          python3 verification/workspace_direct.py publish "$GITHUB_WORKSPACE/source"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
           name: physical-workspace-source-identity
           path: ${{ runner.temp }}/workspace-extraction-evidence/
