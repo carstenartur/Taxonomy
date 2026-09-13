@@ -111,6 +111,18 @@ Spring Boot Flyway verwendet getrennte Historientabellen:
 - `CoreSchemaMigrations.SCHEMA_HISTORY_TABLE` → `jgit_storage_hibernate_core_schema_history`;
 - `CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE` → `jgit_storage_hibernate_core_adoption_history`.
 
+Der anwendungsweite Flyway-Owner ist
+`com.taxonomy.composition.persistence.TaxonomySchemaMigrationConfig`. Seine
+primäre `taxonomyFlywayMigrationStrategy` injiziert die vorhandene Strategie
+`@Qualifier("jgitStorageFlywayMigrationStrategy")`, ruft diese Core-Strategie
+genau einmal auf und startet erst danach die Migration des
+Taxonomy-Anwendungsschemas. Ein Core-Fehler verhindert Arbeiten am
+Anwendungsschema. Beide Konfigurationsklassen bleiben an
+`spring.flyway.enabled=true` gebunden; nur
+`JgitStorageSchemaMigrationConfig` liest
+`taxonomy.jgit-storage.legacy-adoption`, dessen Standardwert weiterhin
+`false` ist.
+
 `JgitStorageHibernateSchemaFilterProvider` hält die gemappten bibliothekseigenen Tabellen `git_packs`, `git_reflog`, `git_repository_lock` und `git_pack_chunks` aus Hibernate-Erzeugung, -Aktualisierung, -Leerung und -Löschung heraus; die Schemavalidierung bleibt aktiv. Der Core-Migrationsstrom besitzt außerdem alle weiteren von ihm erzeugten Speicherstrukturen, darunter den Repository-Lebenszykluszustand. Taxonomy darf dafür keine anwendungseigene DDL einführen.
 
 ## Tatsächlich von Taxonomy unterstützte Datenbankpfade
@@ -172,6 +184,8 @@ Die Integration wird durch normale Maven-/JUnit-/Failsafe-Autorität abgedeckt:
 - `JgitStorageHibernateIntegrationTest` prüft die Registrierung öffentlicher Core-Entities, Persistenz über Schließen und erneutes Öffnen, Refs, Commits, Reflogs, Isolation logischer Repository-Namen und begrenztes Löschen.
 - `JgitStorageSchemaMigrationConfigTest` deckt frische/gemeinsam genutzte Schemata, die Historienetablierung exakter Release-Strukturen, V1/V2-Adoption, Datenerhalt, ungültige/partielle Zustände und Idempotenz ab.
 - `JgitStoragePostgresMigrationIT` wiederholt die alte Taxonomy-Übernahme gegen PostgreSQL und prüft die getrennten Historien.
+- `TaxonomySchemaMigrationConfigTest` prüft die primäre und qualifizierte Strategiekomposition, das Abbruchverhalten bei Core-Fehlern, die bedingte Aktivierung, die Klassifikation des Anwendungsschemas und die abschließende Tabellenvalidierung.
+- Die PostgreSQL-Migrationstests für das Anwendungsschema liegen unter `com.taxonomy.composition.persistence` und behalten die echten Datenbank-Fixtures für Upgrade- und Validate-Startup-Evidenz bei.
 - `JgitStorageDocumentationContractTest` leitet Abhängigkeits-/Distributionsdaten aus dem Root-POM ab, hält deutsche und englische Anleitung synchron, weist veraltete authentifizierte Zugriffsinstruktionen zurück und prüft die genannten Core-/Adoptionsressourcen des aufgelösten Artefakts.
 
 Eine saubere Verifikation löst das festgelegte `jgit-storage-hibernate-core`-Release anonym über das konfigurierte Release-Repository auf. Verwende ohne zusätzliche Variante den autoritativen CI-Befehl des Repositorys:

@@ -196,7 +196,7 @@ system-repository selection, one-shot initialization and failure retry behavior
 remain intact. Workspace no longer depends directly on application readiness or
 knowledge export through startup orchestration.
 
-The current measured baseline contains **537 cross-context class pairs across
+The D4 baseline recorded **537 cross-context class pairs across
 146 package edges**, down from D3's **539 / 147**. The two readiness pairs become
 internal to composition; the bootstrap export pair and its two storage pairs
 retain their existing targets under their new composition owner. The **42
@@ -207,6 +207,28 @@ not create a Maven module or close #628/#1043. The context map, cycle exceptions
 and coverage floors remain unchanged. See
 [Git bootstrap composition](../dev/GIT_BOOTSTRAP_COMPOSITION.md).
 
+### Application schema composition (D5a of #1043)
+
+`TaxonomySchemaMigrationConfig` now belongs to
+`com.taxonomy.composition.persistence`. Its primary Flyway strategy composes the
+exact qualified `jgitStorageFlywayMigrationStrategy` before application migration.
+Core failure prevents application work; Core continues to own its existing
+legacy-adoption property and package-private migration implementation.
+
+The fresh bytecode measurement remains **537 cross-context class pairs across
+146 package edges**. No recorded package edge changes: the former direct call
+was internal to DSL storage, while the new composition depends on Flyway's
+strategy interface. The **42 workspace-to-DSL-storage pairs** and **117
+knowledge-to-workspace pairs** remain unchanged. The baseline, context map and
+cycle exceptions are unchanged.
+
+Ten application PostgreSQL integration tests follow their application owner;
+all existing assertions and SQL resources remain intact. Both storage and
+composition persistence retain independent **87% line / 71% branch** coverage
+floors. Storage adapter relocation remains a separate slice; D5a creates no Maven
+module and does not close #628/#1043. See
+[Application schema composition](../dev/APPLICATION_SCHEMA_COMPOSITION.md).
+
 The migration uses complementary protections:
 
 1. `ArchitectureCycleBoundaryTest` rejects undocumented package cycles. Temporary exceptions must exist in `.github/architecture-exceptions.json` and expire.
@@ -216,6 +238,7 @@ The migration uses complementary protections:
 4. `ArchitectureCommitHistoryOwnershipTest` requires the Git commit-history entity, repository and three projection services to remain in their versioning owner packages.
 5. `ArchitectureDslCompositionBoundaryTest` requires the document controller/facade and shared HTTP context resolver in their owner packages, checks exclusive ownership of the eight document routes, and rejects architecture/knowledge/document-export dependencies from workspace controllers and both workspace DSL facades.
 6. `ArchitectureWorkspaceAuthorityBoundaryTest` requires the composition bootstrap owner and rejects direct workspace/versioning/editor dependencies on application composition, knowledge, architecture, portfolio and document-export implementations; representative owners make the rule non-vacuous.
+7. `ArchitectureApplicationSchemaCompositionTest` requires the application schema owner in composition, retains the Core storage owner and rejects a direct application-config dependency on Core implementation classes.
 
 Run the focused architecture profile from the repository root across the full
 reactor so every module's production output is current:
@@ -224,9 +247,9 @@ reactor so every module's production output is current:
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-The profile includes all four ownership guards for decision reports, commit
-history, DSL document composition and workspace authority in both `pom.xml` and
-`.mvn/verification-suites.json`. Its nine selected test classes are synchronized
+The profile includes all five ownership guards for decision reports, commit
+history, DSL document composition, workspace authority and application schema composition in both `pom.xml` and
+`.mvn/verification-suites.json`. Its ten selected test classes are synchronized
 between the POM and catalog. Full CI verification remains
 `./mvnw -B verify -Pci`.
 

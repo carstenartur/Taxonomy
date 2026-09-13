@@ -111,6 +111,16 @@ Spring Boot Flyway uses dedicated history tables:
 - `CoreSchemaMigrations.SCHEMA_HISTORY_TABLE` → `jgit_storage_hibernate_core_schema_history`;
 - `CoreSchemaMigrations.LEGACY_ADOPTION_SCHEMA_HISTORY_TABLE` → `jgit_storage_hibernate_core_adoption_history`.
 
+The application-wide Flyway owner is
+`com.taxonomy.composition.persistence.TaxonomySchemaMigrationConfig`. Its
+primary `taxonomyFlywayMigrationStrategy` injects the existing
+`@Qualifier("jgitStorageFlywayMigrationStrategy")` strategy, invokes that
+Core strategy exactly once and only then runs the Taxonomy application-schema
+migration. A Core failure prevents application-schema work. Both configuration
+classes remain conditional on `spring.flyway.enabled=true`; only
+`JgitStorageSchemaMigrationConfig` reads
+`taxonomy.jgit-storage.legacy-adoption`, whose default remains `false`.
+
 `JgitStorageHibernateSchemaFilterProvider` keeps the mapped library-owned tables `git_packs`, `git_reflog`, `git_repository_lock` and `git_pack_chunks` outside Hibernate create, update, truncate and drop operations while retaining schema validation. The Core migration stream also owns any additional storage structures it creates, including repository lifecycle state. Taxonomy must not introduce application-authored DDL for those structures.
 
 ## Database paths actually supported by Taxonomy
@@ -172,6 +182,8 @@ The integration is covered through normal Maven/JUnit/Failsafe authority:
 - `JgitStorageHibernateIntegrationTest` checks public Core entity registration, close/reopen persistence, refs, commits, reflogs, logical repository isolation and scoped deletion.
 - `JgitStorageSchemaMigrationConfigTest` covers fresh/shared schemas, exact released-shape history establishment, V1/V2 adoption, preservation, invalid/partial states and idempotence.
 - `JgitStoragePostgresMigrationIT` repeats the pre-library adoption against PostgreSQL and verifies the dedicated histories.
+- `TaxonomySchemaMigrationConfigTest` checks primary and qualified strategy composition, Core-first failure behavior, conditional enablement, application-schema classification and final-table validation.
+- The application-schema PostgreSQL migration tests live under `com.taxonomy.composition.persistence` and retain the real database fixtures for upgrade and validate-startup evidence.
 - `JgitStorageDocumentationContractTest` derives dependency/distribution facts from the root POM, keeps the German and English guides aligned, rejects obsolete authenticated access instructions, and verifies the named Core/adoption resources in the resolved artifact.
 
 A clean verification resolves the pinned `jgit-storage-hibernate-core` release anonymously through the configured release repository. Use the repository's authoritative CI command without adding a second variant:
