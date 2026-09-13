@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.junit.jupiter.params.provider.MethodSource;
 import org.w3c.dom.NodeList;
 import tools.jackson.databind.ObjectMapper;
 
@@ -17,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.stream.Stream;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -43,6 +45,9 @@ class ArchitectureSelectorSynchronizationTest {
 
     @TempDir
     Path fixture;
+
+    @TempDir
+    Path externalFixture;
 
     @Test
     void bothRepositorySelectorsContainEveryGuardExactlyOnceInOrder() throws Exception {
@@ -92,6 +97,66 @@ class ArchitectureSelectorSynchronizationTest {
         assertThatThrownBy(() -> assertSelectors(fixture)).isInstanceOf(AssertionError.class);
     }
 
+    @ParameterizedTest
+    @MethodSource("selectedGuards")
+    void missingSelectedGuardSourceIsRejected(String guard) throws Exception {
+        writeSelectors(EXPECTED, EXPECTED);
+        Files.delete(sourcePath(fixture, guard));
+        assertThatThrownBy(() -> assertSelectors(fixture))
+                .isInstanceOf(AssertionError.class).hasMessageContaining(guard);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"ArchitectureCycleBoundaryTest", "ArchitectureModuleGraphTest"})
+    void selectedGuardInTheWrongModuleIsRejected(String guard) throws Exception {
+        writeSelectors(EXPECTED, EXPECTED);
+        Path source = sourcePath(fixture, guard);
+        String other = source.startsWith(fixture.resolve("taxonomy-app"))
+                ? "taxonomy-build" : "taxonomy-app";
+        Path destination = fixture.resolve(other + "/src/test/java/com/taxonomy/" + guard + ".java");
+        Files.createDirectories(destination.getParent());
+        Files.move(source, destination);
+        assertThatThrownBy(() -> assertSelectors(fixture))
+                .isInstanceOf(AssertionError.class).hasMessageContaining(guard);
+    }
+
+    @Test
+    void selectedGuardSourceOutsideTheCheckoutIsRejected() throws Exception {
+        writeSelectors(EXPECTED, EXPECTED);
+        String guard = "ArchitectureCycleBoundaryTest";
+        Path source = sourcePath(fixture, guard);
+        Path outside = externalFixture.resolve(guard + ".java");
+        Files.move(source, outside);
+        Files.createSymbolicLink(source, outside);
+        assertThatThrownBy(() -> assertSelectors(fixture))
+                .isInstanceOf(AssertionError.class).hasMessageContaining(guard);
+    }
+
+    @Test
+    void selectedGuardSourceAliasInsideTheCheckoutIsAccepted() throws Exception {
+        writeSelectors(EXPECTED, EXPECTED);
+        String guard = "ArchitectureCycleBoundaryTest";
+        Path source = sourcePath(fixture, guard);
+        Path inside = fixture.resolve("source-aliases/" + guard + ".java");
+        Files.createDirectories(inside.getParent());
+        Files.move(source, inside);
+        Files.createSymbolicLink(source, source.getParent().relativize(inside));
+        assertThatCode(() -> assertSelectors(fixture)).doesNotThrowAnyException();
+    }
+
+    private static Stream<String> selectedGuards() {
+        return EXPECTED.stream();
+    }
+
+    private static Path sourcePath(Path root, String guard) {
+        String module = switch (guard) {
+            case "ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest",
+                    "ArchitectureSelectorSynchronizationTest" -> "taxonomy-build";
+            default -> "taxonomy-app";
+        };
+        return root.resolve(module + "/src/test/java/com/taxonomy/" + guard + ".java");
+    }
+
     private void assertRejected(String target, List<String> changed) throws Exception {
         writeSelectors("pom".equals(target) ? changed : EXPECTED,
                 "catalog".equals(target) ? changed : EXPECTED);
@@ -99,6 +164,11 @@ class ArchitectureSelectorSynchronizationTest {
     }
 
     private void writeSelectors(List<String> pom, List<String> catalog) throws Exception {
+        for (String guard : EXPECTED) {
+            Path source = sourcePath(fixture, guard);
+            Files.createDirectories(source.getParent());
+            Files.writeString(source, "package com.taxonomy; class " + guard + " {}\n");
+        }
         Files.writeString(fixture.resolve("pom.xml"), """
                 <project xmlns="http://maven.apache.org/POM/4.0.0">
                   <profiles><profile><id>architecture-tests</id><properties>
@@ -112,7 +182,7 @@ class ArchitectureSelectorSynchronizationTest {
         Files.writeString(fixture.resolve(".mvn/verification-suites.json"), root.toString());
     }
 
-    private static void assertSelectors(Path root) throws Exception {
+    static void assertSelectors(Path root) throws Exception {
         var factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -132,6 +202,15 @@ class ArchitectureSelectorSynchronizationTest {
                 .containsExactlyElementsOf(EXPECTED);
         assertThat(selectors(json)).as("verification catalogue architecture-tests selector")
                 .containsExactlyElementsOf(EXPECTED);
+        Path checkout = root.toRealPath();
+        for (String guard : EXPECTED) {
+            Path source = sourcePath(root, guard);
+            assertThat(source).as("selected architecture guard %s in its owning module", guard)
+                    .isRegularFile();
+            assertThat(source.toRealPath().startsWith(checkout))
+                    .as("selected architecture guard %s must remain inside the checkout", guard)
+                    .isTrue();
+        }
     }
 
     private static List<String> selectors(String value) {

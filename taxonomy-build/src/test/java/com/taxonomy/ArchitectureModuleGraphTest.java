@@ -830,6 +830,7 @@ class ArchitectureModuleGraphTest {
             assertThat(root.resolve("taxonomy-build/src/test/java/com/taxonomy").resolve(source)).isRegularFile();
         }
         assertModuleGateOwnerDependencies(root.resolve("taxonomy-build/pom.xml"));
+        ArchitectureSelectorSynchronizationTest.assertSelectors(root);
 
         String pomSelector = profileProperty(root.resolve("pom.xml"), "architecture-tests", "test");
         JsonNode catalog = new ObjectMapper().readTree(Files.readString(root.resolve(".mvn/verification-suites.json")));

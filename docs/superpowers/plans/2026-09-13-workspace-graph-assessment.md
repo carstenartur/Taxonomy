@@ -6,7 +6,7 @@
 
 **Architecture:** Reuse the actual compiled production inventory and canonical dependency collector. Add a human-readable assessment and one structured inventory; introduce no runtime or enforcement change.
 
-**Tech Stack:** Existing Java21/ArchUnit measurement, JSON and Markdown.
+**Tech Stack:** Existing Java 21/ArchUnit measurement, JSON and Markdown.
 
 **Spec:** `docs/superpowers/specs/2026-09-13-workspace-graph-assessment-design.md`.
 
@@ -25,7 +25,7 @@ Create only `docs/dev/WORKSPACE_DEPENDENCY_ASSESSMENT.md` and `docs/dev/workspac
 
 The JSON must have `schemaVersion:1`, `sourceCommit`, `baselineSha256`, `contextsSha256`, `inventory` (the measured production source/class and managed package/class-pair counts), `workspaceOutgoing` (an array, explicitly empty when measured empty), `knowledgeToWorkspace` (one entry per measured pair, sorted by origin then target), and `classificationCounts` (computed across both arrays). Each entry has exact `origin`, `target`, `originFile`, `targetFile`, one `classification`, a concrete `rationale`, and nonempty `evidence` listing relevant observed member/location descriptions. Each evidence string must come from the corresponding measured pair's dependency descriptions. Do not conflate class pairs with individual bytecode dependency occurrences.
 
-- [x] Compare source responsibilities for every measured origin/target pair. Group identical owner contracts for efficient inspection, but inspect every caller's use. Neither a concrete target type nor an HTTP caller alone establishes a violation. Mark all117 current reverse pairs exactly once; do not preserve provisional85/25/7 counts unless the evidence supports them. Record changed provisional categories and reasons in the report.
+- [x] Compare source responsibilities for every measured origin/target pair. Group identical owner contracts for efficient inspection, but inspect every caller's use. Neither a concrete target type nor an HTTP caller alone establishes a violation. Mark all 117 current reverse pairs exactly once; do not preserve provisional 85/25/7 counts unless the evidence supports them. Record changed provisional categories and reasons in the report.
 - [x] Write the complete JSON and concise assessment. Distinguish the zero outgoing managed-context result and workspace readiness from the still-cyclic complete proposal. Describe concrete remaining work without moving source or promising an unreviewed API design. Keep configured primary/default-branch identity separate from literal `WorkspaceContext.SHARED` and preserve lazy/fail-closed built-in seed semantics in future-work notes.
 - [x] Parse JSON and independently compare exact origin/target pair sets with `measurement.json`; reject duplicates, missing/extra pairs, unsupported categories, nonexistent source files, evidence not present in the measured pair, or counts that do not sum. Verify every referenced source still matches the snapshot. Check document links and whitespace. No new test or Maven run is needed for documentation-only changes; root has fresh native architecture evidence and exact regenerated-baseline comparison.
 - [x] Write the full report to `task-1-report.md` in this plan's ignored SDD directory: source inspection coverage, classification decisions and provisional changes, commands/results, changed paths, evidence and limits. Freeze. No Git/index/HEAD/branch mutation, Maven, external API, network or subagents by the implementer; only the two deliverables and own ignored evidence/report are writable.

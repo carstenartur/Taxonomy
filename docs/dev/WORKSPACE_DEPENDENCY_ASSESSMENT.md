@@ -6,7 +6,7 @@ The measured workspace context has **zero outgoing dependencies on other managed
 
 ## Graph and provenance
 
-The canonical package measurement has 140 managed package edges and 472 managed class pairs. The native source/compiler/import inventory covers 828 production Java source files and 1,408 production classes. Fresh native architecture evidence supplied for this assessment reports 137 passing tests, with no failures, errors or skips. The root regenerated the canonical baseline byte-identically from that compiled inventory. The assessment independently checked the supplied hashes and current source against the immutable snapshot; it did not rerun Maven or alter the baseline.
+The canonical package measurement has 140 managed package edges and 472 managed class pairs. The native source/compiler/import inventory covers 828 production Java source files and 1,408 production classes. Historical native architecture evidence for the assessment snapshot records 137 passing tests, with no failures, errors or skips. The root regenerated the canonical baseline byte-identically from that compiled inventory. The assessment independently checked the supplied hashes and current source against the immutable snapshot; it did not rerun Maven or alter the baseline.
 
 | Evidence input | SHA-256 |
 | --- | --- |
