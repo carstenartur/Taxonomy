@@ -144,3 +144,21 @@ Change only `taxonomy-app/src/test/java/com/taxonomy/workspace/service/ExternalG
 Use the current native classpath in this plan's ignored SDD `classpath-current-native.txt`, its existing `JupiterLauncher.java`, JDK21 and explicit Mockito agent. Compile the amended test to a fresh task-local output and run only `com.taxonomy.workspace.service.ExternalGitSyncServiceTest`. Prove the assertion's sensitivity using a temporary shadow copy of the real production service that moves its branch validation from before opening the transport to the first line inside the transport try block. Keep repository production untouched. Compare the original published test and amended test against that same shadow mutant: record actual outcomes; the amended test must reject observed transport opening rather than fail for compilation/classpath/network reasons. Then run the amended test against unchanged production. No network connection is required or authorized for this focused validation.
 
 The implementer may write the one test and its own ignored evidence/report only; no Maven, Git/index/HEAD/branch mutation, external API or subagents. Root owns one native focused reactor run, preservation and coverage-evidence checks, commit, scoped external-finding review and publication. Write commands, exact outcomes, changed paths, warnings and concerns to `task-2-report.md` in this plan's SDD directory and freeze. Current-head external review and required main-targeted CI remain gates; no automated human attestation is allowed.
+
+## Task 3: Trigger the consumer contract for all relocated runtime consumers
+
+Task2 is complete and published at `647c9b2e38ae12c0eeb652c18a1fe299f271a511`. Complete external review `5190452812` inspected150/150 files and raised comment `3999416648`: changes solely to the runtime consumers or verification catalogue currently bypass the separate JGit consumer workflow because its path filters omit them. This is a new trigger-coverage finding, not a remaining transport-test defect.
+
+Change only `.github/workflows/jgit-storage-hibernate-contract.yml`. In both `on.pull_request.paths` and `on.push.paths`, add each of these five exact paths once, immediately after the existing `pom.xml` entry, preserving this order:
+
+```yaml
+      - 'taxonomy-app/src/main/resources/application-hsqldb.properties'
+      - 'taxonomy-app/src/main/resources/application-postgres.properties'
+      - 'observability/javaagent.properties'
+      - 'taxonomy-app/src/main/java/com/taxonomy/observability/TaxonomyObservationConfiguration.java'
+      - '.mvn/verification-suites.json'
+```
+
+Retain every existing trigger, branch filter, path (including old storage paths), permission, concurrency value, job, step, command, timeout, report, upload and environment value byte-for-byte. Add no skip, condition, waiver, production/test change or dependency. This is the sole follow-up extension to Task1's path-filter scope; its job-logic freeze remains absolute.
+
+Validate YAML with the available parser using YAML1.2-compatible `on` handling (PyYAML BaseLoader is adequate for this structural check), exact presence/uniqueness of the five paths in both lists, existence of each referenced file, and that removing only those ten new entries reproduces the original published workflow exactly. Run whitespace/diff checks. Do not add a test mirroring this low-impact list edit or rerun Maven: no runtime or test implementation changes. Root owns commit, scoped review, publication and the fresh external-review request. Write exact commands/results, changed paths and any concerns to `task-3-report.md` in this plan's SDD directory; freeze. No Git/index/HEAD/branch mutation, Maven, external API/network or subagents by the implementer.
