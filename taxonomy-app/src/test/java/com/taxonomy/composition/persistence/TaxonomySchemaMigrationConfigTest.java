@@ -31,6 +31,7 @@ import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.mockConstruction;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
@@ -98,6 +99,7 @@ class TaxonomySchemaMigrationConfigTest {
                     InOrder order = inOrder(core, flyway);
                     order.verify(core).migrate(flyway);
                     order.verify(flyway).getConfiguration();
+                    verify(core, times(1)).migrate(flyway);
                     verifyNoInteractions(decoy);
                 });
     }
