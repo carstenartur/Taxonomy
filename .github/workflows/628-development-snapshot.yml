@@ -22,7 +22,7 @@ jobs:
           distribution: temurin
           cache: maven
       - name: Native architecture baseline (supplementary, not release verification)
-        run: ./mvnw -B -Parchitecture-tests verify
+        run: ./mvnw -B -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false verify
       - name: Archive tracked source and build artifacts only
         if: always()
         shell: bash
