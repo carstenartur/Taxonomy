@@ -1,0 +1,135 @@
+name: Workspace focused integration fixes
+on:
+  push:
+    branches: [verification/628-physical-workspace]
+    paths: [.github/workflows/628-workspace-review-fixes.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 4f8e544d7537a1067debe0e6f495c4d1542a2d8c
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Reproduce the obsolete source location
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -pl taxonomy-app -am -Dtest=WorkspaceOverlayScopeOwnershipTest -Dsurefire.failIfNoSpecifiedTests=false verify > "$RUNNER_TEMP/red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          p='taxonomy-app/target/surefire-reports/TEST-com.taxonomy.relations.model.WorkspaceOverlayScopeOwnershipTest.xml'
+          root=ET.parse(p).getroot()
+          assert root.get('tests')=='1' and root.get('errors')=='1' and root.get('failures')=='0', root.attrib
+          error=root.find('.//error')
+          assert 'NoSuchFileException' in error.get('type','')
+          assert 'src/main/java/com/taxonomy/versioning/model/ArchitectureCommitIndex.java' in error.get('message','')
+          print('RED verified: the existing ownership test fails only at the obsolete source location')
+          PY
+      - name: Apply the bounded fixes
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          def replace(path,old,new):
+              p=Path(path); text=p.read_text(); assert text.count(old)==1, (path,old); p.write_text(text.replace(old,new,1))
+          replace('taxonomy-app/src/test/java/com/taxonomy/relations/model/WorkspaceOverlayScopeOwnershipTest.java',
+                  '"src/main/java/com/taxonomy/versioning/model/ArchitectureCommitIndex.java"',
+                  '"../taxonomy-workspace/src/main/java/com/taxonomy/versioning/model/ArchitectureCommitIndex.java"')
+          replace('.github/jgit-storage-hibernate-contract.sh',
+                  '  -pl taxonomy-app \\\n  -Dincludes=io.github.carstenartur',
+                  '  -pl taxonomy-app -am \\\n  -Dincludes=io.github.carstenartur')
+          replace('docs/en/MODULE_BOUNDARIES.md','currently contains eight modules','currently contains nine modules')
+          replace('docs/de/MODULE_BOUNDARIES.md','enthält derzeit acht Module','enthält derzeit neun Module')
+          for lang,row in [('en','| `taxonomy-workspace` | Workspace authority, versioning, semantic editor history and JGit storage |\n'),('de','| `taxonomy-workspace` | Workspace-Zuständigkeit, Versionierung, semantische Editor-Historie und JGit-Speicher |\n')]:
+              p=Path('docs')/lang/'MODULE_BOUNDARIES.md'; text=p.read_text(); anchor='| `taxonomy-app` |'
+              assert text.count(anchor)==1
+              p.write_text(text.replace(anchor,row+anchor,1))
+          PY
+          bash -n .github/jgit-storage-hibernate-contract.sh
+          git diff --check
+      - name: Verify ownership and real editor restart behavior
+        shell: bash
+        run: |
+          ./mvnw -B -pl taxonomy-app -am \
+            -Dtest=WorkspaceOverlayScopeOwnershipTest,ArchitectureEditorRestartTest,ArchitectureApplicationRestartTest,ArchitectureWorkspaceModuleTest \
+            -Dsurefire.failIfNoSpecifiedTests=false verify > "$RUNNER_TEMP/green.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/green.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          names=['com.taxonomy.relations.model.WorkspaceOverlayScopeOwnershipTest','com.taxonomy.editor.ArchitectureEditorRestartTest','com.taxonomy.editor.ArchitectureApplicationRestartTest','com.taxonomy.ArchitectureWorkspaceModuleTest']
+          for name in names:
+              root=ET.parse(Path('taxonomy-app/target/surefire-reports')/('TEST-'+name+'.xml')).getroot()
+              assert int(root.get('tests','0'))>0
+              assert all(root.get(k,'0')=='0' for k in ('failures','errors','skipped')), root.attrib
+              print('GREEN',name,root.get('tests'))
+          PY
+      - name: Verify dependency collection without installed Taxonomy artifacts
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/clean-m2"
+          tar -C "$HOME/.m2/repository" --exclude='./com/taxonomy' -cf - . | tar -C "$RUNNER_TEMP/clean-m2" -xf -
+          test ! -e "$RUNNER_TEMP/clean-m2/com/taxonomy"
+          set +e
+          ./mvnw -B -ntp -nsu -Dmaven.repo.local="$RUNNER_TEMP/clean-m2" -pl taxonomy-app \
+            -Dincludes=io.github.carstenartur -DoutputType=text dependency:tree > "$RUNNER_TEMP/dependency-red.log" 2>&1
+          red=$?
+          set -e
+          test "$red" -ne 0
+          grep -F 'taxonomy-workspace' "$RUNNER_TEMP/dependency-red.log" | tail -n 3
+          ./mvnw -B -ntp -nsu -Dmaven.repo.local="$RUNNER_TEMP/clean-m2" -pl taxonomy-app -am \
+            -Dincludes=io.github.carstenartur -DoutputType=text \
+            -DoutputFile="$RUNNER_TEMP/dependency-tree.txt" dependency:tree > "$RUNNER_TEMP/dependency-green.log" 2>&1 || { tail -n 80 "$RUNNER_TEMP/dependency-green.log"; exit 1; }
+          grep -F 'jgit-storage-hibernate-core' "$RUNNER_TEMP/dependency-tree.txt"
+          test ! -e "$RUNNER_TEMP/clean-m2/com/taxonomy/taxonomy-workspace/1.4.0-SNAPSHOT/taxonomy-workspace-1.4.0-SNAPSHOT.jar"
+          echo 'CLEAN REACTOR: dependency collection works without installing sibling artifacts'
+      - name: Retain tested code blobs without changing a branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess,urllib.request
+          from pathlib import Path
+          def git(*a): return subprocess.check_output(['git',*a],text=True).strip()
+          def post(endpoint,payload):
+              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/'+endpoint,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(req,timeout=30) as response: return json.load(response)
+          paths=git('diff','--name-only').splitlines()
+          expected={'.github/jgit-storage-hibernate-contract.sh','docs/en/MODULE_BOUNDARIES.md','docs/de/MODULE_BOUNDARIES.md','taxonomy-app/src/test/java/com/taxonomy/relations/model/WorkspaceOverlayScopeOwnershipTest.java'}
+          assert set(paths)==expected, paths
+          entries=[]
+          for path in paths:
+              sha=post('git/blobs',{'content':Path(path).read_text(),'encoding':'utf-8'})['sha']
+              assert sha==git('hash-object',path)
+              mode=git('ls-files','-s','--',path).split()[0]
+              entries.append({'path':path,'mode':mode,'type':'blob','sha':sha})
+          tree=post('git/trees',{'base_tree':git('rev-parse','HEAD^{tree}'),'tree':entries})['sha']
+          git('add','--',*paths)
+          assert tree==git('write-tree')
+          result={'base':git('rev-parse','HEAD'),'tree':tree,'entries':entries}
+          print('VERIFIED_PATCH',json.dumps(result))
+          Path(os.environ['RUNNER_TEMP'],'verified-patch.json').write_text(json.dumps(result,indent=2))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-integration-fix-evidence
+          path: |
+            ${{ runner.temp }}/*.log
+            ${{ runner.temp }}/dependency-tree.txt
+            ${{ runner.temp }}/verified-patch.json
+            taxonomy-app/target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
