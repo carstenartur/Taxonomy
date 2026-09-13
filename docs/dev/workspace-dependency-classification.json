@@ -1,0 +1,1404 @@
+{
+  "schemaVersion": 1,
+  "sourceCommit": "bd430ff41788289567de65d78d7d8b8f4adc02a8",
+  "baselineSha256": "5ff8756fa9b743c3b92853a961fb40320f128ee84c86d9f5c5fb99dea2df8c82",
+  "contextsSha256": "f0a2e0f093c313300b5b615ea4a55234955c6324bef2d7124a806e5132fdb348",
+  "inventory": {
+    "productionJavaSourceCount": 828,
+    "classifiedProductionClassCount": 1408,
+    "managedPackageEdges": 140,
+    "managedClassPairs": 472
+  },
+  "workspaceOutgoing": [],
+  "knowledgeToWorkspace": [
+    {
+      "origin": "com.taxonomy.catalog.controller.ArchiMateImportController",
+      "target": "com.taxonomy.workspace.service.WorkspaceContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/controller/ArchiMateImportController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContext.java",
+      "classification": "owner-api",
+      "rationale": "ArchiMate preview/import captures a compatibility selection and reports the selected workspace in errors. This immutable compatibility value is a workspace-owned contract, not a storage handle. Classification does not certify legacy workspace-only visibility or SHARED fallback semantics as complete repository isolation.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.controller.ArchiMateImportController.process(org.springframework.web.multipart.MultipartFile, boolean)> calls method <com.taxonomy.workspace.service.WorkspaceContext.workspaceId()> in (ArchiMateImportController.java:69)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.controller.ArchiMateImportController",
+      "target": "com.taxonomy.workspace.service.WorkspaceContextResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/controller/ArchiMateImportController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContextResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "ArchiMate preview/import captures a compatibility selection and reports the selected workspace in errors. resolveCurrentContext uses the legacy resolver directly; repository enrichment and request-stable routing require explicit follow-up at this HTTP boundary.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.controller.ArchiMateImportController.process(org.springframework.web.multipart.MultipartFile, boolean)> calls method <com.taxonomy.workspace.service.WorkspaceContextResolver.resolveCurrentContext()> in (ArchiMateImportController.java:60)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.controller.ImportApiController",
+      "target": "com.taxonomy.versioning.service.RepositoryStateService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/controller/ImportApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/versioning/service/RepositoryStateService.java",
+      "classification": "composition-orchestration",
+      "rationale": "Framework import selects a requested or active branch and attaches repository view metadata to its response. resolveWorkspaceBranch and getViewContext combine workspace branch/view authority with framework import and response assembly; this pair describes application composition, with state ownership remaining in workspace.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.controller.ImportApiController.importFile(java.lang.String, org.springframework.web.multipart.MultipartFile, java.lang.String)> calls method <com.taxonomy.versioning.service.RepositoryStateService.getViewContext(java.lang.String, java.lang.String, com.taxonomy.workspace.service.WorkspaceContext)> in (ImportApiController.java:94)",
+        "Method <com.taxonomy.catalog.controller.ImportApiController.importFile(java.lang.String, org.springframework.web.multipart.MultipartFile, java.lang.String)> calls method <com.taxonomy.versioning.service.RepositoryStateService.resolveWorkspaceBranch(java.lang.String)> in (ImportApiController.java:84)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.controller.ImportApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/controller/ImportApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContext.java",
+      "classification": "owner-api",
+      "rationale": "Framework import selects a requested or active branch and attaches repository view metadata to its response. This immutable compatibility value is a workspace-owned contract, not a storage handle. Classification does not certify legacy workspace-only visibility or SHARED fallback semantics as complete repository isolation.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.controller.ImportApiController.importFile(java.lang.String, org.springframework.web.multipart.MultipartFile, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceContext.username()> in (ImportApiController.java:83)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.controller.ImportApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/controller/ImportApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "Framework import selects a requested or active branch and attaches repository view metadata to its response. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.controller.ImportApiController.importFile(java.lang.String, org.springframework.web.multipart.MultipartFile, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentContext()> in (ImportApiController.java:82)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.model.PrimaryRepositorySeedRelationListener",
+      "target": "com.taxonomy.workspace.model.SystemRepository",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/model/PrimaryRepositorySeedRelationListener.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/model/SystemRepository.java",
+      "classification": "residual-violation",
+      "rationale": "It resolves SystemRepositoryService lazily and reads repositoryId from its persistent catalog entity inside a knowledge entity listener. This is a primary-identity/persistence coupling to replace through a reviewed owner boundary or composition while retaining built-in-only, lazy and fail-closed binding.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.model.PrimaryRepositorySeedRelationListener.bindBuiltInSeedToPrimaryRepository(com.taxonomy.catalog.model.TaxonomyRelation)> calls method <com.taxonomy.workspace.model.SystemRepository.getRepositoryId()> in (PrimaryRepositorySeedRelationListener.java:53)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.model.PrimaryRepositorySeedRelationListener",
+      "target": "com.taxonomy.workspace.service.SystemRepositoryService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/model/PrimaryRepositorySeedRelationListener.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/SystemRepositoryService.java",
+      "classification": "residual-violation",
+      "rationale": "It resolves SystemRepositoryService lazily and reads repositoryId from its persistent catalog entity inside a knowledge entity listener. This is a primary-identity/persistence coupling to replace through a reviewed owner boundary or composition while retaining built-in-only, lazy and fail-closed binding.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.model.PrimaryRepositorySeedRelationListener.bindBuiltInSeedToPrimaryRepository(com.taxonomy.catalog.model.TaxonomyRelation)> calls method <com.taxonomy.workspace.service.SystemRepositoryService.getPrimaryRepository()> in (PrimaryRepositorySeedRelationListener.java:52)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.service.ArchiMateXmlImporter",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/service/ArchiMateXmlImporter.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "The importer uses the supplied compatibility identity for relation duplicate checks and creation, translating explicit identities to RepositoryContext and routing the legacy sentinel through compatibility overloads. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.service.ArchiMateXmlImporter.repositoryContext(com.taxonomy.workspace.service.WorkspaceContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.centralWrite(java.lang.String, java.lang.String, java.lang.String)> in (ArchiMateXmlImporter.java:192)",
+        "Method <com.taxonomy.catalog.service.ArchiMateXmlImporter.repositoryContext(com.taxonomy.workspace.service.WorkspaceContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspace(java.lang.String, java.lang.String, java.lang.String, java.lang.String)> in (ArchiMateXmlImporter.java:193)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.service.ArchiMateXmlImporter",
+      "target": "com.taxonomy.workspace.service.WorkspaceContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/service/ArchiMateXmlImporter.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContext.java",
+      "classification": "owner-api",
+      "rationale": "The importer uses the supplied compatibility identity for relation duplicate checks and creation, translating explicit identities to RepositoryContext and routing the legacy sentinel through compatibility overloads. This immutable compatibility value is a workspace-owned contract, not a storage handle. Classification does not certify legacy workspace-only visibility or SHARED fallback semantics as complete repository isolation.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.service.ArchiMateXmlImporter.execute(java.io.InputStream, com.taxonomy.workspace.service.WorkspaceContext, boolean)> calls method <com.taxonomy.workspace.service.WorkspaceContext.repositoryId()> in (ArchiMateXmlImporter.java:140)",
+        "Method <com.taxonomy.catalog.service.ArchiMateXmlImporter.execute(java.io.InputStream, com.taxonomy.workspace.service.WorkspaceContext, boolean)> calls method <com.taxonomy.workspace.service.WorkspaceContext.username()> in (ArchiMateXmlImporter.java:142)",
+        "Method <com.taxonomy.catalog.service.ArchiMateXmlImporter.execute(java.io.InputStream, com.taxonomy.workspace.service.WorkspaceContext, boolean)> calls method <com.taxonomy.workspace.service.WorkspaceContext.workspaceId()> in (ArchiMateXmlImporter.java:142)",
+        "Method <com.taxonomy.catalog.service.ArchiMateXmlImporter.repositoryContext(com.taxonomy.workspace.service.WorkspaceContext)> calls method <com.taxonomy.workspace.service.WorkspaceContext.currentBranch()> in (ArchiMateXmlImporter.java:192)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.service.CatalogFacade",
+      "target": "com.taxonomy.workspace.service.WorkspaceContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/service/CatalogFacade.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContext.java",
+      "classification": "owner-api",
+      "rationale": "Catalog relation decoration passes the compatibility workspace ID to legacy relation reads; import delegates the supplied context. This immutable compatibility value is a workspace-owned contract, not a storage handle. Classification does not certify legacy workspace-only visibility or SHARED fallback semantics as complete repository isolation.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.service.CatalogFacade.attachRelations(com.taxonomy.dto.TaxonomyNodeDto, com.taxonomy.workspace.service.WorkspaceContext)> calls method <com.taxonomy.workspace.service.WorkspaceContext.workspaceId()> in (CatalogFacade.java:75)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.service.TaxonomyRelationService",
+      "target": "com.taxonomy.workspace.model.SystemRepository",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/service/TaxonomyRelationService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/model/SystemRepository.java",
+      "classification": "residual-violation",
+      "rationale": "primaryContext resolves the primary catalog entity and interprets repositoryId/defaultBranch to synthesize legacy contexts. Knowledge needs that configured identity, but entity interpretation belongs behind an owner boundary or supplied composition, preserving actor/workspace normalization.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.service.TaxonomyRelationService.primaryContext(java.lang.String, java.lang.String)> calls method <com.taxonomy.workspace.model.SystemRepository.getDefaultBranch()> in (TaxonomyRelationService.java:362)",
+        "Method <com.taxonomy.catalog.service.TaxonomyRelationService.primaryContext(java.lang.String, java.lang.String)> calls method <com.taxonomy.workspace.model.SystemRepository.getRepositoryId()> in (TaxonomyRelationService.java:362)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.service.TaxonomyRelationService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/service/TaxonomyRelationService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Relation reads and writes scope knowledge-owned rows with the supplied repository/workspace identity. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.service.TaxonomyRelationService.countRelationsInContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (TaxonomyRelationService.java:203)",
+        "Method <com.taxonomy.catalog.service.TaxonomyRelationService.countRelationsInContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (TaxonomyRelationService.java:202)",
+        "Method <com.taxonomy.catalog.service.TaxonomyRelationService.createRelationInContext(java.lang.String, java.lang.String, com.taxonomy.model.RelationType, java.lang.String, java.lang.String, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.username()> in (TaxonomyRelationService.java:138)",
+        "Method <com.taxonomy.catalog.service.TaxonomyRelationService.primaryContext(java.lang.String, java.lang.String)> calls method <com.taxonomy.workspace.service.RepositoryContext.centralRead(java.lang.String, java.lang.String, java.lang.String)> in (TaxonomyRelationService.java:361)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.catalog.service.TaxonomyRelationService",
+      "target": "com.taxonomy.workspace.service.SystemRepositoryService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/catalog/service/TaxonomyRelationService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/SystemRepositoryService.java",
+      "classification": "residual-violation",
+      "rationale": "primaryContext resolves the primary catalog entity and interprets repositoryId/defaultBranch to synthesize legacy contexts. Knowledge needs that configured identity, but entity interpretation belongs behind an owner boundary or supplied composition, preserving actor/workspace normalization.",
+      "evidence": [
+        "Method <com.taxonomy.catalog.service.TaxonomyRelationService.primaryContext(java.lang.String, java.lang.String)> calls method <com.taxonomy.workspace.service.SystemRepositoryService.getPrimaryRepository()> in (TaxonomyRelationService.java:353)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.command.ArchitectureRelationGitCommandService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/command/ArchitectureRelationGitCommandService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Relation commands transform exact DSL and obtain Git authority before any later relational projection. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.execute(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (ArchitectureRelationGitCommandService.java:56)",
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.requireMutable(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (ArchitectureRelationGitCommandService.java:126)",
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.result(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, java.lang.String, com.taxonomy.dsl.command.ArchitectureRelationDslTransformer$ChangeKind, boolean, java.lang.String)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (ArchitectureRelationGitCommandService.java:114)",
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.result(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, java.lang.String, com.taxonomy.dsl.command.ArchitectureRelationDslTransformer$ChangeKind, boolean, java.lang.String)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (ArchitectureRelationGitCommandService.java:115)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.command.ArchitectureRelationGitCommandService",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/command/ArchitectureRelationGitCommandService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Relation commands transform exact DSL and obtain Git authority before any later relational projection. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.requireMutable(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_READ> in (ArchitectureRelationGitCommandService.java:126)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.command.ArchitectureRelationGitCommandService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslVersionPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/command/ArchitectureRelationGitCommandService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslVersionPort.java",
+      "classification": "owner-api",
+      "rationale": "Relation commands transform exact DSL and obtain Git authority before any later relational projection. openVersion binds explicit context and expected head through the workspace-owned version contract.",
+      "evidence": [
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.execute(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.WorkspaceDslVersionPort.openVersion(com.taxonomy.workspace.service.RepositoryContext, java.lang.String)> in (ArchitectureRelationGitCommandService.java:48)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.command.ArchitectureRelationGitCommandService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslVersionPort$CommitResult",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/command/ArchitectureRelationGitCommandService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslVersionPort.java",
+      "classification": "owner-api",
+      "rationale": "Relation commands transform exact DSL and obtain Git authority before any later relational projection. CommitResult returns detached new/previous commit identity for the command result.",
+      "evidence": [
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.execute(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.WorkspaceDslVersionPort$CommitResult.commitId()> in (ArchitectureRelationGitCommandService.java:72)",
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.execute(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.WorkspaceDslVersionPort$CommitResult.previousHeadCommit()> in (ArchitectureRelationGitCommandService.java:71)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.command.ArchitectureRelationGitCommandService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslVersionPort$ExactVersion",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/command/ArchitectureRelationGitCommandService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslVersionPort.java",
+      "classification": "owner-api",
+      "rationale": "Relation commands transform exact DSL and obtain Git authority before any later relational projection. ExactVersion reads the bound DSL and commits or verifies a no-op against that same expectation; no JGit handle escapes.",
+      "evidence": [
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.execute(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.WorkspaceDslVersionPort$ExactVersion.commit(java.lang.String, java.lang.String)> in (ArchitectureRelationGitCommandService.java:68)",
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.execute(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.WorkspaceDslVersionPort$ExactVersion.expectedHeadCommit()> in (ArchitectureRelationGitCommandService.java:49)",
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.execute(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.WorkspaceDslVersionPort$ExactVersion.readDsl()> in (ArchitectureRelationGitCommandService.java:50)",
+        "Method <com.taxonomy.relations.command.ArchitectureRelationGitCommandService.execute(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.WorkspaceDslVersionPort$ExactVersion.verifyExpectedHead()> in (ArchitectureRelationGitCommandService.java:52)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/command/ArchitectureRelationGitCommandService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "CommandResult carries the operation scope alongside the committed repository/workspace/branch identity. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Constructor <com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult.<init>(java.lang.String, java.lang.String, java.lang.String, com.taxonomy.workspace.service.RepositoryScope, java.lang.String, java.lang.String, com.taxonomy.dsl.command.ArchitectureRelationDslTransformer$ChangeKind, boolean, java.lang.String)> has parameter of type <com.taxonomy.workspace.service.RepositoryScope> in (ArchitectureRelationGitCommandService.java:0)",
+        "Field <com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult.scope> has type <com.taxonomy.workspace.service.RepositoryScope> in (ArchitectureRelationGitCommandService.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitHttpPrecondition",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitHttpPrecondition.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "HTTP precondition parsing and ETag rendering validate full commit IDs with the workspace-owned normalizer. The read contract selects explicit context or normalizes full commit IDs; knowledge retains its semantic checks and receives no storage implementation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitHttpPrecondition.etag(java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort.normalizeCommitId(java.lang.String)> in (GitHttpPrecondition.java:59)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter",
+      "target": "com.taxonomy.workspace.service.BranchHeadConflictException",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitHypothesisReviewCompatibilityFilter.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/BranchHeadConflictException.java",
+      "classification": "owner-api",
+      "rationale": "The legacy hypothesis-review route resolves one selected context before review and central-write authorization. The workspace-owned exception supplies exact-head diagnostics for HTTP conflict handling; callers do not need the underlying storage exception or repository handle.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.conflictPayload(long, com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService$ReviewAction, com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getActualHeadCommit()> in (GitHypothesisReviewCompatibilityFilter.java:352)",
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.conflictPayload(long, com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService$ReviewAction, com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getExpectedHeadCommit()> in (GitHypothesisReviewCompatibilityFilter.java:351)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitHypothesisReviewCompatibilityFilter.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "The legacy hypothesis-review route resolves one selected context before review and central-write authorization. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls constructor <com.taxonomy.workspace.service.RepositoryContext.<init>(java.lang.String, java.lang.String, java.lang.String, java.lang.String, com.taxonomy.workspace.service.RepositoryScope)> in (GitHypothesisReviewCompatibilityFilter.java:248)",
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (GitHypothesisReviewCompatibilityFilter.java:247)",
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (GitHypothesisReviewCompatibilityFilter.java:238)",
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (GitHypothesisReviewCompatibilityFilter.java:233)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter",
+      "target": "com.taxonomy.workspace.service.RepositoryMembershipService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitHypothesisReviewCompatibilityFilter.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryMembershipService.java",
+      "classification": "owner-api",
+      "rationale": "The legacy hypothesis-review route resolves one selected context before review and central-write authorization. canMaintain owns active-repository and effective-role evaluation; the caller consumes its boolean without duplicating membership persistence or role policy. The surrounding application-admin alternative and CENTRAL_WRITE conversion remain boundary orchestration, not part of this owner-service pair.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryMembershipService.canMaintain(com.taxonomy.workspace.model.SystemRepository, java.lang.String)> in (GitHypothesisReviewCompatibilityFilter.java:240)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitHypothesisReviewCompatibilityFilter.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "The legacy hypothesis-review route resolves one selected context before review and central-write authorization. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_WRITE> in (GitHypothesisReviewCompatibilityFilter.java:248)",
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.FORK> in (GitHypothesisReviewCompatibilityFilter.java:234)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter",
+      "target": "com.taxonomy.workspace.service.SystemRepositoryService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitHypothesisReviewCompatibilityFilter.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/SystemRepositoryService.java",
+      "classification": "owner-api",
+      "rationale": "The legacy hypothesis-review route resolves one selected context before review and central-write authorization. getRepository looks up the explicitly selected repository and passes its result opaquely to workspace-owned canMaintain. This use neither reads nor mutates catalog fields and keeps lookup authority with its cohesive public owner service; concrete service/entity plumbing alone does not make this pair a residual violation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.SystemRepositoryService.getRepository(java.lang.String)> in (GitHypothesisReviewCompatibilityFilter.java:237)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitHypothesisReviewCompatibilityFilter.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "The legacy hypothesis-review route resolves one selected context before review and central-write authorization. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitHypothesisReviewCompatibilityFilter.doFilterInternal(jakarta.servlet.http.HttpServletRequest, jakarta.servlet.http.HttpServletResponse, jakarta.servlet.FilterChain)> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (GitHypothesisReviewCompatibilityFilter.java:135)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitProposalReviewApiController",
+      "target": "com.taxonomy.workspace.service.BranchHeadConflictException",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitProposalReviewApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/BranchHeadConflictException.java",
+      "classification": "owner-api",
+      "rationale": "Proposal accept/reject/revert requests preserve the selected tenant while obtaining Git authority. The workspace-owned exception supplies exact-head diagnostics for HTTP conflict handling; callers do not need the underlying storage exception or repository handle.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.preconditionFailed(java.lang.Long, com.taxonomy.relations.service.GitAuthoritativeProposalReviewService$ReviewAction, com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getActualHeadCommit()> in (GitProposalReviewApiController.java:197)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitProposalReviewApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitProposalReviewApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Proposal accept/reject/revert requests preserve the selected tenant while obtaining Git authority. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls constructor <com.taxonomy.workspace.service.RepositoryContext.<init>(java.lang.String, java.lang.String, java.lang.String, java.lang.String, com.taxonomy.workspace.service.RepositoryScope)> in (GitProposalReviewApiController.java:224)",
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (GitProposalReviewApiController.java:223)",
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (GitProposalReviewApiController.java:214)",
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (GitProposalReviewApiController.java:209)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitProposalReviewApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryMembershipService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitProposalReviewApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryMembershipService.java",
+      "classification": "owner-api",
+      "rationale": "Proposal accept/reject/revert requests preserve the selected tenant while obtaining Git authority. canMaintain owns active-repository and effective-role evaluation; the caller consumes its boolean without duplicating membership persistence or role policy. The surrounding application-admin alternative and CENTRAL_WRITE conversion remain boundary orchestration, not part of this owner-service pair.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryMembershipService.canMaintain(com.taxonomy.workspace.model.SystemRepository, java.lang.String)> in (GitProposalReviewApiController.java:216)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitProposalReviewApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitProposalReviewApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Proposal accept/reject/revert requests preserve the selected tenant while obtaining Git authority. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_WRITE> in (GitProposalReviewApiController.java:224)",
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.FORK> in (GitProposalReviewApiController.java:210)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitProposalReviewApiController",
+      "target": "com.taxonomy.workspace.service.SystemRepositoryService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitProposalReviewApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/SystemRepositoryService.java",
+      "classification": "owner-api",
+      "rationale": "Proposal accept/reject/revert requests preserve the selected tenant while obtaining Git authority. getRepository looks up the explicitly selected repository and passes its result opaquely to workspace-owned canMaintain. This use neither reads nor mutates catalog fields and keeps lookup authority with its cohesive public owner service; concrete service/entity plumbing alone does not make this pair a residual violation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.SystemRepositoryService.getRepository(java.lang.String)> in (GitProposalReviewApiController.java:213)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitProposalReviewApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitProposalReviewApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "Proposal accept/reject/revert requests preserve the selected tenant while obtaining Git authority. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController.review(java.lang.Long, com.taxonomy.relations.service.GitAuthoritativeProposalReviewService$ReviewAction, java.lang.String, java.lang.String, java.lang.String, com.taxonomy.relations.controller.GitProposalReviewApiController$ReviewBody)> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (GitProposalReviewApiController.java:127)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitProposalReviewApiController$ReviewResponse",
+      "target": "com.taxonomy.workspace.service.BranchHeadConflictException",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitProposalReviewApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/BranchHeadConflictException.java",
+      "classification": "owner-api",
+      "rationale": "ReviewResponse translates exact-head conflicts into expected/actual commit response fields. The workspace-owned exception supplies exact-head diagnostics for HTTP conflict handling; callers do not need the underlying storage exception or repository handle.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController$ReviewResponse.conflict(java.lang.Long, com.taxonomy.relations.service.GitAuthoritativeProposalReviewService$ReviewAction, com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getActualHeadCommit()> in (GitProposalReviewApiController.java:306)",
+        "Method <com.taxonomy.relations.controller.GitProposalReviewApiController$ReviewResponse.conflict(java.lang.Long, com.taxonomy.relations.service.GitAuthoritativeProposalReviewService$ReviewAction, com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getExpectedHeadCommit()> in (GitProposalReviewApiController.java:305)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitRelationCommandApiController",
+      "target": "com.taxonomy.workspace.service.BranchHeadConflictException",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitRelationCommandApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/BranchHeadConflictException.java",
+      "classification": "owner-api",
+      "rationale": "Relation upsert/remove requests preserve the selected tenant and require exact-head preconditions. The workspace-owned exception supplies exact-head diagnostics for HTTP conflict handling; callers do not need the underlying storage exception or repository handle.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.preconditionFailed(com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getActualHeadCommit()> in (GitRelationCommandApiController.java:199)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitRelationCommandApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitRelationCommandApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Relation upsert/remove requests preserve the selected tenant and require exact-head preconditions. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls constructor <com.taxonomy.workspace.service.RepositoryContext.<init>(java.lang.String, java.lang.String, java.lang.String, java.lang.String, com.taxonomy.workspace.service.RepositoryScope)> in (GitRelationCommandApiController.java:225)",
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (GitRelationCommandApiController.java:224)",
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (GitRelationCommandApiController.java:215)",
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (GitRelationCommandApiController.java:210)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitRelationCommandApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryMembershipService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitRelationCommandApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryMembershipService.java",
+      "classification": "owner-api",
+      "rationale": "Relation upsert/remove requests preserve the selected tenant and require exact-head preconditions. canMaintain owns active-repository and effective-role evaluation; the caller consumes its boolean without duplicating membership persistence or role policy. The surrounding application-admin alternative and CENTRAL_WRITE conversion remain boundary orchestration, not part of this owner-service pair.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryMembershipService.canMaintain(com.taxonomy.workspace.model.SystemRepository, java.lang.String)> in (GitRelationCommandApiController.java:217)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitRelationCommandApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitRelationCommandApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Relation upsert/remove requests preserve the selected tenant and require exact-head preconditions. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_WRITE> in (GitRelationCommandApiController.java:225)",
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.FORK> in (GitRelationCommandApiController.java:211)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitRelationCommandApiController",
+      "target": "com.taxonomy.workspace.service.SystemRepositoryService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitRelationCommandApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/SystemRepositoryService.java",
+      "classification": "owner-api",
+      "rationale": "Relation upsert/remove requests preserve the selected tenant and require exact-head preconditions. getRepository looks up the explicitly selected repository and passes its result opaquely to workspace-owned canMaintain. This use neither reads nor mutates catalog fields and keeps lookup authority with its cohesive public owner service; concrete service/entity plumbing alone does not make this pair a residual violation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.SystemRepositoryService.getRepository(java.lang.String)> in (GitRelationCommandApiController.java:214)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitRelationCommandApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitRelationCommandApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "Relation upsert/remove requests preserve the selected tenant and require exact-head preconditions. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController.remove(java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (GitRelationCommandApiController.java:137)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitRelationCommandApiController$MutationResponse",
+      "target": "com.taxonomy.workspace.service.BranchHeadConflictException",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitRelationCommandApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/BranchHeadConflictException.java",
+      "classification": "owner-api",
+      "rationale": "MutationResponse exposes the command scope and exact branch-head conflict diagnostics. The workspace-owned exception supplies exact-head diagnostics for HTTP conflict handling; callers do not need the underlying storage exception or repository handle.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController$MutationResponse.conflict(com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getActualHeadCommit()> in (GitRelationCommandApiController.java:320)",
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController$MutationResponse.conflict(com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getBranch()> in (GitRelationCommandApiController.java:309)",
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController$MutationResponse.conflict(com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getExpectedHeadCommit()> in (GitRelationCommandApiController.java:319)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.GitRelationCommandApiController$MutationResponse",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/GitRelationCommandApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "MutationResponse exposes the command scope and exact branch-head conflict diagnostics. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.GitRelationCommandApiController$MutationResponse.pending(com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult)> calls method <com.taxonomy.workspace.service.RepositoryScope.name()> in (GitRelationCommandApiController.java:292)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.HypothesisApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/HypothesisApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Hypothesis list, lifecycle and evidence requests pass the resolved repository context to knowledge operations. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.HypothesisApiController.currentRepositoryContext()> has return type <com.taxonomy.workspace.service.RepositoryContext> in (HypothesisApiController.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.HypothesisApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/HypothesisApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "Hypothesis list, lifecycle and evidence requests pass the resolved repository context to knowledge operations. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.HypothesisApiController.currentRepositoryContext()> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (HypothesisApiController.java:122)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.HypothesisHeadApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/HypothesisHeadApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "The hypothesis head endpoint resolves the selected request context before reading its strong ETag. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.HypothesisHeadApiController.readHead()> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (HypothesisHeadApiController.java:38)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.ProposalApiController",
+      "target": "com.taxonomy.workspace.service.BranchHeadConflictException",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/BranchHeadConflictException.java",
+      "classification": "owner-api",
+      "rationale": "Proposal generation, listing and compatibility review share explicit tenant routing and central-write authorization. The workspace-owned exception supplies exact-head diagnostics for HTTP conflict handling; callers do not need the underlying storage exception or repository handle.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.ProposalApiController.bulkAction(java.util.Map, java.lang.String)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getActualHeadCommit()> in (ProposalApiController.java:327)",
+        "Method <com.taxonomy.relations.controller.ProposalApiController.bulkAction(java.util.Map, java.lang.String)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getMessage()> in (ProposalApiController.java:333)",
+        "Method <com.taxonomy.relations.controller.ProposalApiController.conflictPayload(java.lang.Long, com.taxonomy.relations.service.GitAuthoritativeProposalReviewService$ReviewAction, com.taxonomy.workspace.service.BranchHeadConflictException)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getExpectedHeadCommit()> in (ProposalApiController.java:519)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.ProposalApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Proposal generation, listing and compatibility review share explicit tenant routing and central-write authorization. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.ProposalApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls constructor <com.taxonomy.workspace.service.RepositoryContext.<init>(java.lang.String, java.lang.String, java.lang.String, java.lang.String, com.taxonomy.workspace.service.RepositoryScope)> in (ProposalApiController.java:554)",
+        "Method <com.taxonomy.relations.controller.ProposalApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (ProposalApiController.java:553)",
+        "Method <com.taxonomy.relations.controller.ProposalApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (ProposalApiController.java:544)",
+        "Method <com.taxonomy.relations.controller.ProposalApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (ProposalApiController.java:539)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.ProposalApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryMembershipService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryMembershipService.java",
+      "classification": "owner-api",
+      "rationale": "Proposal generation, listing and compatibility review share explicit tenant routing and central-write authorization. canMaintain owns active-repository and effective-role evaluation; the caller consumes its boolean without duplicating membership persistence or role policy. The surrounding application-admin alternative and CENTRAL_WRITE conversion remain boundary orchestration, not part of this owner-service pair.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.ProposalApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryMembershipService.canMaintain(com.taxonomy.workspace.model.SystemRepository, java.lang.String)> in (ProposalApiController.java:546)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.ProposalApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Proposal generation, listing and compatibility review share explicit tenant routing and central-write authorization. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.ProposalApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_WRITE> in (ProposalApiController.java:554)",
+        "Method <com.taxonomy.relations.controller.ProposalApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.FORK> in (ProposalApiController.java:540)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.ProposalApiController",
+      "target": "com.taxonomy.workspace.service.SystemRepositoryService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/SystemRepositoryService.java",
+      "classification": "owner-api",
+      "rationale": "Proposal generation, listing and compatibility review share explicit tenant routing and central-write authorization. getRepository looks up the explicitly selected repository and passes its result opaquely to workspace-owned canMaintain. This use neither reads nor mutates catalog fields and keeps lookup authority with its cohesive public owner service; concrete service/entity plumbing alone does not make this pair a residual violation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.ProposalApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.SystemRepositoryService.getRepository(java.lang.String)> in (ProposalApiController.java:543)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.ProposalApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "Proposal generation, listing and compatibility review share explicit tenant routing and central-write authorization. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.ProposalApiController.bulkAction(java.util.Map, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (ProposalApiController.java:274)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.ProposalHeadApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalHeadApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "The proposal head endpoint resolves the selected request context before reading its strong ETag. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.ProposalHeadApiController.readHead()> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (ProposalHeadApiController.java:43)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.QualityApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/QualityApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Quality metrics requests pass one selected context to repository-scoped review-history calculations. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.QualityApiController.currentContext()> has return type <com.taxonomy.workspace.service.RepositoryContext> in (QualityApiController.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.QualityApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/QualityApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "Quality metrics requests pass one selected context to repository-scoped review-history calculations. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.QualityApiController.currentContext()> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (QualityApiController.java:87)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.RelationApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/RelationApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "Relation list, node and count requests pass one selected context to the projection read boundary. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.RelationApiController.countRelations()> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (RelationApiController.java:135)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.RelationProjectionOperationsApiController",
+      "target": "com.taxonomy.workspace.service.BranchHeadConflictException",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/RelationProjectionOperationsApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/BranchHeadConflictException.java",
+      "classification": "owner-api",
+      "rationale": "Projection inspection/rebuild requests authorize the selected tenant before invoking knowledge operations. The workspace-owned exception supplies exact-head diagnostics for HTTP conflict handling; callers do not need the underlying storage exception or repository handle.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.rebuild(java.lang.String, java.lang.String)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getActualHeadCommit()> in (RelationProjectionOperationsApiController.java:107)",
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.rebuild(java.lang.String, java.lang.String)> calls method <com.taxonomy.workspace.service.BranchHeadConflictException.getExpectedHeadCommit()> in (RelationProjectionOperationsApiController.java:106)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.RelationProjectionOperationsApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/RelationProjectionOperationsApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Projection inspection/rebuild requests authorize the selected tenant before invoking knowledge operations. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls constructor <com.taxonomy.workspace.service.RepositoryContext.<init>(java.lang.String, java.lang.String, java.lang.String, java.lang.String, com.taxonomy.workspace.service.RepositoryScope)> in (RelationProjectionOperationsApiController.java:181)",
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationProjectionOperationsApiController.java:180)",
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationProjectionOperationsApiController.java:171)",
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (RelationProjectionOperationsApiController.java:166)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.RelationProjectionOperationsApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryMembershipService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/RelationProjectionOperationsApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryMembershipService.java",
+      "classification": "owner-api",
+      "rationale": "Projection inspection/rebuild requests authorize the selected tenant before invoking knowledge operations. canMaintain owns active-repository and effective-role evaluation; the caller consumes its boolean without duplicating membership persistence or role policy. The surrounding application-admin alternative and CENTRAL_WRITE conversion remain boundary orchestration, not part of this owner-service pair.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryMembershipService.canMaintain(com.taxonomy.workspace.model.SystemRepository, java.lang.String)> in (RelationProjectionOperationsApiController.java:173)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.RelationProjectionOperationsApiController",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/RelationProjectionOperationsApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Projection inspection/rebuild requests authorize the selected tenant before invoking knowledge operations. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_WRITE> in (RelationProjectionOperationsApiController.java:181)",
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.FORK> in (RelationProjectionOperationsApiController.java:167)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.RelationProjectionOperationsApiController",
+      "target": "com.taxonomy.workspace.service.SystemRepositoryService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/RelationProjectionOperationsApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/SystemRepositoryService.java",
+      "classification": "owner-api",
+      "rationale": "Projection inspection/rebuild requests authorize the selected tenant before invoking knowledge operations. getRepository looks up the explicitly selected repository and passes its result opaquely to workspace-owned canMaintain. This use neither reads nor mutates catalog fields and keeps lookup authority with its cohesive public owner service; concrete service/entity plumbing alone does not make this pair a residual violation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.writableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.SystemRepositoryService.getRepository(java.lang.String)> in (RelationProjectionOperationsApiController.java:170)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.RelationProjectionOperationsApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/RelationProjectionOperationsApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "Projection inspection/rebuild requests authorize the selected tenant before invoking knowledge operations. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController.readiness()> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (RelationProjectionOperationsApiController.java:61)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.controller.RelationProjectionOperationsApiController$ProjectionOperationResponse",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/RelationProjectionOperationsApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "ProjectionOperationResponse copies repository/workspace/branch identity from the operation context. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController$ProjectionOperationResponse.rebuilt(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.service.RelationProjectionOperationsService$RebuildOperation)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationProjectionOperationsApiController.java:271)",
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController$ProjectionOperationResponse.rebuilt(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.service.RelationProjectionOperationsService$RebuildOperation)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationProjectionOperationsApiController.java:269)",
+        "Method <com.taxonomy.relations.controller.RelationProjectionOperationsApiController$ProjectionOperationResponse.rebuilt(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.service.RelationProjectionOperationsService$RebuildOperation)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (RelationProjectionOperationsApiController.java:270)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/GitAuthoritativeHypothesisReviewService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Hypothesis review carries explicit context through visibility checks, Git mutation and subsequent bookkeeping. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.accept(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandMetadata)> has parameter of type <com.taxonomy.workspace.service.RepositoryContext> in (GitAuthoritativeHypothesisReviewService.java:0)",
+        "Method <com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService.mutate(com.taxonomy.relations.service.HypothesisReviewStateStore$HypothesisSnapshot, com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandMetadata, com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService$ReviewAction)> has parameter of type <com.taxonomy.workspace.service.RepositoryContext> in (GitAuthoritativeHypothesisReviewService.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.GitAuthoritativeHypothesisService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/GitAuthoritativeHypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "The productive hypothesis adapter retains compatibility signatures and passes owner ports to HypothesisService while routing review through Git authority. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.GitAuthoritativeHypothesisService.bindPersistedIds(java.util.List, java.lang.String, com.taxonomy.workspace.service.RepositoryContext, java.util.List)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (GitAuthoritativeHypothesisService.java:182)",
+        "Method <com.taxonomy.relations.service.GitAuthoritativeHypothesisService.bindPersistedIds(java.util.List, java.lang.String, com.taxonomy.workspace.service.RepositoryContext, java.util.List)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (GitAuthoritativeHypothesisService.java:183)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.GitAuthoritativeHypothesisService",
+      "target": "com.taxonomy.workspace.service.WorkspaceContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/GitAuthoritativeHypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContext.java",
+      "classification": "owner-api",
+      "rationale": "The productive hypothesis adapter retains compatibility signatures and passes owner ports to HypothesisService while routing review through Git authority. This immutable compatibility value is a workspace-owned contract, not a storage handle. Classification does not certify legacy workspace-only visibility or SHARED fallback semantics as complete repository isolation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.GitAuthoritativeHypothesisService.accept(java.lang.Long, com.taxonomy.workspace.service.WorkspaceContext)> has parameter of type <com.taxonomy.workspace.service.WorkspaceContext> in (GitAuthoritativeHypothesisService.java:0)",
+        "Method <com.taxonomy.relations.service.GitAuthoritativeHypothesisService.persistFromAnalysis(java.util.List, java.lang.String, com.taxonomy.workspace.service.WorkspaceContext)> has parameter of type <com.taxonomy.workspace.service.WorkspaceContext> in (GitAuthoritativeHypothesisService.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.GitAuthoritativeHypothesisService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslPublicationPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/GitAuthoritativeHypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslPublicationPort.java",
+      "classification": "owner-api",
+      "rationale": "The productive hypothesis adapter retains compatibility signatures and passes owner ports to HypothesisService while routing review through Git authority. The constructor passes the publication contract to its superclass; actual publication policy remains in HypothesisService.",
+      "evidence": [
+        "Constructor <com.taxonomy.relations.service.GitAuthoritativeHypothesisService.<init>(com.taxonomy.relations.repository.RelationHypothesisRepository, com.taxonomy.relations.repository.RelationEvidenceRepository, com.taxonomy.catalog.service.TaxonomyRelationService, com.taxonomy.catalog.repository.TaxonomyNodeRepository, com.taxonomy.workspace.service.WorkspaceDslPublicationPort, com.taxonomy.workspace.service.WorkspaceRepositoryContextPort, com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService, com.taxonomy.relations.service.RelationBranchProjectionReadinessService)> has parameter of type <com.taxonomy.workspace.service.WorkspaceDslPublicationPort> in (GitAuthoritativeHypothesisService.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.GitAuthoritativeHypothesisService",
+      "target": "com.taxonomy.workspace.service.WorkspaceRepositoryContextPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/GitAuthoritativeHypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceRepositoryContextPort.java",
+      "classification": "owner-api",
+      "rationale": "The productive hypothesis adapter retains compatibility signatures and passes owner ports to HypothesisService while routing review through Git authority. The constructor passes the compatibility-resolution contract to its superclass, without replicating repository/workspace lookup.",
+      "evidence": [
+        "Constructor <com.taxonomy.relations.service.GitAuthoritativeHypothesisService.<init>(com.taxonomy.relations.repository.RelationHypothesisRepository, com.taxonomy.relations.repository.RelationEvidenceRepository, com.taxonomy.catalog.service.TaxonomyRelationService, com.taxonomy.catalog.repository.TaxonomyNodeRepository, com.taxonomy.workspace.service.WorkspaceDslPublicationPort, com.taxonomy.workspace.service.WorkspaceRepositoryContextPort, com.taxonomy.relations.service.GitAuthoritativeHypothesisReviewService, com.taxonomy.relations.service.RelationBranchProjectionReadinessService)> has parameter of type <com.taxonomy.workspace.service.WorkspaceRepositoryContextPort> in (GitAuthoritativeHypothesisService.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.GitAuthoritativeProposalReviewService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/GitAuthoritativeProposalReviewService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Proposal review carries explicit context through scoped bookkeeping and Git-first mutation. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.accept(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandMetadata)> has parameter of type <com.taxonomy.workspace.service.RepositoryContext> in (GitAuthoritativeProposalReviewService.java:0)",
+        "Method <com.taxonomy.relations.service.GitAuthoritativeProposalReviewService.mutate(com.taxonomy.relations.service.ProposalReviewStateStore$ProposalSnapshot, com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandMetadata, com.taxonomy.relations.service.GitAuthoritativeProposalReviewService$ReviewAction)> has parameter of type <com.taxonomy.workspace.service.RepositoryContext> in (GitAuthoritativeProposalReviewService.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.GitAuthoritativeRelationMutationService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/GitAuthoritativeRelationMutationService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Mutation coordinates command, projection, rebuild and recovery using the same explicit context. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.execute(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> has parameter of type <com.taxonomy.workspace.service.RepositoryContext> in (GitAuthoritativeRelationMutationService.java:0)",
+        "Method <com.taxonomy.relations.service.GitAuthoritativeRelationMutationService.remove(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.dsl.command.ArchitectureRelationDslTransformer$RelationIdentity, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandMetadata)> has parameter of type <com.taxonomy.workspace.service.RepositoryContext> in (GitAuthoritativeRelationMutationService.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.GraphSearchService",
+      "target": "com.taxonomy.workspace.service.WorkspaceContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/GraphSearchService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContext.java",
+      "classification": "owner-api",
+      "rationale": "Graph search reads the supplied compatibility workspace ID for knowledge-owned relation visibility, with SHARED as its null-context fallback. This immutable compatibility value is a workspace-owned contract, not a storage handle. Classification does not certify legacy workspace-only visibility or SHARED fallback semantics as complete repository isolation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.GraphSearchService.graphSearch(java.lang.String, int, com.taxonomy.workspace.service.WorkspaceContext)> calls method <com.taxonomy.workspace.service.WorkspaceContext.workspaceId()> in (GraphSearchService.java:73)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.HypothesisReviewStateStore",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/HypothesisReviewStateStore.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Hypothesis bookkeeping selects and locks knowledge-owned rows by exact repository/workspace identity. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.HypothesisReviewStateStore.require(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (HypothesisReviewStateStore.java:42)",
+        "Method <com.taxonomy.relations.service.HypothesisReviewStateStore.require(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (HypothesisReviewStateStore.java:44)",
+        "Method <com.taxonomy.relations.service.HypothesisReviewStateStore.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (HypothesisReviewStateStore.java:75)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.HypothesisReviewStateStore",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/HypothesisReviewStateStore.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Hypothesis bookkeeping selects and locks knowledge-owned rows by exact repository/workspace identity. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.HypothesisReviewStateStore.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_READ> in (HypothesisReviewStateStore.java:75)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.HypothesisService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/HypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Hypothesis lifecycle and persistence retain repository/workspace/actor identity and delegate compatibility resolution and DSL publication to workspace. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.HypothesisService.accept(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (HypothesisService.java:229)",
+        "Method <com.taxonomy.relations.service.HypothesisService.accept(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (HypothesisService.java:229)",
+        "Method <com.taxonomy.relations.service.HypothesisService.persistFromAnalysis(java.util.List, java.lang.String, com.taxonomy.workspace.service.RepositoryContext, boolean)> calls method <com.taxonomy.workspace.service.RepositoryContext.username()> in (HypothesisService.java:145)",
+        "Method <com.taxonomy.relations.service.HypothesisService.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (HypothesisService.java:476)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.HypothesisService",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/HypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Hypothesis lifecycle and persistence retain repository/workspace/actor identity and delegate compatibility resolution and DSL publication to workspace. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.HypothesisService.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_READ> in (HypothesisService.java:476)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.HypothesisService",
+      "target": "com.taxonomy.workspace.service.WorkspaceContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/HypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContext.java",
+      "classification": "owner-api",
+      "rationale": "Hypothesis lifecycle and persistence retain repository/workspace/actor identity and delegate compatibility resolution and DSL publication to workspace. This immutable compatibility value is a workspace-owned contract, not a storage handle. Classification does not certify legacy workspace-only visibility or SHARED fallback semantics as complete repository isolation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.HypothesisService.accept(java.lang.Long, com.taxonomy.workspace.service.WorkspaceContext)> has parameter of type <com.taxonomy.workspace.service.WorkspaceContext> in (HypothesisService.java:0)",
+        "Method <com.taxonomy.relations.service.HypothesisService.applyForSession(java.lang.Long, com.taxonomy.workspace.service.WorkspaceContext)> has parameter of type <com.taxonomy.workspace.service.WorkspaceContext> in (HypothesisService.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.HypothesisService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslPublicationPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/HypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslPublicationPort.java",
+      "classification": "owner-api",
+      "rationale": "Hypothesis lifecycle and persistence retain repository/workspace/actor identity and delegate compatibility resolution and DSL publication to workspace. publishSnapshot receives completed DSL, explicit context, target branch and message; knowledge owns generation and immediate/afterCommit timing while workspace owns publication.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.HypothesisService.commitHypothesesAsDsl(java.util.List, java.lang.String, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.WorkspaceDslPublicationPort.publishSnapshot(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, java.lang.String, java.lang.String)> in (HypothesisService.java:375)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.HypothesisService",
+      "target": "com.taxonomy.workspace.service.WorkspaceRepositoryContextPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/HypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceRepositoryContextPort.java",
+      "classification": "owner-api",
+      "rationale": "Hypothesis lifecycle and persistence retain repository/workspace/actor identity and delegate compatibility resolution and DSL publication to workspace. resolveLegacyContext delegates supplied compatibility selection, owner validation and provenance resolution to the workspace-owned port rather than consulting catalog persistence.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.HypothesisService.resolveLegacyContext(com.taxonomy.workspace.service.WorkspaceContext)> calls method <com.taxonomy.workspace.service.WorkspaceRepositoryContextPort.resolve(com.taxonomy.workspace.service.WorkspaceContext)> in (HypothesisService.java:464)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.HypothesisService$1",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/HypothesisService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "The afterCommit callback retains the supplied immutable context for publication and failure diagnostics. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.HypothesisService$1.afterCommit()> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (HypothesisService.java:358)",
+        "Method <com.taxonomy.relations.service.HypothesisService$1.afterCommit()> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (HypothesisService.java:359)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.ProposalReviewStateStore",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/ProposalReviewStateStore.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Proposal bookkeeping selects and updates knowledge-owned rows by exact repository/workspace identity. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.ProposalReviewStateStore.find(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext, boolean)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (ProposalReviewStateStore.java:76)",
+        "Method <com.taxonomy.relations.service.ProposalReviewStateStore.find(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext, boolean)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (ProposalReviewStateStore.java:78)",
+        "Method <com.taxonomy.relations.service.ProposalReviewStateStore.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (ProposalReviewStateStore.java:101)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.ProposalReviewStateStore",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/ProposalReviewStateStore.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Proposal bookkeeping selects and updates knowledge-owned rows by exact repository/workspace identity. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.ProposalReviewStateStore.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_WRITE> in (ProposalReviewStateStore.java:95)",
+        "Method <com.taxonomy.relations.service.ProposalReviewStateStore.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.FORK> in (ProposalReviewStateStore.java:96)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationBranchProjectionReadinessService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationBranchProjectionReadinessService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Readiness compares the selected branch head against knowledge-owned projection checkpoints and rows. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionReadinessService.inspect(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationBranchProjectionReadinessService.java:70)",
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionReadinessService.inspect(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationBranchProjectionReadinessService.java:68)",
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionReadinessService.inspect(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (RelationBranchProjectionReadinessService.java:65)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationBranchProjectionReadinessService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationBranchProjectionReadinessService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Readiness compares the selected branch head against knowledge-owned projection checkpoints and rows. The read contract selects explicit context or normalizes full commit IDs; knowledge retains its semantic checks and receives no storage implementation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionReadinessService.inspect(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort.openRead(com.taxonomy.workspace.service.RepositoryContext)> in (RelationBranchProjectionReadinessService.java:54)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationBranchProjectionReadinessService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationBranchProjectionReadinessService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Readiness compares the selected branch head against knowledge-owned projection checkpoints and rows. RepositoryRead supplies only the observed head, exact DSL, precondition, metadata or ancestry operations for this caller; the owner retains storage handles and failure semantics.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionReadinessService.readHead(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead.currentHead()> in (RelationBranchProjectionReadinessService.java:136)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationBranchProjectionRebuildService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationBranchProjectionRebuildService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Rebuild captures the selected head, reads its exact DSL, validates it and verifies the head before transactional replacement. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildService.rebuild(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationBranchProjectionRebuildService.java:52)",
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildService.requireMutable(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (RelationBranchProjectionRebuildService.java:195)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationBranchProjectionRebuildService",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationBranchProjectionRebuildService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Rebuild captures the selected head, reads its exact DSL, validates it and verifies the head before transactional replacement. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildService.requireMutable(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_READ> in (RelationBranchProjectionRebuildService.java:195)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationBranchProjectionRebuildService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationBranchProjectionRebuildService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Rebuild captures the selected head, reads its exact DSL, validates it and verifies the head before transactional replacement. The read contract selects explicit context or normalizes full commit IDs; knowledge retains its semantic checks and receives no storage implementation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildService.rebuild(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort.openRead(com.taxonomy.workspace.service.RepositoryContext)> in (RelationBranchProjectionRebuildService.java:51)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationBranchProjectionRebuildService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationBranchProjectionRebuildService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Rebuild captures the selected head, reads its exact DSL, validates it and verifies the head before transactional replacement. RepositoryRead supplies only the observed head, exact DSL, precondition, metadata or ancestry operations for this caller; the owner retains storage handles and failure semantics.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildService.readDsl(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead.dslAtCommit(java.lang.String)> in (RelationBranchProjectionRebuildService.java:78)",
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildService.readHead(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead.currentHead()> in (RelationBranchProjectionRebuildService.java:61)",
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildService.verifyHead(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead.verifyExpectedHead(java.lang.String)> in (RelationBranchProjectionRebuildService.java:97)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationBranchProjectionRebuildWriter",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationBranchProjectionRebuildWriter.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Transactional replacement keys knowledge-owned projection rows and checkpoints by repository/workspace/branch. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildWriter.projection(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.service.RelationBranchProjectionRebuildService$RelationSnapshot)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationBranchProjectionRebuildWriter.java:101)",
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildWriter.projection(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.service.RelationBranchProjectionRebuildService$RelationSnapshot)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationBranchProjectionRebuildWriter.java:99)",
+        "Method <com.taxonomy.relations.service.RelationBranchProjectionRebuildWriter.projection(com.taxonomy.workspace.service.RepositoryContext, java.lang.String, com.taxonomy.relations.service.RelationBranchProjectionRebuildService$RelationSnapshot)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (RelationBranchProjectionRebuildWriter.java:100)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationDecisionProjectionService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationDecisionProjectionService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Decision projection verifies command identity and immutable Git evidence before producing a knowledge-owned projection request. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.project(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationDecisionProjectionService.java:84)",
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.project(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationDecisionProjectionService.java:82)",
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.project(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (RelationDecisionProjectionService.java:83)",
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.validate(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (RelationDecisionProjectionService.java:105)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationDecisionProjectionService",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationDecisionProjectionService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Decision projection verifies command identity and immutable Git evidence before producing a knowledge-owned projection request. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.validate(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_READ> in (RelationDecisionProjectionService.java:105)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationDecisionProjectionService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationDecisionProjectionService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Decision projection verifies command identity and immutable Git evidence before producing a knowledge-owned projection request. The read contract selects explicit context or normalizes full commit IDs; knowledge retains its semantic checks and receives no storage implementation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.readAuthoritativeState(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.service.RelationDecisionProjectionService$ValidatedCommand, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort.openRead(com.taxonomy.workspace.service.RepositoryContext)> in (RelationDecisionProjectionService.java:169)",
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.requireCommitId(java.lang.String, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort.normalizeCommitId(java.lang.String)> in (RelationDecisionProjectionService.java:362)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationDecisionProjectionService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort$CommitMetadata",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationDecisionProjectionService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Decision projection verifies command identity and immutable Git evidence before producing a knowledge-owned projection request. Detached immutable commit metadata lets knowledge verify relation-command summary, actor, causation and parent evidence without inspecting Git objects.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.verifyCreatedCommit(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead, com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$CommitMetadata.author()> in (RelationDecisionProjectionService.java:279)",
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.verifyCreatedCommit(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead, com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$CommitMetadata.message()> in (RelationDecisionProjectionService.java:285)",
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.verifyCreatedCommit(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead, com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$CommitMetadata.parents()> in (RelationDecisionProjectionService.java:294)",
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.verifyCreatedCommit(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead, com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$CommitMetadata.summary()> in (RelationDecisionProjectionService.java:275)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationDecisionProjectionService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationDecisionProjectionService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Decision projection verifies command identity and immutable Git evidence before producing a knowledge-owned projection request. RepositoryRead supplies only the observed head, exact DSL, precondition, metadata or ancestry operations for this caller; the owner retains storage handles and failure semantics.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.readAuthoritativeState(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.service.RelationDecisionProjectionService$ValidatedCommand, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead.dslAtCommit(java.lang.String)> in (RelationDecisionProjectionService.java:178)",
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.verifyAuthority(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead, com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead.verifyExpectedHead(java.lang.String)> in (RelationDecisionProjectionService.java:243)",
+        "Method <com.taxonomy.relations.service.RelationDecisionProjectionService.verifyCreatedCommit(com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead, com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$CommandResult, com.taxonomy.relations.command.ArchitectureRelationGitCommandService$RelationCommand, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead.commitMetadata(java.lang.String)> in (RelationDecisionProjectionService.java:271)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionOperationsService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionOperationsService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Operational rebuild verifies the requested exact head before rebuild and recovery reconciliation. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionOperationsService.requireMutable(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (RelationProjectionOperationsService.java:107)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionOperationsService",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionOperationsService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Operational rebuild verifies the requested exact head before rebuild and recovery reconciliation. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionOperationsService.requireMutable(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_READ> in (RelationProjectionOperationsService.java:107)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionOperationsService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionOperationsService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Operational rebuild verifies the requested exact head before rebuild and recovery reconciliation. The read contract selects explicit context or normalizes full commit IDs; knowledge retains its semantic checks and receives no storage implementation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionOperationsService.rebuild(com.taxonomy.workspace.service.RepositoryContext, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort.openRead(com.taxonomy.workspace.service.RepositoryContext)> in (RelationProjectionOperationsService.java:58)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionOperationsService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionOperationsService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Operational rebuild verifies the requested exact head before rebuild and recovery reconciliation. RepositoryRead supplies only the observed head, exact DSL, precondition, metadata or ancestry operations for this caller; the owner retains storage handles and failure semantics.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionOperationsService.rebuild(com.taxonomy.workspace.service.RepositoryContext, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead.verifyExpectedHead(java.lang.String)> in (RelationProjectionOperationsService.java:59)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionReadService",
+      "target": "com.taxonomy.workspace.model.SystemRepository",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionReadService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/model/SystemRepository.java",
+      "classification": "residual-violation",
+      "rationale": "mayUseLegacyFallback reads primary repositoryId/defaultBranch from the catalog entity to decide whether legacy knowledge rows are valid. Keep the fallback policy in knowledge, but obtain its required configured identity through an owner boundary instead of interpreting persistence metadata.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionReadService.mayUseLegacyFallback(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.model.SystemRepository.getDefaultBranch()> in (RelationProjectionReadService.java:257)",
+        "Method <com.taxonomy.relations.service.RelationProjectionReadService.mayUseLegacyFallback(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.model.SystemRepository.getRepositoryId()> in (RelationProjectionReadService.java:256)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionReadService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionReadService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Relation reads choose a proven branch projection or the tightly limited primary-default-branch legacy fallback. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionReadService.mayUseLegacyFallback(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationProjectionReadService.java:257)",
+        "Method <com.taxonomy.relations.service.RelationProjectionReadService.mayUseLegacyFallback(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationProjectionReadService.java:256)",
+        "Method <com.taxonomy.relations.service.RelationProjectionReadService.mayUseLegacyFallback(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (RelationProjectionReadService.java:251)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionReadService",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionReadService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Relation reads choose a proven branch projection or the tightly limited primary-default-branch legacy fallback. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionReadService.mayUseLegacyFallback(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_READ> in (RelationProjectionReadService.java:251)",
+        "Method <com.taxonomy.relations.service.RelationProjectionReadService.mayUseLegacyFallback(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_WRITE> in (RelationProjectionReadService.java:252)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionReadService",
+      "target": "com.taxonomy.workspace.service.SystemRepositoryService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionReadService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/SystemRepositoryService.java",
+      "classification": "residual-violation",
+      "rationale": "mayUseLegacyFallback reads primary repositoryId/defaultBranch from the catalog entity to decide whether legacy knowledge rows are valid. Keep the fallback policy in knowledge, but obtain its required configured identity through an owner boundary instead of interpreting persistence metadata.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionReadService.mayUseLegacyFallback(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.SystemRepositoryService.getPrimaryRepository()> in (RelationProjectionReadService.java:255)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionReadService$RelationProjectionUnavailableException",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionReadService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "The unavailable-projection exception retains and reports the exact repository/branch selection. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Constructor <com.taxonomy.relations.service.RelationProjectionReadService$RelationProjectionUnavailableException.<init>(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.service.RelationBranchProjectionReadinessService$ReadinessState, java.lang.String, java.lang.String, long)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationProjectionReadService.java:368)",
+        "Constructor <com.taxonomy.relations.service.RelationProjectionReadService$RelationProjectionUnavailableException.<init>(com.taxonomy.workspace.service.RepositoryContext, com.taxonomy.relations.service.RelationBranchProjectionReadinessService$ReadinessState, java.lang.String, java.lang.String, long)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationProjectionReadService.java:368)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionRecoveryService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionRecoveryService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Recovery records and reconciles knowledge-owned projection failures using exact tenant identity and immutable ancestry evidence. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.pending(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationProjectionRecoveryService.java:71)",
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.pending(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationProjectionRecoveryService.java:68)",
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.pending(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (RelationProjectionRecoveryService.java:70)",
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.requireMutable(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (RelationProjectionRecoveryService.java:155)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionRecoveryService",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionRecoveryService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Recovery records and reconciles knowledge-owned projection failures using exact tenant identity and immutable ancestry evidence. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.requireMutable(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_READ> in (RelationProjectionRecoveryService.java:155)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionRecoveryService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionRecoveryService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Recovery records and reconciles knowledge-owned projection failures using exact tenant identity and immutable ancestry evidence. The read contract selects explicit context or normalizes full commit IDs; knowledge retains its semantic checks and receives no storage implementation.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.reconcileAfterRebuild(com.taxonomy.workspace.service.RepositoryContext, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort.openRead(com.taxonomy.workspace.service.RepositoryContext)> in (RelationProjectionRecoveryService.java:112)",
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.requireCommitId(java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort.normalizeCommitId(java.lang.String)> in (RelationProjectionRecoveryService.java:167)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionRecoveryService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort$CommitRelationship",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionRecoveryService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Recovery records and reconciles knowledge-owned projection failures using exact tenant identity and immutable ancestry evidence. The owner-defined SAME/ANCESTOR evidence drives reconciliation; UNRELATED/UNAVAILABLE are not treated as successful proofs.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.reconcileAfterRebuild(com.taxonomy.workspace.service.RepositoryContext, java.lang.String)> gets field <com.taxonomy.workspace.service.WorkspaceDslReadPort$CommitRelationship.ANCESTOR> in (RelationProjectionRecoveryService.java:127)",
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.reconcileAfterRebuild(com.taxonomy.workspace.service.RepositoryContext, java.lang.String)> gets field <com.taxonomy.workspace.service.WorkspaceDslReadPort$CommitRelationship.SAME> in (RelationProjectionRecoveryService.java:125)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProjectionRecoveryService",
+      "target": "com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProjectionRecoveryService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceDslReadPort.java",
+      "classification": "owner-api",
+      "rationale": "Recovery records and reconciles knowledge-owned projection failures using exact tenant identity and immutable ancestry evidence. RepositoryRead supplies only the observed head, exact DSL, precondition, metadata or ancestry operations for this caller; the owner retains storage handles and failure semantics.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProjectionRecoveryService.reconcileAfterRebuild(com.taxonomy.workspace.service.RepositoryContext, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceDslReadPort$RepositoryRead.relationshipsTo(java.lang.String, java.util.List)> in (RelationProjectionRecoveryService.java:116)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProposalService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProposalService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Proposal generation and reads use repository/workspace context to select knowledge-owned candidates, duplicates and proposal rows. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProposalService.createFromHypothesisInContext(java.lang.String, java.lang.String, com.taxonomy.model.RelationType, double, java.lang.String, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.branch()> in (RelationProposalService.java:324)",
+        "Method <com.taxonomy.relations.service.RelationProposalService.createFromHypothesisInContext(java.lang.String, java.lang.String, com.taxonomy.model.RelationType, double, java.lang.String, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationProposalService.java:299)",
+        "Method <com.taxonomy.relations.service.RelationProposalService.createFromHypothesisInContext(java.lang.String, java.lang.String, com.taxonomy.model.RelationType, double, java.lang.String, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.username()> in (RelationProposalService.java:338)",
+        "Method <com.taxonomy.relations.service.RelationProposalService.createFromHypothesisInContext(java.lang.String, java.lang.String, com.taxonomy.model.RelationType, double, java.lang.String, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (RelationProposalService.java:303)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProposalService",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProposalService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Proposal generation and reads use repository/workspace context to select knowledge-owned candidates, duplicates and proposal rows. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProposalService.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_WRITE> in (RelationProposalService.java:396)",
+        "Method <com.taxonomy.relations.service.RelationProposalService.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.FORK> in (RelationProposalService.java:403)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationProposalService",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProposalService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "residual-violation",
+      "rationale": "Compatibility methods proposeRelations, getPendingProposals, getAllProposals, getProposalsForNode and createFromHypothesis resolve implicit request context inside the transactional proposal service despite existing InContext methods. Move context capture to the calling boundary; preserve explicit central-write authorization and fail-closed selection.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationProposalService.createFromHypothesis(java.lang.String, java.lang.String, com.taxonomy.model.RelationType, double, java.lang.String)> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentRepositoryContext()> in (RelationProposalService.java:278)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationQualityService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationQualityService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Quality and confidence calculations select review history within the supplied repository/workspace visibility scope. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationQualityService.acceptanceHistoryWeight(java.lang.String, java.lang.String, com.taxonomy.model.RelationType, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationQualityService.java:120)",
+        "Method <com.taxonomy.relations.service.RelationQualityService.acceptanceHistoryWeight(java.lang.String, java.lang.String, com.taxonomy.model.RelationType, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (RelationQualityService.java:121)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationReviewService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationReviewService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Legacy proposal review validates write scope and selects knowledge-owned proposals by exact repository/workspace. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationReviewService.acceptProposal(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.repositoryId()> in (RelationReviewService.java:64)",
+        "Method <com.taxonomy.relations.service.RelationReviewService.acceptProposal(java.lang.Long, com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.workspaceId()> in (RelationReviewService.java:65)",
+        "Method <com.taxonomy.relations.service.RelationReviewService.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> calls method <com.taxonomy.workspace.service.RepositoryContext.scope()> in (RelationReviewService.java:147)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationReviewService",
+      "target": "com.taxonomy.workspace.service.RepositoryScope",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationReviewService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryScope.java",
+      "classification": "owner-api",
+      "rationale": "Legacy proposal review validates write scope and selects knowledge-owned proposals by exact repository/workspace. The owner-defined scope enum is a neutral operation value used for scope checks or response propagation; it exposes no implementation or persistence authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationReviewService.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.CENTRAL_WRITE> in (RelationReviewService.java:147)",
+        "Method <com.taxonomy.relations.service.RelationReviewService.requireWritableContext(com.taxonomy.workspace.service.RepositoryContext)> gets field <com.taxonomy.workspace.service.RepositoryScope.FORK> in (RelationReviewService.java:153)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.relations.service.RelationValidationService",
+      "target": "com.taxonomy.workspace.service.RepositoryContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationValidationService.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/RepositoryContext.java",
+      "classification": "owner-api",
+      "rationale": "Candidate validation forwards the supplied context to scoped review-history weighting. The validated immutable routing value carries explicit selection across this boundary; knowledge consumes or forwards identity without taking workspace lookup/storage authority.",
+      "evidence": [
+        "Method <com.taxonomy.relations.service.RelationValidationService.validate(com.taxonomy.catalog.model.TaxonomyNode, com.taxonomy.dto.TaxonomyNodeDto, com.taxonomy.model.RelationType, int, int, com.taxonomy.workspace.service.RepositoryContext)> has parameter of type <com.taxonomy.workspace.service.RepositoryContext> in (RelationValidationService.java:0)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.search.controller.SearchApiController",
+      "target": "com.taxonomy.versioning.service.RepositoryStateService",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/search/controller/SearchApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/versioning/service/RepositoryStateService.java",
+      "classification": "composition-orchestration",
+      "rationale": "Graph-search request setup provisions workspace state before resolving a compatibility context and retains an existing SHARED fallback on failure. ensureWorkspaceState deliberately provisions before request-context capture; this ordering and the current failure fallback belong to application request setup, not search semantics.",
+      "evidence": [
+        "Method <com.taxonomy.search.controller.SearchApiController.currentWorkspaceContext()> calls method <com.taxonomy.versioning.service.RepositoryStateService.ensureWorkspaceState(java.lang.String)> in (SearchApiController.java:139)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.search.controller.SearchApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/search/controller/SearchApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContext.java",
+      "classification": "owner-api",
+      "rationale": "Graph-search request setup provisions workspace state before resolving a compatibility context and retains an existing SHARED fallback on failure. This immutable compatibility value is a workspace-owned contract, not a storage handle. Classification does not certify legacy workspace-only visibility or SHARED fallback semantics as complete repository isolation.",
+      "evidence": [
+        "Method <com.taxonomy.search.controller.SearchApiController.currentWorkspaceContext()> gets field <com.taxonomy.workspace.service.WorkspaceContext.SHARED> in (SearchApiController.java:141)",
+        "Method <com.taxonomy.search.controller.SearchApiController.currentWorkspaceContext()> gets field <com.taxonomy.workspace.service.WorkspaceContext.SHARED> in (SearchApiController.java:145)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.search.controller.SearchApiController",
+      "target": "com.taxonomy.workspace.service.WorkspaceResolver",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/search/controller/SearchApiController.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceResolver.java",
+      "classification": "composition-orchestration",
+      "rationale": "Graph-search request setup provisions workspace state before resolving a compatibility context and retains an existing SHARED fallback on failure. Request/principal selection is outer-boundary coordination with knowledge behavior; pass the resolved value onward without recapturing identity inside domain work.",
+      "evidence": [
+        "Method <com.taxonomy.search.controller.SearchApiController.currentWorkspaceContext()> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentContext()> in (SearchApiController.java:140)",
+        "Method <com.taxonomy.search.controller.SearchApiController.currentWorkspaceContext()> calls method <com.taxonomy.workspace.service.WorkspaceResolver.resolveCurrentUsername()> in (SearchApiController.java:137)"
+      ]
+    },
+    {
+      "origin": "com.taxonomy.search.service.SearchFacade",
+      "target": "com.taxonomy.workspace.service.WorkspaceContext",
+      "originFile": "taxonomy-app/src/main/java/com/taxonomy/search/service/SearchFacade.java",
+      "targetFile": "taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceContext.java",
+      "classification": "owner-api",
+      "rationale": "Graph search forwards the explicit compatibility context to the knowledge-owned graph search service. This immutable compatibility value is a workspace-owned contract, not a storage handle. Classification does not certify legacy workspace-only visibility or SHARED fallback semantics as complete repository isolation.",
+      "evidence": [
+        "Method <com.taxonomy.search.service.SearchFacade.graphSearch(java.lang.String, int, com.taxonomy.workspace.service.WorkspaceContext)> has parameter of type <com.taxonomy.workspace.service.WorkspaceContext> in (SearchFacade.java:0)"
+      ]
+    }
+  ],
+  "classificationCounts": {
+    "owner-api": 95,
+    "composition-orchestration": 15,
+    "residual-violation": 7
+  }
+}
