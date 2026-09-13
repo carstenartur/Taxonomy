@@ -1,0 +1,36 @@
+name: Workspace authoritative failure summaries
+on:
+  push:
+    branches: [verification/628-physical-workspace]
+    paths: [.github/workflows/628-failure-summaries.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read completed failure logs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          for job in 103804840967 103804841612 103804841695 103804841696 103803484003; do
+            curl --fail --silent --show-error --location --header "Authorization: Bearer $GH_TOKEN" \
+              "https://api.github.com/repos/carstenartur/Taxonomy/actions/jobs/$job/logs" --output "$RUNNER_TEMP/$job.log"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          for job in [103804840967,103804841612,103804841695,103804841696,103803484003]:
+              p=Path(os.environ['RUNNER_TEMP'])/f'{job}.log'
+              lines=p.read_text(errors='replace').splitlines()
+              print('\nJOB',job,'lines',len(lines))
+              indices=[i for i,s in enumerate(lines) if '[ERROR]' in s or 'FAILURE!' in s or 'RESULT full' in s or 'RESULT architecture' in s]
+              shown=set()
+              for i in indices[:25]:
+                  for n in range(max(0,i-2),min(len(lines),i+6)):
+                      if n not in shown: print(lines[n]); shown.add(n)
+              print('TAIL\n'+'\n'.join(lines[-25:]))
+          PY
