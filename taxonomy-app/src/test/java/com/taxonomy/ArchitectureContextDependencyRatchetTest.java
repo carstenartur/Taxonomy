@@ -175,20 +175,25 @@ class ArchitectureContextDependencyRatchetTest {
                         + " but found " + actualRootJavaFiles)
                 .containsExactlyInAnyOrderElementsOf(policy.rootCompositionClasses());
 
-        List<String> unclassifiedPackages;
-        try (var sources = Files.walk(packageRoot)) {
-            unclassifiedPackages = sources
-                    .filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().endsWith(".java"))
-                    .map(Path::getParent)
-                    .map(packageRoot::relativize)
-                    .map(Path::toString)
-                    .filter(relativePackage -> !relativePackage.isEmpty())
-                    .map(relativePackage -> "com.taxonomy." + relativePackage.replace('\\', '.').replace('/', '.'))
-                    .filter(packageName -> contextFor(packageName, policy.contexts()) == null)
-                    .distinct()
-                    .sorted()
-                    .toList();
+        List<String> unclassifiedPackages = new ArrayList<>();
+        for (String module : List.of("taxonomy-app", "taxonomy-workspace")) {
+            Path contextRoot = repositoryRoot.resolve(module + "/src/main/java/com/taxonomy");
+            assertThat(contextRoot).as("production context root %s", module).isDirectory();
+            try (var sources = Files.walk(contextRoot)) {
+                unclassifiedPackages.addAll(sources
+                        .filter(Files::isRegularFile)
+                        .filter(path -> path.getFileName().toString().endsWith(".java"))
+                        .map(Path::getParent)
+                        .map(contextRoot::relativize)
+                        .map(Path::toString)
+                        .filter(relativePackage -> !relativePackage.isEmpty())
+                        .map(relativePackage -> "com.taxonomy." + relativePackage.replace('\\', '.').replace('/', '.'))
+                        .filter(packageName -> contextFor(packageName, policy.contexts()) == null)
+                        .distinct()
+                        .sorted()
+                        .toList());
+            }
+
         }
 
         assertThat(unclassifiedPackages)

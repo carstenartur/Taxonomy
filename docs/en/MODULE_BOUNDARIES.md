@@ -274,7 +274,7 @@ reactor so every module's production output is current:
 
 The profile includes all six ownership guards for decision reports, commit
 history, DSL document composition, workspace authority, application schema composition and workspace storage in both `pom.xml` and
-`.mvn/verification-suites.json`. Its eleven selected test classes are synchronized
+`.mvn/verification-suites.json`. Its twelve selected test classes are synchronized
 between the POM and catalog. Full CI verification remains
 `./mvnw -B verify -Pci`.
 
@@ -297,3 +297,12 @@ Issue #628 is the implementation parent. The intended order is:
 9. reassess `provenance` and `preferences` from the measured dependency graph rather than module-count aesthetics.
 
 Physical Maven moves therefore come **after** logical boundaries are enforceable. This keeps each PR reviewable and avoids hiding existing coupling behind new POM dependencies.
+
+## Physical workspace module
+
+`taxonomy-workspace` owns the workspace, versioning and editor production packages.
+`taxonomy-app` depends on its ordinary JAR; application configuration and SQL migrations
+remain in the application. Java package names and runtime contracts are unchanged.
+`ArchitectureWorkspaceModuleTest` is included in both architecture selectors and
+requires physical source and compiled ownership. Maven enforces no dependency back
+to the application. The other six planned feature modules remain to be extracted.

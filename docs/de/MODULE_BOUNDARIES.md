@@ -284,7 +284,7 @@ Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
 
 Das Profil enthält alle sechs Ownership-Guards für Entscheidungsberichte,
 Commit-Historie, DSL-Dokument-Komposition, Workspace-Autorität, Anwendungsschema-Komposition und Workspace Storage sowohl in `pom.xml` als auch in
-`.mvn/verification-suites.json`. Die elf ausgewählten Testklassen sind zwischen
+`.mvn/verification-suites.json`. Die zwölf ausgewählten Testklassen sind zwischen
 POM und Katalog synchronisiert. Die vollständige CI-Verifikation bleibt `./mvnw -B verify -Pci`.
 
 Der Ratchet durchläuft außerdem `taxonomy-app/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb des Root-Packages muss in `.github/architecture-contexts.json` klassifiziert sein. Ein neues Feature-Package kann den Dependency-Guard daher nicht umgehen, indem es außerhalb der vorhandenen Context-Patterns angelegt wird. Root-Level-Composition-Klassen bleiben ausdrücklich zulässig.
@@ -306,3 +306,12 @@ Issue #628 ist der Parent für die Umsetzung. Die vorgesehene Reihenfolge lautet
 9. `provenance` und `preferences` anhand des gemessenen Abhängigkeitsgraphen statt anhand der Modulzahl neu bewerten.
 
 Physische Maven-Verschiebungen erfolgen damit **erst nach** der Durchsetzung logischer Grenzen. So bleiben die PRs reviewbar und vorhandene Kopplung wird nicht hinter neuen POM-Abhängigkeiten versteckt.
+
+## Physisches Workspace-Modul
+
+`taxonomy-workspace` enthält die Production-Packages für Workspace, Versionierung
+und Editor. `taxonomy-app` bindet das normale JAR ein; Anwendungskonfiguration und
+SQL-Migrationen bleiben in der Anwendung. Java-Packages und Laufzeitverträge sind unverändert.
+`ArchitectureWorkspaceModuleTest` ist in beiden Architektur-Selektoren enthalten und
+prüft die physische Source- und Klassen-Zuordnung. Maven verbietet Rückabhängigkeiten
+auf die Anwendung. Die sechs anderen geplanten Fachmodule sind noch auszulagern.
