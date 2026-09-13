@@ -1,0 +1,121 @@
+name: Workspace assessment documentary verification
+
+on:
+  push:
+    branches: [verification/628-selector-sources]
+    paths: [.github/workflows/628-assessment-verification.yml]
+
+permissions:
+  contents: write
+
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: d746762ec77bc6c29cd48f894c56eab9ff60100e
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Validate bounded prose and sorted exhaustive inventory
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import collections, copy, hashlib, json, os, pathlib, subprocess
+          root = pathlib.Path.cwd()
+          base = 'd746762ec77bc6c29cd48f894c56eab9ff60100e'
+          def git(*args):
+              return subprocess.check_output(['git', *args])
+          assert git('rev-parse', 'HEAD').decode().strip() == base
+          report = 'docs/dev/WORKSPACE_DEPENDENCY_ASSESSMENT.md'
+          plan = 'docs/superpowers/plans/2026-09-13-workspace-graph-assessment.md'
+          spec = 'docs/superpowers/specs/2026-09-13-workspace-graph-assessment-design.md'
+          inventory = 'docs/dev/workspace-dependency-classification.json'
+          def replace(path, old, new):
+              file = root / path
+              text = file.read_text()
+              assert text.count(old) == 1, (path, old)
+              file.write_text(text.replace(old, new, 1))
+          replace(report,
+              'Fresh native architecture evidence supplied for this assessment reports 137 passing tests',
+              'Historical native architecture evidence for the assessment snapshot records 137 passing tests')
+          for old, new in [('Java21', 'Java 21'), ('all117', 'all 117'), ('provisional85/25/7', 'provisional 85/25/7')]:
+              replace(plan, old, new)
+          for old, new in [
+              ('The clean native architecture run passed137 tests across13classes, including111fixtures',
+               'The historical clean native architecture run for that snapshot passed 137 tests across 13 classes, including 111 fixtures'),
+              ('classified1408', 'classified 1,408'), ('has140edges', 'has 140 edges'),
+              ('and472distinct', 'and 472 distinct'), ('retains117distinct', 'retains 117 distinct'),
+              ('provisional117-pair', 'provisional 117-pair'), ('its85/25/7', 'its 85/25/7'),
+              ('literal`draft`', 'literal `draft`')]:
+              replace(spec, old, new)
+          original = json.loads((root / inventory).read_text())
+          data = copy.deepcopy(original)
+          assert data['workspaceOutgoing'] == []
+          entries = data['knowledgeToWorkspace']
+          key = lambda entry: (entry['origin'], entry['target'])
+          keys = [key(entry) for entry in entries]
+          assert len(keys) == len(set(keys)) == 117
+          inversions = [(keys[i - 1], keys[i]) for i in range(1, len(keys)) if keys[i - 1] > keys[i]]
+          print('Original ordering inversions:', json.dumps(inversions))
+          data['knowledgeToWorkspace'] = sorted(entries, key=key)
+          normalized = copy.deepcopy(original)
+          normalized['knowledgeToWorkspace'] = sorted(original['knowledgeToWorkspace'], key=key)
+          assert data == normalized
+          actual_counts = dict(collections.Counter(entry['classification'] for entry in entries))
+          assert actual_counts == data['classificationCounts'] == {'owner-api': 95, 'composition-orchestration': 15, 'residual-violation': 7}
+          for name, field in [('.github/architecture-dependency-baseline.json', 'baselineSha256'), ('.github/architecture-contexts.json', 'contextsSha256')]:
+              assert hashlib.sha256((root / name).read_bytes()).hexdigest() == data[field]
+          paths = sorted({entry[field] for entry in entries for field in ('originFile', 'targetFile')})
+          for path in paths:
+              assert (root / path).is_file(), path
+              assert (root / path).read_bytes() == git('show', data['sourceCommit'] + ':' + path), path
+          assert all(entry['rationale'] and entry['evidence'] for entry in entries)
+          if data != original:
+              (root / inventory).write_text(json.dumps(data, indent=2, ensure_ascii=False) + '\n')
+          changed = git('diff', '--name-only').decode().splitlines()
+          assert {report, plan, spec}.issubset(changed)
+          assert set(changed).issubset({report, plan, spec, inventory}), changed
+          subprocess.run(['git', 'diff', '--check'], check=True)
+          evidence = pathlib.Path(os.environ['RUNNER_TEMP']) / 'assessment-evidence'
+          evidence.mkdir()
+          evidence.joinpath('change.patch').write_bytes(git('diff', '--binary'))
+          evidence.joinpath('verified.json').write_text(json.dumps({'base': base, 'changed': changed, 'pairs': len(keys), 'counts': actual_counts, 'sourceFiles': len(paths), 'orderingInversions': len(inversions), 'entryDataPreserved': data == normalized}, indent=2) + '\n')
+          print(evidence.joinpath('verified.json').read_text())
+          print(git('diff', '--stat').decode())
+          PY
+      - name: Upload verified documentary blobs without moving a branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess, urllib.request
+          evidence = pathlib.Path(os.environ['RUNNER_TEMP']) / 'assessment-evidence'
+          verified = json.loads(evidence.joinpath('verified.json').read_text())
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          assert git('rev-parse', 'HEAD') == verified['base']
+          assert git('diff', '--name-only').splitlines() == verified['changed']
+          entries = []
+          for path in verified['changed']:
+              request = urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',
+                  data=json.dumps({'content': pathlib.Path(path).read_text(), 'encoding': 'utf-8'}).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GITHUB_TOKEN'], 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'}, method='POST')
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  sha = json.load(response)['sha']
+              assert sha == git('hash-object', path)
+              entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': sha})
+          subprocess.run(['git', 'add', '--', *verified['changed']], check=True)
+          result = {'base': verified['base'], 'tree': git('write-tree'), 'entries': entries}
+          print('VERIFIED_BLOBS ' + json.dumps(result))
+          evidence.joinpath('blobs.json').write_text(json.dumps(result, indent=2) + '\n')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: assessment-documentary-evidence
+          path: ${{ runner.temp }}/assessment-evidence/
+          if-no-files-found: error
+          retention-days: 7
