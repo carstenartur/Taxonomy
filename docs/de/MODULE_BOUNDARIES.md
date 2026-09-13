@@ -121,14 +121,34 @@ Berichtserzeugung/-darstellung aus Architecture, Katalog-Scores aus Knowledge un
 Workspace-Herkunft. Die Versioning-HTTP-Adapter hängen über diesen Controller
 nicht mehr von Architecture-Decision-/Report- oder Katalog-Services ab.
 
-Die aktuelle D1-Baseline enthält **543 kontextübergreifende Klassenpaare** gegenüber
-540 nach C2. Die Änderung von **540 auf 543** macht drei Workspace-API-Referenzen
-sichtbar, die zuvor innerhalb des Workspace-Kontexts lagen; es entsteht keine
-zusätzliche Runtime-Abhängigkeit. `ArchitectureDecisionReportBoundaryTest` sichert
-den Composition-Eigentümer und die Versioning-HTTP-Grenze ab. Die verbleibende
-Workspace-zu-Feature-Kopplung in den DSL-Operations-Fassaden koordiniert weiterhin
-Architekturdokumente/-historie mit Workspace-Zustand und benötigt einen separat
-geprüften Schritt vor der physischen Extraktion.
+Der D1-Schritt erfasste **543 kontextübergreifende Klassenpaare** gegenüber 540
+nach C2. Diese historische Änderung von **540 auf 543** machte drei
+Workspace-API-Referenzen sichtbar, die zuvor innerhalb des Workspace-Kontexts
+lagen; es entstand keine zusätzliche Runtime-Abhängigkeit.
+`ArchitectureDecisionReportBoundaryTest` sichert den Composition-Eigentümer und
+die Versioning-HTTP-Grenze ab.
+
+### Git-Commit-Historie unter Workspace-Zuständigkeit (D2 von #1043)
+
+Die aktuelle D2-Baseline enthält **537 kontextübergreifende Klassenpaare**,
+gegenüber **543** nach D1. Die Änderung von **543 auf 537** ordnet die Projektion
+der Git-Commit-Historie der Workspace-Versionierung zu:
+
+| Typen | Zuständiges Package |
+|---|---|
+| `ArchitectureCommitIndex` | `com.taxonomy.versioning.model` |
+| `ArchitectureCommitIndexRepository` | `com.taxonomy.versioning.repository` |
+| `CommitIndexService`, `CommitIndexSearchLifecycle`, `CommitIndexSearchRebuilder` | `com.taxonomy.versioning.service` |
+
+Der Git-Index trägt nicht mehr zu Workspace-zu-Architecture-Abhängigkeiten bei.
+Entity-, Tabellen-, Suchindex- und Analyzer-Namen sowie Mandanten-/Branch-Scope
+und Recovery-Verhalten bleiben unverändert. `ArchitectureCommitHistoryOwnershipTest`
+verlangt, dass alle fünf Projektionstypen bei ihren Versioning-Eigentümern bleiben.
+
+Die **vier verbleibenden Workspace-zu-Architecture-Klassenpaare** betreffen das
+importierte `ArchitectureDslDocument`-Archiv und dessen Repository, auf die
+DSL-Controller und Operations-Fassaden zugreifen. Dieses Archiv bleibt bei seinem
+bestehenden Eigentümer; dieser Schritt schließt keine physische Modulextraktion ab.
 
 Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
 
@@ -136,6 +156,7 @@ Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
 2. `ArchitectureContextDependencyRatchetTest` zählt eindeutige direkte Class-to-Class-Abhängigkeiten zwischen geplanten, verbleibenden und übergangsweisen Kontexten je Package-Paar. Neue Kanten oder steigende Zähler schlagen fehl. Entfernt ein Refactoring Abhängigkeiten, muss die niedrigere Baseline im selben Change festgeschrieben werden, damit die Verbesserung später nicht unbemerkt zurückgeht.
 
 3. `ArchitectureDecisionReportBoundaryTest` verhindert Berichtsorchestrierung in Versioning-HTTP-Adaptern und verlangt, dass der Bericht-Controller in `composition.report` bleibt.
+4. `ArchitectureCommitHistoryOwnershipTest` verlangt, dass Entity, Repository und die drei Projektions-Services der Git-Commit-Historie in ihren Versioning-Owner-Packages bleiben.
 
 Das fokussierte Architekturprofil wird vom Repository-Root über den vollständigen
 Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
@@ -144,8 +165,8 @@ Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-Das Profil enthält den Ownership-Guard für Entscheidungsberichte sowohl in
-`pom.xml` als auch in `.mvn/verification-suites.json`. Die vollständige
+Das Profil enthält die Ownership-Guards für Entscheidungsberichte und
+Commit-Historie sowohl in `pom.xml` als auch in `.mvn/verification-suites.json`. Die vollständige
 CI-Verifikation bleibt `./mvnw -B verify -Pci`.
 
 Der Ratchet durchläuft außerdem `taxonomy-app/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb des Root-Packages muss in `.github/architecture-contexts.json` klassifiziert sein. Ein neues Feature-Package kann den Dependency-Guard daher nicht umgehen, indem es außerhalb der vorhandenen Context-Patterns angelegt wird. Root-Level-Composition-Klassen bleiben ausdrücklich zulässig.

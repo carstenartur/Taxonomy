@@ -61,11 +61,16 @@ class ArchitectureModuleExtractionTest {
     void physicalFeatureModulesHaveNoExtractionBlockers() throws Exception {
         Path root = findRepositoryRoot();
         Evaluation evaluation = evaluateRepository(root);
-        Path report = root.resolve("taxonomy-build/target/architecture-module-graph.txt");
-        Files.createDirectories(report.getParent());
-        Files.writeString(report, evaluation.report());
+        writeReport(root, evaluation.report());
         System.out.println(evaluation.report());
         assertThat(evaluation.violations()).withFailMessage(evaluation::report).isEmpty();
+    }
+
+    static void writeReport(Path root, String contents) throws IOException {
+        Path report = repositoryPath(root.resolve("taxonomy-build/target/architecture-module-graph.txt"),
+                root.toAbsolutePath().normalize(), "Architecture report");
+        Files.createDirectories(report.getParent());
+        Files.writeString(report, contents);
     }
 
     static Evaluation evaluateRepository(Path root) throws Exception {
@@ -430,7 +435,7 @@ class ArchitectureModuleExtractionTest {
                 // Reactor registration already resolved artifact expressions;
                 // a literal parent reference must retain that candidate too.
                 boolean registeredReactorParent = candidate.equals(reactorParent);
-                if ((!registeredReactorParent && !sameRawArtifact && !childText(candidateProject, "artifactId").equals(parentArtifact))
+                if ((!registeredReactorParent && !sameRawArtifact && !couldHaveArtifact(candidateProject, parentArtifact))
                         || (!sameRawGroup && !couldHaveGroup(candidateProject, parentGroup))) {
                     continue;
                 }
@@ -495,6 +500,12 @@ class ArchitectureModuleExtractionTest {
         // Exclude a known different group before recursion, including when an
         // external parent's artifactId happens to equal the child's own name.
         return candidate.isBlank() || couldResolveTo(interpolate(candidate, properties, new HashSet<>()), group);
+    }
+
+    private static boolean couldHaveArtifact(Element project, String artifact) {
+        Map<String, String> properties = pomProperties(project);
+        markProfileDependentProperties(project, properties);
+        return couldResolveTo(interpolate(childText(project, "artifactId"), properties, new HashSet<>()), artifact);
     }
 
     private static void markProfileDependentProperties(Element project, Map<String, String> properties) {

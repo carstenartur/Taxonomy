@@ -536,6 +536,69 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void anExternalArchitectureReportDirectoryIsRejectedBeforeWriting() throws Exception {
+        Path outside = externalFixture("outside-report-directory");
+        Path build = temporaryRepository.resolve("taxonomy-build");
+        Files.createDirectories(build);
+        Files.createSymbolicLink(build.resolve("target"), outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.writeReport(temporaryRepository, "report"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Architecture report path is outside repository through a symlink")
+                .hasMessageContaining("taxonomy-build/target/architecture-module-graph.txt");
+        assertThat(outside.resolve("architecture-module-graph.txt")).doesNotExist();
+    }
+
+    @Test
+    void anExternalArchitectureReportFileIsRejectedWithoutChangingIt() throws Exception {
+        Path outside = externalFixture("outside-report-file").resolve("architecture-module-graph.txt");
+        Files.writeString(outside, "outside sentinel");
+        Path report = temporaryRepository.resolve("taxonomy-build/target/architecture-module-graph.txt");
+        Files.createDirectories(report.getParent());
+        Files.createSymbolicLink(report, outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.writeReport(temporaryRepository, "report"))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Architecture report path is outside repository through a symlink")
+                .hasMessageContaining("taxonomy-build/target/architecture-module-graph.txt");
+        assertThat(outside).hasContent("outside sentinel");
+    }
+
+    @Test
+    void anOrdinaryArchitectureReportPathRemainsWritable() throws Exception {
+        ArchitectureModuleExtractionTest.writeReport(temporaryRepository, "ordinary report");
+
+        assertThat(temporaryRepository.resolve("taxonomy-build/target/architecture-module-graph.txt"))
+                .hasContent("ordinary report");
+    }
+
+    @Test
+    void anArchitectureReportDirectoryAliasInsideTheCheckoutRemainsWritable() throws Exception {
+        Path target = temporaryRepository.resolve("fixture-report-directory");
+        Files.createDirectories(target);
+        Path build = temporaryRepository.resolve("taxonomy-build");
+        Files.createDirectories(build);
+        Files.createSymbolicLink(build.resolve("target"), target);
+
+        ArchitectureModuleExtractionTest.writeReport(temporaryRepository, "directory alias report");
+
+        assertThat(target.resolve("architecture-module-graph.txt")).hasContent("directory alias report");
+    }
+
+    @Test
+    void anArchitectureReportFileAliasInsideTheCheckoutRemainsWritable() throws Exception {
+        Path target = temporaryRepository.resolve("fixture-report.txt");
+        Files.writeString(target, "old report");
+        Path report = temporaryRepository.resolve("taxonomy-build/target/architecture-module-graph.txt");
+        Files.createDirectories(report.getParent());
+        Files.createSymbolicLink(report, target);
+
+        ArchitectureModuleExtractionTest.writeReport(temporaryRepository, "file alias report");
+
+        assertThat(target).hasContent("file alias report");
+    }
+
+    @Test
     void anArchitecturePolicyDirectoryAliasInsideTheCheckoutRemainsValid() throws Exception {
         bytecodeRepository();
         compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
@@ -748,11 +811,7 @@ class ArchitectureModuleGraphTest {
             assertThat(root.resolve("taxonomy-app/src/test/java/com/taxonomy").resolve(source)).doesNotExist();
             assertThat(root.resolve("taxonomy-build/src/test/java/com/taxonomy").resolve(source)).isRegularFile();
         }
-        Map<String, String> dependencies = directProjectDependencies(root.resolve("taxonomy-build/pom.xml"));
-        assertThat(dependencies).containsEntry(APP, "jar:compile")
-                .containsEntry("taxonomy-coverage", "pom:compile")
-                .containsEntry("taxonomy-tooling", "jar:test")
-                .containsEntry("archunit-junit5", "jar:test");
+        assertModuleGateOwnerDependencies(root.resolve("taxonomy-build/pom.xml"));
 
         String pomSelector = profileProperty(root.resolve("pom.xml"), "architecture-tests", "test");
         JsonNode catalog = new ObjectMapper().readTree(Files.readString(root.resolve(".mvn/verification-suites.json")));
@@ -761,6 +820,29 @@ class ArchitectureModuleGraphTest {
             assertThat(pomSelector.split(",")).contains(gate);
             assertThat(catalogSelector.split(",")).contains(gate);
         }
+    }
+
+    @Test
+    void sameArtifactDependenciesFromOtherGroupsCannotSatisfyTheOwnerContract() throws Exception {
+        pom("taxonomy-build", "taxonomy-build", """
+                <dependencies>
+                  <dependency><groupId>org.example</groupId><artifactId>taxonomy-app</artifactId></dependency>
+                  <dependency><groupId>org.example</groupId><artifactId>taxonomy-coverage</artifactId><type>pom</type></dependency>
+                  <dependency><groupId>org.example</groupId><artifactId>taxonomy-tooling</artifactId><scope>test</scope></dependency>
+                  <dependency><groupId>org.example</groupId><artifactId>archunit-junit5</artifactId><scope>test</scope></dependency>
+                </dependencies>
+                """);
+
+        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository.resolve("taxonomy-build/pom.xml")))
+                .isInstanceOf(AssertionError.class);
+    }
+
+    private static void assertModuleGateOwnerDependencies(Path pom) throws Exception {
+        Map<String, String> dependencies = directProjectDependencies(pom);
+        assertThat(dependencies).containsEntry("com.taxonomy:taxonomy-app", "jar:compile")
+                .containsEntry("com.taxonomy:taxonomy-coverage", "pom:compile")
+                .containsEntry("com.taxonomy:taxonomy-tooling", "jar:test")
+                .containsEntry("com.tngtech.archunit:archunit-junit5", "jar:test");
     }
 
     @Test
@@ -1357,6 +1439,30 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void effectiveArtifactIdentityMatchesANonReactorLocalParent() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("local-parent", "org.example.build", "build-${parent.module}", """
+                <packaging>pom</packaging><properties><parent.module>local-parent</parent.module></properties>
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                <dependencyManagement><dependencies><dependency>
+                  <groupId>com.taxonomy</groupId><artifactId>taxonomy-domain</artifactId><version>1</version><scope>runtime</scope>
+                </dependency></dependencies></dependencyManagement>
+                """);
+        pom("taxonomy-a", A, """
+                <parent><groupId>org.example.build</groupId><artifactId>build-local-parent</artifactId><version>1</version>
+                  <relativePath>../local-parent/pom.xml</relativePath></parent>
+                <groupId>com.taxonomy</groupId><version>1</version>
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-domain</artifactId>
+                </dependency></dependencies>
+                """);
+
+        assertThat(fixturePomDependencies()).containsExactly(
+                new ModuleDependency(A, APP), new ModuleDependency(A, DOMAIN));
+    }
+
+    @Test
     void profileDependentLocalParentArtifactExpressionsFailClosed() throws Exception {
         propertyArtifactParentPoms("other-parent", """
                 <profiles><profile><id>choose-parent-artifact</id><properties>
@@ -1592,10 +1698,12 @@ class ArchitectureModuleGraphTest {
         Map<String, String> result = new HashMap<>();
         for (Element dependencies : directChildren(project, "dependencies")) {
             for (Element dependency : directChildren(dependencies, "dependency")) {
+                String group = directChildText(dependency, "groupId");
                 String artifact = directChildText(dependency, "artifactId");
                 String type = directChildText(dependency, "type");
                 String scope = directChildText(dependency, "scope");
-                result.put(artifact, (type.isBlank() ? "jar" : type) + ":" + (scope.isBlank() ? "compile" : scope));
+                result.put(group + ":" + artifact,
+                        (type.isBlank() ? "jar" : type) + ":" + (scope.isBlank() ? "compile" : scope));
             }
         }
         return result;

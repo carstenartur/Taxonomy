@@ -16,6 +16,10 @@ and runs UI verification in separate lanes. Plain local `verify` skips integrati
 and post-reactor gates and is not equivalent to CI. The generated report is
 printed in the test output and written to
 `taxonomy-build/target/architecture-module-graph.txt`.
+The owner fixture requires the direct coordinates `com.taxonomy:taxonomy-app`,
+`com.taxonomy:taxonomy-coverage`, `com.taxonomy:taxonomy-tooling`, and
+`com.tngtech.archunit:archunit-junit5`, together with their expected type and
+scope, so a same-named artifact from another group cannot satisfy the contract.
 
 Run the architecture suite from the repository root across the complete reactor.
 App-only commands, including the documented Keycloak-only selection, do not run
@@ -80,7 +84,9 @@ Reactor parent identity includes both group and artifact; an external parent may
 share a reactor artifact name. Unknown `com.taxonomy` parents still fail closed.
 Registered reactor parents are also matched through their resolved artifact IDs;
 a literal reference to a property-based parent name retains its inherited edges
-and managed scopes after the effective group and artifact are checked.
+and managed scopes after the effective group and artifact are checked. The same
+effective-coordinate check applies to a non-reactor local parent reached through
+`relativePath`; a different effective coordinate is not inherited.
 Every POM path is checked against the checkout before content is read, including
 normalized traversal and symlink targets. A `relativePath` outside the checkout
 fails even when Maven would allow it; symlinks that remain inside are permitted.
@@ -142,6 +148,10 @@ POM discovery, including source packages named `target`, individual linked class
 files, and linked output directories. Safe file and directory aliases retain
 their logical checkout paths for package and physical-owner mapping. Linked
 directories are checked before descent, and directory cycles fail explicitly.
+The fixed architecture report path and each existing ancestor are likewise
+checked before its parent directory is created or content is written. Report
+file and directory aliases whose targets remain in the checkout are permitted;
+an alias outside the checkout is rejected without writing its target.
 
 This pass uses Java 21 and the complete `surefire.test.class.path` (falling back
 to `java.class.path` outside Surefire), plus reactor class directories. Annotation

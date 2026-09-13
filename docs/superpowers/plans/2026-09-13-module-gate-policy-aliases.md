@@ -53,3 +53,58 @@ Java 21: 18 application tests and 102 build tests, including all 101 fixtures an
 the real repository gate, with zero failures, errors or skips. This fresh reactor
 compile and inventory/import run covers the changed adapter; it is not a new full
 `verify -Pci` claim. Canonical CI and current-head review follow publication.
+
+## Task 2: Close report-write and Maven-coordinate review gaps
+
+The complete external review `5189621863` on published head
+`af8f447bc5f1d0a373f5cf10792b68b510260518` reports three additional gaps:
+
+1. The real test writes `taxonomy-build/target/architecture-module-graph.txt`
+   without validating the report path. A linked output directory or report file
+   can redirect the write outside the checkout. Validate the report and its
+   existing ancestors before directory creation or writing; retain safe local
+   aliases and the existing report location. Add real filesystem regressions
+   proving outside files remain unchanged and outside directories receive no
+   report, plus passing ordinary/local-alias controls.
+2. The owner/dependency fixture indexes direct build dependencies only by
+   artifactId. An unrelated group can satisfy the app/coverage/tooling/ArchUnit
+   assertions. Require the complete groupId:artifactId coordinate, retain
+   type/scope assertions, and prove same-artifact dependencies from a different
+   group cannot satisfy the real contract. Expected coordinates are
+   `com.taxonomy:taxonomy-app`, `com.taxonomy:taxonomy-coverage`,
+   `com.taxonomy:taxonomy-tooling`, and `com.tngtech.archunit:archunit-junit5`.
+3. A non-reactor local parent found through relativePath is filtered out if its
+   raw artifact expression differs from the child's literal artifact. The
+   concrete case is candidate `build-${parent.module}` resolving to
+   `build-local-parent`, referenced literally by the child. Preserve effective
+   coordinate matching, including inherited runtime and managed dependency
+   edges, without inheriting unrelated external parents. Add a non-reactor
+   parent regression covering an inherited application edge and retain existing
+   raw/effective identity, version, profile-uncertainty and external-parent
+   controls. If actual Maven semantics contradict the finding, establish that
+   with the real cached ModelBuilder rather than guessing.
+
+First reproduce each claimed defect against the exact published behavior with
+real JUnit/filesystem/POM tests, then implement the smallest cohesive fix in the
+adapter/fixture class. A package-visible report-writing seam is permitted if the
+real test delegates to it. Preserve all 101 current fixtures; the ownership
+fixture's artifact-only assertions must be strengthened to the coordinates
+above, which is the sole intentional exception to the original assertion-text
+freeze. The pure graph evaluator, report semantics, production code, reactor
+dependencies, selectors, policy and enforcement baselines stay unchanged. Direct
+gate documentation may be updated only for these corrected contracts.
+
+No Maven, Git state changes, external publication or subagents by the implementer.
+Use Java 21 and the cached real JUnit launcher; root runs the one native Maven
+reactor. Write commands, RED/GREEN counts and exact failure reasons, preserved
+controls and remaining limits in task-2-report.md in this plan's SDD directory.
+Freeze source for one scoped review of this complete final-review fix wave.
+
+- [ ] Reproduce all three findings with meaningful controls.
+- [ ] Correct the bounded adapter/fixture contracts and pass the complete fixture suite.
+- [ ] Root performs native verification, scoped review and publication.
+
+D2 confirmation was accepted by the repository and PR #1056 was squash-merged
+as `5d1d0ee88b1fdd4f7d0d9b37a6925bf4d464ccfa`. The earlier hold on main merges
+has therefore ended. Root handles subsequent stack integration in a separate
+worktree; it must not mutate this adapter during implementation.
