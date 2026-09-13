@@ -1,0 +1,37 @@
+name: Workspace extraction development snapshot
+
+on:
+  push:
+    branches: [refactor/628-workspace-module]
+    paths: [.github/workflows/628-development-snapshot.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Archive tracked source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          git archive --format=tar HEAD | gzip -n > "$RUNNER_TEMP/628-source.tar.gz"
+          git ls-tree -r HEAD > "$RUNNER_TEMP/628-source-tree.txt"
+          git rev-parse HEAD 'HEAD^{tree}' > "$RUNNER_TEMP/628-source-identity.txt"
+          cd "$RUNNER_TEMP"
+          sha256sum 628-source.tar.gz > 628-source.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: workspace-extraction-source
+          path: |
+            ${{ runner.temp }}/628-source.tar.gz
+            ${{ runner.temp }}/628-source-tree.txt
+            ${{ runner.temp }}/628-source-identity.txt
+            ${{ runner.temp }}/628-source.sha256
+          if-no-files-found: error
+          retention-days: 1
