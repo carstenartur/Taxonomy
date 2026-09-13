@@ -1,0 +1,65 @@
+name: Workspace history and CI diagnosis
+on:
+  push:
+    branches: [verification/628-physical-workspace]
+    paths: [.github/workflows/628-history-and-ci-diagnosis.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 4f8e544d7537a1067debe0e6f495c4d1542a2d8c
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify every rename and representative follow history
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import subprocess, collections
+          base='8cd4395d93ba56c80ae6ea5dff031944772e7771'
+          head='4f8e544d7537a1067debe0e6f495c4d1542a2d8c'
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          assert git('rev-parse',head+'^') == base
+          subprocess.run(['git','merge-base','--is-ancestor',base,head],check=True)
+          rows=[line.split('\t') for line in git('diff','--name-status','--find-renames=100%',base,head).splitlines()]
+          prod=[r for r in rows if r[0]=='R100' and r[-1].startswith('taxonomy-workspace/src/main/java/')]
+          tests=[r for r in rows if r[0]=='R100' and r[-1].startswith('taxonomy-workspace/src/test/java/')]
+          assert len(prod)==104, len(prod)
+          assert len(tests)==14, len(tests)
+          for status,old,new in prod+tests:
+              assert git('rev-parse',base+':'+old)==git('rev-parse',head+':'+new)
+              assert old==new.replace('taxonomy-workspace/','taxonomy-app/',1)
+          print('HISTORY VERIFIED: direct descendant of main; 104 production and 14 test R100 renames; every blob identical')
+          for path in ['taxonomy-workspace/src/main/java/com/taxonomy/editor/persistence/EditorJournal.java','taxonomy-workspace/src/main/java/com/taxonomy/workspace/storage/DslGitRepository.java','taxonomy-workspace/src/main/java/com/taxonomy/versioning/service/RepositoryStateService.java']:
+              log=git('log','--follow','-n','4','--format=%h %ad %s','--date=short',head,'--',path)
+              assert len(log.splitlines())>1, path
+              print('FOLLOW',path,'\n'+log)
+          PY
+      - name: Extract first root causes from completed core run
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          curl --fail --silent --show-error --location \
+            --header "Authorization: Bearer $GH_TOKEN" \
+            https://api.github.com/repos/carstenartur/Taxonomy/actions/jobs/103804840967/logs \
+            --output "$RUNNER_TEMP/core.log"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          lines=(Path(os.environ['RUNNER_TEMP'])/'core.log').read_text(errors='replace').splitlines()
+          needles=['ExceptionInInitializerError','Caused by:','IllegalAccessError','NoSuchMethodError','ClassNotFoundException']
+          printed=set()
+          for needle in needles:
+              hits=[i for i,line in enumerate(lines) if needle in line]
+              print('MATCH',needle,'COUNT',len(hits))
+              for i in hits[:3]:
+                  for n in range(max(0,i-8),min(len(lines),i+22)):
+                      if n not in printed:
+                          print(lines[n]); printed.add(n)
+          PY
