@@ -1,0 +1,102 @@
+name: Workspace review completion verification
+on:
+  push:
+    branches: [verification/628-physical-workspace]
+    paths: [.github/workflows/628-finish-workspace-review.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 4f1bc4dce4430900ef52b9fd8567cdc08c3cadc3
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Correct the three inline review items
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          def replace(path,old,new):
+              p=Path(path); text=p.read_text(); assert text.count(old)==1, (path,old); p.write_text(text.replace(old,new,1))
+          replace('.github/jgit-storage-hibernate-contract.sh',
+                  '  -pl taxonomy-app \\\n  -Dincludes=io.github.carstenartur',
+                  '  -pl taxonomy-app -am \\\n  -Dincludes=io.github.carstenartur')
+          replace('docs/en/MODULE_BOUNDARIES.md','currently contains eight modules','currently contains nine modules')
+          replace('docs/de/MODULE_BOUNDARIES.md','enthält derzeit acht Module','enthält derzeit neun Module')
+          for lang,row in [('en','| `taxonomy-workspace` | Workspace authority, versioning, semantic editor history and JGit storage |\n'),('de','| `taxonomy-workspace` | Workspace-Zuständigkeit, Versionierung, semantische Editor-Historie und JGit-Speicher |\n')]:
+              p=Path('docs')/lang/'MODULE_BOUNDARIES.md'; text=p.read_text(); anchor='| `taxonomy-app` |'
+              assert text.count(anchor)==1
+              p.write_text(text.replace(anchor,row+anchor,1))
+          ns={'m':'http://maven.apache.org/POM/4.0.0'}
+          modules=[x.text for x in ET.parse('pom.xml').findall('m:modules/m:module',ns)]
+          assert len(modules)==9 and 'taxonomy-workspace' in modules
+          for lang in ['en','de']:
+              text=(Path('docs')/lang/'MODULE_BOUNDARIES.md').read_text()
+              inventory=text.split('## ',2)[1]
+              assert all(inventory.count('| `'+module+'` |')==1 for module in modules)
+          print('DOCUMENTATION VERIFIED: both current reactor inventories list all nine actual modules')
+          PY
+          bash -n .github/jgit-storage-hibernate-contract.sh
+          git diff --check
+      - name: Execute dependency collection with no installed reactor artifacts or build outputs
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/clean-m2"
+          if [[ -d "$HOME/.m2/repository" ]]; then
+            tar -C "$HOME/.m2/repository" --exclude='./com/taxonomy' -cf - . | tar -C "$RUNNER_TEMP/clean-m2" -xf -
+          fi
+          test ! -e "$RUNNER_TEMP/clean-m2/com/taxonomy"
+          test ! -e taxonomy-workspace/target
+          ./mvnw -B -ntp -nsu -Dmaven.repo.local="$RUNNER_TEMP/clean-m2" -pl taxonomy-app -am \
+            -Dincludes=io.github.carstenartur -DoutputType=text \
+            -DoutputFile="$RUNNER_TEMP/dependency-tree.txt" dependency:tree > "$RUNNER_TEMP/dependency-collection.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/dependency-collection.log"; exit 1; }
+          grep -F 'jgit-storage-hibernate-core' "$RUNNER_TEMP/dependency-tree.txt"
+          test ! -e "$RUNNER_TEMP/clean-m2/com/taxonomy/taxonomy-workspace/1.4.0-SNAPSHOT/taxonomy-workspace-1.4.0-SNAPSHOT.jar"
+          echo 'VERIFIED: dependency collection succeeds without installing or previously building sibling artifacts'
+      - name: Retain exactly the verified three-file change
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess,urllib.request
+          from pathlib import Path
+          def git(*a): return subprocess.check_output(['git',*a],text=True).strip()
+          def post(endpoint,payload):
+              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/'+endpoint,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(req,timeout=30) as response: return json.load(response)
+          paths=git('diff','--name-only').splitlines()
+          expected={'.github/jgit-storage-hibernate-contract.sh','docs/en/MODULE_BOUNDARIES.md','docs/de/MODULE_BOUNDARIES.md'}
+          assert set(paths)==expected, paths
+          entries=[]
+          for path in paths:
+              sha=post('git/blobs',{'content':Path(path).read_text(),'encoding':'utf-8'})['sha']
+              assert sha==git('hash-object',path)
+              mode=git('ls-files','-s','--',path).split()[0]
+              entries.append({'path':path,'mode':mode,'type':'blob','sha':sha})
+          tree=post('git/trees',{'base_tree':git('rev-parse','HEAD^{tree}'),'tree':entries})['sha']
+          git('add','--',*paths)
+          assert tree==git('write-tree')
+          result={'base':git('rev-parse','HEAD'),'tree':tree,'entries':entries}
+          print('VERIFIED_PATCH',json.dumps(result))
+          Path(os.environ['RUNNER_TEMP'],'verified-patch.json').write_text(json.dumps(result,indent=2))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-review-completion-evidence
+          path: |
+            ${{ runner.temp }}/dependency-collection.log
+            ${{ runner.temp }}/dependency-tree.txt
+            ${{ runner.temp }}/verified-patch.json
+          if-no-files-found: error
+          retention-days: 7
