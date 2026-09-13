@@ -170,7 +170,7 @@ remain architecture-owned, with unchanged archive/global query policy, URLs,
 security, repository identity, checkpoint/journal/lock behavior and materialization
 write scope.
 
-The current D3 baseline, measured from fresh production bytecode, records
+The historical D3 baseline, measured from fresh production bytecode, records
 **539 cross-context class pairs across 147 package edges**, compared with the
 historical D2 baseline of **537 pairs across 141 package edges**. All four former
 workspace-to-architecture archive pairs are gone. Three composition-to-architecture
@@ -180,13 +180,32 @@ lay inside the workspace context: **537 - 4 + 3 - 2 + 5 = 539**. The increase of
 measured class pairs exposes composition ownership. No Maven dependency or
 additional feature-to-feature dependency is introduced.
 
-The **47 remaining outgoing workspace class pairs** comprise **44 DSL storage
+At D3, the **47 outgoing workspace class pairs** comprised **44 DSL storage
 adapter pairs**, **one bootstrap export pair** and **two application-readiness
 pairs**. The **117 knowledge-to-workspace pairs** require a separate review.
-Bootstrap, storage and knowledge coupling still block physical feature extraction;
+At that checkpoint, bootstrap, storage and knowledge coupling still blocked physical feature extraction;
 D3 does not complete the extraction or close parent issues #628/#1043. The context
 map and cycle-exception ledger are unchanged. See
 [DSL document composition](../dev/DSL_DOCUMENT_COMPOSITION.md).
+
+### Git startup composition (D4 of #1043)
+
+`GitRepositoryBootstrap` now belongs to `com.taxonomy.composition.dsl.service`.
+Only its package changed: application readiness, default-enabled configuration,
+system-repository selection, one-shot initialization and failure retry behavior
+remain intact. Workspace no longer depends directly on application readiness or
+knowledge export through startup orchestration.
+
+The current measured baseline contains **537 cross-context class pairs across
+146 package edges**, down from D3's **539 / 147**. The two readiness pairs become
+internal to composition; the bootstrap export pair and its two storage pairs
+retain their existing targets under their new composition owner. The **42
+remaining outgoing workspace pairs all target DSL storage adapters**. The **117
+knowledge-to-workspace pairs** are unchanged and still require separate review.
+Storage ownership and the broader graph remain extraction constraints; D4 does
+not create a Maven module or close #628/#1043. The context map, cycle exceptions
+and coverage floors remain unchanged. See
+[Git bootstrap composition](../dev/GIT_BOOTSTRAP_COMPOSITION.md).
 
 The migration uses complementary protections:
 
@@ -196,6 +215,7 @@ The migration uses complementary protections:
 3. `ArchitectureDecisionReportBoundaryTest` rejects report orchestration in versioning HTTP adapters and requires the report controller to remain in `composition.report`.
 4. `ArchitectureCommitHistoryOwnershipTest` requires the Git commit-history entity, repository and three projection services to remain in their versioning owner packages.
 5. `ArchitectureDslCompositionBoundaryTest` requires the document controller/facade and shared HTTP context resolver in their owner packages, checks exclusive ownership of the eight document routes, and rejects architecture/knowledge/document-export dependencies from workspace controllers and both workspace DSL facades.
+6. `ArchitectureWorkspaceAuthorityBoundaryTest` requires the composition bootstrap owner and rejects direct workspace/versioning/editor dependencies on application composition, knowledge, architecture, portfolio and document-export implementations; representative owners make the rule non-vacuous.
 
 Run the focused architecture profile from the repository root across the full
 reactor so every module's production output is current:
@@ -204,9 +224,9 @@ reactor so every module's production output is current:
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-The profile includes all three ownership guards for decision reports, commit
-history and DSL document composition in both `pom.xml` and
-`.mvn/verification-suites.json`. Its eight selected test classes are synchronized
+The profile includes all four ownership guards for decision reports, commit
+history, DSL document composition and workspace authority in both `pom.xml` and
+`.mvn/verification-suites.json`. Its nine selected test classes are synchronized
 between the POM and catalog. Full CI verification remains
 `./mvnw -B verify -Pci`.
 

@@ -65,16 +65,21 @@ existing floors and changed-source thresholds remain.
 
 ## Remaining extraction constraints
 
-`GitRepositoryBootstrap`, DSL storage/export adapters, knowledge materialization
-and architecture archive persistence remain coupled. The context map and cycle
+Since this D3 checkpoint, `GitRepositoryBootstrap` has moved from workspace
+versioning into `com.taxonomy.composition.dsl.service`. Its current source owner
+combines application readiness, knowledge export and the selected system Git
+repository. DSL storage/export adapters, knowledge materialization and
+architecture archive persistence remain coupled. The context map and cycle
 exception ledger are unchanged. These measured cycles still block physical
 feature extraction; this slice establishes ownership, not a new Maven module.
 
-A separate class-pair inventory of the same fresh bytecode agrees with the
-ratchet's 539-pair total. Workspace has no remaining direct pairs to knowledge,
-architecture or portfolio implementation packages. Its 47 outgoing pairs are
+The following numbers describe the historical D3 bytecode measured for this
+document-composition slice; they do not describe the current post-relocation
+source ownership. A separate class-pair inventory agreed with the ratchet's
+539-pair total. At D3, workspace had no remaining direct pairs to knowledge,
+architecture or portfolio implementation packages. Its 47 outgoing pairs were
 44 DSL storage-adapter pairs plus `GitRepositoryBootstrap`'s export-service and
-two application-readiness pairs. Knowledge still has 117 pairs into workspace,
+two application-readiness pairs. Knowledge still had 117 pairs into workspace,
 including explicit repository/context/DSL contracts and concrete resolver,
 repository-state and system-repository access that must be reviewed separately.
 Removing the document/archive coupling therefore does not authorize Maven

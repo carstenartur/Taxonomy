@@ -1,4 +1,4 @@
-package com.taxonomy.versioning.service;
+package com.taxonomy.composition.dsl.service;
 
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.storage.DslGitRepository;

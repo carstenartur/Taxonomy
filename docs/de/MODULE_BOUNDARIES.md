@@ -176,7 +176,7 @@ Archivpolitik und globale Abfragen, URLs, Security, Repository-Identität,
 Checkpoint-/Journal-/Lock-Verhalten und Schreibumfang der Materialisierung bleiben
 unverändert.
 
-Die aktuelle, aus frischem Production-Bytecode gemessene D3-Baseline enthält
+Die historische, aus frischem Production-Bytecode gemessene D3-Baseline enthält
 **539 kontextübergreifende Klassenpaare über 147 Package-Kanten** gegenüber der
 historischen D2-Baseline mit **537 Paaren über 141 Package-Kanten**. Alle vier
 früheren Workspace-zu-Architecture-Archivpaare entfallen. Drei
@@ -187,13 +187,32 @@ weil die Aufrufe zuvor innerhalb des Workspace-Kontexts lagen:
 Composition-Zuständigkeit sichtbar. Es entsteht keine Maven-Abhängigkeit oder
 zusätzliche Abhängigkeit zwischen Feature-Kontexten.
 
-Die **47 verbleibenden ausgehenden Workspace-Klassenpaare** bestehen aus **44
+Bei D3 bestanden die **47 ausgehenden Workspace-Klassenpaare** aus **44
 DSL-Storage-Adapterpaaren**, **einem Bootstrap-Export-Paar** und **zwei
 Application-Readiness-Paaren**. Die **117 Knowledge-zu-Workspace-Paare** benötigen
-eine separate Prüfung. Bootstrap-, Storage- und Knowledge-Kopplung blockieren
+eine separate Prüfung. Bei diesem Stand blockierten Bootstrap-, Storage- und Knowledge-Kopplung
 weiterhin die physische Feature-Extraktion; D3 schließt weder diese Extraktion
 noch die Parent-Issues #628/#1043 ab. Context-Map und Zyklusausnahmen-Ledger bleiben
 unverändert. Siehe [DSL-Dokument-Komposition](../dev/DSL_DOCUMENT_COMPOSITION.md).
+
+### Git-Startlogik in der Composition (D4 von #1043)
+
+`GitRepositoryBootstrap` gehört jetzt zu `com.taxonomy.composition.dsl.service`.
+Nur das Package wurde geändert: Application-Readiness, standardmäßige Aktivierung,
+System-Repository-Auswahl, einmalige Initialisierung und Wiederholung nach Fehlern
+bleiben erhalten. Über die Startlogik hängt Workspace nicht mehr direkt von
+Application-Readiness oder Knowledge-Export ab.
+
+Die aktuelle gemessene Baseline enthält **537 kontextübergreifende Klassenpaare
+über 146 Package-Kanten**, gegenüber **539 / 147** bei D3. Die zwei Readiness-Paare
+liegen nun innerhalb der Composition; das Bootstrap-Export-Paar und seine zwei
+Storage-Paare behalten ihre bisherigen Ziele unter dem neuen Composition-Eigentümer.
+Die **42 verbleibenden ausgehenden Workspace-Paare zeigen alle auf DSL-Storage-Adapter**.
+Die **117 Knowledge-zu-Workspace-Paare** bleiben unverändert und benötigen eine
+separate Prüfung. Storage-Zuständigkeit und der übrige Graph begrenzen weiterhin
+die Extraktion; D4 erzeugt kein Maven-Modul und schließt #628/#1043 nicht ab.
+Context-Map, Zyklusausnahmen und Coverage-Mindestwerte bleiben unverändert. Siehe
+[Git-Bootstrap-Komposition](../dev/GIT_BOOTSTRAP_COMPOSITION.md).
 
 Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
 
@@ -203,6 +222,7 @@ Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
 3. `ArchitectureDecisionReportBoundaryTest` verhindert Berichtsorchestrierung in Versioning-HTTP-Adaptern und verlangt, dass der Bericht-Controller in `composition.report` bleibt.
 4. `ArchitectureCommitHistoryOwnershipTest` verlangt, dass Entity, Repository und die drei Projektions-Services der Git-Commit-Historie in ihren Versioning-Owner-Packages bleiben.
 5. `ArchitectureDslCompositionBoundaryTest` verlangt Dokument-Controller/-Fassade und gemeinsamen HTTP-Kontextresolver in ihren Owner-Packages, prüft die exklusive Zuständigkeit für die acht Dokumentrouten und verhindert Architecture-/Knowledge-/Dokumentexport-Abhängigkeiten aus Workspace-Controllern und beiden Workspace-DSL-Fassaden.
+6. `ArchitectureWorkspaceAuthorityBoundaryTest` verlangt den Composition-Eigentümer der Startlogik und verhindert direkte Workspace-/Versioning-/Editor-Abhängigkeiten auf Application-Composition-, Knowledge-, Architecture-, Portfolio- und Dokumentexport-Implementierungen; repräsentative Eigentümer verhindern einen leeren Prüfbereich.
 
 Das fokussierte Architekturprofil wird vom Repository-Root über den vollständigen
 Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
@@ -211,9 +231,9 @@ Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-Das Profil enthält alle drei Ownership-Guards für Entscheidungsberichte,
-Commit-Historie und DSL-Dokument-Komposition sowohl in `pom.xml` als auch in
-`.mvn/verification-suites.json`. Die acht ausgewählten Testklassen sind zwischen
+Das Profil enthält alle vier Ownership-Guards für Entscheidungsberichte,
+Commit-Historie, DSL-Dokument-Komposition und Workspace-Autorität sowohl in `pom.xml` als auch in
+`.mvn/verification-suites.json`. Die neun ausgewählten Testklassen sind zwischen
 POM und Katalog synchronisiert. Die vollständige CI-Verifikation bleibt `./mvnw -B verify -Pci`.
 
 Der Ratchet durchläuft außerdem `taxonomy-app/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb des Root-Packages muss in `.github/architecture-contexts.json` klassifiziert sein. Ein neues Feature-Package kann den Dependency-Guard daher nicht umgehen, indem es außerhalb der vorhandenen Context-Patterns angelegt wird. Root-Level-Composition-Klassen bleiben ausdrücklich zulässig.
