@@ -60,7 +60,7 @@ public class TaxonomyObservationConfiguration {
                                 Set.of("resolveCurrentContext", "resolveForUser",
                                         "resolveCurrentRepositoryContext",
                                         "resolveRepositoryContextForUser"))),
-                Map.entry("com.taxonomy.dsl.storage.DslGitRepositoryFactory",
+                Map.entry("com.taxonomy.workspace.storage.DslGitRepositoryFactory",
                         new TargetDescriptor("taxonomy.repository.route", "repository",
                                 Set.of("resolveRepository", "getSystemRepository",
                                         "getWorkspaceRepository"))),

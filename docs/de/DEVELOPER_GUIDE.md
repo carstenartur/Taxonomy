@@ -165,8 +165,7 @@ Die Haupt-Spring-Boot-Anwendung:
 | `repository/` | Spring Data JPA Repositories |
 | `config/` | Konfigurationsklassen — Sicherheit, Rate Limiting, Hibernate-Search-Analysatoren, OpenAPI, Actuator |
 | `search/` | Hibernate-Search-Konfiguration |
-| `dsl/storage/` | JGit-DFS-Speicher auf Hibernate-Basis — `DslGitRepository`, `HibernateRepository` usw. |
-| `dsl/storage/jgit/` | JPA-Entitäten für Git-Speicher — `GitPackEntity`, `GitReflogEntity` |
+| `workspace/storage/` | Workspace-eigene JGit-DFS-Adapter und Core-Schema-Konfiguration; Persistenz-Entities stammen aus `jgit-storage-hibernate` |
 | `resources/data/` | Excel-Arbeitsmappe, CSV-Fallback, JSON-Taxonomie |
 | `resources/prompts/` | LLM-Prompt-Vorlagen (eine pro Taxonomieblatt + Standardvorlagen) |
 | `resources/static/js/` | JavaScript-Module (UI-Logik) |

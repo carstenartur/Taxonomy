@@ -39,16 +39,15 @@ import static com.tngtech.archunit.library.dependencies.SlicesRuleDefinition.sli
  *   <li>{@link #domainModuleShouldBeSpringFree} — no exceptions; {@code com.taxonomy.dto},
  *       {@code com.taxonomy.model}, and {@code com.taxonomy.pipeline} must remain
  *       Spring-free forever.</li>
- *   <li>{@link #dslFrameworkCodeShouldBeSpringFree} — {@code com.taxonomy.dsl.storage}
- *       and {@code com.taxonomy.dsl.export} are excluded because they live in
- *       {@code taxonomy-app} and provide Spring-based persistence/export adapters for
- *       the otherwise Spring-free DSL module.</li>
+ *   <li>{@link #dslFrameworkCodeShouldBeSpringFree} — {@code com.taxonomy.dsl.export}
+ *       is outside the covered framework-free DSL packages because it lives in
+ *       {@code taxonomy-app} and provides a Spring-based export adapter.</li>
  *   <li>{@link #exportFrameworkCodeShouldBeSpringFree} — {@code com.taxonomy.export.service}
  *       and {@code com.taxonomy.export.controller} are excluded because they live in
  *       {@code taxonomy-app} and expose Spring MVC endpoints / service beans for the
  *       otherwise Spring-free export module.</li>
- *   <li>{@link #dslFrameworkCodeShouldNotDependOnAppPackages} — same storage/export
- *       exclusions apply.</li>
+ *   <li>{@link #dslFrameworkCodeShouldNotDependOnAppPackages} — the same export
+ *       exclusion applies.</li>
  *   <li>{@link #exportFrameworkCodeShouldNotDependOnAppPackages} — same service/controller
  *       exclusions apply.</li>
  *   <li>{@link #IMPLICIT_WORKSPACE_RESOLUTION_ALLOWLIST} — services still on the migration
@@ -264,11 +263,9 @@ class ArchitectureTest {
      * {@code .mapping}, {@code .model}, {@code .parser}, {@code .serializer},
      * {@code .validation}.
      *
-     * <p>Excluded: {@code com.taxonomy.dsl.storage} and {@code com.taxonomy.dsl.export}
-     * — these are Spring-based adapter packages in {@code taxonomy-app} that provide
-     * persistence and export integration for the DSL engine.
-     * Remove this rule's exclusions once those adapters are moved to a dedicated
-     * adapter module.
+     * <p>Excluded: {@code com.taxonomy.dsl.export}, a Spring-based adapter package in
+     * {@code taxonomy-app} that provides export integration for the DSL engine.
+     * Remove this rule's exclusion once that adapter moves to its owning context.
      */
     @ArchTest
     static final ArchRule dslFrameworkCodeShouldBeSpringFree = noClasses()
@@ -284,7 +281,7 @@ class ArchitectureTest {
             .should().dependOnClassesThat()
             .resideInAnyPackage("org.springframework..")
             .because("taxonomy-dsl framework-free packages must not depend on Spring "
-                    + "(storage and export adapters in taxonomy-app are excluded)");
+                    + "(the export adapter in taxonomy-app is excluded)");
 
     /**
      * Framework-free packages of {@code taxonomy-export} must not use Spring.

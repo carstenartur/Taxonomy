@@ -1,6 +1,6 @@
 package com.taxonomy.interop;
 
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.editor.ArchitectureEditorService;
 import com.taxonomy.editor.persistence.EditorJournal;
 import com.taxonomy.exchange.ReqifExchangeCodec;

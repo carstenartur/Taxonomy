@@ -1,7 +1,7 @@
 package com.taxonomy.portfolio.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView;
 import com.taxonomy.portfolio.dto.PortfolioGitDtos.ExportedPortfolioDsl;
 import com.taxonomy.portfolio.dto.PortfolioGitDtos.MaterializationPreview;

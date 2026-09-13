@@ -1,8 +1,8 @@
 package com.taxonomy.relations.command;
 
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.DslWorkspaceVersionAdapter;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslWorkspaceVersionAdapter;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandMetadata;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.MissingAuthoritativeHeadException;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RemoveRelation;

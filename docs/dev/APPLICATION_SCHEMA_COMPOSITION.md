@@ -7,7 +7,7 @@ Taxonomy application schema. It keeps the application migration resources,
 history table, legacy-state classification and final-table validation separate
 from JGit Core storage.
 
-`com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfig` remains the sole
+`com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig` remains the sole
 owner of Core schema classification, history establishment, migration and
 legacy adoption. Its package-private helpers stay package-private. Consumers
 compose with its public Spring `FlywayMigrationStrategy` bean.
@@ -105,3 +105,17 @@ ITs were compiled but not executed here. The unchanged consumer workflow must
 provide real migration, validate-startup and indexed-history evidence on the
 applicable published/main head; this local result does not replace canonical
 `-Pci`, database, security, recovery, product or UI gates.
+
+## D5b follow-on measurement
+
+The D5a values above remain historical evidence for application-schema
+composition. The subsequent workspace-storage ownership move was measured from
+fresh production bytecode at **472 cross-context class pairs / 140 package
+edges**, down from **537 / 146**. Sixty-five former workspace/storage pairs are
+now internal: 42 workspace-to-storage and 23 storage-to-workspace. Workspace has
+zero outgoing pairs to other managed application contexts; the 117
+knowledge-to-workspace pairs remain. The reviewed graph exactly matches the
+namespace-only projection of the D5a baseline. See
+[Workspace storage ownership](WORKSPACE_STORAGE_OWNERSHIP.md) for the edge
+breakdown and remaining extraction limits. D5b coverage is reported separately
+after the root-owned native coverage run.

@@ -3,7 +3,7 @@ package com.taxonomy.composition.dsl.controller;
 import com.taxonomy.composition.dsl.service.DslDocumentOperationsFacade;
 import com.taxonomy.versioning.controller.DslReadWorkspaceContextResolver;
 
-import com.taxonomy.dsl.storage.DslCommit;
+import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.versioning.service.RepositoryStateService;

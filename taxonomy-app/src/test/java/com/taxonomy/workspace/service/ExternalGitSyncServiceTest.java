@@ -1,6 +1,6 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
 import org.junit.jupiter.api.AfterEach;
@@ -154,6 +154,21 @@ class ExternalGitSyncServiceTest {
         assertNull(status.externalUrl());
     }
 
+    @Test
+    void pushRejectsBlankAndInvalidBranchNamesBeforeOpeningTransport() {
+        SystemRepository systemRepository = createSystemRepository(
+                RepositoryTopologyMode.EXTERNAL_CANONICAL);
+        systemRepository.setExternalUrl("https://example.test/team/repo.git");
+        when(systemRepositoryService.getPrimaryRepository()).thenReturn(systemRepository);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> externalSyncService.pushToExternal(null));
+        assertThrows(IllegalArgumentException.class,
+                () -> externalSyncService.pushToExternal("  "));
+        assertThrows(IllegalArgumentException.class,
+                () -> externalSyncService.pushToExternal("bad branch"));
+    }
+
     private SystemRepository createSystemRepository(RepositoryTopologyMode mode) {
         SystemRepository systemRepository = new SystemRepository();
         systemRepository.setRepositoryId(UUID.randomUUID().toString());
@@ -164,4 +179,5 @@ class ExternalGitSyncServiceTest {
         systemRepository.setCreatedAt(Instant.now());
         return systemRepository;
     }
+
 }

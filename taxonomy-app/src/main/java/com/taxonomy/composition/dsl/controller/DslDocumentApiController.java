@@ -5,7 +5,7 @@ import com.taxonomy.dsl.diff.ModelDiff;
 import com.taxonomy.dsl.diff.SemanticDiffDescriber;
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
-import com.taxonomy.dsl.storage.DslCommit;
+import com.taxonomy.workspace.storage.DslCommit;
 import com.taxonomy.dto.ViewContext;
 import com.taxonomy.architecture.model.ArchitectureDslDocument;
 import com.taxonomy.composition.dsl.service.DslDocumentOperationsFacade;

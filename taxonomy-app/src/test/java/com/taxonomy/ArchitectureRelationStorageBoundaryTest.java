@@ -15,7 +15,7 @@ class ArchitectureRelationStorageBoundaryTest {
                 .importPackages("com.taxonomy.relations.command", "com.taxonomy.relations.service",
                         "com.taxonomy.relations.controller");
         noClasses().should().dependOnClassesThat()
-                .resideInAnyPackage("com.taxonomy.dsl.storage..", "org.eclipse.jgit..")
+                .resideInAnyPackage("com.taxonomy.workspace.storage..", "org.eclipse.jgit..")
                 .because("knowledge owns relations while workspace owns version authority and its conflicts")
                 .check(classes);
     }
@@ -23,7 +23,7 @@ class ArchitectureRelationStorageBoundaryTest {
     @Test
     void thePublicConflictContractIsFrameworkAndStorageIndependent() {
         noClasses().should().dependOnClassesThat()
-                .resideInAnyPackage("com.taxonomy.dsl.storage..", "org.eclipse.jgit..", "org.springframework..",
+                .resideInAnyPackage("com.taxonomy.workspace.storage..", "org.eclipse.jgit..", "org.springframework..",
                         "com.taxonomy.relations..")
                 .check(new ClassFileImporter().importClasses(BranchHeadConflictException.class));
     }

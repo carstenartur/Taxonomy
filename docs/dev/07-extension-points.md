@@ -573,7 +573,7 @@ serialize → diff → materialize pipeline.
 - `taxonomy-dsl/src/test/java/com/taxonomy/dsl/DslValidatorTest.java`
 - `taxonomy-dsl/src/test/java/com/taxonomy/dsl/diff/ModelDifferTest.java`
 - `taxonomy-app/src/test/java/com/taxonomy/dsl/DslMaterializeServiceTest.java`
-- `taxonomy-app/src/test/java/com/taxonomy/dsl/storage/DslGitRepositoryTest.java`
+- `taxonomy-app/src/test/java/com/taxonomy/workspace/storage/DslGitRepositoryTest.java`
   when persisted DSL shape changes
 
 **Documentation updates**

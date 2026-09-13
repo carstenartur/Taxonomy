@@ -13,7 +13,7 @@
     "taxonomy-app/src/main/java/com/taxonomy/security/",
     "taxonomy-app/src/main/java/com/taxonomy/provenance/",
     "taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/",
-    "taxonomy-app/src/main/java/com/taxonomy/dsl/storage/",
+    "taxonomy-app/src/main/java/com/taxonomy/workspace/storage/",
     "taxonomy-app/src/main/java/com/taxonomy/composition/persistence/",
     "taxonomy-app/src/main/java/com/taxonomy/relations/controller/",
     "taxonomy-app/src/main/java/com/taxonomy/relations/service/",
@@ -62,7 +62,7 @@
     },
     {
       "module": "taxonomy-app",
-      "package": "com/taxonomy/dsl/storage",
+      "package": "com/taxonomy/workspace/storage",
       "minimums": { "LINE": 0.87, "BRANCH": 0.71 }
     },
     {

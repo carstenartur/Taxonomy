@@ -96,7 +96,6 @@
       "id": "dsl-adapters",
       "targetModule": null,
       "packages": [
-        "com.taxonomy.dsl.storage..",
         "com.taxonomy.dsl.export.."
       ]
     }

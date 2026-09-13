@@ -70,7 +70,7 @@ Both are reassessed after the stronger context APIs exist. This avoids creating 
 
 ## Transitional adapter contexts
 
-`com.taxonomy.dsl.storage..` / `com.taxonomy.dsl.export..` and the Spring-aware `com.taxonomy.export.service..` / `com.taxonomy.export.controller..` packages remain explicit transitional contexts while their owning ports settle.
+`com.taxonomy.dsl.export..` and the Spring-aware `com.taxonomy.export.service..` / `com.taxonomy.export.controller..` packages remain explicit transitional contexts while their owning ports settle. JGit storage is classified under the existing `com.taxonomy.workspace..` context.
 
 They are **not** the seed of a generic `taxonomy-adapters` module. Each adapter should ultimately live with the bounded context whose port it implements. The framework-free modules continue to reject Spring, JPA and application-module dependencies.
 
@@ -229,6 +229,30 @@ floors. Storage adapter relocation remains a separate slice; D5a creates no Mave
 module and does not close #628/#1043. See
 [Application schema composition](../dev/APPLICATION_SCHEMA_COMPOSITION.md).
 
+### Workspace storage ownership (D5b of #1043)
+
+The eleven JGit storage types and their seventeen test/support owners now belong
+to `com.taxonomy.workspace.storage`. Repository identity, system-versus-selected
+repository routing, exact-head conflicts, semantic-operation versus checkpoint
+separation, recovery, merge/diff/version behavior, SQL and migration behavior
+are unchanged.
+
+Fresh production-bytecode measurement reduces the checked graph from **537 to
+472 cross-context class pairs** and from **146 to 140 package edges**. The **42
+workspace-to-storage pairs** and **23 storage-to-workspace pairs** become internal
+to workspace, removing six cross-context package edges and 65 class pairs.
+Workspace now has **zero outgoing class pairs to other managed application contexts**.
+Incoming edges retarget to workspace storage from composition DSL
+controller (1 pair), composition DSL service (2 pairs) and portfolio service (5
+pairs). The measured graph exactly matches the namespace-only projection of the
+old baseline, with no unexplained edge change.
+
+The **117 knowledge-to-workspace pairs** remain; an independent inventory found
+zero knowledge-to-former-storage pairs. Foundation dependencies still exist
+outside the managed application context graph, and the knowledge coupling still
+requires separate review. D5b does not create a Maven module or close
+#628/#1043. See [Workspace storage ownership](../dev/WORKSPACE_STORAGE_OWNERSHIP.md).
+
 The migration uses complementary protections:
 
 1. `ArchitectureCycleBoundaryTest` rejects undocumented package cycles. Temporary exceptions must exist in `.github/architecture-exceptions.json` and expire.
@@ -239,6 +263,7 @@ The migration uses complementary protections:
 5. `ArchitectureDslCompositionBoundaryTest` requires the document controller/facade and shared HTTP context resolver in their owner packages, checks exclusive ownership of the eight document routes, and rejects architecture/knowledge/document-export dependencies from workspace controllers and both workspace DSL facades.
 6. `ArchitectureWorkspaceAuthorityBoundaryTest` requires the composition bootstrap owner and rejects direct workspace/versioning/editor dependencies on application composition, knowledge, architecture, portfolio and document-export implementations; representative owners make the rule non-vacuous.
 7. `ArchitectureApplicationSchemaCompositionTest` requires the application schema owner in composition, retains the Core storage owner and rejects a direct application-config dependency on Core implementation classes.
+8. `ArchitectureWorkspaceStorageOwnershipTest` requires all eleven JGit storage types under `com.taxonomy.workspace.storage` and rejects production types left under `com.taxonomy.dsl.storage`.
 
 Run the focused architecture profile from the repository root across the full
 reactor so every module's production output is current:
@@ -247,9 +272,9 @@ reactor so every module's production output is current:
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-The profile includes all five ownership guards for decision reports, commit
-history, DSL document composition, workspace authority and application schema composition in both `pom.xml` and
-`.mvn/verification-suites.json`. Its ten selected test classes are synchronized
+The profile includes all six ownership guards for decision reports, commit
+history, DSL document composition, workspace authority, application schema composition and workspace storage in both `pom.xml` and
+`.mvn/verification-suites.json`. Its eleven selected test classes are synchronized
 between the POM and catalog. Full CI verification remains
 `./mvnw -B verify -Pci`.
 

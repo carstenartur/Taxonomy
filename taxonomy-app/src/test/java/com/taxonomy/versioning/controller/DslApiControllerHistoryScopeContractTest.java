@@ -1,6 +1,6 @@
 package com.taxonomy.versioning.controller;
 
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ElementHistoryAggregation;
 import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import com.taxonomy.versioning.service.CommitIndexService;

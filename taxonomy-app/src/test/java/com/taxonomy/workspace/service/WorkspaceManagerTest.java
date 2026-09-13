@@ -1,7 +1,7 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dto.WorkspaceInfo;
-import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
