@@ -1,0 +1,46 @@
+name: Module gate review regression verification
+
+on:
+  push:
+    branches: [verification/628-selector-sources]
+    paths:
+      - verification/gate_review_regressions.py
+      - .github/workflows/628-gate-review-verification.yml
+
+permissions:
+  contents: write
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: 2ec4c52fb929838832123b855edc28a9c154590a
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: RED - reproduce both reported gaps against the existing implementation
+        run: python3 verification/gate_review_regressions.py red "$GITHUB_WORKSPACE/source"
+      - name: GREEN - verify the corrections and all architecture guards
+        run: python3 verification/gate_review_regressions.py green "$GITHUB_WORKSPACE/source"
+      - name: Retain tested source blobs without moving any branch
+        run: python3 verification/gate_review_regressions.py publish "$GITHUB_WORKSPACE/source"
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+      - name: Retain regression evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: module-gate-review-evidence
+          path: ${{ runner.temp }}/gate-review-evidence/
+          if-no-files-found: error
+          retention-days: 7
