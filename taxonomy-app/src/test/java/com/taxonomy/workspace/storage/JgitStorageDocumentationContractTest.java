@@ -147,7 +147,7 @@ class JgitStorageDocumentationContractTest {
             throws IOException {
         Path root = findRepositoryRoot();
         String migrationConfig = read(root.resolve(
-                "taxonomy-app/src/main/java/com/taxonomy/workspace/storage/"
+                "taxonomy-workspace/src/main/java/com/taxonomy/workspace/storage/"
                         + "JgitStorageSchemaMigrationConfig.java"));
         String mssql = read(root.resolve(
                 "taxonomy-app/src/main/resources/application-mssql.properties"));
