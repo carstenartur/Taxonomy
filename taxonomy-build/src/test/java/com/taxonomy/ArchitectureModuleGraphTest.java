@@ -23,6 +23,7 @@ import java.util.Set;
 
 import static com.taxonomy.ArchitectureModuleGraph.*;
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class ArchitectureModuleGraphTest {
@@ -163,7 +164,7 @@ class ArchitectureModuleGraphTest {
     @Test
     void rootCompositionClassAndItsNestedClassesCannotEvadeTheGraph() {
         Evaluation result = evaluate(Set.of(A), List.of(owner(A_CLASS, A),
-                owner("com.taxonomy.AppConfig", APP), owner("com.taxonomy.AppConfig$Nested", APP)), List.of(
+                owner("com.taxonomy.AppConfig", APP), owner("com.taxonomy.AppConfig$Nested", APP, "AppConfig.java")), List.of(
                 edge(A_CLASS, "com.taxonomy.AppConfig$Nested"), edge("com.taxonomy.AppConfig", A_CLASS)));
 
         assertThat(result.violations()).anySatisfy(message -> assertThat(message)
@@ -854,12 +855,73 @@ class ArchitectureModuleGraphTest {
                 .isInstanceOf(AssertionError.class);
     }
 
+    @Test
+    void aClassifiedApplicationDependencyCannotSatisfyTheOwnerContract() throws Exception {
+        assertClassifiedDependencyCannotSatisfyOwnerContract("taxonomy-app");
+    }
+
+    @Test
+    void aClassifiedCoverageDependencyCannotSatisfyTheOwnerContract() throws Exception {
+        assertClassifiedDependencyCannotSatisfyOwnerContract("taxonomy-coverage");
+    }
+
+    @Test
+    void aClassifiedToolingDependencyCannotSatisfyTheOwnerContract() throws Exception {
+        assertClassifiedDependencyCannotSatisfyOwnerContract("taxonomy-tooling");
+    }
+
+    @Test
+    void aClassifiedArchUnitDependencyCannotSatisfyTheOwnerContract() throws Exception {
+        assertClassifiedDependencyCannotSatisfyOwnerContract("archunit-junit5");
+    }
+
+    @Test
+    void unclassifiedOwnerDependenciesRemainValidAlongsideClassifiedDependencies() throws Exception {
+        pom("taxonomy-build", "taxonomy-build", moduleGateOwnerDependencies("classified-extras"));
+
+        assertThatCode(() -> assertModuleGateOwnerDependencies(temporaryRepository.resolve("taxonomy-build/pom.xml")))
+                .doesNotThrowAnyException();
+    }
+
+    private void assertClassifiedDependencyCannotSatisfyOwnerContract(String classifiedArtifact) throws Exception {
+        pom("taxonomy-build", "taxonomy-build", moduleGateOwnerDependencies(classifiedArtifact));
+
+        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository.resolve("taxonomy-build/pom.xml")))
+                .isInstanceOf(AssertionError.class);
+    }
+
+    private static String moduleGateOwnerDependencies(String classifiedArtifact) {
+        String dependencies = ownerDependency("com.taxonomy", "taxonomy-app", null, null,
+                "taxonomy-app".equals(classifiedArtifact))
+                + ownerDependency("com.taxonomy", "taxonomy-coverage", "pom", null,
+                "taxonomy-coverage".equals(classifiedArtifact))
+                + ownerDependency("com.taxonomy", "taxonomy-tooling", null, "test",
+                "taxonomy-tooling".equals(classifiedArtifact))
+                + ownerDependency("com.tngtech.archunit", "archunit-junit5", null, "test",
+                "archunit-junit5".equals(classifiedArtifact));
+        if ("classified-extras".equals(classifiedArtifact)) {
+            dependencies += ownerDependency("com.taxonomy", "taxonomy-app", null, null, true)
+                    + ownerDependency("com.taxonomy", "taxonomy-coverage", "pom", null, true)
+                    + ownerDependency("com.taxonomy", "taxonomy-tooling", null, "test", true)
+                    + ownerDependency("com.tngtech.archunit", "archunit-junit5", null, "test", true);
+        }
+        return "<dependencies>" + dependencies + "</dependencies>";
+    }
+
+    private static String ownerDependency(String group, String artifact, String type, String scope,
+                                          boolean classified) {
+        return "<dependency><groupId>" + group + "</groupId><artifactId>" + artifact + "</artifactId>"
+                + (type == null ? "" : "<type>" + type + "</type>")
+                + (classified ? "<classifier>task5-fixture</classifier>" : "")
+                + (scope == null ? "" : "<scope>" + scope + "</scope>") + "</dependency>";
+    }
+
     private static void assertModuleGateOwnerDependencies(Path pom) throws Exception {
         Map<String, String> dependencies = directProjectDependencies(pom);
-        assertThat(dependencies).containsEntry("com.taxonomy:taxonomy-app", "jar:compile")
-                .containsEntry("com.taxonomy:taxonomy-coverage", "pom:compile")
-                .containsEntry("com.taxonomy:taxonomy-tooling", "jar:test")
-                .containsEntry("com.tngtech.archunit:archunit-junit5", "jar:test");
+        assertThat(dependencies).containsEntry("com.taxonomy:taxonomy-app:jar:", "compile")
+                .containsEntry("com.taxonomy:taxonomy-coverage:pom:", "compile")
+                .containsEntry("com.taxonomy:taxonomy-tooling:jar:", "test")
+                .containsEntry("com.tngtech.archunit:archunit-junit5:jar:", "test");
     }
 
     @Test
@@ -939,6 +1001,39 @@ class ArchitectureModuleGraphTest {
         assertThat(output.resolve("com/taxonomy/a/Service$1.class")).exists();
         assertThat(output.resolve("com/taxonomy/a/Service$2.class")).exists();
         assertThat(output.resolve("com/taxonomy/a/Companion.class")).exists();
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    @Test
+    void anUnlistedDollarNamedRootSourceDoesNotInheritAnotherFilesCompositionAllowance() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(APP, "com.taxonomy.AppConfig$Plugin", "public class AppConfig$Plugin {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations())
+                .contains("Unmapped production class: com.taxonomy.AppConfig$Plugin (physical owner taxonomy-app)");
+    }
+
+    @Test
+    void aGenuineNestedRootClassUsesItsOriginatingCompositionSource() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig { static class Plugin {} }", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    @Test
+    void anExplicitlyAllowedDollarNamedRootSourceRemainsCompositionOwned() throws Exception {
+        bytecodeRepository();
+        Path policy = temporaryRepository.resolve(".github/architecture-contexts.json");
+        Files.writeString(policy, Files.readString(policy).replace("[\"AppConfig.java\"]",
+                "[\"AppConfig.java\",\"AppConfig$Plugin.java\"]"));
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(APP, "com.taxonomy.AppConfig$Plugin", "public class AppConfig$Plugin {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
 
         assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
     }
@@ -1780,9 +1875,10 @@ class ArchitectureModuleGraphTest {
                 String group = directChildText(dependency, "groupId");
                 String artifact = directChildText(dependency, "artifactId");
                 String type = directChildText(dependency, "type");
+                String classifier = directChildText(dependency, "classifier");
                 String scope = directChildText(dependency, "scope");
-                result.put(group + ":" + artifact,
-                        (type.isBlank() ? "jar" : type) + ":" + (scope.isBlank() ? "compile" : scope));
+                result.put(group + ":" + artifact + ":" + (type.isBlank() ? "jar" : type) + ":" + classifier,
+                        scope.isBlank() ? "compile" : scope);
             }
         }
         return result;
@@ -1845,7 +1941,11 @@ class ArchitectureModuleGraphTest {
     }
 
     private static ClassOwner owner(String name, String module) {
-        return new ClassOwner(name, module);
+        return owner(name, module, name.substring(name.lastIndexOf('.') + 1) + ".java");
+    }
+
+    private static ClassOwner owner(String name, String module, String sourceFile) {
+        return new ClassOwner(name, module, sourceFile);
     }
 
     private static ClassDependency edge(String from, String to) {

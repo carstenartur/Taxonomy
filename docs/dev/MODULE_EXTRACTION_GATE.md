@@ -16,10 +16,11 @@ and runs UI verification in separate lanes. Plain local `verify` skips integrati
 and post-reactor gates and is not equivalent to CI. The generated report is
 printed in the test output and written to
 `taxonomy-build/target/architecture-module-graph.txt`.
-The owner fixture requires the direct coordinates `com.taxonomy:taxonomy-app`,
+The owner fixture requires the unclassified direct coordinates `com.taxonomy:taxonomy-app`,
 `com.taxonomy:taxonomy-coverage`, `com.taxonomy:taxonomy-tooling`, and
 `com.tngtech.archunit:archunit-junit5`, together with their expected type and
-scope, so a same-named artifact from another group cannot satisfy the contract.
+scope. A same-named artifact from another group or a classified variant cannot
+satisfy the contract; unrelated dependencies remain permitted.
 
 Run the architecture suite from the repository root across the complete reactor.
 App-only commands, including the documented Keycloak-only selection, do not run
@@ -120,9 +121,13 @@ those mechanisms require extending the adapter before extraction.
 
 ## Ownership and fail-closed behavior
 
-Root composition classes are the explicit `rootCompositionClasses` entries,
-including their nested classes. Contexts with a null or missing `targetModule`
-remain application-owned and are named as unresolved in the report.
+Root composition ownership follows the exact originating source files named by
+`rootCompositionClasses`, as reported by the compiler. This includes genuine
+nested, local, anonymous, and synthetic classes produced from an allowed source.
+A distinct top-level source whose file name contains `$` needs its own explicit
+entry and cannot inherit another file's allowance. Contexts with a null or
+missing `targetModule` remain application-owned and are named as unresolved in
+the report.
 
 The existing `taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`,
 `taxonomy-extension-api`, and `taxonomy-tooling` libraries keep exact physical
@@ -136,8 +141,10 @@ Unmapped classes, invalid or duplicate physical owners, overlapping package
 assignments, missing reactor POMs, and source files missing from imported bytecode
 fail even before extraction. Before importing bytecode, the running JDK compiler
 compiles the current production sources once into an in-memory inventory of
-binary names and source modules. Class bytes are discarded and no source or
-build output is written. The inventory must match the actual compiled classes;
+binary names, source modules, and exact originating source-file names. That
+verified identity is carried into graph ownership. Class bytes are discarded
+and no source or build output is written. The inventory must match the actual
+compiled classes;
 an obsolete nested or additional top-level class fails even when its original
 source file still exists or timestamps match. The compiler also accounts for
 legitimate local, anonymous, and synthetic classes without guessing their names.

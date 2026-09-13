@@ -122,7 +122,7 @@ class ArchitectureModuleExtractionTest {
         if (sources.stream().noneMatch(source -> source.startsWith(policy.compositionModule() + ":"))) {
             throw new IllegalStateException("No application production sources found; module graph would be vacuous");
         }
-        verifyCompiledBinaryInventory(sourceOwners, outputs, classOwners);
+        Map<String, String> compiledSourceFiles = verifyCompiledBinaryInventory(sourceOwners, outputs, classOwners);
         JavaClasses imported = new ClassFileImporter().importPaths(outputClasses);
         Set<String> importedSources = new TreeSet<>();
         List<ClassDependency> dependencies = new ArrayList<>();
@@ -154,18 +154,19 @@ class ArchitectureModuleExtractionTest {
             throw new IllegalStateException("Production sources missing from imported bytecode: " + missingSources);
         }
         List<ClassOwner> ownership = new ArrayList<>();
-        classOwners.forEach((name, physical) -> physical.forEach(module -> ownership.add(new ClassOwner(name, module))));
+        classOwners.forEach((name, physical) -> physical.forEach(module ->
+                ownership.add(new ClassOwner(name, module, compiledSourceFiles.get(module + ":" + name)))));
         return ArchitectureModuleGraph.evaluate(policy, SUPPORT_MODULES, modules.keySet(), ownership, dependencies,
                 readProductionModuleDependencies(root, modules, policy));
     }
 
-    private static void verifyCompiledBinaryInventory(Map<Path, String> sources, List<Path> outputs,
-                                                      Map<String, SortedSet<String>> classOwners) throws IOException {
+    private static Map<String, String> verifyCompiledBinaryInventory(Map<Path, String> sources, List<Path> outputs,
+                                                                     Map<String, SortedSet<String>> classOwners) throws IOException {
         var compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             throw new IllegalStateException("A JDK compiler is required to verify the production binary inventory");
         }
-        Set<String> expected = new TreeSet<>();
+        SortedMap<String, String> expected = new TreeMap<>();
         DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
         try (StandardJavaFileManager standard = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8);
              var inventory = new ForwardingJavaFileManager<StandardJavaFileManager>(standard) {
@@ -174,11 +175,12 @@ class ArchitectureModuleExtractionTest {
                                                             JavaFileObject.Kind kind, FileObject sibling) {
                      // javac supplies the originating source for named, local,
                      // anonymous and synthetic classes alike. Do not guess $ names.
-                     String owner = sibling == null ? null : sources.get(Path.of(sibling.toUri()).toAbsolutePath().normalize());
+                     Path source = sibling == null ? null : Path.of(sibling.toUri()).toAbsolutePath().normalize();
+                     String owner = source == null ? null : sources.get(source);
                      if (kind != JavaFileObject.Kind.CLASS || owner == null) {
                          throw new IllegalStateException("Unmapped compiler output while verifying inventory: " + className);
                      }
-                     expected.add(owner + ":" + className);
+                     expected.put(owner + ":" + className, source.getFileName().toString());
                      return new SimpleJavaFileObject(URI.create("memory:///" + className.replace('.', '/') + kind.extension), kind) {
                          @Override
                          public OutputStream openOutputStream() {
@@ -207,13 +209,14 @@ class ArchitectureModuleExtractionTest {
         Set<String> actual = new TreeSet<>();
         classOwners.forEach((name, physical) -> physical.forEach(module -> actual.add(module + ":" + name)));
         Set<String> obsolete = new TreeSet<>(actual);
-        obsolete.removeAll(expected);
-        Set<String> missing = new TreeSet<>(expected);
+        obsolete.removeAll(expected.keySet());
+        Set<String> missing = new TreeSet<>(expected.keySet());
         missing.removeAll(actual);
         if (!obsolete.isEmpty() || !missing.isEmpty()) {
             throw new IllegalStateException("Compiled binary inventory differs from current source declarations; obsolete="
                     + obsolete + ", missing=" + missing + "; run a clean reactor build");
         }
+        return java.util.Collections.unmodifiableSortedMap(expected);
     }
 
     static Map<String, Path> discoverModules(Path repositoryRoot, Policy policy) throws Exception {

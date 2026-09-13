@@ -25,7 +25,7 @@ final class ArchitectureModuleGraph {
 
     record Policy(String compositionModule, Set<String> rootCompositionClasses, List<Context> contexts) {}
 
-    record ClassOwner(String className, String physicalModule) {}
+    record ClassOwner(String className, String physicalModule, String sourceFile) {}
 
     record ClassDependency(String origin, String target) {}
 
@@ -202,10 +202,9 @@ final class ArchitectureModuleGraph {
         }
         String planned;
         String reason;
-        String topLevelClass = className.substring(className.lastIndexOf('.') + 1).split("\\$", 2)[0] + ".java";
-        if (packageName.equals("com.taxonomy") && policy.rootCompositionClasses().contains(topLevelClass)) {
+        if (packageName.equals("com.taxonomy") && policy.rootCompositionClasses().contains(source.sourceFile())) {
             planned = policy.compositionModule();
-            reason = "root composition " + topLevelClass;
+            reason = "root composition " + source.sourceFile();
         } else if (context == null) {
             planned = policy.compositionModule();
             reason = "unmapped production class";
