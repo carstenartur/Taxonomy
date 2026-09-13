@@ -366,6 +366,23 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void aDeclaredPropertyArtifactModuleAliasCycleFailsExplicitly() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>features/a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("features/a", "${feature.module}", """
+                <properties><feature.module>taxonomy-a</feature.module></properties>
+                <modules><module>self-alias</module></modules>
+                """);
+        Files.createSymbolicLink(temporaryRepository.resolve("features/a/self-alias"),
+                temporaryRepository.resolve("features/a"));
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Duplicate or cyclic reactor module declaration")
+                .hasMessageContaining("features/a/self-alias/pom.xml");
+    }
+
+    @Test
     void aDirectorySymlinkCycleFailsClosed() throws Exception {
         pom("", "taxonomy", "<modules><module>taxonomy-app</module></modules>");
         pom("taxonomy-app", APP, "");
@@ -1546,6 +1563,68 @@ class ArchitectureModuleGraphTest {
         Files.writeString(child, Files.readString(child).replace("../local-parent/pom.xml", "../linked-parent/pom.xml"));
 
         assertThat(fixturePomDependencies()).containsExactly(new ModuleDependency(A, APP));
+    }
+
+    @Test
+    void aTwoPomParentCycleThroughLocalDirectoryAliasesFailsExplicitly() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("taxonomy-a", "${feature.module}", """
+                <parent><groupId>org.example.build</groupId><artifactId>parent-b</artifactId><version>1</version>
+                  <relativePath>alias-to-b/pom.xml</relativePath></parent>
+                <groupId>com.taxonomy</groupId><version>1</version>
+                <properties><feature.module>taxonomy-a</feature.module></properties>
+                """);
+        pom("parent-b", "org.example.build", "parent-b", """
+                <parent><groupId>com.taxonomy</groupId><artifactId>taxonomy-a</artifactId><version>1</version>
+                  <relativePath>alias-to-a/pom.xml</relativePath></parent>
+                <groupId>org.example.build</groupId><version>1</version>
+                """);
+        Files.createSymbolicLink(temporaryRepository.resolve("taxonomy-a/alias-to-b"),
+                temporaryRepository.resolve("parent-b"));
+        Files.createSymbolicLink(temporaryRepository.resolve("parent-b/alias-to-a"),
+                temporaryRepository.resolve("taxonomy-a"));
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Cyclic local parent POM inheritance")
+                .hasMessageContaining("alias-to-a/pom.xml");
+    }
+
+    @Test
+    void aSharedAcyclicParentCanBeResolvedThroughDistinctLocalAliases() throws Exception {
+        pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module>"
+                + "<module>taxonomy-b</module></modules>");
+        pom("taxonomy-app", APP, "");
+        pom("shared-parent", "org.example.build", "shared-parent", """
+                <packaging>pom</packaging>
+                <dependencies><dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
+                  <version>1</version><scope>runtime</scope></dependency></dependencies>
+                """);
+        Files.createSymbolicLink(temporaryRepository.resolve("parent-alias-a"),
+                temporaryRepository.resolve("shared-parent"));
+        Files.createSymbolicLink(temporaryRepository.resolve("parent-alias-b"),
+                temporaryRepository.resolve("shared-parent"));
+        pom("taxonomy-a", "${feature.module}", """
+                <parent><groupId>org.example.build</groupId><artifactId>shared-parent</artifactId><version>1</version>
+                  <relativePath>../parent-alias-a/pom.xml</relativePath></parent>
+                <groupId>com.taxonomy</groupId><version>1</version>
+                <properties><feature.module>taxonomy-a</feature.module></properties>
+                """);
+        pom("taxonomy-b", "${feature.module}", """
+                <parent><groupId>org.example.build</groupId><artifactId>shared-parent</artifactId><version>1</version>
+                  <relativePath>../parent-alias-b/pom.xml</relativePath></parent>
+                <groupId>com.taxonomy</groupId><version>1</version>
+                <properties><feature.module>taxonomy-b</feature.module></properties>
+                """);
+
+        var modules = ArchitectureModuleExtractionTest.discoverModules(temporaryRepository, POLICY);
+
+        assertThat(modules).containsEntry(A, temporaryRepository.resolve("taxonomy-a"))
+                .containsEntry(B, temporaryRepository.resolve("taxonomy-b"));
+        assertThat(ArchitectureModuleExtractionTest.readProductionModuleDependencies(
+                temporaryRepository, modules, POLICY)).containsExactly(
+                new ModuleDependency(A, APP), new ModuleDependency(B, APP));
     }
 
     private void externalParentPoms(String artifact, String relative) throws Exception {

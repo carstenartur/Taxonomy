@@ -399,90 +399,94 @@ class ArchitectureModuleExtractionTest {
         if (cache.containsKey(file)) {
             return cache.get(file);
         }
-        if (!resolving.add(file)) {
+        Path resolvingIdentity = file.toRealPath();
+        if (!resolving.add(resolvingIdentity)) {
             throw new IllegalStateException("Cyclic local parent POM inheritance: " + file);
         }
-        Element project = readPom(file, root);
-        Map<String, String> ownProperties = pomProperties(project);
-        List<Element> parents = children(project, "parent");
-        Element parent = parents.isEmpty() ? null : parents.getFirst();
-        String parentArtifact = parent == null ? "" : resolved(childText(parent, "artifactId"), ownProperties, "parent artifactId", file.toString());
-        String parentGroup = parent == null ? "" : resolved(childText(parent, "groupId"), ownProperties, "parent groupId", file.toString());
-        String parentVersion = parent == null ? "" : resolved(childText(parent, "version"), ownProperties, "parent version", file.toString());
-        LocalPom inherited = null;
-        if (parent != null) {
-            List<Path> candidates = new ArrayList<>();
-            Path reactorParent = modules.containsKey(parentArtifact)
-                    ? modules.get(parentArtifact).resolve("pom.xml").toAbsolutePath().normalize() : null;
-            boolean matchingReactorParent = false;
-            String relative = children(parent, "relativePath").isEmpty() ? "../pom.xml" : childText(parent, "relativePath");
-            if (!relative.isEmpty()) {
-                Path candidate = repositoryPomPath(file.getParent().resolve(
-                        resolved(relative, ownProperties, "parent relativePath", file.toString())), root);
-                candidates.add(Files.isDirectory(candidate) ? candidate.resolve("pom.xml") : candidate);
-            }
-            if (reactorParent != null) {
-                candidates.add(reactorParent);
-            }
-            for (Path candidate : candidates) {
-                candidate = repositoryPomPath(candidate, root);
-                if (!Files.isRegularFile(candidate)) {
-                    continue;
+        try {
+            Element project = readPom(file, root);
+            Map<String, String> ownProperties = pomProperties(project);
+            List<Element> parents = children(project, "parent");
+            Element parent = parents.isEmpty() ? null : parents.getFirst();
+            String parentArtifact = parent == null ? "" : resolved(childText(parent, "artifactId"), ownProperties, "parent artifactId", file.toString());
+            String parentGroup = parent == null ? "" : resolved(childText(parent, "groupId"), ownProperties, "parent groupId", file.toString());
+            String parentVersion = parent == null ? "" : resolved(childText(parent, "version"), ownProperties, "parent version", file.toString());
+            LocalPom inherited = null;
+            if (parent != null) {
+                List<Path> candidates = new ArrayList<>();
+                Path reactorParent = modules.containsKey(parentArtifact)
+                        ? modules.get(parentArtifact).resolve("pom.xml").toAbsolutePath().normalize() : null;
+                boolean matchingReactorParent = false;
+                String relative = children(parent, "relativePath").isEmpty() ? "../pom.xml" : childText(parent, "relativePath");
+                if (!relative.isEmpty()) {
+                    Path candidate = repositoryPomPath(file.getParent().resolve(
+                            resolved(relative, ownProperties, "parent relativePath", file.toString())), root);
+                    candidates.add(Files.isDirectory(candidate) ? candidate.resolve("pom.xml") : candidate);
                 }
-                Element candidateProject = readPom(candidate, root);
-                boolean sameRawGroup = declaredGroup(candidateProject).equals(childText(parent, "groupId"));
-                boolean sameRawArtifact = childText(candidateProject, "artifactId").equals(childText(parent, "artifactId"));
-                // Reactor registration already resolved artifact expressions;
-                // a literal parent reference must retain that candidate too.
-                boolean registeredReactorParent = candidate.equals(reactorParent);
-                if ((!registeredReactorParent && !sameRawArtifact && !couldHaveArtifact(candidateProject, parentArtifact))
-                        || (!sameRawGroup && !couldHaveGroup(candidateProject, parentGroup))) {
-                    continue;
+                if (reactorParent != null) {
+                    candidates.add(reactorParent);
                 }
-                LocalPom possible = localPom(candidate, root, modules, cache, resolving);
-                String candidateGroup = resolved(possible.group(), possible.values(), "parent groupId", candidate.toString());
-                String candidateArtifact = resolved(possible.artifact(), possible.values(), "parent artifactId", candidate.toString());
-                if (sameRawGroup && !candidateGroup.equals(parentGroup)) {
-                    throw new IllegalStateException("Unsupported context-dependent local parent groupId in " + file
-                            + ": parent resolves to " + candidateGroup + ", child resolves to " + parentGroup);
-                }
-                if (sameRawArtifact && !candidateArtifact.equals(parentArtifact)) {
-                    throw new IllegalStateException("Unsupported context-dependent local parent artifactId in " + file
-                            + ": parent resolves to " + candidateArtifact + ", child resolves to " + parentArtifact);
-                }
-                if (candidateGroup.equals(parentGroup) && candidateArtifact.equals(parentArtifact)) {
-                    matchingReactorParent |= registeredReactorParent;
-                    if (parentVersion.startsWith("[") || parentVersion.startsWith("(")) {
-                        throw new IllegalStateException("Unsupported local-parent version range " + parentVersion
-                                + " in " + file + "; matching local parent: " + candidate);
+                for (Path candidate : candidates) {
+                    candidate = repositoryPomPath(candidate, root);
+                    if (!Files.isRegularFile(candidate)) {
+                        continue;
                     }
-                    if (resolved(possible.version(), possible.values(), "parent version", candidate.toString()).equals(parentVersion)) {
-                        inherited = possible;
-                        break;
+                    Element candidateProject = readPom(candidate, root);
+                    boolean sameRawGroup = declaredGroup(candidateProject).equals(childText(parent, "groupId"));
+                    boolean sameRawArtifact = childText(candidateProject, "artifactId").equals(childText(parent, "artifactId"));
+                    // Reactor registration already resolved artifact expressions;
+                    // a literal parent reference must retain that candidate too.
+                    boolean registeredReactorParent = candidate.equals(reactorParent);
+                    if ((!registeredReactorParent && !sameRawArtifact && !couldHaveArtifact(candidateProject, parentArtifact))
+                            || (!sameRawGroup && !couldHaveGroup(candidateProject, parentGroup))) {
+                        continue;
+                    }
+                    LocalPom possible = localPom(candidate, root, modules, cache, resolving);
+                    String candidateGroup = resolved(possible.group(), possible.values(), "parent groupId", candidate.toString());
+                    String candidateArtifact = resolved(possible.artifact(), possible.values(), "parent artifactId", candidate.toString());
+                    if (sameRawGroup && !candidateGroup.equals(parentGroup)) {
+                        throw new IllegalStateException("Unsupported context-dependent local parent groupId in " + file
+                                + ": parent resolves to " + candidateGroup + ", child resolves to " + parentGroup);
+                    }
+                    if (sameRawArtifact && !candidateArtifact.equals(parentArtifact)) {
+                        throw new IllegalStateException("Unsupported context-dependent local parent artifactId in " + file
+                                + ": parent resolves to " + candidateArtifact + ", child resolves to " + parentArtifact);
+                    }
+                    if (candidateGroup.equals(parentGroup) && candidateArtifact.equals(parentArtifact)) {
+                        matchingReactorParent |= registeredReactorParent;
+                        if (parentVersion.startsWith("[") || parentVersion.startsWith("(")) {
+                            throw new IllegalStateException("Unsupported local-parent version range " + parentVersion
+                                    + " in " + file + "; matching local parent: " + candidate);
+                        }
+                        if (resolved(possible.version(), possible.values(), "parent version", candidate.toString()).equals(parentVersion)) {
+                            inherited = possible;
+                            break;
+                        }
                     }
                 }
+                if (inherited == null && (parentGroup.equals("com.taxonomy") || matchingReactorParent)) {
+                    throw new IllegalStateException("Cannot resolve local reactor parent " + parentGroup + ":" + parentArtifact
+                            + ":" + parentVersion + " for " + file);
+                }
             }
-            if (inherited == null && (parentGroup.equals("com.taxonomy") || matchingReactorParent)) {
-                throw new IllegalStateException("Cannot resolve local reactor parent " + parentGroup + ":" + parentArtifact
-                        + ":" + parentVersion + " for " + file);
+            Map<String, String> properties = new TreeMap<>();
+            if (inherited != null) {
+                properties.putAll(inherited.properties());
             }
+            properties.putAll(ownProperties);
+            markProfileDependentProperties(project, properties);
+            List<PomDependency> dependencies = inheritedDependencies(inherited == null ? List.of() : inherited.dependencies(), project, false);
+            List<PomDependency> managed = inheritedDependencies(inherited == null ? List.of() : inherited.managed(), project, true);
+            String group = childText(project, "groupId");
+            String version = childText(project, "version");
+            LocalPom model = new LocalPom(group.isBlank() ? parentGroup : group, childText(project, "artifactId"),
+                    version.isBlank() ? parentVersion : version, Map.copyOf(properties), parentGroup, parentArtifact, parentVersion,
+                    dependencies, managed);
+            cache.put(file, model);
+            return model;
+        } finally {
+            resolving.remove(resolvingIdentity);
         }
-        Map<String, String> properties = new TreeMap<>();
-        if (inherited != null) {
-            properties.putAll(inherited.properties());
-        }
-        properties.putAll(ownProperties);
-        markProfileDependentProperties(project, properties);
-        List<PomDependency> dependencies = inheritedDependencies(inherited == null ? List.of() : inherited.dependencies(), project, false);
-        List<PomDependency> managed = inheritedDependencies(inherited == null ? List.of() : inherited.managed(), project, true);
-        String group = childText(project, "groupId");
-        String version = childText(project, "version");
-        LocalPom model = new LocalPom(group.isBlank() ? parentGroup : group, childText(project, "artifactId"),
-                version.isBlank() ? parentVersion : version, Map.copyOf(properties), parentGroup, parentArtifact, parentVersion,
-                dependencies, managed);
-        cache.put(file, model);
-        resolving.remove(file);
-        return model;
     }
 
     private static String declaredGroup(Element project) {
@@ -629,10 +633,15 @@ class ArchitectureModuleExtractionTest {
     private static void collectModules(Path pom, Path root, Map<String, Path> modules,
                                        List<Path> propertyModulePoms, Set<Path> visited) throws Exception {
         pom = pom.toAbsolutePath().normalize();
-        if (!pom.startsWith(root) || !Files.isRegularFile(pom)) {
+        if (!pom.startsWith(root)) {
             throw new IllegalStateException("Reactor module POM is missing or outside the repository: " + pom);
         }
-        if (!visited.add(pom)) {
+        pom = repositoryPomPath(pom, root);
+        if (!Files.isRegularFile(pom)) {
+            throw new IllegalStateException("Reactor module POM is missing or outside the repository: " + pom);
+        }
+        Path pomIdentity = pom.toRealPath();
+        if (!visited.add(pomIdentity)) {
             throw new IllegalStateException("Duplicate or cyclic reactor module declaration: " + pom);
         }
         Element project = readPom(pom, root);

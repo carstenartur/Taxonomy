@@ -52,7 +52,9 @@ does not depend on their declaration order. An unresolved expression that could 
 also fails discovery; it cannot make an extraction attempt invisible.
 Directory symlinks are checked against the checkout before traversal, including
 aliases into otherwise excluded build directories. Safe aliases use the same POM
-file identity as the declared reactor entry; directory-link cycles fail discovery.
+file identity as the declared reactor entry; duplicate and cyclic declarations
+are detected by physical POM identity while ownership and errors retain the
+declared path. Directory-link cycles fail discovery.
 
 Extraction means moving the whole mapped context. A present feature module must
 contain production classes, and all classes assigned to its target must have
@@ -90,6 +92,10 @@ effective-coordinate check applies to a non-reactor local parent reached through
 Every POM path is checked against the checkout before content is read, including
 normalized traversal and symlink targets. A `relativePath` outside the checkout
 fails even when Maven would allow it; symlinks that remain inside are permitted.
+Local-parent recursion uses physical POM identity only for the active resolution
+chain, after this boundary check. Logical paths remain the cache, diagnostic, and
+relative-resolution paths, and a shared acyclic parent can be reused after its
+active resolution has ended.
 Use Maven's explicit empty `<relativePath/>` for an external parent with no local
 lookup. External-parent content remains outside this projection.
 

@@ -108,3 +108,50 @@ D2 confirmation was accepted by the repository and PR #1056 was squash-merged
 as `5d1d0ee88b1fdd4f7d0d9b37a6925bf4d464ccfa`. The earlier hold on main merges
 has therefore ended. Root handles subsequent stack integration in a separate
 worktree; it must not mutate this adapter during implementation.
+
+## Task 3: Recognize POM recursion through safe local aliases
+
+The new complete external review `5189764165` of published head
+`42ce0ff0ac865e2d3b86bfcf687d48bfc9b8b503` raises two previously unreported
+POM-recursion identity gaps. Task 2 is completed; its three findings are fixed
+and its scoped review is clean. This task addresses the new traversal cases.
+
+1. `localPom` tracks normalized logical paths in `resolving`. A two-POM parent
+   chain can reach the same file through a local directory alias while building
+   an unfinished model, so every logical path differs and the cycle guard is
+   missed. After checkout-boundary validation, track `toRealPath()` identity in
+   the active recursion set and remove that same identity on exit. Preserve
+   logical paths for diagnostics, model cache keys and relative-path resolution.
+2. `collectModules` likewise stores only normalized logical POM paths in
+   `visited`. A declared property-artifact module can revisit its own physical
+   POM through aliases before deferred artifact registration catches it. Validate
+   containment before canonical resolution and track canonical POM identity for
+   duplicate/cyclic declaration detection, retaining logical module ownership and
+   error paths.
+
+Add real filesystem/POM regressions for the two-POM alias parent cycle and a
+declared property-artifact module alias cycle. Both must fail promptly with the
+intended explicit cycle error, not an eventual stack overflow, missing-file
+fallback or OS symlink-depth exception. Establish honest RED against the exact
+published adapter and record the actual old failure mode; the review's claim of
+an overflow is a hypothesis, not a result to assume. Retain positive support for
+ordinary local aliases and shared acyclic parent models; add a focused passing
+control if existing tests do not cover reuse across distinct aliases.
+
+Preserve all 108 current fixture methods/assertions, the nine synchronized
+architecture selectors, logical cache/ownership paths, effective Maven-coordinate
+checks, all earlier containment/report fixes and the unchanged pure evaluator.
+No production code, dependencies, enforcement data, workflow, skip or waiver
+changes. Do not canonicalize every path indiscriminately or treat a shared parent
+as cyclic after its active resolution has ended. Direct documentation may clarify
+only these POM cycle semantics.
+
+The sole implementer owns the adapter, fixture class and directly affected gate
+documentation in the existing gate worktree. Root owns Git, serial native Maven,
+review and publication. No subagents or Maven by the implementer. Use fresh
+task-3-specific ignored JUnit compilation/log paths and write task-3-report.md;
+leave all Task 1/2 evidence intact. Freeze for scoped independent review.
+
+- [ ] Reproduce both new alias-recursion findings and preserve acyclic controls.
+- [ ] Implement canonical recursion identity and pass the complete fixture suite.
+- [ ] Root performs native verification, scoped review and publication.
