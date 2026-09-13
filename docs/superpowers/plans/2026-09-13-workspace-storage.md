@@ -61,7 +61,7 @@
 - JgitStorageSchemaIndexValidationTest.java
 - JgitStorageSchemaMigrationConfigTest.java
 
-**Consumers:** Audit dotted, slash and escaped old-package references in tracked Java, resources, .github, observability and current docs. The preflight inventory is supplied in the task workspace; it found38 production Java and86 test Java files with dotted references before planning, but it is not a substitute for auditing slash-based coverage/workflow consumers. Only required namespace imports/references change in these consumers. In ArchitectureApplicationSchemaCompositionTest, the former application owner com.taxonomy.dsl.storage.TaxonomySchemaMigrationConfig remains a valid negative assertion: that class is not among the eleven moved owners. Do not blindly rewrite it.
+**Consumers:** Audit dotted, slash and escaped old-package references in tracked Java, resources, .github, observability and current docs. The preflight inventory is supplied in the task workspace; it found 38 production Java and 86 test Java files with dotted references before planning, but it is not a substitute for auditing slash-based coverage/workflow consumers. Only required namespace imports/references change in these consumers. In ArchitectureApplicationSchemaCompositionTest, the former application owner com.taxonomy.dsl.storage.TaxonomySchemaMigrationConfig remains a valid negative assertion: that class is not among the eleven moved owners. Do not blindly rewrite it.
 
 - [x] Add taxonomy-app/src/test/java/com/taxonomy/ArchitectureWorkspaceStorageOwnershipTest.java and establish honest RED against pre-move bytecode. Use this complete test:
 
@@ -137,7 +137,7 @@ Compare old/new Java after reversing only these namespace changes. All eleven pr
 
 ## Task 2: Prove invalid branches cannot open a Git transport
 
-The completed workspace-storage change is published as draft PR #1060 at `2122b52eabae0edce69d2674c6b2a98cfa050985`. Complete external review `5190415687` inspected all150 changed files and identified one new moderate assertion gap in `ExternalGitSyncServiceTest.pushRejectsBlankAndInvalidBranchNamesBeforeOpeningTransport`: the three exception assertions do not prove the named absence of transport opening. Earlier implementation, coverage, whole-branch review and the selective-transfer assertion fix are complete; do not repeat them.
+The completed workspace-storage change is published as draft PR #1060 at `2122b52eabae0edce69d2674c6b2a98cfa050985`. Complete external review `5190415687` inspected all 150 changed files and identified one new moderate assertion gap in `ExternalGitSyncServiceTest.pushRejectsBlankAndInvalidBranchNamesBeforeOpeningTransport`: the three exception assertions do not prove the named absence of transport opening. Earlier implementation, coverage, whole-branch review and the selective-transfer assertion fix are complete; do not repeat them.
 
 Change only `taxonomy-app/src/test/java/com/taxonomy/workspace/service/ExternalGitSyncServiceTest.java`. Preserve every existing test method, fixture, exception assertion and production byte. Add imports for `org.eclipse.jgit.transport.Transport`, `org.mockito.MockedStatic` and static `org.mockito.Mockito.mockStatic`. Wrap the existing three assertions in a try-with-resources `MockedStatic<Transport>` from `mockStatic(Transport.class)` and invoke `verifyNoInteractions()` after each existing `assertThrows`. Keep the exact inputs `null`, `"  "` and `"bad branch"`, the valid credential-free remote URL, the current method name and all current setup/teardown. Do not weaken the promise by renaming the test, add a production seam or dependency, suppress output, or change any other test, policy, source, schema, selector or coverage floor.
 
@@ -147,7 +147,7 @@ The implementer may write the one test and its own ignored evidence/report only;
 
 ## Task 3: Trigger the consumer contract for all relocated runtime consumers
 
-Task2 is complete and published at `647c9b2e38ae12c0eeb652c18a1fe299f271a511`. Complete external review `5190452812` inspected150/150 files and raised comment `3999416648`: changes solely to the runtime consumers or verification catalogue currently bypass the separate JGit consumer workflow because its path filters omit them. This is a new trigger-coverage finding, not a remaining transport-test defect.
+Task 2 is complete and published at `647c9b2e38ae12c0eeb652c18a1fe299f271a511`. Complete external review `5190452812` inspected 150/150 files and raised comment `3999416648`: changes solely to the runtime consumers or verification catalogue currently bypass the separate JGit consumer workflow because its path filters omit them. This is a new trigger-coverage finding, not a remaining transport-test defect.
 
 Change only `.github/workflows/jgit-storage-hibernate-contract.yml`. In both `on.pull_request.paths` and `on.push.paths`, add each of these five exact paths once, immediately after the existing `pom.xml` entry, preserving this order:
 
@@ -159,6 +159,6 @@ Change only `.github/workflows/jgit-storage-hibernate-contract.yml`. In both `on
       - '.mvn/verification-suites.json'
 ```
 
-Retain every existing trigger, branch filter, path (including old storage paths), permission, concurrency value, job, step, command, timeout, report, upload and environment value byte-for-byte. Add no skip, condition, waiver, production/test change or dependency. This is the sole follow-up extension to Task1's path-filter scope; its job-logic freeze remains absolute.
+Retain every existing trigger, branch filter, path (including old storage paths), permission, concurrency value, job, step, command, timeout, report, upload and environment value byte-for-byte. Add no skip, condition, waiver, production/test change or dependency. This is the sole follow-up extension to Task 1's path-filter scope; its job-logic freeze remains absolute.
 
 Validate YAML with the available parser using YAML1.2-compatible `on` handling (PyYAML BaseLoader is adequate for this structural check), exact presence/uniqueness of the five paths in both lists, existence of each referenced file, and that removing only those ten new entries reproduces the original published workflow exactly. Run whitespace/diff checks. Do not add a test mirroring this low-impact list edit or rerun Maven: no runtime or test implementation changes. Root owns commit, scoped review, publication and the fresh external-review request. Write exact commands/results, changed paths and any concerns to `task-3-report.md` in this plan's SDD directory; freeze. No Git/index/HEAD/branch mutation, Maven, external API/network or subagents by the implementer.
