@@ -70,12 +70,14 @@ class ArchitectureModuleExtractionTest {
 
     static Evaluation evaluateRepository(Path root) throws Exception {
         Path checkout = root.toAbsolutePath().normalize();
-        Policy policy = readPolicy(root.resolve(".github/architecture-contexts.json"));
+        Policy policy = readPolicy(repositoryPath(root.resolve(".github/architecture-contexts.json"), checkout,
+                "Architecture policy"));
         Map<String, Path> modules = discoverModules(root, policy);
         SortedMap<String, SortedSet<String>> classOwners = new TreeMap<>();
         Set<String> sources = new TreeSet<>();
         Map<Path, String> sourceOwners = new TreeMap<>();
         List<Path> outputs = new ArrayList<>();
+        List<Path> outputClasses = new ArrayList<>();
         for (var module : modules.entrySet()) {
             Path sourceRoot = repositoryPath(module.getValue().resolve("src/main/java"), checkout,
                     "Production source");
@@ -101,6 +103,9 @@ class ArchitectureModuleExtractionTest {
             outputs.add(output);
             for (Path file : repositoryFiles(output, checkout, "Production output")) {
                 String relative = portable(output.relativize(file));
+                if (relative.endsWith(".class")) {
+                    outputClasses.add(file);
+                }
                 if (relative.startsWith("com/taxonomy/") && relative.endsWith(".class")
                         && !relative.endsWith("/package-info.class")) {
                     String className = relative.substring(0, relative.length() - ".class".length())
@@ -113,7 +118,7 @@ class ArchitectureModuleExtractionTest {
             throw new IllegalStateException("No application production sources found; module graph would be vacuous");
         }
         verifyCompiledBinaryInventory(sourceOwners, outputs, classOwners);
-        JavaClasses imported = new ClassFileImporter().importPaths(outputs);
+        JavaClasses imported = new ClassFileImporter().importPaths(outputClasses);
         Set<String> importedSources = new TreeSet<>();
         List<ClassDependency> dependencies = new ArrayList<>();
         for (JavaClass javaClass : imported) {
@@ -738,17 +743,37 @@ class ArchitectureModuleExtractionTest {
     }
 
     private static List<Path> repositoryFiles(Path root, Path repositoryRoot, String description) throws IOException {
-        repositoryPath(root, repositoryRoot, description);
         List<Path> result = new ArrayList<>();
-        try (var files = Files.walk(root)) {
-            for (Path file : files.sorted().toList()) {
-                repositoryPath(file, repositoryRoot, description);
-                if (Files.isRegularFile(file)) {
-                    result.add(file);
+        collectRepositoryFiles(root, repositoryRoot, description, new HashSet<>(), result);
+        result.sort(Path::compareTo);
+        return List.copyOf(result);
+    }
+
+    private static void collectRepositoryFiles(Path directory, Path repositoryRoot, String description,
+                                               Set<Path> ancestors, List<Path> result) throws IOException {
+        repositoryPath(directory, repositoryRoot, description);
+        Path realDirectory = directory.toRealPath();
+        if (!ancestors.add(realDirectory)) {
+            throw new java.nio.file.FileSystemLoopException(directory.toString());
+        }
+        try {
+            List<Path> entries;
+            try (var files = Files.list(directory)) {
+                entries = files.sorted().toList();
+            }
+            for (Path entry : entries) {
+                // Check a linked entry before probing whether its target is a
+                // directory, then retain the logical path while descending.
+                repositoryPath(entry, repositoryRoot, description);
+                if (Files.isDirectory(entry)) {
+                    collectRepositoryFiles(entry, repositoryRoot, description, ancestors, result);
+                } else if (Files.isRegularFile(entry)) {
+                    result.add(entry);
                 }
             }
+        } finally {
+            ancestors.remove(realDirectory);
         }
-        return List.copyOf(result);
     }
 
     private static String portable(Path relative) {

@@ -134,11 +134,14 @@ Every reactor module's existing output directory is inspected, even when its
 source directory is absent or contains no Java sources. Genuinely empty support
 and POM modules remain valid; their leftover binaries do not.
 
-Every consumed production source root, source file, output root, and output file
-must resolve inside the checkout before javac or ArchUnit can use it. This check
-applies independently of POM discovery, including source packages named
-`target`, individual linked class files, and linked output directories. Symlink
-aliases whose targets remain inside the checkout continue to be valid.
+The architecture policy path, including each linked ancestor, must resolve inside
+the checkout before its content is read. Every consumed production source root,
+source file, output root, and output file must likewise resolve inside the
+checkout before javac or ArchUnit can use it. This check applies independently of
+POM discovery, including source packages named `target`, individual linked class
+files, and linked output directories. Safe file and directory aliases retain
+their logical checkout paths for package and physical-owner mapping. Linked
+directories are checked before descent, and directory cycles fail explicitly.
 
 This pass uses Java 21 and the complete `surefire.test.class.path` (falling back
 to `java.class.path` outside Surefire), plus reactor class directories. Annotation

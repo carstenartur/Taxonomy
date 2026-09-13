@@ -487,6 +487,160 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void anExternalArchitecturePolicyFileIsRejectedBeforeParsing() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path policy = temporaryRepository.resolve(".github/architecture-contexts.json");
+        Path outside = externalFixture("outside-policy-file").resolve("architecture-contexts.json");
+        Files.move(policy, outside);
+        Files.writeString(outside, "OUTSIDE_POLICY_MUST_NOT_BE_PARSED");
+        Files.createSymbolicLink(policy, outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Architecture policy path is outside repository through a symlink")
+                .hasMessageContaining(".github/architecture-contexts.json");
+    }
+
+    @Test
+    void anExternalArchitecturePolicyAncestorIsRejectedBeforeParsing() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path policyDirectory = temporaryRepository.resolve(".github");
+        Path outside = externalFixture("outside-policy-directory");
+        Files.move(policyDirectory.resolve("architecture-contexts.json"), outside.resolve("architecture-contexts.json"));
+        Files.writeString(outside.resolve("architecture-contexts.json"), "OUTSIDE_POLICY_MUST_NOT_BE_PARSED");
+        Files.delete(policyDirectory);
+        Files.createSymbolicLink(policyDirectory, outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Architecture policy path is outside repository through a symlink")
+                .hasMessageContaining(".github/architecture-contexts.json");
+    }
+
+    @Test
+    void anArchitecturePolicyFileAliasInsideTheCheckoutRemainsValid() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path policy = temporaryRepository.resolve(".github/architecture-contexts.json");
+        Path target = temporaryRepository.resolve("fixture-policy/architecture-contexts.json");
+        Files.createDirectories(target.getParent());
+        Files.move(policy, target);
+        Files.createSymbolicLink(policy, target);
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    @Test
+    void anArchitecturePolicyDirectoryAliasInsideTheCheckoutRemainsValid() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path policyDirectory = temporaryRepository.resolve(".github");
+        Path target = temporaryRepository.resolve("fixture-policy-directory");
+        Files.move(policyDirectory, target);
+        Files.createSymbolicLink(policyDirectory, target);
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    @Test
+    void aProductionSourceRootAliasInsideTheCheckoutRetainsItsLogicalInventory() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path sourceRoot = temporaryRepository.resolve(A + "/src/main/java");
+        Path target = temporaryRepository.resolve("fixture-alias-targets/source-root");
+        Files.createDirectories(target.getParent());
+        Files.move(sourceRoot, target);
+        Files.createSymbolicLink(sourceRoot, target);
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    @Test
+    void aProductionOutputRootAliasInsideTheCheckoutIsInventoriedAndImported() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path outputRoot = temporaryRepository.resolve(A + "/target/classes");
+        Path target = temporaryRepository.resolve("fixture-alias-targets/output-root");
+        Files.createDirectories(target.getParent());
+        Files.move(outputRoot, target);
+        Files.createSymbolicLink(outputRoot, target);
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    @Test
+    void nestedSourceAndOutputAliasesInsideTheCheckoutRetainLogicalPackagesAndReachArchUnit() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path aliases = Files.createDirectories(temporaryRepository.resolve("fixture-alias-targets"));
+        Path sourcePackage = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a");
+        Path sourceTarget = aliases.resolve("nested-source-package");
+        Files.move(sourcePackage, sourceTarget);
+        Files.createSymbolicLink(sourcePackage, sourceTarget);
+        Path outputPackage = temporaryRepository.resolve(A + "/target/classes/com/taxonomy/a");
+        Path outputTarget = aliases.resolve("nested-output-package");
+        Files.move(outputPackage, outputTarget);
+        Files.createSymbolicLink(outputPackage, outputTarget);
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    @Test
+    void anExternalNestedSourceDirectoryIsRejectedBeforeTraversal() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, "com.taxonomy.a.target.Service", "public class Service {}", List.of());
+        Path sourceDirectory = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a/target");
+        Path outside = externalFixture("outside-source-directory").resolve("target");
+        Files.move(sourceDirectory, outside);
+        Files.createSymbolicLink(sourceDirectory, outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Production source path is outside repository through a symlink")
+                .hasMessageContaining("com/taxonomy/a/target");
+    }
+
+    @Test
+    void anExternalNestedOutputDirectoryIsRejectedBeforeTraversal() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(A, A_CLASS, "public class Service {}", List.of());
+        Path outputDirectory = temporaryRepository.resolve(A + "/target/classes/com/taxonomy/a");
+        Path outside = externalFixture("outside-output-directory").resolve("a");
+        Files.move(outputDirectory, outside);
+        Files.createSymbolicLink(outputDirectory, outside);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Production output path is outside repository through a symlink")
+                .hasMessageContaining("com/taxonomy/a");
+    }
+
+    @Test
+    void aNestedOutputDirectoryAliasCycleFailsExplicitly() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        Path packageDirectory = output.resolve("com/taxonomy/a");
+        Path loop = packageDirectory.resolve("loop");
+        Files.createSymbolicLink(loop, packageDirectory);
+
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(java.nio.file.FileSystemLoopException.class)
+                .hasMessageContaining("loop");
+    }
+
+    @Test
     void realBytecodeAndPhysicalSourcesDriveTheGateTogether() throws Exception {
         bytecodeRepository();
         Path app = compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
