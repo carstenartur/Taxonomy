@@ -31,7 +31,7 @@ This avoids request flows where an early call uses `SHARED` and a later call use
 
 - `AnalysisApiController` now resolves `username` + `WorkspaceContext` once and passes both through `AnalyzeRequirementCommand`.
 - `AnalyzeRequirementUseCase` now uses the explicit command context when attaching `viewContext`.
-- `DslApiController` now resolves `username` + `WorkspaceContext` once before workspace-aware history/current response state is loaded through `DslOperationsFacade`.
+- `DslDocumentApiController` resolves `username` + `WorkspaceContext` once for history/current response state. Both DSL controllers use the single workspace-owned `DslReadWorkspaceContextResolver`, preserving legacy HTTP fallback. The request interceptor and Git facade continue to fail closed; document/archive orchestration belongs to `DslDocumentOperationsFacade` in `composition.dsl`. See [DSL document composition](DSL_DOCUMENT_COMPOSITION.md).
 - `HypothesisService` now receives explicit `WorkspaceContext` for persistence, listing, evidence access, acceptance, rejection, and session application; cross-workspace IDs are treated as not found.
 
 ## Current internal implicit-resolution inventory

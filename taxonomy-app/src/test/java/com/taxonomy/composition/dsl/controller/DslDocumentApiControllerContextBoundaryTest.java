@@ -1,4 +1,7 @@
-package com.taxonomy.versioning.controller;
+package com.taxonomy.composition.dsl.controller;
+
+import com.taxonomy.composition.dsl.service.DslDocumentOperationsFacade;
+import com.taxonomy.versioning.controller.DslReadWorkspaceContextResolver;
 
 import com.taxonomy.dsl.storage.DslCommit;
 import com.taxonomy.dto.ViewContext;
@@ -26,7 +29,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 @ExtendWith(MockitoExtension.class)
-class DslApiControllerContextBoundaryTest {
+class DslDocumentApiControllerContextBoundaryTest {
 
     @Mock
     private DslOperationsFacade dslOperationsFacade;
@@ -37,14 +40,16 @@ class DslApiControllerContextBoundaryTest {
     @Mock
     private RepositoryStateService repositoryStateService;
 
-    private DslApiController controller;
+    @Mock private DslDocumentOperationsFacade documents;
+
+    private DslDocumentApiController controller;
 
     @BeforeEach
     void setUp() {
-        controller = new DslApiController(
-                dslOperationsFacade,
+        controller = new DslDocumentApiController(
+                documents, dslOperationsFacade,
                 workspaceResolver,
-                repositoryStateService);
+                new DslReadWorkspaceContextResolver(workspaceResolver, repositoryStateService));
     }
 
     @Test
@@ -57,7 +62,7 @@ class DslApiControllerContextBoundaryTest {
         when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
         when(workspaceResolver.resolveCurrentContext()).thenReturn(workspaceContext);
         when(dslOperationsFacade.getDslHistory("draft", workspaceContext)).thenReturn(List.of(commit));
-        when(dslOperationsFacade.findDocumentIdByCommitId("abc123")).thenReturn(Optional.of(99L));
+        when(documents.findDocumentIdByCommitId("abc123")).thenReturn(Optional.of(99L));
         when(dslOperationsFacade.getViewContext("alice", "draft", workspaceContext)).thenReturn(viewContext);
 
         ResponseEntity<Map<String, Object>> response = controller.getHistory("draft");

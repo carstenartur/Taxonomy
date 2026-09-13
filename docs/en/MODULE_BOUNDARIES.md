@@ -127,8 +127,8 @@ composition owner and the versioning HTTP boundary.
 
 ### Git commit-history ownership (D2 of #1043)
 
-The current D2 baseline records **537 cross-context class pairs**, down from
-**543** after D1. The change from **543 to 537** places the Git commit-history
+The historical D2 baseline recorded **537 cross-context class pairs**, down from
+**543** after D1. That change from **543 to 537** placed the Git commit-history
 projection under workspace versioning:
 
 | Types | Owner package |
@@ -142,10 +142,51 @@ Its entity, table, search-index and analyzer names, tenant/branch scope and
 recovery behavior are unchanged. `ArchitectureCommitHistoryOwnershipTest`
 requires all five projection types to remain with their versioning owners.
 
-The **four remaining workspace-to-architecture class pairs** concern the imported
-`ArchitectureDslDocument` archive and its repository, accessed by the DSL
-controller and operations facades. That archive remains in its existing owner;
-this slice does not complete a physical module extraction.
+At D2, the **four remaining workspace-to-architecture class pairs** concerned the
+imported `ArchitectureDslDocument` archive and its repository, then accessed by
+the DSL controller and operations facades. This is historical D2 evidence; D3
+removes those four pairs below. The archive remains in its existing owner, and
+neither slice completes a physical module extraction.
+
+### DSL document composition (D3 of #1043)
+
+`DslDocumentApiController` in `com.taxonomy.composition.dsl.controller` owns
+export/current, materialization and incremental materialization, archive-enriched
+history, structural/semantic comparison and document listing under `/api/dsl`.
+`DslDocumentOperationsFacade` in `com.taxonomy.composition.dsl.service` composes
+knowledge export/materialization, the architecture archive and the Spring-selected
+workspace `DslOperationsFacade`. Parsing, validation, formatting, text diff,
+Git/workspace commands and history indexing/search remain in `DslApiController`.
+Both workspace DSL facades are free of architecture archive and document-export
+adapter dependencies.
+
+The single workspace-owned HTTP `DslReadWorkspaceContextResolver` is shared by
+both controllers. It preserves the legacy read provision/resolve sequence and
+shared-context fallback. The request pre-resolution interceptor and Git facade
+continue to fail closed on repository-selection failures. Git remains the
+versioned-content authority; numeric document comparisons keep archive
+compatibility without resolving Git. `ArchitectureDslDocument` and its repository
+remain architecture-owned, with unchanged archive/global query policy, URLs,
+security, repository identity, checkpoint/journal/lock behavior and materialization
+write scope.
+
+The current D3 baseline, measured from fresh production bytecode, records
+**539 cross-context class pairs across 147 package edges**, compared with the
+historical D2 baseline of **537 pairs across 141 package edges**. All four former
+workspace-to-architecture archive pairs are gone. Three composition-to-architecture
+archive pairs replace that orchestration, two adapter pairs are removed, and five
+composition-to-workspace API pairs become visible because those calls previously
+lay inside the workspace context: **537 - 4 + 3 - 2 + 5 = 539**. The increase of two
+measured class pairs exposes composition ownership. No Maven dependency or
+additional feature-to-feature dependency is introduced.
+
+The **47 remaining outgoing workspace class pairs** comprise **44 DSL storage
+adapter pairs**, **one bootstrap export pair** and **two application-readiness
+pairs**. The **117 knowledge-to-workspace pairs** require a separate review.
+Bootstrap, storage and knowledge coupling still block physical feature extraction;
+D3 does not complete the extraction or close parent issues #628/#1043. The context
+map and cycle-exception ledger are unchanged. See
+[DSL document composition](../dev/DSL_DOCUMENT_COMPOSITION.md).
 
 The migration uses complementary protections:
 
@@ -154,6 +195,7 @@ The migration uses complementary protections:
 
 3. `ArchitectureDecisionReportBoundaryTest` rejects report orchestration in versioning HTTP adapters and requires the report controller to remain in `composition.report`.
 4. `ArchitectureCommitHistoryOwnershipTest` requires the Git commit-history entity, repository and three projection services to remain in their versioning owner packages.
+5. `ArchitectureDslCompositionBoundaryTest` requires the document controller/facade and shared HTTP context resolver in their owner packages, checks exclusive ownership of the eight document routes, and rejects architecture/knowledge/document-export dependencies from workspace controllers and both workspace DSL facades.
 
 Run the focused architecture profile from the repository root across the full
 reactor so every module's production output is current:
@@ -162,8 +204,10 @@ reactor so every module's production output is current:
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-The profile includes both the decision-report and commit-history ownership
-guards in `pom.xml` and `.mvn/verification-suites.json`. Full CI verification remains
+The profile includes all three ownership guards for decision reports, commit
+history and DSL document composition in both `pom.xml` and
+`.mvn/verification-suites.json`. Its eight selected test classes are synchronized
+between the POM and catalog. Full CI verification remains
 `./mvnw -B verify -Pci`.
 
 The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.

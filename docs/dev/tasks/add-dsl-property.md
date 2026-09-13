@@ -48,7 +48,8 @@ round-trip invariant (`parse → serialize → parse → serialize` must be idem
 
 **If the new property/block is used in the provenance layer**, also update:
 
-- `taxonomy-app/…/versioning/service/DslOperationsFacade.java` — if the new block is stored/retrieved
+- `taxonomy-app/…/versioning/service/DslOperationsFacade.java` — if Git storage/retrieval is affected
+- `taxonomy-app/…/composition/dsl/service/DslDocumentOperationsFacade.java` — if export/materialization or archive compatibility is affected
 - `taxonomy-app/…/versioning/service/CommitIndexService.java` — if the new block is indexed
 
 ---
@@ -71,8 +72,12 @@ round-trip invariant (`parse → serialize → parse → serialize` must be idem
 | Endpoint | Controller |
 |---|---|
 | `POST /api/dsl/commit` | `DslApiController` |
-| `GET /api/dsl/read` | `DslApiController` |
-| `GET /api/dsl/diff` | `DslApiController` |
+| `GET /api/dsl/git/head` | `DslApiController` |
+| `GET /api/dsl/diff/{beforeId}/{afterId}` | `DslDocumentApiController` |
+| `GET /api/dsl/diff/semantic/{beforeId}/{afterId}` | `DslDocumentApiController` |
+| `GET /api/dsl/export`, `GET /api/dsl/current` | `DslDocumentApiController` |
+| `POST /api/dsl/materialize`, `POST /api/dsl/materialize-incremental` | `DslDocumentApiController` |
+| `GET /api/dsl/history`, `GET /api/dsl/documents` | `DslDocumentApiController` |
 
 The DSL controller is generic (operates on raw DSL text).
 No controller changes are needed for a new property or block type.

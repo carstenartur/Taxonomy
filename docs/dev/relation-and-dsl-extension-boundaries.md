@@ -146,6 +146,8 @@ interpreted by the parser, serializer, mapper, validator, indexer, or REST API.
    - `taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DslApiController.java`
    - `taxonomy-app/src/main/resources/static/js/shared/taxonomy-dsl-editor.js`
 6. Review materialization/indexing consumers when metadata becomes operational:
+   - `taxonomy-app/src/main/java/com/taxonomy/composition/dsl/controller/DslDocumentApiController.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/composition/dsl/service/DslDocumentOperationsFacade.java`
    - `taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java`
    - `taxonomy-app/src/test/java/com/taxonomy/dsl/CommitIndexHibernateSearchTest.java`
    - `taxonomy-app/src/test/java/com/taxonomy/dsl/DslApiControllerTest.java`
@@ -158,7 +160,7 @@ interpreted by the parser, serializer, mapper, validator, indexer, or REST API.
 | Parsing / canonical serialization | `TaxDslParser.java`, `TaxDslSerializer.java` |
 | Typed model mapping | `AstToModelMapper.java`, `ModelToAstMapper.java`, model classes under `taxonomy-dsl/.../model/` |
 | Validation / indexing / diff | `DslValidator.java`, `DslTokenizer.java`, `ModelDiffer.java`, `SemanticDiffDescriber.java` |
-| App-layer DSL consumers | `taxonomy-app/.../versioning/controller/DslApiController.java`, `taxonomy-app/.../dsl/export/DslMaterializeService.java`, `taxonomy-app/.../versioning/service/DslOperationsFacade.java` |
+| App-layer DSL consumers | `taxonomy-app/.../versioning/controller/DslApiController.java`, `taxonomy-app/.../dsl/export/DslMaterializeService.java`, `taxonomy-app/.../versioning/service/DslOperationsFacade.java` (Git), `taxonomy-app/.../composition/dsl/controller/DslDocumentApiController.java`, `taxonomy-app/.../composition/dsl/service/DslDocumentOperationsFacade.java` (document/archive orchestration) |
 | UI | `taxonomy-app/src/main/resources/static/js/shared/taxonomy-dsl-editor.js` |
 | Tests | `taxonomy-dsl/src/test/java/com/taxonomy/dsl/TaxDslParserTest.java`, `TaxDslSerializerTest.java`, `TaxDslRoundtripTest.java`, `DslValidatorTest.java`, `DslTokenizerTest.java`, `AstToModelMapperTest.java`, `ModelToAstMapperTest.java`, plus app tests such as `taxonomy-app/src/test/java/com/taxonomy/dsl/DslApiControllerTest.java`, `DslMaterializeServiceTest.java`, `CommitIndexHibernateSearchTest.java`, and `dsl/storage/DslGitRepositoryTest.java` when storage/index behavior is affected |
 
