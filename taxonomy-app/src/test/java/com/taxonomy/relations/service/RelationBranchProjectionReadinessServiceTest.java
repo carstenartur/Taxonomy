@@ -1,8 +1,8 @@
 package com.taxonomy.relations.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.DslWorkspaceReadAdapter;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslWorkspaceReadAdapter;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.model.RelationDecisionProjection;
 import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;

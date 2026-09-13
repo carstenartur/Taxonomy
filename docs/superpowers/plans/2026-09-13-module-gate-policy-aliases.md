@@ -155,3 +155,19 @@ leave all Task 1/2 evidence intact. Freeze for scoped independent review.
 - [ ] Reproduce both new alias-recursion findings and preserve acyclic controls.
 - [ ] Implement canonical recursion identity and pass the complete fixture suite.
 - [ ] Root performs native verification, scoped review and publication.
+
+## Task 4: Integrate the reviewed workspace storage boundary without dropping guards
+
+Tasks 1–3 are complete and published at `71db619b1bde94414c04d4b99ac5dc6492f7088c`; do not reimplement or re-review their unchanged adapter/fixtures. The approved D5b source is now published as draft PR #1060 at `2122b52eabae0edce69d2674c6b2a98cfa050985`, tree `e21d98e7a847de777ec6985b28b24ce003143551`. Its production ownership, policy, schema preservation,779 native tests and source coverage have already received complete and scoped reviews. #1054 cannot merge on its previous base because the architecture selector lists conflict with the newer guards.
+
+Root creates the integration merge in the existing isolated gate worktree. The sole implementer resolves only `pom.xml` and `.mvn/verification-suites.json`: replace the conflicting architecture test values with this exact ordered union in both files:
+
+```text
+ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest
+```
+
+Retain all 11 selectors from D5b and both module-graph selectors, with no duplicates. Preserve the POM/profile structure, every other property, all JSON keys and values, canonical CI command, every existing fixture method and assertion (111 current fixtures), all graph/inventory/path/coordinate behavior, runtime and source files, current D5b baseline, contexts, SQL, workflows and coverage floors. This task changes no production behavior and creates no physical feature module. Do not resolve either file by dropping the other side.
+
+Validate both XML and JSON parsers, exact ordered selector equality, existence of each selected test class, and absence of conflict markers. Report exact commands/output and changed paths to `task-4-report.md` in this plan's ignored SDD directory. No new tests are required for this selector merge; root runs one fresh clean native architecture profile to verify the actual combined source/binary inventory and all guards. No Maven, Git/index/HEAD/branch mutation, external API, subagents or edits outside the two files by the implementer.
+
+Root verifies all non-conflicted files against the pre-resolution automatic merge tree, commits, obtains a task-scoped integration review, then updates #1054 as a bounded draft stacked on #1060. The previous gate implementation and approved D5b source are inherited unchanged; no second broad review sweep is needed for those bytes. Current-head external review and canonical CI remain required, and no merge into a feature branch or human attestation by automation is authorized. Retarget to main only after predecessor integration.

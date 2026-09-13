@@ -165,8 +165,7 @@ The main Spring Boot application:
 | `repository/` | Spring Data JPA repositories |
 | `config/` | Configuration classes — security, rate limiting, Hibernate Search analysers, OpenAPI, actuator |
 | `search/` | Hibernate Search configuration |
-| `dsl/storage/` | JGit DFS storage backed by Hibernate — `DslGitRepository`, `HibernateRepository`, etc. |
-| `dsl/storage/jgit/` | JPA entities for Git storage — `GitPackEntity`, `GitReflogEntity` |
+| `workspace/storage/` | Workspace-owned JGit DFS adapters and Core schema configuration; persistence entities come from `jgit-storage-hibernate` |
 | `resources/data/` | Excel workbook, CSV fallback, JSON taxonomy |
 | `resources/prompts/` | LLM prompt templates (one per taxonomy sheet + defaults) |
 | `resources/static/js/` | JavaScript modules (UI logic) |

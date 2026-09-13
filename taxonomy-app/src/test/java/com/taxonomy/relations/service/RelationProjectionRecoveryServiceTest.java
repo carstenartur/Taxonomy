@@ -1,9 +1,9 @@
 package com.taxonomy.relations.service;
 
 import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.DslWorkspaceReadAdapter;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslWorkspaceReadAdapter;
 import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
 import com.taxonomy.relations.model.RelationProjectionRecovery;
 import com.taxonomy.relations.model.RelationProjectionRecovery.RecoveryStatus;

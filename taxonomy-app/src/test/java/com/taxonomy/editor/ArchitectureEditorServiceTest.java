@@ -254,7 +254,7 @@ class ArchitectureEditorServiceTest {
 
     private static ArchitectureCheckpointWriter checkpointWriter(CountDownLatch start) {
         return new ArchitectureCheckpointWriter() {
-            @Override public Result write(com.taxonomy.dsl.storage.DslGitRepository repository, String scope, String branch,
+            @Override public Result write(com.taxonomy.workspace.storage.DslGitRepository repository, String scope, String branch,
                                           EditorJournal.Checkpoint request) throws java.io.IOException {
                 start.countDown();
                 try { if (!start.await(20, TimeUnit.SECONDS)) throw new java.io.IOException("Checkpoint peer did not start"); }
@@ -267,7 +267,7 @@ class ArchitectureEditorServiceTest {
     @Test void movedGitHeadRejectsCheckpointIntentAndReleasesItsReservation() throws Exception {
         execute(update("Durable uncheckpointed edit"));
         var concurrent = new ArchitectureCheckpointWriter() {
-            @Override public Result write(com.taxonomy.dsl.storage.DslGitRepository repository, String scope, String branch,
+            @Override public Result write(com.taxonomy.workspace.storage.DslGitRepository repository, String scope, String branch,
                                           EditorJournal.Checkpoint request) throws java.io.IOException {
                 repository.commitDsl(branch, SEED, "alice", "Independent version write");
                 return super.write(repository, scope, branch, request);

@@ -43,7 +43,7 @@ class ArchitectureHypothesisPublicationBoundaryTest {
                 GitAuthoritativeHypothesisReviewService.class, HypothesisReviewStateStore.class);
 
         noClasses().should().dependOnClassesThat()
-                .resideInAnyPackage("com.taxonomy.dsl.storage..", "org.eclipse.jgit..")
+                .resideInAnyPackage("com.taxonomy.workspace.storage..", "org.eclipse.jgit..")
                 .because("hypothesis semantics must be movable to knowledge without reintroducing storage coupling")
                 .check(classes);
     }
@@ -53,7 +53,7 @@ class ArchitectureHypothesisPublicationBoundaryTest {
         var classes = new ClassFileImporter().importClasses(WorkspaceDslPublicationPort.class);
 
         noClasses().should().dependOnClassesThat()
-                .resideInAnyPackage("com.taxonomy.dsl.storage..", "org.eclipse.jgit..",
+                .resideInAnyPackage("com.taxonomy.workspace.storage..", "org.eclipse.jgit..",
                         "org.springframework..", "com.taxonomy.relations..",
                         "com.taxonomy.versioning..", "com.taxonomy.catalog..")
                 .because("workspace owns publication mechanics, not hypothesis lifecycle or transactions")

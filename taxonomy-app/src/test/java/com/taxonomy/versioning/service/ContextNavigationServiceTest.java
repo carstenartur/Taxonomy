@@ -1,7 +1,7 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ContextHistoryEntry;
 import com.taxonomy.dto.ContextMode;
 import com.taxonomy.dto.ContextRef;

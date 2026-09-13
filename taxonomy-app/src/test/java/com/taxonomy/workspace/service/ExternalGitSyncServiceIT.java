@@ -1,11 +1,13 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.RefUpdate;
 import org.eclipse.jgit.transport.Daemon;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.eclipse.jgit.transport.resolver.FileResolver;
@@ -24,6 +26,8 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -51,6 +55,7 @@ class ExternalGitSyncServiceIT {
     private DslGitRepositoryFactory repositoryFactory;
     private DslGitRepository systemDslRepository;
     private SystemRepository systemRepository;
+    private SystemRepositoryService repositoryService;
     private ExternalGitSyncService service;
     private Daemon gitDaemon;
     private String remoteUri;
@@ -89,7 +94,7 @@ class ExternalGitSyncServiceIT {
         systemRepository.setPrimaryRepo(true);
         systemRepository.setCreatedAt(Instant.now());
 
-        SystemRepositoryService repositoryService = mock(SystemRepositoryService.class);
+        repositoryService = mock(SystemRepositoryService.class);
         when(repositoryService.getPrimaryRepository()).thenReturn(systemRepository);
         when(repositoryService.getSharedBranch()).thenReturn(BRANCH);
 
@@ -179,6 +184,32 @@ class ExternalGitSyncServiceIT {
         service.fetchFromExternal();
 
         assertEquals(remoteCommit.name(), systemRepository.getLastFetchCommit());
+    }
+
+    @Test
+    void fullSyncReturnsNullWithoutChangingLocalRefsWhenRemoteBranchIsAbsent() throws Exception {
+        when(repositoryService.getSharedBranch()).thenReturn("absent");
+
+        assertNull(service.fullSync("alice"));
+        assertNull(systemDslRepository.getHeadCommit("absent"));
+    }
+
+    @Test
+    void fullSyncRecreatesMissingLocalBranchAtFetchedRemoteCommit() throws Exception {
+        String remoteCommit = systemDslRepository.getHeadCommit(BRANCH);
+        RefUpdate delete = systemDslRepository.getGitRepository()
+                .updateRef(Constants.R_HEADS + BRANCH);
+        delete.setExpectedOldObjectId(ObjectId.fromString(remoteCommit));
+        delete.setForceUpdate(true);
+        RefUpdate.Result deletion = delete.delete();
+        assertTrue(deletion == RefUpdate.Result.FORCED
+                || deletion == RefUpdate.Result.NO_CHANGE);
+        assertNull(systemDslRepository.getHeadCommit(BRANCH));
+
+        String result = service.fullSync(null);
+
+        assertEquals(remoteCommit, result);
+        assertEquals(remoteCommit, systemDslRepository.getHeadCommit(BRANCH));
     }
 
     private ObjectId commitToRemote(String dsl,

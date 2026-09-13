@@ -70,7 +70,7 @@ Both are reassessed after the stronger context APIs exist. This avoids creating 
 
 ## Transitional adapter contexts
 
-`com.taxonomy.dsl.storage..` / `com.taxonomy.dsl.export..` and the Spring-aware `com.taxonomy.export.service..` / `com.taxonomy.export.controller..` packages remain explicit transitional contexts while their owning ports settle.
+`com.taxonomy.dsl.export..` and the Spring-aware `com.taxonomy.export.service..` / `com.taxonomy.export.controller..` packages remain explicit transitional contexts while their owning ports settle. JGit storage is classified under the existing `com.taxonomy.workspace..` context.
 
 They are **not** the seed of a generic `taxonomy-adapters` module. Each adapter should ultimately live with the bounded context whose port it implements. The framework-free modules continue to reject Spring, JPA and application-module dependencies.
 
@@ -127,8 +127,8 @@ composition owner and the versioning HTTP boundary.
 
 ### Git commit-history ownership (D2 of #1043)
 
-The current D2 baseline records **537 cross-context class pairs**, down from
-**543** after D1. The change from **543 to 537** places the Git commit-history
+The historical D2 baseline recorded **537 cross-context class pairs**, down from
+**543** after D1. That change from **543 to 537** placed the Git commit-history
 projection under workspace versioning:
 
 | Types | Owner package |
@@ -142,10 +142,116 @@ Its entity, table, search-index and analyzer names, tenant/branch scope and
 recovery behavior are unchanged. `ArchitectureCommitHistoryOwnershipTest`
 requires all five projection types to remain with their versioning owners.
 
-The **four remaining workspace-to-architecture class pairs** concern the imported
-`ArchitectureDslDocument` archive and its repository, accessed by the DSL
-controller and operations facades. That archive remains in its existing owner;
-this slice does not complete a physical module extraction.
+At D2, the **four remaining workspace-to-architecture class pairs** concerned the
+imported `ArchitectureDslDocument` archive and its repository, then accessed by
+the DSL controller and operations facades. This is historical D2 evidence; D3
+removes those four pairs below. The archive remains in its existing owner, and
+neither slice completes a physical module extraction.
+
+### DSL document composition (D3 of #1043)
+
+`DslDocumentApiController` in `com.taxonomy.composition.dsl.controller` owns
+export/current, materialization and incremental materialization, archive-enriched
+history, structural/semantic comparison and document listing under `/api/dsl`.
+`DslDocumentOperationsFacade` in `com.taxonomy.composition.dsl.service` composes
+knowledge export/materialization, the architecture archive and the Spring-selected
+workspace `DslOperationsFacade`. Parsing, validation, formatting, text diff,
+Git/workspace commands and history indexing/search remain in `DslApiController`.
+Both workspace DSL facades are free of architecture archive and document-export
+adapter dependencies.
+
+The single workspace-owned HTTP `DslReadWorkspaceContextResolver` is shared by
+both controllers. It preserves the legacy read provision/resolve sequence and
+shared-context fallback. The request pre-resolution interceptor and Git facade
+continue to fail closed on repository-selection failures. Git remains the
+versioned-content authority; numeric document comparisons keep archive
+compatibility without resolving Git. `ArchitectureDslDocument` and its repository
+remain architecture-owned, with unchanged archive/global query policy, URLs,
+security, repository identity, checkpoint/journal/lock behavior and materialization
+write scope.
+
+The historical D3 baseline, measured from fresh production bytecode, records
+**539 cross-context class pairs across 147 package edges**, compared with the
+historical D2 baseline of **537 pairs across 141 package edges**. All four former
+workspace-to-architecture archive pairs are gone. Three composition-to-architecture
+archive pairs replace that orchestration, two adapter pairs are removed, and five
+composition-to-workspace API pairs become visible because those calls previously
+lay inside the workspace context: **537 - 4 + 3 - 2 + 5 = 539**. The increase of two
+measured class pairs exposes composition ownership. No Maven dependency or
+additional feature-to-feature dependency is introduced.
+
+At D3, the **47 outgoing workspace class pairs** comprised **44 DSL storage
+adapter pairs**, **one bootstrap export pair** and **two application-readiness
+pairs**. The **117 knowledge-to-workspace pairs** require a separate review.
+At that checkpoint, bootstrap, storage and knowledge coupling still blocked physical feature extraction;
+D3 does not complete the extraction or close parent issues #628/#1043. The context
+map and cycle-exception ledger are unchanged. See
+[DSL document composition](../dev/DSL_DOCUMENT_COMPOSITION.md).
+
+### Git startup composition (D4 of #1043)
+
+`GitRepositoryBootstrap` now belongs to `com.taxonomy.composition.dsl.service`.
+Only its package changed: application readiness, default-enabled configuration,
+system-repository selection, one-shot initialization and failure retry behavior
+remain intact. Workspace no longer depends directly on application readiness or
+knowledge export through startup orchestration.
+
+The D4 baseline recorded **537 cross-context class pairs across
+146 package edges**, down from D3's **539 / 147**. The two readiness pairs become
+internal to composition; the bootstrap export pair and its two storage pairs
+retain their existing targets under their new composition owner. The **42
+remaining outgoing workspace pairs all target DSL storage adapters**. The **117
+knowledge-to-workspace pairs** are unchanged and still require separate review.
+Storage ownership and the broader graph remain extraction constraints; D4 does
+not create a Maven module or close #628/#1043. The context map, cycle exceptions
+and coverage floors remain unchanged. See
+[Git bootstrap composition](../dev/GIT_BOOTSTRAP_COMPOSITION.md).
+
+### Application schema composition (D5a of #1043)
+
+`TaxonomySchemaMigrationConfig` now belongs to
+`com.taxonomy.composition.persistence`. Its primary Flyway strategy composes the
+exact qualified `jgitStorageFlywayMigrationStrategy` before application migration.
+Core failure prevents application work; Core continues to own its existing
+legacy-adoption property and package-private migration implementation.
+
+The fresh bytecode measurement remains **537 cross-context class pairs across
+146 package edges**. No recorded package edge changes: the former direct call
+was internal to DSL storage, while the new composition depends on Flyway's
+strategy interface. The **42 workspace-to-DSL-storage pairs** and **117
+knowledge-to-workspace pairs** remain unchanged. The baseline, context map and
+cycle exceptions are unchanged.
+
+Ten application PostgreSQL integration tests follow their application owner;
+all existing assertions and SQL resources remain intact. Both storage and
+composition persistence retain independent **87% line / 71% branch** coverage
+floors. Storage adapter relocation remains a separate slice; D5a creates no Maven
+module and does not close #628/#1043. See
+[Application schema composition](../dev/APPLICATION_SCHEMA_COMPOSITION.md).
+
+### Workspace storage ownership (D5b of #1043)
+
+The eleven JGit storage types and their seventeen test/support owners now belong
+to `com.taxonomy.workspace.storage`. Repository identity, system-versus-selected
+repository routing, exact-head conflicts, semantic-operation versus checkpoint
+separation, recovery, merge/diff/version behavior, SQL and migration behavior
+are unchanged.
+
+Fresh production-bytecode measurement reduces the checked graph from **537 to
+472 cross-context class pairs** and from **146 to 140 package edges**. The **42
+workspace-to-storage pairs** and **23 storage-to-workspace pairs** become internal
+to workspace, removing six cross-context package edges and 65 class pairs.
+Workspace now has **zero outgoing class pairs to other managed application contexts**.
+Incoming edges retarget to workspace storage from composition DSL
+controller (1 pair), composition DSL service (2 pairs) and portfolio service (5
+pairs). The measured graph exactly matches the namespace-only projection of the
+old baseline, with no unexplained edge change.
+
+The **117 knowledge-to-workspace pairs** remain; an independent inventory found
+zero knowledge-to-former-storage pairs. Foundation dependencies still exist
+outside the managed application context graph, and the knowledge coupling still
+requires separate review. D5b does not create a Maven module or close
+#628/#1043. See [Workspace storage ownership](../dev/WORKSPACE_STORAGE_OWNERSHIP.md).
 
 The migration uses complementary protections:
 
@@ -154,6 +260,10 @@ The migration uses complementary protections:
 
 3. `ArchitectureDecisionReportBoundaryTest` rejects report orchestration in versioning HTTP adapters and requires the report controller to remain in `composition.report`.
 4. `ArchitectureCommitHistoryOwnershipTest` requires the Git commit-history entity, repository and three projection services to remain in their versioning owner packages.
+5. `ArchitectureDslCompositionBoundaryTest` requires the document controller/facade and shared HTTP context resolver in their owner packages, checks exclusive ownership of the eight document routes, and rejects architecture/knowledge/document-export dependencies from workspace controllers and both workspace DSL facades.
+6. `ArchitectureWorkspaceAuthorityBoundaryTest` requires the composition bootstrap owner and rejects direct workspace/versioning/editor dependencies on application composition, knowledge, architecture, portfolio and document-export implementations; representative owners make the rule non-vacuous.
+7. `ArchitectureApplicationSchemaCompositionTest` requires the application schema owner in composition, retains the Core storage owner and rejects a direct application-config dependency on Core implementation classes.
+8. `ArchitectureWorkspaceStorageOwnershipTest` requires all eleven JGit storage types under `com.taxonomy.workspace.storage` and rejects production types left under `com.taxonomy.dsl.storage`.
 
 Run the focused architecture profile from the repository root across the full
 reactor so every module's production output is current:
@@ -162,8 +272,10 @@ reactor so every module's production output is current:
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-The profile includes both the decision-report and commit-history ownership
-guards in `pom.xml` and `.mvn/verification-suites.json`. Full CI verification remains
+The profile includes all six ownership guards for decision reports, commit
+history, DSL document composition, workspace authority, application schema composition and workspace storage in both `pom.xml` and
+`.mvn/verification-suites.json`. Its eleven selected test classes are synchronized
+between the POM and catalog. Full CI verification remains
 `./mvnw -B verify -Pci`.
 
 The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.

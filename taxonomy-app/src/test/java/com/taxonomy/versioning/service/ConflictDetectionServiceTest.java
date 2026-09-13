@@ -1,7 +1,7 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -47,6 +47,11 @@ class ConflictDetectionServiceTest {
               title: "SIP Gateway";
             }
             """;
+
+    private static final String CONFLICT_LEFT = SAMPLE_DSL.replace(
+            "Secure Voice", "Secure Voice from source");
+    private static final String CONFLICT_RIGHT = SAMPLE_DSL.replace(
+            "Secure Voice", "Secure Voice from target");
 
     @BeforeEach
     void setUp() {
@@ -177,5 +182,44 @@ class ConflictDetectionServiceTest {
                 "0000000000000000000000000000000000000000", "draft");
         // Invalid commit → null
         assertNull(details);
+    }
+
+    @Test
+    void mergeConflictPreviewAndDetailsExposeBothBranchContents() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "base");
+        gitRepo.createBranch("review", "draft");
+        gitRepo.commitDsl("draft", CONFLICT_LEFT, "tester", "source edit");
+        gitRepo.commitDsl("review", CONFLICT_RIGHT, "tester", "target edit");
+
+        var preview = conflictService.previewMerge("draft", "review");
+        var details = conflictService.getMergeConflictDetails("draft", "review");
+
+        assertFalse(preview.canMerge());
+        assertNotNull(preview.fromCommit());
+        assertNotNull(preview.intoCommit());
+        assertTrue(preview.warnings().contains("Merge would result in conflicts"));
+        assertNotNull(details);
+        assertEquals("merge", details.conflictType());
+        assertEquals(CONFLICT_RIGHT, details.oursContent());
+        assertEquals(CONFLICT_LEFT, details.theirsContent());
+    }
+
+    @Test
+    void cherryPickConflictPreviewAndDetailsExposeTargetAndPickedCommit() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "base");
+        gitRepo.createBranch("review", "draft");
+        String picked = gitRepo.commitDsl("draft", CONFLICT_LEFT, "tester", "source edit");
+        gitRepo.commitDsl("review", CONFLICT_RIGHT, "tester", "target edit");
+
+        var preview = conflictService.previewCherryPick(picked, "review");
+        var details = conflictService.getCherryPickConflictDetails(picked, "review");
+
+        assertFalse(preview.canCherryPick());
+        assertNotNull(preview.targetCommit());
+        assertTrue(preview.warnings().contains("Cherry-pick would result in conflicts"));
+        assertNotNull(details);
+        assertEquals("cherry-pick", details.conflictType());
+        assertEquals(CONFLICT_RIGHT, details.oursContent());
+        assertEquals(CONFLICT_LEFT, details.theirsContent());
     }
 }

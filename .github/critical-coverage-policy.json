@@ -13,11 +13,14 @@
     "taxonomy-app/src/main/java/com/taxonomy/security/",
     "taxonomy-app/src/main/java/com/taxonomy/provenance/",
     "taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/",
-    "taxonomy-app/src/main/java/com/taxonomy/dsl/storage/",
+    "taxonomy-app/src/main/java/com/taxonomy/workspace/storage/",
+    "taxonomy-app/src/main/java/com/taxonomy/composition/persistence/",
     "taxonomy-app/src/main/java/com/taxonomy/relations/controller/",
     "taxonomy-app/src/main/java/com/taxonomy/relations/service/",
     "taxonomy-app/src/main/java/com/taxonomy/versioning/",
     "taxonomy-app/src/main/java/com/taxonomy/composition/report/",
+    "taxonomy-app/src/main/java/com/taxonomy/composition/dsl/controller/",
+    "taxonomy-app/src/main/java/com/taxonomy/composition/dsl/service/",
     "taxonomy-app/src/main/java/com/taxonomy/workspace/",
     "taxonomy-app/src/main/java/com/taxonomy/portfolio/"
   ],
@@ -59,7 +62,12 @@
     },
     {
       "module": "taxonomy-app",
-      "package": "com/taxonomy/dsl/storage",
+      "package": "com/taxonomy/workspace/storage",
+      "minimums": { "LINE": 0.87, "BRANCH": 0.71 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/composition/persistence",
       "minimums": { "LINE": 0.87, "BRANCH": 0.71 }
     },
     {
@@ -76,6 +84,16 @@
       "module": "taxonomy-app",
       "package": "com/taxonomy/composition/report",
       "minimums": { "LINE": 0.81, "BRANCH": 0.58 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/composition/dsl/controller",
+      "minimums": { "LINE": 0.81, "BRANCH": 0.58 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/composition/dsl/service",
+      "minimums": { "LINE": 0.77, "BRANCH": 0.59 }
     },
     {
       "module": "taxonomy-app",

@@ -1,6 +1,6 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;

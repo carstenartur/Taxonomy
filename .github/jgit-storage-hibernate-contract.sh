@@ -102,15 +102,15 @@ set -o pipefail
   verify 2>&1 | tee "$evidence_dir/maven-storage-contract.log"
 
 required_reports=(
-  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.dsl.storage.JgitStorageHibernateIntegrationTest.xml
-  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.dsl.storage.JgitStorageOptimizedIndexContractTest.xml
-  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.dsl.storage.JgitStorageSchemaIndexValidationTest.xml
-  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfigTest.xml
+  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageHibernateIntegrationTest.xml
+  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageOptimizedIndexContractTest.xml
+  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageSchemaIndexValidationTest.xml
+  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfigTest.xml
   taxonomy-app/target/surefire-reports/TEST-com.taxonomy.dsl.CommitIndexHibernateSearchTest.xml
-  taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.dsl.storage.JgitStoragePostgresMigrationIT.xml
-  taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.dsl.storage.TaxonomyPostgresValidateStartupIT.xml
-  taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.dsl.storage.TaxonomySchemaPostgresMigrationIT.xml
-  taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.dsl.storage.ArchitectureCommitIndexTenantMigrationPostgresIT.xml
+  taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.storage.JgitStoragePostgresMigrationIT.xml
+  taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.composition.persistence.TaxonomyPostgresValidateStartupIT.xml
+  taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.composition.persistence.TaxonomySchemaPostgresMigrationIT.xml
+  taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.composition.persistence.ArchitectureCommitIndexTenantMigrationPostgresIT.xml
 )
 for report in "${required_reports[@]}"; do
   if [[ ! -s "$report" ]]; then

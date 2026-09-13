@@ -1,11 +1,8 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.architecture.repository.ArchitectureDslDocumentRepository;
 import com.taxonomy.versioning.service.CommitIndexService;
-import com.taxonomy.dsl.export.DslMaterializeService;
-import com.taxonomy.dsl.export.TaxDslExportService;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -25,10 +22,7 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
     private final SemanticGitMergeService semanticMergeService;
     private final VersioningPortfolioGitPort portfolioGitPort;
 
-    public SemanticDslOperationsFacade(TaxDslExportService exportService,
-                                       DslMaterializeService materializeService,
-                                       ArchitectureDslDocumentRepository documentRepository,
-                                       DslGitRepositoryFactory repositoryFactory,
+    public SemanticDslOperationsFacade(DslGitRepositoryFactory repositoryFactory,
                                        CommitIndexService commitIndexService,
                                        ConflictDetectionService conflictDetectionService,
                                        RepositoryStateGuard stateGuard,
@@ -37,7 +31,7 @@ public class SemanticDslOperationsFacade extends DslOperationsFacade {
                                        SemanticGitMergeService semanticMergeService,
                                        VersioningPortfolioGitPort portfolioGitPort,
                                        com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort editorVersions) {
-        super(exportService, materializeService, documentRepository, repositoryFactory,
+        super(repositoryFactory,
                 commitIndexService, conflictDetectionService, stateGuard,
                 repositoryStateService, workspaceResolver, editorVersions);
         this.repositoryFactory = repositoryFactory;

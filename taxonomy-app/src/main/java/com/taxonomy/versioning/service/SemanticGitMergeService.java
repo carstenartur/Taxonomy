@@ -2,7 +2,7 @@ package com.taxonomy.versioning.service;
 
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
 import com.taxonomy.dsl.merge.TaxDslSemanticMerger;
-import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import org.eclipse.jgit.lib.CommitBuilder;
 import org.eclipse.jgit.lib.Constants;
 import org.eclipse.jgit.lib.ObjectId;

@@ -1,7 +1,7 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
@@ -22,6 +22,7 @@ import java.util.List;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -29,6 +30,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -179,5 +181,123 @@ class RepositoryWorkspaceServiceTest {
                 String.class);
 
         assertNull(method.getAnnotation(Transactional.class));
+    }
+
+    @Test
+    void inactiveSourceIsRejectedBeforeWorkspaceMetadataOrStorageIsCreated() {
+        source.setLifecycleState(RepositoryLifecycleState.ARCHIVED);
+        when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> service.createWorkingCopy(
+                        "alice", "source-repository", "main", "Alice", null));
+
+        assertTrue(failure.getMessage().contains("not active"));
+        verify(workspaceRepository, never()).save(any());
+        verify(repositoryFactory, never()).createWorkspaceRepository(
+                anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void blankRequestedBranchUsesSourceDefaultAndTrimsRequiredText() throws Exception {
+        when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
+        when(workspaceRepository.save(any(UserWorkspace.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
+        when(sourceGit.getDslAtHead("main")).thenReturn("portfolio dsl");
+        when(sourceGit.getHeadCommit("main")).thenReturn("source-head");
+        when(repositoryFactory.createWorkspaceRepository(
+                anyString(), eq("source-repository"), eq("main"))).thenReturn(workspaceGit);
+        when(workspaceGit.getHeadCommit("draft")).thenReturn("workspace-head");
+        when(workspaceGit.createBranch("sync-base", "draft")).thenReturn("workspace-head");
+
+        UserWorkspace workspace = service.createWorkingCopy(
+                " alice ", "source-repository", " ", " Workspace ", "description");
+
+        assertEquals("alice", workspace.getUsername());
+        assertEquals("Workspace", workspace.getDisplayName());
+        assertEquals("main", workspace.getSourceBranch());
+        assertFalse(workspace.isShared());
+    }
+
+    @Test
+    void emptySourceContentFailsWithoutDeletingUnattemptedWorkspaceStorage() throws Exception {
+        when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
+        when(workspaceRepository.save(any(UserWorkspace.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
+        when(sourceGit.getDslAtHead("main")).thenReturn("  ");
+        when(sourceGit.getHeadCommit("main")).thenReturn("source-head");
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> service.createWorkingCopy(
+                        "alice", "source-repository", "main", "Workspace", null));
+
+        assertTrue(failure.getCause().getMessage().contains("no architecture content"));
+        verify(repositoryFactory, never()).deleteWorkspaceRepository(anyString());
+    }
+
+    @Test
+    void missingWorkspaceSeedHeadFailsAndDeletesAttemptedStorage() throws Exception {
+        configureValidSourceAndWorkspace();
+        when(workspaceGit.getHeadCommit("draft")).thenReturn(null);
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> service.createWorkingCopy(
+                        "alice", "source-repository", "main", "Workspace", null));
+
+        assertTrue(failure.getCause().getMessage().contains("did not create branch draft"));
+        verify(repositoryFactory).deleteWorkspaceRepository(anyString());
+    }
+
+    @Test
+    void missingTrackingHeadFailsAndDeletesAttemptedStorage() throws Exception {
+        configureValidSourceAndWorkspace();
+        when(workspaceGit.getHeadCommit("draft")).thenReturn("workspace-head");
+        when(workspaceGit.createBranch("sync-base", "draft")).thenReturn(null);
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> service.createWorkingCopy(
+                        "alice", "source-repository", "main", "Workspace", null));
+
+        assertTrue(failure.getCause().getMessage().contains("tracking branch sync-base"));
+        verify(repositoryFactory).deleteWorkspaceRepository(anyString());
+    }
+
+    @Test
+    void cleanupFailureIsSuppressedOnProvisioningFailure() throws Exception {
+        configureValidSourceAndWorkspace();
+        when(workspaceGit.getHeadCommit("draft")).thenReturn(null);
+        doThrow(new IllegalStateException("cleanup failed"))
+                .when(repositoryFactory).deleteWorkspaceRepository(anyString());
+
+        IllegalStateException failure = assertThrows(IllegalStateException.class,
+                () -> service.createWorkingCopy(
+                        "alice", "source-repository", "main", "Workspace", null));
+
+        assertEquals(1, failure.getCause().getSuppressed().length);
+        assertEquals("cleanup failed", failure.getCause().getSuppressed()[0].getMessage());
+    }
+
+    @Test
+    void requiredIdentityAndDisplayNameRejectBlankValues() {
+        assertThrows(IllegalArgumentException.class,
+                () -> service.createWorkingCopy(
+                        " ", "source-repository", "main", "Workspace", null));
+        when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
+        assertThrows(IllegalArgumentException.class,
+                () -> service.createWorkingCopy(
+                        "alice", "source-repository", "main", null, null));
+    }
+
+    private void configureValidSourceAndWorkspace() throws Exception {
+        when(systemRepositoryService.getRepository("source-repository")).thenReturn(source);
+        when(workspaceRepository.save(any(UserWorkspace.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
+        when(sourceGit.getDslAtHead("main")).thenReturn("portfolio dsl");
+        when(sourceGit.getHeadCommit("main")).thenReturn("source-head");
+        when(repositoryFactory.createWorkspaceRepository(
+                anyString(), eq("source-repository"), eq("main"))).thenReturn(workspaceGit);
     }
 }
