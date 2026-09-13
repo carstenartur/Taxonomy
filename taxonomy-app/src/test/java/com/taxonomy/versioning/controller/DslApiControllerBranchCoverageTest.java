@@ -1,6 +1,6 @@
 package com.taxonomy.versioning.controller;
 
-import com.taxonomy.dsl.storage.DslBranch;
+import com.taxonomy.workspace.storage.DslBranch;
 import com.taxonomy.versioning.service.DslOperationsFacade;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.WorkspaceContext;

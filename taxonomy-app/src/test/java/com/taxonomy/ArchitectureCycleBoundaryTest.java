@@ -41,7 +41,6 @@ class ArchitectureCycleBoundaryTest {
     };
 
     private static final String[] DSL_ADAPTER_PACKAGES = {
-            "com.taxonomy.dsl.storage..",
             "com.taxonomy.dsl.export.."
     };
 
@@ -87,7 +86,7 @@ class ArchitectureCycleBoundaryTest {
             .ignoreDependency(
                     resideInAnyPackage("com.taxonomy.catalog.controller.."),
                     resideInAnyPackage("com.taxonomy.versioning.service.."))
-            // Spring/JGit DSL adapters still live below the otherwise pure DSL root.
+            // The Spring DSL export adapter still lives below the otherwise pure DSL root.
             .ignoreDependency(resideInAnyPackage(DSL_ADAPTER_PACKAGES), alwaysTrue())
             .ignoreDependency(alwaysTrue(), resideInAnyPackage(DSL_ADAPTER_PACKAGES))
             .because("new core-domain cycles require a reviewed, expiring ledger entry");

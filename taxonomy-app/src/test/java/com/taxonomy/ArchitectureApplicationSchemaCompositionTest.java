@@ -15,7 +15,7 @@ class ArchitectureApplicationSchemaCompositionTest {
     private static final String OLD_APPLICATION_OWNER =
             "com.taxonomy.dsl.storage.TaxonomySchemaMigrationConfig";
     private static final String CORE_OWNER =
-            "com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfig";
+            "com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig";
 
     @Test
     void applicationAndCoreSchemaMigrationConfigurationHaveDistinctOwners() {
@@ -27,7 +27,7 @@ class ArchitectureApplicationSchemaCompositionTest {
         assertThat(classes.contain(OLD_APPLICATION_OWNER)).isFalse();
         assertThat(classes.contain(CORE_OWNER)).isTrue();
         noClasses().that().haveFullyQualifiedName(APPLICATION_OWNER)
-                .should().dependOnClassesThat().resideInAPackage("com.taxonomy.dsl.storage..")
+                .should().dependOnClassesThat().resideInAPackage("com.taxonomy.workspace.storage..")
                 .allowEmptyShould(false)
                 .check(classes);
     }

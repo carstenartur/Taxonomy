@@ -70,7 +70,7 @@ Beide Bereiche werden erneut bewertet, nachdem die stärkeren Context-APIs exist
 
 ## Übergangsweise Adapter-Kontexte
 
-`com.taxonomy.dsl.storage..` / `com.taxonomy.dsl.export..` sowie die Spring-basierten Packages `com.taxonomy.export.service..` / `com.taxonomy.export.controller..` bleiben explizite Übergangskontexte, bis ihre besitzenden Ports stabil sind.
+`com.taxonomy.dsl.export..` sowie die Spring-basierten Packages `com.taxonomy.export.service..` / `com.taxonomy.export.controller..` bleiben explizite Übergangskontexte, bis ihre besitzenden Ports stabil sind. JGit Storage wird durch den bestehenden Kontext `com.taxonomy.workspace..` klassifiziert.
 
 Sie sind **nicht** der Anfang eines generischen `taxonomy-adapters`-Moduls. Jeder Adapter soll letztlich bei dem Bounded Context liegen, dessen Port er implementiert. Die frameworkfreien Module lehnen weiterhin Spring-, JPA- und Anwendungsmodul-Abhängigkeiten ab.
 
@@ -237,6 +237,32 @@ Composition-Persistence haben jeweils einen eigenständigen Mindestwert von
 Schritt verschoben; D5a erzeugt kein Maven-Modul und schließt #628/#1043 nicht ab.
 Siehe [Anwendungsschema-Komposition](../dev/APPLICATION_SCHEMA_COMPOSITION.md).
 
+### Workspace-Storage-Zuständigkeit (D5b von #1043)
+
+Die elf JGit-Storage-Typen und ihre siebzehn Test-/Support-Eigentümer gehören
+jetzt zu `com.taxonomy.workspace.storage`. Repository-Identität, Routing zwischen
+System- und ausgewähltem Repository, Exact-Head-Konflikte, die Trennung von
+semantischen Operationen und Checkpoints, Recovery, Merge/Diff/Version sowie SQL-
+und Migrationsverhalten bleiben unverändert.
+
+Die frische Production-Bytecode-Messung reduziert den geprüften Graphen von
+**537 auf 472 kontextübergreifende Klassenpaare** und von **146 auf 140
+Package-Kanten**. Die **42 Workspace-zu-Storage-Paare** und **23
+Storage-zu-Workspace-Paare** liegen nun innerhalb des Workspace-Kontexts; damit
+entfallen sechs kontextübergreifende Package-Kanten und 65 Klassenpaare.
+Workspace hat jetzt **keine ausgehenden Klassenpaare zu anderen verwalteten
+Anwendungskontexten**. Eingehende Kanten werden auf Workspace Storage umgebogen:
+Composition-DSL-Controller (1 Paar), Composition-DSL-Service (2 Paare) und
+Portfolio-Service (5 Paare). Der gemessene Graph entspricht exakt der reinen
+Namespace-Projektion der alten Baseline; es gibt keine unerklärte Kantenänderung.
+
+Die **117 Knowledge-zu-Workspace-Paare** bleiben bestehen; ein unabhängiges
+Inventar fand kein Knowledge-zu-ehemaligem-Storage-Paar. Abhängigkeiten auf
+Foundation-Module bestehen außerhalb des verwalteten Anwendungskontext-Graphen
+weiter, und die Knowledge-Kopplung benötigt eine separate Prüfung. D5b erzeugt
+kein Maven-Modul und schließt #628/#1043 nicht ab. Siehe
+[Workspace-Storage-Zuständigkeit](../dev/WORKSPACE_STORAGE_OWNERSHIP.md).
+
 Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
 
 1. `ArchitectureCycleBoundaryTest` verhindert undokumentierte Package-Zyklen. Temporäre Ausnahmen müssen in `.github/architecture-exceptions.json` stehen und ein Ablaufdatum besitzen.
@@ -247,6 +273,7 @@ Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
 5. `ArchitectureDslCompositionBoundaryTest` verlangt Dokument-Controller/-Fassade und gemeinsamen HTTP-Kontextresolver in ihren Owner-Packages, prüft die exklusive Zuständigkeit für die acht Dokumentrouten und verhindert Architecture-/Knowledge-/Dokumentexport-Abhängigkeiten aus Workspace-Controllern und beiden Workspace-DSL-Fassaden.
 6. `ArchitectureWorkspaceAuthorityBoundaryTest` verlangt den Composition-Eigentümer der Startlogik und verhindert direkte Workspace-/Versioning-/Editor-Abhängigkeiten auf Application-Composition-, Knowledge-, Architecture-, Portfolio- und Dokumentexport-Implementierungen; repräsentative Eigentümer verhindern einen leeren Prüfbereich.
 7. `ArchitectureApplicationSchemaCompositionTest` verlangt den Anwendungsschema-Eigentümer in der Composition, erhält den Core-Storage-Eigentümer und verhindert direkte Abhängigkeiten der Anwendungskonfiguration auf Core-Implementierungsklassen.
+8. `ArchitectureWorkspaceStorageOwnershipTest` verlangt alle elf JGit-Storage-Typen unter `com.taxonomy.workspace.storage` und verhindert verbliebene Production-Typen unter `com.taxonomy.dsl.storage`.
 
 Das fokussierte Architekturprofil wird vom Repository-Root über den vollständigen
 Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
@@ -255,9 +282,9 @@ Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
 ./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ```
 
-Das Profil enthält alle fünf Ownership-Guards für Entscheidungsberichte,
-Commit-Historie, DSL-Dokument-Komposition, Workspace-Autorität und Anwendungsschema-Komposition sowohl in `pom.xml` als auch in
-`.mvn/verification-suites.json`. Die zehn ausgewählten Testklassen sind zwischen
+Das Profil enthält alle sechs Ownership-Guards für Entscheidungsberichte,
+Commit-Historie, DSL-Dokument-Komposition, Workspace-Autorität, Anwendungsschema-Komposition und Workspace Storage sowohl in `pom.xml` als auch in
+`.mvn/verification-suites.json`. Die elf ausgewählten Testklassen sind zwischen
 POM und Katalog synchronisiert. Die vollständige CI-Verifikation bleibt `./mvnw -B verify -Pci`.
 
 Der Ratchet durchläuft außerdem `taxonomy-app/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb des Root-Packages muss in `.github/architecture-contexts.json` klassifiziert sein. Ein neues Feature-Package kann den Dependency-Guard daher nicht umgehen, indem es außerhalb der vorhandenen Context-Patterns angelegt wird. Root-Level-Composition-Klassen bleiben ausdrücklich zulässig.

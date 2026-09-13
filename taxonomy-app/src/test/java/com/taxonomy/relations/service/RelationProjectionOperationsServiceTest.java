@@ -1,7 +1,7 @@
 package com.taxonomy.relations.service;
 
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
-import com.taxonomy.dsl.storage.DslWorkspaceReadAdapter;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslWorkspaceReadAdapter;
 import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
 import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;

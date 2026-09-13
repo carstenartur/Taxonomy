@@ -1,7 +1,7 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.versioning.service.CommitIndexService;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryStateGuard;
 import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;

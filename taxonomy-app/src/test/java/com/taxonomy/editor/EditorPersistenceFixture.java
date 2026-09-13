@@ -1,6 +1,6 @@
 package com.taxonomy.editor;
 
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.editor.persistence.*;
 import io.github.carstenartur.jgit.storage.hibernate.DefaultHibernateRepositoryFactory;
 import io.github.carstenartur.jgit.storage.hibernate.config.CoreEntities;

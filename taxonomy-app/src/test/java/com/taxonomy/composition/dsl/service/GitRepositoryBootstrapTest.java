@@ -1,8 +1,8 @@
 package com.taxonomy.composition.dsl.service;
 
 import com.taxonomy.dsl.export.TaxDslExportService;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.shared.service.AppInitializationStateService;
 import com.taxonomy.shared.service.AppInitializationStateService.State;
 import org.junit.jupiter.api.AfterAll;

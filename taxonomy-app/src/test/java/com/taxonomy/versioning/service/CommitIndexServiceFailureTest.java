@@ -1,8 +1,8 @@
 package com.taxonomy.versioning.service;
 
 import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

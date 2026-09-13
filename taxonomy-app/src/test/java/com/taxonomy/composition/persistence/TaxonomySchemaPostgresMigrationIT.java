@@ -1,6 +1,6 @@
 package com.taxonomy.composition.persistence;
 
-import com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfig;
+import com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig;
 
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;
 import org.flywaydb.core.Flyway;

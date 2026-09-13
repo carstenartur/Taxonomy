@@ -56,7 +56,7 @@ entries.
 
 Current adapter-boundary exceptions include:
 
-- `taxonomy-dsl` application adapters (`com.taxonomy.dsl.storage`, `com.taxonomy.dsl.export`)
+- `taxonomy-dsl` application export adapter (`com.taxonomy.dsl.export`)
 - `taxonomy-export` application adapters (`com.taxonomy.export.service`, `com.taxonomy.export.controller`)
 
 Removal condition for package-level adapter exclusions:

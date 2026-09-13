@@ -1,6 +1,6 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;

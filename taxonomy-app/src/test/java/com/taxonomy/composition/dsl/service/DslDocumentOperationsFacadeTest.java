@@ -7,8 +7,8 @@ import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dsl.export.TaxDslExportService;
 import com.taxonomy.dsl.model.CanonicalArchitectureModel;
 import com.taxonomy.versioning.service.*;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.service.*;
 import org.junit.jupiter.api.Test;
 

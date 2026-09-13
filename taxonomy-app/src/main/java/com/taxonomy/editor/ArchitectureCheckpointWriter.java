@@ -2,8 +2,8 @@ package com.taxonomy.editor;
 
 import com.taxonomy.workspace.service.BranchHeadConflictException;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.ExpectedHeadDslCommitter;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.ExpectedHeadDslCommitter;
 import com.taxonomy.editor.persistence.EditorJournal;
 import org.eclipse.jgit.lib.*;
 import org.eclipse.jgit.revwalk.RevWalk;

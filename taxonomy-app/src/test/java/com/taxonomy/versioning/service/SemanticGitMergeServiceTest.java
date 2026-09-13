@@ -1,6 +1,6 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepository;
 import org.eclipse.jgit.lib.ObjectId;
 import org.eclipse.jgit.revwalk.RevCommit;
 import org.eclipse.jgit.revwalk.RevWalk;

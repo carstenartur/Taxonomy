@@ -16,7 +16,7 @@ class ArchitectureRelationCommandBoundaryTest {
                 .importPackages("com.taxonomy.relations.command");
 
         noClasses().should().dependOnClassesThat()
-                .resideInAnyPackage("com.taxonomy.dsl.storage..", "org.eclipse.jgit..")
+                .resideInAnyPackage("com.taxonomy.workspace.storage..", "org.eclipse.jgit..")
                 .because("relation semantics belong to knowledge, exact Git version authority to workspace")
                 .check(classes);
     }
@@ -29,7 +29,7 @@ class ArchitectureRelationCommandBoundaryTest {
                 WorkspaceDslVersionPort.CommitResult.class);
 
         noClasses().should().dependOnClassesThat()
-                .resideInAnyPackage("com.taxonomy.dsl.storage..", "org.eclipse.jgit..",
+                .resideInAnyPackage("com.taxonomy.workspace.storage..", "org.eclipse.jgit..",
                         "org.springframework..", "com.taxonomy.relations..", "com.taxonomy.catalog..")
                 .because("the workspace version port is an owner-defined API, not an implementation facade")
                 .check(classes);

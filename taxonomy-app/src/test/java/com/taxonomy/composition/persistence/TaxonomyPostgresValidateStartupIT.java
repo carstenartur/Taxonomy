@@ -1,6 +1,6 @@
 package com.taxonomy.composition.persistence;
 
-import com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfig;
+import com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig;
 
 import jakarta.persistence.EntityManagerFactory;
 import org.junit.jupiter.api.Tag;

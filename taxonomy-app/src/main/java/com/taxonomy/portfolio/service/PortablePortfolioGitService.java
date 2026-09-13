@@ -5,7 +5,7 @@ import com.taxonomy.dsl.ast.DocumentAst;
 import com.taxonomy.dsl.ast.PropertyAst;
 import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.portfolio.model.ArchitectureProject;
 import com.taxonomy.portfolio.model.ProjectRequirement;
 import com.taxonomy.portfolio.model.ProjectRequirementVersion;

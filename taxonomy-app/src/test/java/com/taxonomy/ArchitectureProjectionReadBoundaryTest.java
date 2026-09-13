@@ -24,7 +24,7 @@ class ArchitectureProjectionReadBoundaryTest {
                 RelationDecisionProjectionService.class,
                 RelationProjectionRecoveryService.class);
         noClasses().should().dependOnClassesThat()
-                .resideInAnyPackage("com.taxonomy.dsl.storage..", "org.eclipse.jgit..")
+                .resideInAnyPackage("com.taxonomy.workspace.storage..", "org.eclipse.jgit..")
                 .because("knowledge owns projection semantics, workspace owns exact Git reads")
                 .check(classes);
     }
@@ -35,7 +35,7 @@ class ArchitectureProjectionReadBoundaryTest {
                 WorkspaceDslReadPort.class, WorkspaceDslReadPort.RepositoryRead.class,
                 WorkspaceDslReadPort.CommitMetadata.class, WorkspaceDslReadPort.CommitRelationship.class);
         noClasses().should().dependOnClassesThat()
-                .resideInAnyPackage("com.taxonomy.dsl.storage..", "org.eclipse.jgit..",
+                .resideInAnyPackage("com.taxonomy.workspace.storage..", "org.eclipse.jgit..",
                         "org.springframework..", "com.taxonomy.relations..", "com.taxonomy.catalog..")
                 .check(classes);
     }

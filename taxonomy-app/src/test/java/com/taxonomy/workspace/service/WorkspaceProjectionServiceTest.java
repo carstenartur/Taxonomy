@@ -1,7 +1,7 @@
 package com.taxonomy.workspace.service;
 
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.model.WorkspaceProjection;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.repository.WorkspaceProjectionRepository;

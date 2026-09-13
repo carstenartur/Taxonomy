@@ -1,6 +1,6 @@
 package com.taxonomy.versioning.service;
 
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.versioning.controller.DslWorkspacePreResolutionInterceptor;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;

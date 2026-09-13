@@ -1,8 +1,8 @@
 package com.taxonomy.workspace.service;
 
 import com.taxonomy.dsl.merge.TaxDslMergeResult;
-import com.taxonomy.dsl.storage.DslGitRepository;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.versioning.service.SemanticGitMergeService;
 import com.taxonomy.workspace.model.SyncState;
 import com.taxonomy.workspace.model.SystemRepository;

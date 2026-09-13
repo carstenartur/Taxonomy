@@ -1,6 +1,6 @@
 package com.taxonomy.composition.persistence;
 
-import com.taxonomy.dsl.storage.JgitStorageSchemaMigrationConfig;
+import com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfig;
 
 import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
 import io.github.carstenartur.jgit.storage.hibernate.schema.CoreSchemaMigrations;

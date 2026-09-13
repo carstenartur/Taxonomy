@@ -64,10 +64,10 @@
     {
       "id": "cycle-dsl-adapter-outbound",
       "kind": "adapter-boundary",
-      "fromPackage": "com.taxonomy.dsl.storage..|com.taxonomy.dsl.export..",
+      "fromPackage": "com.taxonomy.dsl.export..",
       "toPackage": "*",
       "owner": "dsl-maintainers",
-      "rationale": "Spring/JGit persistence and export adapters still reside below the com.taxonomy.dsl package root in taxonomy-app.",
+      "rationale": "Spring export adapters still reside below the com.taxonomy.dsl package root in taxonomy-app.",
       "removalCondition": "Move each adapter behind an owning bounded-context port and into that context's adapter package or module; leave taxonomy-dsl framework-free and do not introduce a catch-all adapters module.",
       "expiresOn": "2027-06-30"
     },
@@ -75,9 +75,9 @@
       "id": "cycle-dsl-adapter-inbound",
       "kind": "adapter-boundary",
       "fromPackage": "*",
-      "toPackage": "com.taxonomy.dsl.storage..|com.taxonomy.dsl.export..",
+      "toPackage": "com.taxonomy.dsl.export..",
       "owner": "dsl-maintainers",
-      "rationale": "Application services still address DSL persistence/export adapters through their historical package names.",
+      "rationale": "Application services still address DSL export adapters through their historical package names.",
       "removalCondition": "Move each adapter behind a narrow owning-context port and into that context's adapter package or module; do not introduce a catch-all adapters module.",
       "expiresOn": "2027-06-30"
     },

@@ -4,7 +4,7 @@ import com.taxonomy.TaxonomyApplication;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
 import com.taxonomy.editor.ArchitectureCommandPort.*;
 import com.taxonomy.editor.persistence.EditorJournal;
-import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.service.RepositoryContext;
 import org.springframework.boot.builder.SpringApplicationBuilder;
 
