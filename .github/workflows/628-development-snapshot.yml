@@ -11,27 +11,42 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           persist-credentials: false
-          fetch-depth: 0
-      - name: Bundle tracked repository history only
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Provision the repository-pinned local model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Exercise native model and tokenizer loading (supplementary)
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+        run: ./mvnw -B -pl taxonomy-app -am -Dtest=OnnxEmbeddingServiceTest,OnnxRestEndpointTest -Dsurefire.failIfNoSpecifiedTests=false -DexcludedGroups=real-llm test
+      - name: Archive verified model and native runtime cache only
+        if: always()
         shell: bash
         run: |
           set -euo pipefail
-          git bundle create "$RUNNER_TEMP/628-history.bundle" HEAD
-          git bundle verify "$RUNNER_TEMP/628-history.bundle"
-          git rev-parse HEAD 'HEAD^{tree}' > "$RUNNER_TEMP/628-history-identity.txt"
+          tar -czf "$RUNNER_TEMP/628-model-inputs.tar.gz" models/bge-small-en-v1.5
+          if test -d "$HOME/.djl.ai"; then
+            tar -C "$HOME" -czf "$RUNNER_TEMP/628-native-runtime.tar.gz" .djl.ai
+          fi
           cd "$RUNNER_TEMP"
-          sha256sum 628-history.bundle > 628-history.sha256
+          sha256sum 628-*.tar.gz > 628-model-inputs.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
         with:
-          name: workspace-extraction-history
+          name: workspace-extraction-model-inputs
           path: |
-            ${{ runner.temp }}/628-history.bundle
-            ${{ runner.temp }}/628-history-identity.txt
-            ${{ runner.temp }}/628-history.sha256
+            ${{ runner.temp }}/628-model-inputs.tar.gz
+            ${{ runner.temp }}/628-native-runtime.tar.gz
+            ${{ runner.temp }}/628-model-inputs.sha256
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.Onnx*Test.xml
           if-no-files-found: error
           retention-days: 1
