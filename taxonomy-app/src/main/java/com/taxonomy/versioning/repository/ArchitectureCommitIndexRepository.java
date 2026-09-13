@@ -1,6 +1,6 @@
-package com.taxonomy.architecture.repository;
+package com.taxonomy.versioning.repository;
 
-import com.taxonomy.architecture.model.ArchitectureCommitIndex;
+import com.taxonomy.versioning.model.ArchitectureCommitIndex;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 

@@ -1,8 +1,8 @@
 package com.taxonomy.dsl;
 
-import com.taxonomy.architecture.model.ArchitectureCommitIndex;
-import com.taxonomy.architecture.repository.ArchitectureCommitIndexRepository;
-import com.taxonomy.architecture.service.CommitIndexService;
+import com.taxonomy.versioning.model.ArchitectureCommitIndex;
+import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
+import com.taxonomy.versioning.service.CommitIndexService;
 import com.taxonomy.workspace.model.RepositoryOwnerType;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
 import com.taxonomy.workspace.model.RepositoryVisibility;
@@ -10,6 +10,8 @@ import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.search.mapper.orm.Search;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -44,6 +46,9 @@ class CommitIndexHibernateSearchTest {
     @Autowired
     private SystemRepositoryRepository systemRepositoryRepository;
 
+    @Autowired
+    private EntityManagerFactory entityManagerFactory;
+
     private RepositoryContext centralA;
     private RepositoryContext centralB;
     private RepositoryContext workspaceA1;
@@ -63,6 +68,17 @@ class CommitIndexHibernateSearchTest {
                 primaryRepositoryId, "workspace-a1", "test", "admin");
         workspaceA2 = RepositoryContext.workspace(
                 primaryRepositoryId, "workspace-a2", "test", "admin");
+    }
+
+    @Test
+    void retainsExistingEntityAndSearchIndexNames() {
+        assertThat(entityManagerFactory.getMetamodel()
+                .entity(ArchitectureCommitIndex.class).getName())
+                .isEqualTo("ArchitectureCommitIndex");
+        assertThat(Search.mapping(entityManagerFactory)
+                .indexedEntity(ArchitectureCommitIndex.class)
+                .indexManager().descriptor().hibernateSearchName())
+                .isEqualTo("ArchitectureCommitIndex");
     }
 
     @Test

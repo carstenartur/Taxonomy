@@ -1,6 +1,6 @@
-package com.taxonomy.architecture.service;
+package com.taxonomy.versioning.service;
 
-import com.taxonomy.architecture.repository.ArchitectureCommitIndexRepository;
+import com.taxonomy.versioning.repository.ArchitectureCommitIndexRepository;
 import com.taxonomy.dsl.storage.DslGitRepository;
 import com.taxonomy.dsl.storage.DslGitRepositoryFactory;
 import com.taxonomy.workspace.service.RepositoryContext;
