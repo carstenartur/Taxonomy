@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/628-physical-workspace.yml
       - verification/physical_workspace.py
+      - verification/workspace_direct.py
 permissions:
   contents: write
 jobs:
@@ -17,7 +18,7 @@ jobs:
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: c0d7bd654ba774daa0701b6e18dfa3fb85c3a92c
+          ref: 8cd4395d93ba56c80ae6ea5dff031944772e7771
           path: source
           fetch-depth: 0
           persist-credentials: false
@@ -26,20 +27,26 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
-      - name: RED - require the physical workspace module
-        run: python3 verification/physical_workspace.py red "$GITHUB_WORKSPACE/source"
-      - name: Extract workspace implementation and unit tests
+      - name: Extract workspace directly from main
         id: apply
-        run: python3 verification/physical_workspace.py apply "$GITHUB_WORKSPACE/source"
+        run: python3 verification/workspace_direct.py prepare "$GITHUB_WORKSPACE/source"
       - name: Compile full reactor and enforce architecture
-        run: python3 verification/physical_workspace.py architecture "$GITHUB_WORKSPACE/source"
+        run: python3 verification/workspace_direct.py architecture "$GITHUB_WORKSPACE/source"
+      - name: Restore pinned embedding model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: source/models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('source/.github/scripts/download-embedding-model.sh') }}
       - name: Verify complete default reactor and Boot JAR packaging
-        run: python3 verification/physical_workspace.py verify "$GITHUB_WORKSPACE/source"
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+        run: python3 verification/workspace_direct.py verify "$GITHUB_WORKSPACE/source"
       - name: Preserve prepared source tree without changing any branch
         if: always() && steps.apply.outcome == 'success'
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python3 verification/physical_workspace.py publish "$GITHUB_WORKSPACE/source"
+        run: python3 verification/workspace_direct.py publish "$GITHUB_WORKSPACE/source"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
