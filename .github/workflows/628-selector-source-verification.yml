@@ -1,0 +1,47 @@
+name: Selector source ownership regression verification
+
+on:
+  push:
+    branches: [verification/628-selector-sources]
+    paths:
+      - verification/selector_sources.py
+      - .github/workflows/628-selector-source-verification.yml
+
+permissions:
+  contents: write
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: da653e2333e5ee80524cdb9373b969e8fbafab39
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c # v6.0.0
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: RED - reproduce source ownership gaps without changing the old assertion
+        run: python3 verification/selector_sources.py red "$GITHUB_WORKSPACE/source"
+      - name: GREEN - verify ownership fix and every existing architecture guard
+        run: python3 verification/selector_sources.py green "$GITHUB_WORKSPACE/source"
+      - name: Upload verified source blobs without committing or moving a branch
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 verification/selector_sources.py publish "$GITHUB_WORKSPACE/source"
+      - name: Retain exact regression evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: selector-source-regression-evidence
+          path: ${{ runner.temp }}/selector-source-evidence/
+          if-no-files-found: error
+          retention-days: 7
