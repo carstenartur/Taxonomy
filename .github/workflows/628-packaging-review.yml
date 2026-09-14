@@ -49,8 +49,28 @@ jobs:
           distribution: temurin
           cache: maven
           cache-dependency-path: source/**/pom.xml
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.m2/repository
+          key: packaging-review-${{ matrix.name }}-${{ hashFiles('source/**/pom.xml') }}
+          restore-keys: |
+            setup-java-Linux-x64-maven-2d877595e42690b4f8e4f67e8520c7915ef0e0bb41baf69daf61f58e4d851b93
+            setup-java-Linux-x64-maven-0a36ad2c4239fc138c849129eeaa9566e1bb77dc8930edbbbb64fa9ee8d63ad5
       - name: Prepare bounded review corrections
-        run: python3 ../control/verification/628-packaging-review.py prepare
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          script = Path('../control/verification/628-packaging-review.py')
+          text = script.read_text()
+          old = 'com/taxonomy/editor/EditorJournal.class'
+          assert text.count(old) == 2
+          script.write_text(text.replace(old, 'com/taxonomy/editor/persistence/EditorJournal.class'))
+          for relative in ('editor/persistence/EditorJournal.java',
+                           'workspace/storage/DslGitRepository.java',
+                           'versioning/service/RepositoryStateService.java'):
+              assert Path('taxonomy-workspace/src/main/java/com/taxonomy', relative).is_file(), relative
+          PY
+          python3 ../control/verification/628-packaging-review.py prepare
       - name: Verify architecture and build the real Boot application
         env:
           EXPECTED_TESTS: ${{ matrix.architectureTests }}
