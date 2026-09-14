@@ -6,49 +6,62 @@ on:
 permissions:
   contents: read
 jobs:
-  provision:
+  regression:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      MAVEN_OPTS: -Xmx1536m
     steps:
       - uses: actions/checkout@v4
         with:
+          path: tools
+          persist-credentials: false
+      - uses: actions/checkout@v4
+        with:
+          path: candidate
           ref: 29b9ef036882f5dbfc62924d9aca63038c098d4e
           persist-credentials: false
-      - name: Archive immutable source for isolated offline work
-        run: |
-          test "$(git rev-parse HEAD)" = 29b9ef036882f5dbfc62924d9aca63038c098d4e
-          git archive --format=tar.gz HEAD -o "$RUNNER_TEMP/taxonomy-source.tar.gz"
-          sha256sum "$RUNNER_TEMP/taxonomy-source.tar.gz"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: analysis-source-29b9ef03
-          path: ${{ runner.temp }}/taxonomy-source.tar.gz
-          retention-days: 3
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Execute existing analysis boundary tests
+      - name: Install behavioral reproductions only
+        working-directory: candidate
         run: |
+          test "$(git rev-parse HEAD)" = 29b9ef036882f5dbfc62924d9aca63038c098d4e
+          python ../tools/.github/scripts/analysis-memory-tests.py
+      - name: Run RED and existing controls
+        working-directory: candidate
+        run: |
+          set +e
           set -o pipefail
-          ./mvnw -B -pl taxonomy-app -am -Dtest=AnalysisApiControllerTest,StreamRequirementAnalysisUseCaseTest -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee "$RUNNER_TEMP/analysis-baseline.log"
-      - name: Archive dependencies without credentials
-        if: always()
-        run: |
-          tar -czf "$RUNNER_TEMP/taxonomy-maven.tar.gz" -C "$HOME/.m2" repository wrapper
-          du -h "$RUNNER_TEMP/taxonomy-maven.tar.gz"
+          ./mvnw -B -pl taxonomy-app -am -Dtest=HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,StreamRequirementAnalysisUseCaseTest -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee "$RUNNER_TEMP/analysis-red.log"
+          code=${PIPESTATUS[0]}
+          echo "Maven exit=$code"
+          test "$code" -ne 0 || exit 1
+          python - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as E
+          reports=list(Path('taxonomy-app/target/surefire-reports').glob('TEST-*.xml'))
+          assert len(reports)==5, [p.name for p in reports]
+          totals=[0,0,0,0]
+          for p in reports:
+              root=E.parse(p).getroot()
+              values=[int(root.get(k,0)) for k in ('tests','failures','errors','skipped')]
+              print(root.get('name'), values)
+              totals=[a+b for a,b in zip(totals,values)]
+          print('TOTAL tests/failures/errors/skipped:',totals)
+          assert totals[1:]==[5,0,0], totals
+          PY
+      - name: Run browser ordering controls
+        working-directory: candidate
+        run: node --test .github/scripts/analysis-operation-controller.test.mjs
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: analysis-offline-dependencies
-          path: ${{ runner.temp }}/taxonomy-maven.tar.gz
-          retention-days: 3
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: analysis-baseline-evidence
+          name: analysis-red-evidence
           path: |
-            ${{ runner.temp }}/analysis-baseline.log
-            **/target/surefire-reports/*.xml
+            ${{ runner.temp }}/analysis-red.log
+            candidate/**/target/surefire-reports/*.xml
           retention-days: 7
