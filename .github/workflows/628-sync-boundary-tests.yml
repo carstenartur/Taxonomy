@@ -1,0 +1,83 @@
+name: Verify synchronization metadata guards
+on:
+  push:
+    branches: [fix/628-captured-workspace-snapshot]
+    paths: [.github/workflows/628-sync-boundary-tests.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 9bd3c3d40e950caec370883ab7355d5924beaa00
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Execute actual guards and existing successful synchronization cases
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=GitNativeSyncMetadataBoundaryTest,GitNativeSyncIntegrationServiceTest test > "$RUNNER_TEMP/sync-boundary-green.log" 2>&1 || { tail -n 80 "$RUNNER_TEMP/sync-boundary-green.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for name in ('GitNativeSyncMetadataBoundaryTest','GitNativeSyncIntegrationServiceTest'):
+              files=list(Path('.').glob('*/target/surefire-reports/TEST-*.' + name + '.xml'))
+              assert len(files)==1,(name,files)
+              root=ET.parse(files[0]).getroot()
+              counts={k:int(root.get(k,'0')) for k in ('tests','failures','errors','skipped')}
+              assert counts['tests']>0 and counts['failures']==counts['errors']==counts['skipped']==0, counts
+              if name=='GitNativeSyncMetadataBoundaryTest': assert counts['tests']==8
+              print(name,counts)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: sync-boundary-green
+          path: |
+            ${{ runner.temp }}/sync-boundary-green.log
+            **/target/surefire-reports/TEST-*GitNativeSync*.xml
+          retention-days: 14
+          if-no-files-found: error
+      - name: Prove the new tests reject a missing blank-provenance guard
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java')
+          old='if (repositoryId == null || repositoryId.isBlank()) {'
+          text=p.read_text()
+          assert text.count(old)==1
+          p.write_text(text.replace(old,'if (repositoryId == null) {'))
+          PY
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=GitNativeSyncMetadataBoundaryTest test > "$RUNNER_TEMP/sync-boundary-mutant.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files=list(Path('.').glob('*/target/surefire-reports/TEST-*.GitNativeSyncMetadataBoundaryTest.xml'))
+          assert len(files)==1
+          root=ET.parse(files[0]).getroot()
+          counts={k:int(root.get(k,'0')) for k in ('tests','failures','errors','skipped')}
+          print('MISSING GUARD CONTROL',counts)
+          assert counts==dict(tests=8,failures=1,errors=0,skipped=0),counts
+          for case in root.findall('testcase'):
+              for failure in case.findall('failure'): print(case.get('name'),failure.get('message'))
+          PY
+          git restore taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java
+          git diff --exit-code
+          git rev-parse HEAD:taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/GitNativeSyncMetadataBoundaryTest.java
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: sync-boundary-mutation-control
+          path: |
+            ${{ runner.temp }}/sync-boundary-mutant.log
+            taxonomy-workspace/target/surefire-reports/TEST-*GitNativeSyncMetadataBoundaryTest.xml
+          retention-days: 14
+          if-no-files-found: error
