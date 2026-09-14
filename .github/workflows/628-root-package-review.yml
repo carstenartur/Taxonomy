@@ -1,0 +1,243 @@
+name: Feature root-package review verification
+
+on:
+  push:
+    branches: [verification/628-physical-workspace]
+    paths: [.github/workflows/628-root-package-review.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: workspace
+            ref: 711c48ab7f254dabd0800f1acd1c3318a0fc5b67
+            expectedFailures: 3
+          - name: templates
+            ref: e52b9dd40732a683c954950f1198b523cfe93263
+            expectedFailures: 6
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.ref }}
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Add a regression without changing the existing guard
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java')
+          s = p.read_text()
+          modules = ['taxonomy-app', 'taxonomy-workspace']
+          if Path('taxonomy-templates/pom.xml').is_file():
+              modules.append('taxonomy-templates')
+          literal = 'List.of(' + ', '.join('"' + m + '"' for m in modules) + ')'
+          old = 'for (String module : ' + literal + ')'
+          assert s.count(old) == 1
+          s = s.replace(old, 'for (String module : SOURCE_MODULES)')
+          anchor = 'class ArchitectureContextDependencyRatchetTest {\n'
+          assert s.count(anchor) == 1
+          s = s.replace(anchor, anchor + '\n    private static final List<String> SOURCE_MODULES = ' + literal + ';\n', 1)
+          s = s.replace('import org.junit.jupiter.api.Test;\n', 'import org.junit.jupiter.api.Test;\nimport org.junit.jupiter.api.io.TempDir;\nimport org.junit.jupiter.params.ParameterizedTest;\nimport org.junit.jupiter.params.provider.MethodSource;\nimport org.junit.jupiter.params.provider.Arguments;\n', 1)
+          s = s.replace('import static org.assertj.core.api.Assertions.assertThat;\n', 'import static org.assertj.core.api.Assertions.assertThat;\nimport static org.assertj.core.api.Assertions.assertThatExceptionOfType;\n', 1)
+          tests = '''    @ParameterizedTest(name = "{0}: {1}")
+              @MethodSource("featureModuleRootSources")
+              void rejectsRootPackageSourcesInFeatureModules(
+                      String module, String fileName, @TempDir Path fixture) throws Exception {
+                  ContextPolicy policy = readAndValidateContextPolicy(
+                          findRepositoryRoot().resolve(".github/architecture-contexts.json"));
+                  for (String sourceModule : SOURCE_MODULES) {
+                      Path root = Files.createDirectories(fixture.resolve(
+                              sourceModule + "/src/main/java/com/taxonomy"));
+                      if ("taxonomy-app".equals(sourceModule)) {
+                          for (String compositionFile : policy.rootCompositionClasses()) {
+                              Files.writeString(root.resolve(compositionFile), "package com.taxonomy;\n");
+                          }
+                      } else {
+                          String context = sourceModule.substring("taxonomy-".length());
+                          Path packageRoot = Files.createDirectories(root.resolve(context));
+                          Files.writeString(packageRoot.resolve("Sample.java"),
+                                  "package com.taxonomy." + context + ";\n");
+                      }
+                  }
+                  // The real application allow-list and classified feature packages remain valid.
+                  validateSourceCoverage(fixture, policy);
+                  Files.writeString(fixture.resolve(
+                          module + "/src/main/java/com/taxonomy/" + fileName), "package com.taxonomy;\n");
+                  assertThatExceptionOfType(AssertionError.class)
+                          .isThrownBy(() -> validateSourceCoverage(fixture, policy))
+                          .withMessageContaining(module)
+                          .withMessageContaining(fileName);
+              }
+
+              private static java.util.stream.Stream<Arguments> featureModuleRootSources() {
+                  return SOURCE_MODULES.stream()
+                          .filter(module -> !"taxonomy-app".equals(module))
+                          .flatMap(module -> java.util.stream.Stream.of(
+                                          "UnexpectedRoot.java", "AppConfig.java", "package-info.java")
+                                  .map(fileName -> Arguments.of(module, fileName)));
+              }
+
+          '''
+          # Preserve Java newline escapes, not literal newlines inside Java string literals.
+          tests = tests.replace(';\n"', ';\\n"')
+          # Dedent the common YAML-friendly prefix after the first line.
+          tests = tests.splitlines(keepends=True)
+          tests = tests[0] + ''.join(line[10:] if line.startswith('          ') else line for line in tests[1:])
+          anchor = '    private ContextPolicy readAndValidateContextPolicy(Path policyPath) throws Exception {'
+          assert s.count(anchor) == 1
+          p.write_text(s.replace(anchor, tests + anchor, 1))
+          PY
+      - name: Prove the existing guard misses feature-root files
+        shell: bash
+        env:
+          EXPECTED_FAILURES: ${{ matrix.expectedFailures }}
+        run: |
+          set +e
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false \
+            '-Dtest=ArchitectureContextDependencyRatchetTest#rejectsRootPackageSourcesInFeatureModules' test > "$RUNNER_TEMP/red.log" 2>&1
+          result=$?
+          set -e
+          if [[ "$result" == 0 ]]; then echo 'The negative control unexpectedly passed'; exit 1; fi
+          python3 - <<'PY'
+          import os, xml.etree.ElementTree as ET
+          from pathlib import Path
+          report = Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureContextDependencyRatchetTest.xml')
+          if not report.is_file():
+              print(Path(os.environ['RUNNER_TEMP'], 'red.log').read_text()[-12000:])
+              raise SystemExit('No regression report: build/compilation error is not a valid negative control')
+          root = ET.parse(report).getroot()
+          expected = os.environ['EXPECTED_FAILURES']
+          assert root.get('tests') == expected and root.get('failures') == expected, root.attrib
+          assert root.get('errors') == '0' and root.get('skipped') == '0', root.attrib
+          for case in root.findall('testcase'):
+              failure = case.find('failure')
+              assert failure is not None and 'Expecting code to raise a throwable' in failure.get('message', '')
+          print('RED: all', expected, 'feature-root bypasses reproduced; no infrastructure errors')
+          PY
+      - name: Reject feature-root files and align existing documentation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          p = Path('taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java')
+          s = p.read_text()
+          anchor = '            assertThat(contextRoot).as("production context root %s", module).isDirectory();\n'
+          assert s.count(anchor) == 1
+          guard = '''            if (!"taxonomy-app".equals(module)) {
+                          try (var rootSources = Files.list(contextRoot)) {
+                              assertThat(rootSources.filter(Files::isRegularFile)
+                                      .map(path -> path.getFileName().toString())
+                                      .filter(fileName -> fileName.endsWith(".java"))
+                                      .sorted().toList())
+                                      .as("Root-package Java files are reserved for taxonomy-app, not %s", module)
+                                      .isEmpty();
+                          }
+                      }
+          '''
+          lines = guard.splitlines(keepends=True)
+          guard = lines[0] + ''.join(line[10:] if line.startswith('          ') else line for line in lines[1:])
+          s = s.replace(anchor, anchor + guard, 1)
+          s = s.replace('Every production Java package below the application package root must also',
+                        'Every production Java package in the application and extracted modules must also')
+          p.write_text(s)
+          modules = ['taxonomy-app', 'taxonomy-workspace']
+          if Path('taxonomy-templates/pom.xml').is_file():
+              modules.append('taxonomy-templates')
+          roots = ', '.join('`' + m + '/src/main/java/com/taxonomy`' for m in modules)
+          replacements = {
+              'en': 'The ratchet walks ' + roots + ': every production Java package below these roots must be classified in `.github/architecture-contexts.json`. Only `taxonomy-app` may contain root-package Java files, and its composition files must exactly match the explicit allow-list. Extracted feature modules reject every root-package Java file, including a copied composition-class name or `package-info.java`.',
+              'de': 'Der Ratchet durchläuft ' + roots + ': Jedes Production-Java-Package unterhalb dieser Wurzeln muss in `.github/architecture-contexts.json` klassifiziert sein. Nur `taxonomy-app` darf Java-Dateien im Root-Package enthalten; seine Composition-Dateien müssen exakt der expliziten Allowlist entsprechen. Ausgelagerte Fachmodule weisen jede Java-Datei im Root-Package zurück, auch kopierte Composition-Klassennamen oder `package-info.java`.'
+          }
+          for lang, text in replacements.items():
+              path = Path('docs') / lang / 'MODULE_BOUNDARIES.md'
+              paragraphs = path.read_text().split('\n\n')
+              prefix = 'The ratchet ' if lang == 'en' else 'Der Ratchet '
+              matches = [i for i, paragraph in enumerate(paragraphs)
+                         if paragraph.startswith(prefix) and 'src/main/java/com/taxonomy' in paragraph]
+              assert len(matches) == 1, (lang, matches)
+              paragraphs[matches[0]] = text
+              path.write_text('\n\n'.join(paragraphs))
+          path = Path('docs/dev/REACTOR_COVERAGE.md')
+          text = path.read_text()
+          if '6. `taxonomy-workspace`' not in text:
+              assert text.count('5. `taxonomy-app`') == 1
+              path.write_text(text.replace('5. `taxonomy-app`', '5. `taxonomy-app`\n6. `taxonomy-workspace`'))
+          policy = json.loads(Path('.github/coverage-policy.json').read_text())
+          text = path.read_text().split('## Aggregate', 1)[0]
+          assert all(text.count('`' + group + '`') == 1 for group in policy['expectedGroups'])
+          PY
+          git diff --check
+      - name: Run the complete architecture profile
+        shell: bash
+        run: |
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false clean verify > "$RUNNER_TEMP/green.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/green.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          total = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for path in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              suite = ET.parse(path).getroot()
+              for key in total:
+                  total[key] += int(suite.get(key, '0'))
+          assert total['tests'] > 0 and all(total[k] == 0 for k in ('failures', 'errors', 'skipped')), total
+          print('GREEN ARCHITECTURE', total)
+          PY
+      - name: Retain only verified test and documentation changes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          def post(endpoint, body):
+              request = urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/' + endpoint,
+                  data=json.dumps(body).encode(), headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'}, method='POST')
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          paths = git('diff', '--name-only').splitlines()
+          allowed = {'taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java',
+                     'docs/en/MODULE_BOUNDARIES.md', 'docs/de/MODULE_BOUNDARIES.md', 'docs/dev/REACTOR_COVERAGE.md'}
+          assert set(paths).issubset(allowed) and len(paths) in (3, 4), paths
+          entries = []
+          for path in paths:
+              sha = post('git/blobs', {'content': Path(path).read_text(), 'encoding': 'utf-8'})['sha']
+              assert sha == git('hash-object', path)
+              entries.append({'path': path, 'mode': git('ls-files', '-s', '--', path).split()[0], 'type': 'blob', 'sha': sha})
+          tree = post('git/trees', {'base_tree': git('rev-parse', 'HEAD^{tree}'), 'tree': entries})['sha']
+          git('add', '--', *paths)
+          assert git('write-tree') == tree
+          result = {'parent': git('rev-parse', 'HEAD'), 'tree': tree, 'entries': entries}
+          Path(os.environ['RUNNER_TEMP'], 'verified-change.json').write_text(json.dumps(result, indent=2))
+          print('VERIFIED_CHANGE', json.dumps(result))
+          print(git('diff', '--cached', '--stat'))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: root-package-${{ matrix.name }}-evidence
+          path: |
+            ${{ runner.temp }}/red.log
+            ${{ runner.temp }}/green.log
+            ${{ runner.temp }}/verified-change.json
+            **/target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
