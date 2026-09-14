@@ -237,3 +237,27 @@ TAXONOMY_AI_AUTOPILOT_PROVIDER=CUSTOM_OPENAI
 ```
 
 Docker Compose reicht `.env` an den Anwendungscontainer weiter. Bei Helm gehören Nicht-Geheimnisse nach `config`, Zugangsdaten ins referenzierte Secret und zusätzliche Werte nach `extraEnv`.
+
+## Dateibasierte lokale Analyse (`hsqldb-file`)
+
+Mit `SPRING_PROFILES_ACTIVE=hsqldb-file` statt `hsqldb` verwenden sowohl HSQLDB
+als auch Lucene Dateien. Anwendungs-DDL verwendet standardmäßig `update`; die
+veröffentlichten JGit-Migrationen bleiben Eigentum der Bibliothek. Nicht mehrere
+Datenbankprofile kombinieren.
+
+| Umgebungsvariable | Standard | Bedeutung |
+|---|---|---|
+| `TAXONOMY_HSQLDB_FILE_PATH` | `./data/taxonomydb` | Beschreibbares Datenbank-Dateipräfix; in Containern ein dauerhaftes Volume verwenden. |
+| `TAXONOMY_HSQLDB_CACHE_SIZE_KB` | `4096` | Cachebudget serialisierter Tabellendaten in KiB; keine Gesamtgrenze des JVM-Speichers. |
+| `TAXONOMY_HSQLDB_CACHE_ROWS` | `10000` | Höchstzahl zwischengespeicherter Tabellenzeilen. |
+
+`TAXONOMY_DATASOURCE_URL` kann weiterhin die ganze URL überschreiben. Standardmäßig
+werden `CACHED`-Tabellen ohne verzögerte Log-Synchronisierung verwendet. Bestehende
+`MEMORY`-Tabellen werden nicht automatisch konvertiert. Benötigte In-Memory-Daten
+**vor dem Herunterfahren exportieren**; der Profilwechsel migriert sie nicht.
+Vor Schema- oder Tabellentypänderungen persistente Daten sichern. Für aufzubewahrende
+Daten niemals `TAXONOMY_DDL_AUTO=create` verwenden.
+
+`TAXONOMY_SEARCH_DIRECTORY_TYPE` ist in diesem Profil standardmäßig `local-filesystem`,
+`TAXONOMY_SEARCH_DIRECTORY_ROOT` ist `./data/lucene-index`. Dateispeicherung reduziert
+die Heap-Belegung, garantiert aber nicht, dass jeder Speichermangel verhindert wird.

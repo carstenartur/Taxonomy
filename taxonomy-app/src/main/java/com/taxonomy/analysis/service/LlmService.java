@@ -646,15 +646,21 @@ public class LlmService {
                 !hasError(productDetail));
     }
 
-    private LlmCallDetail callProductBatchesDetailed(
-            String businessText, List<TaxonomyNode> products) {
+    private LlmCallDetail callProductBatchesDetailed(String businessText,
+                                                      List<TaxonomyNode> products) {
+        List<TaxonomyNode> ordered = products.stream()
+                .sorted(Comparator.comparing(TaxonomyNode::getCode,
+                        Comparator.nullsLast(String::compareTo)))
+                .toList();
         int batchSize = Math.max(1, Math.min(10, productBatchSize));
-        List<LlmCallDetail> details = new ArrayList<>();
-        for (int from = 0; from < products.size(); from += batchSize) {
-            int to = Math.min(products.size(), from + batchSize);
-            details.add(callProductBatchDetailed(businessText, products.subList(from, to)));
+        LlmDetailAccumulator accumulator = new LlmDetailAccumulator();
+        for (int from = 0; from < ordered.size(); from += batchSize) {
+            List<TaxonomyNode> batch = ordered.subList(from, Math.min(from + batchSize, ordered.size()));
+            accumulator.add(callProductBatchDetailed(businessText, batch));
         }
-        return mergeDetails(details);
+        LlmCallDetail result = accumulator.result();
+        if (result.getProvider() == null) result.setProvider(getActiveProviderName());
+        return result;
     }
 
     private LlmCallDetail callProductBatchDetailed(
@@ -811,50 +817,11 @@ public class LlmService {
     }
 
     private LlmCallDetail mergeDetails(List<LlmCallDetail> details) {
-        if (details.size() == 1) {
-            return details.get(0);
-        }
-        LlmCallDetail merged = new LlmCallDetail();
-        merged.setProvider(getActiveProviderName());
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        Map<String, String> reasons = new LinkedHashMap<>();
-        StringBuilder prompts = new StringBuilder();
-        StringBuilder responses = new StringBuilder();
-        List<String> errors = new ArrayList<>();
-        long duration = 0;
-        for (int index = 0; index < details.size(); index++) {
-            LlmCallDetail detail = details.get(index);
-            if (detail.getScores() != null) {
-                scores.putAll(detail.getScores());
-            }
-            if (detail.getReasons() != null) {
-                reasons.putAll(detail.getReasons());
-            }
-            if (detail.getPrompt() != null && !detail.getPrompt().isBlank()) {
-                prompts.append("--- call ").append(index + 1).append(" ---\n")
-                        .append(detail.getPrompt()).append('\n');
-            }
-            if (detail.getRawResponse() != null && !detail.getRawResponse().isBlank()) {
-                responses.append("--- call ").append(index + 1).append(" ---\n")
-                        .append(detail.getRawResponse()).append('\n');
-            }
-            if (detail.getError() != null && !detail.getError().isBlank()) {
-                errors.add(detail.getError());
-            }
-            if (merged.getDiscrepancy() == null && detail.getDiscrepancy() != null) {
-                merged.setDiscrepancy(detail.getDiscrepancy());
-            }
-            duration += detail.getDurationMs();
-        }
-        merged.setScores(scores);
-        merged.setReasons(reasons);
-        merged.setPrompt(prompts.toString());
-        merged.setRawResponse(responses.toString());
-        merged.setDurationMs(duration);
-        if (!errors.isEmpty()) {
-            merged.setError(String.join(" | ", errors));
-        }
-        return merged;
+        LlmDetailAccumulator accumulator = new LlmDetailAccumulator();
+        details.forEach(accumulator::add);
+        LlmCallDetail result = accumulator.result();
+        if (result.getProvider() == null) result.setProvider(getActiveProviderName());
+        return result;
     }
 
     private void addAnalysisWarning(List<String> warnings,

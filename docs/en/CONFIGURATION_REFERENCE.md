@@ -240,3 +240,25 @@ TAXONOMY_AI_AUTOPILOT_PROVIDER=CUSTOM_OPENAI
 ```
 
 For Docker Compose, copy `.env.example` to `.env`; the production Compose service forwards that file into the application container. For Helm, put non-secret values under `config`, credentials in the referenced Secret, and use `extraEnv` only for settings not promoted into the chart's default values.
+
+## Disk-backed local analysis (`hsqldb-file`)
+
+Select `SPRING_PROFILES_ACTIVE=hsqldb-file` instead of `hsqldb`. Both HSQLDB and
+Lucene then use files; application DDL defaults to `update`, while the JGit library
+keeps ownership of its released migrations. Do not combine two database profiles.
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `TAXONOMY_HSQLDB_FILE_PATH` | `./data/taxonomydb` | Writable database file prefix; use a persistent volume in containers. |
+| `TAXONOMY_HSQLDB_CACHE_SIZE_KB` | `4096` | Cached-table serialized-data cache budget in KiB; not a total JVM memory limit. |
+| `TAXONOMY_HSQLDB_CACHE_ROWS` | `10000` | Maximum cached table rows. |
+
+`TAXONOMY_DATASOURCE_URL` can still override the full URL. The defaults select
+`CACHED` tables and disable delayed log synchronization. Existing `MEMORY` tables
+are not converted automatically. Export needed in-memory data **before shutdown**;
+switching profiles does not migrate it. Back up persistent data before schema or
+table-type migration. Never use `TAXONOMY_DDL_AUTO=create` against retained data.
+
+`TAXONOMY_SEARCH_DIRECTORY_TYPE` defaults to `local-filesystem` in this profile;
+`TAXONOMY_SEARCH_DIRECTORY_ROOT` defaults to `./data/lucene-index`. Filesystem
+backing reduces heap residency but is not a guarantee against out-of-memory errors.
