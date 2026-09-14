@@ -1,0 +1,75 @@
+name: Reproduce workspace scope guard regression
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-workspace-guard-red.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: main
+            source: 8cd4395d93ba56c80ae6ea5dff031944772e7771
+          - label: modular
+            source: eba5039c2731005f4a76e2f47b120403e8684b1b
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: control
+          ref: 52345b9623393e3e84ff1a5c166797570f0566f5
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: ${{ matrix.source }}
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Introduce only the regression test, not the fix
+        run: |
+          cp ../control/verification/WorkspaceScopeGuardRegressionTest.java taxonomy-app/src/test/java/com/taxonomy/versioning/controller/
+          git diff --exit-code
+      - name: Require the four real assertion failures
+        run: |
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceScopeGuardRegressionTest test > "$RUNNER_TEMP/red.log" 2>&1
+          result=$?
+          set -e
+          if [[ "$result" == 0 ]]; then echo 'Expected scope rejection tests unexpectedly passed'; exit 1; fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          path = Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.versioning.controller.WorkspaceScopeGuardRegressionTest.xml')
+          if not path.is_file():
+              print(Path(os.environ['RUNNER_TEMP'], 'red.log').read_text()[-12000:])
+              raise SystemExit('No JUnit result: compilation/infrastructure failure is not a reproduced defect')
+          result = ET.parse(path).getroot()
+          counts = {key: int(result.get(key, '0')) for key in ('tests', 'failures', 'errors', 'skipped')}
+          assert counts == {'tests': 5, 'failures': 4, 'errors': 0, 'skipped': 0}, counts
+          for failure in result.findall('testcase/failure'):
+              assert 'Expecting code to raise a throwable' in failure.get('message', ''), failure.attrib
+          print('REPRODUCED', counts)
+          print('Central read/write, fork and default-user contexts bypass the old sentinel check; real isolated context passes.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-guard-red-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/red.log
+            source/taxonomy-app/target/surefire-reports/TEST-com.taxonomy.versioning.controller.WorkspaceScopeGuardRegressionTest.xml
+          retention-days: 7
+          if-no-files-found: error
