@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ET
 
 BASE = 'c121be0701ad5dd4716e1e6922be23a6db2f6d9f'
 TEMP = Path(os.environ['RUNNER_TEMP'])
+BEHAVIOR = {'IntegrationArchitectureProjectionTest','IntegrationDiffTest','IntegrationFlowTest','IntegrationJournalTest','IntegrationJsonTest','IntegrationRestartTest','IntegrationServiceCheckpointConflictTest','IntegrationDownloadTest','OslcProviderProtocolTest','OslcProviderServiceTest','OslcRemoteProfilesTest','OslcTransportTest','PortfolioInteropAdapterTest'}
 
 def git(*args):
     return subprocess.check_output(['git', *args], text=True).strip()
@@ -35,24 +36,36 @@ def ratchet():
     assert delta and not any(k[0] == 'interop' and k[2] == 'portfolio' for k in after)
     path.write_text(json.dumps(new, indent=2) + '\n')
     (TEMP / 'interop-dependency-delta.json').write_text(json.dumps(delta, indent=2))
+    # The logical seam causes this class-level delta; pure file moves do not.
+    # Include the measured baseline in the seam commit, not just its relocation child.
+    env = dict(os.environ, GIT_INDEX_FILE=str(TEMP / 'interop-seam.index'))
+    seam_path = Path('/tmp/interop-seam-tree')
+    subprocess.run(['git','read-tree',seam_path.read_text()], env=env, check=True)
+    blob = git('hash-object','-w',str(path))
+    subprocess.run(['git','update-index','--add','--cacheinfo','100644,' + blob + ',' + str(path)], env=env, check=True)
+    seam_path.write_text(subprocess.check_output(['git','write-tree'],env=env,text=True).strip())
     print('EXPECTED_DEPENDENCY_DELTA', json.dumps(delta))
 
 def results(kind):
-    root_dir = Path('.')
-    reports = sorted(root_dir.glob('*/target/' + ('failsafe-reports' if kind == 'packaging' else 'surefire-reports') + '/TEST-*.xml'))
-    if kind == 'packaging': reports = [p for p in reports if p.name.endswith('ModulePackagingIT.xml')]
+    reports = sorted(Path('.').glob('*/target/surefire-reports/TEST-*.xml'))
+    if kind == 'behavior':
+        reports = [p for p in reports if p.stem.split('.')[-1] in BEHAVIOR]
+        assert {p.stem.split('.')[-1] for p in reports} == BEHAVIOR, [str(p) for p in reports]
     totals = dict.fromkeys(('tests','failures','errors','skipped'), 0)
+    suites = {}
     for path in reports:
         suite = ET.parse(path).getroot()
+        assert int(suite.get('tests','0')) > 0, str(path)
+        suites[path.stem] = int(suite.get('tests'))
         for key in totals: totals[key] += int(suite.get(key, '0'))
     assert totals['tests'] > 0 and all(totals[k] == 0 for k in ('failures','errors','skipped')), totals
-    print('NATIVE_RESULTS', kind, json.dumps(totals))
-    (TEMP / ('interop-' + kind + '-results.json')).write_text(json.dumps({'totals':totals,'reports':[str(p) for p in reports]}, indent=2))
+    print('NATIVE_RESULTS', kind, json.dumps(totals), json.dumps(suites))
+    (TEMP / ('interop-' + kind + '-results.json')).write_text(json.dumps({'totals':totals,'suites':suites}, indent=2))
 
 def publish():
     assert git('rev-parse','HEAD') == BASE
     assert not git('diff', BASE, '--', '.github/critical-coverage-policy.json', 'taxonomy-app/src/main/resources/db')
-    git('diff','--check')
+    git('diff','--check',BASE)
     git('add','-A')
     final_tree = git('write-tree')
     seam_tree = Path('/tmp/interop-seam-tree').read_text()
