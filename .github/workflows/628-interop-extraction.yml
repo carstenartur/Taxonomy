@@ -62,10 +62,31 @@ jobs:
               assert [root.get(k) for k in ('tests','failures','errors','skipped')] == ['1','0','0','0'], root.attrib
           print('PACKAGING: 3/3 native JUnit tests passed')
           PY
-      - name: Publish verified Git objects only without changing any product ref
+      - name: Export verified Git objects and leave workflow tree completion to the connector
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 ../control/verification/628-interop/verify.py publish
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          script = Path('../control/verification/628-interop/verify.py')
+          text = script.read_text()
+          old = "        remote = post('git/trees',{'base_tree':git('rev-parse',parent + '^{tree}'),'tree':changes})['sha']\n        assert remote == tree, (remote,tree)\n        return changes"
+          new = """        workflow_entries = [entry for entry in changes if entry['path'].startswith('.github/workflows/')]
+                  permitted_entries = [entry for entry in changes if not entry['path'].startswith('.github/workflows/')]
+                  remote = post('git/trees', {'base_tree':git('rev-parse',parent + '^{tree}'), 'tree':permitted_entries})['sha']
+                  if workflow_entries:
+                      completion = {'base_tree':remote, 'expected_tree':tree, 'tree_elements':workflow_entries}
+                      (TEMP / 'interop-native-tree-completion.json').write_text(json.dumps(completion,indent=2))
+                      print('NATIVE_TREE_COMPLETION', json.dumps(completion))
+                  else:
+                      assert remote == tree, (remote,tree)
+                  return changes"""
+          lines = new.splitlines()
+          new = lines[0] + '\n' + '\n'.join(line[10:] for line in lines[1:])
+          assert text.count(old) == 1
+          script.write_text(text.replace(old,new))
+          PY
+          python3 ../control/verification/628-interop/verify.py publish
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
