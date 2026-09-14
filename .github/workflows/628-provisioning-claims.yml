@@ -1,0 +1,125 @@
+name: Verify bounded provisioning claim correction
+on:
+  push:
+    branches: [verification/628-first-use-source]
+    paths: [.github/workflows/628-provisioning-claims.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    env:
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      MODEL_DIRECTORY: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 89a20ab50ab1e105aacfdd25c5fe08c3bb586f9e
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 2c39aaf927c9bf8ef3032d121c6ee78eabc5b338
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Apply only the six-file native correction
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse 'HEAD^{tree}')" = bb698c1963643c635d3eb3b0863cfc5e4e886d6d
+          git apply --index ../control/verification/628-provisioning-claims.patch
+          test "$(git write-tree)" = 577455bd38ce2482e8fe06712fe7a5c64f413923
+          test "$(git diff --cached --name-only | wc -l)" -eq 6
+          git diff --cached --check
+      - name: Verify the real JPA race, source failure and existing lifecycle contracts
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningSourceTest,WorkspaceProvisioningClaimIT,WorkspaceResolutionFailureTest,WorkspaceProvisioningBoundaryIT,WorkspaceRepositoryIsolationTest,WorkspaceManagerBehaviorTest,WorkspaceManagerProvisioningTest,WorkspaceImplicitSelectionTest,ViewContextIntegrationTest,ArchitectureViewTests test > "$RUNNER_TEMP/focused.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/focused.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          import os, shutil
+          names = {'WorkspaceProvisioningSourceTest','WorkspaceProvisioningClaimIT','WorkspaceResolutionFailureTest','WorkspaceProvisioningBoundaryIT','WorkspaceRepositoryIsolationTest','WorkspaceManagerBehaviorTest','WorkspaceManagerProvisioningTest','WorkspaceImplicitSelectionTest','ViewContextIntegrationTest','ArchitectureViewTests'}
+          seen = set(); counts = dict.fromkeys(('tests','failures','errors','skipped'), 0)
+          out = Path(os.environ['RUNNER_TEMP'], 'focused-reports'); out.mkdir()
+          for path in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              result = ET.parse(path).getroot(); name = result.get('name').split('.')[-1]
+              if name not in names: continue
+              assert name not in seen, name
+              seen.add(name); shutil.copy2(path, out / path.name)
+              for key in counts: counts[key] += int(result.get(key, '0'))
+          assert seen == names, seen
+          assert counts == dict(tests=103, failures=0, errors=0, skipped=0), counts
+          print('FOCUSED VERIFIED', counts)
+          PY
+      - name: Retain only verified source blobs, without updating any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          git('diff', '--exit-code')
+          assert git('write-tree') == '577455bd38ce2482e8fe06712fe7a5c64f413923'
+          paths = git('diff', '--cached', '--name-only').splitlines()
+          assert len(paths) == 6 and all(p.endswith('.java') for p in paths)
+          entries = []
+          for name in paths:
+              path = Path(name); sha = git('hash-object', name)
+              assert path.stat().st_size < 100000
+              request = urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',
+                  data=json.dumps({'content': path.read_text(), 'encoding': 'utf-8'}).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Content-Type': 'application/json'}, method='POST')
+              with urllib.request.urlopen(request, timeout=30) as response: assert json.load(response)['sha'] == sha
+              entries.append({'path': name, 'mode': '100644', 'type': 'blob', 'sha': sha})
+          manifest = {'base': git('rev-parse', 'HEAD'), 'tree': git('write-tree'), 'entries': entries}
+          Path(os.environ['RUNNER_TEMP'], 'source-manifest.json').write_text(json.dumps(manifest, indent=2))
+          print('VERIFIED_SOURCE', json.dumps(manifest))
+          PY
+      - name: Provision the unchanged checksum-pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute complete clean default verification
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/full-verify.log" 2>&1 || { tail -n 140 "$RUNNER_TEMP/full-verify.log"; exit 1; }
+          git diff --exit-code
+          test "$(git write-tree)" = 577455bd38ce2482e8fe06712fe7a5c64f413923
+          python3 - <<'PY'
+          from pathlib import Path
+          from xml.etree import ElementTree as ET
+          counts = dict.fromkeys(('tests','failures','errors','skipped'), 0)
+          for path in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root = ET.parse(path).getroot()
+              for key in counts: counts[key] += int(root.get(key, '0'))
+          assert counts['tests'] > 4000 and counts['failures'] == counts['errors'] == 0, counts
+          print('FULL DEFAULT VERIFY', counts)
+          print('Canonical -Pci and external lanes remain separate merge requirements.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: provisioning-claim-correction
+          path: |
+            ${{ runner.temp }}/focused.log
+            ${{ runner.temp }}/focused-reports/
+            ${{ runner.temp }}/full-verify.log
+            ${{ runner.temp }}/source-manifest.json
+            source/**/target/surefire-reports/TEST-*.xml
+            source/**/target/failsafe-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 14
