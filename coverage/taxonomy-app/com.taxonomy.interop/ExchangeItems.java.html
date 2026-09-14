@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ExchangeItems.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">ExchangeItems.java</span></div><h1>ExchangeItems.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+/** Uniform comparison values; relation/hierarchy identities remain distinct from their endpoint identities. */
+public final class ExchangeItems {
+    private ExchangeItems() {}
+<span class="fc" id="L15">    public static String key(Artifact value) { return value.kind().name() + &quot;:&quot; + value.id(); }</span>
+    public static Map&lt;String, Artifact&gt; flatten(ExchangeDocument document) {
+<span class="fc" id="L17">        Map&lt;String, Artifact&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L18">        document.artifacts().forEach(a -&gt; add(result, a));</span>
+<span class="fc bfc" id="L19" title="All 2 branches covered.">        for (Relation relation : document.relations()) {</span>
+<span class="fc" id="L20">            Map&lt;String, String&gt; extension = new LinkedHashMap&lt;&gt;(relation.extensions()); extension.put(&quot;source&quot;, relation.source()); extension.put(&quot;target&quot;, relation.target());</span>
+<span class="fc" id="L21">            add(result, new Artifact(relation.id(), ArtifactKind.RELATION, relation.type(), &quot;&quot;, &quot;&quot;, relation.attributes(), extension));</span>
+<span class="fc" id="L22">        }</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        for (Placement placement : document.placements()) {</span>
+<span class="fc" id="L24">            Map&lt;String, String&gt; extension = new LinkedHashMap&lt;&gt;(); extension.put(&quot;container&quot;, placement.containerId());</span>
+<span class="fc bfc" id="L25" title="All 4 branches covered.">            extension.put(&quot;parent&quot;, placement.parentId() == null ? &quot;&quot; : placement.parentId()); extension.put(&quot;artifact&quot;, placement.artifactId() == null ? &quot;&quot; : placement.artifactId());</span>
+<span class="fc" id="L26">            extension.put(&quot;position&quot;, Integer.toString(placement.position()));</span>
+<span class="fc" id="L27">            add(result, new Artifact(placement.id(), ArtifactKind.PLACEMENT, &quot;placement&quot;, &quot;&quot;, &quot;&quot;, placement.attributes(), extension));</span>
+<span class="fc" id="L28">        }</span>
+<span class="fc" id="L29">        Map&lt;String, String&gt; modelMetadata = new TreeMap&lt;&gt;(document.metadata());</span>
+<span class="fc" id="L30">        modelMetadata.remove(&quot;remoteRequest&quot;); modelMetadata.remove(&quot;discovery&quot;);</span>
+<span class="fc" id="L31">        add(result, new Artifact(&quot;package&quot;, ArtifactKind.METADATA, document.profile(), &quot;&quot;, &quot;&quot;, modelMetadata, Map.of()));</span>
+<span class="fc" id="L32">        return result;</span>
+    }
+    public static ExchangeDocument expand(ExchangeDocument template, Map&lt;String, Artifact&gt; items) {
+<span class="fc" id="L35">        List&lt;Artifact&gt; artifacts = new ArrayList&lt;&gt;(); List&lt;Relation&gt; relations = new ArrayList&lt;&gt;(); List&lt;Placement&gt; placements = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L36">        Map&lt;String, String&gt; metadata = template.metadata();</span>
+<span class="fc bfc" id="L37" title="All 6 branches covered.">        for (Artifact item : new TreeMap&lt;&gt;(items).values()) switch (item.kind()) {</span>
+            case RELATION -&gt; {
+<span class="fc" id="L39">                Map&lt;String, String&gt; extension = new LinkedHashMap&lt;&gt;(item.extensions()); String source = extension.remove(&quot;source&quot;), target = extension.remove(&quot;target&quot;);</span>
+<span class="fc" id="L40">                relations.add(new Relation(item.id(), item.type(), source, target, item.attributes(), extension));</span>
+<span class="fc" id="L41">            }</span>
+<span class="fc" id="L42">            case PLACEMENT -&gt; placements.add(new Placement(item.id(), item.extensions().get(&quot;container&quot;), emptyToNull(item.extensions().get(&quot;parent&quot;)),</span>
+<span class="fc" id="L43">                    emptyToNull(item.extensions().get(&quot;artifact&quot;)), Integer.parseInt(item.extensions().get(&quot;position&quot;)), item.attributes()));</span>
+<span class="fc" id="L44">            case METADATA -&gt; metadata = item.attributes();</span>
+<span class="fc" id="L45">            default -&gt; artifacts.add(item);</span>
+<span class="fc" id="L46">        }</span>
+<span class="fc" id="L47">        return new ExchangeDocument(template.profile(), template.profileVersion(), template.externalVersion(), template.completeScope(), template.source(), artifacts, relations, placements, metadata, template.losses());</span>
+    }
+    public static Map&lt;String, String&gt; fields(Artifact artifact) {
+<span class="fc" id="L50">        Map&lt;String, String&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (artifact == null) return result;</span>
+<span class="fc" id="L52">        result.put(&quot;title&quot;, artifact.title()); result.put(&quot;text&quot;, artifact.text()); result.put(&quot;type&quot;, artifact.type()); result.put(&quot;kind&quot;, artifact.kind().name());</span>
+<span class="fc" id="L53">        artifact.attributes().forEach((key, value) -&gt; {</span>
+<span class="fc bfc" id="L54" title="All 4 branches covered.">            if (!key.equals(&quot;LAST-CHANGE&quot;) &amp;&amp; !artifact.extensions().getOrDefault(&quot;definition:&quot; + key, &quot;&quot;).startsWith(&quot;Taxonomy.&quot;))</span>
+<span class="fc" id="L55">                result.put(&quot;attribute:&quot; + key, comparable(value));</span>
+<span class="fc" id="L56">        });</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        artifact.extensions().forEach((key, value) -&gt; { if (!Set.of(&quot;xml&quot;, &quot;rdfXml&quot;, &quot;lastChange&quot;).contains(key)) result.put(&quot;extension:&quot; + key, comparable(value)); });</span>
+<span class="fc" id="L58">        return result;</span>
+    }
+    private static String comparable(String value) {
+<span class="pc bpc" id="L61" title="1 of 4 branches missed.">        if (value == null || !value.startsWith(&quot;&lt;&quot;)) return value;</span>
+<span class="fc" id="L62">        try { return com.taxonomy.exchange.ExchangeXml.semantic(value); }</span>
+<span class="fc" id="L63">        catch (com.taxonomy.exchange.ExchangeFormatException notXml) { return value; }</span>
+    }
+    /** Apply only fields changed externally; preserve non-intersecting local edits. */
+    public static Artifact merge(Artifact baselineExternal, Artifact currentInternal, Artifact incoming) {
+<span class="pc bpc" id="L67" title="1 of 4 branches missed.">        if (currentInternal == null || baselineExternal == null) return incoming;</span>
+<span class="fc" id="L68">        Map&lt;String, String&gt; before = fields(baselineExternal), after = fields(incoming);</span>
+<span class="fc" id="L69">        Map&lt;String, String&gt; merged = new TreeMap&lt;&gt;(rawFields(currentInternal)), incomingValues = rawFields(incoming);</span>
+<span class="fc" id="L70">        var keys = new java.util.TreeSet&lt;&gt;(before.keySet()); keys.addAll(after.keySet());</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">        for (String key : keys) if (!java.util.Objects.equals(before.get(key), after.get(key))) {</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            if (after.containsKey(key)) merged.put(key, incomingValues.get(key)); else merged.remove(key);</span>
+        }
+<span class="fc" id="L74">        Map&lt;String, String&gt; attributes = new LinkedHashMap&lt;&gt;(), extensions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        merged.forEach((key, value) -&gt; { if (key.startsWith(&quot;attribute:&quot;)) attributes.put(key.substring(10), value);</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">            if (key.startsWith(&quot;extension:&quot;)) extensions.put(key.substring(10), value); });</span>
+        // Evidence describes the newly observed source, while mapped values above keep disjoint local edits.
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        for (String evidence : List.of(&quot;xml&quot;, &quot;rdfXml&quot;, &quot;lastChange&quot;)) {</span>
+<span class="fc" id="L79">            extensions.remove(evidence);</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (incoming.extensions().containsKey(evidence)) extensions.put(evidence, incoming.extensions().get(evidence));</span>
+<span class="fc" id="L81">        }</span>
+<span class="fc" id="L82">        return new Artifact(incoming.id(), incoming.kind(), merged.get(&quot;type&quot;), merged.get(&quot;title&quot;), merged.get(&quot;text&quot;), attributes, extensions);</span>
+    }
+    private static Map&lt;String, String&gt; rawFields(Artifact value) {
+<span class="fc" id="L85">        Map&lt;String, String&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L86">        result.put(&quot;title&quot;, value.title()); result.put(&quot;text&quot;, value.text()); result.put(&quot;type&quot;, value.type()); result.put(&quot;kind&quot;, value.kind().name());</span>
+<span class="fc" id="L87">        value.attributes().forEach((key, item) -&gt; result.put(&quot;attribute:&quot; + key, item));</span>
+<span class="fc" id="L88">        value.extensions().forEach((key, item) -&gt; result.put(&quot;extension:&quot; + key, item)); return result;</span>
+    }
+    private static void add(Map&lt;String, Artifact&gt; items, Artifact value) {
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (items.putIfAbsent(key(value), value) != null) throw new IntegrationProblem(&quot;DUPLICATE_IDENTITY&quot;, 400, &quot;Exchange contains a duplicate external identity&quot;);</span>
+<span class="fc" id="L92">    }</span>
+<span class="pc bpc" id="L93" title="1 of 4 branches missed.">    private static String emptyToNull(String value) { return value == null || value.isEmpty() ? null : value; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

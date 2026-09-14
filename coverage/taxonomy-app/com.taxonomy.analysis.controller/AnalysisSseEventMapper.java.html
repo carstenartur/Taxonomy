@@ -1,0 +1,192 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisSseEventMapper.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.controller</a> &gt; <span class="el_source">AnalysisSseEventMapper.java</span></div><h1>AnalysisSseEventMapper.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.controller;
+
+import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisScoreDetail;
+import com.taxonomy.dto.AnalysisScoreSemantics;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Component;
+
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.concurrent.TimeUnit;
+import java.util.function.LongSupplier;
+
+@Component
+public class AnalysisSseEventMapper {
+
+<span class="fc" id="L23">    private static final long TREE_CACHE_TTL_NANOS = TimeUnit.SECONDS.toNanos(30);</span>
+
+    private final TaxonomyService taxonomyService;
+    private final LongSupplier nanoTime;
+    private final long treeCacheTtlNanos;
+<span class="fc" id="L28">    private final Object treeCacheMonitor = new Object();</span>
+    private volatile CachedTaxonomyTree cachedTaxonomyTree;
+
+    /** Retained for focused mapper tests that do not need catalogue semantics. */
+    public AnalysisSseEventMapper() {
+<span class="fc" id="L33">        this(null);</span>
+<span class="fc" id="L34">    }</span>
+
+    @Autowired
+    public AnalysisSseEventMapper(TaxonomyService taxonomyService) {
+<span class="fc" id="L38">        this(taxonomyService, System::nanoTime, TREE_CACHE_TTL_NANOS);</span>
+<span class="fc" id="L39">    }</span>
+
+    AnalysisSseEventMapper(
+            TaxonomyService taxonomyService,
+            LongSupplier nanoTime,
+<span class="fc" id="L44">            long treeCacheTtlNanos) {</span>
+<span class="fc" id="L45">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L46">        this.nanoTime = Objects.requireNonNull(nanoTime, &quot;nanoTime&quot;);</span>
+<span class="fc" id="L47">        this.treeCacheTtlNanos = Math.max(0L, treeCacheTtlNanos);</span>
+<span class="fc" id="L48">    }</span>
+
+    public MappedEvent map(AnalysisStreamEvent event) {
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if (event instanceof AnalysisStreamEvent.Phase phase) {</span>
+<span class="fc" id="L52">            return new MappedEvent(&quot;phase&quot;, Map.of(</span>
+<span class="fc" id="L53">                    &quot;message&quot;, phase.message(),</span>
+<span class="fc" id="L54">                    &quot;progress&quot;, phase.progressPercent()));</span>
+        }
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (event instanceof AnalysisStreamEvent.Scores scores) {</span>
+<span class="fc" id="L57">            return new MappedEvent(&quot;scores&quot;, mapScores(scores));</span>
+        }
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (event instanceof AnalysisStreamEvent.Expanding expanding) {</span>
+<span class="nc" id="L60">            return new MappedEvent(&quot;expanding&quot;, Map.of(</span>
+<span class="nc" id="L61">                    &quot;parentCode&quot;, expanding.parentCode(),</span>
+<span class="nc" id="L62">                    &quot;childCodes&quot;, expanding.childCodes()));</span>
+        }
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (event instanceof AnalysisStreamEvent.Complete complete) {</span>
+<span class="fc" id="L65">            AnalysisScoreSemantics.Derived semantics = derive(complete.allScores());</span>
+<span class="fc" id="L66">            int totalMatched = (int) semantics.effectiveScores().values().stream()</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                    .filter(value -&gt; value &gt; 0)</span>
+<span class="fc" id="L68">                    .count();</span>
+<span class="fc" id="L69">            Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L70">            payload.put(&quot;status&quot;, complete.status());</span>
+<span class="fc" id="L71">            payload.put(&quot;totalScores&quot;, semantics.effectiveScores());</span>
+<span class="fc" id="L72">            payload.put(&quot;rawScores&quot;, complete.allScores());</span>
+<span class="fc" id="L73">            payload.put(&quot;effectiveScores&quot;, semantics.effectiveScores());</span>
+<span class="fc" id="L74">            payload.put(&quot;productSuitabilityScores&quot;, semantics.productSuitabilityScores());</span>
+<span class="fc" id="L75">            payload.put(&quot;scoreDetails&quot;, semantics.scoreDetails());</span>
+<span class="fc" id="L76">            payload.put(&quot;scoreSemanticsVersion&quot;, AnalysisScoreSemantics.CURRENT_VERSION);</span>
+<span class="fc" id="L77">            payload.put(&quot;scoreSemanticsWarnings&quot;, semantics.warnings());</span>
+<span class="fc" id="L78">            payload.put(&quot;totalMatched&quot;, totalMatched);</span>
+<span class="fc" id="L79">            payload.put(&quot;warnings&quot;, complete.warnings());</span>
+<span class="fc" id="L80">            payload.put(&quot;discrepancies&quot;, complete.discrepancies());</span>
+<span class="fc" id="L81">            payload.put(&quot;productCoverageGaps&quot;, complete.productCoverageGaps());</span>
+<span class="fc" id="L82">            return new MappedEvent(&quot;complete&quot;, payload);</span>
+        }
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        if (event instanceof AnalysisStreamEvent.Error error) {</span>
+<span class="fc" id="L85">            AnalysisScoreSemantics.Derived semantics = derive(error.partialScores());</span>
+<span class="fc" id="L86">            Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L87">            payload.put(&quot;status&quot;, error.status());</span>
+<span class="fc" id="L88">            payload.put(&quot;errorMessage&quot;, error.errorMessage());</span>
+<span class="fc" id="L89">            payload.put(&quot;partialScores&quot;, semantics.effectiveScores());</span>
+<span class="fc" id="L90">            payload.put(&quot;rawScores&quot;, error.partialScores());</span>
+<span class="fc" id="L91">            payload.put(&quot;effectiveScores&quot;, semantics.effectiveScores());</span>
+<span class="fc" id="L92">            payload.put(&quot;productSuitabilityScores&quot;, semantics.productSuitabilityScores());</span>
+<span class="fc" id="L93">            payload.put(&quot;scoreDetails&quot;, semantics.scoreDetails());</span>
+<span class="fc" id="L94">            payload.put(&quot;scoreSemanticsVersion&quot;, AnalysisScoreSemantics.CURRENT_VERSION);</span>
+<span class="fc" id="L95">            payload.put(&quot;scoreSemanticsWarnings&quot;, semantics.warnings());</span>
+<span class="fc" id="L96">            payload.put(&quot;warnings&quot;, error.warnings());</span>
+<span class="fc" id="L97">            payload.put(&quot;discrepancies&quot;, error.discrepancies());</span>
+<span class="fc" id="L98">            payload.put(&quot;productCoverageGaps&quot;, error.productCoverageGaps());</span>
+<span class="fc" id="L99">            return new MappedEvent(&quot;error&quot;, payload);</span>
+        }
+<span class="nc" id="L101">        throw new IllegalArgumentException(&quot;Unsupported analysis stream event: &quot; + event);</span>
+    }
+
+    private Map&lt;String, Object&gt; mapScores(AnalysisStreamEvent.Scores scores) {
+<span class="fc" id="L105">        AnalysisScoreSemantics.Derived semantics = derive(scores.newScores());</span>
+<span class="fc" id="L106">        Map&lt;String, Object&gt; payload = new LinkedHashMap&lt;&gt;();</span>
+        // Incremental batches deliberately remain raw. A product batch usually does not contain
+        // its already emitted family score, so neither an effective map nor a batch-local
+        // effective value is authoritative. scoreDetails therefore carries only raw kind/parent
+        // hints; the browser combines them with accumulated raw family evidence. Terminal events
+        // contain the complete authoritative envelope.
+<span class="fc" id="L112">        payload.put(&quot;scores&quot;, scores.newScores());</span>
+<span class="fc" id="L113">        payload.put(&quot;rawScores&quot;, scores.newScores());</span>
+<span class="fc" id="L114">        payload.put(&quot;scoreDetails&quot;, incrementalScoreDetails(semantics.scoreDetails()));</span>
+<span class="fc" id="L115">        payload.put(&quot;scoreSemanticsVersion&quot;, AnalysisScoreSemantics.CURRENT_VERSION);</span>
+<span class="fc" id="L116">        payload.put(&quot;scoreSemanticsWarnings&quot;, semantics.warnings());</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        payload.put(&quot;reasons&quot;, scores.reasons() != null ? scores.reasons() : Map.of());</span>
+<span class="fc" id="L118">        payload.put(&quot;description&quot;, scores.description());</span>
+<span class="fc" id="L119">        payload.put(&quot;message&quot;, scores.description());</span>
+<span class="fc" id="L120">        LlmCallDetail detail = scores.detail();</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (detail != null) {</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">            payload.put(&quot;prompt&quot;, detail.getPrompt() != null ? detail.getPrompt() : &quot;&quot;);</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">            payload.put(&quot;rawResponse&quot;, detail.getRawResponse() != null ? detail.getRawResponse() : &quot;&quot;);</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">            payload.put(&quot;provider&quot;, detail.getProvider() != null ? detail.getProvider() : &quot;&quot;);</span>
+<span class="fc" id="L125">            payload.put(&quot;durationMs&quot;, detail.getDurationMs());</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">            if (detail.getError() != null) {</span>
+<span class="fc" id="L127">                payload.put(&quot;error&quot;, detail.getError());</span>
+            }
+        }
+<span class="fc" id="L130">        return payload;</span>
+    }
+
+    private Map&lt;String, Map&lt;String, Object&gt;&gt; incrementalScoreDetails(
+            Map&lt;String, AnalysisScoreDetail&gt; details) {
+<span class="fc" id="L135">        Map&lt;String, Map&lt;String, Object&gt;&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L136">        details.forEach((code, detail) -&gt; {</span>
+<span class="fc" id="L137">            Map&lt;String, Object&gt; hint = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L138">            hint.put(&quot;nodeCode&quot;, detail.nodeCode());</span>
+<span class="fc" id="L139">            hint.put(&quot;kind&quot;, detail.kind());</span>
+<span class="fc" id="L140">            hint.put(&quot;rawScore&quot;, detail.rawScore());</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">            if (detail.parentCode() != null) {</span>
+<span class="fc" id="L142">                hint.put(&quot;parentCode&quot;, detail.parentCode());</span>
+            }
+<span class="fc" id="L144">            result.put(code, Collections.unmodifiableMap(hint));</span>
+<span class="fc" id="L145">        });</span>
+<span class="fc" id="L146">        return Collections.unmodifiableMap(result);</span>
+    }
+
+    private AnalysisScoreSemantics.Derived derive(Map&lt;String, Integer&gt; rawScores) {
+<span class="fc" id="L150">        return AnalysisScoreSemantics.derive(rawScores, taxonomyTree());</span>
+    }
+
+    private List&lt;TaxonomyNodeDto&gt; taxonomyTree() {
+<span class="fc bfc" id="L154" title="All 2 branches covered.">        if (taxonomyService == null) {</span>
+<span class="fc" id="L155">            return List.of();</span>
+        }
+<span class="fc" id="L157">        long now = nanoTime.getAsLong();</span>
+<span class="fc" id="L158">        CachedTaxonomyTree current = cachedTaxonomyTree;</span>
+<span class="fc bfc" id="L159" title="All 4 branches covered.">        if (current != null &amp;&amp; current.isValidAt(now)) {</span>
+<span class="fc" id="L160">            return current.tree();</span>
+        }
+<span class="fc" id="L162">        synchronized (treeCacheMonitor) {</span>
+<span class="fc" id="L163">            now = nanoTime.getAsLong();</span>
+<span class="fc" id="L164">            current = cachedTaxonomyTree;</span>
+<span class="pc bpc" id="L165" title="1 of 4 branches missed.">            if (current != null &amp;&amp; current.isValidAt(now)) {</span>
+<span class="nc" id="L166">                return current.tree();</span>
+            }
+<span class="fc" id="L168">            List&lt;TaxonomyNodeDto&gt; loaded = taxonomyService.getFingerprintTree();</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">            List&lt;TaxonomyNodeDto&gt; snapshot = loaded == null ? List.of() : List.copyOf(loaded);</span>
+<span class="fc" id="L170">            cachedTaxonomyTree = new CachedTaxonomyTree(</span>
+                    snapshot, now, treeCacheTtlNanos);
+<span class="fc" id="L172">            return snapshot;</span>
+        }
+    }
+
+<span class="fc" id="L176">    private record CachedTaxonomyTree(</span>
+            List&lt;TaxonomyNodeDto&gt; tree,
+            long loadedAtNanos,
+            long timeToLiveNanos) {
+
+        private boolean isValidAt(long nowNanos) {
+            // nanoTime values may wrap; an elapsed-duration comparison remains correct for this
+            // bounded TTL as long as less than half the long range elapses between observations.
+<span class="fc" id="L184">            long elapsedNanos = nowNanos - loadedAtNanos;</span>
+<span class="pc bpc" id="L185" title="1 of 4 branches missed.">            return elapsedNanos &gt;= 0 &amp;&amp; elapsedNanos &lt; timeToLiveNanos;</span>
+        }
+    }
+
+<span class="fc" id="L189">    public record MappedEvent(String name, Object payload) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

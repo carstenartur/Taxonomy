@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationJson.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">IntegrationJson.java</span></div><h1>IntegrationJson.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.exchange.ReqifExchangeCodec;
+import org.springframework.stereotype.Component;
+import tools.jackson.databind.ObjectMapper;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+
+@Component
+public class IntegrationJson {
+    private final ObjectMapper mapper;
+<span class="fc" id="L17">    public IntegrationJson(ObjectMapper mapper) { this.mapper = mapper; }</span>
+    public String write(Object value) {
+<span class="fc" id="L19">        try { return mapper.writeValueAsString(value); }</span>
+<span class="fc" id="L20">        catch (Exception failure) { throw new IllegalStateException(&quot;Cannot encode integration evidence&quot;, failure); }</span>
+    }
+    public &lt;T&gt; T read(String value, Class&lt;T&gt; type) {
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (value == null) return null;</span>
+<span class="fc" id="L24">        try { return mapper.readValue(value, type); }</span>
+<span class="fc" id="L25">        catch (Exception failure) { throw new IllegalStateException(&quot;Cannot decode versioned integration evidence&quot;, failure); }</span>
+    }
+<span class="fc" id="L27">    public String fingerprint(Object value) { return ReqifExchangeCodec.digest(write(canonical(value)).getBytes(StandardCharsets.UTF_8)); }</span>
+    private Object canonical(Object value) {
+<span class="fc bfc" id="L29" title="All 8 branches covered.">        if (value == null || value instanceof String || value instanceof Number || value instanceof Boolean) return value;</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        if (value instanceof Enum&lt;?&gt; e) return e.name();</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if (value instanceof Map&lt;?, ?&gt; map) {</span>
+<span class="fc" id="L32">            Map&lt;String, Object&gt; result = new TreeMap&lt;&gt;(); map.forEach((key, item) -&gt; result.put(key.toString(), canonical(item))); return result;</span>
+        }
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (value instanceof Collection&lt;?&gt; collection) {</span>
+<span class="fc" id="L35">            var result = new ArrayList&lt;&gt;(collection.stream().map(this::canonical).toList());</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">            if (value instanceof Set&lt;?&gt;) result.sort(java.util.Comparator.comparing(this::write)); return result;</span>
+        }
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        if (value.getClass().isRecord()) {</span>
+<span class="fc" id="L39">            Map&lt;String, Object&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            try { for (var field : value.getClass().getRecordComponents()) result.put(field.getName(), canonical(field.getAccessor().invoke(value))); }</span>
+<span class="pc" id="L41">            catch (ReflectiveOperationException failure) { throw new IllegalStateException(&quot;Cannot fingerprint integration value&quot;, failure); }</span>
+<span class="fc" id="L42">            return result;</span>
+        }
+<span class="fc" id="L44">        return value.toString();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

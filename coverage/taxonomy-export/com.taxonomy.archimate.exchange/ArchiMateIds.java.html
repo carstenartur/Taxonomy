@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateIds.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.archimate.exchange</a> &gt; <span class="el_source">ArchiMateIds.java</span></div><h1>ArchiMateIds.java</h1><pre class="source lang-java linenums">package com.taxonomy.archimate.exchange;
+
+import java.nio.ByteBuffer;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.CodingErrorAction;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.HexFormat;
+
+/** Versioned, domain-separated XML identities, independent of names and layout. */
+public final class ArchiMateIds {
+    private ArchiMateIds() { }
+
+    public static String id(String kind, String... identities) {
+<span class="fc" id="L16">        ByteArrayOutputStream output = new ByteArrayOutputStream();</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        for (String part : identities) {</span>
+<span class="fc" id="L18">            requireIdentity(part);</span>
+<span class="fc" id="L19">            byte[] bytes = part.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L20">            output.writeBytes(ByteBuffer.allocate(4).putInt(bytes.length).array());</span>
+<span class="fc" id="L21">            output.writeBytes(bytes);</span>
+        }
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        if (!kind.matches(&quot;[a-z]+&quot;)) throw new IllegalArgumentException(&quot;Invalid ID domain&quot;);</span>
+<span class="fc" id="L24">        return &quot;id-&quot; + kind + &quot;-&quot; + HexFormat.of().formatHex(output.toByteArray());</span>
+    }
+
+    /** Decode only this profile's injective ID encoding; arbitrary tool IDs are not guessed. */
+    public static List&lt;String&gt; decode(String kind, String xmlId) {
+<span class="fc" id="L29">        String prefix = &quot;id-&quot; + kind + &quot;-&quot;;</span>
+<span class="pc bpc" id="L30" title="1 of 2 branches missed.">        if (!xmlId.startsWith(prefix)) throw new IllegalArgumentException(&quot;Unexpected XML identity profile&quot;);</span>
+        try {
+<span class="fc" id="L32">            ByteBuffer input = ByteBuffer.wrap(HexFormat.of().parseHex(xmlId.substring(prefix.length())));</span>
+<span class="fc" id="L33">            List&lt;String&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            while (input.hasRemaining()) {</span>
+<span class="fc" id="L35">                int length = input.getInt();</span>
+<span class="pc bpc" id="L36" title="3 of 6 branches missed.">                if (length &lt; 1 || length &gt; 16384 || length &gt; input.remaining()) {</span>
+<span class="nc" id="L37">                    throw new IllegalArgumentException(&quot;Invalid encoded XML identity length&quot;);</span>
+                }
+<span class="fc" id="L39">                ByteBuffer bytes = input.slice(input.position(), length);</span>
+<span class="fc" id="L40">                String value = StandardCharsets.UTF_8.newDecoder()</span>
+<span class="fc" id="L41">                        .onMalformedInput(CodingErrorAction.REPORT).decode(bytes).toString();</span>
+<span class="fc" id="L42">                requireIdentity(value);</span>
+<span class="fc" id="L43">                result.add(value);</span>
+<span class="fc" id="L44">                input.position(input.position() + length);</span>
+<span class="fc" id="L45">            }</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">            if (result.isEmpty()) throw new IllegalArgumentException(&quot;Empty XML identity&quot;);</span>
+<span class="fc" id="L47">            return List.copyOf(result);</span>
+<span class="nc" id="L48">        } catch (java.nio.charset.CharacterCodingException | java.nio.BufferUnderflowException exception) {</span>
+<span class="nc" id="L49">            throw new IllegalArgumentException(&quot;Invalid encoded XML identity&quot;, exception);</span>
+        }
+    }
+
+    public static void requireIdentity(String value) {
+<span class="pc bpc" id="L54" title="2 of 6 branches missed.">        if (value == null || value.isBlank() || value.length() &gt; 4096) {</span>
+<span class="fc" id="L55">            throw new IllegalArgumentException(&quot;Missing or oversized architecture identity&quot;);</span>
+        }
+<span class="fc" id="L57">        requireXmlText(value);</span>
+<span class="fc" id="L58">    }</span>
+
+    public static String requireXmlText(String value) {
+<span class="pc bpc" id="L61" title="1 of 2 branches missed.">        if (value == null) return &quot;&quot;;</span>
+<span class="fc" id="L62">        value.codePoints().forEach(code -&gt; {</span>
+<span class="pc bpc" id="L63" title="3 of 18 branches missed.">            if (!(code == 9 || code == 10 || code == 13</span>
+                    || code &gt;= 0x20 &amp;&amp; code &lt;= 0xD7FF
+                    || code &gt;= 0xE000 &amp;&amp; code &lt;= 0xFFFD
+                    || code &gt;= 0x10000 &amp;&amp; code &lt;= 0x10FFFF)) {
+<span class="fc" id="L67">                throw new IllegalArgumentException(&quot;Invalid XML 1.0 character U+&quot; + Integer.toHexString(code));</span>
+            }
+<span class="fc" id="L69">        });</span>
+<span class="fc" id="L70">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

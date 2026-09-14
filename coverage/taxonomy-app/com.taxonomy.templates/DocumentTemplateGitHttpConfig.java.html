@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateGitHttpConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateGitHttpConfig.java</span></div><h1>DocumentTemplateGitHttpConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryAccessDeniedException;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryAccessOperation;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryAccessRequest;
+import io.github.carstenartur.jgit.storage.hibernate.SecuredHibernateRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.smarthttp.SecuredSmartHttp;
+import jakarta.persistence.EntityManagerFactory;
+import jakarta.servlet.http.HttpServletRequest;
+import org.eclipse.jgit.http.server.GitServlet;
+import org.eclipse.jgit.transport.resolver.ServiceNotAuthorizedException;
+import org.eclipse.jgit.transport.ServiceMayNotContinueException;
+import org.hibernate.SessionFactory;
+import org.springframework.boot.web.servlet.ServletRegistrationBean;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+/**
+ * Read-only standard Git transport over the existing canonical template repository.
+ * Authentication and CSRF stay with the existing /api/admin/** security boundary.
+ * No second server, mirror, credential store or Git protocol implementation is introduced.
+ */
+@Configuration(proxyBeanMethods = false)
+<span class="fc" id="L24">public class DocumentTemplateGitHttpConfig {</span>
+
+    @Bean
+    ServletRegistrationBean&lt;GitServlet&gt; documentTemplateGitServlet(
+            EntityManagerFactory entityManagerFactory) {
+<span class="fc" id="L29">        var factory = new SecuredHibernateRepositoryFactory&lt;String&gt;(</span>
+<span class="fc" id="L30">                entityManagerFactory.unwrap(SessionFactory.class),</span>
+                DocumentTemplateGitHttpConfig::requireTemplateRead);
+        // The library's two-argument factory disables receive-pack and dumb HTTP.
+<span class="fc" id="L33">        GitServlet servlet = SecuredSmartHttp.servlet(</span>
+                factory, DocumentTemplateGitHttpConfig::requireAdministrator);
+<span class="fc" id="L35">        var registration = new ServletRegistrationBean&lt;&gt;(servlet, &quot;/api/admin/git/*&quot;);</span>
+<span class="fc" id="L36">        registration.setName(&quot;documentTemplateGitServlet&quot;);</span>
+<span class="fc" id="L37">        registration.setLoadOnStartup(1);</span>
+<span class="fc" id="L38">        return registration;</span>
+    }
+
+    static String requireAdministrator(HttpServletRequest request)
+            throws ServiceNotAuthorizedException, ServiceMayNotContinueException {
+<span class="fc" id="L43">        var principal = request.getUserPrincipal();</span>
+<span class="pc bpc" id="L44" title="2 of 6 branches missed.">        if (principal == null || principal.getName() == null || principal.getName().isBlank()) {</span>
+<span class="fc" id="L45">            throw new ServiceNotAuthorizedException();</span>
+        }
+<span class="fc bfc" id="L47" title="All 4 branches covered.">        if (!request.isUserInRole(&quot;ADMIN&quot;) &amp;&amp; !request.isUserInRole(&quot;ROLE_ADMIN&quot;)) {</span>
+<span class="fc" id="L48">            throw new ServiceMayNotContinueException(&quot;Administrator access required&quot;, 403);</span>
+        }
+<span class="fc" id="L50">        return principal.getName();</span>
+    }
+
+    static void requireTemplateRead(String principal, RepositoryAccessRequest request) {
+<span class="fc bfc" id="L54" title="All 4 branches covered.">        if (principal == null || principal.isBlank()</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                || !DocumentTemplateGitRepository.REPOSITORY_NAME.equals(request.repositoryName().value())</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">                || (request.operation() != RepositoryAccessOperation.DISCOVER</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">                    &amp;&amp; request.operation() != RepositoryAccessOperation.READ)) {</span>
+<span class="fc" id="L58">            throw new RepositoryAccessDeniedException(</span>
+                    request, &quot;TEMPLATE_GIT_READ_ONLY&quot;, &quot;template-git-http&quot;, 1);
+        }
+<span class="fc" id="L61">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SystemInformationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.service</a> &gt; <span class="el_source">SystemInformationService.java</span></div><h1>SystemInformationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.service;
+
+import jakarta.persistence.EntityManagerFactory;
+import org.hibernate.FlushMode;
+import org.hibernate.Session;
+import org.hibernate.SessionFactory;
+import org.hibernate.engine.spi.SessionFactoryImplementor;
+import org.hibernate.tool.schema.Action;
+import org.springframework.core.env.Environment;
+import org.springframework.stereotype.Service;
+
+import java.lang.management.ManagementFactory;
+import java.nio.file.FileStore;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+
+/** On-demand, allowlisted diagnostics. No paths, URLs, credentials or exception text leave this service. */
+@Service
+public class SystemInformationService {
+<span class="fc" id="L26">    private static final String INSTANCE_ID = java.util.UUID.randomUUID().toString();</span>
+    private final EntityManagerFactory entityManagerFactory;
+    private final Environment environment;
+
+<span class="fc" id="L30">    public SystemInformationService(EntityManagerFactory entityManagerFactory, Environment environment) {</span>
+<span class="fc" id="L31">        this.entityManagerFactory = entityManagerFactory;</span>
+<span class="fc" id="L32">        this.environment = environment;</span>
+<span class="fc" id="L33">    }</span>
+
+    public Snapshot snapshot() {
+<span class="fc" id="L36">        Runtime runtime = Runtime.getRuntime();</span>
+<span class="fc" id="L37">        var jvm = ManagementFactory.getRuntimeMXBean();</span>
+<span class="fc" id="L38">        String indexStorage = normalizeIndexStorage(environment.getProperty(</span>
+                &quot;spring.jpa.properties.hibernate.search.backend.directory.type&quot;, &quot;unknown&quot;));
+<span class="fc" id="L40">        return new Snapshot(Instant.now(), INSTANCE_ID, environment.getProperty(&quot;app.display-version&quot;, &quot;unknown&quot;),</span>
+<span class="fc" id="L41">                new RuntimeInfo(runtime.availableProcessors(), runtime.totalMemory() - runtime.freeMemory(),</span>
+<span class="fc" id="L42">                        runtime.maxMemory(), jvm.getUptime(), Instant.ofEpochMilli(jvm.getStartTime()),</span>
+<span class="fc" id="L43">                        System.getProperty(&quot;java.version&quot;), System.getProperty(&quot;java.vendor&quot;),</span>
+<span class="fc" id="L44">                        System.getProperty(&quot;os.name&quot;), System.getProperty(&quot;os.arch&quot;)),</span>
+<span class="fc" id="L45">                database(), indexStorage, disks(indexStorage));</span>
+    }
+
+    DatabaseInfo database() {
+<span class="fc" id="L49">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L50">        String schemaAction = &quot;UNKNOWN&quot;;</span>
+<span class="fc" id="L51">        String product = null;</span>
+<span class="fc" id="L52">        String version = null;</span>
+<span class="fc" id="L53">        String driver = null;</span>
+<span class="fc" id="L54">        String driverVersion = null;</span>
+<span class="fc" id="L55">        String versionSource = &quot;UNAVAILABLE&quot;;</span>
+<span class="fc" id="L56">        String storageSource = &quot;UNAVAILABLE&quot;;</span>
+<span class="fc" id="L57">        String storage = &quot;UNKNOWN&quot;;</span>
+<span class="fc" id="L58">        String lifetime = &quot;UNKNOWN&quot;;</span>
+<span class="fc" id="L59">        String status = &quot;UNAVAILABLE&quot;;</span>
+        try {
+<span class="fc" id="L61">            SessionFactory factory = entityManagerFactory.unwrap(SessionFactory.class);</span>
+<span class="fc" id="L62">            schemaAction = schemaAction(factory.getProperties());</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            if (destructive(schemaAction)) {</span>
+<span class="fc" id="L64">                warnings.add(&quot;DESTRUCTIVE_SCHEMA_ACTION&quot;);</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">            } else if (&quot;UNKNOWN&quot;.equals(schemaAction)) {</span>
+<span class="nc" id="L66">                warnings.add(&quot;SCHEMA_ACTION_UNKNOWN&quot;);</span>
+            }
+<span class="fc" id="L68">            try (Session session = factory.openSession()) {</span>
+<span class="fc" id="L69">                session.setDefaultReadOnly(true);</span>
+<span class="fc" id="L70">                session.setHibernateFlushMode(FlushMode.MANUAL);</span>
+<span class="fc" id="L71">                Metadata metadata = session.doReturningWork(connection -&gt; {</span>
+<span class="fc" id="L72">                    var md = connection.getMetaData();</span>
+<span class="fc" id="L73">                    return new Metadata(md.getDatabaseProductName(), md.getDatabaseProductVersion(),</span>
+<span class="fc" id="L74">                            md.getDriverName(), md.getDriverVersion(), md.getURL());</span>
+                });
+<span class="fc" id="L76">                product = metadata.product();</span>
+<span class="fc" id="L77">                version = metadata.version();</span>
+<span class="fc" id="L78">                driver = metadata.driver();</span>
+<span class="fc" id="L79">                driverVersion = metadata.driverVersion();</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                versionSource = version == null ? &quot;UNAVAILABLE&quot; : &quot;JDBC_METADATA_FALLBACK&quot;;</span>
+<span class="fc" id="L81">                var registry = factory.unwrap(SessionFactoryImplementor.class)</span>
+<span class="fc" id="L82">                        .getQueryEngine().getSqmFunctionRegistry();</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                if (registry.findFunctionDescriptor(DatabaseDiagnosticFunctions.VERSION) != null) {</span>
+<span class="fc" id="L84">                    String queriedVersion = query(session, DatabaseDiagnosticFunctions.VERSION);</span>
+<span class="pc bpc" id="L85" title="1 of 4 branches missed.">                    if (queriedVersion != null &amp;&amp; !queriedVersion.isBlank()) {</span>
+<span class="fc" id="L86">                        version = queriedVersion;</span>
+<span class="fc" id="L87">                        versionSource = &quot;DATABASE_QUERY&quot;;</span>
+                    }
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                    String queriedStorage = registry.findFunctionDescriptor(DatabaseDiagnosticFunctions.STORAGE) == null</span>
+<span class="pc" id="L90">                            ? null : query(session, DatabaseDiagnosticFunctions.STORAGE);</span>
+<span class="fc" id="L91">                    if (List.of(&quot;IN_MEMORY&quot;, &quot;FILE_BACKED&quot;, &quot;READ_ONLY_RESOURCE&quot;, &quot;SERVER_MANAGED&quot;)</span>
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">                            .contains(queriedStorage == null ? &quot;&quot; : queriedStorage)) {</span>
+<span class="fc" id="L93">                        storage = queriedStorage;</span>
+<span class="fc" id="L94">                        storageSource = &quot;DATABASE_QUERY&quot;;</span>
+                    }
+                }
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">                if (&quot;UNKNOWN&quot;.equals(storage)) {</span>
+<span class="nc" id="L98">                    storage = connectionStorage(metadata.url());</span>
+<span class="nc bnc" id="L99" title="All 2 branches missed.">                    if (!&quot;UNKNOWN&quot;.equals(storage)) {</span>
+<span class="nc" id="L100">                        storageSource = &quot;JDBC_CONNECTION&quot;;</span>
+                    }
+                }
+<span class="fc bfc" id="L103" title="All 2 branches covered.">                if (&quot;IN_MEMORY&quot;.equals(storage)) {</span>
+                    // A remote HSQL server may itself run an in-memory database.
+                    // Restarting Taxonomy is not the same as restarting that server.
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                    lifetime = &quot;IN_MEMORY&quot;.equals(connectionStorage(metadata.url()))</span>
+<span class="pc" id="L107">                            ? &quot;APPLICATION_PROCESS&quot; : &quot;DATABASE_PROCESS&quot;;</span>
+<span class="fc" id="L108">                    warnings.add(&quot;IN_MEMORY_&quot; + lifetime);</span>
+<span class="pc bpc" id="L109" title="3 of 4 branches missed.">                } else if (&quot;FILE_BACKED&quot;.equals(storage) || &quot;SERVER_MANAGED&quot;.equals(storage)) {</span>
+<span class="fc" id="L110">                    lifetime = &quot;STORAGE_DEPENDENT&quot;;</span>
+<span class="fc" id="L111">                    warnings.add(&quot;STORAGE_DURABILITY_UNVERIFIED&quot;);</span>
+                }
+<span class="pc bpc" id="L113" title="1 of 4 branches missed.">                status = &quot;DATABASE_QUERY&quot;.equals(versionSource) &amp;&amp; !&quot;UNKNOWN&quot;.equals(storage)</span>
+<span class="fc" id="L114">                        ? &quot;AVAILABLE&quot; : &quot;PARTIAL&quot;;</span>
+            }
+<span class="fc" id="L116">        } catch (RuntimeException exception) {</span>
+            // A failed diagnostic must not hide the other system information.
+            // Exception text may include a connection URL or secret: never return it.
+<span class="fc" id="L119">            warnings.add(&quot;DATABASE_DIAGNOSTICS_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L120">        }</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if (&quot;UNKNOWN&quot;.equals(storage)) {</span>
+<span class="fc" id="L122">            warnings.add(&quot;PERSISTENCE_UNKNOWN&quot;);</span>
+        }
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (environment.getProperty(&quot;taxonomy.init.reload-existing&quot;, Boolean.class, false)) {</span>
+<span class="nc" id="L125">            warnings.add(&quot;CATALOGUE_RELOAD_ENABLED&quot;);</span>
+        }
+<span class="fc" id="L127">        return new DatabaseInfo(status, product, version, versionSource, driver, driverVersion,</span>
+<span class="fc" id="L128">                storage, storageSource, lifetime, schemaAction, List.copyOf(warnings));</span>
+    }
+
+    private static String query(Session session, String function) {
+        try {
+<span class="fc" id="L133">            String value = session.createSelectionQuery(&quot;select &quot; + function + &quot;()&quot;, String.class)</span>
+<span class="fc" id="L134">                    .setTimeout(2).setCacheable(false).getSingleResult();</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            return value == null ? null : value.strip();</span>
+<span class="nc" id="L136">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L137">            return null; // Visible source flags identify the metadata/unknown fallback.</span>
+        }
+    }
+
+    static String normalizeIndexStorage(String value) {
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">        String normalized = value == null ? &quot;&quot; : value.strip().toLowerCase(Locale.ROOT);</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        return switch (normalized) {</span>
+<span class="fc" id="L144">            case &quot;local-heap&quot;, &quot;local-filesystem&quot; -&gt; normalized;</span>
+<span class="fc" id="L145">            default -&gt; &quot;unknown&quot;;</span>
+        };
+    }
+
+    static String connectionStorage(String url) {
+<span class="fc bfc" id="L150" title="All 2 branches covered.">        String value = url == null ? &quot;&quot; : url.toLowerCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L151" title="1 of 4 branches missed.">        if (value.startsWith(&quot;jdbc:hsqldb:mem:&quot;) || value.startsWith(&quot;jdbc:h2:mem:&quot;)) {</span>
+<span class="fc" id="L152">            return &quot;IN_MEMORY&quot;;</span>
+        }
+<span class="pc bpc" id="L154" title="2 of 4 branches missed.">        if (value.startsWith(&quot;jdbc:hsqldb:file:&quot;) || value.startsWith(&quot;jdbc:h2:file:&quot;)) {</span>
+<span class="nc" id="L155">            return &quot;FILE_BACKED&quot;;</span>
+        }
+<span class="pc bpc" id="L157" title="1 of 2 branches missed.">        if (value.startsWith(&quot;jdbc:hsqldb:res:&quot;)) {</span>
+<span class="nc" id="L158">            return &quot;READ_ONLY_RESOURCE&quot;;</span>
+        }
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">        if (value.startsWith(&quot;jdbc:postgresql:&quot;) || value.startsWith(&quot;jdbc:sqlserver:&quot;)</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">                || value.startsWith(&quot;jdbc:oracle:&quot;)) {</span>
+<span class="fc" id="L162">            return &quot;SERVER_MANAGED&quot;;</span>
+        }
+<span class="fc" id="L164">        return &quot;UNKNOWN&quot;;</span>
+    }
+
+    static String schemaAction(Map&lt;String, Object&gt; settings) {
+        try {
+<span class="fc" id="L169">            Object jpaAction = settings.get(&quot;jakarta.persistence.schema-generation.database.action&quot;);</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">            Action action = jpaAction != null</span>
+<span class="fc" id="L171">                    ? Action.interpretJpaSetting(jpaAction)</span>
+<span class="fc" id="L172">                    : Action.interpretHbm2ddlSetting(settings.get(&quot;hibernate.hbm2ddl.auto&quot;));</span>
+<span class="fc" id="L173">            return action.name();</span>
+<span class="fc" id="L174">        } catch (IllegalArgumentException exception) {</span>
+<span class="fc" id="L175">            return &quot;UNKNOWN&quot;;</span>
+        }
+    }
+
+    static boolean destructive(String action) {
+<span class="fc" id="L180">        return List.of(&quot;CREATE&quot;, &quot;CREATE_DROP&quot;, &quot;DROP&quot;, &quot;TRUNCATE&quot;).contains(action);</span>
+    }
+
+    List&lt;DiskInfo&gt; disks(String indexStorage) {
+<span class="fc" id="L184">        Map&lt;Path, DiskInfo&gt; locations = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L185">        List&lt;DiskInfo&gt; unavailable = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L186">        addDisk(&quot;TEMPORARY_FILES&quot;, System.getProperty(&quot;java.io.tmpdir&quot;), locations, unavailable);</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">        if (&quot;local-filesystem&quot;.equals(indexStorage)) {</span>
+<span class="fc" id="L188">            addDisk(&quot;SEARCH_INDEX&quot;, environment.getProperty(</span>
+                    &quot;spring.jpa.properties.hibernate.search.backend.directory.root&quot;), locations, unavailable);
+        }
+<span class="fc" id="L191">        List&lt;DiskInfo&gt; result = new ArrayList&lt;&gt;(locations.values());</span>
+<span class="fc" id="L192">        result.addAll(unavailable);</span>
+<span class="fc" id="L193">        return List.copyOf(result);</span>
+    }
+
+    private static void addDisk(String purpose, String path, Map&lt;Path, DiskInfo&gt; locations,
+                                List&lt;DiskInfo&gt; unavailable) {
+        try {
+<span class="pc bpc" id="L199" title="2 of 4 branches missed.">            if (path == null || path.isBlank()) {</span>
+<span class="nc" id="L200">                unavailable.add(new DiskInfo(List.of(purpose), null, null, &quot;UNAVAILABLE&quot;));</span>
+<span class="nc" id="L201">                return;</span>
+            }
+            // FileStore equality/name/type do not portably identify a volume.
+            // Merge only the same resolved directory. Other rows may share space:
+            // the UI states this explicitly and never computes an aggregate total.
+<span class="fc" id="L206">            Path location = Path.of(path).toRealPath();</span>
+<span class="fc" id="L207">            DiskInfo previous = locations.get(location);</span>
+<span class="fc" id="L208">            List&lt;String&gt; purposes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L209" title="All 2 branches covered.">            if (previous != null) {</span>
+<span class="fc" id="L210">                purposes.addAll(previous.purposes());</span>
+<span class="fc" id="L211">                purposes.add(purpose);</span>
+<span class="fc" id="L212">                locations.put(location, new DiskInfo(List.copyOf(purposes),</span>
+<span class="fc" id="L213">                        previous.totalBytes(), previous.usableBytes(), previous.status()));</span>
+<span class="fc" id="L214">                return;</span>
+            }
+<span class="fc" id="L216">            FileStore store = Files.getFileStore(location);</span>
+<span class="fc" id="L217">            purposes.add(purpose);</span>
+<span class="fc" id="L218">            locations.put(location, new DiskInfo(List.copyOf(purposes), store.getTotalSpace(),</span>
+<span class="fc" id="L219">                    store.getUsableSpace(), &quot;AVAILABLE&quot;));</span>
+<span class="fc" id="L220">        } catch (java.io.IOException | RuntimeException exception) {</span>
+<span class="fc" id="L221">            unavailable.add(new DiskInfo(List.of(purpose), null, null, &quot;UNAVAILABLE&quot;));</span>
+<span class="fc" id="L222">        }</span>
+<span class="fc" id="L223">    }</span>
+
+<span class="fc" id="L225">    private record Metadata(String product, String version, String driver, String driverVersion, String url) { }</span>
+<span class="fc" id="L226">    public record Snapshot(Instant timestamp, String instanceId, String applicationVersion, RuntimeInfo runtime,</span>
+                           DatabaseInfo database, String indexStorage, List&lt;DiskInfo&gt; disks) { }
+<span class="fc" id="L228">    public record RuntimeInfo(int availableProcessors, long heapUsedBytes, long heapMaxBytes,</span>
+                              long uptimeMillis, Instant startTime, String javaVersion, String javaVendor,
+                              String osName, String osArchitecture) { }
+<span class="fc" id="L231">    public record DatabaseInfo(String status, String product, String version, String versionSource,</span>
+                               String driver, String driverVersion, String storage, String storageSource,
+                               String lifetime, String schemaAction, List&lt;String&gt; warnings) { }
+<span class="fc" id="L234">    public record DiskInfo(List&lt;String&gt; purposes, Long totalBytes, Long usableBytes, String status) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

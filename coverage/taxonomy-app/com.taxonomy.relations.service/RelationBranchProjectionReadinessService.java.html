@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationBranchProjectionReadinessService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationBranchProjectionReadinessService.java</span></div><h1>RelationBranchProjectionReadinessService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.relations.model.RelationDecisionProjection;
+import com.taxonomy.relations.model.RelationDecisionProjectionCheckpoint;
+import com.taxonomy.relations.repository.RelationDecisionProjectionCheckpointRepository;
+import com.taxonomy.relations.repository.RelationDecisionProjectionRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort.RepositoryRead;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/**
+ * Proves whether one branch projection is complete for the current Git head.
+ *
+ * &lt;p&gt;Missing, stale, partial, tombstone-contaminated or concurrently advanced
+ * projections are never returned as ready.&lt;/p&gt;
+ */
+@Service
+public class RelationBranchProjectionReadinessService {
+
+    private final WorkspaceDslReadPort reads;
+    private final RelationDecisionProjectionRepository projectionRepository;
+    private final RelationDecisionProjectionCheckpointRepository checkpointRepository;
+
+    public RelationBranchProjectionReadinessService(
+            WorkspaceDslReadPort reads,
+            RelationDecisionProjectionRepository projectionRepository,
+<span class="fc" id="L33">            RelationDecisionProjectionCheckpointRepository checkpointRepository) {</span>
+<span class="fc" id="L34">        this.reads = Objects.requireNonNull(reads, &quot;reads&quot;);</span>
+<span class="fc" id="L35">        this.projectionRepository = Objects.requireNonNull(</span>
+                projectionRepository, &quot;projectionRepository&quot;);
+<span class="fc" id="L37">        this.checkpointRepository = Objects.requireNonNull(</span>
+                checkpointRepository, &quot;checkpointRepository&quot;);
+<span class="fc" id="L39">    }</span>
+
+    /**
+     * Returns the current Git head commit for the given branch without loading
+     * or validating projection rows. Use this when only the head SHA is needed.
+     */
+    public String readCurrentHead(RepositoryContext context) {
+<span class="fc" id="L46">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L47">        RepositoryRead repository = reads.openRead(context);</span>
+<span class="fc" id="L48">        return readHead(repository);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public Readiness inspect(RepositoryContext context) {
+<span class="fc" id="L53">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L54">        RepositoryRead repository = reads.openRead(context);</span>
+<span class="fc" id="L55">        String headBefore = readHead(repository);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (headBefore == null) {</span>
+<span class="fc" id="L57">            return Readiness.notReady(</span>
+                    ReadinessState.BRANCH_MISSING,
+                    null,
+                    null,
+<span class="fc" id="L61">                    List.of());</span>
+        }
+
+<span class="fc" id="L64">        String workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(</span>
+<span class="fc" id="L65">                context.workspaceId());</span>
+<span class="fc" id="L66">        RelationDecisionProjectionCheckpoint checkpoint = checkpointRepository</span>
+<span class="fc" id="L67">                .findByRepositoryIdAndWorkspaceScopeKeyAndBranch(</span>
+<span class="fc" id="L68">                        context.repositoryId(),</span>
+                        workspaceScopeKey,
+<span class="fc" id="L70">                        context.branch())</span>
+<span class="fc" id="L71">                .orElse(null);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (checkpoint == null) {</span>
+<span class="fc" id="L73">            return Readiness.notReady(</span>
+                    ReadinessState.NOT_BUILT,
+                    headBefore,
+                    null,
+<span class="fc" id="L77">                    List.of());</span>
+        }
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (!headBefore.equals(checkpoint.getAuthoritativeCommitId())) {</span>
+<span class="fc" id="L80">            return Readiness.notReady(</span>
+                    ReadinessState.STALE,
+                    headBefore,
+<span class="fc" id="L83">                    checkpoint.getAuthoritativeCommitId(),</span>
+<span class="fc" id="L84">                    List.of());</span>
+        }
+
+<span class="fc" id="L87">        List&lt;RelationDecisionProjection&gt; rows = projectionRepository</span>
+<span class="fc" id="L88">                .findByRepositoryIdAndWorkspaceScopeKeyAndBranchOrderBySourceCodeAscRelationTypeAscTargetCodeAsc(</span>
+<span class="fc" id="L89">                        context.repositoryId(),</span>
+                        workspaceScopeKey,
+<span class="fc" id="L91">                        context.branch());</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        boolean inconsistent = rows.size() != checkpoint.getRelationCount()</span>
+<span class="fc bfc" id="L93" title="All 4 branches covered.">                || rows.stream().anyMatch(row -&gt; !row.isRelationPresent()</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">                        || !headBefore.equals(row.getAuthoritativeCommitId()));</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (inconsistent) {</span>
+<span class="fc" id="L96">            return Readiness.notReady(</span>
+                    ReadinessState.CORRUPT,
+                    headBefore,
+<span class="fc" id="L99">                    checkpoint.getAuthoritativeCommitId(),</span>
+<span class="fc" id="L100">                    List.of());</span>
+        }
+
+<span class="fc" id="L103">        String headAfter = readHead(repository);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (!Objects.equals(headBefore, headAfter)) {</span>
+<span class="fc" id="L105">            return Readiness.notReady(</span>
+                    ReadinessState.STALE,
+                    headAfter,
+<span class="fc" id="L108">                    checkpoint.getAuthoritativeCommitId(),</span>
+<span class="fc" id="L109">                    List.of());</span>
+        }
+<span class="fc" id="L111">        return new Readiness(</span>
+                ReadinessState.READY,
+                headBefore,
+<span class="fc" id="L114">                checkpoint.getAuthoritativeCommitId(),</span>
+<span class="fc" id="L115">                List.copyOf(rows));</span>
+    }
+
+    public List&lt;RelationDecisionProjection&gt; requireReady(RepositoryContext context) {
+<span class="fc" id="L119">        Readiness readiness = inspect(context);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (readiness.state() != ReadinessState.READY) {</span>
+<span class="fc" id="L121">            String workspaceScopeKey = RelationDecisionProjection.scopeKeyFor(</span>
+<span class="fc" id="L122">                    context.workspaceId());</span>
+<span class="fc" id="L123">            throw new RelationProjectionNotReadyException(</span>
+                    &quot;Relation projection is not ready for repository &quot;
+<span class="fc" id="L125">                            + context.repositoryId()</span>
+                            + &quot;, workspace scope &quot; + workspaceScopeKey
+<span class="fc" id="L127">                            + &quot;, branch &quot; + context.branch()</span>
+<span class="fc" id="L128">                            + &quot;: &quot; + readiness.state());</span>
+        }
+<span class="fc" id="L130">        return readiness.rows();</span>
+    }
+
+    private static String readHead(
+            RepositoryRead repository) {
+        try {
+<span class="fc" id="L136">            return repository.currentHead();</span>
+<span class="fc" id="L137">        } catch (IOException error) {</span>
+<span class="fc" id="L138">            throw new RelationProjectionNotReadyException(</span>
+                    &quot;Unable to read selected relation projection branch head&quot;,
+                    error);
+        }
+    }
+
+<span class="fc" id="L144">    public enum ReadinessState {</span>
+<span class="fc" id="L145">        READY,</span>
+<span class="fc" id="L146">        NOT_BUILT,</span>
+<span class="fc" id="L147">        STALE,</span>
+<span class="fc" id="L148">        CORRUPT,</span>
+<span class="fc" id="L149">        BRANCH_MISSING</span>
+    }
+
+    public record Readiness(
+            ReadinessState state,
+            String currentHeadCommit,
+            String projectedCommit,
+            List&lt;RelationDecisionProjection&gt; rows) {
+<span class="fc" id="L157">        public Readiness {</span>
+<span class="fc" id="L158">            state = Objects.requireNonNull(state, &quot;state&quot;);</span>
+<span class="fc" id="L159">            rows = List.copyOf(Objects.requireNonNull(rows, &quot;rows&quot;));</span>
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">            if (state != ReadinessState.READY &amp;&amp; !rows.isEmpty()) {</span>
+<span class="nc" id="L161">                throw new IllegalArgumentException(</span>
+                        &quot;Non-ready projection must not expose relation rows&quot;);
+            }
+<span class="fc" id="L164">        }</span>
+
+        private static Readiness notReady(
+                ReadinessState state,
+                String currentHeadCommit,
+                String projectedCommit,
+                List&lt;RelationDecisionProjection&gt; rows) {
+<span class="fc" id="L171">            return new Readiness(</span>
+                    state, currentHeadCommit, projectedCommit, rows);
+        }
+    }
+
+    public static final class RelationProjectionNotReadyException
+            extends IllegalStateException {
+        public RelationProjectionNotReadyException(String message) {
+<span class="fc" id="L179">            super(message);</span>
+<span class="fc" id="L180">        }</span>
+
+        public RelationProjectionNotReadyException(
+                String message,
+                Throwable cause) {
+<span class="fc" id="L185">            super(message, cause);</span>
+<span class="fc" id="L186">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

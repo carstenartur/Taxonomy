@@ -1,0 +1,253 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectRequirement.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">ProjectRequirement.java</span></div><h1>ProjectRequirement.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.Criticality;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementType;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinColumns;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+import java.util.Objects;
+
+/** Stable requirement identity within one exact project tenant. Text changes create versions. */
+@Entity
+@Table(name = &quot;project_requirement&quot;, indexes = {
+        @Index(name = &quot;idx_req_project&quot;, columnList = &quot;project_id&quot;),
+        @Index(name = &quot;idx_req_status&quot;, columnList = &quot;scope_key,project_id,status&quot;),
+        @Index(name = &quot;idx_req_scope&quot;, columnList = &quot;scope_key&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_req_project_key&quot;,
+                columnNames = {&quot;scope_key&quot;, &quot;project_id&quot;, &quot;requirement_key&quot;}),
+        @UniqueConstraint(name = &quot;uq_req_id_scope&quot;, columnNames = {&quot;id&quot;, &quot;scope_key&quot;}),
+        @UniqueConstraint(name = &quot;uq_req_id_proj_scope&quot;,
+                columnNames = {&quot;id&quot;, &quot;project_id&quot;, &quot;scope_key&quot;})
+})
+public class ProjectRequirement {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;scope_key&quot;, nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    /** Read-only scalar parent identity for scoped queries without initializing the association. */
+    @Column(name = &quot;project_id&quot;, nullable = false, insertable = false, updatable = false)
+    private Long projectId;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;project_id&quot;, nullable = false)
+    private ArchitectureProject project;
+
+    @Column(name = &quot;requirement_key&quot;, nullable = false, length = 64)
+    private String requirementKey;
+
+    @Column(nullable = false, length = 240)
+    private String title;
+
+<span class="fc" id="L65">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false, length = 32)
+    private RequirementStatus status = RequirementStatus.DRAFT;
+
+<span class="fc" id="L69">    @Column(nullable = false)</span>
+    private int priority = 50;
+
+<span class="fc" id="L72">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false, length = 32)
+    private Criticality criticality = Criticality.MEDIUM;
+
+<span class="fc" id="L76">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;requirement_type&quot;, nullable = false, length = 32)
+    private RequirementType requirementType = RequirementType.FUNCTIONAL;
+
+<span class="fc" id="L80">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;review_status&quot;, nullable = false, length = 32)
+    private ReviewStatus reviewStatus = ReviewStatus.PROPOSED;
+
+    @Column(name = &quot;owner_username&quot;, nullable = false, length = 160)
+    private String ownerUsername;
+
+    /** Points at the immutable current text version without creating a circular writable FK. */
+    @Column(name = &quot;current_version_id&quot;)
+    private Long currentVersionId;
+
+    /**
+     * Read-only tenant- and requirement-bound association used by portfolio list
+     * queries to fetch the current immutable version in the same SQL statement.
+     * The requirement's own ID participates in the join, so a version from a
+     * sibling requirement in the same tenant cannot be selected.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumns({
+            @JoinColumn(name = &quot;current_version_id&quot;, referencedColumnName = &quot;id&quot;,
+                    insertable = false, updatable = false),
+            @JoinColumn(name = &quot;id&quot;, referencedColumnName = &quot;requirement_id&quot;,
+                    insertable = false, updatable = false),
+            @JoinColumn(name = &quot;scope_key&quot;, referencedColumnName = &quot;scope_key&quot;,
+                    insertable = false, updatable = false)
+    })
+    private ProjectRequirementVersion currentVersion;
+
+    /** Points at the immutable current analysis snapshot. */
+    @Column(name = &quot;current_snapshot_id&quot;, length = 36)
+    private String currentAnalysisSnapshotId;
+
+    /**
+     * Read-only exact-tenant association. The four-column identity prevents a
+     * snapshot from a sibling requirement, project or branch being selected.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumns({
+            @JoinColumn(name = &quot;current_snapshot_id&quot;, referencedColumnName = &quot;id&quot;,
+                    insertable = false, updatable = false),
+            @JoinColumn(name = &quot;id&quot;, referencedColumnName = &quot;requirement_id&quot;,
+                    insertable = false, updatable = false),
+            @JoinColumn(name = &quot;project_id&quot;, referencedColumnName = &quot;project_id&quot;,
+                    insertable = false, updatable = false),
+            @JoinColumn(name = &quot;scope_key&quot;, referencedColumnName = &quot;scope_key&quot;,
+                    insertable = false, updatable = false)
+    })
+    private RequirementAnalysisSnapshot currentAnalysisSnapshot;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;updated_at&quot;, nullable = false)
+    private Instant updatedAt;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    private long rowVersion;
+
+<span class="fc" id="L139">    protected ProjectRequirement() {</span>
+<span class="fc" id="L140">    }</span>
+
+    public ProjectRequirement(ArchitectureProject project,
+                              String requirementKey,
+                              String title,
+                              RequirementStatus status,
+                              int priority,
+                              Criticality criticality,
+                              RequirementType requirementType,
+                              ReviewStatus reviewStatus,
+                              String ownerUsername,
+<span class="fc" id="L151">                              Instant now) {</span>
+<span class="fc" id="L152">        this.project = project;</span>
+<span class="fc" id="L153">        this.requirementKey = requirementKey;</span>
+<span class="fc" id="L154">        this.title = title;</span>
+<span class="fc bfc" id="L155" title="All 2 branches covered.">        this.status = status != null ? status : RequirementStatus.DRAFT;</span>
+<span class="fc" id="L156">        this.priority = priority;</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        this.criticality = criticality != null ? criticality : Criticality.MEDIUM;</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        this.requirementType = requirementType != null ? requirementType : RequirementType.FUNCTIONAL;</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        this.reviewStatus = reviewStatus != null ? reviewStatus : ReviewStatus.PROPOSED;</span>
+<span class="fc" id="L160">        this.ownerUsername = ownerUsername;</span>
+<span class="fc" id="L161">        this.createdAt = now;</span>
+<span class="fc" id="L162">        this.updatedAt = now;</span>
+<span class="fc" id="L163">        synchronizeTenantAuthority(false);</span>
+<span class="fc" id="L164">    }</span>
+
+    public void updateMetadata(String title,
+                               RequirementStatus status,
+                               Integer priority,
+                               Criticality criticality,
+                               RequirementType requirementType,
+                               ReviewStatus reviewStatus,
+                               String ownerUsername,
+                               Instant now) {
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        if (title != null) this.title = title;</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        if (status != null) this.status = status;</span>
+<span class="fc bfc" id="L176" title="All 2 branches covered.">        if (priority != null) this.priority = priority;</span>
+<span class="fc bfc" id="L177" title="All 2 branches covered.">        if (criticality != null) this.criticality = criticality;</span>
+<span class="fc bfc" id="L178" title="All 2 branches covered.">        if (requirementType != null) this.requirementType = requirementType;</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        if (reviewStatus != null) this.reviewStatus = reviewStatus;</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        if (ownerUsername != null) this.ownerUsername = ownerUsername;</span>
+<span class="fc" id="L181">        this.updatedAt = now;</span>
+<span class="fc" id="L182">    }</span>
+
+    public void pointToVersion(Long versionId, Instant now) {
+<span class="fc" id="L185">        this.currentVersionId = versionId;</span>
+<span class="fc" id="L186">        this.currentVersion = null;</span>
+<span class="fc" id="L187">        this.updatedAt = now;</span>
+<span class="fc" id="L188">    }</span>
+
+    public void pointToAnalysis(String snapshotId, Instant now) {
+<span class="fc" id="L191">        this.currentAnalysisSnapshotId = snapshotId;</span>
+<span class="fc" id="L192">        this.currentAnalysisSnapshot = null;</span>
+<span class="fc" id="L193">        this.updatedAt = now;</span>
+<span class="fc" id="L194">    }</span>
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantAuthority() {
+<span class="fc" id="L199">        synchronizeTenantAuthority(true);</span>
+<span class="fc" id="L200">    }</span>
+
+    private void synchronizeTenantAuthority(boolean requirePersistentParent) {
+<span class="pc bpc" id="L203" title="2 of 4 branches missed.">        if (project == null || project.getScopeKey() == null</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">                || project.getScopeKey().isBlank()) {</span>
+<span class="nc" id="L205">            throw new IllegalArgumentException(</span>
+                    &quot;Requirement project must expose an exact tenant scope&quot;);
+        }
+<span class="fc" id="L208">        String projectScope = project.getScopeKey().strip();</span>
+<span class="pc bpc" id="L209" title="1 of 4 branches missed.">        if (scopeKey != null &amp;&amp; !scopeKey.isBlank()</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">                &amp;&amp; !projectScope.equals(scopeKey.strip())) {</span>
+<span class="nc" id="L211">            throw new IllegalArgumentException(</span>
+                    &quot;Requirement tenant scope does not match its project&quot;);
+        }
+<span class="fc" id="L214">        scopeKey = projectScope;</span>
+
+<span class="fc" id="L216">        Long persistentProjectId = project.getId();</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (persistentProjectId == null) {</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">            if (requirePersistentParent) {</span>
+<span class="nc" id="L219">                throw new IllegalArgumentException(</span>
+                        &quot;Requirement project must be persisted before the requirement&quot;);
+            }
+<span class="fc" id="L222">            return;</span>
+        }
+<span class="pc bpc" id="L224" title="1 of 4 branches missed.">        if (projectId != null &amp;&amp; !Objects.equals(projectId, persistentProjectId)) {</span>
+<span class="nc" id="L225">            throw new IllegalArgumentException(</span>
+                    &quot;Requirement project ID does not match its association&quot;);
+        }
+<span class="fc" id="L228">        projectId = persistentProjectId;</span>
+<span class="fc" id="L229">    }</span>
+
+<span class="fc" id="L231">    public Long getId() { return id; }</span>
+<span class="fc" id="L232">    public String getScopeKey() { return scopeKey; }</span>
+<span class="fc" id="L233">    public Long getProjectId() { return projectId; }</span>
+<span class="fc" id="L234">    public ArchitectureProject getProject() { return project; }</span>
+<span class="fc" id="L235">    public String getRequirementKey() { return requirementKey; }</span>
+<span class="fc" id="L236">    public String getTitle() { return title; }</span>
+<span class="fc" id="L237">    public RequirementStatus getStatus() { return status; }</span>
+<span class="fc" id="L238">    public int getPriority() { return priority; }</span>
+<span class="fc" id="L239">    public Criticality getCriticality() { return criticality; }</span>
+<span class="fc" id="L240">    public RequirementType getRequirementType() { return requirementType; }</span>
+<span class="fc" id="L241">    public ReviewStatus getReviewStatus() { return reviewStatus; }</span>
+<span class="fc" id="L242">    public String getOwnerUsername() { return ownerUsername; }</span>
+<span class="fc" id="L243">    public Long getCurrentVersionId() { return currentVersionId; }</span>
+<span class="fc" id="L244">    public ProjectRequirementVersion getCurrentVersion() { return currentVersion; }</span>
+<span class="fc" id="L245">    public String getCurrentAnalysisSnapshotId() { return currentAnalysisSnapshotId; }</span>
+    public RequirementAnalysisSnapshot getCurrentAnalysisSnapshot() {
+<span class="nc" id="L247">        return currentAnalysisSnapshot;</span>
+    }
+<span class="fc" id="L249">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L250">    public Instant getUpdatedAt() { return updatedAt; }</span>
+<span class="fc" id="L251">    public long getRowVersion() { return rowVersion; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,353 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RateLimitFilter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.shared.config</a> &gt; <span class="el_source">RateLimitFilter.java</span></div><h1>RateLimitFilter.java</h1><pre class="source lang-java linenums">package com.taxonomy.shared.config;
+
+import com.taxonomy.preferences.PreferencesService;
+import jakarta.servlet.FilterChain;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.security.authentication.AnonymousAuthenticationToken;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.oauth2.core.oidc.user.OidcUser;
+import org.springframework.security.oauth2.server.resource.authentication.JwtAuthenticationToken;
+import org.springframework.stereotype.Component;
+import org.springframework.web.filter.OncePerRequestFilter;
+
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.util.HashMap;
+import java.util.HexFormat;
+import java.util.Map;
+import java.util.Objects;
+import java.util.function.LongSupplier;
+
+/**
+ * Bounded in-memory quota for authenticated LLM-backed API operations.
+ *
+ * &lt;p&gt;The filter is installed inside Spring Security after request authorization.
+ * Each admitted local request is keyed by a digest of its authenticated username.
+ * Keycloak browser and bearer requests are keyed by the same immutable
+ * issuer/subject pair, never by the editable {@code preferred_username} claim.
+ * Forwarding headers and peer addresses are not quota identities.&lt;/p&gt;
+ *
+ * &lt;p&gt;Protected operations are:&lt;/p&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@code POST /api/analyze}&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/analyze-stream}&lt;/li&gt;
+ *   &lt;li&gt;{@code GET /api/analyze-node}&lt;/li&gt;
+ *   &lt;li&gt;{@code POST /api/justify-leaf}&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;p&gt;The effective limit is read at request time from {@link PreferencesService}
+ * key {@code rate-limit.per-minute}, falling back to the configured property.
+ * Exactly {@code 0} disables limiting. Negative values fail closed to one request
+ * per minute rather than silently disabling protection.&lt;/p&gt;
+ */
+@Component
+public class RateLimitFilter extends OncePerRequestFilter {
+
+<span class="fc" id="L58">    static final long WINDOW_NANOS = Duration.ofMinutes(1).toNanos();</span>
+<span class="fc" id="L59">    static final long ENTRY_RETENTION_NANOS = Duration.ofMinutes(2).toNanos();</span>
+<span class="fc" id="L60">    static final long CLEANUP_INTERVAL_NANOS = Duration.ofMinutes(1).toNanos();</span>
+    static final int DEFAULT_MAX_TRACKED_PRINCIPALS = 10_000;
+
+<span class="fc" id="L63">    @Value(&quot;${taxonomy.rate-limit.per-minute:10}&quot;)</span>
+    private int maxRequestsPerMinute = 10;
+
+    /** Optional and lazy to preserve the established bootstrap dependency boundary. */
+    @Autowired(required = false)
+    @Lazy
+    private PreferencesService preferencesService;
+
+<span class="fc" id="L71">    private final Object stateMonitor = new Object();</span>
+<span class="fc" id="L72">    private final Map&lt;String, WindowCounter&gt; counters = new HashMap&lt;&gt;();</span>
+    private final WindowCounter overflowCounter;
+    private final LongSupplier monotonicNanos;
+    private final int maxTrackedPrincipals;
+    private long nextCleanupAt;
+    private long cleanupSweepCount;
+
+    public RateLimitFilter() {
+<span class="fc" id="L80">        this(System::nanoTime, DEFAULT_MAX_TRACKED_PRINCIPALS);</span>
+<span class="fc" id="L81">    }</span>
+
+<span class="fc" id="L83">    RateLimitFilter(LongSupplier monotonicNanos, int maxTrackedPrincipals) {</span>
+<span class="fc" id="L84">        this.monotonicNanos = Objects.requireNonNull(</span>
+                monotonicNanos, &quot;monotonicNanos&quot;);
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (maxTrackedPrincipals &lt;= 0) {</span>
+<span class="nc" id="L87">            throw new IllegalArgumentException(</span>
+                    &quot;maxTrackedPrincipals must be positive&quot;);
+        }
+<span class="fc" id="L90">        this.maxTrackedPrincipals = maxTrackedPrincipals;</span>
+<span class="fc" id="L91">        long now = monotonicNanos.getAsLong();</span>
+<span class="fc" id="L92">        overflowCounter = new WindowCounter(now);</span>
+<span class="fc" id="L93">        nextCleanupAt = now + CLEANUP_INTERVAL_NANOS;</span>
+<span class="fc" id="L94">    }</span>
+
+    @Override
+    protected void doFilterInternal(
+            HttpServletRequest request,
+            HttpServletResponse response,
+            FilterChain filterChain) throws ServletException, IOException {
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (!isRateLimitedOperation(request.getMethod(), applicationPath(request))) {</span>
+<span class="fc" id="L102">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L103">            return;</span>
+        }
+
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        int configuredLimit = preferencesService == null</span>
+<span class="fc" id="L107">                ? maxRequestsPerMinute</span>
+<span class="fc" id="L108">                : preferencesService.getInt(</span>
+                        &quot;rate-limit.per-minute&quot;, maxRequestsPerMinute);
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        if (configuredLimit == 0) {</span>
+<span class="fc" id="L111">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L112">            return;</span>
+        }
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        int effectiveLimit = configuredLimit &lt; 0 ? 1 : configuredLimit;</span>
+
+<span class="fc" id="L116">        String principalKey = authenticatedPrincipalKey();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if (principalKey == null) {</span>
+<span class="fc" id="L118">            writeAuthenticationRequired(response);</span>
+<span class="fc" id="L119">            return;</span>
+        }
+
+<span class="fc" id="L122">        long now = monotonicNanos.getAsLong();</span>
+<span class="fc" id="L123">        Acquisition acquisition = acquire(</span>
+                principalKey, effectiveLimit, now);
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        if (acquisition.allowed()) {</span>
+<span class="fc" id="L126">            filterChain.doFilter(request, response);</span>
+<span class="fc" id="L127">            return;</span>
+        }
+
+<span class="fc" id="L130">        writeRateLimitResponse(</span>
+                response,
+                effectiveLimit,
+<span class="fc" id="L133">                acquisition.retryAfterSeconds());</span>
+<span class="fc" id="L134">    }</span>
+
+    /** Visible for tests and administrative test isolation. */
+    public void clearCounters() {
+<span class="fc" id="L138">        long now = monotonicNanos.getAsLong();</span>
+<span class="fc" id="L139">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L140">            counters.clear();</span>
+<span class="fc" id="L141">            overflowCounter.reset(now);</span>
+<span class="fc" id="L142">            nextCleanupAt = now + CLEANUP_INTERVAL_NANOS;</span>
+<span class="fc" id="L143">            cleanupSweepCount = 0L;</span>
+<span class="fc" id="L144">        }</span>
+<span class="fc" id="L145">    }</span>
+
+    /** Visible for security-chain tests; identities themselves are never exposed. */
+    int trackedPrincipalCount() {
+<span class="fc" id="L149">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L150">            return counters.size();</span>
+        }
+    }
+
+    /** Visible for regression tests; no principal identity or quota state is exposed. */
+    long cleanupSweepCount() {
+<span class="fc" id="L156">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L157">            return cleanupSweepCount;</span>
+        }
+    }
+
+    private Acquisition acquire(
+            String principalKey,
+            int effectiveLimit,
+            long now) {
+<span class="fc" id="L165">        synchronized (stateMonitor) {</span>
+<span class="fc" id="L166">            cleanupExpiredEntries(now);</span>
+<span class="fc" id="L167">            WindowCounter counter = counters.get(principalKey);</span>
+<span class="fc bfc" id="L168" title="All 2 branches covered.">            if (counter == null) {</span>
+<span class="fc bfc" id="L169" title="All 2 branches covered.">                if (counters.size() &gt;= maxTrackedPrincipals) {</span>
+<span class="fc" id="L170">                    counter = overflowCounter;</span>
+                } else {
+<span class="fc" id="L172">                    counter = new WindowCounter(now);</span>
+<span class="fc" id="L173">                    counters.put(principalKey, counter);</span>
+                }
+            }
+
+<span class="fc" id="L177">            boolean allowed = counter.tryAcquire(effectiveLimit, now);</span>
+<span class="fc" id="L178">            return new Acquisition(</span>
+                    allowed,
+<span class="fc bfc" id="L180" title="All 2 branches covered.">                    allowed ? 0 : counter.retryAfterSeconds(now));</span>
+        }
+    }
+
+    private void cleanupExpiredEntries(long now) {
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        if (now - nextCleanupAt &lt; 0) {</span>
+<span class="fc" id="L186">            return;</span>
+        }
+<span class="fc" id="L188">        counters.entrySet().removeIf(</span>
+<span class="fc" id="L189">                entry -&gt; entry.getValue().isExpired(now));</span>
+<span class="fc" id="L190">        cleanupSweepCount++;</span>
+<span class="fc" id="L191">        nextCleanupAt = now + CLEANUP_INTERVAL_NANOS;</span>
+<span class="fc" id="L192">    }</span>
+
+    static String applicationPath(HttpServletRequest request) {
+<span class="fc" id="L195">        String servletPath = request.getServletPath();</span>
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">        if (servletPath != null</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">                &amp;&amp; !servletPath.isBlank()</span>
+<span class="pc bpc" id="L198" title="1 of 2 branches missed.">                &amp;&amp; !&quot;/&quot;.equals(servletPath)) {</span>
+<span class="fc" id="L199">            return servletPath;</span>
+        }
+
+<span class="fc" id="L202">        String requestUri = request.getRequestURI();</span>
+<span class="fc" id="L203">        String contextPath = request.getContextPath();</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        if (contextPath != null</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">                &amp;&amp; !contextPath.isBlank()</span>
+<span class="pc bpc" id="L206" title="1 of 2 branches missed.">                &amp;&amp; requestUri.startsWith(contextPath)) {</span>
+<span class="fc" id="L207">            return requestUri.substring(contextPath.length());</span>
+        }
+<span class="fc" id="L209">        return requestUri;</span>
+    }
+
+    static boolean isRateLimitedOperation(String method, String path) {
+<span class="fc bfc" id="L213" title="All 2 branches covered.">        return (&quot;POST&quot;.equalsIgnoreCase(method)</span>
+<span class="fc bfc" id="L214" title="All 2 branches covered.">                    &amp;&amp; (&quot;/api/analyze&quot;.equals(path)</span>
+<span class="fc bfc" id="L215" title="All 2 branches covered.">                        || &quot;/api/justify-leaf&quot;.equals(path)))</span>
+<span class="fc bfc" id="L216" title="All 2 branches covered.">                || (&quot;GET&quot;.equalsIgnoreCase(method)</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">                    &amp;&amp; (&quot;/api/analyze-stream&quot;.equals(path)</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">                        || &quot;/api/analyze-node&quot;.equals(path)));</span>
+    }
+
+    private static String authenticatedPrincipalKey() {
+<span class="fc" id="L222">        Authentication authentication = SecurityContextHolder.getContext()</span>
+<span class="fc" id="L223">                .getAuthentication();</span>
+<span class="fc bfc" id="L224" title="All 2 branches covered.">        if (authentication == null</span>
+<span class="pc bpc" id="L225" title="2 of 4 branches missed.">                || !authentication.isAuthenticated()</span>
+                || authentication instanceof AnonymousAuthenticationToken) {
+<span class="fc" id="L227">            return null;</span>
+        }
+
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if (authentication instanceof JwtAuthenticationToken jwtAuthentication) {</span>
+<span class="fc" id="L231">            return oidcPrincipalKey(jwtAuthentication.getToken().getClaims());</span>
+        }
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        if (authentication.getPrincipal() instanceof OidcUser oidcUser) {</span>
+<span class="fc" id="L234">            return oidcPrincipalKey(oidcUser.getIdToken().getClaims());</span>
+        }
+
+<span class="fc" id="L237">        String username = authentication.getName();</span>
+<span class="pc bpc" id="L238" title="2 of 4 branches missed.">        return username == null || username.isBlank()</span>
+<span class="nc" id="L239">                ? null</span>
+<span class="fc" id="L240">                : digestIdentity(&quot;local&quot;, username);</span>
+    }
+
+    private static String oidcPrincipalKey(Map&lt;String, Object&gt; claims) {
+<span class="fc" id="L244">        String issuer = requiredClaim(claims, &quot;iss&quot;);</span>
+<span class="fc" id="L245">        String subject = requiredClaim(claims, &quot;sub&quot;);</span>
+<span class="fc bfc" id="L246" title="All 4 branches covered.">        if (issuer == null || subject == null) {</span>
+<span class="fc" id="L247">            return null;</span>
+        }
+<span class="fc" id="L249">        return digestIdentity(&quot;oidc&quot;, issuer + '\u0000' + subject);</span>
+    }
+
+    private static String requiredClaim(
+            Map&lt;String, Object&gt; claims,
+            String claimName) {
+<span class="fc" id="L255">        Object value = claims.get(claimName);</span>
+<span class="fc bfc" id="L256" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L257">            return null;</span>
+        }
+<span class="fc" id="L259">        String text = value.toString();</span>
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">        return text.isBlank() ? null : text;</span>
+    }
+
+    private static String digestIdentity(String category, String identity) {
+        try {
+<span class="fc" id="L265">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L266">            digest.update(category.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L267">            digest.update((byte) 0);</span>
+<span class="fc" id="L268">            return HexFormat.of().formatHex(</span>
+<span class="fc" id="L269">                    digest.digest(identity.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="nc" id="L270">        } catch (NoSuchAlgorithmException exception) {</span>
+<span class="nc" id="L271">            throw new IllegalStateException(</span>
+                    &quot;SHA-256 is unavailable&quot;, exception);
+        }
+    }
+
+    private static void writeAuthenticationRequired(
+            HttpServletResponse response) throws IOException {
+<span class="fc" id="L278">        response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);</span>
+<span class="fc" id="L279">        response.setHeader(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="fc" id="L280">        response.setCharacterEncoding(StandardCharsets.UTF_8.name());</span>
+<span class="fc" id="L281">        response.setContentType(MediaType.APPLICATION_JSON_VALUE);</span>
+<span class="fc" id="L282">        response.getWriter().write(</span>
+                &quot;{\&quot;error\&quot;:\&quot;Authentication is required for this LLM operation.\&quot;,&quot;
+                    + &quot;\&quot;status\&quot;:401}&quot;);
+<span class="fc" id="L285">    }</span>
+
+    private static void writeRateLimitResponse(
+            HttpServletResponse response,
+            int effectiveLimit,
+            long retryAfterSeconds) throws IOException {
+<span class="fc" id="L291">        response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());</span>
+<span class="fc" id="L292">        response.setHeader(</span>
+                HttpHeaders.RETRY_AFTER,
+<span class="fc" id="L294">                Long.toString(retryAfterSeconds));</span>
+<span class="fc" id="L295">        response.setHeader(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;);</span>
+<span class="fc" id="L296">        response.setCharacterEncoding(StandardCharsets.UTF_8.name());</span>
+<span class="fc" id="L297">        response.setContentType(MediaType.APPLICATION_JSON_VALUE);</span>
+<span class="fc" id="L298">        response.getWriter().write(</span>
+                &quot;{\&quot;error\&quot;:\&quot;Rate limit exceeded. Maximum &quot; + effectiveLimit
+                    + &quot; LLM requests per minute. Please wait.\&quot;,&quot;
+                    + &quot;\&quot;status\&quot;:429}&quot;);
+<span class="fc" id="L302">    }</span>
+
+<span class="fc" id="L304">    private record Acquisition(boolean allowed, long retryAfterSeconds) {</span>
+    }
+
+    /** Fixed-window state; every access is serialized by {@link #stateMonitor}. */
+    static final class WindowCounter {
+        private int count;
+        private long windowStart;
+        private long lastSeen;
+
+<span class="fc" id="L313">        WindowCounter(long now) {</span>
+<span class="fc" id="L314">            reset(now);</span>
+<span class="fc" id="L315">        }</span>
+
+        boolean tryAcquire(int maximum, long now) {
+<span class="fc" id="L318">            rotateWindowIfNeeded(now);</span>
+<span class="fc" id="L319">            lastSeen = now;</span>
+<span class="fc bfc" id="L320" title="All 2 branches covered.">            if (count &gt;= maximum) {</span>
+<span class="fc" id="L321">                return false;</span>
+            }
+<span class="fc" id="L323">            count++;</span>
+<span class="fc" id="L324">            return true;</span>
+        }
+
+        long retryAfterSeconds(long now) {
+<span class="fc" id="L328">            long elapsed = now - windowStart;</span>
+<span class="fc" id="L329">            long remaining = Math.max(1L, WINDOW_NANOS - elapsed);</span>
+<span class="fc" id="L330">            return Math.max(</span>
+                    1L,
+<span class="fc" id="L332">                    (remaining + Duration.ofSeconds(1).toNanos() - 1L)</span>
+<span class="fc" id="L333">                            / Duration.ofSeconds(1).toNanos());</span>
+        }
+
+        boolean isExpired(long now) {
+<span class="fc bfc" id="L337" title="All 2 branches covered.">            return now - lastSeen &gt;= ENTRY_RETENTION_NANOS;</span>
+        }
+
+        void reset(long now) {
+<span class="fc" id="L341">            count = 0;</span>
+<span class="fc" id="L342">            windowStart = now;</span>
+<span class="fc" id="L343">            lastSeen = now;</span>
+<span class="fc" id="L344">        }</span>
+
+        private void rotateWindowIfNeeded(long now) {
+<span class="fc bfc" id="L347" title="All 2 branches covered.">            if (now - windowStart &gt;= WINDOW_NANOS) {</span>
+<span class="fc" id="L348">                reset(now);</span>
+            }
+<span class="fc" id="L350">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

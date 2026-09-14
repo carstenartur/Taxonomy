@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT
+-------------------------------------------------------------------------------
+Tests run: 10, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 19.27 s -- in com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT

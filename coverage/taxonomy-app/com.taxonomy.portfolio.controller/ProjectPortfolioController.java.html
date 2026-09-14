@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectPortfolioController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.controller</a> &gt; <span class="el_source">ProjectPortfolioController.java</span></div><h1>ProjectPortfolioController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.controller;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalyzeProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ImportRequirementCandidate;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ImportRequirementsRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ImportRequirementsResult;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProjectView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateRequirementRequest;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.portfolio.service.ProjectRequirementAnalysisService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.net.URI;
+import java.util.List;
+
+/** Project and stable requirement identities with immutable text versions. */
+@RestController
+@RequestMapping(&quot;/api/projects&quot;)
+@Tag(name = &quot;Project Requirement Portfolio&quot;)
+public class ProjectPortfolioController {
+
+    private final ProjectPortfolioService projectService;
+    private final ProjectRequirementAnalysisService analysisService;
+    private final WorkspaceResolver workspaceResolver;
+    private final int maximumImportRequirements;
+    private final long maximumImportCharacters;
+
+    public ProjectPortfolioController(ProjectPortfolioService projectService,
+                                      ProjectRequirementAnalysisService analysisService,
+                                      WorkspaceResolver workspaceResolver,
+                                      @Value(&quot;${taxonomy.portfolio.max-import-requirements:100}&quot;)
+                                      int maximumImportRequirements,
+                                      @Value(&quot;${taxonomy.portfolio.max-import-characters:500000}&quot;)
+<span class="fc" id="L53">                                      long maximumImportCharacters) {</span>
+<span class="fc" id="L54">        this.projectService = projectService;</span>
+<span class="fc" id="L55">        this.analysisService = analysisService;</span>
+<span class="fc" id="L56">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L57">        this.maximumImportRequirements = Math.max(1, maximumImportRequirements);</span>
+<span class="fc" id="L58">        this.maximumImportCharacters = Math.max(1L, maximumImportCharacters);</span>
+<span class="fc" id="L59">    }</span>
+
+    @PostMapping
+    @Operation(summary = &quot;Create a project&quot;)
+    public ResponseEntity&lt;ProjectView&gt; createProject(@RequestBody CreateProjectRequest request) {
+<span class="fc" id="L64">        RequestScope scope = scope();</span>
+<span class="fc" id="L65">        ProjectView project = projectService.createProject(request, scope.username(), scope.context());</span>
+<span class="fc" id="L66">        return ResponseEntity.created(URI.create(&quot;/api/projects/&quot; + project.id())).body(project);</span>
+    }
+
+    @GetMapping
+    @Operation(summary = &quot;List projects in the current workspace&quot;)
+    public List&lt;ProjectView&gt; listProjects() {
+<span class="fc" id="L72">        RequestScope scope = scope();</span>
+<span class="fc" id="L73">        return projectService.listProjects(scope.username(), scope.context());</span>
+    }
+
+    @GetMapping(&quot;/{projectId}&quot;)
+    @Operation(summary = &quot;Read one project&quot;)
+    public ProjectView getProject(@PathVariable Long projectId) {
+<span class="nc" id="L79">        RequestScope scope = scope();</span>
+<span class="nc" id="L80">        return projectService.getProject(projectId, scope.username(), scope.context());</span>
+    }
+
+    @PatchMapping(&quot;/{projectId}&quot;)
+    @Operation(summary = &quot;Update project metadata&quot;)
+    public ProjectView updateProject(@PathVariable Long projectId,
+                                     @RequestBody UpdateProjectRequest request) {
+<span class="nc" id="L87">        RequestScope scope = scope();</span>
+<span class="nc" id="L88">        return projectService.updateProject(projectId, request, scope.username(), scope.context());</span>
+    }
+
+    @PostMapping(&quot;/{projectId}/requirements&quot;)
+    @Operation(summary = &quot;Create one project requirement and its initial immutable version&quot;)
+    public ResponseEntity&lt;RequirementView&gt; createRequirement(
+            @PathVariable Long projectId,
+            @RequestBody CreateRequirementRequest request) {
+<span class="fc" id="L96">        RequestScope scope = scope();</span>
+<span class="fc" id="L97">        RequirementView requirement = projectService.createRequirement(</span>
+<span class="fc" id="L98">                projectId, request, scope.username(), scope.context());</span>
+<span class="fc" id="L99">        return ResponseEntity.created(URI.create(</span>
+<span class="fc" id="L100">                &quot;/api/projects/&quot; + projectId + &quot;/requirements/&quot; + requirement.id()))</span>
+<span class="fc" id="L101">                .body(requirement);</span>
+    }
+
+    @PostMapping(&quot;/{projectId}/requirements/import&quot;)
+    @Operation(summary = &quot;Import candidates as separate requirements, optionally queue their analysis&quot;)
+    public ResponseEntity&lt;ImportRequirementsResult&gt; importRequirements(
+            @PathVariable Long projectId,
+            @RequestBody ImportRequirementsRequest request) {
+<span class="nc" id="L109">        validateImportRequest(request);</span>
+<span class="nc" id="L110">        RequestScope scope = scope();</span>
+<span class="nc" id="L111">        List&lt;RequirementView&gt; requirements = projectService.importRequirements(</span>
+<span class="nc" id="L112">                projectId, request.requirements(), scope.username(), scope.context());</span>
+<span class="nc bnc" id="L113" title="All 2 branches missed.">        var job = request.analyzeAfterImport()</span>
+<span class="nc" id="L114">                ? analysisService.enqueueProject(</span>
+                        projectId,
+                        new AnalyzeProjectRequest(
+<span class="nc" id="L117">                                requirements.stream().map(RequirementView::id).toList(),</span>
+<span class="nc" id="L118">                                false,</span>
+<span class="nc" id="L119">                                request.provider(),</span>
+<span class="nc" id="L120">                                request.maxArchitectureNodes(),</span>
+<span class="nc" id="L121">                                request.idempotencyKey()),</span>
+<span class="nc" id="L122">                        scope.username(),</span>
+<span class="nc" id="L123">                        scope.context())</span>
+<span class="nc" id="L124">                : null;</span>
+<span class="nc" id="L125">        return ResponseEntity.status(201).body(new ImportRequirementsResult(requirements, job));</span>
+    }
+
+    @GetMapping(&quot;/{projectId}/requirements&quot;)
+    @Operation(summary = &quot;List project requirements&quot;)
+    public List&lt;RequirementView&gt; listRequirements(@PathVariable Long projectId) {
+<span class="nc" id="L131">        RequestScope scope = scope();</span>
+<span class="nc" id="L132">        return projectService.listRequirements(projectId, scope.username(), scope.context());</span>
+    }
+
+    @GetMapping(&quot;/{projectId}/requirements/{requirementId}&quot;)
+    @Operation(summary = &quot;Read one project requirement&quot;)
+    public RequirementView getRequirement(@PathVariable Long projectId,
+                                          @PathVariable Long requirementId) {
+<span class="nc" id="L139">        RequestScope scope = scope();</span>
+<span class="nc" id="L140">        return projectService.getRequirement(</span>
+<span class="nc" id="L141">                projectId, requirementId, scope.username(), scope.context());</span>
+    }
+
+    @PatchMapping(&quot;/{projectId}/requirements/{requirementId}&quot;)
+    @Operation(summary = &quot;Update requirement metadata without rewriting historical text&quot;)
+    public RequirementView updateRequirement(@PathVariable Long projectId,
+                                             @PathVariable Long requirementId,
+                                             @RequestBody UpdateRequirementRequest request) {
+<span class="nc" id="L149">        RequestScope scope = scope();</span>
+<span class="nc" id="L150">        return projectService.updateRequirement(</span>
+<span class="nc" id="L151">                projectId, requirementId, request, scope.username(), scope.context());</span>
+    }
+
+    @PostMapping(&quot;/{projectId}/requirements/{requirementId}/versions&quot;)
+    @Operation(summary = &quot;Create or select an immutable requirement text version&quot;)
+    public ResponseEntity&lt;RequirementVersionView&gt; addRequirementVersion(
+            @PathVariable Long projectId,
+            @PathVariable Long requirementId,
+            @RequestBody CreateRequirementVersionRequest request) {
+<span class="nc" id="L160">        RequestScope scope = scope();</span>
+<span class="nc" id="L161">        RequirementVersionView version = projectService.addRequirementVersion(</span>
+<span class="nc" id="L162">                projectId, requirementId, request, scope.username(), scope.context());</span>
+<span class="nc" id="L163">        return ResponseEntity.created(URI.create(</span>
+                &quot;/api/projects/&quot; + projectId + &quot;/requirements/&quot; + requirementId
+<span class="nc" id="L165">                        + &quot;/versions/&quot; + version.id()))</span>
+<span class="nc" id="L166">                .body(version);</span>
+    }
+
+    @GetMapping(&quot;/{projectId}/requirements/{requirementId}/versions&quot;)
+    @Operation(summary = &quot;List immutable requirement versions&quot;)
+    public List&lt;RequirementVersionView&gt; listRequirementVersions(
+            @PathVariable Long projectId,
+            @PathVariable Long requirementId) {
+<span class="nc" id="L174">        RequestScope scope = scope();</span>
+<span class="nc" id="L175">        return projectService.listRequirementVersions(</span>
+<span class="nc" id="L176">                projectId, requirementId, scope.username(), scope.context());</span>
+    }
+
+    private void validateImportRequest(ImportRequirementsRequest request) {
+<span class="pc bpc" id="L180" title="3 of 6 branches missed.">        if (request == null || request.requirements() == null || request.requirements().isEmpty()) {</span>
+<span class="nc" id="L181">            throw PortfolioException.validation(&quot;At least one requirement candidate is required&quot;);</span>
+        }
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (request.requirements().size() &gt; maximumImportRequirements) {</span>
+<span class="fc" id="L184">            throw PortfolioException.validation(</span>
+<span class="fc" id="L185">                    &quot;Import contains &quot; + request.requirements().size()</span>
+                            + &quot; candidates; maximum is &quot; + maximumImportRequirements);
+        }
+
+<span class="fc" id="L189">        long characters = 0L;</span>
+<span class="pc bpc" id="L190" title="1 of 2 branches missed.">        for (ImportRequirementCandidate candidate : request.requirements()) {</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">            if (candidate == null) continue;</span>
+<span class="fc" id="L192">            characters += length(candidate.text());</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">            if (candidate.source() != null) {</span>
+<span class="nc" id="L194">                characters += length(candidate.source().originalText());</span>
+            }
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">            if (characters &gt; maximumImportCharacters) {</span>
+<span class="fc" id="L197">                throw PortfolioException.validation(</span>
+                        &quot;Import text payload exceeds &quot; + maximumImportCharacters + &quot; characters&quot;);
+            }
+<span class="nc" id="L200">        }</span>
+<span class="nc" id="L201">    }</span>
+
+    private static int length(String value) {
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        return value != null ? value.length() : 0;</span>
+    }
+
+    private RequestScope scope() {
+<span class="fc" id="L208">        return new RequestScope(</span>
+<span class="fc" id="L209">                workspaceResolver.resolveCurrentUsername(),</span>
+<span class="fc" id="L210">                workspaceResolver.resolveCurrentContext());</span>
+    }
+
+<span class="fc" id="L213">    private record RequestScope(String username, WorkspaceContext context) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

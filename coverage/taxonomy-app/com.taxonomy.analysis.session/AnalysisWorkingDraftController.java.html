@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisWorkingDraftController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.session</a> &gt; <span class="el_source">AnalysisWorkingDraftController.java</span></div><h1>AnalysisWorkingDraftController.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.session;
+
+import com.taxonomy.analysis.session.AnalysisDraftDtos.AnalysisDraftView;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.ResetAnalysisDraftRequest;
+import com.taxonomy.analysis.session.AnalysisDraftDtos.SaveAnalysisDraftRequest;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+/** REST boundary for resumable, user-owned ad-hoc analysis drafts. */
+@RestController
+@RequestMapping(&quot;/api/analysis-drafts&quot;)
+@Tag(name = &quot;Analysis Working Drafts&quot;)
+public class AnalysisWorkingDraftController {
+
+    private final AnalysisWorkingDraftService service;
+    private final WorkspaceResolver workspaceResolver;
+
+    public AnalysisWorkingDraftController(
+            AnalysisWorkingDraftService service,
+<span class="fc" id="L35">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L36">        this.service = service;</span>
+<span class="fc" id="L37">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L38">    }</span>
+
+    @GetMapping(&quot;/{workspaceId}&quot;)
+    @Operation(summary = &quot;Restore the current user's ad-hoc analysis draft&quot;)
+    public ResponseEntity&lt;AnalysisDraftView&gt; read(
+            @PathVariable String workspaceId,
+            HttpServletRequest request) {
+<span class="fc" id="L45">        requireMatchingExplicitPin(request, workspaceId);</span>
+<span class="fc" id="L46">        return service.read(workspaceResolver.resolveCurrentUsername(), workspaceId)</span>
+<span class="fc" id="L47">                .map(this::versionedResponse)</span>
+<span class="fc" id="L48">                .orElseGet(AnalysisWorkingDraftController::noContentResponse);</span>
+    }
+
+    @PutMapping(&quot;/{workspaceId}&quot;)
+    @Operation(summary = &quot;Create or optimistically update an ad-hoc analysis draft&quot;)
+    public ResponseEntity&lt;AnalysisDraftView&gt; save(
+            @PathVariable String workspaceId,
+            @RequestBody SaveAnalysisDraftRequest requestBody,
+            HttpServletRequest request) {
+<span class="fc" id="L57">        requireMatchingExplicitPin(request, workspaceId);</span>
+<span class="fc" id="L58">        AnalysisDraftView view = service.save(</span>
+<span class="fc" id="L59">                workspaceResolver.resolveCurrentUsername(), workspaceId, requestBody);</span>
+<span class="fc" id="L60">        return versionedResponse(view);</span>
+    }
+
+    @PostMapping(&quot;/{workspaceId}/reset&quot;)
+    @Operation(summary = &quot;Start a new empty ad-hoc analysis lifecycle&quot;)
+    public ResponseEntity&lt;AnalysisDraftView&gt; reset(
+            @PathVariable String workspaceId,
+            @RequestBody(required = false) ResetAnalysisDraftRequest requestBody,
+            HttpServletRequest request) {
+<span class="fc" id="L69">        requireMatchingExplicitPin(request, workspaceId);</span>
+<span class="fc" id="L70">        AnalysisDraftView view = service.reset(</span>
+<span class="fc" id="L71">                workspaceResolver.resolveCurrentUsername(), workspaceId, requestBody);</span>
+<span class="fc" id="L72">        return versionedResponse(view);</span>
+    }
+
+    @DeleteMapping(&quot;/{workspaceId}&quot;)
+    @Operation(summary = &quot;Discard the current user's ad-hoc analysis draft&quot;)
+    public ResponseEntity&lt;Void&gt; delete(
+            @PathVariable String workspaceId,
+            @RequestParam(required = false) Long expectedVersion,
+            HttpServletRequest request) {
+<span class="fc" id="L81">        requireMatchingExplicitPin(request, workspaceId);</span>
+<span class="fc" id="L82">        service.delete(</span>
+<span class="fc" id="L83">                workspaceResolver.resolveCurrentUsername(), workspaceId, expectedVersion);</span>
+<span class="fc" id="L84">        return noContentResponse();</span>
+    }
+
+    private static void requireMatchingExplicitPin(
+            HttpServletRequest request, String workspaceId) {
+<span class="fc" id="L89">        String explicitWorkspaceId = request.getHeader(</span>
+                WorkspaceContextResolver.WORKSPACE_HEADER);
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (!hasText(explicitWorkspaceId)) {</span>
+<span class="fc" id="L92">            explicitWorkspaceId = request.getParameter(</span>
+                    WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER);
+        }
+<span class="fc bfc" id="L95" title="All 2 branches covered.">        if (hasText(explicitWorkspaceId)</span>
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">                &amp;&amp; !explicitWorkspaceId.strip().equals(workspaceId.strip())) {</span>
+<span class="fc" id="L97">            throw new AccessDeniedException(</span>
+                    &quot;Analysis draft workspace does not match the pinned request context&quot;);
+        }
+<span class="fc" id="L100">    }</span>
+
+    private static boolean hasText(String value) {
+<span class="pc bpc" id="L103" title="1 of 4 branches missed.">        return value != null &amp;&amp; !value.isBlank();</span>
+    }
+
+    private ResponseEntity&lt;AnalysisDraftView&gt; versionedResponse(AnalysisDraftView view) {
+<span class="fc" id="L107">        return ResponseEntity.ok()</span>
+<span class="fc" id="L108">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L109">                .eTag(&quot;\&quot;&quot; + view.version() + &quot;\&quot;&quot;)</span>
+<span class="fc" id="L110">                .body(view);</span>
+    }
+
+    private static &lt;T&gt; ResponseEntity&lt;T&gt; noContentResponse() {
+<span class="fc" id="L114">        return ResponseEntity.noContent()</span>
+<span class="fc" id="L115">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L116">                .build();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

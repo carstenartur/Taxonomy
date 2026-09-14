@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleTemplateRendererDecorator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.decision</a> &gt; <span class="el_source">DecisionRationaleTemplateRendererDecorator.java</span></div><h1>DecisionRationaleTemplateRendererDecorator.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.decision;
+
+import com.taxonomy.architecture.report.ReportRendererDecorator;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import org.springframework.stereotype.Component;
+
+import java.util.Objects;
+
+/**
+ * Makes the decision-rationale DOCX renderer template-backed when registered.
+ */
+@Component
+public final class DecisionRationaleTemplateRendererDecorator
+        implements ReportRendererDecorator {
+
+    private final DecisionRationaleTemplateRenderer templateRenderer;
+
+    public DecisionRationaleTemplateRendererDecorator(
+<span class="fc" id="L22">            DecisionRationaleTemplateRenderer templateRenderer) {</span>
+<span class="fc" id="L23">        this.templateRenderer = Objects.requireNonNull(</span>
+                templateRenderer, &quot;templateRenderer&quot;);
+<span class="fc" id="L25">    }</span>
+
+    @Override
+    public boolean supports(ReportRendererExtension renderer) {
+<span class="fc" id="L29">        return renderer instanceof DecisionRationaleDocxRenderer;</span>
+    }
+
+    @Override
+    public ReportRendererExtension decorate(ReportRendererExtension renderer) {
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        if (!(renderer instanceof DecisionRationaleDocxRenderer delegate)) {</span>
+<span class="nc" id="L35">            throw new IllegalArgumentException(</span>
+                    &quot;Decision-rationale template decorator received an unsupported renderer&quot;);
+        }
+<span class="fc" id="L38">        return new TemplateBackedExtension(delegate, templateRenderer);</span>
+    }
+
+    private record TemplateBackedExtension(
+            DecisionRationaleDocxRenderer delegate,
+            DecisionRationaleTemplateRenderer templateRenderer)
+            implements ReportRendererExtension {
+
+<span class="fc" id="L46">        private TemplateBackedExtension {</span>
+<span class="fc" id="L47">            Objects.requireNonNull(delegate, &quot;delegate&quot;);</span>
+<span class="fc" id="L48">            Objects.requireNonNull(templateRenderer, &quot;templateRenderer&quot;);</span>
+<span class="fc" id="L49">        }</span>
+
+        @Override
+        public String reportTypeId() {
+<span class="fc" id="L53">            return delegate.reportTypeId();</span>
+        }
+
+        @Override
+        public Class&lt;?&gt; reportModelType() {
+<span class="fc" id="L58">            return delegate.reportModelType();</span>
+        }
+
+        @Override
+        public ReportFormatDescriptor descriptor() {
+<span class="fc" id="L63">            return delegate.descriptor();</span>
+        }
+
+        @Override
+        public ReportRenderResult render(ReportRenderContext context) {
+<span class="fc" id="L68">            DecisionRationaleReport report =</span>
+<span class="fc" id="L69">                    context.payloadAs(DecisionRationaleReport.class);</span>
+            try {
+<span class="fc" id="L71">                return templateRenderer.renderArtifact(delegate, report);</span>
+<span class="nc" id="L72">            } catch (DecisionReportTemplateUnavailableException exception) {</span>
+<span class="nc" id="L73">                throw exception;</span>
+<span class="fc" id="L74">            } catch (IllegalStateException exception) {</span>
+                // The template renderer normalizes missing, invalid, and failed template
+                // materialization states to IllegalStateException. Reclassify that
+                // operational dependency failure at the HTTP boundary as 503.
+<span class="fc" id="L78">                throw new DecisionReportTemplateUnavailableException(</span>
+<span class="fc" id="L79">                        exception.getMessage(), exception);</span>
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

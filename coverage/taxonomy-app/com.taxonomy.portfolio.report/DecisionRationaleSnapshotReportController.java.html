@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleSnapshotReportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.report</a> &gt; <span class="el_source">DecisionRationaleSnapshotReportController.java</span></div><h1>DecisionRationaleSnapshotReportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.report;
+
+import com.taxonomy.architecture.decision.DecisionRationaleReport;
+import com.taxonomy.architecture.decision.DecisionRationaleReportPlugin;
+import com.taxonomy.architecture.decision.DecisionReportTemplateHeaders;
+import com.taxonomy.architecture.report.ReportRendererRegistry;
+import com.taxonomy.extension.api.report.ReportFormatDescriptor;
+import com.taxonomy.extension.api.report.ReportRenderContext;
+import com.taxonomy.extension.api.report.ReportRenderResult;
+import com.taxonomy.extension.api.report.ReportRendererExtension;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.CacheControl;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
+import java.util.Locale;
+
+/** Download API for reports generated from immutable project-analysis snapshots. */
+@RestController
+@RequestMapping(&quot;/api/projects/{projectId}/snapshots/{snapshotId}/decision-report&quot;)
+@Tag(name = &quot;Decision Rationale Report&quot;)
+public class DecisionRationaleSnapshotReportController {
+
+    private final DecisionRationaleSnapshotReportService snapshotReportService;
+    private final ReportRendererRegistry reportRendererRegistry;
+    private final WorkspaceResolver workspaceResolver;
+
+    public DecisionRationaleSnapshotReportController(
+            DecisionRationaleSnapshotReportService snapshotReportService,
+            ReportRendererRegistry reportRendererRegistry,
+<span class="fc" id="L44">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L45">        this.snapshotReportService = snapshotReportService;</span>
+<span class="fc" id="L46">        this.reportRendererRegistry = reportRendererRegistry;</span>
+<span class="fc" id="L47">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L48">    }</span>
+
+    @GetMapping(&quot;/formats&quot;)
+    @Operation(summary = &quot;List report formats available for an immutable analysis snapshot&quot;)
+    public List&lt;ReportFormatDescriptor&gt; listFormats() {
+<span class="fc" id="L53">        return reportRendererRegistry.listDescriptors(</span>
+                DecisionRationaleReportPlugin.REPORT_TYPE_ID);
+    }
+
+    @GetMapping(&quot;/{formatId}&quot;)
+    @Operation(
+            summary = &quot;Download a hierarchical decision rationale for one immutable snapshot&quot;,
+            description = &quot;Replays the frozen requirement text, taxonomy hierarchy, scores, AI reasons, &quot;
+                    + &quot;provider and Git provenance stored with the selected snapshot.&quot;)
+    public ResponseEntity&lt;byte[]&gt; export(
+            @PathVariable Long projectId,
+            @PathVariable String snapshotId,
+            @PathVariable String formatId,
+            @Parameter(description = &quot;Optional BCP-47 report language such as de or en&quot;)
+            @RequestParam(required = false) String language) {
+<span class="fc" id="L68">        ReportRendererExtension renderer = reportRendererRegistry.findByFormatId(</span>
+                        DecisionRationaleReportPlugin.REPORT_TYPE_ID, formatId)
+<span class="fc" id="L70">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Unknown decision-report format: &quot; + formatId));
+<span class="fc" id="L72">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L73">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L74">        DecisionRationaleReport report = snapshotReportService.generate(</span>
+<span class="fc" id="L75">                projectId, snapshotId, username, context, resolveLocale(language));</span>
+<span class="fc" id="L76">        ReportFormatDescriptor format = renderer.descriptor();</span>
+<span class="fc" id="L77">        ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));</span>
+<span class="fc" id="L78">        String filename = DecisionRationaleReportPlugin.BASE_FILENAME</span>
+<span class="fc" id="L79">                + &quot;-v&quot; + valueOrUnknown(report.metadata().requirementVersionNumber())</span>
+<span class="fc" id="L80">                + &quot;.&quot; + format.fileExtension();</span>
+<span class="fc" id="L81">        ResponseEntity.BodyBuilder response = ResponseEntity.ok()</span>
+<span class="fc" id="L82">                .cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L83">                .header(HttpHeaders.CONTENT_DISPOSITION,</span>
+                        &quot;attachment; filename=\&quot;&quot; + filename + &quot;\&quot;&quot;)
+<span class="fc" id="L85">                .header(&quot;X-Taxonomy-Snapshot-Id&quot;, report.metadata().analysisSnapshotId())</span>
+<span class="fc" id="L86">                .header(&quot;X-Taxonomy-Data-SHA256&quot;,</span>
+<span class="fc" id="L87">                        report.metadata().taxonomyDataFingerprintSha256())</span>
+<span class="fc" id="L88">                .header(&quot;X-Taxonomy-Analysis-SHA256&quot;,</span>
+<span class="fc" id="L89">                        report.metadata().analysisSnapshotFingerprintSha256());</span>
+<span class="fc" id="L90">        DecisionReportTemplateHeaders.apply(response, rendered);</span>
+<span class="fc" id="L91">        return response</span>
+<span class="fc" id="L92">                .contentType(MediaType.parseMediaType(format.contentType()))</span>
+<span class="fc" id="L93">                .body(rendered.bytes());</span>
+    }
+
+    private Locale resolveLocale(String language) {
+<span class="pc bpc" id="L97" title="1 of 4 branches missed.">        if (language == null || language.isBlank()) {</span>
+<span class="fc" id="L98">            return LocaleContextHolder.getLocale();</span>
+        }
+<span class="fc" id="L100">        Locale locale = Locale.forLanguageTag(language.strip());</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        return locale.getLanguage().isBlank()</span>
+<span class="fc" id="L102">                ? LocaleContextHolder.getLocale() : locale;</span>
+    }
+
+    private String valueOrUnknown(Object value) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        return value == null ? &quot;unknown&quot; : String.valueOf(value);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureSummary.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">ArchitectureSummary.java</span></div><h1>ArchitectureSummary.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * A compact, actionable architecture summary designed for immediate
+ * display after analysis completes.
+ *
+ * &lt;p&gt;Includes key findings, statistics, and recommended next steps
+ * to guide the user through the workflow.
+ *
+ * @param generatedAt              when this summary was produced
+ * @param totalNodes               total taxonomy nodes loaded
+ * @param totalRelations           total confirmed relations
+ * @param totalProposals           pending relation proposals
+ * @param totalHypotheses          active hypotheses
+ * @param totalCoveredNodes        nodes with at least one requirement coverage entry
+ * @param topCapabilities          highest-scoring capabilities (by relation + coverage count)
+ * @param topProcesses             highest-scoring processes
+ * @param topServices              highest-scoring services
+ * @param gaps                     identified coverage gaps (nodes with zero requirement coverage)
+ * @param hubNodes                 nodes classified as &quot;hub&quot; (high relation count)
+ * @param nextSteps                ordered list of recommended next actions
+ */
+<span class="fc" id="L26">public record ArchitectureSummary(</span>
+        Instant generatedAt,
+        int totalNodes,
+        int totalRelations,
+        int totalProposals,
+        int totalHypotheses,
+        int totalCoveredNodes,
+        List&lt;SummaryEntry&gt; topCapabilities,
+        List&lt;SummaryEntry&gt; topProcesses,
+        List&lt;SummaryEntry&gt; topServices,
+        List&lt;String&gt; gaps,
+        List&lt;SummaryEntry&gt; hubNodes,
+        List&lt;NextStep&gt; nextSteps
+) {
+
+    /**
+     * A named entry with a relevance score, used for top-N lists.
+     *
+     * @param code  the taxonomy node code
+     * @param name  the display name
+     * @param score a relevance/importance score
+     */
+<span class="fc" id="L48">    public record SummaryEntry(String code, String name, int score) {}</span>
+
+    /**
+     * A recommended next action in the workflow.
+     *
+     * @param action       short action label (e.g. &quot;Review Relations&quot;)
+     * @param description  human-readable explanation
+     * @param endpoint     optional API endpoint or UI path
+     */
+<span class="fc" id="L57">    public record NextStep(String action, String description, String endpoint) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,457 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationDecisionProjectionService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationDecisionProjectionService.java</span></div><h1>RelationDecisionProjectionService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.ChangeKind;
+import com.taxonomy.dsl.command.ArchitectureRelationDslTransformer.RelationIdentity;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.CommandResult;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RelationCommand;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.RemoveRelation;
+import com.taxonomy.relations.command.ArchitectureRelationGitCommandService.UpsertRelation;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort.RepositoryRead;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+
+/**
+ * Verifies one successful Git-authoritative relation command and hands its exact
+ * post-command state to the transactional projection writer.
+ *
+ * &lt;p&gt;Git and TaxDSL validation deliberately happen before the writer opens a
+ * relational transaction. The command payload is not trusted as the resulting
+ * state: the exact authoritative commit is re-read, partial upserts therefore
+ * preserve unspecified properties, and removals become explicit tombstones.
+ * User-facing reads must not use this incremental projection until a later
+ * full-branch rebuild has marked it complete.&lt;/p&gt;
+ */
+@Service
+public class RelationDecisionProjectionService {
+
+    private static final String RELATION_KIND = &quot;relation&quot;;
+
+    private final RelationDecisionProjectionWriter projectionWriter;
+    private final WorkspaceDslReadPort gitReads;
+    private final TaxDslParser parser;
+
+    @Autowired
+    public RelationDecisionProjectionService(
+            RelationDecisionProjectionWriter projectionWriter,
+            WorkspaceDslReadPort gitReads) {
+<span class="fc" id="L50">        this(</span>
+                projectionWriter,
+                gitReads,
+                new TaxDslParser());
+<span class="fc" id="L54">    }</span>
+
+    RelationDecisionProjectionService(
+            RelationDecisionProjectionWriter projectionWriter,
+            WorkspaceDslReadPort gitReads,
+<span class="fc" id="L59">            TaxDslParser parser) {</span>
+<span class="fc" id="L60">        this.projectionWriter = Objects.requireNonNull(</span>
+                projectionWriter, &quot;projectionWriter&quot;);
+<span class="fc" id="L62">        this.gitReads = Objects.requireNonNull(gitReads, &quot;gitReads&quot;);</span>
+<span class="fc" id="L63">        this.parser = Objects.requireNonNull(parser, &quot;parser&quot;);</span>
+<span class="fc" id="L64">    }</span>
+
+    /**
+     * Re-reads the exact authority token and projects only the state found in
+     * that commit.
+     */
+    public ProjectionResult project(
+            RepositoryContext context,
+            CommandResult commandResult,
+            RelationCommand command) {
+<span class="fc" id="L74">        ValidatedCommand validated = validate(context, commandResult, command);</span>
+<span class="fc" id="L75">        AuthoritativeState state = readAuthoritativeState(</span>
+                context,
+                validated,
+                commandResult,
+                command);
+<span class="fc" id="L80">        RelationIdentity identity = command.identity();</span>
+<span class="fc" id="L81">        ProjectionRequest request = new ProjectionRequest(</span>
+<span class="fc" id="L82">                context.repositoryId(),</span>
+<span class="fc" id="L83">                context.workspaceId(),</span>
+<span class="fc" id="L84">                context.branch(),</span>
+<span class="fc" id="L85">                identity.sourceId(),</span>
+<span class="fc" id="L86">                validated.relationType(),</span>
+<span class="fc" id="L87">                identity.targetId(),</span>
+<span class="fc" id="L88">                state.relationPresent(),</span>
+<span class="fc" id="L89">                state.status(),</span>
+<span class="fc" id="L90">                state.confidence(),</span>
+<span class="fc" id="L91">                state.provenance(),</span>
+<span class="fc" id="L92">                validated.authoritativeCommitId(),</span>
+<span class="fc" id="L93">                command.metadata().causationId());</span>
+<span class="fc" id="L94">        return projectionWriter.write(request);</span>
+    }
+
+    private ValidatedCommand validate(
+            RepositoryContext context,
+            CommandResult result,
+            RelationCommand command) {
+<span class="fc" id="L101">        Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L102">        Objects.requireNonNull(result, &quot;commandResult&quot;);</span>
+<span class="fc" id="L103">        Objects.requireNonNull(command, &quot;command&quot;);</span>
+
+<span class="pc bpc" id="L105" title="1 of 2 branches missed.">        if (context.scope() == RepositoryScope.CENTRAL_READ) {</span>
+<span class="nc" id="L106">            throw new ProjectionContextMismatchException(</span>
+                    &quot;Relation projections require CENTRAL_WRITE, WORKSPACE or FORK scope&quot;);
+        }
+<span class="fc bfc" id="L109" title="All 2 branches covered.">        if (!context.repositoryId().equals(result.repositoryId())</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">                || !Objects.equals(context.workspaceId(), result.workspaceId())</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">                || !context.branch().equals(result.branch())</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                || context.scope() != result.scope()) {</span>
+<span class="fc" id="L113">            throw new ProjectionContextMismatchException(</span>
+                    &quot;Command result does not match the exact repository context&quot;);
+        }
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if (!command.metadata().causationId().equals(result.causationId())) {</span>
+<span class="nc" id="L117">            throw new ProjectionContextMismatchException(</span>
+                    &quot;Command result causation ID does not match the command&quot;);
+        }
+
+<span class="fc" id="L121">        String authoritativeCommitId = requireCommitId(</span>
+<span class="fc" id="L122">                result.authoritativeCommitId(), &quot;authoritativeCommitId&quot;);</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        boolean changed = result.changeKind() != ChangeKind.UNCHANGED;</span>
+<span class="pc bpc" id="L124" title="1 of 2 branches missed.">        if (result.commitCreated() != changed) {</span>
+<span class="nc" id="L125">            throw new ProjectionContextMismatchException(</span>
+                    &quot;Command result commit-created flag contradicts its change kind&quot;);
+        }
+<span class="fc" id="L128">        String previousHeadCommit = result.previousHeadCommit();</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">        if (previousHeadCommit != null) {</span>
+<span class="fc" id="L130">            previousHeadCommit = requireCommitId(</span>
+                    previousHeadCommit, &quot;previousHeadCommit&quot;);
+        }
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        if (!changed</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">                &amp;&amp; !authoritativeCommitId.equals(previousHeadCommit)) {</span>
+<span class="nc" id="L135">            throw new ProjectionContextMismatchException(</span>
+                    &quot;No-op command result must retain its exact previous head&quot;);
+        }
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (command instanceof UpsertRelation</span>
+<span class="pc bpc" id="L139" title="1 of 2 branches missed.">                &amp;&amp; result.changeKind() == ChangeKind.REMOVED) {</span>
+<span class="nc" id="L140">            throw new ProjectionContextMismatchException(</span>
+                    &quot;Upsert command cannot produce a removed result&quot;);
+        }
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        if (command instanceof RemoveRelation</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                &amp;&amp; result.changeKind() != ChangeKind.REMOVED</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">                &amp;&amp; result.changeKind() != ChangeKind.UNCHANGED) {</span>
+<span class="nc" id="L146">            throw new ProjectionContextMismatchException(</span>
+                    &quot;Remove command cannot produce an add or update result&quot;);
+        }
+
+        RelationType relationType;
+        try {
+<span class="fc" id="L152">            relationType = RelationType.valueOf(</span>
+<span class="fc" id="L153">                    command.identity().relationType());</span>
+<span class="nc" id="L154">        } catch (IllegalArgumentException error) {</span>
+<span class="nc" id="L155">            throw new ProjectionContextMismatchException(</span>
+                    &quot;Unsupported projected relation type: &quot;
+<span class="nc" id="L157">                            + command.identity().relationType(),</span>
+                    error);
+<span class="fc" id="L159">        }</span>
+<span class="fc" id="L160">        return new ValidatedCommand(authoritativeCommitId, relationType);</span>
+    }
+
+    private AuthoritativeState readAuthoritativeState(
+            RepositoryContext context,
+            ValidatedCommand validated,
+            CommandResult commandResult,
+            RelationCommand command) {
+<span class="fc" id="L168">        String authoritativeCommitId = validated.authoritativeCommitId();</span>
+<span class="fc" id="L169">        RepositoryRead repository = gitReads.openRead(context);</span>
+<span class="fc" id="L170">        verifyAuthority(</span>
+                repository,
+                context,
+                commandResult,
+                command,
+                authoritativeCommitId);
+        String dsl;
+        try {
+<span class="fc" id="L178">            dsl = repository.dslAtCommit(authoritativeCommitId).orElse(null);</span>
+<span class="nc" id="L179">        } catch (IOException error) {</span>
+<span class="nc" id="L180">            throw new ProjectionSourceException(</span>
+                    &quot;Unable to read authoritative relation commit &quot;
+                            + authoritativeCommitId,
+                    error);
+<span class="fc" id="L184">        }</span>
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        if (dsl == null) {</span>
+<span class="fc" id="L186">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative relation commit is missing: &quot;
+                            + authoritativeCommitId);
+        }
+
+        DocumentAst document;
+        try {
+<span class="fc" id="L193">            document = parser.parse(dsl, &quot;architecture.taxdsl&quot;);</span>
+<span class="nc" id="L194">        } catch (RuntimeException error) {</span>
+<span class="nc" id="L195">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative relation commit contains invalid TaxDSL: &quot;
+                            + authoritativeCommitId,
+                    error);
+<span class="fc" id="L199">        }</span>
+
+<span class="fc" id="L201">        RelationIdentity identity = command.identity();</span>
+<span class="fc" id="L202">        List&lt;BlockAst&gt; matches = matchingRelationBlocks(document, identity);</span>
+<span class="pc bpc" id="L203" title="1 of 2 branches missed.">        if (matches.size() &gt; 1) {</span>
+<span class="nc" id="L204">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative commit contains duplicate relation &quot;
+<span class="nc" id="L206">                            + display(identity));</span>
+        }
+
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        if (command instanceof UpsertRelation) {</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            if (matches.isEmpty()) {</span>
+<span class="fc" id="L211">                throw new ProjectionSourceException(</span>
+                        &quot;Authoritative commit does not contain upserted relation &quot;
+<span class="fc" id="L213">                                + display(identity));</span>
+            }
+<span class="fc" id="L215">            BlockAst relation = matches.getFirst();</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (relation.getHeaderTokens().size() != 3) {</span>
+<span class="nc" id="L217">                throw new ProjectionSourceException(</span>
+                        &quot;Authoritative relation has a malformed header: &quot;
+<span class="nc" id="L219">                                + display(identity));</span>
+            }
+<span class="fc" id="L221">            return new AuthoritativeState(</span>
+                    true,
+<span class="fc" id="L223">                    uniqueProperty(relation, &quot;status&quot;, identity),</span>
+<span class="fc" id="L224">                    confidence(relation, identity),</span>
+<span class="fc" id="L225">                    uniqueProperty(relation, &quot;provenance&quot;, identity));</span>
+        }
+
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">        if (!matches.isEmpty()) {</span>
+<span class="nc" id="L229">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative commit still contains removed relation &quot;
+<span class="nc" id="L231">                            + display(identity));</span>
+        }
+<span class="fc" id="L233">        return new AuthoritativeState(false, null, null, null);</span>
+    }
+
+    private void verifyAuthority(
+            RepositoryRead repository,
+            RepositoryContext context,
+            CommandResult commandResult,
+            RelationCommand command,
+            String authoritativeCommitId) {
+        try {
+<span class="fc" id="L243">            String verifiedHead = repository.verifyExpectedHead(authoritativeCommitId);</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">            if (!authoritativeCommitId.equals(verifiedHead)) {</span>
+<span class="nc" id="L245">                throw new ProjectionSourceException(</span>
+                        &quot;Authoritative commit is not the selected branch head: &quot;
+                                + authoritativeCommitId);
+            }
+<span class="fc bfc" id="L249" title="All 2 branches covered.">            if (commandResult.commitCreated()) {</span>
+<span class="fc" id="L250">                verifyCreatedCommit(</span>
+                        repository,
+                        context,
+                        commandResult,
+                        command,
+                        authoritativeCommitId);
+            }
+<span class="fc" id="L257">        } catch (IOException error) {</span>
+<span class="fc" id="L258">            throw new ProjectionSourceException(</span>
+                    &quot;Unable to verify authoritative relation commit &quot;
+                            + authoritativeCommitId,
+                    error);
+<span class="fc" id="L262">        }</span>
+<span class="fc" id="L263">    }</span>
+
+    private static void verifyCreatedCommit(
+            RepositoryRead repository,
+            RepositoryContext context,
+            CommandResult commandResult,
+            RelationCommand command,
+            String authoritativeCommitId) throws IOException {
+<span class="fc" id="L271">        var commit = repository.commitMetadata(authoritativeCommitId);</span>
+<span class="fc" id="L272">        String expectedSummary = &quot;relation: &quot;</span>
+<span class="fc" id="L273">                + commandResult.changeKind().name().toLowerCase(Locale.ROOT)</span>
+<span class="fc" id="L274">                + &quot; &quot; + display(command.identity());</span>
+<span class="fc bfc" id="L275" title="All 2 branches covered.">        if (!expectedSummary.equals(commit.summary())) {</span>
+<span class="fc" id="L276">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative commit summary does not match the relation command&quot;);
+        }
+<span class="fc bfc" id="L279" title="All 2 branches covered.">        if (!context.username().equals(commit.author())) {</span>
+<span class="fc" id="L280">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative commit author does not match the repository context&quot;);
+        }
+<span class="fc" id="L283">        String expectedCausation = &quot;Causation-Id: &quot;</span>
+<span class="fc" id="L284">                + command.metadata().causationId();</span>
+<span class="fc" id="L285">        boolean causationPresent = commit.message().lines()</span>
+<span class="fc" id="L286">                .anyMatch(expectedCausation::equals);</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        if (!causationPresent) {</span>
+<span class="fc" id="L288">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative commit does not contain the command causation ID&quot;);
+        }
+
+<span class="fc" id="L292">        String previousHeadCommit = commandResult.previousHeadCommit();</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        if (previousHeadCommit == null) {</span>
+<span class="pc bpc" id="L294" title="1 of 2 branches missed.">            if (commit.parents().size() != 0) {</span>
+<span class="fc" id="L295">                throw new ProjectionSourceException(</span>
+                        &quot;Initial relation command commit unexpectedly has a parent&quot;);
+            }
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        } else if (commit.parents().size() != 1</span>
+<span class="fc bfc" id="L299" title="All 2 branches covered.">                || !previousHeadCommit.equals(commit.parents().getFirst())) {</span>
+<span class="fc" id="L300">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative commit parent does not match the command result&quot;);
+        }
+<span class="fc" id="L303">    }</span>
+
+    private static List&lt;BlockAst&gt; matchingRelationBlocks(
+            DocumentAst document,
+            RelationIdentity identity) {
+<span class="fc" id="L308">        List&lt;BlockAst&gt; matches = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L309" title="All 2 branches covered.">        for (BlockAst block : document.getBlocks()) {</span>
+<span class="fc" id="L310">            List&lt;String&gt; tokens = block.getHeaderTokens();</span>
+<span class="fc bfc" id="L311" title="All 2 branches covered.">            if (RELATION_KIND.equals(block.getKind())</span>
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">                    &amp;&amp; tokens.size() &gt;= 3</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">                    &amp;&amp; identity.sourceId().equals(tokens.get(0))</span>
+<span class="pc bpc" id="L314" title="1 of 2 branches missed.">                    &amp;&amp; identity.relationType().equals(tokens.get(1))</span>
+<span class="pc bpc" id="L315" title="1 of 2 branches missed.">                    &amp;&amp; identity.targetId().equals(tokens.get(2))) {</span>
+<span class="fc" id="L316">                matches.add(block);</span>
+            }
+<span class="fc" id="L318">        }</span>
+<span class="fc" id="L319">        return matches;</span>
+    }
+
+    private static String uniqueProperty(
+            BlockAst relation,
+            String property,
+            RelationIdentity identity) {
+<span class="fc" id="L326">        List&lt;String&gt; values = relation.propertyValues(property);</span>
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">        if (values.size() &gt; 1) {</span>
+<span class="nc" id="L328">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative relation has duplicate &quot; + property
+<span class="nc" id="L330">                            + &quot; properties: &quot; + display(identity));</span>
+        }
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">        return values.isEmpty() ? null : normalizeOptional(values.getFirst());</span>
+    }
+
+    private static Double confidence(
+            BlockAst relation,
+            RelationIdentity identity) {
+<span class="fc" id="L338">        String value = uniqueProperty(relation, &quot;confidence&quot;, identity);</span>
+<span class="pc bpc" id="L339" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L340">            return null;</span>
+        }
+        try {
+<span class="fc" id="L343">            double parsed = Double.parseDouble(value);</span>
+<span class="pc bpc" id="L344" title="3 of 6 branches missed.">            if (!Double.isFinite(parsed) || parsed &lt; 0.0 || parsed &gt; 1.0) {</span>
+<span class="nc" id="L345">                throw new NumberFormatException(&quot;outside [0,1]&quot;);</span>
+            }
+<span class="fc" id="L347">            return parsed;</span>
+<span class="nc" id="L348">        } catch (NumberFormatException error) {</span>
+<span class="nc" id="L349">            throw new ProjectionSourceException(</span>
+                    &quot;Authoritative relation has invalid confidence: &quot;
+<span class="nc" id="L351">                            + display(identity),</span>
+                    error);
+        }
+    }
+
+    private static String requireCommitId(String value, String field) {
+<span class="pc bpc" id="L357" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc" id="L358">            throw new ProjectionContextMismatchException(</span>
+                    field + &quot; must not be null&quot;);
+        }
+        try {
+<span class="fc" id="L362">            return WorkspaceDslReadPort.normalizeCommitId(value);</span>
+<span class="fc" id="L363">        } catch (IllegalArgumentException error) {</span>
+<span class="fc" id="L364">            throw new ProjectionContextMismatchException(</span>
+                    field + &quot; must be a full Git object ID&quot;,
+                    error);
+        }
+    }
+
+    private static String display(RelationIdentity identity) {
+<span class="fc" id="L371">        return identity.sourceId() + &quot; &quot;</span>
+<span class="fc" id="L372">                + identity.relationType() + &quot; &quot;</span>
+<span class="fc" id="L373">                + identity.targetId();</span>
+    }
+
+    private static String normalizeOptional(String value) {
+<span class="pc bpc" id="L377" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? null : value.strip();</span>
+    }
+
+<span class="fc" id="L380">    public enum ProjectionOutcome {</span>
+<span class="fc" id="L381">        CREATED,</span>
+<span class="fc" id="L382">        UPDATED,</span>
+<span class="fc" id="L383">        REPLAYED</span>
+    }
+
+    public record ProjectionResult(
+            ProjectionOutcome outcome,
+            String authoritativeCommitId,
+            boolean relationPresent) {
+<span class="fc" id="L390">        public ProjectionResult {</span>
+<span class="fc" id="L391">            outcome = Objects.requireNonNull(outcome, &quot;outcome&quot;);</span>
+<span class="fc" id="L392">            authoritativeCommitId = Objects.requireNonNull(</span>
+                    authoritativeCommitId, &quot;authoritativeCommitId&quot;);
+<span class="fc" id="L394">        }</span>
+    }
+
+<span class="fc" id="L397">    record ProjectionRequest(</span>
+            String repositoryId,
+            String workspaceId,
+            String branch,
+            String sourceCode,
+            RelationType relationType,
+            String targetCode,
+            boolean relationPresent,
+            String status,
+            Double confidence,
+            String provenance,
+            String authoritativeCommitId,
+            String causationId) {
+    }
+
+<span class="fc" id="L412">    private record ValidatedCommand(</span>
+            String authoritativeCommitId,
+            RelationType relationType) {
+    }
+
+<span class="fc" id="L417">    private record AuthoritativeState(</span>
+            boolean relationPresent,
+            String status,
+            Double confidence,
+            String provenance) {
+    }
+
+    public static final class ProjectionContextMismatchException
+            extends IllegalArgumentException {
+        public ProjectionContextMismatchException(String message) {
+<span class="fc" id="L427">            super(message);</span>
+<span class="fc" id="L428">        }</span>
+
+        public ProjectionContextMismatchException(
+                String message,
+                Throwable cause) {
+<span class="fc" id="L433">            super(message, cause);</span>
+<span class="fc" id="L434">        }</span>
+    }
+
+    public static final class ProjectionSourceException
+            extends IllegalStateException {
+        public ProjectionSourceException(String message) {
+<span class="fc" id="L440">            super(message);</span>
+<span class="fc" id="L441">        }</span>
+
+        public ProjectionSourceException(
+                String message,
+                Throwable cause) {
+<span class="fc" id="L446">            super(message, cause);</span>
+<span class="fc" id="L447">        }</span>
+    }
+
+    public static final class ProjectionConflictException
+            extends IllegalStateException {
+        public ProjectionConflictException(String message) {
+<span class="fc" id="L453">            super(message);</span>
+<span class="fc" id="L454">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

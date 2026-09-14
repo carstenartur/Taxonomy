@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OslcProviderController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.controller</a> &gt; <span class="el_source">OslcProviderController.java</span></div><h1>OslcProviderController.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.controller;
+
+import com.taxonomy.exchange.OslcRdf;
+import com.taxonomy.exchange.ExchangeFormatException;
+import com.taxonomy.exchange.ReqifExchangeCodec;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.interop.oslc.OslcProviderService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
+import org.springframework.web.util.UriComponentsBuilder;
+import java.io.IOException;
+import java.util.*;
+
+@RestController
+@RequestMapping(&quot;/oslc/scopes/{scope}&quot;)
+public class OslcProviderController {
+    private final OslcProviderService service;
+    private final WorkspaceResolver resolver;
+<span class="fc" id="L22">    public OslcProviderController(OslcProviderService service, WorkspaceResolver resolver) { this.service = service; this.resolver = resolver; }</span>
+<span class="fc" id="L23">    @GetMapping(&quot;/catalog&quot;) public ResponseEntity&lt;byte[]&gt; catalog(@PathVariable String scope, HttpServletRequest request) { return response(scope, request, (c, links) -&gt; service.catalog(c, links)); }</span>
+<span class="nc" id="L24">    @GetMapping(&quot;/projects/{project}/service&quot;) public ResponseEntity&lt;byte[]&gt; provider(@PathVariable String scope, @PathVariable long project, HttpServletRequest request) { return response(scope, request, (c, links) -&gt; service.service(c, project, links)); }</span>
+    @GetMapping(&quot;/projects/{project}/requirements&quot;) public ResponseEntity&lt;byte[]&gt; query(@PathVariable String scope, @PathVariable long project,
+            @RequestParam(defaultValue=&quot;0&quot;) int page, @RequestParam(name=&quot;oslc.pageSize&quot;, defaultValue=&quot;50&quot;) int size, HttpServletRequest request) {
+<span class="nc" id="L27">        return response(scope, request, (c, links) -&gt; service.query(c, project, page, size, links));</span>
+    }
+    @GetMapping(&quot;/projects/{project}/requirements/{requirement}&quot;) public ResponseEntity&lt;byte[]&gt; requirement(@PathVariable String scope, @PathVariable long project, @PathVariable long requirement, HttpServletRequest request) {
+<span class="nc" id="L30">        return response(scope, request, (c, links) -&gt; service.requirement(c, project, requirement, null, links));</span>
+    }
+    @GetMapping(&quot;/projects/{project}/requirements/{requirement}/versions/{version}&quot;) public ResponseEntity&lt;byte[]&gt; version(@PathVariable String scope, @PathVariable long project, @PathVariable long requirement, @PathVariable long version, HttpServletRequest request) {
+<span class="nc" id="L33">        return response(scope, request, (c, links) -&gt; service.requirement(c, project, requirement, version, links));</span>
+    }
+<span class="nc" id="L35">    @GetMapping(&quot;/shapes/requirement&quot;) public ResponseEntity&lt;byte[]&gt; shape(@PathVariable String scope, HttpServletRequest request) { return response(scope, request, (c, links) -&gt; service.shape(links)); }</span>
+    @GetMapping(&quot;/configurations/current&quot;) public ResponseEntity&lt;byte[]&gt; configuration(@PathVariable String scope, HttpServletRequest request) {
+<span class="nc" id="L37">        return response(scope, request, (c, links) -&gt; service.configuration(c, links));</span>
+    }
+    @GetMapping(&quot;/architecture/versions/{commit}&quot;) public ResponseEntity&lt;byte[]&gt; architecture(@PathVariable String scope, @PathVariable String commit, HttpServletRequest request) {
+<span class="nc" id="L40">        return response(scope, request, (c, links) -&gt; { try { return service.architectureVersion(c, commit, links); } catch (IOException failure) { throw new IntegrationProblem(&quot;VERSION_UNAVAILABLE&quot;, 503, &quot;Architecture version is temporarily unavailable&quot;); } });</span>
+    }
+    private interface Resource { OslcRdf read(com.taxonomy.workspace.service.RepositoryContext context, OslcProviderService.Links links); }
+    private ResponseEntity&lt;byte[]&gt; response(String scope, HttpServletRequest request, Resource resource) {
+<span class="fc" id="L44">        var context = resolver.resolveCurrentRepositoryContext(); service.authorize(context, scope);</span>
+<span class="pc bpc" id="L45" title="3 of 4 branches missed.">        if (request.getHeader(&quot;OSLC-Core-Version&quot;) != null &amp;&amp; !request.getHeader(&quot;OSLC-Core-Version&quot;).equals(&quot;3.0&quot;)) throw new IllegalArgumentException(&quot;Unsupported OSLC Core version&quot;);</span>
+        // Spring Security's form token is transport metadata, never an OSLC query or resource field.
+<span class="fc bfc" id="L47" title="All 4 branches covered.">        for (String name : request.getParameterMap().keySet()) if (!Set.of(&quot;repositoryId&quot;, &quot;workspaceId&quot;, &quot;branch&quot;, &quot;page&quot;, &quot;oslc.pageSize&quot;, &quot;oslc.paging&quot;, &quot;_csrf&quot;).contains(name))</span>
+<span class="fc" id="L48">            throw new IllegalArgumentException(&quot;OSLC query option is outside the declared read-only profile&quot;);</span>
+<span class="fc" id="L49">        String base = ServletUriComponentsBuilder.fromCurrentContextPath().build().toUriString() + &quot;/oslc/scopes/&quot; + scope;</span>
+<span class="fc" id="L50">        OslcProviderService.Links links = path -&gt; UriComponentsBuilder.fromUriString(base + path)</span>
+<span class="fc" id="L51">                .queryParam(&quot;repositoryId&quot;, context.repositoryId()).queryParam(&quot;workspaceId&quot;, context.workspaceId()).queryParam(&quot;branch&quot;, context.branch()).build().encode().toUriString();</span>
+<span class="fc" id="L52">        String configuration = links.uri(&quot;/configurations/current&quot;);</span>
+<span class="fc bfc" id="L53" title="All 4 branches covered.">        if (request.getHeader(&quot;Configuration-Context&quot;) != null &amp;&amp; !configuration.equals(request.getHeader(&quot;Configuration-Context&quot;)))</span>
+<span class="fc" id="L54">            throw new IntegrationProblem(&quot;CONFIGURATION_UNAVAILABLE&quot;, 404, &quot;Requested configuration is not available in this scope&quot;);</span>
+<span class="fc" id="L55">        String type = negotiate(request.getHeader(HttpHeaders.ACCEPT)); OslcRdf graph = resource.read(context, links);</span>
+<span class="pc bpc" id="L56" title="2 of 3 branches missed.">        byte[] body = switch (type) { case &quot;text/turtle&quot; -&gt; graph.turtle(); case &quot;application/ld+json&quot; -&gt; graph.jsonLd(); default -&gt; graph.xml(); };</span>
+<span class="fc" id="L57">        String etag = &quot;\&quot;&quot; + ReqifExchangeCodec.digest(body) + &quot;\&quot;&quot;;</span>
+<span class="fc bfc" id="L58" title="All 4 branches covered.">        if (request.getHeader(HttpHeaders.IF_MATCH) != null &amp;&amp; !matches(request.getHeader(HttpHeaders.IF_MATCH), etag, false))</span>
+<span class="fc" id="L59">            throw new IntegrationProblem(&quot;RESOURCE_VERSION_CHANGED&quot;, 412, &quot;Resource no longer has the expected version&quot;);</span>
+<span class="fc" id="L60">        boolean unchanged = matches(request.getHeader(HttpHeaders.IF_NONE_MATCH), etag, true);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        var response = ResponseEntity.status(unchanged ? HttpStatus.NOT_MODIFIED : HttpStatus.OK)</span>
+<span class="fc" id="L62">                .header(HttpHeaders.CONTENT_TYPE, type).header(&quot;OSLC-Core-Version&quot;, &quot;3.0&quot;).header(HttpHeaders.ETAG, etag)</span>
+<span class="fc" id="L63">                .header(&quot;Configuration-Context&quot;, configuration)</span>
+<span class="fc" id="L64">                .header(HttpHeaders.VARY, &quot;Accept, Authorization, Configuration-Context&quot;).header(HttpHeaders.CACHE_CONTROL, &quot;private, no-cache&quot;).header(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        return response.body(unchanged ? null : body);</span>
+    }
+    static boolean matches(String condition, String etag, boolean weak) {
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (condition == null) return false;</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        for (String token : condition.split(&quot;,&quot;)) {</span>
+<span class="fc" id="L70">            String value = token.strip();</span>
+<span class="fc bfc" id="L71" title="All 4 branches covered.">            if (weak &amp;&amp; value.startsWith(&quot;W/&quot;)) value = value.substring(2);</span>
+<span class="pc bpc" id="L72" title="1 of 4 branches missed.">            if (value.equals(&quot;*&quot;) || value.equals(etag)) return true;</span>
+        }
+<span class="fc" id="L74">        return false;</span>
+    }
+    public static String negotiate(String accept) {
+<span class="fc bfc" id="L77" title="All 2 branches covered.">        List&lt;MediaType&gt; requested = accept == null ? List.of(MediaType.ALL) : MediaType.parseMediaTypes(accept);</span>
+<span class="fc" id="L78">        String best = null; double quality = 0;</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        for (String supported : List.of(&quot;application/rdf+xml&quot;, &quot;text/turtle&quot;, &quot;application/ld+json&quot;)) {</span>
+<span class="fc" id="L80">            MediaType representation = MediaType.parseMediaType(supported), match = null;</span>
+<span class="fc" id="L81">            int specificity = -1;</span>
+<span class="fc bfc" id="L82" title="All 4 branches covered.">            for (MediaType candidate : requested) if (candidate.isCompatibleWith(representation)) {</span>
+<span class="pc bpc" id="L83" title="1 of 4 branches missed.">                int rank = candidate.isWildcardType() ? 0 : candidate.isWildcardSubtype() ? 1 : 2;</span>
+<span class="pc bpc" id="L84" title="5 of 8 branches missed.">                if (rank &gt; specificity || rank == specificity &amp;&amp; match != null &amp;&amp; candidate.getQualityValue() &gt; match.getQualityValue()) {</span>
+<span class="fc" id="L85">                    specificity = rank; match = candidate;</span>
+                }
+            }
+<span class="fc bfc" id="L88" title="All 4 branches covered.">            if (match != null &amp;&amp; match.getQualityValue() &gt; quality) { quality = match.getQualityValue(); best = supported; }</span>
+<span class="fc" id="L89">        }</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (best != null) return best;</span>
+<span class="fc" id="L91">        throw new IntegrationProblem(&quot;UNSUPPORTED_REPRESENTATION&quot;, 406, &quot;Supported representations are RDF/XML, Turtle and JSON-LD&quot;);</span>
+    }
+    // Failures use bounded JSON regardless of the requested RDF representation.
+<span class="fc" id="L94">    @ExceptionHandler(IntegrationProblem.class) public ResponseEntity&lt;Map&lt;String, String&gt;&gt; problem(IntegrationProblem failure) { return ResponseEntity.status(failure.status()).contentType(MediaType.APPLICATION_JSON).body(Map.of(&quot;code&quot;, failure.code(), &quot;message&quot;, failure.getMessage())); }</span>
+    @ExceptionHandler(ExchangeFormatException.class) public ResponseEntity&lt;Map&lt;String, String&gt;&gt; format(ExchangeFormatException failure) {
+<span class="fc" id="L96">        return ResponseEntity.unprocessableContent().contentType(MediaType.APPLICATION_JSON)</span>
+<span class="fc" id="L97">                .body(Map.of(&quot;code&quot;, failure.code(), &quot;message&quot;, failure.getMessage()));</span>
+    }
+<span class="fc" id="L99">    @ExceptionHandler(IllegalArgumentException.class) public ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid() { return ResponseEntity.badRequest().contentType(MediaType.APPLICATION_JSON).body(Map.of(&quot;code&quot;, &quot;UNSUPPORTED_OSLC_REQUEST&quot;, &quot;message&quot;, &quot;Request is outside the declared OSLC profile&quot;)); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

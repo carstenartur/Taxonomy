@@ -1,0 +1,1276 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleReportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.decision</a> &gt; <span class="el_source">DecisionRationaleReportService.java</span></div><h1>DecisionRationaleReportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.decision;
+
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ChildDecision;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.DecisionChapter;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.Disposition;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ExecutiveSummary;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.LeafCandidate;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.PathStep;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ReasonSource;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportStatus;
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisScoreDetail;
+import com.taxonomy.dto.ProductCoverageGap;
+import com.taxonomy.dto.TaxonomyDataFingerprint;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HexFormat;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.stream.Collectors;
+
+/**
+ * Builds a traceable report from one completed or partially completed hierarchy analysis.
+ *
+ * &lt;p&gt;The service does not call an LLM while the report is generated. It reuses the original
+ * AI reasons captured during scoring, marks deterministic fallback text explicitly, and keeps
+ * all numeric values and hierarchy links immutable. Consequently, regenerating a report from
+ * the same analysis snapshot and taxonomy data produces the same decision content.&lt;/p&gt;
+ */
+@Service
+public class DecisionRationaleReportService {
+
+<span class="fc" id="L53">    private static final Comparator&lt;TaxonomyNode&gt; NODE_ORDER = Comparator</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            .comparing((TaxonomyNode node) -&gt; node.getSortOrder() == null</span>
+<span class="fc" id="L55">                    ? Integer.MAX_VALUE : node.getSortOrder())</span>
+<span class="fc" id="L56">            .thenComparing(TaxonomyNode::getCode, Comparator.nullsLast(String::compareTo));</span>
+
+    private final TaxonomyService taxonomyService;
+    private final TaxonomyCatalogueMetadataService catalogueMetadataService;
+    private final DecisionReportBuildMetadataService buildMetadataService;
+    private final String reportTimeZone;
+
+    public DecisionRationaleReportService(
+            TaxonomyService taxonomyService,
+            TaxonomyCatalogueMetadataService catalogueMetadataService,
+            DecisionReportBuildMetadataService buildMetadataService,
+<span class="fc" id="L67">            @Value(&quot;${taxonomy.report.time-zone:Europe/Berlin}&quot;) String reportTimeZone) {</span>
+<span class="fc" id="L68">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L69">        this.catalogueMetadataService = catalogueMetadataService;</span>
+<span class="fc" id="L70">        this.buildMetadataService = buildMetadataService;</span>
+<span class="fc" id="L71">        this.reportTimeZone = normalized(reportTimeZone, &quot;Europe/Berlin&quot;);</span>
+<span class="fc" id="L72">    }</span>
+
+    /** Input captured from the analysis session or an immutable portfolio snapshot. */
+    public record DecisionAnalysisInput(
+  String businessText,
+  Map&lt;String, Integer&gt; scores,
+  Map&lt;String, String&gt; reasons,
+  String provider,
+  String analysisStatus,
+  List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+  List&lt;ProductCoverageGap&gt; productCoverageGaps,
+  List&lt;TaxonomyNodeDto&gt; taxonomyTree,
+  AnalysisSnapshotProvenance snapshotProvenance,
+  Map&lt;String, AnalysisScoreDetail&gt; scoreDetails) {
+
+<span class="fc" id="L87">        public DecisionAnalysisInput {</span>
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">  scores = scores == null ? Map.of() : Map.copyOf(scores);</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">  reasons = reasons == null ? Map.of() : Map.copyOf(reasons);</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">  discrepancies = discrepancies == null ? List.of() : List.copyOf(discrepancies);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">  productCoverageGaps = productCoverageGaps == null</span>
+<span class="fc" id="L92">          ? List.of() : List.copyOf(productCoverageGaps);</span>
+<span class="pc bpc" id="L93" title="1 of 2 branches missed.">  taxonomyTree = taxonomyTree == null ? List.of() : List.copyOf(taxonomyTree);</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">  scoreDetails = scoreDetails == null ? Map.of() : Map.copyOf(scoreDetails);</span>
+<span class="fc" id="L95">        }</span>
+
+        /** Backward-compatible full input without typed score evidence. */
+        public DecisionAnalysisInput(
+      String businessText,
+      Map&lt;String, Integer&gt; scores,
+      Map&lt;String, String&gt; reasons,
+      String provider,
+      String analysisStatus,
+      List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+      List&lt;ProductCoverageGap&gt; productCoverageGaps,
+      List&lt;TaxonomyNodeDto&gt; taxonomyTree,
+      AnalysisSnapshotProvenance snapshotProvenance) {
+<span class="nc" id="L108">  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,</span>
+<span class="nc" id="L109">          productCoverageGaps, taxonomyTree, snapshotProvenance, Map.of());</span>
+<span class="nc" id="L110">        }</span>
+
+        /** Backward-compatible ad-hoc analysis input using the currently loaded hierarchy. */
+        public DecisionAnalysisInput(
+      String businessText,
+      Map&lt;String, Integer&gt; scores,
+      Map&lt;String, String&gt; reasons,
+      String provider,
+      String analysisStatus,
+      List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="fc" id="L120">  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,</span>
+<span class="fc" id="L121">          List.of(), List.of(), null, Map.of());</span>
+<span class="fc" id="L122">        }</span>
+
+        /** Ad-hoc analysis input including explicit concrete-product coverage evidence. */
+        public DecisionAnalysisInput(
+      String businessText,
+      Map&lt;String, Integer&gt; scores,
+      Map&lt;String, String&gt; reasons,
+      String provider,
+      String analysisStatus,
+      List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+      List&lt;ProductCoverageGap&gt; productCoverageGaps) {
+<span class="fc" id="L133">  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,</span>
+<span class="fc" id="L134">          productCoverageGaps, List.of(), null, Map.of());</span>
+<span class="fc" id="L135">        }</span>
+
+        /** Backward-compatible immutable-snapshot input without product-gap evidence. */
+        public DecisionAnalysisInput(
+      String businessText,
+      Map&lt;String, Integer&gt; scores,
+      Map&lt;String, String&gt; reasons,
+      String provider,
+      String analysisStatus,
+      List&lt;TaxonomyDiscrepancy&gt; discrepancies,
+      List&lt;TaxonomyNodeDto&gt; taxonomyTree,
+      AnalysisSnapshotProvenance snapshotProvenance) {
+<span class="fc" id="L147">  this(businessText, scores, reasons, provider, analysisStatus, discrepancies,</span>
+<span class="fc" id="L148">          List.of(), taxonomyTree, snapshotProvenance, Map.of());</span>
+<span class="fc" id="L149">        }</span>
+    }
+
+    /** Immutable evidence copied from a persisted requirement-analysis snapshot. */
+<span class="fc" id="L153">    public record AnalysisSnapshotProvenance(</span>
+            String snapshotId,
+            Long projectId,
+            Long requirementId,
+            Long requirementVersionId,
+            Integer requirementVersionNumber,
+            Instant createdAt,
+            String createdBy,
+            String modelName,
+            String taxonomyFingerprintSha256,
+            String promptFingerprintSha256) {
+    }
+
+    @Transactional(readOnly = true)
+    public DecisionRationaleReport generate(
+            DecisionAnalysisInput input,
+            WorkspaceContext workspaceContext,
+            ViewContext viewContext,
+            Locale locale) {
+<span class="fc" id="L172">        Objects.requireNonNull(input, &quot;input must not be null&quot;);</span>
+<span class="fc" id="L173">        Objects.requireNonNull(workspaceContext, &quot;workspaceContext must not be null&quot;);</span>
+
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">        Locale effectiveLocale = locale == null ? Locale.ENGLISH : locale;</span>
+<span class="fc" id="L176">        boolean german = &quot;de&quot;.equalsIgnoreCase(effectiveLocale.getLanguage());</span>
+<span class="fc" id="L177">        Map&lt;String, Integer&gt; scores = sanitizeScores(input.scores());</span>
+<span class="fc" id="L178">        Map&lt;String, String&gt; reasons = sanitizeReasons(input.reasons());</span>
+
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        HierarchyData hierarchy = input.taxonomyTree().isEmpty()</span>
+<span class="fc" id="L181">                ? currentHierarchy()</span>
+<span class="fc" id="L182">                : hierarchyFromSnapshot(input.taxonomyTree());</span>
+<span class="fc" id="L183">        List&lt;TaxonomyNode&gt; roots = hierarchy.roots();</span>
+<span class="fc" id="L184">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap = hierarchy.childrenMap();</span>
+<span class="fc" id="L185">        Map&lt;String, TaxonomyNode&gt; nodesByCode = indexNodes(roots, childrenMap);</span>
+<span class="fc" id="L186">        List&lt;TaxonomyNode&gt; hierarchyOrder = preOrder(roots, childrenMap);</span>
+<span class="fc" id="L187">        List&lt;ProductCoverageGap&gt; productCoverageGaps = validateProductCoverageGaps(</span>
+<span class="fc" id="L188">                input.productCoverageGaps(), nodesByCode, childrenMap, scores);</span>
+
+<span class="fc" id="L190">        Completeness completeness = assessCompleteness(</span>
+                roots, hierarchyOrder, childrenMap, scores, productCoverageGaps);
+<span class="fc" id="L192">        List&lt;DecisionChapter&gt; chapters = buildChapters(</span>
+                hierarchyOrder, childrenMap, scores, reasons, german);
+<span class="fc" id="L194">        List&lt;LeafCandidate&gt; leaves = findLeadingLeaves(</span>
+                hierarchyOrder, childrenMap, scores, reasons, german);
+<span class="fc bfc" id="L196" title="All 2 branches covered.">        LeafCandidate leadingLeaf = leaves.isEmpty() ? null : leaves.get(0);</span>
+<span class="fc bfc" id="L197" title="All 2 branches covered.">        List&lt;PathStep&gt; leadingPath = leadingLeaf == null</span>
+<span class="fc" id="L198">                ? List.of()</span>
+<span class="fc" id="L199">                : buildPath(leadingLeaf.code(), nodesByCode, scores, reasons, german);</span>
+
+<span class="fc" id="L201">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;(buildWarnings(</span>
+                input, viewContext, completeness, scores, reasons, leaves,
+<span class="fc" id="L203">                nodesByCode.keySet(), childrenMap, productCoverageGaps, german));</span>
+<span class="fc" id="L204">        Instant generatedAt = Instant.now();</span>
+
+<span class="fc" id="L206">        TaxonomyCatalogueMetadataService.CatalogueMetadata catalogue =</span>
+<span class="fc" id="L207">                catalogueMetadataService.getMetadata();</span>
+<span class="fc" id="L208">        DecisionReportBuildMetadataService.BuildMetadata buildMetadata =</span>
+<span class="fc" id="L209">                buildMetadataService.current();</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        List&lt;TaxonomyNodeDto&gt; fingerprintTree = input.taxonomyTree().isEmpty()</span>
+<span class="fc" id="L211">                ? taxonomyService.toFingerprintTree(nodesByCode.values()) : input.taxonomyTree();</span>
+<span class="fc" id="L212">        String actualDataFingerprint = TaxonomyDataFingerprint.sha256(fingerprintTree);</span>
+<span class="fc" id="L213">        String analysisSnapshotFingerprint = fingerprintAnalysis(</span>
+                input, scores, reasons, productCoverageGaps);
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        if (input.snapshotProvenance() != null</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">                &amp;&amp; input.snapshotProvenance().taxonomyFingerprintSha256() != null</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">                &amp;&amp; !input.snapshotProvenance().taxonomyFingerprintSha256().isBlank()</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">                &amp;&amp; !TaxonomyDataFingerprint.matchesRecorded(</span>
+<span class="fc" id="L219">                        input.snapshotProvenance().taxonomyFingerprintSha256(),</span>
+                        fingerprintTree)) {
+<span class="nc bnc" id="L221" title="All 2 branches missed.">            warnings.add(german</span>
+<span class="nc" id="L222">                    ? &quot;Der im Analysesnapshot gespeicherte Taxonomie-Fingerabdruck stimmt nicht mit der eingefrorenen Hierarchie im Analyse-Payload überein. Der Bericht bleibt nachvollziehbar, muss aber fachlich und technisch geprüft werden.&quot;</span>
+<span class="nc" id="L223">                    : &quot;The taxonomy fingerprint stored in the analysis snapshot does not match the frozen hierarchy in the analysis payload. The report remains traceable but requires technical and substantive review.&quot;);</span>
+        }
+
+<span class="fc" id="L226">        ReportStatus reportStatus = determineStatus(</span>
+<span class="fc" id="L227">                completeness.complete(), input.analysisStatus(), leaves, warnings,</span>
+<span class="fc" id="L228">                input.discrepancies());</span>
+
+<span class="fc" id="L230">        int suppliedReasonCount = (int) reasons.values().stream()</span>
+<span class="pc bpc" id="L231" title="2 of 4 branches missed.">                .filter(reason -&gt; reason != null &amp;&amp; !reason.isBlank())</span>
+<span class="fc" id="L232">                .count();</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        int positiveNodeCount = (int) scores.values().stream().filter(value -&gt; value &gt; 0).count();</span>
+<span class="fc" id="L234">        String branch = firstNonBlank(</span>
+<span class="fc bfc" id="L235" title="All 2 branches covered.">                viewContext != null ? viewContext.basedOnBranch() : null,</span>
+<span class="fc" id="L236">                workspaceContext.currentBranch(),</span>
+                &quot;unknown&quot;);
+<span class="fc bfc" id="L238" title="All 2 branches covered.">        String basedOnCommit = viewContext != null</span>
+<span class="fc" id="L239">                ? normalized(viewContext.basedOnCommit(), &quot;unknown&quot;) : &quot;unknown&quot;;</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        boolean immutableSnapshot = !input.taxonomyTree().isEmpty();</span>
+<span class="fc" id="L241">        String recordedTaxonomyFingerprint = snapshotValue(</span>
+                input, AnalysisSnapshotProvenance::taxonomyFingerprintSha256, &quot;unknown&quot;);
+<span class="fc bfc" id="L243" title="All 2 branches covered.">        String catalogueFile = immutableSnapshot</span>
+                ? &quot;analysisPayload.tree · snapshot &quot;
+<span class="fc" id="L245">                        + snapshotValue(input, AnalysisSnapshotProvenance::snapshotId, &quot;unknown&quot;)</span>
+<span class="fc" id="L246">                : catalogue.filename();</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">        String dataVersion = immutableSnapshot</span>
+<span class="fc" id="L248">                ? &quot;snapshot fingerprint &quot; + abbreviateHash(recordedTaxonomyFingerprint)</span>
+<span class="fc" id="L249">                : catalogue.version();</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        String catalogueResourceFingerprint = immutableSnapshot</span>
+<span class="fc" id="L251">                ? &quot;not persisted separately in the historical snapshot&quot;</span>
+<span class="fc" id="L252">                : catalogue.sha256();</span>
+<span class="fc bfc" id="L253" title="All 2 branches covered.">        String dataSource = immutableSnapshot</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">                ? (german ? &quot;Unveränderlicher Anforderungs-Analysesnapshot&quot;</span>
+<span class="fc" id="L255">                        : &quot;Immutable requirement analysis snapshot&quot;)</span>
+<span class="fc" id="L256">                : catalogue.source();</span>
+
+<span class="fc" id="L258">        ReportMetadata metadata = new ReportMetadata(</span>
+                generatedAt,
+<span class="fc" id="L260">                normalized(workspaceContext.username(), &quot;system&quot;),</span>
+<span class="fc" id="L261">                buildMetadata.version(),</span>
+<span class="fc" id="L262">                buildMetadata.commit(),</span>
+                catalogueFile,
+                dataVersion,
+                catalogueResourceFingerprint,
+                actualDataFingerprint,
+                analysisSnapshotFingerprint,
+                dataSource,
+<span class="fc" id="L269">                nodesByCode.size(),</span>
+<span class="fc" id="L270">                roots.size(),</span>
+<span class="fc" id="L271">                workspaceContext.repositoryId(),</span>
+<span class="fc bfc" id="L272" title="All 2 branches covered.">                normalized(workspaceContext.workspaceId(), german ? &quot;Zentral&quot; : &quot;Central&quot;),</span>
+                branch,
+                basedOnCommit,
+<span class="fc bfc" id="L275" title="All 4 branches covered.">                viewContext != null ? viewContext.commitTimestamp() : null,</span>
+<span class="pc bpc" id="L276" title="1 of 4 branches missed.">                viewContext != null &amp;&amp; viewContext.projectionStale(),</span>
+<span class="pc bpc" id="L277" title="1 of 2 branches missed.">                viewContext != null &amp;&amp; viewContext.indexStale(),</span>
+<span class="fc" id="L278">                normalized(input.provider(), &quot;unknown&quot;),</span>
+<span class="fc" id="L279">                normalized(input.analysisStatus(), &quot;UNKNOWN&quot;),</span>
+<span class="fc" id="L280">                snapshotValue(input, AnalysisSnapshotProvenance::modelName, &quot;unknown&quot;),</span>
+<span class="fc" id="L281">                snapshotValue(input, AnalysisSnapshotProvenance::snapshotId, &quot;ad-hoc&quot;),</span>
+<span class="fc bfc" id="L282" title="All 2 branches covered.">                input.snapshotProvenance() != null ? input.snapshotProvenance().projectId() : null,</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">                input.snapshotProvenance() != null ? input.snapshotProvenance().requirementId() : null,</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">                input.snapshotProvenance() != null ? input.snapshotProvenance().requirementVersionId() : null,</span>
+<span class="fc bfc" id="L285" title="All 2 branches covered.">                input.snapshotProvenance() != null ? input.snapshotProvenance().requirementVersionNumber() : null,</span>
+<span class="fc bfc" id="L286" title="All 2 branches covered.">                input.snapshotProvenance() != null ? input.snapshotProvenance().createdAt() : null,</span>
+<span class="fc" id="L287">                snapshotValue(input, AnalysisSnapshotProvenance::createdBy, &quot;unknown&quot;),</span>
+                recordedTaxonomyFingerprint,
+<span class="fc" id="L289">                snapshotValue(input, AnalysisSnapshotProvenance::promptFingerprintSha256, &quot;unknown&quot;),</span>
+                immutableSnapshot,
+                reportTimeZone,
+                suppliedReasonCount,
+<span class="fc" id="L293">                scores.size(),</span>
+                positiveNodeCount,
+<span class="fc" id="L295">                completeness.percent());</span>
+
+<span class="fc" id="L297">        ExecutiveSummary executiveSummary = new ExecutiveSummary(</span>
+                leadingLeaf,
+                leadingPath,
+<span class="fc" id="L300">                conciseConclusion(leadingLeaf, leadingPath, german),</span>
+<span class="fc" id="L301">                methodologyNote(german));</span>
+
+<span class="fc" id="L303">        return new DecisionRationaleReport(</span>
+<span class="fc bfc" id="L304" title="All 2 branches covered.">                german ? &quot;Hierarchischer Entscheidungs- und Begründungsbericht&quot;</span>
+<span class="fc" id="L305">                        : &quot;Hierarchical Decision Rationale Report&quot;,</span>
+<span class="fc" id="L306">                effectiveLocale.toLanguageTag(),</span>
+<span class="fc" id="L307">                normalized(input.businessText(), &quot;&quot;),</span>
+                reportStatus,
+                metadata,
+                executiveSummary,
+                chapters,
+                leaves,
+                warnings,
+                productCoverageGaps,
+<span class="fc" id="L315">                input.discrepancies(),</span>
+                viewContext);
+    }
+
+    private HierarchyData currentHierarchy() {
+<span class="fc" id="L320">        List&lt;TaxonomyNode&gt; roots = new ArrayList&lt;&gt;(taxonomyService.getRootNodes());</span>
+<span class="fc" id="L321">        roots.sort(NODE_ORDER);</span>
+<span class="fc" id="L322">        return new HierarchyData(</span>
+<span class="fc" id="L323">                List.copyOf(roots),</span>
+<span class="fc" id="L324">                Map.copyOf(copyAndSort(taxonomyService.getChildrenMap())));</span>
+    }
+
+    /**
+     * Reconstructs transient domain nodes from the hierarchy frozen inside an immutable
+     * {@link com.taxonomy.dto.AnalysisResult}. No current catalogue row is consulted.
+     */
+    private HierarchyData hierarchyFromSnapshot(List&lt;TaxonomyNodeDto&gt; tree) {
+<span class="pc bpc" id="L332" title="2 of 4 branches missed.">        if (tree == null || tree.isEmpty()) {</span>
+<span class="nc" id="L333">            throw new IllegalArgumentException(</span>
+                    &quot;The analysis snapshot does not contain a frozen taxonomy hierarchy&quot;);
+        }
+<span class="fc" id="L336">        List&lt;TaxonomyNode&gt; roots = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L337">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L338">        Set&lt;String&gt; codes = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L339" title="All 2 branches covered.">        for (TaxonomyNodeDto rootDto : tree) {</span>
+<span class="fc" id="L340">            TaxonomyNode root = copySnapshotNode(rootDto, null, childrenMap, codes);</span>
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">            if (root != null) {</span>
+<span class="fc" id="L342">                roots.add(root);</span>
+            }
+<span class="fc" id="L344">        }</span>
+<span class="fc" id="L345">        roots.sort(NODE_ORDER);</span>
+<span class="fc" id="L346">        return new HierarchyData(List.copyOf(roots), immutableChildrenMap(childrenMap));</span>
+    }
+
+    private TaxonomyNode copySnapshotNode(
+            TaxonomyNodeDto dto,
+            String inheritedParentCode,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+            Set&lt;String&gt; codes) {
+<span class="pc bpc" id="L354" title="3 of 6 branches missed.">        if (dto == null || dto.getCode() == null || dto.getCode().isBlank()) {</span>
+<span class="nc" id="L355">            return null;</span>
+        }
+<span class="fc" id="L357">        String code = dto.getCode().strip();</span>
+<span class="pc bpc" id="L358" title="1 of 2 branches missed.">        if (!codes.add(code)) {</span>
+<span class="nc" id="L359">            throw new IllegalArgumentException(</span>
+                    &quot;The frozen taxonomy hierarchy contains duplicate node code &quot; + code);
+        }
+<span class="fc" id="L362">        TaxonomyNode node = new TaxonomyNode();</span>
+<span class="fc" id="L363">        node.setCode(code);</span>
+<span class="fc" id="L364">        node.setUuid(dto.getUuid());</span>
+<span class="fc" id="L365">        node.setNameEn(dto.getNameEn());</span>
+<span class="fc" id="L366">        node.setNameDe(dto.getNameDe());</span>
+<span class="fc" id="L367">        node.setDescriptionEn(dto.getDescriptionEn());</span>
+<span class="fc" id="L368">        node.setDescriptionDe(dto.getDescriptionDe());</span>
+<span class="fc" id="L369">        node.setParentCode(firstNonBlank(dto.getParentCode(), inheritedParentCode));</span>
+<span class="fc" id="L370">        node.setTaxonomyRoot(dto.getTaxonomyRoot());</span>
+<span class="fc" id="L371">        node.setLevel(dto.getLevel());</span>
+<span class="fc" id="L372">        node.setDataset(dto.getDataset());</span>
+<span class="fc" id="L373">        node.setExternalId(dto.getExternalId());</span>
+<span class="fc" id="L374">        node.setSource(dto.getSource());</span>
+<span class="fc" id="L375">        node.setReference(dto.getReference());</span>
+<span class="fc" id="L376">        node.setSortOrder(dto.getSortOrder());</span>
+<span class="fc" id="L377">        node.setState(dto.getState());</span>
+
+<span class="fc" id="L379">        List&lt;TaxonomyNode&gt; children = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L380" title="1 of 4 branches missed.">        for (TaxonomyNodeDto childDto : dto.getChildren() == null</span>
+<span class="pc" id="L381">                ? List.&lt;TaxonomyNodeDto&gt;of() : dto.getChildren()) {</span>
+<span class="fc" id="L382">            TaxonomyNode child = copySnapshotNode(childDto, code, childrenMap, codes);</span>
+<span class="pc bpc" id="L383" title="1 of 2 branches missed.">            if (child != null) {</span>
+<span class="fc" id="L384">                children.add(child);</span>
+            }
+<span class="fc" id="L386">        }</span>
+<span class="fc" id="L387">        children.sort(NODE_ORDER);</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">        if (!children.isEmpty()) {</span>
+<span class="fc" id="L389">            childrenMap.put(code, List.copyOf(children));</span>
+        }
+<span class="fc" id="L391">        return node;</span>
+    }
+
+    private Map&lt;String, List&lt;TaxonomyNode&gt;&gt; immutableChildrenMap(
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; source) {
+<span class="fc" id="L396">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; immutable = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L397">        source.forEach((code, children) -&gt; immutable.put(code, List.copyOf(children)));</span>
+<span class="fc" id="L398">        return Map.copyOf(immutable);</span>
+    }
+
+    private String snapshotValue(
+            DecisionAnalysisInput input,
+            java.util.function.Function&lt;AnalysisSnapshotProvenance, String&gt; accessor,
+            String fallback) {
+<span class="fc bfc" id="L405" title="All 2 branches covered.">        if (input.snapshotProvenance() == null) {</span>
+<span class="fc" id="L406">            return fallback;</span>
+        }
+<span class="fc" id="L408">        return normalized(accessor.apply(input.snapshotProvenance()), fallback);</span>
+    }
+
+    private Map&lt;String, Integer&gt; sanitizeScores(Map&lt;String, Integer&gt; source) {
+<span class="fc" id="L412">        Map&lt;String, Integer&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L413" title="1 of 2 branches missed.">        if (source == null) {</span>
+<span class="nc" id="L414">            return result;</span>
+        }
+<span class="fc" id="L416">        source.forEach((code, value) -&gt; {</span>
+<span class="pc bpc" id="L417" title="3 of 6 branches missed.">            if (code == null || code.isBlank() || value == null) {</span>
+<span class="nc" id="L418">                return;</span>
+            }
+<span class="pc bpc" id="L420" title="2 of 4 branches missed.">            if (value &lt; 0 || value &gt; 100) {</span>
+<span class="nc" id="L421">                throw new IllegalArgumentException(</span>
+                        &quot;Score for node &quot; + code + &quot; must be between 0 and 100&quot;);
+            }
+<span class="fc" id="L424">            result.put(code.strip(), value);</span>
+<span class="fc" id="L425">        });</span>
+<span class="fc" id="L426">        return result;</span>
+    }
+
+    private Map&lt;String, String&gt; sanitizeReasons(Map&lt;String, String&gt; source) {
+<span class="fc" id="L430">        Map&lt;String, String&gt; result = new HashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L431" title="1 of 2 branches missed.">        if (source == null) {</span>
+<span class="nc" id="L432">            return result;</span>
+        }
+<span class="fc" id="L434">        source.forEach((code, reason) -&gt; {</span>
+<span class="pc bpc" id="L435" title="4 of 8 branches missed.">            if (code != null &amp;&amp; !code.isBlank() &amp;&amp; reason != null &amp;&amp; !reason.isBlank()) {</span>
+<span class="fc" id="L436">                result.put(code.strip(), reason.strip());</span>
+            }
+<span class="fc" id="L438">        });</span>
+<span class="fc" id="L439">        return result;</span>
+    }
+
+    private List&lt;ProductCoverageGap&gt; validateProductCoverageGaps(
+  List&lt;ProductCoverageGap&gt; source,
+  Map&lt;String, TaxonomyNode&gt; nodesByCode,
+  Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+  Map&lt;String, Integer&gt; scores) {
+<span class="pc bpc" id="L447" title="1 of 4 branches missed.">        if (source == null || source.isEmpty()) {</span>
+<span class="fc" id="L448">  return List.of();</span>
+        }
+<span class="fc" id="L450">        List&lt;ProductCoverageGap&gt; ordered = new ArrayList&lt;&gt;(source);</span>
+<span class="pc bpc" id="L451" title="1 of 2 branches missed.">        if (ordered.stream().anyMatch(Objects::isNull)) {</span>
+<span class="nc" id="L452">  throw new IllegalArgumentException(&quot;Product coverage gaps must not contain null entries&quot;);</span>
+        }
+<span class="fc" id="L454">        ordered.sort(Comparator.comparing(</span>
+      ProductCoverageGap::productFamilyCode,
+<span class="fc" id="L456">      Comparator.nullsLast(String::compareTo)));</span>
+
+<span class="fc" id="L458">        Map&lt;String, ProductCoverageGap&gt; validated = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L459" title="All 2 branches covered.">        for (ProductCoverageGap gap : ordered) {</span>
+<span class="pc bpc" id="L460" title="2 of 4 branches missed.">  if (gap.productFamilyCode() == null || gap.productFamilyCode().isBlank()) {</span>
+<span class="nc" id="L461">      throw new IllegalArgumentException(&quot;Product coverage gap has no product family code&quot;);</span>
+  }
+<span class="fc" id="L463">  String familyCode = gap.productFamilyCode().strip();</span>
+<span class="fc" id="L464">  TaxonomyNode family = nodesByCode.get(familyCode);</span>
+<span class="pc bpc" id="L465" title="1 of 2 branches missed.">  if (family == null) {</span>
+<span class="nc" id="L466">      throw new IllegalArgumentException(</span>
+              &quot;Product coverage gap references unknown family &quot; + familyCode);
+  }
+<span class="pc bpc" id="L469" title="2 of 4 branches missed.">  if (gap.familyScore() &lt; 0 || gap.familyScore() &gt; 100) {</span>
+<span class="nc" id="L470">      throw new IllegalArgumentException(</span>
+              &quot;Product coverage gap family score must be between 0 and 100 for &quot;
+                      + familyCode);
+  }
+<span class="fc" id="L474">  Integer storedFamilyScore = scores.get(familyCode);</span>
+<span class="pc bpc" id="L475" title="2 of 4 branches missed.">  if (storedFamilyScore == null || storedFamilyScore != gap.familyScore()) {</span>
+<span class="nc" id="L476">      throw new IllegalArgumentException(</span>
+              &quot;Product coverage gap family score does not match analysis score for &quot;
+                      + familyCode);
+  }
+<span class="pc bpc" id="L480" title="2 of 4 branches missed.">  if (gap.reason() == null || gap.reason().isBlank()) {</span>
+<span class="nc" id="L481">      throw new IllegalArgumentException(</span>
+              &quot;Product coverage gap has no reason for &quot; + familyCode);
+  }
+<span class="pc bpc" id="L484" title="2 of 4 branches missed.">  if (gap.candidateCodes() == null || gap.candidateCodes().isEmpty()) {</span>
+<span class="nc" id="L485">      throw new IllegalArgumentException(</span>
+              &quot;Product coverage gap has no evaluated product candidates for &quot;
+                      + familyCode);
+  }
+
+<span class="fc" id="L490">  Set&lt;String&gt; candidateSet = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L491" title="All 2 branches covered.">  for (String rawCode : gap.candidateCodes()) {</span>
+<span class="pc bpc" id="L492" title="2 of 4 branches missed.">      if (rawCode == null || rawCode.isBlank()) {</span>
+<span class="nc" id="L493">          throw new IllegalArgumentException(</span>
+                  &quot;Product coverage gap contains a blank candidate for &quot; + familyCode);
+      }
+<span class="fc" id="L496">      String candidateCode = rawCode.strip();</span>
+<span class="pc bpc" id="L497" title="1 of 2 branches missed.">      if (!candidateSet.add(candidateCode)) {</span>
+<span class="nc" id="L498">          throw new IllegalArgumentException(</span>
+                  &quot;Product coverage gap contains duplicate candidate &quot;
+                          + candidateCode + &quot; for &quot; + familyCode);
+      }
+<span class="fc" id="L502">  }</span>
+<span class="fc" id="L503">  List&lt;String&gt; candidateCodes = candidateSet.stream().sorted().toList();</span>
+<span class="fc" id="L504">  Set&lt;String&gt; directChildCodes = childrenMap</span>
+<span class="fc" id="L505">          .getOrDefault(familyCode, List.of()).stream()</span>
+<span class="fc" id="L506">          .map(TaxonomyNode::getCode)</span>
+<span class="fc" id="L507">          .collect(Collectors.toCollection(LinkedHashSet::new));</span>
+<span class="pc bpc" id="L508" title="1 of 2 branches missed.">  if (!directChildCodes.containsAll(candidateCodes)) {</span>
+<span class="nc" id="L509">      throw new IllegalArgumentException(</span>
+              &quot;Product coverage gap candidates are not direct children of &quot;
+                      + familyCode);
+  }
+<span class="pc bpc" id="L513" title="1 of 2 branches missed.">  if (candidateCodes.stream().anyMatch(code -&gt;</span>
+<span class="pc bpc" id="L514" title="2 of 4 branches missed.">          !scores.containsKey(code) || scores.get(code) != 0)) {</span>
+<span class="nc" id="L515">      throw new IllegalArgumentException(</span>
+              &quot;Product coverage gap candidates must be explicitly evaluated at 0 for &quot;
+                      + familyCode);
+  }
+
+<span class="fc" id="L520">  ProductCoverageGap normalizedGap = new ProductCoverageGap(</span>
+          familyCode,
+<span class="fc" id="L522">          firstNonBlank(gap.productFamilyName(), family.getName(), familyCode),</span>
+<span class="fc" id="L523">          gap.familyScore(),</span>
+          candidateCodes,
+<span class="fc" id="L525">          gap.reason().strip());</span>
+<span class="pc bpc" id="L526" title="1 of 2 branches missed.">  if (validated.putIfAbsent(familyCode, normalizedGap) != null) {</span>
+<span class="nc" id="L527">      throw new IllegalArgumentException(</span>
+              &quot;Duplicate product coverage gap for family &quot; + familyCode);
+  }
+<span class="fc" id="L530">        }</span>
+<span class="fc" id="L531">        return List.copyOf(validated.values());</span>
+    }
+
+    private Map&lt;String, List&lt;TaxonomyNode&gt;&gt; copyAndSort(
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; original) {
+<span class="fc" id="L536">        Map&lt;String, List&lt;TaxonomyNode&gt;&gt; result = new HashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L537" title="1 of 2 branches missed.">        if (original == null) {</span>
+<span class="nc" id="L538">            return result;</span>
+        }
+<span class="fc" id="L540">        original.forEach((parentCode, children) -&gt; {</span>
+<span class="pc bpc" id="L541" title="1 of 2 branches missed.">            List&lt;TaxonomyNode&gt; sorted = new ArrayList&lt;&gt;(children == null ? List.of() : children);</span>
+<span class="fc" id="L542">            sorted.sort(NODE_ORDER);</span>
+<span class="fc" id="L543">            result.put(parentCode, List.copyOf(sorted));</span>
+<span class="fc" id="L544">        });</span>
+<span class="fc" id="L545">        return result;</span>
+    }
+
+    private Map&lt;String, TaxonomyNode&gt; indexNodes(
+            List&lt;TaxonomyNode&gt; roots,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap) {
+<span class="fc" id="L551">        Map&lt;String, TaxonomyNode&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L552">        roots.forEach(node -&gt; result.put(node.getCode(), node));</span>
+<span class="fc" id="L553">        childrenMap.values().forEach(children -&gt; children.forEach(</span>
+<span class="fc" id="L554">                node -&gt; result.putIfAbsent(node.getCode(), node)));</span>
+<span class="fc" id="L555">        return result;</span>
+    }
+
+    private List&lt;TaxonomyNode&gt; preOrder(
+            List&lt;TaxonomyNode&gt; roots,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap) {
+<span class="fc" id="L561">        List&lt;TaxonomyNode&gt; ordered = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L562">        Set&lt;String&gt; visited = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L563" title="All 2 branches covered.">        for (TaxonomyNode root : roots) {</span>
+<span class="fc" id="L564">            visit(root, childrenMap, visited, ordered);</span>
+<span class="fc" id="L565">        }</span>
+<span class="fc" id="L566">        return ordered;</span>
+    }
+
+    private void visit(
+            TaxonomyNode node,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+            Set&lt;String&gt; visited,
+            List&lt;TaxonomyNode&gt; ordered) {
+<span class="pc bpc" id="L574" title="3 of 6 branches missed.">        if (node == null || node.getCode() == null || !visited.add(node.getCode())) {</span>
+<span class="nc" id="L575">            return;</span>
+        }
+<span class="fc" id="L577">        ordered.add(node);</span>
+<span class="fc bfc" id="L578" title="All 2 branches covered.">        for (TaxonomyNode child : childrenMap.getOrDefault(node.getCode(), List.of())) {</span>
+<span class="fc" id="L579">            visit(child, childrenMap, visited, ordered);</span>
+<span class="fc" id="L580">        }</span>
+<span class="fc" id="L581">    }</span>
+
+    private Completeness assessCompleteness(
+            List&lt;TaxonomyNode&gt; roots,
+            List&lt;TaxonomyNode&gt; hierarchyOrder,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+            Map&lt;String, Integer&gt; scores,
+            List&lt;ProductCoverageGap&gt; productCoverageGaps) {
+<span class="fc" id="L589">        Set&lt;String&gt; expectedCodes = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L590">        roots.stream().map(TaxonomyNode::getCode).forEach(expectedCodes::add);</span>
+<span class="fc" id="L591">        List&lt;String&gt; incompleteParents = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L592">        List&lt;String&gt; unresolvedParents = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L594" title="All 2 branches covered.">        for (TaxonomyNode node : hierarchyOrder) {</span>
+<span class="fc" id="L595">            List&lt;TaxonomyNode&gt; children = childrenMap.getOrDefault(node.getCode(), List.of());</span>
+<span class="fc bfc" id="L596" title="All 2 branches covered.">            if (children.isEmpty()) {</span>
+<span class="fc" id="L597">                continue;</span>
+            }
+<span class="fc" id="L599">            Integer score = scores.get(node.getCode());</span>
+<span class="fc" id="L600">            List&lt;String&gt; childCodes = children.stream().map(TaxonomyNode::getCode).toList();</span>
+<span class="fc" id="L601">            boolean anyPositiveChild = childCodes.stream()</span>
+<span class="fc bfc" id="L602" title="All 2 branches covered.">                    .anyMatch(code -&gt; scores.getOrDefault(code, 0) &gt; 0);</span>
+
+            // A positive child cannot form a traceable decision when its parent was not
+            // evaluated positively. Keep the chapter visible, but mark the snapshot incomplete.
+<span class="pc bpc" id="L606" title="2 of 6 branches missed.">            if (anyPositiveChild &amp;&amp; (score == null || score &lt;= 0)) {</span>
+<span class="nc" id="L607">                expectedCodes.add(node.getCode());</span>
+<span class="nc" id="L608">                expectedCodes.addAll(childCodes);</span>
+<span class="nc" id="L609">                incompleteParents.add(node.getCode());</span>
+<span class="nc" id="L610">                continue;</span>
+            }
+<span class="fc bfc" id="L612" title="All 4 branches covered.">            if (score == null || score &lt;= 0) {</span>
+<span class="fc" id="L613">                continue;</span>
+            }
+
+<span class="fc" id="L616">            expectedCodes.addAll(childCodes);</span>
+<span class="fc" id="L617">            boolean allEvaluated = childCodes.stream().allMatch(scores::containsKey);</span>
+<span class="fc bfc" id="L618" title="All 2 branches covered.">            if (!allEvaluated) {</span>
+<span class="fc" id="L619">                incompleteParents.add(node.getCode());</span>
+<span class="fc bfc" id="L620" title="All 2 branches covered.">            } else if (!anyPositiveChild</span>
+<span class="pc bpc" id="L621" title="1 of 2 branches missed.">                    &amp;&amp; !hasResolvedProductCoverageGap(</span>
+<span class="fc" id="L622">                            node.getCode(), score, childCodes, scores, productCoverageGaps)) {</span>
+<span class="nc" id="L623">                unresolvedParents.add(node.getCode());</span>
+            }
+<span class="fc" id="L625">        }</span>
+
+<span class="fc" id="L627">        long evaluatedExpected = expectedCodes.stream().filter(scores::containsKey).count();</span>
+<span class="pc bpc" id="L628" title="1 of 2 branches missed.">        double percent = expectedCodes.isEmpty()</span>
+<span class="nc" id="L629">                ? 100.0</span>
+<span class="fc" id="L630">                : roundOneDecimal(evaluatedExpected * 100.0 / expectedCodes.size());</span>
+<span class="fc" id="L631">        return new Completeness(</span>
+<span class="fc bfc" id="L632" title="All 2 branches covered.">                incompleteParents.isEmpty()</span>
+<span class="pc bpc" id="L633" title="1 of 2 branches missed.">                        &amp;&amp; unresolvedParents.isEmpty()</span>
+<span class="fc bfc" id="L634" title="All 2 branches covered.">                        &amp;&amp; evaluatedExpected == expectedCodes.size(),</span>
+                percent,
+<span class="fc" id="L636">                List.copyOf(incompleteParents),</span>
+<span class="fc" id="L637">                List.copyOf(unresolvedParents));</span>
+    }
+
+
+    private boolean hasResolvedProductCoverageGap(
+  String familyCode,
+  Integer familyScore,
+  List&lt;String&gt; directChildCodes,
+  Map&lt;String, Integer&gt; scores,
+  List&lt;ProductCoverageGap&gt; productCoverageGaps) {
+<span class="fc" id="L647">        return productCoverageGaps.stream().anyMatch(gap -&gt;</span>
+<span class="pc bpc" id="L648" title="2 of 4 branches missed.">      familyCode.equals(gap.productFamilyCode())</span>
+              &amp;&amp; familyScore != null
+<span class="pc bpc" id="L650" title="1 of 2 branches missed.">              &amp;&amp; familyScore == gap.familyScore()</span>
+<span class="pc bpc" id="L651" title="1 of 2 branches missed.">              &amp;&amp; !gap.candidateCodes().isEmpty()</span>
+<span class="pc bpc" id="L652" title="1 of 2 branches missed.">              &amp;&amp; directChildCodes.containsAll(gap.candidateCodes())</span>
+<span class="pc bpc" id="L653" title="1 of 2 branches missed.">              &amp;&amp; gap.candidateCodes().stream().allMatch(code -&gt;</span>
+<span class="pc bpc" id="L654" title="2 of 4 branches missed.">                      scores.containsKey(code) &amp;&amp; scores.get(code) == 0));</span>
+    }
+
+    private List&lt;DecisionChapter&gt; buildChapters(
+            List&lt;TaxonomyNode&gt; hierarchyOrder,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons,
+            boolean german) {
+<span class="fc" id="L663">        List&lt;DecisionChapter&gt; chapters = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L664">        int chapterNumber = 1;</span>
+
+<span class="fc bfc" id="L666" title="All 2 branches covered.">        for (TaxonomyNode parent : hierarchyOrder) {</span>
+<span class="fc" id="L667">            List&lt;TaxonomyNode&gt; children = childrenMap.getOrDefault(parent.getCode(), List.of());</span>
+<span class="fc bfc" id="L668" title="All 2 branches covered.">            if (children.isEmpty()</span>
+<span class="fc bfc" id="L669" title="All 4 branches covered.">                    || children.stream().noneMatch(child -&gt; scores.getOrDefault(child.getCode(), 0) &gt; 0)) {</span>
+<span class="fc" id="L670">                continue;</span>
+            }
+
+<span class="fc" id="L673">            List&lt;String&gt; missingChildCodes = children.stream()</span>
+<span class="fc" id="L674">                    .map(TaxonomyNode::getCode)</span>
+<span class="fc bfc" id="L675" title="All 2 branches covered.">                    .filter(code -&gt; !scores.containsKey(code))</span>
+<span class="fc" id="L676">                    .toList();</span>
+<span class="fc" id="L677">            Integer parentScore = scores.get(parent.getCode());</span>
+<span class="fc" id="L678">            int highestChildScore = children.stream()</span>
+<span class="fc" id="L679">                    .map(TaxonomyNode::getCode)</span>
+<span class="fc" id="L680">                    .map(scores::get)</span>
+<span class="fc" id="L681">                    .filter(Objects::nonNull)</span>
+<span class="fc" id="L682">                    .mapToInt(Integer::intValue)</span>
+<span class="fc" id="L683">                    .max()</span>
+<span class="fc" id="L684">                    .orElse(0);</span>
+
+<span class="fc" id="L686">            List&lt;TaxonomyNode&gt; rankingOrder = children.stream()</span>
+<span class="fc bfc" id="L687" title="All 2 branches covered.">                    .filter(child -&gt; scores.getOrDefault(child.getCode(), 0) &gt; 0)</span>
+<span class="fc" id="L688">                    .sorted(Comparator</span>
+<span class="pc" id="L689">                            .comparingInt((TaxonomyNode child) -&gt; scores.get(child.getCode())).reversed()</span>
+<span class="fc" id="L690">                            .thenComparing(NODE_ORDER))</span>
+<span class="fc" id="L691">                    .toList();</span>
+<span class="fc" id="L692">            Map&lt;String, Integer&gt; ranks = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L693">            int previousScore = Integer.MIN_VALUE;</span>
+<span class="fc" id="L694">            int previousRank = 0;</span>
+<span class="fc bfc" id="L695" title="All 2 branches covered.">            for (int index = 0; index &lt; rankingOrder.size(); index++) {</span>
+<span class="fc" id="L696">                TaxonomyNode child = rankingOrder.get(index);</span>
+<span class="fc" id="L697">                int childScore = scores.get(child.getCode());</span>
+<span class="pc bpc" id="L698" title="1 of 2 branches missed.">                int rank = childScore == previousScore ? previousRank : index + 1;</span>
+<span class="fc" id="L699">                ranks.put(child.getCode(), rank);</span>
+<span class="fc" id="L700">                previousScore = childScore;</span>
+<span class="fc" id="L701">                previousRank = rank;</span>
+            }
+
+<span class="fc" id="L704">            List&lt;ChildDecision&gt; childDecisions = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L705" title="All 2 branches covered.">            for (TaxonomyNode child : children) {</span>
+<span class="fc" id="L706">                Integer score = scores.get(child.getCode());</span>
+<span class="fc" id="L707">                boolean leaf = childrenMap.getOrDefault(child.getCode(), List.of()).isEmpty();</span>
+                Disposition disposition;
+<span class="fc bfc" id="L709" title="All 2 branches covered.">                if (score == null) {</span>
+<span class="fc" id="L710">                    disposition = Disposition.NOT_EVALUATED;</span>
+<span class="fc bfc" id="L711" title="All 2 branches covered.">                } else if (score == 0) {</span>
+<span class="fc" id="L712">                    disposition = Disposition.REJECTED;</span>
+<span class="fc bfc" id="L713" title="All 2 branches covered.">                } else if (leaf) {</span>
+<span class="fc" id="L714">                    disposition = Disposition.LEAF_CANDIDATE;</span>
+                } else {
+<span class="fc" id="L716">                    disposition = Disposition.CONTINUED;</span>
+                }
+<span class="fc" id="L718">                Reason reason = reasonFor(child, score, reasons, german);</span>
+<span class="fc" id="L719">                childDecisions.add(new ChildDecision(</span>
+<span class="fc" id="L720">                        child.getCode(),</span>
+<span class="fc" id="L721">                        displayName(child, german),</span>
+<span class="fc" id="L722">                        displayDescription(child, german),</span>
+                        score,
+<span class="fc" id="L724">                        localShare(score, parentScore),</span>
+<span class="fc bfc" id="L725" title="All 6 branches covered.">                        score != null &amp;&amp; score &gt; 0 ? ranks.get(child.getCode()) : null,</span>
+<span class="pc bpc" id="L726" title="1 of 4 branches missed.">                        score != null &amp;&amp; score &gt; 0 &amp;&amp; score == highestChildScore,</span>
+                        disposition,
+<span class="fc" id="L728">                        reason.text(),</span>
+<span class="fc" id="L729">                        reason.source(),</span>
+                        leaf));
+<span class="fc" id="L731">            }</span>
+
+<span class="fc" id="L733">            childDecisions.sort(Comparator</span>
+<span class="fc bfc" id="L734" title="All 2 branches covered.">                    .comparing((ChildDecision child) -&gt; child.absoluteScore() == null)</span>
+<span class="pc bpc" id="L735" title="1 of 2 branches missed.">                    .thenComparing((ChildDecision child) -&gt; child.absoluteScore() == null</span>
+<span class="pc" id="L736">                            ? Integer.MIN_VALUE : child.absoluteScore(), Comparator.reverseOrder())</span>
+<span class="fc" id="L737">                    .thenComparing(ChildDecision::code));</span>
+
+<span class="fc" id="L739">            chapters.add(new DecisionChapter(</span>
+                    chapterNumber++,
+<span class="fc" id="L741">                    parent.getCode(),</span>
+<span class="fc" id="L742">                    displayName(parent, german),</span>
+<span class="fc" id="L743">                    displayDescription(parent, german),</span>
+                    parentScore,
+<span class="fc" id="L745">                    parent.getLevel(),</span>
+<span class="fc" id="L746">                    missingChildCodes.isEmpty(),</span>
+<span class="fc" id="L747">                    decisionSummary(parent, childDecisions, german),</span>
+<span class="fc" id="L748">                    comparativeRationale(parent, parentScore, childDecisions, german),</span>
+                    childDecisions,
+                    missingChildCodes));
+<span class="fc" id="L751">        }</span>
+<span class="fc" id="L752">        return List.copyOf(chapters);</span>
+    }
+
+    private List&lt;LeafCandidate&gt; findLeadingLeaves(
+            List&lt;TaxonomyNode&gt; hierarchyOrder,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons,
+            boolean german) {
+<span class="fc" id="L761">        List&lt;LeafCandidate&gt; leaves = hierarchyOrder.stream()</span>
+<span class="fc" id="L762">                .filter(node -&gt; childrenMap.getOrDefault(node.getCode(), List.of()).isEmpty())</span>
+<span class="fc bfc" id="L763" title="All 2 branches covered.">                .filter(node -&gt; scores.getOrDefault(node.getCode(), 0) &gt; 0)</span>
+<span class="fc" id="L764">                .map(node -&gt; {</span>
+<span class="fc" id="L765">                    Reason reason = reasonFor(node, scores.get(node.getCode()), reasons, german);</span>
+<span class="fc" id="L766">                    List&lt;TaxonomyNode&gt; path = pathToRoot(node.getCode(), hierarchyOrder);</span>
+<span class="fc" id="L767">                    return new LeafCandidate(</span>
+<span class="fc" id="L768">                            node.getCode(),</span>
+<span class="fc" id="L769">                            displayName(node, german),</span>
+<span class="fc" id="L770">                            scores.get(node.getCode()),</span>
+<span class="fc" id="L771">                            normalized(node.getTaxonomyRoot(), rootFromCode(node.getCode())),</span>
+<span class="fc" id="L772">                            node.getLevel(),</span>
+<span class="fc" id="L773">                            path.stream().map(TaxonomyNode::getCode).collect(Collectors.joining(&quot; → &quot;)),</span>
+<span class="fc" id="L774">                            reason.text(),</span>
+<span class="fc" id="L775">                            reason.source());</span>
+                })
+<span class="fc" id="L777">                .sorted(Comparator</span>
+<span class="fc" id="L778">                        .comparingInt(LeafCandidate::score).reversed()</span>
+<span class="fc" id="L779">                        .thenComparing(Comparator.comparingInt(LeafCandidate::depth).reversed())</span>
+<span class="fc" id="L780">                        .thenComparing(LeafCandidate::code))</span>
+<span class="fc" id="L781">                .limit(20)</span>
+<span class="fc" id="L782">                .toList();</span>
+<span class="fc" id="L783">        return List.copyOf(leaves);</span>
+    }
+
+    /**
+     * Builds a path without issuing one query per level. The supplied hierarchy list contains
+     * all current nodes, so parent links can be followed deterministically in memory.
+     */
+    private List&lt;TaxonomyNode&gt; pathToRoot(String code, Collection&lt;TaxonomyNode&gt; nodes) {
+<span class="fc" id="L791">        Map&lt;String, TaxonomyNode&gt; byCode = nodes.stream()</span>
+<span class="pc bpc" id="L792" title="1 of 2 branches missed.">                .filter(node -&gt; node.getCode() != null)</span>
+<span class="fc" id="L793">                .collect(Collectors.toMap(</span>
+                        TaxonomyNode::getCode,
+<span class="fc" id="L795">                        node -&gt; node,</span>
+<span class="nc" id="L796">                        (left, right) -&gt; left,</span>
+                        LinkedHashMap::new));
+<span class="fc" id="L798">        List&lt;TaxonomyNode&gt; reversed = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L799">        Set&lt;String&gt; visited = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L800">        TaxonomyNode current = byCode.get(code);</span>
+<span class="pc bpc" id="L801" title="1 of 4 branches missed.">        while (current != null &amp;&amp; visited.add(current.getCode())) {</span>
+<span class="fc" id="L802">            reversed.add(current);</span>
+<span class="fc" id="L803">            String parentCode = current.getParentCode();</span>
+<span class="fc bfc" id="L804" title="All 2 branches covered.">            current = parentCode == null ? null : byCode.get(parentCode);</span>
+<span class="fc" id="L805">        }</span>
+<span class="fc" id="L806">        java.util.Collections.reverse(reversed);</span>
+<span class="fc" id="L807">        return List.copyOf(reversed);</span>
+    }
+
+    private List&lt;PathStep&gt; buildPath(
+            String leafCode,
+            Map&lt;String, TaxonomyNode&gt; nodesByCode,
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons,
+            boolean german) {
+<span class="fc" id="L816">        List&lt;TaxonomyNode&gt; path = pathToRoot(leafCode, nodesByCode.values());</span>
+<span class="fc" id="L817">        List&lt;PathStep&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L818" title="All 2 branches covered.">        for (int index = 0; index &lt; path.size(); index++) {</span>
+<span class="fc" id="L819">            TaxonomyNode node = path.get(index);</span>
+<span class="fc" id="L820">            Integer score = scores.get(node.getCode());</span>
+<span class="fc bfc" id="L821" title="All 2 branches covered.">            Integer parentScore = index == 0 ? null : scores.get(path.get(index - 1).getCode());</span>
+<span class="fc" id="L822">            Reason reason = reasonFor(node, score, reasons, german);</span>
+<span class="fc" id="L823">            result.add(new PathStep(</span>
+                    index + 1,
+<span class="fc" id="L825">                    node.getCode(),</span>
+<span class="fc" id="L826">                    displayName(node, german),</span>
+                    score,
+<span class="fc bfc" id="L828" title="All 2 branches covered.">                    index == 0 ? null : localShare(score, parentScore),</span>
+<span class="fc" id="L829">                    reason.text(),</span>
+<span class="fc" id="L830">                    reason.source()));</span>
+        }
+<span class="fc" id="L832">        return List.copyOf(result);</span>
+    }
+
+    private List&lt;String&gt; buildWarnings(
+            DecisionAnalysisInput input,
+            ViewContext viewContext,
+            Completeness completeness,
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons,
+            List&lt;LeafCandidate&gt; leaves,
+            Set&lt;String&gt; knownNodeCodes,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap,
+            List&lt;ProductCoverageGap&gt; productCoverageGaps,
+            boolean german) {
+<span class="fc" id="L846">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L847" title="All 2 branches covered.">        if (input.snapshotProvenance() == null) {</span>
+<span class="fc bfc" id="L848" title="All 2 branches covered.">            warnings.add(german</span>
+<span class="fc" id="L849">                    ? &quot;Dieser Bericht wurde aus dem aktuellen Analysezustand erzeugt und ist nicht an einen unveränderlichen Projekt-Analysesnapshot gebunden. Für einen formalen Entscheidungsnachweis sollte der snapshotbasierte Export verwendet werden.&quot;</span>
+<span class="fc" id="L850">                    : &quot;This report was generated from the current analysis state and is not bound to an immutable project-analysis snapshot. Use the snapshot-backed export for formal decision evidence.&quot;);</span>
+        }
+<span class="fc" id="L852">        List&lt;String&gt; unknownCodes = scores.keySet().stream()</span>
+<span class="pc bpc" id="L853" title="1 of 2 branches missed.">                .filter(code -&gt; !knownNodeCodes.contains(code))</span>
+<span class="fc" id="L854">                .sorted()</span>
+<span class="fc" id="L855">                .toList();</span>
+<span class="pc bpc" id="L856" title="1 of 2 branches missed.">        if (!unknownCodes.isEmpty()) {</span>
+<span class="nc bnc" id="L857" title="All 2 branches missed.">            warnings.add(german</span>
+                    ? &quot;Bewertungen verweisen auf Knoten, die im aktuell geladenen Taxonomiedatenbestand nicht vorkommen: &quot;
+<span class="nc" id="L859">                        + String.join(&quot;, &quot;, unknownCodes) + &quot;.&quot;</span>
+                    : &quot;Scores refer to nodes that do not exist in the currently loaded taxonomy data: &quot;
+<span class="nc" id="L861">                        + String.join(&quot;, &quot;, unknownCodes) + &quot;.&quot;);</span>
+        }
+<span class="fc bfc" id="L863" title="All 2 branches covered.">        if (!completeness.incompleteParents().isEmpty()) {</span>
+<span class="pc bpc" id="L864" title="1 of 2 branches missed.">            warnings.add(german</span>
+                    ? &quot;Die Analyse ist unvollständig. Bei folgenden positiven Vaterknoten wurden nicht alle direkten Kinder bewertet: &quot;
+<span class="fc" id="L866">                        + String.join(&quot;, &quot;, completeness.incompleteParents()) + &quot;.&quot;</span>
+                    : &quot;The analysis is incomplete. Not all direct children were evaluated for these positive parent nodes: &quot;
+<span class="nc" id="L868">                        + String.join(&quot;, &quot;, completeness.incompleteParents()) + &quot;.&quot;);</span>
+        }
+<span class="pc bpc" id="L870" title="1 of 2 branches missed.">        if (!completeness.unresolvedParents().isEmpty()) {</span>
+<span class="nc bnc" id="L871" title="All 2 branches missed.">            warnings.add(german</span>
+                    ? &quot;Positive Vaterknoten ohne positiv bewertetes direktes Kind: &quot;
+<span class="nc" id="L873">                        + String.join(&quot;, &quot;, completeness.unresolvedParents()) + &quot;.&quot;</span>
+                    : &quot;Positive parent nodes without a positively scored direct child: &quot;
+<span class="nc" id="L875">                        + String.join(&quot;, &quot;, completeness.unresolvedParents()) + &quot;.&quot;);</span>
+        }
+<span class="fc bfc" id="L877" title="All 2 branches covered.">        if (leaves.isEmpty()) {</span>
+<span class="pc bpc" id="L878" title="1 of 2 branches missed.">            warnings.add(german</span>
+<span class="nc" id="L879">                    ? &quot;Es wurde kein positiv bewerteter tatsächlicher Blattknoten ermittelt.&quot;</span>
+<span class="fc" id="L880">                    : &quot;No positively scored actual leaf node was identified.&quot;);</span>
+        }
+<span class="fc" id="L882">        long missingPositiveReasons = scores.entrySet().stream()</span>
+<span class="pc bpc" id="L883" title="1 of 4 branches missed.">                .filter(entry -&gt; entry.getValue() != null &amp;&amp; entry.getValue() &gt; 0)</span>
+<span class="fc bfc" id="L884" title="All 2 branches covered.">                .filter(entry -&gt; !reasons.containsKey(entry.getKey()))</span>
+<span class="fc" id="L885">                .count();</span>
+<span class="fc bfc" id="L886" title="All 2 branches covered.">        if (missingPositiveReasons &gt; 0) {</span>
+<span class="pc bpc" id="L887" title="1 of 2 branches missed.">            warnings.add(german</span>
+                    ? &quot;Für &quot; + missingPositiveReasons
+<span class="fc" id="L889">                        + &quot; positiv bewertete Knoten lag keine ursprüngliche KI-Einzelbegründung vor; diese Stellen sind im Bericht als deterministische Herleitung gekennzeichnet.&quot;</span>
+                    : &quot;No original AI scoring reason was available for &quot; + missingPositiveReasons
+<span class="nc" id="L891">                        + &quot; positively scored nodes; those passages are marked as deterministic derivations.&quot;);</span>
+        }
+<span class="fc" id="L893">        List&lt;String&gt; inconsistentBudgets = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L894" title="All 2 branches covered.">        for (Map.Entry&lt;String, List&lt;TaxonomyNode&gt;&gt; entry : childrenMap.entrySet()) {</span>
+<span class="fc" id="L895">            Integer parentScore = scores.get(entry.getKey());</span>
+<span class="fc bfc" id="L896" title="All 4 branches covered.">            if (parentScore == null || parentScore &lt;= 0) {</span>
+<span class="fc" id="L897">                continue;</span>
+            }
+<span class="fc" id="L899">            List&lt;TaxonomyNode&gt; budgetChildren = entry.getValue().stream()</span>
+<span class="fc" id="L900">                    .filter(child -&gt; {</span>
+<span class="fc" id="L901">                        AnalysisScoreDetail detail = input.scoreDetails().get(child.getCode());</span>
+<span class="fc bfc" id="L902" title="All 4 branches covered.">                        return detail == null || !detail.isProductSuitability();</span>
+                    })
+<span class="fc" id="L904">                    .toList();</span>
+<span class="fc bfc" id="L905" title="All 2 branches covered.">            if (budgetChildren.isEmpty()) {</span>
+<span class="fc" id="L906">                continue;</span>
+            }
+<span class="fc" id="L908">            boolean allEvaluated = budgetChildren.stream()</span>
+<span class="fc" id="L909">                    .map(TaxonomyNode::getCode)</span>
+<span class="fc" id="L910">                    .allMatch(scores::containsKey);</span>
+<span class="fc bfc" id="L911" title="All 2 branches covered.">            if (!allEvaluated) {</span>
+<span class="fc" id="L912">                continue;</span>
+            }
+<span class="fc" id="L914">            int childTotal = budgetChildren.stream()</span>
+<span class="fc" id="L915">                    .map(TaxonomyNode::getCode)</span>
+<span class="fc" id="L916">                    .mapToInt(code -&gt; scores.getOrDefault(code, 0))</span>
+<span class="fc" id="L917">                    .sum();</span>
+<span class="pc bpc" id="L918" title="1 of 4 branches missed.">            if (childTotal != 0 &amp;&amp; childTotal != parentScore) {</span>
+<span class="nc" id="L919">                inconsistentBudgets.add(entry.getKey() + &quot; (&quot; + childTotal + &quot;% / &quot;</span>
+                        + parentScore + &quot;%)&quot;);
+            }
+<span class="fc" id="L922">        }</span>
+<span class="pc bpc" id="L923" title="1 of 2 branches missed.">        if (!inconsistentBudgets.isEmpty()) {</span>
+<span class="nc bnc" id="L924" title="All 2 branches missed.">            warnings.add(german</span>
+                    ? &quot;Bei folgenden Vaterknoten entspricht die Summe der vollständig bewerteten direkten Kinder nicht dem gespeicherten Vaterbudget (Kindersumme / Vaterwert): &quot;
+<span class="nc" id="L926">                        + String.join(&quot;, &quot;, inconsistentBudgets) + &quot;.&quot;</span>
+                    : &quot;For the following parent nodes, the sum of fully evaluated direct children does not match the stored parent budget (child sum / parent score): &quot;
+<span class="nc" id="L928">                        + String.join(&quot;, &quot;, inconsistentBudgets) + &quot;.&quot;);</span>
+        }
+<span class="fc bfc" id="L930" title="All 2 branches covered.">        for (ProductCoverageGap gap : productCoverageGaps) {</span>
+<span class="fc" id="L931">  String candidates = String.join(&quot;, &quot;, gap.candidateCodes());</span>
+<span class="pc bpc" id="L932" title="1 of 2 branches missed.">  warnings.add(german</span>
+<span class="fc" id="L933">          ? &quot;Produktabdeckungslücke für &quot; + gap.productFamilyCode() + &quot; (&quot;</span>
+<span class="fc" id="L934">              + gap.productFamilyName() + &quot;, &quot; + gap.familyScore()</span>
+<span class="fc" id="L935">              + &quot; %): Keines der &quot; + gap.candidateCodes().size()</span>
+              + &quot; vollständig bewerteten Katalogprodukte erreichte den Eignungsschwellenwert. Kandidaten: &quot;
+<span class="fc" id="L937">              + candidates + &quot;.&quot;</span>
+<span class="nc" id="L938">          : &quot;Product coverage gap for &quot; + gap.productFamilyCode() + &quot; (&quot;</span>
+<span class="nc" id="L939">              + gap.productFamilyName() + &quot;, &quot; + gap.familyScore()</span>
+<span class="nc" id="L940">              + &quot;%): None of the &quot; + gap.candidateCodes().size()</span>
+              + &quot; fully evaluated catalogue products reached the suitability threshold. Candidates: &quot;
+<span class="nc" id="L942">              + candidates + &quot;.&quot;);</span>
+<span class="fc" id="L943">        }</span>
+<span class="pc bpc" id="L944" title="1 of 2 branches missed.">        if (input.analysisStatus() != null</span>
+<span class="fc bfc" id="L945" title="All 2 branches covered.">                &amp;&amp; !&quot;SUCCESS&quot;.equalsIgnoreCase(input.analysisStatus())) {</span>
+<span class="pc bpc" id="L946" title="1 of 2 branches missed.">            warnings.add(german</span>
+<span class="nc" id="L947">                    ? &quot;Der Analysezustand lautet &quot; + input.analysisStatus()</span>
+<span class="nc" id="L948">                        + &quot;; das Ergebnis darf nicht ohne Prüfung als vollständig behandelt werden.&quot;</span>
+<span class="fc" id="L949">                    : &quot;The analysis status is &quot; + input.analysisStatus()</span>
+<span class="fc" id="L950">                        + &quot;; the result must not be treated as complete without review.&quot;);</span>
+        }
+<span class="pc bpc" id="L952" title="1 of 4 branches missed.">        if (viewContext != null &amp;&amp; viewContext.projectionStale()) {</span>
+<span class="nc bnc" id="L953" title="All 2 branches missed.">            warnings.add(german</span>
+<span class="nc" id="L954">                    ? &quot;Die zugrunde liegende relationale Projektion war bei der Berichterzeugung als veraltet markiert.&quot;</span>
+<span class="nc" id="L955">                    : &quot;The underlying relational projection was marked stale when the report was generated.&quot;);</span>
+        }
+<span class="pc bpc" id="L957" title="1 of 4 branches missed.">        if (viewContext != null &amp;&amp; viewContext.indexStale()) {</span>
+<span class="nc bnc" id="L958" title="All 2 branches missed.">            warnings.add(german</span>
+<span class="nc" id="L959">                    ? &quot;Der zugrunde liegende Suchindex war bei der Berichterzeugung als veraltet markiert.&quot;</span>
+<span class="nc" id="L960">                    : &quot;The underlying search index was marked stale when the report was generated.&quot;);</span>
+        }
+<span class="pc bpc" id="L962" title="2 of 4 branches missed.">        if (input.discrepancies() != null &amp;&amp; !input.discrepancies().isEmpty()) {</span>
+<span class="nc bnc" id="L963" title="All 2 branches missed.">            warnings.add(german</span>
+<span class="nc" id="L964">                    ? &quot;Die Analyse enthält &quot; + input.discrepancies().size()</span>
+<span class="nc" id="L965">                        + &quot; dokumentierte Abweichung(en) zwischen Rohverteilung und Vaterbudget.&quot;</span>
+<span class="nc" id="L966">                    : &quot;The analysis contains &quot; + input.discrepancies().size()</span>
+<span class="nc" id="L967">                        + &quot; documented discrepancy/discrepancies between the raw distribution and parent budget.&quot;);</span>
+        }
+<span class="fc" id="L969">        return List.copyOf(warnings);</span>
+    }
+
+    private ReportStatus determineStatus(
+            boolean complete,
+            String analysisStatus,
+            List&lt;LeafCandidate&gt; leaves,
+            List&lt;String&gt; warnings,
+            List&lt;TaxonomyDiscrepancy&gt; discrepancies) {
+<span class="fc" id="L978">        boolean analysisSucceeded = &quot;SUCCESS&quot;.equalsIgnoreCase(analysisStatus);</span>
+<span class="fc bfc" id="L979" title="All 2 branches covered.">        if (leaves.isEmpty()) {</span>
+<span class="pc bpc" id="L980" title="3 of 4 branches missed.">            return complete &amp;&amp; analysisSucceeded</span>
+<span class="pc" id="L981">                    ? ReportStatus.NO_RESULT : ReportStatus.DRAFT_INCOMPLETE;</span>
+        }
+<span class="pc bpc" id="L983" title="1 of 4 branches missed.">        if (!complete || !analysisSucceeded) {</span>
+<span class="fc" id="L984">            return ReportStatus.DRAFT_INCOMPLETE;</span>
+        }
+<span class="pc bpc" id="L986" title="2 of 6 branches missed.">        if (!warnings.isEmpty() || (discrepancies != null &amp;&amp; !discrepancies.isEmpty())) {</span>
+<span class="fc" id="L987">            return ReportStatus.FINAL_WITH_WARNINGS;</span>
+        }
+<span class="fc" id="L989">        return ReportStatus.FINAL;</span>
+    }
+
+    private String decisionSummary(
+            TaxonomyNode parent,
+            List&lt;ChildDecision&gt; children,
+            boolean german) {
+<span class="fc" id="L996">        List&lt;ChildDecision&gt; positive = children.stream()</span>
+<span class="fc bfc" id="L997" title="All 4 branches covered.">                .filter(child -&gt; child.absoluteScore() != null &amp;&amp; child.absoluteScore() &gt; 0)</span>
+<span class="fc" id="L998">                .toList();</span>
+<span class="fc" id="L999">        List&lt;ChildDecision&gt; leaders = positive.stream().filter(ChildDecision::leadingSibling).toList();</span>
+<span class="fc" id="L1000">        String allPositive = positive.stream()</span>
+<span class="fc" id="L1001">                .map(child -&gt; child.code() + &quot; (&quot; + child.absoluteScore() + &quot; %)&quot;)</span>
+<span class="fc" id="L1002">                .collect(Collectors.joining(&quot;, &quot;));</span>
+<span class="fc" id="L1003">        String leaderText = leaders.stream()</span>
+<span class="fc" id="L1004">                .map(child -&gt; child.code() + &quot; (&quot; + child.absoluteScore() + &quot; %)&quot;)</span>
+<span class="fc" id="L1005">                .collect(Collectors.joining(&quot;, &quot;));</span>
+<span class="fc bfc" id="L1006" title="All 2 branches covered.">        if (german) {</span>
+<span class="fc" id="L1007">            return &quot;Vom Vaterknoten &quot; + parent.getCode() + &quot; werden die positiven Pfade &quot;</span>
+                    + allPositive + &quot; weitergeführt. Innerhalb dieser Geschwistergruppe führt &quot;
+                    + leaderText + &quot;.&quot;;
+        }
+<span class="fc" id="L1011">        return &quot;From parent node &quot; + parent.getCode() + &quot;, the positive paths &quot;</span>
+                + allPositive + &quot; are continued. Within this sibling group, &quot;
+                + leaderText + &quot; leads.&quot;;
+    }
+
+    private String comparativeRationale(
+            TaxonomyNode parent,
+            Integer parentScore,
+            List&lt;ChildDecision&gt; children,
+            boolean german) {
+<span class="fc" id="L1021">        List&lt;ChildDecision&gt; positive = children.stream()</span>
+<span class="fc bfc" id="L1022" title="All 4 branches covered.">                .filter(child -&gt; child.absoluteScore() != null &amp;&amp; child.absoluteScore() &gt; 0)</span>
+<span class="fc" id="L1023">                .toList();</span>
+<span class="fc" id="L1024">        List&lt;ChildDecision&gt; leaders = positive.stream().filter(ChildDecision::leadingSibling).toList();</span>
+<span class="fc" id="L1025">        long rejected = children.stream()</span>
+<span class="fc bfc" id="L1026" title="All 2 branches covered.">                .filter(child -&gt; child.disposition() == Disposition.REJECTED)</span>
+<span class="fc" id="L1027">                .count();</span>
+<span class="fc" id="L1028">        long missing = children.stream()</span>
+<span class="fc bfc" id="L1029" title="All 2 branches covered.">                .filter(child -&gt; child.disposition() == Disposition.NOT_EVALUATED)</span>
+<span class="fc" id="L1030">                .count();</span>
+
+<span class="fc" id="L1032">        String leaderReasons = leaders.stream()</span>
+<span class="fc" id="L1033">                .map(child -&gt; child.code() + &quot;: &quot; + child.reason())</span>
+<span class="fc" id="L1034">                .collect(Collectors.joining(&quot; &quot;));</span>
+<span class="fc bfc" id="L1035" title="All 2 branches covered.">        if (german) {</span>
+<span class="fc" id="L1036">            StringBuilder text = new StringBuilder();</span>
+<span class="fc" id="L1037">            text.append(&quot;Der Vaterknoten &quot;).append(parent.getCode())</span>
+<span class="fc" id="L1038">                    .append(&quot; trägt &quot;).append(scoreText(parentScore, true))</span>
+<span class="fc" id="L1039">                    .append(&quot; der anforderungsbezogenen Relevanz in diese Entscheidung. &quot;)</span>
+<span class="fc" id="L1040">                    .append(&quot;Die höchste direkte Kinderbewertung entfällt auf &quot;)</span>
+<span class="fc" id="L1041">                    .append(leaders.stream()</span>
+<span class="fc" id="L1042">                            .map(child -&gt; child.code() + &quot; mit &quot; + child.absoluteScore() + &quot; %&quot;)</span>
+<span class="fc" id="L1043">                            .collect(Collectors.joining(&quot; und &quot;)))</span>
+<span class="fc" id="L1044">                    .append(&quot;. &quot;).append(leaderReasons);</span>
+<span class="pc bpc" id="L1045" title="1 of 2 branches missed.">            if (positive.size() &gt; leaders.size()) {</span>
+<span class="nc" id="L1046">                text.append(&quot; Weitere positive Kinder werden entsprechend ihrer niedrigeren Werte als nachgeordnete, aber weiterhin relevante Pfade dokumentiert.&quot;);</span>
+            }
+<span class="fc bfc" id="L1048" title="All 2 branches covered.">            if (rejected &gt; 0) {</span>
+<span class="fc" id="L1049">                text.append(&quot; &quot;).append(rejected)</span>
+<span class="fc" id="L1050">                        .append(&quot; direkt bewertete Alternative(n) erhielten 0 % und wurden nicht weiter verfolgt.&quot;);</span>
+            }
+<span class="fc bfc" id="L1052" title="All 2 branches covered.">            if (missing &gt; 0) {</span>
+<span class="fc" id="L1053">                text.append(&quot; Für &quot;).append(missing)</span>
+<span class="fc" id="L1054">                        .append(&quot; direkte Kinder fehlt eine Bewertung; daraus wird ausdrücklich keine Ablehnung abgeleitet.&quot;);</span>
+            }
+<span class="fc" id="L1056">            return text.toString();</span>
+        }
+
+<span class="fc" id="L1059">        StringBuilder text = new StringBuilder();</span>
+<span class="fc" id="L1060">        text.append(&quot;Parent node &quot;).append(parent.getCode())</span>
+<span class="fc" id="L1061">                .append(&quot; carries &quot;).append(scoreText(parentScore, false))</span>
+<span class="fc" id="L1062">                .append(&quot; of requirement-related relevance into this decision. &quot;)</span>
+<span class="fc" id="L1063">                .append(&quot;The highest direct child score belongs to &quot;)</span>
+<span class="fc" id="L1064">                .append(leaders.stream()</span>
+<span class="fc" id="L1065">                        .map(child -&gt; child.code() + &quot; at &quot; + child.absoluteScore() + &quot;%&quot;)</span>
+<span class="fc" id="L1066">                        .collect(Collectors.joining(&quot; and &quot;)))</span>
+<span class="fc" id="L1067">                .append(&quot;. &quot;).append(leaderReasons);</span>
+<span class="pc bpc" id="L1068" title="1 of 2 branches missed.">        if (positive.size() &gt; leaders.size()) {</span>
+<span class="nc" id="L1069">            text.append(&quot; Other positive children remain documented as subordinate but relevant paths according to their lower scores.&quot;);</span>
+        }
+<span class="pc bpc" id="L1071" title="1 of 2 branches missed.">        if (rejected &gt; 0) {</span>
+<span class="nc" id="L1072">            text.append(&quot; &quot;).append(rejected)</span>
+<span class="nc" id="L1073">                    .append(&quot; directly evaluated alternative(s) scored 0% and were not pursued.&quot;);</span>
+        }
+<span class="pc bpc" id="L1075" title="1 of 2 branches missed.">        if (missing &gt; 0) {</span>
+<span class="nc" id="L1076">            text.append(&quot; A score is missing for &quot;).append(missing)</span>
+<span class="nc" id="L1077">                    .append(&quot; direct child/children; this is explicitly not interpreted as rejection.&quot;);</span>
+        }
+<span class="fc" id="L1079">        return text.toString();</span>
+    }
+
+    private String conciseConclusion(
+            LeafCandidate leadingLeaf,
+            List&lt;PathStep&gt; path,
+            boolean german) {
+<span class="fc bfc" id="L1086" title="All 2 branches covered.">        if (leadingLeaf == null) {</span>
+<span class="pc bpc" id="L1087" title="1 of 2 branches missed.">            return german</span>
+<span class="nc" id="L1088">                    ? &quot;Aus den vorliegenden Bewertungen konnte kein positiv bewerteter tatsächlicher Blattknoten abgeleitet werden.&quot;</span>
+<span class="fc" id="L1089">                    : &quot;No positively scored actual leaf node could be derived from the available evaluations.&quot;;</span>
+        }
+<span class="fc" id="L1091">        String pathText = path.stream().map(PathStep::code).collect(Collectors.joining(&quot; → &quot;));</span>
+<span class="fc bfc" id="L1092" title="All 2 branches covered.">        if (german) {</span>
+<span class="fc" id="L1093">            return &quot;Der am höchsten bewertete tatsächliche Blattknoten ist &quot;</span>
+<span class="fc" id="L1094">                    + leadingLeaf.code() + &quot; – &quot; + leadingLeaf.title() + &quot; mit &quot;</span>
+<span class="fc" id="L1095">                    + leadingLeaf.score() + &quot; %. Der dokumentierte Entscheidungspfad lautet: &quot;</span>
+                    + pathText + &quot;.&quot;;
+        }
+<span class="fc" id="L1098">        return &quot;The highest-rated actual leaf node is &quot; + leadingLeaf.code() + &quot; – &quot;</span>
+<span class="fc" id="L1099">                + leadingLeaf.title() + &quot; at &quot; + leadingLeaf.score()</span>
+                + &quot;%. The documented decision path is: &quot; + pathText + &quot;.&quot;;
+    }
+
+    private String methodologyNote(boolean german) {
+<span class="fc bfc" id="L1104" title="All 2 branches covered.">        if (german) {</span>
+<span class="fc" id="L1105">            return &quot;Die Prozentwerte sind Relevanz- und Zuordnungswerte, keine statistischen Wahrscheinlichkeiten. &quot;</span>
+                    + &quot;Wurzelbereiche werden unabhängig auf 0–100 bewertet; unterhalb eines Vaterknotens dokumentiert der lokale Anteil die Verteilung innerhalb seiner direkten Kinder. &quot;
+                    + &quot;Der Bericht übernimmt ursprüngliche KI-Begründungen unverändert und kennzeichnet deterministische Ersatztexte ausdrücklich.&quot;;
+        }
+<span class="fc" id="L1109">        return &quot;Percentages are relevance and allocation scores, not statistical probabilities. &quot;</span>
+                + &quot;Root areas are rated independently on 0–100; below a parent, the local share documents the distribution among its direct children. &quot;
+                + &quot;The report preserves original AI reasons and explicitly marks deterministic fallback text.&quot;;
+    }
+
+    private Reason reasonFor(
+            TaxonomyNode node,
+            Integer score,
+            Map&lt;String, String&gt; reasons,
+            boolean german) {
+<span class="fc" id="L1119">        String reason = reasons.get(node.getCode());</span>
+<span class="pc bpc" id="L1120" title="1 of 4 branches missed.">        if (reason != null &amp;&amp; !reason.isBlank()) {</span>
+<span class="fc" id="L1121">            return new Reason(reason, ReasonSource.AI_SCORING);</span>
+        }
+<span class="fc bfc" id="L1123" title="All 2 branches covered.">        if (score == null) {</span>
+<span class="fc" id="L1124">            return new Reason(</span>
+<span class="pc bpc" id="L1125" title="1 of 2 branches missed.">                    german</span>
+<span class="fc" id="L1126">                            ? &quot;Nicht bewertet. Aus der fehlenden Bewertung darf keine fachliche Ablehnung abgeleitet werden.&quot;</span>
+<span class="pc" id="L1127">                            : &quot;Not evaluated. A missing score must not be interpreted as substantive rejection.&quot;,</span>
+                    ReasonSource.MISSING);
+        }
+<span class="pc bpc" id="L1130" title="1 of 2 branches missed.">        if (score == 0) {</span>
+<span class="fc" id="L1131">            return new Reason(</span>
+<span class="pc bpc" id="L1132" title="1 of 2 branches missed.">                    german</span>
+<span class="fc" id="L1133">                            ? &quot;Der Knoten wurde bewertet, erhielt 0 % und wurde deshalb in diesem Pfad nicht weiter verfolgt.&quot;</span>
+<span class="pc" id="L1134">                            : &quot;The node was evaluated, scored 0%, and was therefore not pursued in this path.&quot;,</span>
+                    ReasonSource.DETERMINISTIC_TRACE);
+        }
+<span class="nc" id="L1137">        return new Reason(</span>
+<span class="nc bnc" id="L1138" title="All 2 branches missed.">                german</span>
+<span class="nc" id="L1139">                        ? &quot;Für diesen positiven Bewertungswert lag keine separate KI-Einzelbegründung vor. Die Aufnahme in den Bericht folgt ausschließlich aus dem gespeicherten Wert und der Taxonomiehierarchie.&quot;</span>
+<span class="nc" id="L1140">                        : &quot;No separate AI reason was available for this positive score. Inclusion in the report follows only from the stored value and taxonomy hierarchy.&quot;,</span>
+                ReasonSource.DETERMINISTIC_TRACE);
+    }
+
+    private Double localShare(Integer childScore, Integer parentScore) {
+<span class="pc bpc" id="L1145" title="2 of 6 branches missed.">        if (childScore == null || parentScore == null || parentScore &lt;= 0) {</span>
+<span class="fc" id="L1146">            return null;</span>
+        }
+<span class="fc" id="L1148">        return roundOneDecimal(childScore * 100.0 / parentScore);</span>
+    }
+
+    private String displayName(TaxonomyNode node, boolean german) {
+<span class="pc bpc" id="L1152" title="3 of 6 branches missed.">        if (german &amp;&amp; node.getNameDe() != null &amp;&amp; !node.getNameDe().isBlank()) {</span>
+<span class="nc" id="L1153">            return node.getNameDe().strip();</span>
+        }
+<span class="fc" id="L1155">        return normalized(node.getNameEn(), node.getCode());</span>
+    }
+
+    private String displayDescription(TaxonomyNode node, boolean german) {
+<span class="pc bpc" id="L1159" title="3 of 6 branches missed.">        if (german &amp;&amp; node.getDescriptionDe() != null &amp;&amp; !node.getDescriptionDe().isBlank()) {</span>
+<span class="nc" id="L1160">            return node.getDescriptionDe().strip();</span>
+        }
+<span class="fc" id="L1162">        return normalized(node.getDescriptionEn(), &quot;&quot;);</span>
+    }
+
+    private String fingerprintAnalysis(
+            DecisionAnalysisInput input,
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons,
+            List&lt;ProductCoverageGap&gt; productCoverageGaps) {
+        try {
+<span class="fc" id="L1171">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="fc" id="L1172">            updateDigest(digest, &quot;requirement&quot;, normalized(input.businessText(), &quot;&quot;));</span>
+<span class="fc" id="L1173">            updateDigest(digest, &quot;provider&quot;, normalized(input.provider(), &quot;unknown&quot;));</span>
+<span class="fc" id="L1174">            updateDigest(digest, &quot;status&quot;, normalized(input.analysisStatus(), &quot;UNKNOWN&quot;));</span>
+<span class="fc bfc" id="L1175" title="All 2 branches covered.">            if (input.snapshotProvenance() != null) {</span>
+<span class="fc" id="L1176">                updateDigest(digest, &quot;snapshot-id&quot;,</span>
+<span class="fc" id="L1177">                        normalized(input.snapshotProvenance().snapshotId(), &quot;&quot;));</span>
+<span class="fc" id="L1178">                updateDigest(digest, &quot;snapshot-created-at&quot;,</span>
+<span class="fc" id="L1179">                        String.valueOf(input.snapshotProvenance().createdAt()));</span>
+<span class="fc" id="L1180">                updateDigest(digest, &quot;snapshot-created-by&quot;,</span>
+<span class="fc" id="L1181">                        normalized(input.snapshotProvenance().createdBy(), &quot;&quot;));</span>
+<span class="fc" id="L1182">                updateDigest(digest, &quot;taxonomy-fingerprint&quot;,</span>
+<span class="fc" id="L1183">                        normalized(input.snapshotProvenance().taxonomyFingerprintSha256(), &quot;&quot;));</span>
+<span class="fc" id="L1184">                updateDigest(digest, &quot;prompt-fingerprint&quot;,</span>
+<span class="fc" id="L1185">                        normalized(input.snapshotProvenance().promptFingerprintSha256(), &quot;&quot;));</span>
+            }
+<span class="fc" id="L1187">            scores.entrySet().stream()</span>
+<span class="fc" id="L1188">                    .sorted(Map.Entry.comparingByKey())</span>
+<span class="fc" id="L1189">                    .forEach(entry -&gt; updateDigest(</span>
+<span class="fc" id="L1190">                            digest, &quot;score:&quot; + entry.getKey(), String.valueOf(entry.getValue())));</span>
+<span class="fc" id="L1191">            reasons.entrySet().stream()</span>
+<span class="fc" id="L1192">                    .sorted(Map.Entry.comparingByKey())</span>
+<span class="fc" id="L1193">                    .forEach(entry -&gt; updateDigest(</span>
+<span class="fc" id="L1194">                            digest, &quot;reason:&quot; + entry.getKey(), entry.getValue()));</span>
+<span class="pc bpc" id="L1195" title="1 of 2 branches missed.">            for (int index = 0; index &lt; input.discrepancies().size(); index++) {</span>
+<span class="nc" id="L1196">                updateDigest(digest, &quot;discrepancy:&quot; + index,</span>
+<span class="nc" id="L1197">                        String.valueOf(input.discrepancies().get(index)));</span>
+            }
+<span class="fc bfc" id="L1199" title="All 2 branches covered.">            for (ProductCoverageGap gap : productCoverageGaps) {</span>
+<span class="fc" id="L1200">                updateDigest(digest, &quot;product-gap:&quot; + gap.productFamilyCode(),</span>
+<span class="fc" id="L1201">                        gap.familyScore() + &quot;|&quot; + String.join(&quot;,&quot;, gap.candidateCodes())</span>
+<span class="fc" id="L1202">                                + &quot;|&quot; + gap.reason());</span>
+<span class="fc" id="L1203">            }</span>
+<span class="fc" id="L1204">            return HexFormat.of().formatHex(digest.digest());</span>
+<span class="nc" id="L1205">        } catch (Exception exception) {</span>
+<span class="nc" id="L1206">            return &quot;unavailable&quot;;</span>
+        }
+    }
+
+    private void updateDigest(MessageDigest digest, String key, String value) {
+<span class="fc" id="L1211">        digest.update(key.getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L1212">        digest.update((byte) 0x1f);</span>
+<span class="fc" id="L1213">        digest.update(normalized(value, &quot;&quot;).getBytes(StandardCharsets.UTF_8));</span>
+<span class="fc" id="L1214">        digest.update((byte) '\n');</span>
+<span class="fc" id="L1215">    }</span>
+
+    private String rootFromCode(String code) {
+<span class="pc bpc" id="L1218" title="2 of 4 branches missed.">        if (code == null || code.isBlank()) {</span>
+<span class="nc" id="L1219">            return &quot;unknown&quot;;</span>
+        }
+<span class="fc" id="L1221">        int separator = code.indexOf('-');</span>
+<span class="pc bpc" id="L1222" title="1 of 2 branches missed.">        return separator &gt; 0 ? code.substring(0, separator) : code;</span>
+    }
+
+    private String abbreviateHash(String value) {
+<span class="pc bpc" id="L1226" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L1227">            return &quot;unknown&quot;;</span>
+        }
+<span class="fc" id="L1229">        String normalized = value.strip();</span>
+<span class="fc bfc" id="L1230" title="All 2 branches covered.">        return normalized.length() &lt;= 16 ? normalized : normalized.substring(0, 16);</span>
+    }
+
+    private String scoreText(Integer score, boolean german) {
+<span class="pc bpc" id="L1234" title="1 of 2 branches missed.">        if (score == null) {</span>
+<span class="nc bnc" id="L1235" title="All 2 branches missed.">            return german ? &quot;keinen gespeicherten Wert&quot; : &quot;no stored score&quot;;</span>
+        }
+<span class="fc bfc" id="L1237" title="All 2 branches covered.">        return score + (german ? &quot; %&quot; : &quot;%&quot;);</span>
+    }
+
+    private double roundOneDecimal(double value) {
+<span class="fc" id="L1241">        return Math.round(value * 10.0) / 10.0;</span>
+    }
+
+    private String value(Object value) {
+<span class="nc bnc" id="L1245" title="All 2 branches missed.">        return value == null ? &quot;&quot; : String.valueOf(value);</span>
+    }
+
+    private String normalized(String value, String fallback) {
+<span class="pc bpc" id="L1249" title="1 of 4 branches missed.">        return value == null || value.isBlank() ? fallback : value.strip();</span>
+    }
+
+    private String firstNonBlank(String... values) {
+<span class="fc bfc" id="L1253" title="All 2 branches covered.">        for (String value : values) {</span>
+<span class="pc bpc" id="L1254" title="1 of 4 branches missed.">            if (value != null &amp;&amp; !value.isBlank()) {</span>
+<span class="fc" id="L1255">                return value.strip();</span>
+            }
+        }
+<span class="fc" id="L1258">        return &quot;&quot;;</span>
+    }
+
+<span class="fc" id="L1261">    private record HierarchyData(</span>
+            List&lt;TaxonomyNode&gt; roots,
+            Map&lt;String, List&lt;TaxonomyNode&gt;&gt; childrenMap) {
+    }
+
+<span class="fc" id="L1266">    private record Completeness(</span>
+            boolean complete,
+            double percent,
+            List&lt;String&gt; incompleteParents,
+            List&lt;String&gt; unresolvedParents) {
+    }
+
+<span class="fc" id="L1273">    private record Reason(String text, ReasonSource source) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

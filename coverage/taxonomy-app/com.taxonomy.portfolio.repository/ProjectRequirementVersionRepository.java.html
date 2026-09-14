@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectRequirementVersionRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.repository</a> &gt; <span class="el_source">ProjectRequirementVersionRepository.java</span></div><h1>ProjectRequirementVersionRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.repository;
+
+import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import jakarta.persistence.Persistence;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+
+import java.util.List;
+import java.util.Optional;
+
+public interface ProjectRequirementVersionRepository
+        extends JpaRepository&lt;ProjectRequirementVersion, Long&gt; {
+
+    List&lt;ProjectRequirementVersion&gt; findByRequirementIdAndScopeKeyOrderByVersionNumberDesc(
+            Long requirementId, String scopeKey);
+
+    Optional&lt;ProjectRequirementVersion&gt;
+            findFirstByRequirementIdAndScopeKeyOrderByVersionNumberDesc(
+                    Long requirementId, String scopeKey);
+
+    Optional&lt;ProjectRequirementVersion&gt; findByRequirementIdAndScopeKeyAndVersionNumber(
+            Long requirementId, String scopeKey, int versionNumber);
+
+    Optional&lt;ProjectRequirementVersion&gt; findByRequirementIdAndScopeKeyAndContentHash(
+            Long requirementId, String scopeKey, String contentHash);
+
+    /**
+     * Resolve from the already populated persistence context when a requirement
+     * list join-fetched its current version. Otherwise execute a query containing
+     * the complete requirement and tenant key; never initialize an ID-only proxy.
+     */
+    default Optional&lt;ProjectRequirementVersion&gt; findByIdAndRequirementIdAndScopeKey(
+            Long id, Long requirementId, String scopeKey) {
+<span class="fc bfc" id="L35" title="All 6 branches covered.">        if (id == null || requirementId == null</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">                || scopeKey == null || scopeKey.isBlank()) {</span>
+<span class="fc" id="L37">            return Optional.empty();</span>
+        }
+<span class="fc" id="L39">        String normalizedScope = scopeKey.strip();</span>
+<span class="fc" id="L40">        ProjectRequirementVersion candidate = getReferenceById(id);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        if (Persistence.getPersistenceUtil().isLoaded(candidate)) {</span>
+<span class="fc" id="L42">            return Optional.of(candidate)</span>
+<span class="fc" id="L43">                    .filter(version -&gt; requirementId.equals(version.getRequirementId()))</span>
+<span class="fc" id="L44">                    .filter(version -&gt; normalizedScope.equals(version.getScopeKey()));</span>
+        }
+<span class="nc" id="L46">        return findExactTenantVersion(id, requirementId, normalizedScope);</span>
+    }
+
+    @Query(&quot;select version from ProjectRequirementVersion version &quot;
+            + &quot;where version.id = :id and version.requirementId = :requirementId &quot;
+            + &quot;and version.scopeKey = :scopeKey&quot;)
+    Optional&lt;ProjectRequirementVersion&gt; findExactTenantVersion(
+            @Param(&quot;id&quot;) Long id,
+            @Param(&quot;requirementId&quot;) Long requirementId,
+            @Param(&quot;scopeKey&quot;) String scopeKey);
+
+    /** Compatibility methods retained while all callers migrate to exact scope. */
+    @Deprecated(forRemoval = false)
+    List&lt;ProjectRequirementVersion&gt; findByRequirementIdOrderByVersionNumberDesc(
+            Long requirementId);
+
+    @Deprecated(forRemoval = false)
+    Optional&lt;ProjectRequirementVersion&gt; findFirstByRequirementIdOrderByVersionNumberDesc(
+            Long requirementId);
+
+    @Deprecated(forRemoval = false)
+    Optional&lt;ProjectRequirementVersion&gt; findByRequirementIdAndVersionNumber(
+            Long requirementId, int versionNumber);
+
+    @Deprecated(forRemoval = false)
+    Optional&lt;ProjectRequirementVersion&gt; findByRequirementIdAndContentHash(
+            Long requirementId, String contentHash);
+
+    @Deprecated(forRemoval = false)
+    Optional&lt;ProjectRequirementVersion&gt; findByIdAndRequirementId(
+            Long id, Long requirementId);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

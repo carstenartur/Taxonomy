@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationConnectionEntity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.persistence</a> &gt; <span class="el_source">IntegrationConnectionEntity.java</span></div><h1>IntegrationConnectionEntity.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.persistence;
+
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+/** Mutations are owned by IntegrationStore under an exact connection/tenant lock. */
+@Entity
+@Table(name = &quot;interop_connection&quot;, indexes = {@Index(name=&quot;ix_interop_connection_scope&quot;, columnList=&quot;scope_id&quot;)})
+public class IntegrationConnectionEntity {
+    @Id @Column(name=&quot;id&quot;, length=36) String id;
+    @Column(name=&quot;scope_id&quot;, nullable=false, length=64) String scopeId;
+    @Column(name=&quot;repository_id&quot;, nullable=false, length=320) String repositoryId;
+    @Column(name=&quot;organization_id&quot;, nullable=false, length=400) String organizationId;
+    @Column(name=&quot;display_name&quot;, nullable=false, length=160) String displayName;
+    @Column(name=&quot;connector_id&quot;, nullable=false, length=64) String connectorId;
+    @Column(name=&quot;profile_version&quot;, nullable=false, length=32) String profileVersion;
+    @Column(name=&quot;authority_mode&quot;, nullable=false, length=32) String authorityMode;
+    @Column(name=&quot;remote_profile&quot;, length=100) String remoteProfile;
+    @Column(name=&quot;project_id&quot;) Long projectId;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;external_scope&quot;, nullable=false) String externalScope;
+    @Column(name=&quot;created_by&quot;, nullable=false, length=160) String createdBy;
+    @Column(name=&quot;created_at&quot;, nullable=false, length=40) String createdAt;
+    @Column(name=&quot;checkpoint_id&quot;, length=36) String checkpointId;
+    @Column(name=&quot;active_operation_id&quot;, length=36) String activeOperationId;
+    @Column(name=&quot;connection_revision&quot;, nullable=false) long revision;
+    @Version @Column(name=&quot;row_version&quot;, nullable=false) long rowVersion;
+<span class="fc" id="L28">    protected IntegrationConnectionEntity() {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

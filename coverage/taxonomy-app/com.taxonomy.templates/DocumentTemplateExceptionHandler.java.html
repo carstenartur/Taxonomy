@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentTemplateExceptionHandler.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">DocumentTemplateExceptionHandler.java</span></div><h1>DocumentTemplateExceptionHandler.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateConflictException;
+import com.taxonomy.templates.DocumentTemplateGitRepository.TemplateNotFoundException;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.core.Ordered;
+import org.springframework.core.annotation.Order;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.RestControllerAdvice;
+
+import java.io.IOException;
+import java.util.Map;
+
+/** Maps template API failures without exposing storage internals. */
+@Order(Ordered.HIGHEST_PRECEDENCE)
+@RestControllerAdvice(assignableTypes = DocumentTemplateAdminController.class)
+<span class="fc" id="L20">public class DocumentTemplateExceptionHandler {</span>
+
+<span class="fc" id="L22">    private static final Logger log =</span>
+<span class="fc" id="L23">            LoggerFactory.getLogger(DocumentTemplateExceptionHandler.class);</span>
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid(IllegalArgumentException exception) {
+<span class="fc" id="L27">        return error(HttpStatus.BAD_REQUEST, exception.getMessage());</span>
+    }
+
+    @ExceptionHandler(TemplateNotFoundException.class)
+    ResponseEntity&lt;Map&lt;String, String&gt;&gt; missing(TemplateNotFoundException exception) {
+<span class="fc" id="L32">        return error(HttpStatus.NOT_FOUND, exception.getMessage());</span>
+    }
+
+    @ExceptionHandler(TemplateConflictException.class)
+    ResponseEntity&lt;Map&lt;String, String&gt;&gt; conflict(TemplateConflictException exception) {
+<span class="fc" id="L37">        return error(HttpStatus.PRECONDITION_FAILED, exception.getMessage());</span>
+    }
+
+    @ExceptionHandler(IOException.class)
+    ResponseEntity&lt;Map&lt;String, String&gt;&gt; storage(IOException exception) {
+<span class="nc" id="L42">        log.warn(&quot;Document template API operation failed&quot;, exception);</span>
+<span class="nc" id="L43">        return error(HttpStatus.INTERNAL_SERVER_ERROR, &quot;Template operation failed&quot;);</span>
+    }
+
+    private static ResponseEntity&lt;Map&lt;String, String&gt;&gt; error(
+            HttpStatus status,
+            String message) {
+<span class="fc" id="L49">        return ResponseEntity.status(status)</span>
+<span class="pc bpc" id="L50" title="1 of 2 branches missed.">                .body(Map.of(&quot;error&quot;, message == null ? status.getReasonPhrase() : message));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

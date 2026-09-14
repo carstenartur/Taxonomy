@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WorkspaceDslReadPort.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.service</a> &gt; <span class="el_source">WorkspaceDslReadPort.java</span></div><h1>WorkspaceDslReadPort.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.service;
+
+import java.io.IOException;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.Optional;
+
+/**
+ * Workspace-owned, read-only access to an explicitly selected repository branch.
+ * It exposes neither storage handles nor JGit types and never resolves implicit
+ * current-user/current-workspace state.
+ *
+ * &lt;p&gt;Failed head preconditions are reported as
+ * {@link BranchHeadConflictException}; ordinary storage failures remain
+ * {@link IOException}. Callers must not treat all I/O failures as conflicts.&lt;/p&gt;
+ */
+public interface WorkspaceDslReadPort {
+
+    /** Binds one factory-owned repository handle; the caller must not close it. */
+    RepositoryRead openRead(RepositoryContext context);
+
+    /** Canonicalizes a full object ID without accepting refs, abbreviations or whitespace. */
+    static String normalizeCommitId(String value) {
+<span class="fc bfc" id="L26" title="All 4 branches covered.">        if (value == null || value.length() != 40) {</span>
+<span class="fc" id="L27">            throw new IllegalArgumentException(&quot;commitId must be a full Git object ID&quot;);</span>
+        }
+<span class="fc" id="L29">        HexFormat.of().parseHex(value);</span>
+<span class="fc" id="L30">        return value.toLowerCase(Locale.ROOT);</span>
+    }
+
+    interface RepositoryRead {
+        /** The selected branch's current full commit ID, or null if absent. */
+        String currentHead() throws IOException;
+
+        /**
+         * Reads only the exact full commit ID, never the latest branch content.
+         * An empty Optional means that the existing commit has no DSL file;
+         * Optional.of(&quot;&quot;) is a valid empty file. Missing commits fail with IOException.
+         * Reading a commit does not prove it is still the selected branch head.
+         */
+        Optional&lt;String&gt; dslAtCommit(String commitId) throws IOException;
+
+        /**
+         * Checks the expected head with the existing atomic no-change ref update,
+         * without appending history. Null means an expected absent branch.
+         */
+        String verifyExpectedHead(String expectedHeadCommit) throws IOException;
+
+        /** Reads immutable metadata from the exact commit, without consulting the branch head. */
+        CommitMetadata commitMetadata(String commitId) throws IOException;
+
+        /**
+         * Classifies each candidate relative to the exact descendant commit, in
+         * input order (including duplicates). SAME and ANCESTOR are positive
+         * reachability proofs; UNRELATED and UNAVAILABLE are not.
+         * A missing, invalid or unreadable descendant fails the whole operation.
+         * A malformed, missing or unreadable candidate is UNAVAILABLE, never a
+         * successful proof. No history or repository handles escape this call.
+         */
+        List&lt;CommitRelationship&gt; relationshipsTo(String descendantCommitId,
+                                                List&lt;String&gt; candidateCommitIds) throws IOException;
+    }
+
+    /** Detached immutable evidence; knowledge-specific authority checks remain with the caller. */
+    record CommitMetadata(String summary, String author, String message, List&lt;String&gt; parents) {
+<span class="fc" id="L68">        public CommitMetadata {</span>
+<span class="fc" id="L69">            summary = Objects.requireNonNull(summary, &quot;summary&quot;);</span>
+<span class="fc" id="L70">            author = Objects.requireNonNull(author, &quot;author&quot;);</span>
+<span class="fc" id="L71">            message = Objects.requireNonNull(message, &quot;message&quot;);</span>
+<span class="fc" id="L72">            parents = List.copyOf(parents);</span>
+<span class="fc" id="L73">        }</span>
+    }
+
+<span class="fc" id="L76">    enum CommitRelationship { SAME, ANCESTOR, UNRELATED, UNAVAILABLE }</span>
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

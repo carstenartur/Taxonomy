@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisWorkingDraft.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.session</a> &gt; <span class="el_source">AnalysisWorkingDraft.java</span></div><h1>AnalysisWorkingDraft.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.session;
+
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+
+import java.time.Instant;
+
+/**
+ * Mutable, optimistic-lock protected working copy for the ad-hoc analysis page.
+ *
+ * &lt;p&gt;This entity deliberately differs from immutable portfolio requirement
+ * versions and analysis snapshots. It preserves unfinished browser work across
+ * reloads and devices until the user either discards it or promotes it into a
+ * project requirement.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;analysis_working_draft&quot;, indexes = {
+        @Index(name = &quot;idx_analysis_draft_workspace_user&quot;,
+                columnList = &quot;workspace_id,username&quot;),
+        @Index(name = &quot;idx_analysis_draft_scope&quot;, columnList = &quot;scope_key&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_analysis_draft_scope_user&quot;,
+                columnNames = {&quot;scope_key&quot;, &quot;username&quot;})
+})
+public class AnalysisWorkingDraft {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;scope_key&quot;, nullable = false,
+            length = RepositoryTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    @Column(name = &quot;workspace_id&quot;, nullable = false, length = 320)
+    private String workspaceId;
+
+    @Column(nullable = false, length = 160)
+    private String username;
+
+    /**
+     * Materialized long text rather than a JDBC CLOB/OID locator.
+     * Frequent autosaves must replace one row value without accumulating
+     * PostgreSQL large objects that require separate lifecycle management.
+     */
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name = &quot;payload_json&quot;, nullable = false)
+    private String payloadJson;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;updated_at&quot;, nullable = false)
+    private Instant updatedAt;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    private long rowVersion;
+
+<span class="fc" id="L72">    protected AnalysisWorkingDraft() {</span>
+<span class="fc" id="L73">    }</span>
+
+    public AnalysisWorkingDraft(String scopeKey,
+                                String workspaceId,
+                                String username,
+                                String payloadJson,
+<span class="fc" id="L79">                                Instant now) {</span>
+<span class="fc" id="L80">        this.scopeKey = scopeKey;</span>
+<span class="fc" id="L81">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L82">        this.username = username;</span>
+<span class="fc" id="L83">        this.payloadJson = payloadJson;</span>
+<span class="fc" id="L84">        this.createdAt = now;</span>
+<span class="fc" id="L85">        this.updatedAt = now;</span>
+<span class="fc" id="L86">        validate();</span>
+<span class="fc" id="L87">    }</span>
+
+    public void replacePayload(String payloadJson, Instant now) {
+<span class="fc" id="L90">        this.payloadJson = payloadJson;</span>
+<span class="fc" id="L91">        this.updatedAt = now;</span>
+<span class="fc" id="L92">        validate();</span>
+<span class="fc" id="L93">    }</span>
+
+    @PrePersist
+    @PreUpdate
+    private void validate() {
+<span class="fc" id="L98">        requireText(scopeKey, &quot;scopeKey&quot;);</span>
+<span class="fc" id="L99">        requireText(workspaceId, &quot;workspaceId&quot;);</span>
+<span class="fc" id="L100">        requireText(username, &quot;username&quot;);</span>
+<span class="fc" id="L101">        requireText(payloadJson, &quot;payloadJson&quot;);</span>
+<span class="pc bpc" id="L102" title="2 of 4 branches missed.">        if (createdAt == null || updatedAt == null) {</span>
+<span class="nc" id="L103">            throw new IllegalArgumentException(&quot;Draft timestamps must not be null&quot;);</span>
+        }
+<span class="fc" id="L105">    }</span>
+
+    private static void requireText(String value, String label) {
+<span class="pc bpc" id="L108" title="2 of 4 branches missed.">        if (value == null || value.isBlank()) {</span>
+<span class="nc" id="L109">            throw new IllegalArgumentException(label + &quot; must not be blank&quot;);</span>
+        }
+<span class="fc" id="L111">    }</span>
+
+    public Long getId() {
+<span class="nc" id="L114">        return id;</span>
+    }
+
+    public String getScopeKey() {
+<span class="fc" id="L118">        return scopeKey;</span>
+    }
+
+    public String getWorkspaceId() {
+<span class="fc" id="L122">        return workspaceId;</span>
+    }
+
+    public String getUsername() {
+<span class="fc" id="L126">        return username;</span>
+    }
+
+    public String getPayloadJson() {
+<span class="fc" id="L130">        return payloadJson;</span>
+    }
+
+    public Instant getCreatedAt() {
+<span class="nc" id="L134">        return createdAt;</span>
+    }
+
+    public Instant getUpdatedAt() {
+<span class="fc" id="L138">        return updatedAt;</span>
+    }
+
+    public long getRowVersion() {
+<span class="fc" id="L142">        return rowVersion;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,406 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomyRelationRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.catalog.repository</a> &gt; <span class="el_source">TaxonomyRelationRepository.java</span></div><h1>TaxonomyRelationRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.catalog.repository;
+
+import com.taxonomy.catalog.model.TaxonomyRelation;
+import com.taxonomy.model.RelationType;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.util.List;
+import java.util.Optional;
+
+@Repository
+public interface TaxonomyRelationRepository extends JpaRepository&lt;TaxonomyRelation, Long&gt; {
+
+    String PRIMARY_SCOPE = &quot; r.repositoryId IN (&quot;
+            + &quot;SELECT repository.repositoryId FROM SystemRepository repository &quot;
+            + &quot;WHERE repository.primaryRepo = true)&quot;;
+
+    // ── Explicit repository/workspace tenant scope ─────────────────
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+              AND (r.sourceNode.code = :code OR r.targetNode.code = :code)
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByRepositoryAndWorkspaceAndNodeCode(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;code&quot;) String code);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByRepositoryAndWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByRepositoryAndWorkspaceAndRelationType(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;type&quot;) RelationType type);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+              AND r.sourceNode.code = :sourceCode
+              AND r.targetNode.code = :targetCode
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByRepositoryAndWorkspaceAndSourceTargetType(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;type&quot;) RelationType type);
+
+    @Query(&quot;&quot;&quot;
+            SELECT COUNT(r) FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+            &quot;&quot;&quot;)
+    long countVisibleByRepositoryAndWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND r.workspaceId IS NULL
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findCentralByRepository(
+            @Param(&quot;repositoryId&quot;) String repositoryId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND r.workspaceId IS NULL
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findCentralByRepositoryAndRelationType(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;type&quot;) RelationType relationType);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND r.workspaceId IS NULL
+              AND (r.sourceNode.code = :code OR r.targetNode.code = :code)
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findCentralByRepositoryAndNodeCode(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;code&quot;) String code);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND r.workspaceId IS NULL
+              AND r.sourceNode.code = :sourceCode
+              AND r.targetNode.code = :targetCode
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findCentralByRepositoryAndSourceTargetType(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;type&quot;) RelationType type);
+
+    @Query(&quot;&quot;&quot;
+            SELECT COUNT(r) FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND r.workspaceId IS NULL
+            &quot;&quot;&quot;)
+    long countCentralByRepository(@Param(&quot;repositoryId&quot;) String repositoryId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.repositoryId = :repositoryId
+              AND r.id = :id
+              AND ((:workspaceId IS NULL AND r.workspaceId IS NULL)
+                   OR r.workspaceId = :workspaceId)
+            &quot;&quot;&quot;)
+    Optional&lt;TaxonomyRelation&gt; findByIdInRepositoryWorkspace(
+            @Param(&quot;repositoryId&quot;) String repositoryId,
+            @Param(&quot;id&quot;) Long id,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    List&lt;TaxonomyRelation&gt; findByRepositoryIdAndWorkspaceId(
+            String repositoryId, String workspaceId);
+
+    List&lt;TaxonomyRelation&gt;
+            findByRepositoryIdAndWorkspaceIdAndSourceNodeCodeAndTargetNodeCodeAndRelationType(
+                    String repositoryId,
+                    String workspaceId,
+                    String sourceCode,
+                    String targetCode,
+                    RelationType type);
+
+    // ── Primary-repository compatibility boundary ──────────────────
+    // These signatures predate multi-repository routing. They remain available
+    // for internal callers during migration, but are deliberately constrained to
+    // the one catalog entry marked primary instead of reading every tenant.
+
+    @Override
+    @Query(&quot;SELECT r FROM TaxonomyRelation r WHERE &quot; + PRIMARY_SCOPE)
+    List&lt;TaxonomyRelation&gt; findAll();
+
+    @Override
+    @Query(&quot;SELECT COUNT(r) FROM TaxonomyRelation r WHERE &quot; + PRIMARY_SCOPE)
+    long count();
+
+    @Override
+    @Query(&quot;SELECT r FROM TaxonomyRelation r WHERE r.id = :id AND &quot; + PRIMARY_SCOPE)
+    Optional&lt;TaxonomyRelation&gt; findById(@Param(&quot;id&quot;) Long id);
+
+    /**
+     * Historic no-argument bulk deletion is used only by the primary catalog reload.
+     * Resolve the primary-scoped entity list first so a maintenance reload cannot delete
+     * committed relations from independent central repositories.
+     */
+    @Override
+    default void deleteAll() {
+<span class="fc" id="L173">        deleteAll(findAll());</span>
+<span class="fc" id="L174">    }</span>
+
+    /** Same safety boundary as {@link #deleteAll()}, without a global bulk JPQL delete. */
+    @Override
+    default void deleteAllInBatch() {
+<span class="fc" id="L179">        deleteAll(findAll());</span>
+<span class="fc" id="L180">    }</span>
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.sourceNode.code = :code
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findBySourceNodeCode(@Param(&quot;code&quot;) String code);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.targetNode.code = :code
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findByTargetNodeCode(@Param(&quot;code&quot;) String code);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findByRelationType(@Param(&quot;type&quot;) RelationType relationType);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND (r.sourceNode.code = :sourceCode OR r.targetNode.code = :targetCode)
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findBySourceNodeCodeOrTargetNodeCode(
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.relationType IN :types
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findByRelationTypeIn(
+            @Param(&quot;types&quot;) List&lt;RelationType&gt; relationTypes);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.sourceNode.code = :sourceCode
+              AND r.relationType IN :types
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findBySourceNodeCodeAndRelationTypeIn(
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;types&quot;) List&lt;RelationType&gt; types);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.targetNode.code = :targetCode
+              AND r.relationType IN :types
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findByTargetNodeCodeAndRelationTypeIn(
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;types&quot;) List&lt;RelationType&gt; types);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.sourceNode.code = :sourceCode
+              AND r.targetNode.code = :targetCode
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findBySourceNodeCodeAndTargetNodeCodeAndRelationType(
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;type&quot;) RelationType relationType);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+              AND (r.sourceNode.code = :code OR r.targetNode.code = :code)
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByWorkspaceAndNodeCode(
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;code&quot;) String code);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByWorkspace(
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByWorkspaceAndRelationType(
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;type&quot;) RelationType type);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+              AND r.sourceNode.code = :sourceCode
+              AND r.targetNode.code = :targetCode
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findVisibleByWorkspaceAndSourceTargetType(
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;type&quot;) RelationType type);
+
+    @Query(&quot;&quot;&quot;
+            SELECT COUNT(r) FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND (r.workspaceId = :workspaceId OR r.workspaceId IS NULL)
+            &quot;&quot;&quot;)
+    long countVisibleByWorkspace(@Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.workspaceId IS NULL
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findByWorkspaceIdIsNull();
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.workspaceId IS NULL
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findByRelationTypeAndWorkspaceIdIsNull(
+            @Param(&quot;type&quot;) RelationType relationType);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.workspaceId IS NULL
+              AND (r.sourceNode.code = :code OR r.targetNode.code = :code)
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findSharedByNodeCode(@Param(&quot;code&quot;) String code);
+
+    @Query(&quot;&quot;&quot;
+            SELECT COUNT(r) FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.workspaceId IS NULL
+            &quot;&quot;&quot;)
+    long countByWorkspaceIdIsNull();
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE r.id = :id
+              AND &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND ((:workspaceId IS NULL AND r.workspaceId IS NULL)
+                   OR r.workspaceId = :workspaceId)
+            &quot;&quot;&quot;)
+    Optional&lt;TaxonomyRelation&gt; findByIdInWorkspace(
+            @Param(&quot;id&quot;) Long id,
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.workspaceId = :workspaceId
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findByWorkspaceId(
+            @Param(&quot;workspaceId&quot;) String workspaceId);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.workspaceId = :workspaceId
+              AND r.sourceNode.code = :sourceCode
+              AND r.targetNode.code = :targetCode
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findByWorkspaceIdAndSourceNodeCodeAndTargetNodeCodeAndRelationType(
+            @Param(&quot;workspaceId&quot;) String workspaceId,
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;type&quot;) RelationType type);
+
+    @Query(&quot;&quot;&quot;
+            SELECT r FROM TaxonomyRelation r
+            WHERE &quot;&quot;&quot; + PRIMARY_SCOPE + &quot;&quot;&quot;
+              AND r.workspaceId IS NULL
+              AND r.sourceNode.code = :sourceCode
+              AND r.targetNode.code = :targetCode
+              AND r.relationType = :type
+            &quot;&quot;&quot;)
+    List&lt;TaxonomyRelation&gt; findSharedBySourceTargetType(
+            @Param(&quot;sourceCode&quot;) String sourceCode,
+            @Param(&quot;targetCode&quot;) String targetCode,
+            @Param(&quot;type&quot;) RelationType type);
+
+    default List&lt;TaxonomyRelation&gt; findByWorkspaceAndNodeCode(
+            String workspaceId, String code) {
+<span class="nc" id="L380">        return findVisibleByWorkspaceAndNodeCode(workspaceId, code);</span>
+    }
+
+    default List&lt;TaxonomyRelation&gt; findByWorkspaceIdIsNullOrWorkspaceId(
+            String workspaceId) {
+<span class="nc" id="L385">        return findVisibleByWorkspace(workspaceId);</span>
+    }
+
+    default List&lt;TaxonomyRelation&gt; findByWorkspaceAndRelationType(
+            String workspaceId, RelationType type) {
+<span class="nc" id="L390">        return findVisibleByWorkspaceAndRelationType(workspaceId, type);</span>
+    }
+
+    default List&lt;TaxonomyRelation&gt; findByWorkspaceAndSourceTargetType(
+            String workspaceId,
+            String sourceCode,
+            String targetCode,
+            RelationType type) {
+<span class="nc" id="L398">        return findVisibleByWorkspaceAndSourceTargetType(</span>
+                workspaceId, sourceCode, targetCode, type);
+    }
+
+    default long countByWorkspaceIdIsNullOrWorkspaceId(String workspaceId) {
+<span class="nc" id="L403">        return countVisibleByWorkspace(workspaceId);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

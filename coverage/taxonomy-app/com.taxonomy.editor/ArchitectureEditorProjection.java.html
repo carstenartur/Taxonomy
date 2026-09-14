@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureEditorProjection.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">ArchitectureEditorProjection.java</span></div><h1>ArchitectureEditorProjection.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramLayout;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.validation.DslValidator;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+import org.springframework.stereotype.Component;
+
+import java.util.List;
+import java.util.Map;
+
+/** Graph, tree, forms and source are projections of the same canonical workspace revision or Git checkpoint. */
+@Component
+public class ArchitectureEditorProjection {
+    private final LayeredDiagramLayoutService layout;
+
+<span class="fc" id="L23">    public ArchitectureEditorProjection(LayeredDiagramLayoutService layout) { this.layout = layout; }</span>
+
+<span class="fc" id="L25">    public record Schema(List&lt;String&gt; elementTypes, List&lt;String&gt; elementProperties,</span>
+                         List&lt;String&gt; relationTypes, List&lt;String&gt; relationStatuses,
+                         Map&lt;String, Map&lt;String, java.util.Set&lt;String&gt;&gt;&gt; relationRules,
+                         Map&lt;String, String&gt; typeRoots, Map&lt;String, PropertyRule&gt; properties, String layoutMode) {}
+<span class="fc" id="L29">    public record PropertyRule(boolean required, boolean readOnly, boolean derived,</span>
+                               List&lt;String&gt; values, String labelKey) {}
+<span class="fc" id="L31">    public record SearchEntry(String id, String text) {}</span>
+<span class="fc" id="L32">    public record View(ArchitectureEditorService.Document document, CanonicalArchitectureModel model,</span>
+                       DiagramScene scene, Schema schema, boolean mayEdit, List&lt;SearchEntry&gt; searchIndex) {}
+
+    public View project(ArchitectureEditorService.Document document, boolean mayEdit) {
+<span class="fc" id="L36">        CanonicalArchitectureModel model = new ArchitectureDslCommands().model(document.dsl());</span>
+<span class="fc" id="L37">        Map&lt;String, String&gt; parents = new java.util.LinkedHashMap&lt;&gt;();</span>
+<span class="pc" id="L38">        model.getRelations().stream().filter(relation -&gt; &quot;CONTAINS&quot;.equals(relation.getRelationType()))</span>
+<span class="pc" id="L39">                .forEach(relation -&gt; parents.putIfAbsent(relation.getTargetId(), relation.getSourceId()));</span>
+<span class="fc" id="L40">        List&lt;String&gt; elementTypes = types();</span>
+<span class="fc" id="L41">        Map&lt;String, Integer&gt; typeRanks = new java.util.HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">        for (int rank = 0; rank &lt; elementTypes.size(); rank++) typeRanks.put(elementTypes.get(rank), rank);</span>
+<span class="fc" id="L43">        List&lt;DiagramNode&gt; nodes = model.getElements().stream().map(element -&gt; new DiagramNode(</span>
+<span class="fc" id="L44">                element.getId(), element.getTitle(), element.getType(), 0, false,</span>
+<span class="fc" id="L45">                typeRanks.getOrDefault(element.getType(), 0), 0, false,</span>
+<span class="fc" id="L46">                parents.get(element.getId()), false)).toList();</span>
+<span class="pc" id="L47">        List&lt;DiagramEdge&gt; edges = model.getRelations().stream().map(relation -&gt; new DiagramEdge(</span>
+<span class="nc" id="L48">                relation.getSourceId() + &quot; &quot; + relation.getRelationType() + &quot; &quot; + relation.getTargetId(),</span>
+<span class="pc" id="L49">                relation.getSourceId(), relation.getTargetId(), relation.getRelationType(), 0)).toList();</span>
+<span class="fc" id="L50">        DiagramScene scene = layout.layout(new DiagramModel(&quot;Architecture · &quot; + document.context().branch(), nodes, edges, new DiagramLayout(&quot;LR&quot;, true)));</span>
+<span class="fc" id="L51">        Schema schema = new Schema(types(), ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().sorted().toList(),</span>
+<span class="fc" id="L52">                DslValidator.relationTypes().stream().sorted().toList(), DslValidator.relationStatuses().stream().sorted().toList(),</span>
+<span class="fc" id="L53">                DslValidator.relationTypeRules(), TaxonomyRootTypes.TYPE_TO_ROOT, properties(), &quot;DERIVED_SERVER_LAYOUT&quot;);</span>
+<span class="fc bfc" id="L54" title="All 4 branches covered.">        return new View(document, model, scene, schema, mayEdit &amp;&amp; &quot;PRIVATE_WORKSPACE&quot;.equals(document.context().writeMode())</span>
+<span class="pc bpc" id="L55" title="1 of 2 branches missed.">                &amp;&amp; &quot;READY&quot;.equals(document.projectionState()),</span>
+<span class="fc" id="L56">                model.getElements().stream().map(element -&gt; new SearchEntry(element.getId(),</span>
+<span class="fc" id="L57">                        (element.getId() + &quot; &quot; + element.getTitle() + &quot; &quot; + element.getType()).toLowerCase(java.util.Locale.ROOT))).toList());</span>
+    }
+
+<span class="fc" id="L60">    private static List&lt;String&gt; types() { return TaxonomyRootTypes.TYPE_TO_ROOT.keySet().stream().sorted().toList(); }</span>
+
+    private static Map&lt;String, PropertyRule&gt; properties() {
+<span class="fc" id="L63">        Map&lt;String, PropertyRule&gt; properties = new java.util.TreeMap&lt;&gt;();</span>
+<span class="fc" id="L64">        Map&lt;String, String&gt; labels = Map.of(&quot;title&quot;, &quot;name&quot;, &quot;description&quot;, &quot;description&quot;, &quot;x-editor-status&quot;, &quot;elementStatus&quot;,</span>
+                &quot;x-owner&quot;, &quot;owner&quot;, &quot;x-responsible-organization&quot;, &quot;organization&quot;, &quot;x-product-reference&quot;, &quot;product&quot;, &quot;x-system-reference&quot;, &quot;system&quot;);
+<span class="fc" id="L66">        ArchitectureDslCommands.ELEMENT_PROPERTIES.forEach(key -&gt; properties.put(key,</span>
+<span class="fc" id="L67">                new PropertyRule(&quot;title&quot;.equals(key), false, false,</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                        &quot;x-editor-status&quot;.equals(key) ? List.of(&quot;draft&quot;, &quot;active&quot;, &quot;retired&quot;) : List.of(), &quot;editor.&quot; + labels.get(key))));</span>
+<span class="fc" id="L69">        properties.put(&quot;id&quot;, new PropertyRule(true, true, true, List.of(), &quot;editor.identity&quot;));</span>
+<span class="fc" id="L70">        properties.put(&quot;taxonomy&quot;, new PropertyRule(false, true, false, List.of(), &quot;editor.taxonomy&quot;));</span>
+<span class="fc" id="L71">        properties.put(&quot;type&quot;, new PropertyRule(true, false, false, types(), &quot;editor.type&quot;));</span>
+<span class="fc" id="L72">        return java.util.Collections.unmodifiableMap(properties);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

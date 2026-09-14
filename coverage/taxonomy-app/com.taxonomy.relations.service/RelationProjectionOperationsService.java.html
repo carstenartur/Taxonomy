@@ -1,0 +1,202 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationProjectionOperationsService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">RelationProjectionOperationsService.java</span></div><h1>RelationProjectionOperationsService.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.Readiness;
+import com.taxonomy.relations.service.RelationBranchProjectionReadinessService.ReadinessState;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.BranchProjectionSourceException;
+import com.taxonomy.relations.service.RelationBranchProjectionRebuildService.RebuildResult;
+import com.taxonomy.relations.service.RelationProjectionRecoveryService.ReconciliationResult;
+import com.taxonomy.relations.service.RelationProjectionRecoveryService.RecoveryRecord;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import com.taxonomy.workspace.service.WorkspaceDslReadPort;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Objects;
+
+/** Authorized operational boundary for branch projection readiness and rebuilds. */
+@Service
+public class RelationProjectionOperationsService {
+
+    private final WorkspaceDslReadPort reads;
+    private final RelationBranchProjectionReadinessService readinessService;
+    private final RelationBranchProjectionRebuildService rebuildService;
+    private final RelationProjectionRecoveryService recoveryService;
+
+    public RelationProjectionOperationsService(
+            WorkspaceDslReadPort reads,
+            RelationBranchProjectionReadinessService readinessService,
+            RelationBranchProjectionRebuildService rebuildService,
+<span class="fc" id="L31">            RelationProjectionRecoveryService recoveryService) {</span>
+<span class="fc" id="L32">        this.reads = Objects.requireNonNull(reads, &quot;reads&quot;);</span>
+<span class="fc" id="L33">        this.readinessService = Objects.requireNonNull(</span>
+                readinessService, &quot;readinessService&quot;);
+<span class="fc" id="L35">        this.rebuildService = Objects.requireNonNull(</span>
+                rebuildService, &quot;rebuildService&quot;);
+<span class="fc" id="L37">        this.recoveryService = Objects.requireNonNull(</span>
+                recoveryService, &quot;recoveryService&quot;);
+<span class="fc" id="L39">    }</span>
+
+    public ProjectionStatus inspect(RepositoryContext context) {
+<span class="fc" id="L42">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc" id="L43">        return new ProjectionStatus(</span>
+<span class="fc" id="L44">                readinessService.inspect(selected),</span>
+<span class="fc" id="L45">                recoveryService.pending(selected));</span>
+    }
+
+    /**
+     * Rebuilds only after proving the caller's exact existing branch head. A
+     * benign rebuild of a concurrently newer head is reported as a
+     * precondition conflict rather than silently satisfying the stale request.
+     */
+    public RebuildOperation rebuild(
+            RepositoryContext context,
+            String expectedHeadCommit) throws IOException {
+<span class="fc" id="L56">        RepositoryContext selected = requireMutable(context);</span>
+<span class="fc" id="L57">        String requiredHead = requireExistingHead(expectedHeadCommit);</span>
+<span class="fc" id="L58">        WorkspaceDslReadPort.RepositoryRead repository = reads.openRead(selected);</span>
+<span class="fc" id="L59">        String verifiedHead = repository.verifyExpectedHead(requiredHead);</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (verifiedHead == null) {</span>
+<span class="fc" id="L61">            throw new BranchProjectionSourceException(</span>
+                    &quot;Cannot rebuild relation projection for an absent branch&quot;);
+        }
+
+<span class="fc" id="L65">        RebuildResult rebuilt = rebuildService.rebuild(selected);</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (!verifiedHead.equals(rebuilt.authoritativeCommitId())) {</span>
+<span class="fc" id="L67">            throw new RebuildHeadConflictException(</span>
+                    verifiedHead,
+<span class="fc" id="L69">                    rebuilt.authoritativeCommitId());</span>
+        }
+
+<span class="fc" id="L72">        Readiness readiness = readinessService.inspect(selected);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if (!rebuilt.authoritativeCommitId().equals(</span>
+<span class="fc" id="L74">                readiness.currentHeadCommit())) {</span>
+<span class="fc" id="L75">            throw new RebuildHeadConflictException(</span>
+<span class="fc" id="L76">                    rebuilt.authoritativeCommitId(),</span>
+<span class="fc" id="L77">                    readiness.currentHeadCommit());</span>
+        }
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        boolean verifiedProjection = readiness.state() == ReadinessState.READY</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">                &amp;&amp; rebuilt.authoritativeCommitId().equals(</span>
+<span class="fc" id="L81">                        readiness.projectedCommit())</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                &amp;&amp; rebuilt.relationCount() == readiness.rows().size();</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">        if (!verifiedProjection) {</span>
+<span class="fc" id="L84">            throw new RebuildVerificationException(rebuilt, readiness);</span>
+        }
+
+        ReconciliationResult reconciliation;
+        try {
+<span class="fc" id="L89">            reconciliation = recoveryService.reconcileAfterRebuild(</span>
+<span class="fc" id="L90">                    selected, rebuilt.authoritativeCommitId());</span>
+<span class="fc" id="L91">        } catch (RuntimeException error) {</span>
+<span class="fc" id="L92">            throw new RecoveryReconciliationPendingException(rebuilt, error);</span>
+<span class="fc" id="L93">        }</span>
+<span class="fc" id="L94">        return new RebuildOperation(rebuilt, reconciliation, readiness);</span>
+    }
+
+    private static String requireExistingHead(String expectedHeadCommit) {
+<span class="fc bfc" id="L98" title="All 4 branches covered.">        if (expectedHeadCommit == null || expectedHeadCommit.isBlank()) {</span>
+<span class="fc" id="L99">            throw new IllegalArgumentException(</span>
+                    &quot;Projection rebuild requires If-Match with the exact existing branch commit&quot;);
+        }
+<span class="fc" id="L102">        return expectedHeadCommit.strip();</span>
+    }
+
+    private static RepositoryContext requireMutable(RepositoryContext context) {
+<span class="fc" id="L106">        RepositoryContext selected = Objects.requireNonNull(context, &quot;context&quot;);</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        if (selected.scope() == RepositoryScope.CENTRAL_READ) {</span>
+<span class="fc" id="L108">            throw new IllegalArgumentException(</span>
+                    &quot;Projection rebuild requires a writable repository context&quot;);
+        }
+<span class="fc" id="L111">        return selected;</span>
+    }
+
+    public record ProjectionStatus(
+            Readiness readiness,
+            List&lt;RecoveryRecord&gt; pendingRecoveries) {
+<span class="fc" id="L117">        public ProjectionStatus {</span>
+<span class="fc" id="L118">            readiness = Objects.requireNonNull(readiness, &quot;readiness&quot;);</span>
+<span class="fc" id="L119">            pendingRecoveries = List.copyOf(Objects.requireNonNull(</span>
+                    pendingRecoveries, &quot;pendingRecoveries&quot;));
+<span class="fc" id="L121">        }</span>
+    }
+
+    public record RebuildOperation(
+            RebuildResult rebuild,
+            ReconciliationResult reconciliation,
+            Readiness readiness) {
+<span class="fc" id="L128">        public RebuildOperation {</span>
+<span class="fc" id="L129">            rebuild = Objects.requireNonNull(rebuild, &quot;rebuild&quot;);</span>
+<span class="fc" id="L130">            reconciliation = Objects.requireNonNull(</span>
+                    reconciliation, &quot;reconciliation&quot;);
+<span class="fc" id="L132">            readiness = Objects.requireNonNull(readiness, &quot;readiness&quot;);</span>
+<span class="fc" id="L133">        }</span>
+    }
+
+    public static final class RebuildHeadConflictException
+            extends IllegalStateException {
+        private final String expectedHeadCommit;
+        private final String actualHeadCommit;
+
+        public RebuildHeadConflictException(
+                String expectedHeadCommit,
+                String actualHeadCommit) {
+<span class="fc" id="L144">            super(&quot;Relation projection rebuild expected &quot;</span>
+                    + expectedHeadCommit + &quot; but observed &quot; + actualHeadCommit);
+<span class="fc" id="L146">            this.expectedHeadCommit = expectedHeadCommit;</span>
+<span class="fc" id="L147">            this.actualHeadCommit = actualHeadCommit;</span>
+<span class="fc" id="L148">        }</span>
+
+        public String getExpectedHeadCommit() {
+<span class="fc" id="L151">            return expectedHeadCommit;</span>
+        }
+
+        public String getActualHeadCommit() {
+<span class="fc" id="L155">            return actualHeadCommit;</span>
+        }
+    }
+
+    public static final class RebuildVerificationException
+            extends IllegalStateException {
+        private final RebuildResult rebuild;
+        private final Readiness readiness;
+
+        public RebuildVerificationException(
+                RebuildResult rebuild,
+                Readiness readiness) {
+<span class="fc" id="L167">            super(&quot;Relation projection rebuild at &quot;</span>
+<span class="fc" id="L168">                    + rebuild.authoritativeCommitId()</span>
+                    + &quot; did not produce a verified READY projection: &quot;
+<span class="fc" id="L170">                    + readiness.state());</span>
+<span class="fc" id="L171">            this.rebuild = Objects.requireNonNull(rebuild, &quot;rebuild&quot;);</span>
+<span class="fc" id="L172">            this.readiness = Objects.requireNonNull(readiness, &quot;readiness&quot;);</span>
+<span class="fc" id="L173">        }</span>
+
+        public RebuildResult getRebuild() {
+<span class="fc" id="L176">            return rebuild;</span>
+        }
+
+        public Readiness getReadiness() {
+<span class="fc" id="L180">            return readiness;</span>
+        }
+    }
+
+    public static final class RecoveryReconciliationPendingException
+            extends IllegalStateException {
+        private final RebuildResult rebuild;
+
+        public RecoveryReconciliationPendingException(
+                RebuildResult rebuild,
+                Throwable cause) {
+<span class="fc" id="L191">            super(&quot;Relation projection rebuilt at &quot;</span>
+<span class="fc" id="L192">                    + rebuild.authoritativeCommitId()</span>
+                    + &quot;, but recovery reconciliation is pending&quot;, cause);
+<span class="fc" id="L194">            this.rebuild = Objects.requireNonNull(rebuild, &quot;rebuild&quot;);</span>
+<span class="fc" id="L195">        }</span>
+
+        public RebuildResult getRebuild() {
+<span class="fc" id="L198">            return rebuild;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

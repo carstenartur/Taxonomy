@@ -1,0 +1,105 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>OslcProviderService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.oslc</a> &gt; <span class="el_source">OslcProviderService.java</span></div><h1>OslcProviderService.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.oslc;
+
+import com.taxonomy.exchange.OslcRdf;
+import com.taxonomy.interop.IntegrationDomainAdapter;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.*;
+import org.springframework.stereotype.Service;
+import java.io.IOException;
+import java.util.List;
+import static com.taxonomy.exchange.OslcRdf.*;
+
+/** Read-only OSLC resources use existing scoped authorities; no second requirements database or LLM analysis. */
+@Service
+public class OslcProviderService {
+    private final ProjectPortfolioService projects;
+    private final WorkspaceArchitectureReadPort architecture;
+    private final SystemRepositoryService repositories;
+    private final RepositoryMembershipService memberships;
+    private final WorkspaceAccessService workspaceAccess;
+<span class="fc" id="L23">    public OslcProviderService(ProjectPortfolioService projects, WorkspaceArchitectureReadPort architecture, SystemRepositoryService repositories, RepositoryMembershipService memberships, WorkspaceAccessService workspaceAccess) {</span>
+<span class="fc" id="L24">        this.projects = projects; this.architecture = architecture; this.repositories = repositories; this.memberships = memberships;</span>
+<span class="fc" id="L25">        this.workspaceAccess = workspaceAccess;</span>
+<span class="fc" id="L26">    }</span>
+    public void authorize(RepositoryContext context, String scope) {
+<span class="pc bpc" id="L28" title="1 of 4 branches missed.">        if (!workspaceAccess.canUsePrivateWorkspace(context) || !context.repositoryWorkspaceScopeKey().equals(scope)</span>
+<span class="pc bpc" id="L29" title="1 of 2 branches missed.">                || !memberships.canRead(repositories.getRepository(context.repositoryId()), context.username())) throw IntegrationProblem.missing();</span>
+<span class="fc" id="L30">    }</span>
+    public interface Links { String uri(String path); }
+    public OslcRdf catalog(RepositoryContext context, Links links) {
+<span class="fc" id="L33">        OslcRdf graph = new OslcRdf(); String catalog = links.uri(&quot;/catalog&quot;);</span>
+<span class="fc" id="L34">        graph.type(catalog, OSLC + &quot;ServiceProviderCatalog&quot;).literal(catalog, DCT + &quot;title&quot;, &quot;Taxonomy requirements&quot;).link(catalog, OSLC + &quot;domain&quot;, RM);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        for (var project : projects.listProjects(context.username(), IntegrationDomainAdapter.workspace(context))) {</span>
+<span class="fc" id="L36">            String provider = links.uri(&quot;/projects/&quot; + project.id() + &quot;/service&quot;);</span>
+<span class="fc" id="L37">            graph.link(catalog, OSLC + &quot;serviceProvider&quot;, provider).type(provider, OSLC + &quot;ServiceProvider&quot;).literal(provider, DCT + &quot;title&quot;, project.title());</span>
+<span class="fc" id="L38">        }</span>
+<span class="fc" id="L39">        return graph;</span>
+    }
+    public OslcRdf service(RepositoryContext context, long projectId, Links links) {
+<span class="fc" id="L42">        var project = projects.getProject(projectId, context.username(), IntegrationDomainAdapter.workspace(context));</span>
+<span class="fc" id="L43">        String provider = links.uri(&quot;/projects/&quot; + projectId + &quot;/service&quot;), service = provider + &quot;#rm&quot;, query = provider + &quot;#query&quot;;</span>
+<span class="fc" id="L44">        OslcRdf graph = new OslcRdf();</span>
+<span class="fc" id="L45">        graph.type(provider, OSLC + &quot;ServiceProvider&quot;).literal(provider, DCT + &quot;title&quot;, project.title()).link(provider, OSLC + &quot;service&quot;, service)</span>
+<span class="fc" id="L46">                .type(service, OSLC + &quot;Service&quot;).link(service, OSLC + &quot;domain&quot;, RM).link(service, OSLC + &quot;queryCapability&quot;, query)</span>
+<span class="fc" id="L47">                .type(query, OSLC + &quot;QueryCapability&quot;).literal(query, DCT + &quot;title&quot;, &quot;Approved current requirements&quot;)</span>
+<span class="fc" id="L48">                .link(query, OSLC + &quot;queryBase&quot;, links.uri(&quot;/projects/&quot; + projectId + &quot;/requirements&quot;))</span>
+<span class="fc" id="L49">                .link(query, OSLC + &quot;resourceType&quot;, RM + &quot;Requirement&quot;).link(query, OSLC + &quot;resourceShape&quot;, links.uri(&quot;/shapes/requirement&quot;));</span>
+<span class="fc" id="L50">        graph.link(provider, &quot;http://open-services.net/ns/config#configuration&quot;, links.uri(&quot;/configurations/current&quot;));</span>
+<span class="fc" id="L51">        return graph;</span>
+    }
+    public OslcRdf configuration(RepositoryContext context, Links links) {
+<span class="nc" id="L54">        String uri = links.uri(&quot;/configurations/current&quot;);</span>
+<span class="nc" id="L55">        return new OslcRdf().type(uri, &quot;http://open-services.net/ns/config#Stream&quot;)</span>
+<span class="nc" id="L56">                .literal(uri, DCT + &quot;title&quot;, &quot;Current approved requirements&quot;)</span>
+<span class="nc" id="L57">                .literal(uri, TAX + &quot;repositoryId&quot;, context.repositoryId()).literal(uri, TAX + &quot;branch&quot;, context.branch());</span>
+    }
+    public OslcRdf query(RepositoryContext context, long projectId, int page, int pageSize, Links links) {
+<span class="pc bpc" id="L60" title="4 of 8 branches missed.">        if (page &lt; 0 || pageSize &lt; 1 || pageSize &gt; 100 || page &gt; 100000) throw new IllegalArgumentException(&quot;Query page is outside supported bounds&quot;);</span>
+<span class="fc" id="L61">        var approved = projects.listApprovedRequirements(projectId, context.username(), IntegrationDomainAdapter.workspace(context), page, pageSize);</span>
+<span class="fc" id="L62">        String path = &quot;/projects/&quot; + projectId + &quot;/requirements&quot;;</span>
+<span class="fc" id="L63">        String resource = links.uri(path) + &quot;&amp;page=&quot; + page + &quot;&amp;oslc.pageSize=&quot; + pageSize;</span>
+<span class="fc" id="L64">        OslcRdf graph = new OslcRdf().type(resource, OSLC + &quot;ResponseInfo&quot;).literal(resource, DCT + &quot;title&quot;, &quot;Approved requirements&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        for (RequirementView requirement : approved.requirements()) {</span>
+<span class="fc" id="L66">            String uri = links.uri(path + &quot;/&quot; + requirement.id());</span>
+<span class="fc" id="L67">            graph.link(resource, &quot;http://www.w3.org/2000/01/rdf-schema#member&quot;, uri); requirement(graph, requirement, projectId, links, false);</span>
+<span class="fc" id="L68">        }</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (approved.hasNext()) graph.link(resource, OSLC + &quot;nextPage&quot;, links.uri(path) + &quot;&amp;page=&quot; + (page + 1) + &quot;&amp;oslc.pageSize=&quot; + pageSize);</span>
+<span class="fc" id="L70">        return graph;</span>
+    }
+    public OslcRdf requirement(RepositoryContext context, long projectId, long requirementId, Long versionId, Links links) {
+<span class="fc" id="L73">        RequirementView requirement = projects.getRequirement(projectId, requirementId, context.username(), IntegrationDomainAdapter.workspace(context));</span>
+<span class="pc bpc" id="L74" title="3 of 6 branches missed.">        if (requirement.status() != RequirementStatus.APPROVED || versionId != null &amp;&amp; !versionId.equals(requirement.currentVersionId())) throw IntegrationProblem.missing();</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        OslcRdf graph = new OslcRdf(); requirement(graph, requirement, projectId, links, versionId != null); return graph;</span>
+    }
+    private void requirement(OslcRdf graph, RequirementView requirement, long projectId, Links links, boolean version) {
+<span class="fc" id="L78">        String current = links.uri(&quot;/projects/&quot; + projectId + &quot;/requirements/&quot; + requirement.id());</span>
+<span class="fc" id="L79">        String immutable = links.uri(&quot;/projects/&quot; + projectId + &quot;/requirements/&quot; + requirement.id() + &quot;/versions/&quot; + requirement.currentVersionId());</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        String uri = version ? immutable : current;</span>
+<span class="pc bpc" id="L81" title="1 of 2 branches missed.">        graph.type(uri, RM + &quot;Requirement&quot;).literal(uri, DCT + &quot;identifier&quot;, version ? requirement.currentVersionId().toString() : requirement.requirementKey())</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                .literal(uri, DCT + &quot;title&quot;, version ? requirement.requirementKey() : requirement.title()).literal(uri, DCT + &quot;description&quot;, requirement.currentVersion().text())</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">                .literal(uri, DCT + &quot;modified&quot;, version ? requirement.currentVersion().createdAt().toString() : requirement.updatedAt().toString())</span>
+<span class="fc" id="L84">                .link(uri, OSLC + &quot;instanceShape&quot;, links.uri(&quot;/shapes/requirement&quot;));</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        if (version) graph.link(uri, DCT + &quot;isVersionOf&quot;, current); else graph.link(uri, DCT + &quot;hasVersion&quot;, immutable);</span>
+<span class="fc" id="L86">    }</span>
+    public OslcRdf shape(Links links) {
+<span class="nc" id="L88">        String shape = links.uri(&quot;/shapes/requirement&quot;); OslcRdf graph = new OslcRdf();</span>
+<span class="nc" id="L89">        graph.type(shape, OSLC + &quot;ResourceShape&quot;).literal(shape, DCT + &quot;title&quot;, &quot;Read-only approved requirement&quot;).link(shape, OSLC + &quot;describes&quot;, RM + &quot;Requirement&quot;);</span>
+<span class="nc bnc" id="L90" title="All 2 branches missed.">        for (String name : List.of(&quot;identifier&quot;, &quot;title&quot;, &quot;description&quot;)) {</span>
+<span class="nc" id="L91">            String property = shape + &quot;#&quot; + name;</span>
+<span class="nc" id="L92">            graph.link(shape, OSLC + &quot;property&quot;, property).type(property, OSLC + &quot;Property&quot;).literal(property, OSLC + &quot;name&quot;, name)</span>
+<span class="nc" id="L93">                    .link(property, OSLC + &quot;propertyDefinition&quot;, DCT + name).link(property, OSLC + &quot;valueType&quot;, &quot;http://www.w3.org/2001/XMLSchema#string&quot;)</span>
+<span class="nc" id="L94">                    .link(property, OSLC + &quot;occurs&quot;, OSLC + &quot;Exactly-one&quot;);</span>
+<span class="nc" id="L95">        }</span>
+<span class="nc" id="L96">        return graph;</span>
+    }
+    public OslcRdf architectureVersion(RepositoryContext context, String commit, Links links) throws IOException {
+<span class="fc" id="L99">        var document = architecture.read(context, commit); String uri = links.uri(&quot;/architecture/versions/&quot; + commit);</span>
+<span class="fc" id="L100">        return new OslcRdf().type(uri, TAX + &quot;ArchitectureVersion&quot;).literal(uri, DCT + &quot;identifier&quot;, document.state().commitId())</span>
+<span class="fc" id="L101">                .literal(uri, DCT + &quot;title&quot;, &quot;Architecture checkpoint &quot; + document.state().commitId())</span>
+<span class="fc" id="L102">                .literal(uri, TAX + &quot;canonicalDsl&quot;, document.dsl());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

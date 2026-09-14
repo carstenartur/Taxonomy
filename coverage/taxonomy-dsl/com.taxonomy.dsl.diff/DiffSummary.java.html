@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DiffSummary.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.diff</a> &gt; <span class="el_source">DiffSummary.java</span></div><h1>DiffSummary.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.diff;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Compact summary of a {@link ModelDiff}, designed for quick display
+ * in dashboards, change logs, and API responses.
+ *
+ * @param totalChanges           total number of structural changes
+ * @param semanticChangeCount    number of semantic change descriptions
+ * @param addedElementCount      number of added elements
+ * @param removedElementCount    number of removed elements
+ * @param changedElementCount    number of modified elements
+ * @param addedRelationCount     number of added relations
+ * @param removedRelationCount   number of removed relations
+ * @param changedRelationCount   number of modified relations
+ * @param changeTypeCounts       count per {@link SemanticChangeType}
+ * @param semanticChanges        the full list of semantic changes
+ */
+<span class="fc" id="L21">public record DiffSummary(</span>
+        int totalChanges,
+        int semanticChangeCount,
+        int addedElementCount,
+        int removedElementCount,
+        int changedElementCount,
+        int addedRelationCount,
+        int removedRelationCount,
+        int changedRelationCount,
+        Map&lt;String, Long&gt; changeTypeCounts,
+        List&lt;SemanticChange&gt; semanticChanges
+) {
+
+    /**
+     * Create a summary from a {@link ModelDiff}.
+     *
+     * @param diff the structural diff
+     * @return the computed summary
+     */
+    public static DiffSummary fromDiff(ModelDiff diff) {
+<span class="fc" id="L41">        SemanticDiffDescriber describer = new SemanticDiffDescriber();</span>
+<span class="fc" id="L42">        List&lt;SemanticChange&gt; changes = describer.describe(diff);</span>
+
+<span class="fc" id="L44">        Map&lt;String, Long&gt; counts = new java.util.LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for (SemanticChange c : changes) {</span>
+<span class="fc" id="L46">            counts.merge(c.changeType().name(), 1L, Long::sum);</span>
+<span class="fc" id="L47">        }</span>
+
+<span class="fc" id="L49">        return new DiffSummary(</span>
+<span class="fc" id="L50">                diff.totalChanges(),</span>
+<span class="fc" id="L51">                changes.size(),</span>
+<span class="fc" id="L52">                diff.addedElements().size(),</span>
+<span class="fc" id="L53">                diff.removedElements().size(),</span>
+<span class="fc" id="L54">                diff.changedElements().size(),</span>
+<span class="fc" id="L55">                diff.addedRelations().size(),</span>
+<span class="fc" id="L56">                diff.removedRelations().size(),</span>
+<span class="fc" id="L57">                diff.changedRelations().size(),</span>
+                counts,
+                changes
+        );
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

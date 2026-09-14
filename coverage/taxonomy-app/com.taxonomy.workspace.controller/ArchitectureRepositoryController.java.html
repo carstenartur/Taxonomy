@@ -1,0 +1,319 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureRepositoryController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.controller</a> &gt; <span class="el_source">ArchitectureRepositoryController.java</span></div><h1>ArchitectureRepositoryController.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.controller;
+
+import com.taxonomy.workspace.model.RepositoryMembership;
+import com.taxonomy.workspace.model.RepositoryRole;
+import com.taxonomy.workspace.model.RepositoryVisibility;
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.service.ArchitectureRepositoryProvisioningService;
+import com.taxonomy.workspace.service.RepositoryMembershipService;
+import com.taxonomy.workspace.service.RepositoryWorkspaceService;
+import com.taxonomy.workspace.service.SystemRepositoryService;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+
+/** REST catalog for central architecture repositories and their working copies/forks. */
+@ConditionalOnProperty(
+        prefix = &quot;taxonomy.features.multi-repository-api&quot;,
+        name = &quot;enabled&quot;,
+        havingValue = &quot;true&quot;,
+        matchIfMissing = false)
+@RestController
+@RequestMapping(&quot;/api/repositories&quot;)
+@Tag(name = &quot;Architecture Repositories&quot;)
+public class ArchitectureRepositoryController {
+
+    private final SystemRepositoryService repositoryService;
+    private final ArchitectureRepositoryProvisioningService provisioningService;
+    private final RepositoryWorkspaceService workspaceService;
+    private final RepositoryMembershipService membershipService;
+    private final WorkspaceResolver workspaceResolver;
+
+    public ArchitectureRepositoryController(
+            SystemRepositoryService repositoryService,
+            ArchitectureRepositoryProvisioningService provisioningService,
+            RepositoryWorkspaceService workspaceService,
+            RepositoryMembershipService membershipService,
+<span class="fc" id="L54">            WorkspaceResolver workspaceResolver) {</span>
+<span class="fc" id="L55">        this.repositoryService = repositoryService;</span>
+<span class="fc" id="L56">        this.provisioningService = provisioningService;</span>
+<span class="fc" id="L57">        this.workspaceService = workspaceService;</span>
+<span class="fc" id="L58">        this.membershipService = membershipService;</span>
+<span class="fc" id="L59">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L60">    }</span>
+
+    @GetMapping
+    @Operation(summary = &quot;List visible central architecture repositories&quot;)
+    public ResponseEntity&lt;List&lt;Map&lt;String, Object&gt;&gt;&gt; listRepositories() {
+<span class="nc" id="L65">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="nc" id="L66">        return ResponseEntity.ok(repositoryService.listActiveRepositories().stream()</span>
+<span class="nc" id="L67">                .filter(repository -&gt; canView(repository, user))</span>
+<span class="nc" id="L68">                .map(this::toMap)</span>
+<span class="nc" id="L69">                .toList());</span>
+    }
+
+    @GetMapping(&quot;/{repositoryId}&quot;)
+    @Operation(summary = &quot;Get one visible central architecture repository&quot;)
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; getRepository(@PathVariable String repositoryId) {
+<span class="nc" id="L75">        String user = workspaceResolver.resolveCurrentUsername();</span>
+        SystemRepository repository;
+        try {
+<span class="nc" id="L78">            repository = repositoryService.getRepository(repositoryId);</span>
+<span class="nc" id="L79">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L80">            return ResponseEntity.notFound().build();</span>
+<span class="nc" id="L81">        }</span>
+<span class="nc bnc" id="L82" title="All 2 branches missed.">        if (!canView(repository, user)) {</span>
+<span class="nc" id="L83">            return ResponseEntity.notFound().build();</span>
+        }
+<span class="nc" id="L85">        return ResponseEntity.ok(toMap(repository));</span>
+    }
+
+    @PostMapping
+    @Operation(summary = &quot;Create a new central architecture repository&quot;)
+    public ResponseEntity&lt;?&gt; createRepository(@RequestBody CreateRepositoryRequest request) {
+<span class="nc" id="L91">        String user = workspaceResolver.resolveCurrentUsername();</span>
+        try {
+<span class="nc" id="L93">            SystemRepository repository = provisioningService.createRepository(</span>
+<span class="nc" id="L94">                    request.displayName(),</span>
+<span class="nc" id="L95">                    request.slug(),</span>
+<span class="nc" id="L96">                    request.description(),</span>
+<span class="nc" id="L97">                    request.visibility(),</span>
+                    user,
+<span class="nc" id="L99">                    request.defaultBranch());</span>
+<span class="nc" id="L100">            return ResponseEntity.ok(toMap(repository));</span>
+<span class="nc" id="L101">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L102">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, exception.getMessage()));</span>
+<span class="nc" id="L103">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L104">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Repository provisioning failed&quot;,
+<span class="nc" id="L106">                    &quot;message&quot;, safeMessage(exception)));</span>
+        }
+    }
+
+    @PostMapping(&quot;/{repositoryId}/workspaces&quot;)
+    @Operation(summary = &quot;Create a personal working copy from a central repository&quot;)
+    public ResponseEntity&lt;?&gt; createWorkspace(
+            @PathVariable String repositoryId,
+            @RequestBody CreateWorkspaceRequest request) {
+<span class="fc" id="L115">        String user = workspaceResolver.resolveCurrentUsername();</span>
+        try {
+<span class="fc" id="L117">            SystemRepository repository = repositoryService.getRepository(repositoryId);</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">            if (!canView(repository, user)) {</span>
+<span class="nc" id="L119">                return ResponseEntity.notFound().build();</span>
+            }
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">            if (!membershipService.canContribute(repository, user)) {</span>
+<span class="fc" id="L122">                return forbidden(&quot;Repository CONTRIBUTOR role required&quot;);</span>
+            }
+<span class="nc" id="L124">            UserWorkspace workspace = workspaceService.createWorkingCopy(</span>
+                    user,
+                    repositoryId,
+<span class="nc" id="L127">                    request.sourceBranch(),</span>
+<span class="nc" id="L128">                    request.displayName(),</span>
+<span class="nc" id="L129">                    request.description());</span>
+<span class="nc" id="L130">            LinkedHashMap&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L131">            result.put(&quot;workspaceId&quot;, workspace.getWorkspaceId());</span>
+<span class="nc" id="L132">            result.put(&quot;displayName&quot;, workspace.getDisplayName());</span>
+<span class="nc" id="L133">            result.put(&quot;sourceRepositoryId&quot;, workspace.getSourceRepositoryId());</span>
+<span class="nc" id="L134">            result.put(&quot;sourceBranch&quot;, workspace.getSourceBranch());</span>
+<span class="nc" id="L135">            result.put(&quot;currentBranch&quot;, workspace.getCurrentBranch());</span>
+<span class="nc" id="L136">            result.put(&quot;baseCommit&quot;, workspace.getBaseCommit());</span>
+<span class="nc" id="L137">            result.put(&quot;currentCommit&quot;, workspace.getCurrentCommit());</span>
+<span class="nc" id="L138">            result.put(&quot;provisioningStatus&quot;, workspace.getProvisioningStatus().name());</span>
+<span class="nc" id="L139">            return ResponseEntity.ok(result);</span>
+<span class="nc" id="L140">        } catch (IllegalArgumentException | IllegalStateException exception) {</span>
+<span class="nc" id="L141">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, safeMessage(exception)));</span>
+        }
+    }
+
+    @PostMapping(&quot;/{repositoryId}/forks&quot;)
+    @Operation(summary = &quot;Create a durable central fork&quot;)
+    public ResponseEntity&lt;?&gt; createFork(
+            @PathVariable String repositoryId,
+            @RequestBody CreateForkRequest request) {
+<span class="fc" id="L150">        String user = workspaceResolver.resolveCurrentUsername();</span>
+        try {
+<span class="fc" id="L152">            SystemRepository source = repositoryService.getRepository(repositoryId);</span>
+<span class="pc bpc" id="L153" title="1 of 2 branches missed.">            if (!canView(source, user)) {</span>
+<span class="nc" id="L154">                return ResponseEntity.notFound().build();</span>
+            }
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">            if (!membershipService.canContribute(source, user)) {</span>
+<span class="fc" id="L157">                return forbidden(&quot;Repository CONTRIBUTOR role required&quot;);</span>
+            }
+<span class="nc" id="L159">            SystemRepository fork = provisioningService.createFork(</span>
+                    repositoryId,
+<span class="nc" id="L161">                    request.sourceBranch(),</span>
+<span class="nc" id="L162">                    request.displayName(),</span>
+<span class="nc" id="L163">                    request.slug(),</span>
+<span class="nc" id="L164">                    request.description(),</span>
+<span class="nc" id="L165">                    request.visibility(),</span>
+                    user);
+<span class="nc" id="L167">            return ResponseEntity.ok(toMap(fork));</span>
+<span class="nc" id="L168">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L169">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, safeMessage(exception)));</span>
+<span class="nc" id="L170">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L171">            return ResponseEntity.internalServerError().body(Map.of(</span>
+                    &quot;error&quot;, &quot;Fork provisioning failed&quot;,
+<span class="nc" id="L173">                    &quot;message&quot;, safeMessage(exception)));</span>
+        }
+    }
+
+    @GetMapping(&quot;/{repositoryId}/members&quot;)
+    @Operation(summary = &quot;List repository memberships&quot;)
+    public ResponseEntity&lt;?&gt; listMemberships(@PathVariable String repositoryId) {
+<span class="fc" id="L180">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L181">        SystemRepository repository = visibleRepository(repositoryId, user);</span>
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        if (repository == null) {</span>
+<span class="nc" id="L183">            return ResponseEntity.notFound().build();</span>
+        }
+<span class="fc bfc" id="L185" title="All 2 branches covered.">        if (!membershipService.isOwner(repository, user)) {</span>
+<span class="fc" id="L186">            return forbidden(&quot;Repository OWNER role required&quot;);</span>
+        }
+<span class="fc" id="L188">        return ResponseEntity.ok(membershipService.listMemberships(repository, user).stream()</span>
+<span class="fc" id="L189">                .map(this::toMembershipMap)</span>
+<span class="fc" id="L190">                .toList());</span>
+    }
+
+    @PutMapping(&quot;/{repositoryId}/members/{username}&quot;)
+    @Operation(summary = &quot;Assign or change a repository membership&quot;)
+    public ResponseEntity&lt;?&gt; updateMembership(
+            @PathVariable String repositoryId,
+            @PathVariable String username,
+            @RequestBody UpdateMembershipRequest request) {
+<span class="fc" id="L199">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L200">        SystemRepository repository = visibleRepository(repositoryId, user);</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">        if (repository == null) {</span>
+<span class="fc" id="L202">            return ResponseEntity.notFound().build();</span>
+        }
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        if (!membershipService.isOwner(repository, user)) {</span>
+<span class="nc" id="L205">            return forbidden(&quot;Repository OWNER role required&quot;);</span>
+        }
+        try {
+<span class="fc" id="L208">            RepositoryMembership membership = membershipService.assignRole(</span>
+<span class="fc" id="L209">                    repository, username, request.role(), user);</span>
+<span class="fc" id="L210">            return ResponseEntity.ok(toMembershipMap(membership));</span>
+<span class="nc" id="L211">        } catch (IllegalArgumentException | IllegalStateException exception) {</span>
+<span class="nc" id="L212">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, safeMessage(exception)));</span>
+<span class="nc" id="L213">        } catch (AccessDeniedException exception) {</span>
+<span class="nc" id="L214">            return forbidden(safeMessage(exception));</span>
+        }
+    }
+
+    @DeleteMapping(&quot;/{repositoryId}/members/{username}&quot;)
+    @Operation(summary = &quot;Remove a repository membership&quot;)
+    public ResponseEntity&lt;?&gt; removeMembership(
+            @PathVariable String repositoryId,
+            @PathVariable String username) {
+<span class="fc" id="L223">        String user = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L224">        SystemRepository repository = visibleRepository(repositoryId, user);</span>
+<span class="pc bpc" id="L225" title="1 of 2 branches missed.">        if (repository == null) {</span>
+<span class="nc" id="L226">            return ResponseEntity.notFound().build();</span>
+        }
+<span class="pc bpc" id="L228" title="1 of 2 branches missed.">        if (!membershipService.isOwner(repository, user)) {</span>
+<span class="nc" id="L229">            return forbidden(&quot;Repository OWNER role required&quot;);</span>
+        }
+        try {
+<span class="fc" id="L232">            membershipService.removeMembership(repository, username, user);</span>
+<span class="fc" id="L233">            return ResponseEntity.noContent().build();</span>
+<span class="nc" id="L234">        } catch (IllegalArgumentException | IllegalStateException exception) {</span>
+<span class="nc" id="L235">            return ResponseEntity.badRequest().body(Map.of(&quot;error&quot;, safeMessage(exception)));</span>
+<span class="nc" id="L236">        } catch (AccessDeniedException exception) {</span>
+<span class="nc" id="L237">            return forbidden(safeMessage(exception));</span>
+        }
+    }
+
+    private SystemRepository visibleRepository(String repositoryId, String username) {
+        try {
+<span class="fc" id="L243">            SystemRepository repository = repositoryService.getRepository(repositoryId);</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">            return canView(repository, username) ? repository : null;</span>
+<span class="nc" id="L245">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L246">            return null;</span>
+        }
+    }
+
+    private boolean canView(SystemRepository repository, String username) {
+<span class="fc" id="L251">        return membershipService.canRead(repository, username);</span>
+    }
+
+    private Map&lt;String, Object&gt; toMap(SystemRepository repository) {
+<span class="nc" id="L255">        LinkedHashMap&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L256">        result.put(&quot;repositoryId&quot;, repository.getRepositoryId());</span>
+<span class="nc" id="L257">        result.put(&quot;slug&quot;, repository.getSlug());</span>
+<span class="nc" id="L258">        result.put(&quot;displayName&quot;, repository.getDisplayName());</span>
+<span class="nc" id="L259">        result.put(&quot;description&quot;, repository.getDescription());</span>
+<span class="nc" id="L260">        result.put(&quot;defaultBranch&quot;, repository.getDefaultBranch());</span>
+<span class="nc" id="L261">        result.put(&quot;visibility&quot;, repository.getVisibility());</span>
+<span class="nc" id="L262">        result.put(&quot;lifecycleState&quot;, repository.getLifecycleState());</span>
+<span class="nc" id="L263">        result.put(&quot;ownerType&quot;, repository.getOwnerType());</span>
+<span class="nc" id="L264">        result.put(&quot;ownerId&quot;, repository.getOwnerId());</span>
+<span class="nc" id="L265">        result.put(&quot;primary&quot;, repository.isPrimaryRepo());</span>
+<span class="nc" id="L266">        result.put(&quot;topologyMode&quot;, repository.getTopologyMode());</span>
+<span class="nc" id="L267">        result.put(&quot;upstreamRepositoryId&quot;, repository.getUpstreamRepositoryId());</span>
+<span class="nc" id="L268">        result.put(&quot;upstreamBranch&quot;, repository.getUpstreamBranch());</span>
+<span class="nc" id="L269">        result.put(&quot;forkPointCommit&quot;, repository.getForkPointCommit());</span>
+<span class="nc" id="L270">        result.put(&quot;createdAt&quot;, repository.getCreatedAt());</span>
+<span class="nc" id="L271">        result.put(&quot;updatedAt&quot;, repository.getUpdatedAt());</span>
+<span class="nc" id="L272">        return result;</span>
+    }
+
+    private Map&lt;String, Object&gt; toMembershipMap(RepositoryMembership membership) {
+<span class="fc" id="L276">        LinkedHashMap&lt;String, Object&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L277">        result.put(&quot;username&quot;, membership.getUsername());</span>
+<span class="fc" id="L278">        result.put(&quot;role&quot;, membership.getRole());</span>
+<span class="fc" id="L279">        result.put(&quot;createdAt&quot;, membership.getCreatedAt());</span>
+<span class="fc" id="L280">        result.put(&quot;createdBy&quot;, membership.getCreatedBy());</span>
+<span class="fc" id="L281">        result.put(&quot;updatedAt&quot;, membership.getUpdatedAt());</span>
+<span class="fc" id="L282">        return result;</span>
+    }
+
+    private static ResponseEntity&lt;Map&lt;String, String&gt;&gt; forbidden(String message) {
+<span class="fc" id="L286">        return ResponseEntity.status(HttpStatus.FORBIDDEN)</span>
+<span class="fc" id="L287">                .body(Map.of(&quot;error&quot;, message));</span>
+    }
+
+    private static String safeMessage(Throwable throwable) {
+<span class="nc bnc" id="L291" title="All 2 branches missed.">        return throwable.getMessage() == null ? throwable.getClass().getSimpleName() : throwable.getMessage();</span>
+    }
+
+<span class="nc" id="L294">    public record CreateRepositoryRequest(</span>
+            String displayName,
+            String slug,
+            String description,
+            RepositoryVisibility visibility,
+            String defaultBranch) {
+    }
+
+<span class="fc" id="L302">    public record CreateWorkspaceRequest(</span>
+            String displayName,
+            String description,
+            String sourceBranch) {
+    }
+
+<span class="fc" id="L308">    public record CreateForkRequest(</span>
+            String displayName,
+            String slug,
+            String description,
+            RepositoryVisibility visibility,
+            String sourceBranch) {
+    }
+
+<span class="fc" id="L316">    public record UpdateMembershipRequest(RepositoryRole role) {</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

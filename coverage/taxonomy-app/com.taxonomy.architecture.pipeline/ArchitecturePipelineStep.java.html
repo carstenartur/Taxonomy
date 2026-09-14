@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitecturePipelineStep.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">ArchitecturePipelineStep.java</span></div><h1>ArchitecturePipelineStep.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.shared.extension.ExtensionKind;
+import com.taxonomy.shared.extension.TaxonomyExtension;
+
+/**
+ * Extension SPI for architecture-view pipeline steps.
+ *
+ * &lt;p&gt;Each implementation encapsulates one deterministic transformation of the
+ * {@link ArchitectureViewContext}, such as anchor selection, relevance propagation,
+ * or leaf enrichment.  Implementations are registered as Spring beans and
+ * discovered automatically by {@link ArchitecturePipelineStepRegistry}.
+ *
+ * &lt;h2&gt;Step contracts&lt;/h2&gt;
+ * &lt;ul&gt;
+ *   &lt;li&gt;&lt;b&gt;Core invariants&lt;/b&gt; — steps with {@code coreInvariant = true} in their
+ *       descriptor enforce structural requirements of the pipeline (valid anchors,
+ *       valid elements, node-count limits).  Their ordering and semantics must not
+ *       be changed; replacing or disabling them will break the pipeline output.&lt;/li&gt;
+ *   &lt;li&gt;&lt;b&gt;Safe extension points&lt;/b&gt; — steps with {@code coreInvariant = false}
+ *       may be augmented by adding a new implementation that declares
+ *       an {@link #order()} value adjacent to the step it extends. Replacing a
+ *       default step requires changing bean registration so only one implementation
+ *       occupies each unique order/ID slot, and the replacement must still leave
+ *       the context in a consistent state for subsequent steps.&lt;/li&gt;
+ * &lt;/ul&gt;
+ *
+ * &lt;h2&gt;Default step sequence&lt;/h2&gt;
+ * &lt;ol&gt;
+ *   &lt;li&gt;100 {@code anchor-selection} — &lt;em&gt;core invariant&lt;/em&gt;&lt;/li&gt;
+ *   &lt;li&gt;200 {@code relevance-propagation} — &lt;em&gt;core invariant&lt;/em&gt;&lt;/li&gt;
+ *   &lt;li&gt;300 {@code element-build} — &lt;em&gt;core invariant&lt;/em&gt;&lt;/li&gt;
+ *   &lt;li&gt;400 {@code leaf-enrichment} — safe extension point&lt;/li&gt;
+ *   &lt;li&gt;500 {@code relationship-build} — &lt;em&gt;core invariant&lt;/em&gt;&lt;/li&gt;
+ *   &lt;li&gt;600 {@code provisional-relation} — safe extension point&lt;/li&gt;
+ *   &lt;li&gt;700 {@code node-limit} — &lt;em&gt;core invariant&lt;/em&gt;&lt;/li&gt;
+ *   &lt;li&gt;800 {@code impact-relation} — safe extension point&lt;/li&gt;
+ *   &lt;li&gt;900 {@code scoring-trace} — safe extension point&lt;/li&gt;
+ *   &lt;li&gt;1000 {@code impact-selection} — safe extension point&lt;/li&gt;
+ * &lt;/ol&gt;
+ *
+ * &lt;p&gt;Example:
+ * &lt;pre&gt;{@code
+ * @Service
+ * public class MyCustomEnrichmentStep implements ArchitecturePipelineStep {
+ *
+ *     @Override
+ *     public String id() { return &quot;my-custom-enrichment&quot;; }
+ *
+ *     @Override
+ *     public int order() { return 450; }  // runs between leaf-enrichment (400) and relationship-build (500)
+ *
+ *     @Override
+ *     public void apply(ArchitectureViewContext ctx) {
+ *         // read and write ctx as needed
+ *     }
+ * }
+ * }&lt;/pre&gt;
+ *
+ * @see ArchitecturePipelineStepRegistry
+ * @see ArchitecturePipelineStepDescriptor
+ * @see ArchitectureViewPipeline
+ */
+public interface ArchitecturePipelineStep extends TaxonomyExtension {
+
+    /**
+     * Returns the stable, kebab-case identifier for this step (e.g. {@code &quot;leaf-enrichment&quot;}).
+     * Must be unique across all registered steps.
+     */
+    String id();
+
+    @Override
+    default String displayName() {
+<span class="fc" id="L74">        return id();</span>
+    }
+
+    @Override
+    default String description() {
+<span class="fc" id="L79">        return &quot;Architecture pipeline step: &quot; + id();</span>
+    }
+
+    @Override
+    default ExtensionKind kind() {
+<span class="fc" id="L84">        return ExtensionKind.ARCHITECTURE_PIPELINE_STEP;</span>
+    }
+
+    /**
+     * Returns the numeric order value. Steps are executed in ascending order.
+     * Must be unique across all registered steps.
+     */
+    int order();
+
+    /**
+     * Returns {@code true} when this step is part of the default pipeline.
+     * Defaults to {@code true}; override to {@code false} for opt-in steps.
+     */
+    default boolean enabledByDefault() {
+<span class="fc" id="L98">        return true;</span>
+    }
+
+    /**
+     * Applies this pipeline step to the given context.
+     * Implementations may read from and write to any field in {@code ctx}.
+     */
+    void apply(ArchitectureViewContext ctx);
+
+    /**
+     * Returns the serializable descriptor for this step, derived from the
+     * other interface methods.  Override for custom descriptor values.
+     */
+    default ArchitecturePipelineStepDescriptor descriptor() {
+<span class="fc" id="L112">        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), false);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

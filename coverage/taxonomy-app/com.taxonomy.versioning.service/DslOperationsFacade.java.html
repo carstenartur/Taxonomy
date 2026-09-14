@@ -1,0 +1,293 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslOperationsFacade.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.versioning.service</a> &gt; <span class="el_source">DslOperationsFacade.java</span></div><h1>DslOperationsFacade.java</h1><pre class="source lang-java linenums">package com.taxonomy.versioning.service;
+
+import com.taxonomy.versioning.model.ArchitectureCommitIndex;
+import com.taxonomy.versioning.service.CommitIndexService;
+import com.taxonomy.dsl.diff.ModelDiff;
+import com.taxonomy.workspace.storage.DslBranch;
+import com.taxonomy.workspace.storage.DslCommit;
+import com.taxonomy.workspace.storage.DslGitRepository;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
+import com.taxonomy.dto.ElementHistoryAggregation;
+import com.taxonomy.dto.ViewContext;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort;
+import com.taxonomy.workspace.service.RepositoryStateGuard;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Service;
+
+import java.io.IOException;
+import java.util.List;
+
+/**
+ * Workspace-owned Git versioning and history facade.
+ *
+ * &lt;p&gt;Provides coarse-grained operations for Git versioning, commit indexing,
+ * and conflict detection, so that
+ * the {@code DslApiController} does not need direct access to
+ * repositories or low-level services.&lt;/p&gt;
+ */
+@Service
+public class DslOperationsFacade {
+
+<span class="fc" id="L35">    private static final Logger log = LoggerFactory.getLogger(DslOperationsFacade.class);</span>
+
+    private final DslGitRepositoryFactory repositoryFactory;
+    private final CommitIndexService commitIndexService;
+    private final ConflictDetectionService conflictDetectionService;
+    private final RepositoryStateGuard stateGuard;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+    private final WorkspaceArchitectureVersionPort editorVersions;
+
+    public DslOperationsFacade(DslGitRepositoryFactory repositoryFactory,
+                               CommitIndexService commitIndexService,
+                               ConflictDetectionService conflictDetectionService,
+                               RepositoryStateGuard stateGuard,
+                               RepositoryStateService repositoryStateService,
+<span class="fc" id="L50">                               WorkspaceResolver workspaceResolver, WorkspaceArchitectureVersionPort editorVersions) {</span>
+<span class="fc" id="L51">        this.repositoryFactory = repositoryFactory;</span>
+<span class="fc" id="L52">        this.commitIndexService = commitIndexService;</span>
+<span class="fc" id="L53">        this.conflictDetectionService = conflictDetectionService;</span>
+<span class="fc" id="L54">        this.stateGuard = stateGuard;</span>
+<span class="fc" id="L55">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L56">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L57">        this.editorVersions = editorVersions;</span>
+<span class="fc" id="L58">    }</span>
+
+    private DslGitRepository resolveRepository() {
+<span class="fc" id="L61">        return repositoryFactory.resolveRepository(resolveRepositoryContext());</span>
+    }
+
+    private DslGitRepository resolveRepository(WorkspaceContext workspaceContext) {
+<span class="fc" id="L65">        return repositoryFactory.resolveRepository(workspaceContext);</span>
+    }
+
+    /**
+     * Resolves the request-bound workspace after eager provisioning.
+     *
+     * &lt;p&gt;This deliberately fails closed. Falling back to the shared repository
+     * after a resolver, persistence or provisioning failure could make a read,
+     * commit, merge or index operation cross the authenticated user's workspace
+     * boundary.&lt;/p&gt;
+     */
+    private WorkspaceContext resolveContext() {
+<span class="fc" id="L77">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L78">        repositoryStateService.ensureWorkspaceState(username);</span>
+<span class="fc" id="L79">        WorkspaceContext context = workspaceResolver.resolveCurrentContext();</span>
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (context == null) {</span>
+<span class="nc" id="L81">            throw new IllegalStateException(&quot;Workspace context resolver returned null&quot;);</span>
+        }
+<span class="fc" id="L83">        return context;</span>
+    }
+
+    /** Resolve the mandatory logical repository identity for this request. */
+    private RepositoryContext resolveRepositoryContext() {
+<span class="fc" id="L88">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L89">        repositoryStateService.ensureWorkspaceState(username);</span>
+<span class="fc" id="L90">        RepositoryContext context = workspaceResolver.resolveCurrentRepositoryContext();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (context == null) {</span>
+<span class="fc" id="L92">            throw new IllegalStateException(&quot;Repository context resolver returned null&quot;);</span>
+        }
+<span class="fc" id="L94">        return context;</span>
+    }
+
+    // ── Git operations ──────────────────────────────────────────────
+
+    public String commitDsl(String branch, String dslText, String author, String message)
+            throws IOException {
+<span class="fc" id="L101">        return version(branch, message, () -&gt; resolveRepository().commitDsl(branch, dslText, author, message));</span>
+    }
+
+    protected &lt;T&gt; T version(String branch, String rationale, WorkspaceArchitectureVersionPort.GitAction&lt;T&gt; action) throws IOException {
+<span class="fc" id="L105">        RepositoryContext context = resolveRepositoryContext();</span>
+<span class="fc" id="L106">        RepositoryContext selected = new RepositoryContext(context.repositoryId(), context.workspaceId(),</span>
+<span class="fc" id="L107">                branch, context.username(), context.scope());</span>
+<span class="fc" id="L108">        return editorVersions.version(selected, versionRationale(rationale), action);</span>
+    }
+
+    /** The bounded journal rationale is a summary; the Git action retains its complete original message. */
+    private static String versionRationale(String message) {
+<span class="fc bfc" id="L113" title="All 2 branches covered.">        if (message == null) return &quot;Create architecture version&quot;;</span>
+<span class="fc" id="L114">        String normalized = message.codePoints()</span>
+<span class="fc bfc" id="L115" title="All 4 branches covered.">                .map(codePoint -&gt; Character.isISOControl(codePoint) || Character.isWhitespace(codePoint) ? ' ' : codePoint)</span>
+<span class="fc" id="L116">                .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)</span>
+<span class="fc" id="L117">                .toString().strip().replaceAll(&quot; +&quot;, &quot; &quot;);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (normalized.isEmpty()) return &quot;Create architecture version&quot;;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if (normalized.length() &lt;= 1000) return normalized;</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        int end = Character.isHighSurrogate(normalized.charAt(999)) ? 999 : 1000;</span>
+<span class="fc" id="L121">        return normalized.substring(0, end).stripTrailing();</span>
+    }
+
+    public boolean isDatabaseBacked() {
+<span class="fc" id="L125">        return resolveRepository().isDatabaseBacked();</span>
+    }
+
+    public List&lt;DslCommit&gt; getDslHistory(String branch) throws IOException {
+<span class="nc" id="L129">        return resolveRepository().getDslHistory(branch);</span>
+    }
+
+    public List&lt;DslCommit&gt; getDslHistory(
+            String branch, WorkspaceContext workspaceContext) throws IOException {
+<span class="fc" id="L134">        return resolveRepository(workspaceContext).getDslHistory(branch);</span>
+    }
+
+    public ModelDiff diffBetween(String beforeId, String afterId) throws Exception {
+<span class="fc" id="L138">        return resolveRepository().diffBetween(beforeId, afterId);</span>
+    }
+
+    public String textDiff(String beforeId, String afterId) throws Exception {
+<span class="fc" id="L142">        return resolveRepository().textDiff(beforeId, afterId);</span>
+    }
+
+    public List&lt;DslBranch&gt; listBranches() throws IOException {
+<span class="fc" id="L146">        return resolveRepository().listBranches();</span>
+    }
+
+    public String createBranch(String name, String fromBranch) throws IOException {
+<span class="fc" id="L150">        return version(fromBranch, &quot;Create architecture branch &quot; + name, () -&gt; resolveRepository().createBranch(name, fromBranch));</span>
+    }
+
+    public String cherryPick(String commitId, String targetBranch) throws IOException {
+<span class="fc" id="L154">        return version(targetBranch, &quot;Cherry-pick architecture version&quot;, () -&gt; resolveRepository().cherryPick(commitId, targetBranch));</span>
+    }
+
+    public String merge(String fromBranch, String intoBranch) throws IOException {
+<span class="nc" id="L158">        return mergeVersion(fromBranch, intoBranch, () -&gt; resolveRepository().merge(fromBranch, intoBranch));</span>
+    }
+
+    protected &lt;T&gt; T mergeVersion(String fromBranch, String intoBranch, WorkspaceArchitectureVersionPort.GitAction&lt;T&gt; action) throws IOException {
+<span class="pc bpc" id="L162" title="1 of 2 branches missed.">        if (fromBranch.equals(intoBranch)) return version(intoBranch, &quot;Merge architecture versions&quot;, action);</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">        String first = fromBranch.compareTo(intoBranch) &lt;= 0 ? fromBranch : intoBranch;</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        String second = first.equals(fromBranch) ? intoBranch : fromBranch;</span>
+<span class="fc" id="L165">        return version(first, &quot;Merge architecture versions&quot;, () -&gt; version(second, &quot;Merge architecture versions&quot;, action));</span>
+    }
+
+    public String revert(String commitId, String branch) throws IOException {
+<span class="nc" id="L169">        return version(branch, &quot;Revert architecture version&quot;, () -&gt; resolveRepository().revert(commitId, branch));</span>
+    }
+
+    public String undoLast(String branch) throws IOException {
+<span class="nc" id="L173">        return version(branch, &quot;Revert latest architecture version&quot;, () -&gt; resolveRepository().undoLast(branch));</span>
+    }
+
+    public String restore(String commitId, String branch) throws Exception {
+<span class="nc" id="L177">        return version(branch, &quot;Restore architecture as a new version&quot;, () -&gt; {</span>
+<span class="nc" id="L178">            try { return resolveRepository().restore(commitId, branch); }</span>
+<span class="nc" id="L179">            catch (IOException | RuntimeException failure) { throw failure; }</span>
+<span class="nc" id="L180">            catch (Exception failure) { throw new IOException(&quot;Architecture restore failed&quot;, failure); }</span>
+        });
+    }
+
+    public boolean deleteBranch(String name) throws IOException {
+<span class="fc" id="L185">        return resolveRepository().deleteBranch(name);</span>
+    }
+
+    public String getDslAtHead(String branch) throws IOException {
+<span class="nc" id="L189">        return resolveRepository().getDslAtHead(branch);</span>
+    }
+
+    public String getDslAtHead(
+            String branch, WorkspaceContext workspaceContext) throws IOException {
+<span class="fc" id="L194">        return resolveRepository(workspaceContext).getDslAtHead(branch);</span>
+    }
+
+    public String getDslAtCommit(String commitId) throws Exception {
+<span class="fc" id="L198">        return resolveRepository().getDslAtCommit(commitId);</span>
+    }
+
+    public String getHeadCommit(String branch) throws IOException {
+<span class="nc" id="L202">        return resolveRepository().getHeadCommit(branch);</span>
+    }
+
+    // ── Conflict detection ──────────────────────────────────────────
+
+    public ConflictDetectionService.MergePreview previewMerge(String from, String into) {
+<span class="nc" id="L208">        return conflictDetectionService.previewMerge(from, into, resolveContext());</span>
+    }
+
+    public ConflictDetectionService.CherryPickPreview previewCherryPick(
+            String commitId, String targetBranch) {
+<span class="nc" id="L213">        return conflictDetectionService.previewCherryPick(</span>
+<span class="nc" id="L214">                commitId, targetBranch, resolveContext());</span>
+    }
+
+    public ConflictDetectionService.ConflictDetails getMergeConflictDetails(
+            String from, String into) {
+<span class="fc" id="L219">        return conflictDetectionService.getMergeConflictDetails(</span>
+<span class="fc" id="L220">                from, into, resolveContext());</span>
+    }
+
+    public ConflictDetectionService.ConflictDetails getCherryPickConflictDetails(
+            String commitId, String targetBranch) {
+<span class="nc" id="L225">        return conflictDetectionService.getCherryPickConflictDetails(</span>
+<span class="nc" id="L226">                commitId, targetBranch, resolveContext());</span>
+    }
+
+    // ── View context &amp; state guard ──────────────────────────────────
+
+    public ViewContext getViewContext(String branch) {
+<span class="fc" id="L232">        return repositoryStateService.getViewContext(</span>
+<span class="fc" id="L233">                workspaceResolver.resolveCurrentUsername(), branch, resolveContext());</span>
+    }
+
+    public ViewContext getViewContext(
+            String username,
+            String branch,
+            WorkspaceContext workspaceContext) {
+<span class="fc" id="L240">        return repositoryStateService.getViewContext(</span>
+                username, branch, workspaceContext);
+    }
+
+    public RepositoryStateGuard.OperationCheck checkWriteOperation(
+            String branch, String operationType) {
+<span class="nc" id="L246">        return stateGuard.checkWriteOperation(</span>
+<span class="nc" id="L247">                workspaceResolver.resolveCurrentUsername(), branch, operationType);</span>
+    }
+
+    public String resolveCurrentUsername() {
+<span class="fc" id="L251">        return workspaceResolver.resolveCurrentUsername();</span>
+    }
+
+    public String resolveWorkspaceBranch(String username) {
+<span class="fc" id="L255">        return repositoryStateService.resolveWorkspaceBranch(username);</span>
+    }
+
+    // ── History search ──────────────────────────────────────────────
+
+    public int indexBranch(String branch) {
+<span class="fc" id="L261">        return commitIndexService.indexBranch(branch, resolveRepositoryContext());</span>
+    }
+
+    public int rebuildHistoryBranch(String branch) {
+<span class="nc" id="L265">        return commitIndexService.rebuildBranch(branch, resolveRepositoryContext());</span>
+    }
+
+    public int purgeHistoryIndex() {
+<span class="nc" id="L269">        return commitIndexService.purge(resolveRepositoryContext());</span>
+    }
+
+    public List&lt;ArchitectureCommitIndex&gt; searchHistory(
+            String query, int maxResults) {
+<span class="fc" id="L274">        return commitIndexService.search(</span>
+<span class="fc" id="L275">                query, maxResults, resolveRepositoryContext());</span>
+    }
+
+    public List&lt;ArchitectureCommitIndex&gt; findByElement(String elementId) {
+<span class="fc" id="L279">        return commitIndexService.findByElement(</span>
+<span class="fc" id="L280">                elementId, resolveRepositoryContext());</span>
+    }
+
+    public List&lt;ArchitectureCommitIndex&gt; findByRelation(String key) {
+<span class="fc" id="L284">        return commitIndexService.findByRelation(</span>
+<span class="fc" id="L285">                key, resolveRepositoryContext());</span>
+    }
+
+    public ElementHistoryAggregation aggregateElementHistory(String elementId) {
+<span class="fc" id="L289">        return commitIndexService.aggregateElementHistory(</span>
+<span class="fc" id="L290">                elementId, resolveRepositoryContext());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

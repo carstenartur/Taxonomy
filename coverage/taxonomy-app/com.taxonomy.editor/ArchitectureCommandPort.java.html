@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureCommandPort.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">ArchitectureCommandPort.java</span></div><h1>ArchitectureCommandPort.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import com.taxonomy.dsl.command.ArchitectureCommand;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.Change;
+import com.taxonomy.model.WorkspaceOverlayScope;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+
+import java.io.IOException;
+import java.util.Objects;
+import java.util.UUID;
+
+/** Exact-context application boundary. HTTP and canvas DTOs do not enter the domain command handler. */
+public interface ArchitectureCommandPort {
+<span class="fc" id="L15">    record Context(String repositoryId, String workspaceScopeKey, String branch, String commit, long revision,</span>
+                   String actor, String writeMode) {
+        public static Context of(RepositoryContext context, String commit) {
+<span class="fc" id="L18">            return of(context, commit, 0);</span>
+        }
+        public static Context version(RepositoryContext context, String commit) {
+<span class="fc" id="L21">            return new Context(context.repositoryId(), WorkspaceOverlayScope.keyFor(context.workspaceId()),</span>
+<span class="fc" id="L22">                    context.branch(), commit, 0, context.username(), &quot;READ_ONLY&quot;);</span>
+        }
+        public static Context of(RepositoryContext context, String commit, long revision) {
+<span class="fc" id="L25">            return new Context(context.repositoryId(), WorkspaceOverlayScope.keyFor(context.workspaceId()),</span>
+<span class="fc" id="L26">                    context.branch(), commit, revision, context.username(),</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">                    context.scope() == RepositoryScope.WORKSPACE ? &quot;PRIVATE_WORKSPACE&quot; : &quot;READ_ONLY&quot;);</span>
+        }
+    }
+
+    sealed interface Operation permits SemanticCommand, UndoArchitectureCommand, RedoArchitectureCommand {}
+    record SemanticCommand(ArchitectureCommand command) implements Operation {
+<span class="fc" id="L33">        public SemanticCommand { Objects.requireNonNull(command); }</span>
+    }
+    record UndoArchitectureCommand(UUID targetOperationId) implements Operation {
+<span class="fc" id="L36">        public UndoArchitectureCommand { Objects.requireNonNull(targetOperationId); }</span>
+    }
+    record RedoArchitectureCommand(UUID targetOperationId) implements Operation {
+<span class="fc" id="L39">        public RedoArchitectureCommand { Objects.requireNonNull(targetOperationId); }</span>
+    }
+    record CreateCheckpointCommand(Context context, Metadata metadata) {
+<span class="fc" id="L42">        public CreateCheckpointCommand {</span>
+<span class="pc bpc" id="L43" title="2 of 4 branches missed.">            if (context == null || metadata == null) throw new IllegalArgumentException(&quot;Checkpoint context and metadata are required&quot;);</span>
+<span class="fc" id="L44">        }</span>
+    }
+<span class="fc" id="L46">    record CheckpointAccepted(Context context, String commandId, String commitId,</span>
+                              long fromRevision, long throughRevision, boolean commitCreated, boolean replayed) {}
+
+    record Metadata(String commandId, String correlationId, String causationId, String rationale) {
+<span class="fc" id="L50">        public Metadata {</span>
+<span class="fc" id="L51">            commandId = UUID.fromString(commandId).toString();</span>
+<span class="fc" id="L52">            correlationId = UUID.fromString(correlationId).toString();</span>
+<span class="fc" id="L53">            causationId = UUID.fromString(causationId).toString();</span>
+<span class="pc bpc" id="L54" title="3 of 6 branches missed.">            if (rationale == null || rationale.isBlank() || rationale.length() &gt; 1000) {</span>
+<span class="nc" id="L55">                throw new IllegalArgumentException(&quot;A rationale of 1–1000 characters is required&quot;);</span>
+            }
+<span class="fc" id="L57">            rationale = rationale.strip().replaceAll(&quot;\\s+&quot;, &quot; &quot;);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">            if (rationale.chars().anyMatch(Character::isISOControl)) {</span>
+<span class="nc" id="L59">                throw new IllegalArgumentException(&quot;Rationale must not contain control characters&quot;);</span>
+            }
+<span class="fc" id="L61">        }</span>
+    }
+
+    record Command(Context context, Metadata metadata, Operation operation) {
+<span class="fc" id="L65">        public Command {</span>
+<span class="fc" id="L66">            Objects.requireNonNull(context);</span>
+<span class="fc" id="L67">            Objects.requireNonNull(metadata);</span>
+<span class="fc" id="L68">            Objects.requireNonNull(operation);</span>
+<span class="fc" id="L69">        }</span>
+    }
+<span class="fc" id="L71">    record Preview(Context context, Change change, String kind, String targetOperationId) {}</span>
+<span class="fc" id="L72">    record Accepted(Context context, String commandId, String operationId, boolean replayed,</span>
+                    String projectionState, Change change) {}
+
+    Preview preview(RepositoryContext context, Command command) throws IOException;
+    Accepted execute(RepositoryContext context, Command command) throws IOException;
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

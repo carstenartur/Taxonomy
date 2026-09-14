@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ElementBuildStep.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.pipeline</a> &gt; <span class="el_source">ElementBuildStep.java</span></div><h1>ElementBuildStep.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.pipeline;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.catalog.service.PropagationResult;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.NodeOrigin;
+import com.taxonomy.dto.RequirementElementView;
+import org.springframework.stereotype.Service;
+
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/**
+ * Builds the initial list of {@link RequirementElementView} instances from
+ * the relevance propagation result.
+ *
+ * &lt;p&gt;Each node in the propagation result is looked up in the taxonomy to
+ * populate its title, taxonomy sheet, depth, and hierarchy path. Elements
+ * are sorted anchors-first, then by relevance descending.
+ *
+ * &lt;p&gt;&lt;b&gt;Core invariant&lt;/b&gt; — this step must run after relevance-propagation and
+ * before leaf-enrichment. Do not disable it.
+ */
+@Service
+public class ElementBuildStep implements ArchitecturePipelineStep {
+
+    /** Stable pipeline step ID. */
+    public static final String STEP_ID = &quot;element-build&quot;;
+
+    private final TaxonomyNodeRepository nodeRepository;
+    private final TaxonomyService taxonomyService;
+
+    public ElementBuildStep(TaxonomyNodeRepository nodeRepository,
+<span class="fc" id="L38">                            TaxonomyService taxonomyService) {</span>
+<span class="fc" id="L39">        this.nodeRepository = nodeRepository;</span>
+<span class="fc" id="L40">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L41">    }</span>
+
+    @Override
+<span class="fc" id="L44">    public String id() { return STEP_ID; }</span>
+
+    @Override
+<span class="fc" id="L47">    public int order() { return 300; }</span>
+
+    @Override
+    public ArchitecturePipelineStepDescriptor descriptor() {
+<span class="nc" id="L51">        return new ArchitecturePipelineStepDescriptor(id(), order(), enabledByDefault(), true);</span>
+    }
+
+    @Override
+    public void apply(ArchitectureViewContext ctx) {
+<span class="fc" id="L56">        PropagationResult propagation = ctx.getPropagation();</span>
+<span class="fc" id="L57">        List&lt;RequirementElementView&gt; elements = new ArrayList&lt;&gt;();</span>
+
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (Map.Entry&lt;String, Double&gt; entry : propagation.getRelevanceMap().entrySet()) {</span>
+<span class="fc" id="L60">            String nodeCode = entry.getKey();</span>
+<span class="fc" id="L61">            double relevance = entry.getValue();</span>
+<span class="fc" id="L62">            int hopDistance = propagation.getHopDistanceMap().getOrDefault(nodeCode, 0);</span>
+<span class="fc" id="L63">            String reason = propagation.getReasonMap().getOrDefault(nodeCode, &quot;unknown&quot;);</span>
+
+<span class="fc" id="L65">            RequirementElementView element = new RequirementElementView();</span>
+<span class="fc" id="L66">            element.setNodeCode(nodeCode);</span>
+<span class="fc" id="L67">            element.setRelevance(relevance);</span>
+<span class="fc" id="L68">            element.setHopDistance(hopDistance);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">            element.setAnchor(hopDistance == 0);</span>
+<span class="fc" id="L70">            element.setIncludedBecause(reason);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            element.setOrigin(hopDistance == 0 ? NodeOrigin.DIRECT_SCORED : NodeOrigin.PROPAGATED);</span>
+
+            // Refine origin: non-anchor root codes (no '-') reached through propagation
+            // are seed-context nodes rather than independently propagated results.
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">            if (hopDistance &gt; 0 &amp;&amp; !nodeCode.contains(&quot;-&quot;)) {</span>
+<span class="fc" id="L76">                element.setOrigin(NodeOrigin.SEED_CONTEXT);</span>
+            }
+
+<span class="fc" id="L79">            Optional&lt;TaxonomyNode&gt; nodeOpt = nodeRepository.findByCode(nodeCode);</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            if (nodeOpt.isPresent()) {</span>
+<span class="fc" id="L81">                TaxonomyNode node = nodeOpt.get();</span>
+<span class="fc" id="L82">                element.setTitle(node.getNameEn());</span>
+<span class="fc" id="L83">                element.setTaxonomySheet(node.getTaxonomyRoot());</span>
+<span class="fc" id="L84">                element.setTaxonomyDepth(node.getLevel());</span>
+            }
+
+<span class="fc" id="L87">            element.setDirectLlmScore((int) Math.round(relevance * 100));</span>
+<span class="fc" id="L88">            element.setHierarchyPath(ctx.buildHierarchyPath(nodeCode, taxonomyService));</span>
+
+<span class="fc" id="L90">            elements.add(element);</span>
+<span class="fc" id="L91">        }</span>
+
+        // Sort: anchors first, then by relevance descending
+<span class="fc" id="L94">        elements.sort(Comparator</span>
+<span class="fc" id="L95">                .comparing(RequirementElementView::isAnchor).reversed()</span>
+<span class="fc" id="L96">                .thenComparing(Comparator.comparingDouble(RequirementElementView::getRelevance).reversed()));</span>
+
+<span class="fc" id="L98">        ctx.setElements(elements);</span>
+<span class="fc" id="L99">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

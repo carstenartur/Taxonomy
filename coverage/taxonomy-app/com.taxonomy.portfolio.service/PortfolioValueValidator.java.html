@@ -1,0 +1,114 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioValueValidator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioValueValidator.java</span></div><h1>PortfolioValueValidator.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import java.math.BigDecimal;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.Currency;
+import java.util.LinkedHashMap;
+import java.util.Locale;
+import java.util.Map;
+
+/** Shared validation for persisted portfolio values whose database constraints are not descriptive enough. */
+final class PortfolioValueValidator {
+
+    static final int MAX_SOURCE_FRAGMENT_IDS = 1_000;
+    static final int MAX_ORIGINAL_TEXT_CHARACTERS = 100_000;
+    static final int MAX_EXTENSION_ATTRIBUTES = 100;
+    static final int MAX_EXTENSION_KEY_CHARACTERS = 120;
+    static final int MAX_EXTENSION_VALUE_CHARACTERS = 1_000;
+<span class="fc" id="L19">    static final Duration MAX_VERIFICATION_CLOCK_SKEW = Duration.ofMinutes(5);</span>
+
+    private static final int MONEY_INTEGER_DIGITS = 17;
+    private static final int MONEY_SCALE = 2;
+
+    private PortfolioValueValidator() {
+    }
+
+    static BigDecimal money(BigDecimal value, String field) {
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        if (value == null) return null;</span>
+<span class="fc bfc" id="L29" title="All 2 branches covered.">        if (value.signum() &lt; 0) {</span>
+<span class="fc" id="L30">            throw PortfolioException.validation(field + &quot; must not be negative&quot;);</span>
+        }
+
+<span class="fc" id="L33">        BigDecimal normalized = value.stripTrailingZeros();</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (normalized.scale() &lt; 0) normalized = normalized.setScale(0);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (normalized.scale() &gt; MONEY_SCALE) {</span>
+<span class="fc" id="L36">            throw PortfolioException.validation(field + &quot; supports at most &quot; + MONEY_SCALE + &quot; decimal places&quot;);</span>
+        }
+<span class="fc" id="L38">        int integerDigits = Math.max(0, normalized.precision() - normalized.scale());</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if (integerDigits &gt; MONEY_INTEGER_DIGITS) {</span>
+<span class="fc" id="L40">            throw PortfolioException.validation(</span>
+                    field + &quot; supports at most &quot; + MONEY_INTEGER_DIGITS + &quot; integer digits&quot;);
+        }
+<span class="fc" id="L43">        return normalized;</span>
+    }
+
+    static String currency(String value, String field) {
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">        if (value == null || value.isBlank()) return null;</span>
+<span class="fc" id="L48">        String normalized = value.strip().toUpperCase(Locale.ROOT);</span>
+        try {
+<span class="fc" id="L50">            return Currency.getInstance(normalized).getCurrencyCode();</span>
+<span class="fc" id="L51">        } catch (IllegalArgumentException failure) {</span>
+<span class="fc" id="L52">            throw PortfolioException.validation(field + &quot; must be a registered ISO 4217 currency code&quot;);</span>
+        }
+    }
+
+    static void requireMoneyPair(BigDecimal amount,
+                                 String currency,
+                                 String amountField,
+                                 String currencyField) {
+<span class="fc bfc" id="L60" title="All 6 branches covered.">        if ((amount == null) != (currency == null)) {</span>
+<span class="fc" id="L61">            throw PortfolioException.validation(</span>
+                    amountField + &quot; and &quot; + currencyField + &quot; must be supplied together&quot;);
+        }
+<span class="fc" id="L64">    }</span>
+
+    static Instant verifiedAt(Instant value, Instant now, boolean required) {
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">            if (required) throw PortfolioException.validation(&quot;verifiedAt is required for product claims&quot;);</span>
+<span class="nc" id="L69">            return null;</span>
+        }
+<span class="fc" id="L71">        Instant latestPlausible = now.plus(MAX_VERIFICATION_CLOCK_SKEW);</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if (value.isAfter(latestPlausible)) {</span>
+<span class="fc" id="L73">            throw PortfolioException.validation(</span>
+                    &quot;verifiedAt must not be more than five minutes in the future&quot;);
+        }
+<span class="fc" id="L76">        return value;</span>
+    }
+
+    static Integer nonNegativeDays(Integer value, String field) {
+<span class="pc bpc" id="L80" title="1 of 2 branches missed.">        if (value == null) return null;</span>
+<span class="pc bpc" id="L81" title="2 of 4 branches missed.">        if (value &lt; 0 || value &gt; 36_500) {</span>
+<span class="nc" id="L82">            throw PortfolioException.validation(field + &quot; must be between 0 and 36500 days&quot;);</span>
+        }
+<span class="fc" id="L84">        return value;</span>
+    }
+
+    static Map&lt;String, String&gt; extensionAttributes(Map&lt;String, String&gt; attributes) {
+<span class="pc bpc" id="L88" title="1 of 2 branches missed.">        if (attributes == null) return null;</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (attributes.size() &gt; MAX_EXTENSION_ATTRIBUTES) {</span>
+<span class="fc" id="L90">            throw PortfolioException.validation(</span>
+                    &quot;extensionAttributes contains more than &quot; + MAX_EXTENSION_ATTRIBUTES + &quot; entries&quot;);
+        }
+
+<span class="fc" id="L94">        Map&lt;String, String&gt; normalized = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L95">        attributes.forEach((key, value) -&gt; {</span>
+<span class="fc" id="L96">            String normalizedKey = ProjectPortfolioService.requireText(</span>
+                    key, &quot;extensionAttributes key&quot;, MAX_EXTENSION_KEY_CHARACTERS);
+<span class="fc" id="L98">            String normalizedValue = ProjectPortfolioService.limited(</span>
+                    value, MAX_EXTENSION_VALUE_CHARACTERS,
+                    &quot;extensionAttributes[&quot; + normalizedKey + &quot;]&quot;);
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">            if (normalizedValue == null) {</span>
+<span class="nc" id="L102">                throw PortfolioException.validation(</span>
+                        &quot;extensionAttributes[&quot; + normalizedKey + &quot;] must not be null&quot;);
+            }
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            if (normalized.putIfAbsent(normalizedKey, normalizedValue) != null) {</span>
+<span class="fc" id="L106">                throw PortfolioException.validation(</span>
+                        &quot;extensionAttributes contains duplicate key after normalization: &quot;
+                                + normalizedKey);
+            }
+<span class="fc" id="L110">        });</span>
+<span class="fc" id="L111">        return Map.copyOf(normalized);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

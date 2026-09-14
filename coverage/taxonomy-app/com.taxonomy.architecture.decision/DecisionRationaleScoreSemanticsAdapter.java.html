@@ -1,0 +1,248 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleScoreSemanticsAdapter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.decision</a> &gt; <span class="el_source">DecisionRationaleScoreSemanticsAdapter.java</span></div><h1>DecisionRationaleScoreSemanticsAdapter.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.decision;
+
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ChildDecision;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.DecisionChapter;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ExecutiveSummary;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.LeafCandidate;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.PathStep;
+import com.taxonomy.architecture.decision.DecisionRationaleReport.ReportMetadata;
+import com.taxonomy.dto.AnalysisScoreDetail;
+import com.taxonomy.dto.AnalysisScoreSemanticsFingerprint;
+import org.springframework.stereotype.Component;
+
+import java.util.Collections;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Map;
+import java.util.TreeMap;
+
+/**
+ * Applies explicit product-score semantics to the format-neutral decision report.
+ *
+ * &lt;p&gt;The hierarchy builder receives comparable effective scores so ranking remains valid. This
+ * adapter then restores the exact independent product suitability in the secondary percentage
+ * column and in the human-readable evidence while retaining the effective score for ranking.&lt;/p&gt;
+ */
+@Component
+<span class="fc" id="L28">public class DecisionRationaleScoreSemanticsAdapter {</span>
+
+    public Map&lt;String, String&gt; enrichReasons(
+            Map&lt;String, String&gt; reasons,
+            Map&lt;String, AnalysisScoreDetail&gt; scoreDetails,
+            Locale locale) {
+<span class="fc" id="L34">        Map&lt;String, String&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        if (reasons != null) {</span>
+<span class="fc" id="L36">            result.putAll(reasons);</span>
+        }
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">        boolean german = locale != null</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">                &amp;&amp; &quot;de&quot;.equalsIgnoreCase(locale.getLanguage());</span>
+<span class="fc" id="L40">        safeDetails(scoreDetails).forEach((code, detail) -&gt; {</span>
+<span class="pc bpc" id="L41" title="2 of 4 branches missed.">            if (detail == null || !detail.isProductSuitability()) {</span>
+<span class="fc" id="L42">                return;</span>
+            }
+<span class="nc" id="L44">            String evidence = evidence(detail, german);</span>
+<span class="nc" id="L45">            String original = result.get(code);</span>
+<span class="nc bnc" id="L46" title="All 4 branches missed.">            if (original == null || original.isBlank()) {</span>
+<span class="nc" id="L47">                result.put(code, evidence);</span>
+<span class="nc bnc" id="L48" title="All 2 branches missed.">            } else if (!original.contains(evidence)) {</span>
+<span class="nc" id="L49">                result.put(code, evidence + &quot; &quot; + original.strip());</span>
+            }
+<span class="nc" id="L51">        });</span>
+<span class="fc" id="L52">        return result;</span>
+    }
+
+    public DecisionRationaleReport adapt(
+            DecisionRationaleReport report,
+            Map&lt;String, AnalysisScoreDetail&gt; scoreDetails,
+            Locale locale) {
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        if (report == null) {</span>
+<span class="nc" id="L60">            return null;</span>
+        }
+<span class="fc" id="L62">        Map&lt;String, AnalysisScoreDetail&gt; details = safeDetails(scoreDetails);</span>
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">        boolean german = locale != null</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">                &amp;&amp; &quot;de&quot;.equalsIgnoreCase(locale.getLanguage());</span>
+
+<span class="fc" id="L66">        ExecutiveSummary summary = report.executiveSummary();</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        ExecutiveSummary adaptedSummary = summary == null ? null : new ExecutiveSummary(</span>
+<span class="fc" id="L68">                adaptLeaf(summary.leadingLeaf(), details, german),</span>
+<span class="fc" id="L69">                summary.path().stream()</span>
+<span class="fc" id="L70">                        .map(step -&gt; adaptPathStep(step, details, german))</span>
+<span class="fc" id="L71">                        .toList(),</span>
+<span class="fc" id="L72">                summary.conciseConclusion(),</span>
+<span class="fc" id="L73">                appendMethodology(summary.methodologyNote(), details, german));</span>
+
+<span class="fc" id="L75">        List&lt;DecisionChapter&gt; chapters = report.chapters().stream()</span>
+<span class="fc" id="L76">                .map(chapter -&gt; adaptChapter(chapter, details, german))</span>
+<span class="fc" id="L77">                .toList();</span>
+<span class="fc" id="L78">        List&lt;LeafCandidate&gt; leaves = report.leadingLeaves().stream()</span>
+<span class="fc" id="L79">                .map(leaf -&gt; adaptLeaf(leaf, details, german))</span>
+<span class="fc" id="L80">                .toList();</span>
+<span class="fc" id="L81">        ReportMetadata metadata = report.metadata();</span>
+<span class="fc bfc" id="L82" title="All 4 branches covered.">        boolean alreadyAdapted = !details.isEmpty() &amp;&amp; details.equals(report.scoreDetails());</span>
+<span class="pc bpc" id="L83" title="1 of 6 branches missed.">        if (metadata != null &amp;&amp; !alreadyAdapted &amp;&amp; !details.isEmpty()) {</span>
+<span class="fc" id="L84">            metadata = metadata.withAnalysisSnapshotFingerprintSha256(</span>
+<span class="fc" id="L85">                    AnalysisScoreSemanticsFingerprint.extend(</span>
+<span class="fc" id="L86">                            metadata.analysisSnapshotFingerprintSha256(), details));</span>
+        }
+
+<span class="fc" id="L89">        return new DecisionRationaleReport(</span>
+<span class="fc" id="L90">                report.title(),</span>
+<span class="fc" id="L91">                report.languageTag(),</span>
+<span class="fc" id="L92">                report.requirement(),</span>
+<span class="fc" id="L93">                report.status(),</span>
+                metadata,
+                adaptedSummary,
+                chapters,
+                leaves,
+<span class="fc" id="L98">                report.warnings(),</span>
+<span class="fc" id="L99">                report.productCoverageGaps(),</span>
+<span class="fc" id="L100">                report.discrepancies(),</span>
+<span class="fc" id="L101">                report.viewContext(),</span>
+                details);
+    }
+
+    private DecisionChapter adaptChapter(
+            DecisionChapter chapter,
+            Map&lt;String, AnalysisScoreDetail&gt; details,
+            boolean german) {
+<span class="fc" id="L109">        List&lt;ChildDecision&gt; children = chapter.children().stream()</span>
+<span class="fc" id="L110">                .map(child -&gt; adaptChild(child, details, german))</span>
+<span class="fc" id="L111">                .toList();</span>
+<span class="fc" id="L112">        return new DecisionChapter(</span>
+<span class="fc" id="L113">                chapter.number(),</span>
+<span class="fc" id="L114">                chapter.parentCode(),</span>
+<span class="fc" id="L115">                chapter.parentTitle(),</span>
+<span class="fc" id="L116">                chapter.parentDescription(),</span>
+<span class="fc" id="L117">                chapter.parentScore(),</span>
+<span class="fc" id="L118">                chapter.hierarchyLevel(),</span>
+<span class="fc" id="L119">                chapter.complete(),</span>
+<span class="fc" id="L120">                chapter.decisionSummary(),</span>
+<span class="fc" id="L121">                chapter.comparativeRationale(),</span>
+                children,
+<span class="fc" id="L123">                chapter.missingChildCodes());</span>
+    }
+
+    private ChildDecision adaptChild(
+            ChildDecision child,
+            Map&lt;String, AnalysisScoreDetail&gt; details,
+            boolean german) {
+<span class="fc" id="L130">        AnalysisScoreDetail detail = details.get(child.code());</span>
+<span class="fc bfc" id="L131" title="All 4 branches covered.">        if (detail == null || !detail.isProductSuitability()) {</span>
+<span class="fc" id="L132">            return new ChildDecision(</span>
+<span class="fc" id="L133">                    child.code(), child.title(), child.description(), child.absoluteScore(),</span>
+<span class="fc" id="L134">                    bounded(child.localSharePercent()), child.rank(), child.leadingSibling(),</span>
+<span class="fc" id="L135">                    child.disposition(), child.reason(), child.reasonSource(), child.leaf());</span>
+        }
+<span class="fc" id="L137">        return new ChildDecision(</span>
+<span class="fc" id="L138">                child.code(), child.title(), child.description(), detail.effectiveRelevance(),</span>
+<span class="fc" id="L139">                (double) detail.rawScore(), child.rank(), child.leadingSibling(),</span>
+<span class="fc" id="L140">                child.disposition(), enrichedReason(child.reason(), detail, german),</span>
+<span class="fc" id="L141">                child.reasonSource(), child.leaf());</span>
+    }
+
+    private PathStep adaptPathStep(
+            PathStep step,
+            Map&lt;String, AnalysisScoreDetail&gt; details,
+            boolean german) {
+<span class="fc" id="L148">        AnalysisScoreDetail detail = details.get(step.code());</span>
+<span class="pc bpc" id="L149" title="1 of 4 branches missed.">        if (detail == null || !detail.isProductSuitability()) {</span>
+<span class="fc" id="L150">            return new PathStep(</span>
+<span class="fc" id="L151">                    step.position(), step.code(), step.title(), step.absoluteScore(),</span>
+<span class="fc" id="L152">                    bounded(step.localSharePercent()), step.reason(), step.reasonSource());</span>
+        }
+<span class="fc" id="L154">        return new PathStep(</span>
+<span class="fc" id="L155">                step.position(), step.code(), step.title(), detail.effectiveRelevance(),</span>
+<span class="fc" id="L156">                (double) detail.rawScore(), enrichedReason(step.reason(), detail, german),</span>
+<span class="fc" id="L157">                step.reasonSource());</span>
+    }
+
+    private LeafCandidate adaptLeaf(
+            LeafCandidate leaf,
+            Map&lt;String, AnalysisScoreDetail&gt; details,
+            boolean german) {
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        if (leaf == null) {</span>
+<span class="fc" id="L165">            return null;</span>
+        }
+<span class="fc" id="L167">        AnalysisScoreDetail detail = details.get(leaf.code());</span>
+<span class="pc bpc" id="L168" title="1 of 4 branches missed.">        if (detail == null || !detail.isProductSuitability()) {</span>
+<span class="fc" id="L169">            return leaf;</span>
+        }
+<span class="fc" id="L171">        return new LeafCandidate(</span>
+<span class="fc" id="L172">                leaf.code(), leaf.title(), detail.effectiveRelevance(), leaf.taxonomyRoot(),</span>
+<span class="fc" id="L173">                leaf.depth(), leaf.hierarchyPath(), enrichedReason(leaf.reason(), detail, german),</span>
+<span class="fc" id="L174">                leaf.reasonSource());</span>
+    }
+
+    private String appendMethodology(
+            String existing,
+            Map&lt;String, AnalysisScoreDetail&gt; details,
+            boolean german) {
+<span class="fc" id="L181">        boolean hasProducts = details.values().stream()</span>
+<span class="pc bpc" id="L182" title="1 of 4 branches missed.">                .anyMatch(detail -&gt; detail != null &amp;&amp; detail.isProductSuitability());</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        if (!hasProducts) {</span>
+<span class="fc" id="L184">            return existing;</span>
+        }
+<span class="pc bpc" id="L186" title="1 of 2 branches missed.">        String addition = german</span>
+<span class="nc" id="L187">                ? &quot;Konkrete Produkte werden mit einer unabhängigen Eignung von 0 bis 100 bewertet; für Rangfolge und Architektur wird die mit der Familienrelevanz gewichtete effektive Relevanz verwendet.&quot;</span>
+<span class="fc" id="L188">                : &quot;Concrete products receive an independent 0–100 suitability score; ranking and architecture use the effective relevance weighted by the product-family relevance.&quot;;</span>
+<span class="pc bpc" id="L189" title="2 of 4 branches missed.">        if (existing == null || existing.isBlank()) {</span>
+<span class="nc" id="L190">            return addition;</span>
+        }
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        return existing.contains(addition) ? existing : existing.strip() + &quot; &quot; + addition;</span>
+    }
+
+    private String enrichedReason(
+            String original,
+            AnalysisScoreDetail detail,
+            boolean german) {
+<span class="fc" id="L199">        String evidence = evidence(detail, german);</span>
+<span class="pc bpc" id="L200" title="2 of 4 branches missed.">        if (original == null || original.isBlank()) {</span>
+<span class="nc" id="L201">            return evidence;</span>
+        }
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        return original.contains(evidence) ? original : evidence + &quot; &quot; + original.strip();</span>
+    }
+
+    private String evidence(AnalysisScoreDetail detail, boolean german) {
+<span class="pc bpc" id="L207" title="1 of 2 branches missed.">        return german</span>
+<span class="nc" id="L208">                ? &quot;Produkteignung: &quot; + detail.rawScore()</span>
+<span class="nc" id="L209">                        + &quot; %; effektive Relevanz: &quot; + detail.effectiveRelevance() + &quot;/100.&quot;</span>
+<span class="fc" id="L210">                : &quot;Product suitability: &quot; + detail.rawScore()</span>
+<span class="fc" id="L211">                        + &quot;%; effective relevance: &quot; + detail.effectiveRelevance() + &quot;/100.&quot;;</span>
+    }
+
+    private Double bounded(Double value) {
+<span class="pc bpc" id="L215" title="1 of 4 branches missed.">        if (value == null || !Double.isFinite(value)) {</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            return value == null ? null : 0.0;</span>
+        }
+<span class="fc" id="L218">        return Math.max(0.0, Math.min(100.0, value));</span>
+    }
+
+    private Map&lt;String, AnalysisScoreDetail&gt; safeDetails(
+            Map&lt;String, AnalysisScoreDetail&gt; scoreDetails) {
+<span class="pc bpc" id="L223" title="1 of 4 branches missed.">        if (scoreDetails == null || scoreDetails.isEmpty()) {</span>
+<span class="fc" id="L224">            return Map.of();</span>
+        }
+<span class="fc" id="L226">        Map&lt;String, AnalysisScoreDetail&gt; canonicalDetails = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L227" title="All 2 branches covered.">        for (Map.Entry&lt;String, AnalysisScoreDetail&gt; entry : scoreDetails.entrySet()) {</span>
+<span class="pc bpc" id="L228" title="2 of 4 branches missed.">            if (entry.getKey() == null || entry.getKey().isBlank()</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">                    || entry.getValue() == null) {</span>
+<span class="nc" id="L230">                continue;</span>
+            }
+<span class="fc" id="L232">            String code = entry.getKey().strip();</span>
+<span class="fc" id="L233">            AnalysisScoreDetail detail = entry.getValue();</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">            if (!code.equals(detail.nodeCode())) {</span>
+<span class="fc" id="L235">                throw new IllegalArgumentException(</span>
+                        &quot;Score detail key &quot; + code
+<span class="fc" id="L237">                                + &quot; does not match detail node code &quot; + detail.nodeCode());</span>
+            }
+<span class="fc bfc" id="L239" title="All 2 branches covered.">            if (canonicalDetails.containsKey(code)) {</span>
+<span class="fc" id="L240">                throw new IllegalArgumentException(</span>
+                        &quot;Score details contain multiple entries for canonical node code &quot; + code);
+            }
+<span class="fc" id="L243">            canonicalDetails.put(code, detail);</span>
+<span class="fc" id="L244">        }</span>
+<span class="fc" id="L245">        return Collections.unmodifiableMap(new LinkedHashMap&lt;&gt;(canonicalDetails));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

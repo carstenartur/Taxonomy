@@ -1,0 +1,102 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateMappingProfile.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.mapping.profiles</a> &gt; <span class="el_source">ArchiMateMappingProfile.java</span></div><h1>ArchiMateMappingProfile.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.mapping.profiles;
+
+import com.taxonomy.dsl.mapping.MappingProfile;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Mapping profile for ArchiMate 3.x element and relationship types.
+ *
+ * &lt;p&gt;Translates ArchiMate element types to taxonomy root codes and
+ * ArchiMate relationship types to canonical relation type names.
+ * This profile extracts the mappings that were previously hard-coded
+ * in the ArchiMate XML importer.
+ */
+<span class="fc" id="L17">public class ArchiMateMappingProfile implements MappingProfile {</span>
+
+    /**
+     * ArchiMate element type → taxonomy root code.
+     */
+<span class="fc" id="L22">    static final Map&lt;String, String&gt; ELEMENT_TYPE_MAP = Map.ofEntries(</span>
+<span class="fc" id="L23">            Map.entry(&quot;Capability&quot;, &quot;CP&quot;),</span>
+<span class="fc" id="L24">            Map.entry(&quot;BusinessProcess&quot;, &quot;BP&quot;),</span>
+<span class="fc" id="L25">            Map.entry(&quot;BusinessRole&quot;, &quot;BR&quot;),</span>
+<span class="fc" id="L26">            Map.entry(&quot;ApplicationService&quot;, &quot;CR&quot;),</span>
+<span class="fc" id="L27">            Map.entry(&quot;BusinessService&quot;, &quot;CI&quot;),</span>
+<span class="fc" id="L28">            Map.entry(&quot;CommunicationNetwork&quot;, &quot;CO&quot;),</span>
+<span class="fc" id="L29">            Map.entry(&quot;TechnologyService&quot;, &quot;CR&quot;),</span>
+<span class="fc" id="L30">            Map.entry(&quot;ApplicationComponent&quot;, &quot;UA&quot;),</span>
+<span class="fc" id="L31">            Map.entry(&quot;DataObject&quot;, &quot;IP&quot;),</span>
+<span class="fc" id="L32">            Map.entry(&quot;BusinessObject&quot;, &quot;IP&quot;)</span>
+    );
+
+    /**
+     * ArchiMate relationship type → canonical RelationType name.
+     */
+<span class="fc" id="L38">    static final Map&lt;String, String&gt; RELATION_TYPE_MAP = Map.ofEntries(</span>
+<span class="fc" id="L39">            Map.entry(&quot;Realization&quot;, &quot;REALIZES&quot;),</span>
+<span class="fc" id="L40">            Map.entry(&quot;Serving&quot;, &quot;SUPPORTS&quot;),</span>
+<span class="fc" id="L41">            Map.entry(&quot;Access&quot;, &quot;CONSUMES&quot;),</span>
+<span class="fc" id="L42">            Map.entry(&quot;Assignment&quot;, &quot;ASSIGNED_TO&quot;),</span>
+<span class="fc" id="L43">            Map.entry(&quot;Flow&quot;, &quot;COMMUNICATES_WITH&quot;),</span>
+<span class="fc" id="L44">            Map.entry(&quot;Composition&quot;, &quot;RELATED_TO&quot;),</span>
+<span class="fc" id="L45">            Map.entry(&quot;Aggregation&quot;, &quot;RELATED_TO&quot;),</span>
+<span class="fc" id="L46">            Map.entry(&quot;Association&quot;, &quot;RELATED_TO&quot;),</span>
+<span class="fc" id="L47">            Map.entry(&quot;Triggering&quot;, &quot;SUPPORTS&quot;),</span>
+<span class="fc" id="L48">            Map.entry(&quot;Influence&quot;, &quot;RELATED_TO&quot;),</span>
+<span class="fc" id="L49">            Map.entry(&quot;Specialization&quot;, &quot;RELATED_TO&quot;)</span>
+    );
+
+    @Override
+    public String profileId() {
+<span class="fc" id="L54">        return &quot;archimate&quot;;</span>
+    }
+
+    @Override
+    public String displayName() {
+<span class="fc" id="L59">        return &quot;ArchiMate 3.x&quot;;</span>
+    }
+
+    @Override
+    public String mapElementType(String externalType) {
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (externalType == null) return null;</span>
+<span class="fc" id="L65">        return ELEMENT_TYPE_MAP.get(externalType);</span>
+    }
+
+    @Override
+    public String mapRelationType(String externalRelType) {
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (externalRelType == null) return null;</span>
+<span class="fc" id="L71">        return RELATION_TYPE_MAP.get(externalRelType);</span>
+    }
+
+    @Override
+    public Map&lt;String, String&gt; elementExtensions(String externalType, Map&lt;String, String&gt; externalProperties) {
+<span class="fc" id="L76">        Map&lt;String, String&gt; ext = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">        if (externalType != null) {</span>
+<span class="fc" id="L78">            ext.put(&quot;x-archimate-kind&quot;, externalType);</span>
+        }
+<span class="fc" id="L80">        return ext;</span>
+    }
+
+    @Override
+    public Map&lt;String, String&gt; relationExtensions(String externalRelType, Map&lt;String, String&gt; externalProperties) {
+<span class="fc" id="L85">        Map&lt;String, String&gt; ext = new LinkedHashMap&lt;&gt;();</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">        if (externalRelType != null) {</span>
+<span class="fc" id="L87">            ext.put(&quot;x-archimate-rel&quot;, externalRelType);</span>
+        }
+<span class="fc" id="L89">        return ext;</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; supportedElementTypes() {
+<span class="fc" id="L94">        return ELEMENT_TYPE_MAP.keySet();</span>
+    }
+
+    @Override
+    public Set&lt;String&gt; supportedRelationTypes() {
+<span class="fc" id="L99">        return RELATION_TYPE_MAP.keySet();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

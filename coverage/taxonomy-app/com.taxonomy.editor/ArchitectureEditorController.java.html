@@ -1,0 +1,236 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureEditorController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.editor</a> &gt; <span class="el_source">ArchitectureEditorController.java</span></div><h1>ArchitectureEditorController.java</h1><pre class="source lang-java linenums">package com.taxonomy.editor;
+
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.command.ArchitectureDslCommands.CommandProblem;
+import com.taxonomy.editor.persistence.EditorJournal.RevisionConflict;
+import com.taxonomy.editor.ArchitectureCommandPort.*;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.eclipse.jgit.lib.ObjectId;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.stereotype.Controller;
+import org.springframework.web.bind.annotation.*;
+
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+
+@Controller
+public class ArchitectureEditorController {
+    private final ArchitectureEditorService service;
+    private final ArchitectureEditorProjection projection;
+    private final WorkspaceResolver resolver;
+
+    public ArchitectureEditorController(ArchitectureEditorService service, ArchitectureEditorProjection projection,
+<span class="fc" id="L30">                                        WorkspaceResolver resolver) {</span>
+<span class="fc" id="L31">        this.service = service;</span>
+<span class="fc" id="L32">        this.projection = projection;</span>
+<span class="fc" id="L33">        this.resolver = resolver;</span>
+<span class="fc" id="L34">    }</span>
+
+    @GetMapping(&quot;/architecture/editor&quot;)
+<span class="nc" id="L37">    public String page() { return &quot;architecture-editor&quot;; }</span>
+
+    @GetMapping(&quot;/api/architecture/editor&quot;)
+    @ResponseBody
+    public ResponseEntity&lt;ArchitectureEditorProjection.View&gt; read(
+            @RequestParam(required = false) String repositoryId,
+            @RequestParam(required = false) String workspaceScopeKey,
+            @RequestParam(required = false) String branch,
+            @RequestParam(required = false) String commit,
+            @RequestParam(required = false) Long revision) throws IOException {
+<span class="fc" id="L47">        RepositoryContext context = readContext(repositoryId, workspaceScopeKey, branch);</span>
+<span class="fc" id="L48">        var document = service.read(context, commit, revision);</span>
+<span class="fc" id="L49">        return documentResponse(document).body(projection.project(document, mayEdit()));</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/preview&quot;)
+    @ResponseBody
+    public ResponseEntity&lt;Preview&gt; preview(@RequestBody WireCommand body,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="nc" id="L57">        Command command = command(body, ifMatch, ifNoneMatch);</span>
+<span class="nc" id="L58">        Preview result = service.preview(resolver.resolveCurrentRepositoryContext(), command);</span>
+<span class="nc" id="L59">        return response(HttpStatus.OK, result.context()).body(result);</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/commands&quot;)
+    @ResponseBody
+    public ResponseEntity&lt;Accepted&gt; execute(@RequestBody WireCommand body,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch,
+            @RequestHeader(value = HttpHeaders.IF_NONE_MATCH, required = false) String ifNoneMatch) throws IOException {
+<span class="nc" id="L67">        Accepted result = service.execute(resolver.resolveCurrentRepositoryContext(), command(body, ifMatch, ifNoneMatch));</span>
+<span class="nc bnc" id="L68" title="All 2 branches missed.">        return response(&quot;READY&quot;.equals(result.projectionState()) ? HttpStatus.OK : HttpStatus.ACCEPTED,</span>
+<span class="nc" id="L69">                result.context()).body(result);</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/rebuild&quot;)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; rebuild(@RequestBody Context context,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
+<span class="nc" id="L76">        requireRevision(context, ifMatch, null);</span>
+<span class="nc" id="L77">        return response(HttpStatus.OK, context).body(Map.of(&quot;projectionState&quot;,</span>
+<span class="nc" id="L78">                service.rebuild(resolver.resolveCurrentRepositoryContext(), context)));</span>
+    }
+
+    /** A bounded wire union is converted immediately to typed application/domain commands. No full graph payload exists. */
+    public record WireCommand(Context context, Metadata metadata, String kind, String id, String type,
+                              Map&lt;String, String&gt; properties, String sourceId, String relationType, String targetId,
+                              String status, String parentId, String targetOperationId) {
+<span class="fc" id="L85">        public WireCommand {</span>
+<span class="pc bpc" id="L86" title="3 of 6 branches missed.">            if (context == null || metadata == null || kind == null) throw new IllegalArgumentException(&quot;Context, metadata and kind are required&quot;);</span>
+<span class="pc bpc" id="L87" title="2 of 4 branches missed.">            if (properties != null &amp;&amp; properties.values().stream().anyMatch(Objects::isNull)) {</span>
+<span class="nc" id="L88">                throw new IllegalArgumentException(&quot;Property values must be strings&quot;);</span>
+            }
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">            properties = properties == null ? Map.of() : Map.copyOf(properties);</span>
+<span class="fc" id="L91">        }</span>
+    }
+
+    private static Command command(WireCommand body, String ifMatch, String ifNoneMatch) {
+<span class="nc" id="L95">        requireRevision(body.context(), ifMatch, ifNoneMatch);</span>
+<span class="nc bnc" id="L96" title="All 10 branches missed.">        Operation operation = switch (body.kind()) {</span>
+<span class="nc" id="L97">            case &quot;CREATE_ELEMENT&quot; -&gt; new SemanticCommand(new CreateArchitectureElement(&quot;arch-&quot; + body.metadata().commandId(), body.type(), body.properties()));</span>
+<span class="nc" id="L98">            case &quot;UPDATE_ELEMENT&quot; -&gt; new SemanticCommand(new UpdateArchitectureElement(body.id(), body.type(), body.properties()));</span>
+<span class="nc" id="L99">            case &quot;DELETE_ELEMENT&quot; -&gt; new SemanticCommand(new DeleteArchitectureElement(body.id()));</span>
+<span class="nc" id="L100">            case &quot;CREATE_RELATION&quot; -&gt; new SemanticCommand(new CreateArchitectureRelation(relation(body), body.status()));</span>
+<span class="nc" id="L101">            case &quot;UPDATE_RELATION&quot; -&gt; new SemanticCommand(new UpdateArchitectureRelation(relation(body), body.status()));</span>
+<span class="nc" id="L102">            case &quot;DELETE_RELATION&quot; -&gt; new SemanticCommand(new DeleteArchitectureRelation(relation(body)));</span>
+<span class="nc" id="L103">            case &quot;MOVE_ELEMENT&quot; -&gt; new SemanticCommand(new MoveOrGroupElement(body.id(), body.parentId()));</span>
+<span class="nc" id="L104">            case &quot;UNDO&quot; -&gt; new UndoArchitectureCommand(requireTarget(body.targetOperationId()));</span>
+<span class="nc" id="L105">            case &quot;REDO&quot; -&gt; new RedoArchitectureCommand(requireTarget(body.targetOperationId()));</span>
+<span class="nc" id="L106">            default -&gt; throw new IllegalArgumentException(&quot;Unsupported semantic command&quot;);</span>
+        };
+<span class="nc" id="L108">        return new Command(body.context(), body.metadata(), operation);</span>
+    }
+
+    private static RelationKey relation(WireCommand body) {
+<span class="nc bnc" id="L112" title="All 6 branches missed.">        if (body.sourceId() == null || body.relationType() == null || body.targetId() == null) throw new IllegalArgumentException(&quot;Relation identity is required&quot;);</span>
+<span class="nc" id="L113">        return new RelationKey(body.sourceId(), body.relationType(), body.targetId());</span>
+    }
+
+    private static UUID requireTarget(String target) {
+<span class="nc bnc" id="L117" title="All 2 branches missed.">        if (target == null) throw new IllegalArgumentException(&quot;Target operation ID is required&quot;);</span>
+<span class="nc" id="L118">        return UUID.fromString(target);</span>
+    }
+
+    private RepositoryContext readContext(String repositoryId, String workspaceScopeKey, String branch) {
+<span class="fc" id="L122">        RepositoryContext context = resolver.resolveCurrentRepositoryContext();</span>
+<span class="fc" id="L123">        Context current = Context.of(context, null);</span>
+<span class="pc bpc" id="L124" title="2 of 6 branches missed.">        if ((repositoryId != null &amp;&amp; !repositoryId.equals(current.repositoryId()))</span>
+<span class="pc bpc" id="L125" title="2 of 4 branches missed.">                || (workspaceScopeKey != null &amp;&amp; !workspaceScopeKey.equals(current.workspaceScopeKey()))</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">                || (branch != null &amp;&amp; !branch.equals(current.branch()))) {</span>
+<span class="fc" id="L127">            throw new CommandProblem(&quot;NOT_FOUND&quot;, &quot;context&quot;, &quot;This exact context is not selected or accessible&quot;, List.of());</span>
+        }
+<span class="fc" id="L129">        return context;</span>
+    }
+
+    private static boolean mayEdit() {
+<span class="fc" id="L133">        var authentication = SecurityContextHolder.getContext().getAuthentication();</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        return authentication != null &amp;&amp; authentication.getAuthorities().stream()</span>
+<span class="pc bnc" id="L135" title="All 2 branches missed.">                .anyMatch(authority -&gt; List.of(&quot;ROLE_ARCHITECT&quot;, &quot;ROLE_ADMIN&quot;).contains(authority.getAuthority()));</span>
+    }
+
+    private static ResponseEntity.BodyBuilder documentResponse(ArchitectureEditorService.Document document) {
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        if (&quot;GIT_CHECKPOINT&quot;.equals(document.source())) {</span>
+<span class="fc" id="L140">            return ResponseEntity.ok().header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L141">                    .eTag(commitEtag(document.context().commit()))</span>
+<span class="fc" id="L142">                    .header(&quot;X-Taxonomy-Source&quot;, document.source());</span>
+        }
+<span class="fc" id="L144">        return response(HttpStatus.OK, document.context()).header(&quot;X-Taxonomy-Source&quot;, document.source());</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/versions/recover&quot;)
+    @ResponseBody
+    public ResponseEntity&lt;Void&gt; recoverVersion() throws IOException {
+<span class="nc" id="L150">        service.reconcileVersion(resolver.resolveCurrentRepositoryContext());</span>
+<span class="nc" id="L151">        return ResponseEntity.noContent().build();</span>
+    }
+
+<span class="fc" id="L154">    private static String etag(Context context) { return &quot;\&quot;workspace-revision-&quot; + context.revision() + &quot;\&quot;&quot;; }</span>
+
+    private static String commitEtag(String commitId) {
+<span class="fc" id="L157">        return '&quot;' + ObjectId.fromString(commitId).name() + '&quot;';</span>
+    }
+
+    private static void requireRevision(Context context, String ifMatch, String ifNoneMatch) {
+<span class="fc bfc" id="L161" title="All 2 branches covered.">        if (ifMatch == null) {</span>
+<span class="fc" id="L162">            throw new PreconditionRequiredException(&quot;An exact semantic revision If-Match header is required&quot;);</span>
+        }
+<span class="pc bpc" id="L164" title="2 of 4 branches missed.">        if (ifNoneMatch != null || !etag(context).equals(ifMatch)) {</span>
+<span class="fc" id="L165">            throw new IllegalArgumentException(&quot;HTTP precondition must match the semantic workspace revision&quot;);</span>
+        }
+<span class="nc" id="L167">    }</span>
+
+    static final class PreconditionRequiredException extends IllegalArgumentException {
+        PreconditionRequiredException(String message) {
+<span class="fc" id="L171">            super(message);</span>
+<span class="fc" id="L172">        }</span>
+    }
+
+    private static ResponseEntity.BodyBuilder response(HttpStatus status, Context context) {
+<span class="fc" id="L176">        return ResponseEntity.status(status).header(HttpHeaders.CACHE_CONTROL, &quot;no-store&quot;)</span>
+<span class="fc" id="L177">                .header(HttpHeaders.ETAG, etag(context))</span>
+<span class="fc" id="L178">                .header(&quot;X-Taxonomy-Semantic-Revision&quot;, Long.toString(context.revision()));</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/checkpoints&quot;)
+    @ResponseBody
+    public ResponseEntity&lt;CheckpointAccepted&gt; checkpoint(@RequestBody CreateCheckpointCommand command,
+            @RequestHeader(value = HttpHeaders.IF_MATCH, required = false) String ifMatch) throws IOException {
+<span class="nc" id="L185">        requireRevision(command.context(), ifMatch, null);</span>
+<span class="nc" id="L186">        var result = service.checkpoint(resolver.resolveCurrentRepositoryContext(), command);</span>
+<span class="nc" id="L187">        return response(HttpStatus.OK, result.context()).body(result);</span>
+    }
+
+    @PostMapping(&quot;/api/architecture/editor/checkpoints/resume&quot;)
+    @ResponseBody
+    public ResponseEntity&lt;CheckpointAccepted&gt; resumeCheckpoint() throws IOException {
+<span class="nc" id="L193">        var result = service.resumeCheckpoint(resolver.resolveCurrentRepositoryContext());</span>
+<span class="nc" id="L194">        return response(HttpStatus.OK, result.context()).body(result);</span>
+    }
+
+    @ExceptionHandler(RevisionConflict.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; conflict(RevisionConflict error) {
+<span class="nc" id="L200">        return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(Map.of(</span>
+                &quot;code&quot;, &quot;REVISION_MOVED&quot;, &quot;detail&quot;, &quot;The workspace changed. Refresh, compare and preview again.&quot;,
+<span class="nc" id="L202">                &quot;expectedRevision&quot;, error.expected(), &quot;currentRevision&quot;, error.actual()));</span>
+    }
+
+    @ExceptionHandler(PreconditionRequiredException.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; missingPrecondition(Exception error) {
+<span class="fc" id="L208">        return ResponseEntity.status(428).body(Map.of(&quot;code&quot;, &quot;PRECONDITION_REQUIRED&quot;, &quot;detail&quot;, error.getMessage()));</span>
+    }
+
+    @ExceptionHandler(CommandProblem.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, Object&gt;&gt; problem(CommandProblem error) {
+<span class="pc bpc" id="L214" title="3 of 4 branches missed.">        int status = switch (error.code()) {</span>
+<span class="fc" id="L215">            case &quot;NOT_FOUND&quot; -&gt; 404;</span>
+<span class="nc" id="L216">            case &quot;READ_ONLY&quot; -&gt; 403;</span>
+<span class="nc" id="L217">            case &quot;CONTEXT_CHANGED&quot;, &quot;UNDO_CONFLICT&quot;, &quot;ALREADY_INVERTED&quot;, &quot;COMMAND_ID_REUSED&quot;, &quot;DEPENDENCIES_EXIST&quot;, &quot;CHECKPOINT_PENDING&quot;, &quot;CHECKPOINT_CONFLICT&quot;, &quot;VERSION_CHANGED&quot; -&gt; 409;</span>
+<span class="pc" id="L218">            default -&gt; 422;</span>
+        };
+<span class="fc" id="L220">        return ResponseEntity.status(status).body(Map.of(&quot;code&quot;, error.code(), &quot;field&quot;, error.field(),</span>
+<span class="fc" id="L221">                &quot;detail&quot;, error.getMessage(), &quot;dependencies&quot;, error.dependencies()));</span>
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; invalid(IllegalArgumentException error) {
+<span class="nc bnc" id="L227" title="All 2 branches missed.">        return ResponseEntity.badRequest().body(Map.of(&quot;code&quot;, &quot;INVALID_COMMAND&quot;, &quot;detail&quot;, error.getMessage() == null ? &quot;Invalid command&quot; : error.getMessage()));</span>
+    }
+
+    @ExceptionHandler(IOException.class)
+    @ResponseBody
+    public ResponseEntity&lt;Map&lt;String, String&gt;&gt; unavailable() {
+<span class="nc" id="L233">        return ResponseEntity.status(503).body(Map.of(&quot;code&quot;, &quot;GIT_UNAVAILABLE&quot;, &quot;detail&quot;, &quot;Git storage is unavailable; refresh before retrying the same command identity&quot;));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

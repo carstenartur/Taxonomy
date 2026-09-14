@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioTenantIdentity.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">PortfolioTenantIdentity.java</span></div><h1>PortfolioTenantIdentity.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
+
+/**
+ * Portfolio-facing compatibility identity for the shared repository/workspace/
+ * branch tenant encoding.
+ *
+ * &lt;p&gt;The canonical encoder belongs to the workspace boundary because the same
+ * exact tenant scope is also used by ad-hoc analysis drafts and other persisted
+ * workspace data. Keeping this type preserves the portfolio API without making
+ * analysis depend on the portfolio domain.&lt;/p&gt;
+ */
+public record PortfolioTenantIdentity(
+        String repositoryId,
+        String workspaceScope,
+        String branch
+) {
+    public static final String PREFIX = RepositoryTenantIdentity.PREFIX;
+    public static final String CENTRAL_SCOPE = RepositoryTenantIdentity.CENTRAL_SCOPE;
+    public static final String WORKSPACE_SCOPE_PREFIX =
+            RepositoryTenantIdentity.WORKSPACE_SCOPE_PREFIX;
+    public static final int MAX_SCOPE_KEY_LENGTH =
+            RepositoryTenantIdentity.MAX_SCOPE_KEY_LENGTH;
+
+<span class="fc" id="L26">    public PortfolioTenantIdentity {</span>
+<span class="fc" id="L27">        RepositoryTenantIdentity normalized = new RepositoryTenantIdentity(</span>
+                repositoryId, workspaceScope, branch);
+<span class="fc" id="L29">        repositoryId = normalized.repositoryId();</span>
+<span class="fc" id="L30">        workspaceScope = normalized.workspaceScope();</span>
+<span class="fc" id="L31">        branch = normalized.branch();</span>
+<span class="fc" id="L32">    }</span>
+
+    public String scopeKey() {
+<span class="fc" id="L35">        return new RepositoryTenantIdentity(</span>
+<span class="fc" id="L36">                repositoryId, workspaceScope, branch).scopeKey();</span>
+    }
+
+    public static boolean isEncoded(String value) {
+<span class="fc" id="L40">        return RepositoryTenantIdentity.isEncoded(value);</span>
+    }
+
+    public static PortfolioTenantIdentity parse(String scopeKey) {
+<span class="fc" id="L44">        RepositoryTenantIdentity identity = RepositoryTenantIdentity.parse(scopeKey);</span>
+<span class="fc" id="L45">        return new PortfolioTenantIdentity(</span>
+<span class="fc" id="L46">                identity.repositoryId(), identity.workspaceScope(), identity.branch());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

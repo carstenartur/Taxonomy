@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProposalReviewStateStore.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.relations.service</a> &gt; <span class="el_source">ProposalReviewStateStore.java</span></div><h1>ProposalReviewStateStore.java</h1><pre class="source lang-java linenums">package com.taxonomy.relations.service;
+
+import com.taxonomy.model.ProposalStatus;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.model.RelationProposal;
+import com.taxonomy.relations.repository.RelationProposalRepository;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.RepositoryScope;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.Objects;
+
+/**
+ * Reads and advances proposal bookkeeping in short transactions around an
+ * independently authoritative Git command.
+ */
+@Service
+public class ProposalReviewStateStore {
+
+    private final RelationProposalRepository proposalRepository;
+
+    public ProposalReviewStateStore(
+<span class="fc" id="L25">            RelationProposalRepository proposalRepository) {</span>
+<span class="fc" id="L26">        this.proposalRepository = Objects.requireNonNull(</span>
+                proposalRepository, &quot;proposalRepository&quot;);
+<span class="fc" id="L28">    }</span>
+
+    @Transactional(readOnly = true)
+    public ProposalSnapshot require(
+            Long proposalId,
+            RepositoryContext context) {
+<span class="fc" id="L34">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="nc" id="L35">        RelationProposal proposal = find(proposalId, tenant, false);</span>
+<span class="nc" id="L36">        return new ProposalSnapshot(</span>
+<span class="nc" id="L37">                proposal.getId(),</span>
+<span class="nc" id="L38">                proposal.getSourceNode().getCode(),</span>
+<span class="nc" id="L39">                proposal.getTargetNode().getCode(),</span>
+<span class="nc" id="L40">                proposal.getRelationType(),</span>
+<span class="nc" id="L41">                proposal.getStatus(),</span>
+<span class="nc" id="L42">                proposal.getConfidence(),</span>
+<span class="nc" id="L43">                proposal.getRationale(),</span>
+<span class="nc" id="L44">                proposal.getProvenance());</span>
+    }
+
+    @Transactional
+    public ProposalStatus transition(
+            Long proposalId,
+            RepositoryContext context,
+            ProposalStatus expected,
+            ProposalStatus target) {
+<span class="fc" id="L53">        RepositoryContext tenant = requireWritableContext(context);</span>
+<span class="fc" id="L54">        RelationProposal proposal = find(proposalId, tenant, true);</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (proposal.getStatus() != expected) {</span>
+<span class="fc" id="L56">            throw new ProposalStateConflictException(</span>
+<span class="fc" id="L57">                    &quot;Proposal &quot; + proposalId + &quot; is &quot; + proposal.getStatus()</span>
+                            + &quot;, expected &quot; + expected);
+        }
+<span class="fc" id="L60">        proposal.setStatus(target);</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        proposal.setReviewedAt(target == ProposalStatus.PENDING</span>
+<span class="fc" id="L62">                ? null : Instant.now());</span>
+<span class="fc" id="L63">        proposalRepository.save(proposal);</span>
+<span class="fc" id="L64">        return target;</span>
+    }
+
+    private RelationProposal find(
+            Long proposalId,
+            RepositoryContext context,
+            boolean forUpdate) {
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">        if (proposalId == null) {</span>
+<span class="nc" id="L72">            throw new IllegalArgumentException(&quot;proposalId must not be null&quot;);</span>
+        }
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        return (forUpdate</span>
+<span class="fc" id="L75">                ? proposalRepository.findByIdInRepositoryWorkspaceForUpdate(</span>
+<span class="fc" id="L76">                        context.repositoryId(),</span>
+                        proposalId,
+<span class="fc" id="L78">                        context.workspaceId())</span>
+<span class="fc" id="L79">                : proposalRepository.findByIdInRepositoryWorkspace(</span>
+<span class="fc" id="L80">                        context.repositoryId(),</span>
+                        proposalId,
+<span class="fc" id="L82">                        context.workspaceId()))</span>
+<span class="fc" id="L83">                .orElseThrow(() -&gt; new IllegalArgumentException(</span>
+                        &quot;Proposal not found in active repository/workspace: &quot;
+                                + proposalId));
+    }
+
+    static RepositoryContext requireWritableContext(
+            RepositoryContext context) {
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        if (context == null) {</span>
+<span class="fc" id="L91">            throw new IllegalArgumentException(</span>
+                    &quot;RepositoryContext must not be null&quot;);
+        }
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        if (context.workspaceId() == null</span>
+<span class="fc bfc" id="L95" title="All 2 branches covered.">                &amp;&amp; context.scope() != RepositoryScope.CENTRAL_WRITE</span>
+<span class="fc bfc" id="L96" title="All 2 branches covered.">                &amp;&amp; context.scope() != RepositoryScope.FORK) {</span>
+<span class="fc" id="L97">            throw new IllegalArgumentException(</span>
+                    &quot;Repository proposal review requires CENTRAL_WRITE or FORK scope&quot;);
+        }
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (context.workspaceId() != null</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">                &amp;&amp; context.scope() != RepositoryScope.WORKSPACE) {</span>
+<span class="nc" id="L102">            throw new IllegalArgumentException(</span>
+                    &quot;Workspace proposal review requires WORKSPACE scope&quot;);
+        }
+<span class="fc" id="L105">        return context;</span>
+    }
+
+    public record ProposalSnapshot(
+            Long id,
+            String sourceCode,
+            String targetCode,
+            RelationType relationType,
+            ProposalStatus status,
+            double confidence,
+            String rationale,
+            String provenance) {
+<span class="fc" id="L117">        public ProposalSnapshot {</span>
+<span class="fc" id="L118">            id = Objects.requireNonNull(id, &quot;id&quot;);</span>
+<span class="fc" id="L119">            sourceCode = Objects.requireNonNull(sourceCode, &quot;sourceCode&quot;);</span>
+<span class="fc" id="L120">            targetCode = Objects.requireNonNull(targetCode, &quot;targetCode&quot;);</span>
+<span class="fc" id="L121">            relationType = Objects.requireNonNull(relationType, &quot;relationType&quot;);</span>
+<span class="fc" id="L122">            status = Objects.requireNonNull(status, &quot;status&quot;);</span>
+<span class="fc" id="L123">        }</span>
+    }
+
+    public static final class ProposalStateConflictException
+            extends IllegalStateException {
+        public ProposalStateConflictException(String message) {
+<span class="fc" id="L129">            super(message);</span>
+<span class="fc" id="L130">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementArchitectureViewService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.service</a> &gt; <span class="el_source">RequirementArchitectureViewService.java</span></div><h1>RequirementArchitectureViewService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.service;
+
+import com.taxonomy.architecture.pipeline.ArchitectureViewContext;
+import com.taxonomy.architecture.pipeline.ArchitectureViewPipeline;
+import com.taxonomy.dto.RelationHypothesisDto;
+import com.taxonomy.dto.RequirementArchitectureView;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Map;
+
+/**
+ * Builds a {@link RequirementArchitectureView} from analysis scores and
+ * persisted taxonomy relations.
+ *
+ * &lt;p&gt;This class is the stable public facade for the architecture-view pipeline.
+ * All construction logic is delegated to {@link ArchitectureViewPipeline} and
+ * the step classes in {@code com.taxonomy.architecture.pipeline}.
+ */
+@Service
+public class RequirementArchitectureViewService {
+
+    private final ArchitectureViewPipeline pipeline;
+
+<span class="fc" id="L26">    public RequirementArchitectureViewService(ArchitectureViewPipeline pipeline) {</span>
+<span class="fc" id="L27">        this.pipeline = pipeline;</span>
+<span class="fc" id="L28">    }</span>
+
+    /**
+     * Builds the architecture view from analysis scores (without provisional relations).
+     *
+     * @param scores               map of nodeCode → integer score (0–100) from the LLM analysis
+     * @param businessText         the original business requirement text (for notes)
+     * @param maxArchitectureNodes maximum number of elements to include (0 = no limit)
+     * @return the architecture view, or an empty view with a note if no anchors are found
+     */
+    @Transactional(readOnly = true)
+    public RequirementArchitectureView build(Map&lt;String, Integer&gt; scores, String businessText,
+                                             int maxArchitectureNodes) {
+<span class="fc" id="L41">        return build(scores, businessText, maxArchitectureNodes, null);</span>
+    }
+
+    /**
+     * Builds the architecture view from analysis scores, optionally using
+     * provisional relation hypotheses as virtual edges for relevance propagation
+     * when no confirmed relations exist.
+     *
+     * @param scores               map of nodeCode → integer score (0–100) from the LLM analysis
+     * @param businessText         the original business requirement text (for notes)
+     * @param maxArchitectureNodes maximum number of elements to include (0 = no limit)
+     * @param provisionalRelations optional list of AI-suggested relation hypotheses
+     * @return the architecture view, or an empty view with a note if no anchors are found
+     */
+    @Transactional(readOnly = true)
+    public RequirementArchitectureView build(Map&lt;String, Integer&gt; scores, String businessText,
+                                             int maxArchitectureNodes,
+                                             List&lt;RelationHypothesisDto&gt; provisionalRelations) {
+<span class="fc bfc" id="L59" title="All 4 branches covered.">        if (scores == null || scores.isEmpty()) {</span>
+<span class="fc" id="L60">            RequirementArchitectureView view = new RequirementArchitectureView();</span>
+<span class="fc" id="L61">            view.getNotes().add(&quot;No scores available; architecture view cannot be built.&quot;);</span>
+<span class="fc" id="L62">            return view;</span>
+        }
+
+<span class="fc" id="L65">        ArchitectureViewContext ctx = new ArchitectureViewContext(</span>
+                scores, businessText, maxArchitectureNodes, provisionalRelations);
+<span class="fc" id="L67">        return pipeline.execute(ctx);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

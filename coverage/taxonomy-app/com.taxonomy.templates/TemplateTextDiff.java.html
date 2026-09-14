@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TemplateTextDiff.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.templates</a> &gt; <span class="el_source">TemplateTextDiff.java</span></div><h1>TemplateTextDiff.java</h1><pre class="source lang-java linenums">package com.taxonomy.templates;
+
+import org.eclipse.jgit.diff.DiffAlgorithm;
+import org.eclipse.jgit.diff.Edit;
+import org.eclipse.jgit.diff.Sequence;
+import org.eclipse.jgit.diff.SequenceComparator;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+
+/** Bounded, lossless display adapter for JGit's existing text comparison algorithm. */
+public final class TemplateTextDiff {
+    static final int MAX_CHARACTERS = 131_072;
+    static final int MAX_SEGMENTS = 2_048;
+
+    private TemplateTextDiff() { }
+
+    static Result compare(String before, String after) {
+<span class="fc" id="L20">        Objects.requireNonNull(before, &quot;before&quot;);</span>
+<span class="fc" id="L21">        Objects.requireNonNull(after, &quot;after&quot;);</span>
+<span class="fc bfc" id="L22" title="All 4 branches covered.">        if (before.length() &gt; MAX_CHARACTERS || after.length() &gt; MAX_CHARACTERS) {</span>
+<span class="fc" id="L23">            return new Result(true, List.of());</span>
+        }
+<span class="fc" id="L25">        Segments left = split(before);</span>
+<span class="fc" id="L26">        Segments right = split(after);</span>
+<span class="fc bfc" id="L27" title="All 4 branches covered.">        if (left == null || right == null) return new Result(true, List.of());</span>
+<span class="fc" id="L28">        var edits = DiffAlgorithm.getAlgorithm(DiffAlgorithm.SupportedAlgorithm.HISTOGRAM)</span>
+<span class="fc" id="L29">                .diff(COMPARATOR, left, right);</span>
+<span class="fc" id="L30">        List&lt;Row&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L31">        int a = 0;</span>
+<span class="fc" id="L32">        int b = 0;</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (Edit edit : edits) {</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            while (a &lt; edit.getBeginA()) {</span>
+<span class="fc" id="L35">                rows.add(new Row(&quot;CONTEXT&quot;, ++a, ++b, left.values.get(a - 1)));</span>
+            }
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            while (a &lt; edit.getEndA()) {</span>
+<span class="fc" id="L38">                rows.add(new Row(&quot;DELETED&quot;, ++a, null, left.values.get(a - 1)));</span>
+            }
+<span class="fc bfc" id="L40" title="All 2 branches covered.">            while (b &lt; edit.getEndB()) {</span>
+<span class="fc" id="L41">                rows.add(new Row(&quot;ADDED&quot;, null, ++b, right.values.get(b - 1)));</span>
+            }
+<span class="fc" id="L43">        }</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        while (a &lt; left.size()) {</span>
+<span class="fc" id="L45">            rows.add(new Row(&quot;CONTEXT&quot;, ++a, ++b, left.values.get(a - 1)));</span>
+        }
+<span class="fc" id="L47">        return new Result(false, List.copyOf(rows));</span>
+    }
+
+    /**
+     * Split before literal '&lt;' and after LF without removing or normalizing any character.
+     * These are display segments, not XML parser events or original source-line numbers.
+     * Comments, CDATA, entities, whitespace and CRLF are retained verbatim. No XML is parsed
+     * or executed, and joining the segments reproduces the exact supplied string.
+     */
+    private static Segments split(String text) {
+<span class="fc" id="L57">        List&lt;String&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L58">        int start = 0;</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        for (int i = 1; i &lt; text.length(); i++) {</span>
+<span class="fc bfc" id="L60" title="All 4 branches covered.">            if (text.charAt(i) == '&lt;' || text.charAt(i - 1) == '\n') {</span>
+<span class="fc" id="L61">                values.add(text.substring(start, i));</span>
+<span class="fc bfc" id="L62" title="All 2 branches covered.">                if (values.size() &gt;= MAX_SEGMENTS) return null;</span>
+<span class="fc" id="L63">                start = i;</span>
+            }
+        }
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (start &lt; text.length()) values.add(text.substring(start));</span>
+<span class="fc" id="L67">        return new Segments(values);</span>
+    }
+
+<span class="fc" id="L70">    private static final SequenceComparator&lt;Segments&gt; COMPARATOR = new SequenceComparator&lt;&gt;() {</span>
+        @Override
+        public boolean equals(Segments a, int ai, Segments b, int bi) {
+<span class="fc" id="L73">            return a.values.get(ai).equals(b.values.get(bi));</span>
+        }
+
+        @Override
+        public int hash(Segments sequence, int index) {
+<span class="fc" id="L78">            return sequence.values.get(index).hashCode();</span>
+        }
+    };
+
+    private static final class Segments extends Sequence {
+        private final List&lt;String&gt; values;
+
+<span class="fc" id="L85">        private Segments(List&lt;String&gt; values) { this.values = values; }</span>
+
+        @Override
+<span class="fc" id="L88">        public int size() { return values.size(); }</span>
+    }
+
+<span class="fc" id="L91">    public record Row(String kind, Integer beforeNumber, Integer afterNumber, String text) { }</span>
+    /** A reversible presentation grouping; only unchanged rows may be folded. */
+    public record Block(boolean folded, List&lt;Row&gt; rows) {
+<span class="fc" id="L94">        public Block {</span>
+<span class="fc" id="L95">            rows = List.copyOf(rows);</span>
+<span class="fc" id="L96">        }</span>
+    }
+
+    public record Result(boolean limited, List&lt;Row&gt; rows) {
+<span class="fc" id="L100">        public Result {</span>
+<span class="fc" id="L101">            rows = List.copyOf(rows);</span>
+<span class="fc" id="L102">        }</span>
+
+        /**
+         * Keep three segments next to each change. Fold only the excess unchanged
+         * context, retaining every row and its original display numbers in order.
+         * No second diff, source normalization or storage access is involved.
+         */
+        public List&lt;Block&gt; blocks() {
+<span class="fc" id="L110">            List&lt;Block&gt; blocks = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L111">            int start = 0;</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            while (start &lt; rows.size()) {</span>
+<span class="fc" id="L113">                boolean context = &quot;CONTEXT&quot;.equals(rows.get(start).kind());</span>
+<span class="fc" id="L114">                int end = start + 1;</span>
+<span class="fc bfc" id="L115" title="All 2 branches covered.">                while (end &lt; rows.size()</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                        &amp;&amp; &quot;CONTEXT&quot;.equals(rows.get(end).kind()) == context) {</span>
+<span class="fc" id="L117">                    end++;</span>
+                }
+<span class="fc bfc" id="L119" title="All 4 branches covered.">                int prefix = context &amp;&amp; start &gt; 0 ? 3 : 0;</span>
+<span class="fc bfc" id="L120" title="All 4 branches covered.">                int suffix = context &amp;&amp; end &lt; rows.size() ? 3 : 0;</span>
+<span class="fc bfc" id="L121" title="All 4 branches covered.">                if (context &amp;&amp; end - start &gt; prefix + suffix + 1) {</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">                    if (prefix &gt; 0) blocks.add(new Block(false, rows.subList(start, start + prefix)));</span>
+<span class="fc" id="L123">                    blocks.add(new Block(true, rows.subList(start + prefix, end - suffix)));</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">                    if (suffix &gt; 0) blocks.add(new Block(false, rows.subList(end - suffix, end)));</span>
+                } else {
+<span class="fc" id="L126">                    blocks.add(new Block(false, rows.subList(start, end)));</span>
+                }
+<span class="fc" id="L128">                start = end;</span>
+<span class="fc" id="L129">            }</span>
+<span class="fc" id="L130">            return List.copyOf(blocks);</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

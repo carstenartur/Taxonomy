@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionRationaleTemplatePreviewService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.decision</a> &gt; <span class="el_source">DecisionRationaleTemplatePreviewService.java</span></div><h1>DecisionRationaleTemplatePreviewService.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.decision;
+
+import com.taxonomy.templates.DocumentTemplateReportPreview;
+import org.springframework.stereotype.Service;
+
+import java.time.Instant;
+import java.util.List;
+
+/** Creates a deterministic, non-sensitive sample DOCX for validating the active template. */
+@Service
+public final class DecisionRationaleTemplatePreviewService
+        implements DocumentTemplateReportPreview {
+
+    private final DecisionRationaleTemplateRenderer templateRenderer;
+    private final DecisionRationaleDocxRenderer docxRenderer;
+
+    public DecisionRationaleTemplatePreviewService(
+            DecisionRationaleTemplateRenderer templateRenderer,
+<span class="fc" id="L19">            DecisionRationaleDocxRenderer docxRenderer) {</span>
+<span class="fc" id="L20">        this.templateRenderer = templateRenderer;</span>
+<span class="fc" id="L21">        this.docxRenderer = docxRenderer;</span>
+<span class="fc" id="L22">    }</span>
+
+    @Override
+    public byte[] renderPreview() {
+<span class="nc" id="L26">        Instant generatedAt = Instant.parse(&quot;2026-01-01T12:00:00Z&quot;);</span>
+<span class="nc" id="L27">        DecisionRationaleReport.ReportMetadata metadata =</span>
+                new DecisionRationaleReport.ReportMetadata(
+                        generatedAt,
+                        &quot;template-test&quot;,
+                        &quot;preview&quot;,
+                        &quot;preview-build&quot;,
+                        &quot;preview-catalogue&quot;,
+                        &quot;preview-data&quot;,
+                        &quot;preview-resource-sha&quot;,
+                        &quot;preview-data-sha&quot;,
+                        &quot;preview-analysis-sha&quot;,
+                        &quot;Bundled non-sensitive preview data&quot;,
+                        3,
+                        1,
+                        &quot;preview-repository&quot;,
+                        &quot;preview-workspace&quot;,
+                        &quot;main&quot;,
+                        &quot;preview-commit&quot;,
+                        generatedAt,
+                        false,
+                        false,
+                        &quot;PREVIEW&quot;,
+                        &quot;SUCCESS&quot;,
+                        &quot;preview-model&quot;,
+                        &quot;preview-snapshot&quot;,
+                        null,
+                        null,
+                        null,
+                        null,
+                        generatedAt,
+                        &quot;template-test&quot;,
+                        &quot;preview-taxonomy-sha&quot;,
+                        &quot;preview-prompt-sha&quot;,
+                        true,
+                        &quot;Europe/Berlin&quot;,
+                        0,
+                        3,
+                        2,
+                        100.0);
+<span class="nc" id="L66">        DecisionRationaleReport report = new DecisionRationaleReport(</span>
+                &quot;Taxonomy template test report&quot;,
+                &quot;en&quot;,
+                &quot;Verify branding, page setup, headers, footers and generated report content.&quot;,
+                DecisionRationaleReport.ReportStatus.FINAL,
+                metadata,
+                new DecisionRationaleReport.ExecutiveSummary(
+                        null,
+<span class="nc" id="L74">                        List.of(),</span>
+                        &quot;The active Word template was opened and materialized successfully.&quot;,
+                        &quot;This preview uses synthetic, non-sensitive data.&quot;),
+<span class="nc" id="L77">                List.of(),</span>
+<span class="nc" id="L78">                List.of(),</span>
+<span class="nc" id="L79">                List.of(&quot;Preview only — no architecture decision was evaluated.&quot;),</span>
+<span class="nc" id="L80">                List.of(),</span>
+<span class="nc" id="L81">                List.of(),</span>
+                null);
+<span class="nc" id="L83">        return templateRenderer.render(docxRenderer, report);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

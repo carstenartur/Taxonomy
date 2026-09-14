@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisApiController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.controller</a> &gt; <span class="el_source">AnalysisApiController.java</span></div><h1>AnalysisApiController.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.controller;
+
+import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
+import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenCommand;
+import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
+import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenUseCase;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementCommand;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementResult;
+import com.taxonomy.analysis.usecase.AnalyzeRequirementUseCase;
+import com.taxonomy.analysis.usecase.JustifyLeafCommand;
+import com.taxonomy.analysis.usecase.JustifyLeafResult;
+import com.taxonomy.analysis.usecase.JustifyLeafUseCase;
+import com.taxonomy.analysis.usecase.StreamRequirementAnalysisCommand;
+import com.taxonomy.analysis.usecase.StreamRequirementAnalysisUseCase;
+import com.taxonomy.analysis.usecase.UnknownAnalysisProviderException;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AnalysisRequest;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.versioning.service.RepositoryStateService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.tags.Tag;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.context.MessageSource;
+import org.springframework.context.i18n.LocaleContextHolder;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ProblemDetail;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import tools.jackson.databind.ObjectMapper;
+
+import java.io.IOException;
+import java.net.URI;
+import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.atomic.AtomicLong;
+
+/**
+ * HTTP/SSE transport adapter for requirement analysis. Business orchestration is
+ * delegated to typed application use cases.
+ */
+@RestController
+@RequestMapping(&quot;/api&quot;)
+@Tag(name = &quot;Analysis&quot;)
+public class AnalysisApiController {
+
+    static final String ANALYSIS_OPERATION_ID_HEADER = &quot;X-Analysis-Operation-Id&quot;;
+
+<span class="fc" id="L64">    private static final Logger log = LoggerFactory.getLogger(AnalysisApiController.class);</span>
+
+    private final TaxonomyService taxonomyService;
+    private final ExecutorService analysisExecutor;
+    private final ObjectMapper objectMapper;
+    private final AnalyzeRequirementUseCase analyzeRequirementUseCase;
+    private final StreamRequirementAnalysisUseCase streamRequirementAnalysisUseCase;
+    private final AnalyzeNodeChildrenUseCase analyzeNodeChildrenUseCase;
+    private final JustifyLeafUseCase justifyLeafUseCase;
+    private final AnalysisSseEventMapper analysisSseEventMapper;
+    private final RepositoryStateService repositoryStateService;
+    private final WorkspaceResolver workspaceResolver;
+    private final MessageSource messageSource;
+
+    public AnalysisApiController(TaxonomyService taxonomyService,
+                                 ExecutorService analysisExecutor,
+                                 ObjectMapper objectMapper,
+                                 AnalyzeRequirementUseCase analyzeRequirementUseCase,
+                                 StreamRequirementAnalysisUseCase streamRequirementAnalysisUseCase,
+                                 AnalyzeNodeChildrenUseCase analyzeNodeChildrenUseCase,
+                                 JustifyLeafUseCase justifyLeafUseCase,
+                                 AnalysisSseEventMapper analysisSseEventMapper,
+                                 RepositoryStateService repositoryStateService,
+                                 WorkspaceResolver workspaceResolver,
+<span class="fc" id="L88">                                 MessageSource messageSource) {</span>
+<span class="fc" id="L89">        this.taxonomyService = taxonomyService;</span>
+<span class="fc" id="L90">        this.analysisExecutor = analysisExecutor;</span>
+<span class="fc" id="L91">        this.objectMapper = objectMapper;</span>
+<span class="fc" id="L92">        this.analyzeRequirementUseCase = analyzeRequirementUseCase;</span>
+<span class="fc" id="L93">        this.streamRequirementAnalysisUseCase = streamRequirementAnalysisUseCase;</span>
+<span class="fc" id="L94">        this.analyzeNodeChildrenUseCase = analyzeNodeChildrenUseCase;</span>
+<span class="fc" id="L95">        this.justifyLeafUseCase = justifyLeafUseCase;</span>
+<span class="fc" id="L96">        this.analysisSseEventMapper = analysisSseEventMapper;</span>
+<span class="fc" id="L97">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L98">        this.workspaceResolver = workspaceResolver;</span>
+<span class="fc" id="L99">        this.messageSource = messageSource;</span>
+<span class="fc" id="L100">    }</span>
+
+    @Operation(summary = &quot;Analyze business requirement&quot;,
+            description = &quot;Analyzes a business requirement against the taxonomy using the configured LLM provider. Optionally includes an architecture view.&quot;,
+            tags = {&quot;Analysis&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Analysis completed&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Business text is blank or the provider is unknown&quot;)
+    @PostMapping(&quot;/analyze&quot;)
+    public ResponseEntity&lt;AnalysisResult&gt; analyze(@RequestBody AnalysisRequest request) {
+<span class="fc" id="L109">        ResponseEntity&lt;AnalysisResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+<span class="pc bpc" id="L111" title="2 of 4 branches missed.">        if (request == null || request.getBusinessText() == null</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                || request.getBusinessText().isBlank()) {</span>
+<span class="fc" id="L113">            return ResponseEntity.badRequest().build();</span>
+        }
+
+<span class="fc" id="L116">        String operationId = newOperationId();</span>
+        try {
+<span class="fc" id="L118">            String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L119">            AnalyzeRequirementResult result = analyzeRequirementUseCase.analyze(</span>
+                    new AnalyzeRequirementCommand(
+<span class="fc" id="L121">                            request.getBusinessText(),</span>
+<span class="fc" id="L122">                            request.isIncludeArchitectureView(),</span>
+<span class="fc" id="L123">                            request.getMaxArchitectureNodes(),</span>
+<span class="fc" id="L124">                            request.getProvider(),</span>
+                            username,
+<span class="fc" id="L126">                            resolveWorkspaceContext(username)));</span>
+<span class="fc" id="L127">            return ResponseEntity.ok()</span>
+<span class="fc" id="L128">                    .header(ANALYSIS_OPERATION_ID_HEADER, operationId)</span>
+<span class="fc" id="L129">                    .body(result.analysisResult());</span>
+<span class="fc" id="L130">        } catch (UnknownAnalysisProviderException e) {</span>
+            @SuppressWarnings(&quot;unchecked&quot;)
+            ResponseEntity&lt;AnalysisResult&gt; badProvider = (ResponseEntity&lt;AnalysisResult&gt;)
+<span class="fc" id="L133">                    (ResponseEntity&lt;?&gt;) ResponseEntity.badRequest()</span>
+<span class="fc" id="L134">                    .header(ANALYSIS_OPERATION_ID_HEADER, operationId)</span>
+<span class="fc" id="L135">                    .body(Map.of(</span>
+<span class="fc" id="L136">                            &quot;error&quot;, &quot;Unknown provider: &quot; + e.getProvider(),</span>
+<span class="fc" id="L137">                            &quot;validProviders&quot;, e.getValidProviders()));</span>
+<span class="fc" id="L138">            return badProvider;</span>
+        }
+    }
+
+    @Operation(summary = &quot;Streaming analysis (SSE)&quot;,
+            description = &quot;Emits phase, scores, expanding, complete, and error events as the taxonomy is processed. Every event carries one operation ID and a monotonic sequence.&quot;,
+            tags = {&quot;Analysis&quot;})
+    @GetMapping(value = &quot;/analyze-stream&quot;, produces = MediaType.TEXT_EVENT_STREAM_VALUE)
+    public SseEmitter analyzeStream(
+            @Parameter(description = &quot;Business requirement text to analyze&quot;)
+            @RequestParam String businessText,
+            @Parameter(description = &quot;LLM provider override&quot;)
+            @RequestParam(required = false) String provider) {
+<span class="fc" id="L151">        SseEmitter emitter = new SseEmitter(120_000L);</span>
+<span class="fc" id="L152">        String operationId = newOperationId();</span>
+<span class="fc" id="L153">        AtomicLong eventSequence = new AtomicLong();</span>
+
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+<span class="nc" id="L156">            sendEvent(emitter, operationId, eventSequence.incrementAndGet(), &quot;error&quot;, Map.of(</span>
+                    &quot;status&quot;, &quot;ERROR&quot;,
+<span class="nc" id="L158">                    &quot;errorMessage&quot;, messageSource.getMessage(</span>
+                            &quot;error.loading&quot;, null,
+                            &quot;Taxonomy data is still loading. Please wait.&quot;,
+<span class="nc" id="L161">                            LocaleContextHolder.getLocale()),</span>
+<span class="nc" id="L162">                    &quot;initStatus&quot;, taxonomyService.getInitStatus()));</span>
+<span class="nc" id="L163">            emitter.complete();</span>
+<span class="nc" id="L164">            return emitter;</span>
+        }
+<span class="pc bpc" id="L166" title="1 of 4 branches missed.">        if (businessText == null || businessText.isBlank()) {</span>
+<span class="fc" id="L167">            sendEvent(emitter, operationId, eventSequence.incrementAndGet(), &quot;error&quot;, Map.of(</span>
+                    &quot;status&quot;, &quot;ERROR&quot;,
+                    &quot;errorMessage&quot;, &quot;businessText must not be blank&quot;));
+<span class="fc" id="L170">            emitter.complete();</span>
+<span class="fc" id="L171">            return emitter;</span>
+        }
+
+        // Resolve and validate the exact tab-pinned workspace while the request
+        // context is still available. Native EventSource cannot send the custom
+        // header, so WorkspaceContextResolver accepts its equivalent query value.
+<span class="fc" id="L177">        String username = workspaceResolver.resolveCurrentUsername();</span>
+<span class="fc" id="L178">        resolveWorkspaceContext(username);</span>
+
+<span class="fc" id="L180">        StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(</span>
+<span class="fc" id="L181">                businessText, provider, LocaleContextHolder.getLocale());</span>
+<span class="fc" id="L182">        analysisExecutor.execute(() -&gt; {</span>
+            try {
+<span class="fc" id="L184">                streamRequirementAnalysisUseCase.stream(command, event -&gt; {</span>
+<span class="fc" id="L185">                    AnalysisSseEventMapper.MappedEvent mapped = analysisSseEventMapper.map(event);</span>
+<span class="fc" id="L186">                    sendEvent(emitter, operationId, eventSequence.incrementAndGet(),</span>
+<span class="fc" id="L187">                            mapped.name(), mapped.payload());</span>
+<span class="pc bpc" id="L188" title="1 of 4 branches missed.">                    if (event instanceof AnalysisStreamEvent.Complete</span>
+                            || event instanceof AnalysisStreamEvent.Error) {
+<span class="fc" id="L190">                        emitter.complete();</span>
+                    }
+<span class="fc" id="L192">                });</span>
+<span class="fc" id="L193">            } catch (UnknownAnalysisProviderException e) {</span>
+<span class="fc" id="L194">                sendEvent(emitter, operationId, eventSequence.incrementAndGet(), &quot;error&quot;, Map.of(</span>
+                        &quot;status&quot;, &quot;ERROR&quot;,
+<span class="fc" id="L196">                        &quot;errorMessage&quot;, &quot;Unknown provider: &quot; + e.getProvider()));</span>
+<span class="fc" id="L197">                emitter.complete();</span>
+<span class="fc" id="L198">            } catch (Exception e) {</span>
+<span class="fc" id="L199">                log.error(&quot;Streaming analysis failed&quot;, e);</span>
+<span class="fc" id="L200">                sendEvent(emitter, operationId, eventSequence.incrementAndGet(), &quot;error&quot;, Map.of(</span>
+                        &quot;status&quot;, &quot;ERROR&quot;,
+                        &quot;errorMessage&quot;, &quot;Analysis failed. Retry the operation or inspect administrator diagnostics.&quot;));
+<span class="fc" id="L203">                emitter.complete();</span>
+<span class="fc" id="L204">            }</span>
+<span class="fc" id="L205">        });</span>
+<span class="fc" id="L206">        return emitter;</span>
+    }
+
+    @Operation(summary = &quot;Analyze single node children&quot;,
+            description = &quot;Analyzes the children of a taxonomy node against a requirement&quot;,
+            tags = {&quot;Analysis&quot;})
+    @GetMapping(&quot;/analyze-node&quot;)
+    public ResponseEntity&lt;AnalyzeNodeChildrenResult&gt; analyzeNode(
+            @RequestParam String parentCode,
+            @RequestParam String businessText,
+            @RequestParam(defaultValue = &quot;100&quot;) int parentScore) {
+<span class="fc" id="L217">        ResponseEntity&lt;AnalyzeNodeChildrenResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L218" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+        try {
+<span class="fc" id="L220">            return ResponseEntity.ok(analyzeNodeChildrenUseCase.analyze(</span>
+                    new AnalyzeNodeChildrenCommand(parentCode, businessText, parentScore)));
+<span class="fc" id="L222">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L223">            return ResponseEntity.badRequest().build();</span>
+        }
+    }
+
+<span class="fc" id="L227">    public record JustifyLeafRequest(</span>
+            String nodeCode,
+            String businessText,
+            Map&lt;String, Integer&gt; scores,
+            Map&lt;String, String&gt; reasons) {
+    }
+
+    @Operation(summary = &quot;Generate leaf justification&quot;,
+            description = &quot;Generates a traceable explanation for a leaf-node match&quot;,
+            tags = {&quot;Analysis&quot;})
+    @ApiResponse(responseCode = &quot;200&quot;, description = &quot;Justification generated&quot;)
+    @ApiResponse(responseCode = &quot;400&quot;, description = &quot;Request is invalid&quot;)
+    @ApiResponse(responseCode = &quot;500&quot;, description = &quot;Justification generation failed&quot;)
+    @PostMapping(&quot;/justify-leaf&quot;)
+    public ResponseEntity&lt;?&gt; justifyLeaf(@RequestBody JustifyLeafRequest request) {
+<span class="fc" id="L242">        ResponseEntity&lt;JustifyLeafResult&gt; guard = checkInitialized();</span>
+<span class="pc bpc" id="L243" title="1 of 2 branches missed.">        if (guard != null) return guard;</span>
+        try {
+<span class="fc" id="L245">            JustifyLeafResult result = justifyLeafUseCase.justify(new JustifyLeafCommand(</span>
+<span class="fc" id="L246">                    request.nodeCode(), request.businessText(), request.scores(), request.reasons()));</span>
+<span class="fc" id="L247">            return ResponseEntity.ok(result);</span>
+<span class="fc" id="L248">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L249">            ProblemDetail problem = ProblemDetail.forStatusAndDetail(</span>
+<span class="fc" id="L250">                    HttpStatus.BAD_REQUEST, e.getMessage());</span>
+<span class="fc" id="L251">            problem.setTitle(&quot;Invalid leaf justification request&quot;);</span>
+<span class="fc" id="L252">            problem.setType(URI.create(&quot;urn:taxonomy:problem:invalid-justification-request&quot;));</span>
+<span class="fc" id="L253">            return ResponseEntity.badRequest().body(problem);</span>
+<span class="fc" id="L254">        } catch (Exception e) {</span>
+<span class="fc" id="L255">            log.error(&quot;Leaf justification failed for node {}&quot;,</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">                    request != null ? request.nodeCode() : null, e);</span>
+<span class="fc" id="L257">            ProblemDetail problem = ProblemDetail.forStatusAndDetail(</span>
+                    HttpStatus.INTERNAL_SERVER_ERROR,
+                    &quot;The leaf justification could not be generated. Retry the operation or inspect the administrator diagnostics.&quot;);
+<span class="fc" id="L260">            problem.setTitle(&quot;Leaf justification failed&quot;);</span>
+<span class="fc" id="L261">            problem.setType(URI.create(&quot;urn:taxonomy:problem:justification-failed&quot;));</span>
+<span class="fc" id="L262">            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(problem);</span>
+        }
+    }
+
+    private void sendEvent(SseEmitter emitter,
+                           String operationId,
+                           long sequence,
+                           String eventName,
+                           Object data) {
+        try {
+<span class="fc" id="L272">            Map&lt;String, Object&gt; envelope = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L273">            envelope.put(&quot;operationId&quot;, operationId);</span>
+<span class="fc" id="L274">            envelope.put(&quot;sequence&quot;, sequence);</span>
+<span class="fc" id="L275">            envelope.put(&quot;emittedAt&quot;, Instant.now().toString());</span>
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">            if (data instanceof Map&lt;?, ?&gt; dataMap) {</span>
+<span class="fc" id="L277">                dataMap.forEach((key, value) -&gt; envelope.put(String.valueOf(key), value));</span>
+            } else {
+<span class="nc" id="L279">                envelope.put(&quot;data&quot;, data);</span>
+            }
+<span class="fc" id="L281">            emitter.send(SseEmitter.event()</span>
+<span class="fc" id="L282">                    .id(operationId + &quot;:&quot; + sequence)</span>
+<span class="fc" id="L283">                    .name(eventName)</span>
+<span class="fc" id="L284">                    .data(objectMapper.writeValueAsString(envelope)));</span>
+<span class="nc" id="L285">        } catch (IOException e) {</span>
+<span class="nc" id="L286">            emitter.complete();</span>
+<span class="nc" id="L287">        } catch (Exception e) {</span>
+<span class="nc" id="L288">            emitter.completeWithError(e);</span>
+<span class="pc" id="L289">        }</span>
+<span class="fc" id="L290">    }</span>
+
+    private String newOperationId() {
+<span class="fc" id="L293">        return UUID.randomUUID().toString();</span>
+    }
+
+    private WorkspaceContext resolveWorkspaceContext(String username) {
+        try {
+<span class="fc" id="L298">            repositoryStateService.ensureWorkspaceState(username);</span>
+<span class="fc" id="L299">            return workspaceResolver.resolveCurrentContext();</span>
+<span class="fc" id="L300">        } catch (AccessDeniedException exception) {</span>
+            // An explicit tab pin is an authorization boundary. Never turn a
+            // denied or foreign workspace into an implicit shared analysis.
+<span class="fc" id="L303">            throw exception;</span>
+<span class="nc" id="L304">        } catch (Exception e) {</span>
+<span class="nc" id="L305">            log.warn(&quot;Falling back to shared workspace context for user '{}' due to: {}&quot;,</span>
+<span class="nc" id="L306">                    username, e.toString(), e);</span>
+<span class="nc" id="L307">            return WorkspaceContext.SHARED;</span>
+        }
+    }
+
+    @SuppressWarnings(&quot;unchecked&quot;)
+    private &lt;T&gt; ResponseEntity&lt;T&gt; checkInitialized() {
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">        if (!taxonomyService.isInitialized()) {</span>
+<span class="nc" id="L314">            Map&lt;String, Object&gt; body = new LinkedHashMap&lt;&gt;();</span>
+<span class="nc" id="L315">            body.put(&quot;error&quot;, messageSource.getMessage(</span>
+                    &quot;error.loading&quot;, null,
+                    &quot;Taxonomy data is still loading. Please wait.&quot;,
+<span class="nc" id="L318">                    LocaleContextHolder.getLocale()));</span>
+<span class="nc" id="L319">            body.put(&quot;status&quot;, taxonomyService.getInitStatus());</span>
+<span class="nc" id="L320">            return (ResponseEntity&lt;T&gt;) ResponseEntity.status(503).body(body);</span>
+        }
+<span class="fc" id="L322">        return null;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
