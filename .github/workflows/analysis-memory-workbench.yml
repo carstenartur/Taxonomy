@@ -6,7 +6,7 @@ on:
 permissions:
   contents: write
 jobs:
-  live-runtime:
+  acceptance:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -19,55 +19,71 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: candidate
-          ref: 618da4aaadea9d71f50b19185c7108ce0135e228
+          ref: 024a660d040b481a1354fa4c0dc7d475595ce032
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Install complete live runtime and regressions
+      - name: Install additional behavioral regressions
         working-directory: candidate
         run: |
-          test "$(git rev-parse HEAD)" = 618da4aaadea9d71f50b19185c7108ce0135e228
-          python ../tools/.github/scripts/analysis-live-tests.py
-          python ../tools/.github/scripts/analysis-live-integration.py
-          cp ../tools/taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisProgressController.java taxonomy-app/src/main/java/com/taxonomy/analysis/controller/
-          python ../tools/.github/scripts/analysis-live-ui-integration.py
-          python ../tools/.github/scripts/analysis-live-refinements.py
-          python ../tools/.github/scripts/analysis-live-worker-fence.py
-          cp ../tools/.github/scripts/analysis-live-progress.test.mjs .github/scripts/
+          test "$(git rev-parse HEAD)" = 024a660d040b481a1354fa4c0dc7d475595ce032
+          python ../tools/.github/scripts/analysis-live-pipeline-tests.py
+          cp ../tools/taxonomy-app/src/test/java/com/taxonomy/AnalysisLiveProgressUiIT.java taxonomy-app/src/test/java/com/taxonomy/
           git diff --check
-      - name: Execute live runtime and compatibility tests
+      - name: Execute pipeline and HTTP regressions with existing controls
         working-directory: candidate
         run: |
           set +e
-          ./mvnw -B -pl taxonomy-app -am '-Dtest=AnalysisMemoryGuardTest,AnalysisProgressRegistryTest,GatewayInterruptedAnalysisTest,HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,AnalysisApiWorkspaceBoundaryTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest,LlmService*,GeminiGatewayTest,OpenAiCompatibleGatewayTest,*ConfigurationReference*' -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/analysis-live.log" 2>&1
+          ./mvnw -B -pl taxonomy-app -am '-Dtest=AnalysisMemoryGuardTest,AnalysisProgressRegistryTest,GatewayInterruptedAnalysisTest,HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,AnalysisProgressControllerTest,AnalysisApiWorkspaceBoundaryTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest,LlmService*,GeminiGatewayTest,OpenAiCompatibleGatewayTest,*ConfigurationReference*' -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/analysis-pipeline.log" 2>&1
           code=$?
-          grep -E 'ERROR|Tests run:|BUILD SUCCESS|BUILD FAILURE' "$RUNNER_TEMP/analysis-live.log" | tail -100
+          grep -E 'ERROR|Tests run:|BUILD SUCCESS|BUILD FAILURE' "$RUNNER_TEMP/analysis-pipeline.log" | tail -100
+          mkdir -p "$RUNNER_TEMP/pipeline-xml"
+          cp taxonomy-app/target/surefire-reports/TEST-*.xml "$RUNNER_TEMP/pipeline-xml/"
           exit "$code"
-      - name: Browser live lifecycle and existing ordering controls
+      - name: Execute real-browser component acceptance
         working-directory: candidate
         run: |
-          node --check taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
-          node --check taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
-          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-operation-controller.test.mjs
-      - name: Publish passing source to fix branch
+          set +e
+          ./mvnw -B -pl taxonomy-app -am -Dtest=AnalysisLiveProgressUiIT -DexcludedGroups=real-llm -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/analysis-browser.log" 2>&1
+          code=$?
+          grep -E 'ERROR|Tests run:|BUILD SUCCESS|BUILD FAILURE' "$RUNNER_TEMP/analysis-browser.log" | tail -100
+          exit "$code"
+      - name: Node live lifecycle and existing ordering controls
+        working-directory: candidate
+        run: node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-operation-controller.test.mjs
+      - name: Check actual test counts and publish staged tested source
         working-directory: candidate
         run: |
-          git fetch origin fix/analysis-memory-live-progress
-          test "$(git rev-parse FETCH_HEAD)" = 618da4aaadea9d71f50b19185c7108ce0135e228
-          git add taxonomy-app/src/main/java/com/taxonomy/analysis taxonomy-app/src/main/resources/application.properties taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session.js taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js taxonomy-app/src/test/java/com/taxonomy/analysis docs/de/CONFIGURATION_REFERENCE.md docs/en/CONFIGURATION_REFERENCE.md .github/scripts/analysis-live-progress.test.mjs
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          from xml.etree import ElementTree as E
+          totals=[0,0,0,0]
+          for p in Path(os.environ['RUNNER_TEMP'],'pipeline-xml').glob('TEST-*.xml'):
+              r=E.parse(p).getroot();v=[int(r.get(k,0)) for k in ('tests','failures','errors','skipped')]
+              print(r.get('name'),v);totals=[a+b for a,b in zip(totals,v)]
+          print('PIPELINE TOTAL:',totals)
+          assert totals[0]>=105 and totals[1:]==[0,0,0],totals
+          r=E.parse('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.AnalysisLiveProgressUiIT.xml').getroot()
+          v=[int(r.get(k,0)) for k in ('tests','failures','errors','skipped')]
+          print('BROWSER TOTAL:',v);assert v==[2,0,0,0],v
+          PY
+          git add taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java taxonomy-app/src/test/java/com/taxonomy/analysis/controller/AnalysisProgressControllerTest.java taxonomy-app/src/test/java/com/taxonomy/AnalysisLiveProgressUiIT.java
           git diff --cached --check
-          git -c user.name='OpenAI Assistant' -c user.email='assistant@openai.com' commit -m 'fix(analysis): expose scoped live progress and stop safely under resource pressure'
-          git rev-parse HEAD HEAD^{tree} | tee "$RUNNER_TEMP/analysis-live-source.txt"
-          git show --stat --oneline
-          git push origin HEAD:refs/heads/fix/analysis-memory-live-progress
+          git -c user.name='OpenAI Assistant' -c user.email='assistant@openai.com' commit -m 'test(analysis): verify preserved partial evidence and visible live browser feedback'
+          git rev-parse HEAD HEAD^{tree} | tee "$RUNNER_TEMP/analysis-acceptance-source.txt"
+          git push origin HEAD:refs/heads/staging/analysis-live-acceptance-20260914
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: analysis-live-runtime-evidence
+          name: analysis-live-acceptance-evidence
           path: |
-            ${{ runner.temp }}/analysis-live.log
-            ${{ runner.temp }}/analysis-live-source.txt
+            ${{ runner.temp }}/analysis-pipeline.log
+            ${{ runner.temp }}/analysis-browser.log
+            ${{ runner.temp }}/analysis-acceptance-source.txt
+            ${{ runner.temp }}/pipeline-xml/*.xml
             candidate/**/target/surefire-reports/*.xml
+            candidate/taxonomy-app/target/analysis-ui-evidence/*
           retention-days: 7
