@@ -1,0 +1,77 @@
+name: Reproduce provisioning checkpoint boundaries
+on:
+  push:
+    branches: [verification/628-provisioning-checkpoint]
+    paths: [.github/workflows/628-provisioning-checkpoint-red.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 03b4616547c3eef052b2689583f7d75ffcbd9d65
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Require the real source-checkpoint failures
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningSourceTest test > "$RUNNER_TEMP/source-red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          p = Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceProvisioningSourceTest.xml')
+          if not p.exists():
+              print(Path(os.environ['RUNNER_TEMP'], 'source-red.log').read_text()[-10000:])
+              raise SystemExit('No executable source regression result')
+          root = ET.parse(p).getroot()
+          counts = {key: int(root.get(key, '0')) for key in ('tests', 'failures', 'errors', 'skipped')}
+          for case in root.findall('testcase'):
+              for failure in case.findall('failure') + case.findall('error'):
+                  print(case.get('name'), failure.get('message'))
+          print('SOURCE RED', counts)
+          assert counts == dict(tests=4, failures=2, errors=0, skipped=0), counts
+          PY
+      - name: Require real database concurrency and HTTP regressions
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningAtomicityIT test > "$RUNNER_TEMP/atomic-red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          p = Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceProvisioningAtomicityIT.xml')
+          if not p.exists():
+              print(Path(os.environ['RUNNER_TEMP'], 'atomic-red.log').read_text()[-14000:])
+              raise SystemExit('No executable database/HTTP regression result')
+          root = ET.parse(p).getroot()
+          counts = {key: int(root.get(key, '0')) for key in ('tests', 'failures', 'errors', 'skipped')}
+          for case in root.findall('testcase'):
+              for failure in case.findall('failure') + case.findall('error'):
+                  print(case.get('name'), failure.get('message'))
+          print('DATABASE AND HTTP RED', counts)
+          assert counts == dict(tests=3, failures=3, errors=0, skipped=0), counts
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: provisioning-checkpoint-red
+          path: |
+            ${{ runner.temp }}/*-red.log
+            **/target/surefire-reports/TEST-*WorkspaceProvisioningSourceTest.xml
+            **/target/surefire-reports/TEST-*WorkspaceProvisioningAtomicityIT.xml
+          if-no-files-found: error
+          retention-days: 7
