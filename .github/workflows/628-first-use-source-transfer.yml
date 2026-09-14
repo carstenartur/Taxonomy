@@ -1,0 +1,61 @@
+name: Retain native-tested first-use correction source
+on:
+  push:
+    branches: [verification/628-first-use-source]
+    paths: [.github/workflows/628-first-use-source-transfer.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 83e9c9557dc451d28ca3a7cb9486281f6b93c801
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: f977ffa6f71e28d981b34b39333cf1114de4e7b2
+          path: source
+          persist-credentials: false
+      - name: Retain exact source blobs only, without a branch update or test-success claim
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git apply --index ../control/verification/628-first-use-transactions.patch
+          git diff --cached --check
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD')=='f977ffa6f71e28d981b34b39333cf1114de4e7b2'
+          assert git('write-tree')=='b6cf60eda0b59e22950958b7c9c2ebc7b38a088e'
+          git('diff','--exit-code')
+          expected={
+              'taxonomy-app/src/test/java/com/taxonomy/workspace/controller/WorkspaceProvisioningBoundaryIT.java':'e665b29147037ad268b6d74a32235038f3acd3e0',
+              'taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java':'c26d1318d19595829253788b735b162dada90d04',
+              'taxonomy-workspace/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java':'cce6c0977cf0407a23a6dd3fa68d749d0edf727c',
+              'taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java':'a17dc187d5041a2cd05e2b7937dd9c730d72227b'}
+          assert set(git('diff','--cached','--name-only').splitlines())==set(expected)
+          entries=[]
+          for name,sha in expected.items():
+              p=Path(name);assert p.stat().st_size<100000 and git('hash-object',name)==sha
+              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',data=json.dumps({'content':p.read_text(),'encoding':'utf-8'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(req,timeout=30) as response:assert json.load(response)['sha']==sha
+              entries.append({'path':name,'mode':'100644','type':'blob','sha':sha})
+          result={'tree':git('write-tree'),'entries':entries,'scope':'Source transport only; online verification 34867737131 remains independent.'}
+          Path(os.environ['RUNNER_TEMP'],'source-manifest.json').write_text(json.dumps(result,indent=2))
+          print(json.dumps(result))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: first-use-source-identity
+          path: ${{ runner.temp }}/source-manifest.json
+          if-no-files-found: error
+          retention-days: 14
