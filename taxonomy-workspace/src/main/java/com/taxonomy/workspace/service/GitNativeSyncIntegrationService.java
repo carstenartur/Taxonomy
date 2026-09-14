@@ -126,7 +126,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         DslGitRepository workspaceGit =
                 repositoryFactory.openWorkspaceRepository(context.workspaceId());
         WorkspaceMergeState state = initialiseWorkspaceMergeBase(
-                workspaceGit, sourceRepository, sourceBranch, username, userBranch);
+                workspaceGit, sourceRepository, sourceBranch, username, userBranch,
+                workspaceMetadata.getBaseCommit());
 
         portfolioGitPort.commitPortfolio(userBranch,
                 "Project requirements before pull", username, context);
@@ -178,7 +179,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         DslGitRepository workspaceGit =
                 repositoryFactory.openWorkspaceRepository(context.workspaceId());
         WorkspaceMergeState state = initialiseWorkspaceMergeBase(
-                workspaceGit, sourceRepository, sourceBranch, username, userBranch);
+                workspaceGit, sourceRepository, sourceBranch, username, userBranch,
+                workspaceMetadata.getBaseCommit());
 
         portfolioGitPort.commitPortfolio(userBranch,
                 "Project requirements before push", username, context);
@@ -263,7 +265,8 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             DslGitRepository sourceRepository,
             String sourceBranch,
             String username,
-            String userBranch) throws IOException {
+            String userBranch,
+            String baseCommit) throws IOException {
         String existingBase = valueOrEmpty(
                 workspaceGit.getDslAtHead(TRACKING_BRANCH));
         String existingUserBranch = valueOrEmpty(
@@ -272,9 +275,17 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             return new WorkspaceMergeState(existingBase);
         }
 
-        String source = valueOrEmpty(sourceRepository.getDslAtHead(sourceBranch));
-        String seeded = valueOrEmpty(workspaceGit.getDslAtHead(SEEDED_BRANCH));
-        String commonBase = !seeded.isBlank() ? seeded : source;
+        String commonBase;
+        if (baseCommit != null && !baseCommit.isBlank()) {
+            // Initial provisioning records the exact fork point. A newer source
+            // HEAD is not the common ancestor of independent local/remote edits.
+            commonBase = valueOrEmpty(sourceRepository.getDslAtCommit(baseCommit));
+        } else {
+            // Preserve the compatibility path for metadata without a fork point.
+            String source = valueOrEmpty(sourceRepository.getDslAtHead(sourceBranch));
+            String seeded = valueOrEmpty(workspaceGit.getDslAtHead(SEEDED_BRANCH));
+            commonBase = !seeded.isBlank() ? seeded : source;
+        }
         if (commonBase.isBlank()) {
             throw new IOException("Neither source nor workspace seed contains architecture DSL");
         }
