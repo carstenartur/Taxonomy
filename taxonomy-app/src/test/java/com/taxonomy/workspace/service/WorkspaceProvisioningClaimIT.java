@@ -61,7 +61,7 @@ class WorkspaceProvisioningClaimIT {
             var destination = mock(DslGitRepository.class);
             when(destination.commitDsl(anyString(), anyString(), anyString(), anyString())).thenReturn(base);
             when(destination.getHeadCommit("main")).thenReturn(base);
-            when(factory.getWorkspaceRepository(id)).thenReturn(destination);
+            when(factory.openWorkspaceRepository(id)).thenReturn(destination);
             var system = mock(SystemRepositoryService.class);
             when(system.getPrimaryRepository()).thenReturn(central);
             var first = new WorkspaceManager(selected, 50, system, factory);

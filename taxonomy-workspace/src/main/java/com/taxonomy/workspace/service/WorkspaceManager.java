@@ -481,13 +481,13 @@ public class WorkspaceManager {
                     ? repositoryFactory.getSystemRepository() : gitRepository;
             String baseCommit = systemGit.getHeadCommit(baseBranch);
             String systemDsl = baseCommit == null ? null : systemGit.getDslAtCommit(baseCommit);
-            if (baseCommit == null || systemDsl == null) {
+            if (baseCommit == null || systemDsl == null || systemDsl.isBlank()) {
                 throw new IllegalStateException("Source repository has no readable checkpoint for " + baseBranch);
             }
 
             if (repositoryFactory != null) {
                 DslGitRepository workspaceGit =
-                        repositoryFactory.getWorkspaceRepository(workspace.getWorkspaceId());
+                        repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
                 workspaceGit.commitDsl(
                         targetBranch,
                         systemDsl,
