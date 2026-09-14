@@ -37,6 +37,11 @@ public class WorkspaceResolver {
         return WorkspaceManager.DEFAULT_USER;
     }
 
+    /** Validate lifecycle metadata without caching or granting repository access. */
+    public com.taxonomy.workspace.model.UserWorkspace resolveCurrentWorkspaceMetadata() {
+        return contextResolver.resolveWorkspaceMetadataForUser(resolveCurrentUsername());
+    }
+
     /**
      * Resolve the compatibility workspace context for the current request.
      *
