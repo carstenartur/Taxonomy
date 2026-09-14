@@ -1,0 +1,136 @@
+name: Verify final current module corrections
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-finish-current-stack.yml]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 619e3550930830359b31c5a70a58a9c8882e768c
+          persist-credentials: false
+          show-progress: false
+      - name: Obtain complete public history quietly
+        run: git fetch --quiet --unshallow origin > "$RUNNER_TEMP/fetch.log" 2>&1
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Integrate the exact reviewed fix and remove only irrelevant triggers
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'final-stack';out.mkdir()
+          base='29b9ef036882f5dbfc62924d9aca63038c098d4e'
+          heads={1062:'b654ee72d80c78a8a310721f97e9318e518476cf',1063:'558541521c1f6af032828e0f474f4e9986f03a57',1064:'619e3550930830359b31c5a70a58a9c8882e768c'}
+          repository='src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java'
+          security='taxonomy-app/src/test/java/com/taxonomy/workspace/controller/WorkspaceAccessSecurityIT.java'
+          workflow='.github/workflows/catalogue-overlay-proposal.yml'
+          def git(*args,cwd=None):
+              return subprocess.check_output(['git',*args],cwd=cwd,text=True).strip()
+          git('config','user.name','Taxonomy integration verification');git('config','user.email','noreply@github.com')
+          manifest={}
+          for number,head in heads.items():
+              work=out/str(number)
+              git('worktree','add','--detach',str(work),head)
+              git('merge','--no-commit','--no-ff',base,cwd=work)
+              paths=git('diff','--cached','--name-only',head,cwd=work).splitlines()
+              assert set(paths)=={'taxonomy-workspace/'+repository,security},paths
+              assert git('rev-parse',base+':taxonomy-app/'+repository)==git('hash-object','taxonomy-workspace/'+repository,cwd=work)
+              assert git('rev-parse',base+':'+security)==git('hash-object',security,cwd=work)
+              merged_tree=git('write-tree',cwd=work)
+              if number==1064: assert merged_tree=='c3455fc4d6a1bde8c9b750f88ec767c0715336cc',merged_tree
+              source=(work/workflow).read_text()
+              corrected,count=re.subn(r"^      - 'taxonomy-(workspace|templates|interop)/\*\*'\n",'',source,flags=re.M)
+              assert count==2*(number-1061),(number,count)
+              # Runtime job and all its commands are byte-identical.
+              assert source.split('jobs:',1)[1]==corrected.split('jobs:',1)[1]
+              (work/workflow).write_text(corrected)
+              git('add','--',workflow,cwd=work);git('diff','--cached','--check',cwd=work)
+              paths=git('diff','--cached','--name-only',head,cwd=work).splitlines()
+              assert set(paths)=={'taxonomy-workspace/'+repository,security,workflow},paths
+              entries=[{'path':p,'sha':git('hash-object',p,cwd=work)} for p in paths]
+              manifest[str(number)]={'parent':head,'main':base,'merged_tree':merged_tree,'tree':git('write-tree',cwd=work),'entries':entries}
+              print('CANDIDATE',number,json.dumps(manifest[str(number)]),flush=True)
+          (out/'source-manifest.json').write_text(json.dumps(manifest,indent=2))
+          (out/'catalogue-overlay-proposal.yml').write_text(corrected)
+          PY
+      - name: Execute the unchanged catalogue workflow commands
+        working-directory: ${{ runner.temp }}/final-stack/1064
+        run: |
+          ./mvnw -B -pl taxonomy-tooling -am verify -Dtaxonomy.ui.skip=true -Dtaxonomy.quality.skip=true > "$RUNNER_TEMP/final-stack/tooling.log" 2>&1 || { tail -n 80 "$RUNNER_TEMP/final-stack/tooling.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,subprocess,xml.etree.ElementTree as ET
+          text=Path(os.environ['RUNNER_TEMP'],'final-stack/tooling.log').read_text()
+          reactor=text.split('Reactor Build Order:',1)[1].split('[INFO] ----------------',1)[0]
+          print('TOOLING REACTOR',reactor)
+          assert all(s not in reactor for s in ('Workspace','Templates','Interoperability'))
+          jars=[p for p in Path('taxonomy-tooling/target').glob('taxonomy-tooling-*.jar') if not p.name.endswith(('-sources.jar','-javadoc.jar'))]
+          assert len(jars)==1,jars
+          subprocess.run(['java','-cp',str(jars[0]),'com.taxonomy.tooling.CatalogueOverlayProposalGenerator','--root',str(Path.cwd())],check=True)
+          counts=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for p in Path('taxonomy-tooling/target/surefire-reports').glob('TEST-*.xml'):
+              root=ET.parse(p).getroot()
+              for key in counts: counts[key]+=int(root.get(key,'0'))
+          assert counts['tests']>0 and counts['failures']==counts['errors']==0,counts
+          print('TOOLING TESTS',counts)
+          PY
+      - name: Execute the affected real HTTP and resolver regressions
+        working-directory: ${{ runner.temp }}/final-stack/1064
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceAccessSecurityIT,WorkspaceAccessServiceTest,WorkspaceAccessWebMvcConfigurationTest,WorkspaceScopeGuardRegressionTest,DslWorkspacePreResolutionInterceptorTest,WorkspaceRequestIsolationTest,WorkspaceResolverTest,IntegrationNullableRequirementTest,PortfolioInteropAdapterTest,IntegrationPortfolioPortTest,OslcProviderServiceTest,OslcProviderProtocolTest,OslcTransportTest test > "$RUNNER_TEMP/final-stack/focused.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/final-stack/focused.log"; exit 1; }
+          python3 - <<'PY'
+          import json,os,subprocess,xml.etree.ElementTree as ET
+          from pathlib import Path
+          counts=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              root=ET.parse(p).getroot()
+              for key in counts: counts[key]+=int(root.get(key,'0'))
+          # Tooling was run earlier in this worktree; its results remain separate.
+          report=Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT.xml')
+          root=ET.parse(report).getroot();assert int(root.get('tests'))==10 and root.get('failures')=='0'
+          print('REPORT COUNTS INCLUDING EARLIER TOOLING',counts)
+          manifest=json.loads(Path(os.environ['RUNNER_TEMP'],'final-stack/source-manifest.json').read_text())
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          tree=subprocess.check_output(['git','write-tree'],text=True).strip()
+          assert tree==manifest['1064']['tree'],(tree,manifest['1064']['tree'])
+          print('VERIFIED SOURCE TREE',tree)
+          PY
+      - name: Report concrete historical review findings without changing review state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,re,urllib.request
+          seen=set()
+          for number in (1062,1063,1064):
+              for kind in ('reviews','comments'):
+                  req=urllib.request.Request(f'https://api.github.com/repos/carstenartur/Taxonomy/pulls/{number}/{kind}?per_page=100',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+                  with urllib.request.urlopen(req,timeout=30) as r: values=json.load(r)
+                  for value in values:
+                      if kind=='reviews':
+                          for line in value['body'].splitlines():
+                              if line.startswith('|') and re.search(r'critical|moderate|unresolved|finding',line,re.I) and line not in seen:
+                                  seen.add(line);print(number,value['id'],line)
+                      else: print('INLINE',number,value['id'],value.get('path'),value['body'])
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: current-module-correction-evidence
+          path: |
+            ${{ runner.temp }}/final-stack/source-manifest.json
+            ${{ runner.temp }}/final-stack/catalogue-overlay-proposal.yml
+            ${{ runner.temp }}/final-stack/tooling.log
+            ${{ runner.temp }}/final-stack/focused.log
+          retention-days: 7
+          if-no-files-found: error
