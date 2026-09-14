@@ -1,0 +1,119 @@
+name: Verify physical interop extraction
+on:
+  push:
+    branches: [verification/628-interop-extraction]
+    paths: [.github/workflows/628-interop-extract.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: 78fce8222df2890b2782df1764fc27e91acc95ff
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Introduce physical ownership regression before extraction
+        run: |
+          python3 -m py_compile ../control/verification/628-extract-interop.py
+          python3 ../control/verification/628-extract-interop.py test
+          set +e
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ArchitectureInteropModuleTest test > "$RUNNER_TEMP/red.log" 2>&1
+          result=$?
+          set -e
+          if [[ "$result" == 0 ]]; then echo 'Missing-module regression unexpectedly passed'; exit 1; fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET, os
+          p = Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureInteropModuleTest.xml')
+          if not p.is_file():
+              print(Path(os.environ['RUNNER_TEMP'], 'red.log').read_text()[-16000:])
+              raise SystemExit('Compilation or infrastructure failure is not a missing-module regression')
+          r = ET.parse(p).getroot()
+          assert r.get('tests') == '1' and r.get('failures') == '1' and r.get('errors') == '0', r.attrib
+          assert 'physical interop Maven module' in r.find('testcase/failure').get('message')
+          print('RED: physical interop module is missing; one expected assertion failure, no execution errors')
+          PY
+      - name: Perform byte-identical moves and bind the narrow portfolio port
+        run: python3 ../control/verification/628-extract-interop.py patch
+      - name: Measure only the deliberately changed dependency edges
+        run: |
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false '-Dtest=ArchitectureContextDependencyRatchetTest#recordInteropExtractionBaseline' test > "$RUNNER_TEMP/measure.log" 2>&1 || { tail -n 160 "$RUNNER_TEMP/measure.log"; exit 1; }
+          python3 ../control/verification/628-extract-interop.py baseline
+      - name: Verify complete reactor architecture and build the Boot application
+        run: |
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false clean verify > "$RUNNER_TEMP/architecture.log" 2>&1 || { tail -n 180 "$RUNNER_TEMP/architecture.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          total = {k: 0 for k in ('tests', 'failures', 'errors', 'skipped')}
+          for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              r = ET.parse(p).getroot()
+              for k in total: total[k] += int(r.get(k, '0'))
+          assert total['tests'] >= 34 and not any(total[k] for k in ('failures', 'errors', 'skipped')), total
+          print('ARCHITECTURE', total)
+          PY
+      - name: Run complete default verification with the pinned model
+        run: |
+          ./mvnw -B -ntp verify -DexcludedGroups=real-llm -Dtaxonomy.model.download.skip=false > "$RUNNER_TEMP/verify.log" 2>&1 || { tail -n 200 "$RUNNER_TEMP/verify.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          total = {k: 0 for k in ('tests', 'failures', 'errors', 'skipped')}
+          for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              r = ET.parse(p).getroot()
+              for k in total: total[k] += int(r.get(k, '0'))
+          assert total['tests'] > 1000 and not total['failures'] and not total['errors'], total
+          print('DEFAULT VERIFICATION', total)
+          print('Default verification is not canonical -Pci; browser, database and full quality gates remain required.')
+          PY
+      - name: Execute actual packaged ownership contracts for all three libraries
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=InteropModulePackagingIT,WorkspaceModulePackagingIT,TemplatesModulePackagingIT test > "$RUNNER_TEMP/packaging.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/packaging.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for name in ('InteropModulePackagingIT', 'WorkspaceModulePackagingIT', 'TemplatesModulePackagingIT'):
+              p = Path('taxonomy-build/target/surefire-reports') / ('TEST-com.taxonomy.build.' + name + '.xml')
+              r = ET.parse(p).getroot()
+              assert r.get('tests') == '1' and all(r.get(k) == '0' for k in ('failures', 'errors', 'skipped')), r.attrib
+          print('PACKAGING: 3/3 real Boot-JAR ownership contracts passed')
+          PY
+      - name: Retain tested trees and original file identities without moving any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ../control/verification/628-extract-interop.py publish
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: interop-extraction-evidence
+          path: |
+            ${{ runner.temp }}/red.log
+            ${{ runner.temp }}/measure.log
+            ${{ runner.temp }}/architecture.log
+            ${{ runner.temp }}/verify.log
+            ${{ runner.temp }}/packaging.log
+            ${{ runner.temp }}/verified-interop.json
+            source/**/target/surefire-reports/TEST-*.xml
+            source/target/interop-dependency-baseline.json
+          if-no-files-found: error
+          retention-days: 7
