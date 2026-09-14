@@ -11,6 +11,7 @@ on:
       - 'taxonomy-app/src/main/**'
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
+      - 'taxonomy-interop/**'
       - 'taxonomy-build/**'
       - 'docs/de/DOCUMENT_TEMPLATES.md'
       - 'docs/en/DOCUMENT_TEMPLATES.md'

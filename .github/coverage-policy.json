@@ -22,6 +22,7 @@
     "taxonomy-extension-api",
     "taxonomy-app",
     "taxonomy-workspace",
-    "taxonomy-templates"
+    "taxonomy-templates",
+    "taxonomy-interop"
   ]
 }
