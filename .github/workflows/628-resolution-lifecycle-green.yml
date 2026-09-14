@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 2036b1542de1e4fc2eac0622412a7ea3ac0f70a1
+          ref: 41bbff2c2fad5eda427198b3f9a3bef38ecfac8d
           fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
@@ -20,6 +20,12 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Verify the source-only candidate
+        run: |
+          test "$(git rev-parse HEAD)" = 41bbff2c2fad5eda427198b3f9a3bef38ecfac8d
+          test "$(git rev-parse 'HEAD^{tree}')" = e13c6ff1c5484d398502ccc4a94daff57b8a3c2b
+          test "$(git diff --name-only HEAD^ HEAD | wc -l)" -eq 9
+          git diff --check HEAD^ HEAD
       - name: Execute new resolver and HTTP lifecycle regressions
         run: |
           set -euo pipefail
