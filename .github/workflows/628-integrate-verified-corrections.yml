@@ -1,0 +1,185 @@
+name: Integrate verified workspace corrections
+on:
+  push:
+    branches: [fix/628-provisioning-source-identity]
+    paths: [.github/workflows/628-integrate-verified-corrections.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: read
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fbef12de05f902d239220924c6cff03787a2744a
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Combine only the independently verified source patches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 34885173664 -R carstenartur/Taxonomy -n concurrent-bootstrap-focused -D "$RUNNER_TEMP/bootstrap"
+          gh run download 34885782832 -R carstenartur/Taxonomy -n provisioning-source-focused -D "$RUNNER_TEMP/provenance"
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,os,subprocess
+          base='fbef12de05f902d239220924c6cff03787a2744a'
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          paths=set()
+          for folder in ('bootstrap','provenance'):
+              root=Path(os.environ['RUNNER_TEMP'],folder)
+              manifest=json.loads((root/'manifest.json').read_text())
+              assert manifest['base']==base
+              assert len(manifest['files'])==3
+              assert not paths.intersection(f['path'] for f in manifest['files'])
+              subprocess.run(['git','apply','--index',str(root/'source.patch')],check=True)
+              for entry in manifest['files']:
+                  assert entry['path'].endswith('.java')
+                  assert git('hash-object',entry['path'])==entry['sha']
+                  paths.add(entry['path'])
+              for p in sorted((root/'reports').glob('TEST-*.xml')):
+                  import xml.etree.ElementTree as ET
+                  report=ET.parse(p).getroot()
+                  assert all(int(report.get(k,'0'))==0 for k in ('failures','errors','skipped'))
+              print('INPUT',folder,manifest['tree'])
+          # Normalize only the indentation of the unchanged following section comment.
+          repository=Path('taxonomy-workspace/src/main/java/com/taxonomy/workspace/storage/DslGitRepository.java')
+          text=repository.read_text()
+          old='              // ── Diff operations ─────────────────────────────────────────────'
+          assert text.count(old)==1
+          repository.write_text(text.replace(old,old[10:]))
+          git('add','--',str(repository))
+          assert set(git('diff','--cached','--name-only').splitlines())==paths
+          git('diff','--cached','--check')
+          out=Path(os.environ['RUNNER_TEMP'],'integration');out.mkdir()
+          (out/'workspace.patch').write_bytes(subprocess.check_output(['git','diff','--cached']))
+          tree=git('write-tree')
+          (out/'trees.json').write_text(json.dumps({'workspace':{'base':base,'tree':tree}},indent=2))
+          print('COMBINED WORKSPACE TREE',tree)
+          print(git('diff','--cached','--stat'))
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Supply unchanged pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Verify the combined workspace corrections
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceConcurrentBootstrapIT,WorkspaceProvisioningProvenanceTest,WorkspaceProvisioningSnapshotTest,WorkspaceProvisioningSourceTest,WorkspaceProvisioningClaimIT,WorkspaceProvisioningBoundaryIT,WorkspaceManagerProvisioningTest,WorkspaceManagerBehaviorTest,WorkspaceRepositoryIsolationTest,WorkspaceInitialSyncBaseTest,WorkspaceInitialSyncBaseBoundaryTest,GitNativeSyncMetadataBoundaryTest,GitNativeSyncIntegrationServiceTest,WorkspaceAccessSecurityIT,WorkspaceScopeGuardRegressionTest,ArchitectureReportTests test > "$RUNNER_TEMP/integration/workspace-tests.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/integration/workspace-tests.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,shutil,xml.etree.ElementTree as ET
+          out=Path(os.environ['RUNNER_TEMP'],'integration','workspace-reports');out.mkdir()
+          names='WorkspaceConcurrentBootstrapIT WorkspaceProvisioningProvenanceTest WorkspaceProvisioningSnapshotTest WorkspaceProvisioningSourceTest WorkspaceProvisioningClaimIT WorkspaceProvisioningBoundaryIT WorkspaceManagerProvisioningTest WorkspaceManagerBehaviorTest WorkspaceRepositoryIsolationTest WorkspaceInitialSyncBaseTest WorkspaceInitialSyncBaseBoundaryTest GitNativeSyncMetadataBoundaryTest GitNativeSyncIntegrationServiceTest WorkspaceAccessSecurityIT WorkspaceScopeGuardRegressionTest ArchitectureReportTests'.split()
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for name in names:
+              files=list(Path('.').glob('*/target/surefire-reports/TEST-*.'+name+'.xml'));assert len(files)==1,(name,files)
+              root=ET.parse(files[0]).getroot(); counts={k:int(root.get(k,'0')) for k in total}
+              assert counts['tests']>0 and counts['failures']==counts['errors']==counts['skipped']==0,(name,counts)
+              for k in total:total[k]+=counts[k]
+              shutil.copy2(files[0],out/files[0].name)
+          print('COMBINED WORKSPACE TESTS',total)
+          assert total['tests']==97,total
+          PY
+      - name: Calculate exact successor merges without updating any remote branch
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,json,os
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          def commit(tree,parents):
+              args=['git','-c','user.name=Verification','-c','user.email=verification@localhost','commit-tree',tree]
+              for parent in parents:args+=['-p',parent]
+              return subprocess.check_output(args,input='Temporary verification object, not published\n',text=True).strip()
+          out=Path(os.environ['RUNNER_TEMP'],'integration');trees=json.loads((out/'trees.json').read_text())
+          git('diff','--exit-code')
+          assert git('write-tree')==trees['workspace']['tree']
+          localWorkspace=commit(trees['workspace']['tree'],[trees['workspace']['base']])
+          templateBase='31a0409d3eb7c3ecfc5d004c45cd36af32068baa'
+          templateTree=git('merge-tree','--write-tree',templateBase,localWorkspace)
+          assert len(templateTree)==40,templateTree
+          localTemplate=commit(templateTree,[templateBase,localWorkspace])
+          interopBase='f977ffa6f71e28d981b34b39333cf1114de4e7b2'
+          interopTree=git('merge-tree','--write-tree',interopBase,localTemplate)
+          assert len(interopTree)==40,interopTree
+          localInterop=commit(interopTree,[interopBase,localTemplate])
+          trees['templates']={'base':templateBase,'tree':templateTree}
+          trees['interop']={'base':interopBase,'tree':interopTree}
+          for name,data in trees.items():
+              changed=git('diff','--name-only',data['base'],data['tree']).splitlines()
+              assert all(p.endswith('.java') for p in changed),(name,changed)
+              assert not any(p.startswith('taxonomy-templates/') or p.startswith('taxonomy-interop/') for p in changed),(name,changed)
+              print(name,'TREE',data['tree'],'CHANGED JAVA PATHS',len(changed))
+              (out/(name+'.patch')).write_bytes(subprocess.check_output(['git','diff','--binary',data['base'],data['tree']]))
+          (out/'trees.json').write_text(json.dumps(trees,indent=2))
+          # Checkout only this disposable runner's verified merge candidate.
+          subprocess.run(['git','reset','--hard',localInterop],check=True)
+          PY
+      - name: Verify all three modules together, including existing interoperability contracts
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceConcurrentBootstrapIT,WorkspaceProvisioningProvenanceTest,WorkspaceProvisioningSnapshotTest,WorkspaceProvisioningSourceTest,WorkspaceProvisioningClaimIT,WorkspaceProvisioningBoundaryIT,WorkspaceManagerProvisioningTest,WorkspaceManagerBehaviorTest,WorkspaceRepositoryIsolationTest,WorkspaceInitialSyncBaseTest,WorkspaceInitialSyncBaseBoundaryTest,GitNativeSyncMetadataBoundaryTest,GitNativeSyncIntegrationServiceTest,WorkspaceAccessSecurityIT,WorkspaceScopeGuardRegressionTest,ArchitectureReportTests,IntegrationNullableRequirementTest,PortfolioInteropAdapterTest,IntegrationPortfolioPortTest,OslcProviderServiceTest,OslcProviderProtocolTest,OslcTransportTest test > "$RUNNER_TEMP/integration/interop-tests.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/integration/interop-tests.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,shutil,xml.etree.ElementTree as ET
+          out=Path(os.environ['RUNNER_TEMP'],'integration','interop-reports');out.mkdir()
+          names='WorkspaceConcurrentBootstrapIT WorkspaceProvisioningProvenanceTest WorkspaceProvisioningSnapshotTest WorkspaceProvisioningSourceTest WorkspaceProvisioningClaimIT WorkspaceProvisioningBoundaryIT WorkspaceManagerProvisioningTest WorkspaceManagerBehaviorTest WorkspaceRepositoryIsolationTest WorkspaceInitialSyncBaseTest WorkspaceInitialSyncBaseBoundaryTest GitNativeSyncMetadataBoundaryTest GitNativeSyncIntegrationServiceTest WorkspaceAccessSecurityIT WorkspaceScopeGuardRegressionTest ArchitectureReportTests IntegrationNullableRequirementTest PortfolioInteropAdapterTest IntegrationPortfolioPortTest OslcProviderServiceTest OslcProviderProtocolTest OslcTransportTest'.split()
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for name in names:
+              files=list(Path('.').glob('*/target/surefire-reports/TEST-*.'+name+'.xml'));assert len(files)==1,(name,files)
+              root=ET.parse(files[0]).getroot();counts={k:int(root.get(k,'0')) for k in total}
+              assert counts['tests']>0 and counts['failures']==counts['errors']==counts['skipped']==0,(name,counts)
+              for k in total:total[k]+=counts[k]
+              shutil.copy2(files[0],out/files[0].name)
+          print('COMBINED THREE-MODULE TESTS',total)
+          PY
+      - name: Retain the verified trees as source-only manifests and Git blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,json,os
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          out=Path(os.environ['RUNNER_TEMP'],'integration');trees=json.loads((out/'trees.json').read_text())
+          git('diff','--exit-code')
+          assert git('rev-parse','HEAD^{tree}')==trees['interop']['tree']
+          retained=set()
+          for name,data in trees.items():
+              entries=[]
+              for row in git('diff','--no-renames','--name-status',data['base'],data['tree']).splitlines():
+                  status,path=row.split('\t')
+                  assert path.endswith('.java'),path
+                  sha=None if status=='D' else git('rev-parse',data['tree']+':'+path)
+                  if sha and sha not in retained:
+                      content=subprocess.check_output(['git','show',data['tree']+':'+path],text=True)
+                      blob=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=json.dumps({'content':content,'encoding':'utf-8'}),text=True))
+                      assert blob['sha']==sha
+                      retained.add(sha)
+                  entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+              data['files']=entries
+              (out/(name+'-manifest.json')).write_text(json.dumps(data,indent=2))
+              print('VERIFIED MANIFEST',name,json.dumps(data))
+          print('No remote branch, pull request or review was changed by this verification job.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: integrated-workspace-module-corrections
+          path: ${{ runner.temp }}/integration
+          retention-days: 14
+          if-no-files-found: error
