@@ -1,0 +1,115 @@
+name: Retain tested templates source
+on:
+  push:
+    branches: [verification/628-physical-workspace]
+    paths: [.github/workflows/628-publish-templates-source.yml]
+permissions:
+  contents: write
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: c304223a8d53897d4d5025d1be99f594e2b0af02
+          path: source
+          fetch-depth: 2
+          persist-credentials: false
+      - name: Reproduce the exact locally tested source
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib, os, subprocess
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          assert git('rev-parse', 'HEAD') == 'c304223a8d53897d4d5025d1be99f594e2b0af02'
+          source = Path('taxonomy-app/src/main/java/com/taxonomy/templates')
+          assert len(list(source.glob('*.java'))) == 21
+          Path('taxonomy-templates/src/main/java/com/taxonomy').mkdir(parents=True, exist_ok=True)
+          git('mv', str(source), 'taxonomy-templates/src/main/java/com/taxonomy/templates')
+          resource = 'src/main/resources/document-templates/decision-rationale-report.dotx'
+          Path('taxonomy-templates/' + resource).parent.mkdir(parents=True, exist_ok=True)
+          git('mv', 'taxonomy-app/' + resource, 'taxonomy-templates/' + resource)
+          keep = {'DefaultDocumentTemplateBootstrapIntegrationTest', 'DocumentTemplateApiHttpIT',
+                  'DocumentTemplateGitHttpIT', 'DocumentTemplateHttpIT', 'DocumentTemplateHttpContract',
+                  'DocumentTemplateDetailControllerLocalEditTest', 'DocumentTemplateDetailPageContractTest',
+                  'DocumentTemplateQaContractTest', 'DocumentTemplateWordLinkContractTest'}
+          Path('taxonomy-templates/src/test/java/com/taxonomy/templates').mkdir(parents=True, exist_ok=True)
+          moved = 0
+          for path in sorted(Path('taxonomy-app/src/test/java/com/taxonomy/templates').glob('*.java')):
+              if path.stem not in keep:
+                  git('mv', str(path), str(path).replace('taxonomy-app/', 'taxonomy-templates/', 1))
+                  moved += 1
+          assert moved == 21
+          patch = Path('../control/verification/628-templates-wiring.patch').read_text()
+          patch = patch.replace('\n diff --git ', '\ndiff --git ')
+          assert hashlib.sha256(patch.encode()).hexdigest() == 'e45fecc359565069bf1de6797890343fa2b7ecf44a0520efcd268132885ab706'
+          patch_path = Path(os.environ['RUNNER_TEMP']) / 'templates-wiring.patch'
+          patch_path.write_text(patch)
+          git('apply', '--index', '--unidiff-zero', str(patch_path))
+          git('diff', '--cached', '--check')
+          assert git('write-tree') == '5e1edf7dcd85752b4121fe40ba60e8fca61bc077'
+          rows = [line.split('\t') for line in git('diff', '--cached', '--name-status', '--find-renames=100%').splitlines()]
+          renames = [row for row in rows if row[0] == 'R100']
+          assert len(renames) == 43
+          for _, old, new in renames:
+              assert git('rev-parse', 'HEAD:' + old) == git('rev-parse', ':' + new)
+          print('EXACT SOURCE: 21 production files, 21 existing tests and one default template; all R100')
+          print('Native-tested tree: 5e1edf7dcd85752b4121fe40ba60e8fca61bc077')
+          PY
+      - name: Retain source objects for authorized commit publication
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          def post(endpoint, payload):
+              request = urllib.request.Request(
+                  'https://api.github.com/repos/carstenartur/Taxonomy/' + endpoint,
+                  data=json.dumps(payload).encode(),
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                           'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json'},
+                  method='POST')
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          known = set(git('ls-tree', '-r', '--format=%(objectname)', 'HEAD').splitlines())
+          entries = []
+          for path in git('diff', '--cached', '--name-only', '--no-renames').splitlines():
+              staged = git('ls-files', '-s', '--', path)
+              if not staged:
+                  entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': None})
+                  continue
+              mode, sha = staged.split()[:2]
+              if sha not in known:
+                  actual = post('git/blobs', {'content': Path(path).read_text(), 'encoding': 'utf-8'})['sha']
+                  assert sha == actual
+              entries.append({'path': path, 'mode': mode, 'type': 'blob', 'sha': sha})
+          workflows = [entry for entry in entries if entry['path'].startswith('.github/workflows/')]
+          code = [entry for entry in entries if not entry['path'].startswith('.github/workflows/')]
+          assert len(workflows) == 5
+          code_tree = post('git/trees', {'base_tree': git('rev-parse', 'HEAD^{tree}'), 'tree': code})['sha']
+          result = {'parent': '711c48ab7f254dabd0800f1acd1c3318a0fc5b67', 'codeTree': code_tree,
+                    'fullTree': git('write-tree'), 'workflowEntries': workflows}
+          Path(os.environ['RUNNER_TEMP'], 'templates-source.json').write_text(json.dumps(result, indent=2))
+          print('SOURCE_PUBLICATION ' + json.dumps(result))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: templates-source-identity
+          path: ${{ runner.temp }}/templates-source.json
+          retention-days: 7
+          if-no-files-found: error
