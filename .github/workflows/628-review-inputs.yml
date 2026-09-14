@@ -1,0 +1,63 @@
+name: Retain module review inputs
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-review-inputs.yml]
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+jobs:
+  inputs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 4776f0459ae94b0152ebaedc3ac699d1d65bd412
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Retain exact source ancestry, pinned model and read-only review evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          MODEL_DIRECTORY: ${{ runner.temp }}/review-inputs/model
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'review-inputs'
+          out.mkdir(parents=True, exist_ok=True)
+          heads = {1062: '624f7b63882d4ed3a10731657a400a972de8c603', 1063: '78fce8222df2890b2782df1764fc27e91acc95ff', 1064: '4776f0459ae94b0152ebaedc3ac699d1d65bd412', 1065: 'c5a819a153d3944d7833b28ee77808d8004a81d3'}
+          refs = []
+          def get(path):
+              req = urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/' + path,
+                  headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+              with urllib.request.urlopen(req, timeout=30) as response:
+                  return json.load(response)
+          evidence = {}
+          for number, sha in heads.items():
+              ref = 'refs/heads/review-input-' + str(number)
+              subprocess.run(['git', 'update-ref', ref, sha], check=True)
+              refs.append(ref)
+              reviews = get('pulls/' + str(number) + '/reviews?per_page=100')
+              comments = get('pulls/' + str(number) + '/comments?per_page=100')
+              checks = get('commits/' + sha + '/check-runs?per_page=100')
+              evidence[str(number)] = {'head': sha, 'reviews': reviews, 'comments': comments, 'checks': checks}
+              if reviews:
+                  review = reviews[-1]
+                  body = '\n'.join(line for line in review['body'].splitlines() if not line.startswith('|'))
+                  print('LATEST REVIEW', number, review['id'], review['commit_id'], body[:12000])
+              print('CHECKS', number, [(c['name'], c['status'], c['conclusion']) for c in checks['check_runs']])
+          (out / 'review-evidence.json').write_text(json.dumps(evidence, indent=2))
+          (out / 'source-heads.json').write_text(json.dumps(heads, indent=2))
+          subprocess.run(['git', 'bundle', 'create', str(out / 'review-inputs.bundle'), *refs,
+              '^418f59f4585c19808295ea011b67502e9bac0172'], check=True)
+          subprocess.run(['git', 'bundle', 'verify', str(out / 'review-inputs.bundle')], check=True)
+          subprocess.run(['bash', '.github/scripts/download-embedding-model.sh'], check=True)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: module-review-native-inputs
+          path: ${{ runner.temp }}/review-inputs/
+          retention-days: 7
+          if-no-files-found: error
