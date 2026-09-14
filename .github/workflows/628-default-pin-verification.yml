@@ -1,0 +1,111 @@
+name: Verify default workspace pin startup
+on:
+  push:
+    branches: [fix/628-default-pin-startup]
+    paths: [.github/workflows/628-default-pin-verification.yml]
+permissions:
+  contents: read
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 20fb6d38af6de84c30fccd2b18dc65d3e187e36c
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Reproduce only the first-use HTTP defect
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceDefaultPinStartupIT test > "$RUNNER_TEMP/red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          p = Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.controller.WorkspaceDefaultPinStartupIT.xml')
+          if not p.exists():
+              print(Path(os.environ['RUNNER_TEMP'], 'red.log').read_text()[-14000:])
+              raise SystemExit('No real HTTP reproduction result')
+          root = ET.parse(p).getroot()
+          counts = {k: int(root.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped')}
+          print('DEFAULT PIN RED', counts)
+          assert counts == dict(tests=6, failures=4, errors=0, skipped=0), counts
+          for failure in root.findall('testcase/failure'):
+              assert 'Status expected:<200> but was:<409>' in failure.get('message', ''), failure.attrib
+          PY
+      - name: Allow the same authorized default first use with or without a browser pin
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceContextResolver.java')
+          text = p.read_text()
+          old = '''        // Explicit tab pins and failed/in-progress attempts require lifecycle recovery.
+                  if (workspace != null && workspace.isDefault() && requestedWorkspaceId() == null'''
+          old = old.replace('                  if', '        if')
+          new = '''        // Browsers pin this same authorized default before the first repository read.
+                  // Custom workspaces and failed/in-progress attempts still require recovery.
+                  if (workspace != null && workspace.isDefault()'''
+          new = new.replace('                  ', '        ')
+          assert text.count(old) == 1
+          p.write_text(text.replace(old, new))
+          PY
+          git diff --check
+          git diff --stat
+      - name: Verify new startup cases and existing authority/lifecycle contracts
+        shell: bash
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceDefaultPinStartupIT,WorkspaceProvisioningBoundaryIT,WorkspaceResolutionFailureTest,WorkspaceManagerBehaviorTest,WorkspaceManagerProvisioningTest,WorkspaceImplicitSelectionTest,WorkspaceProvisioningSourceTest,WorkspaceProvisioningClaimIT,WorkspaceRepositoryIsolationTest,ViewContextIntegrationTest,ArchitectureViewTests test > "$RUNNER_TEMP/green.log" 2>&1 || { tail -n 140 "$RUNNER_TEMP/green.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              root = ET.parse(p).getroot()
+              for k in counts: counts[k] += int(root.get(k, '0'))
+          assert counts['tests'] >= 104 and counts['failures'] == counts['errors'] == counts['skipped'] == 0, counts
+          print('FOCUSED GREEN', counts)
+          PY
+      - name: Retain the exact two-file correction source, not a branch update
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git add taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceContextResolver.java
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, subprocess
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          base = '3ac412f5735f95b41a760465a4e16b650e97ba53'
+          paths = git('diff', '--cached', '--name-only', base).splitlines()
+          assert set(paths) == {'taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceContextResolver.java', 'taxonomy-app/src/test/java/com/taxonomy/workspace/controller/WorkspaceDefaultPinStartupIT.java'}, paths
+          entries = []
+          for path in paths:
+              blob = json.loads(subprocess.check_output(['gh', 'api', '--method', 'POST', 'repos/carstenartur/Taxonomy/git/blobs', '--input', '-'], input=json.dumps({'content': Path(path).read_text(), 'encoding': 'utf-8'}), text=True))
+              assert blob['sha'] == git('hash-object', path)
+              entries.append({'path': path, 'sha': blob['sha'], 'mode': '100644', 'type': 'blob'})
+          manifest = {'base': base, 'tree': git('write-tree'), 'entries': entries}
+          Path(os.environ['RUNNER_TEMP'], 'default-pin-source.json').write_text(json.dumps(manifest, indent=2))
+          print('VERIFIED TWO-FILE SOURCE', json.dumps(manifest))
+          PY
+          git diff --exit-code
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: default-pin-focused-evidence
+          path: |
+            ${{ runner.temp }}/red.log
+            ${{ runner.temp }}/green.log
+            ${{ runner.temp }}/default-pin-source.json
+            **/target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
