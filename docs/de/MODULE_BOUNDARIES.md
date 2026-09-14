@@ -6,7 +6,7 @@ Die maschinenlesbare Quelle für die geplanten Extraktionskontexte ist `.github/
 
 ## Aktueller Maven-Reactor
 
-Der Root-Reactor enthält derzeit neun Module mit unterschiedlichen Aufgaben:
+Der Root-Reactor enthält derzeit zehn Module mit unterschiedlichen Aufgaben:
 
 | Modul | Aktuelle Aufgabe |
 |---|---|
@@ -16,6 +16,7 @@ Der Root-Reactor enthält derzeit neun Module mit unterschiedlichen Aufgaben:
 | `taxonomy-export` | Frameworkfreie Diagramm-/Export-Verträge und Implementierungen |
 | `taxonomy-extension-api` | Frameworkfreie gemeinsame Extension-Verträge |
 | `taxonomy-workspace` | Workspace-Zuständigkeit, Versionierung, semantische Editor-Historie und JGit-Speicher |
+| `taxonomy-templates` | Dokumentvorlagen-Git-Speicher, OOXML-Validierung und WebDAV |
 | `taxonomy-app` | Ausführbare Spring-Boot-Anwendung und derzeit der Großteil der Spring-basierten Feature-Implementierungen |
 | `taxonomy-coverage` | Reactor-weite Coverage-Aggregation |
 | `taxonomy-build` | Build-Policy sowie Browser-/Verifikationsverträge |
@@ -285,10 +286,10 @@ Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
 
 Das Profil enthält alle sechs Ownership-Guards für Entscheidungsberichte,
 Commit-Historie, DSL-Dokument-Komposition, Workspace-Autorität, Anwendungsschema-Komposition und Workspace Storage sowohl in `pom.xml` als auch in
-`.mvn/verification-suites.json`. Die zwölf ausgewählten Testklassen sind zwischen
+`.mvn/verification-suites.json`. Die dreizehn ausgewählten Testklassen sind zwischen
 POM und Katalog synchronisiert. Die vollständige CI-Verifikation bleibt `./mvnw -B verify -Pci`.
 
-Der Ratchet durchläuft `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb dieser Wurzeln muss in `.github/architecture-contexts.json` klassifiziert sein. Nur `taxonomy-app` darf Java-Dateien im Root-Package enthalten; seine Composition-Dateien müssen exakt der expliziten Allowlist entsprechen. Ausgelagerte Fachmodule weisen jede Java-Datei im Root-Package zurück, auch kopierte Composition-Klassennamen oder `package-info.java`.
+Der Ratchet durchläuft `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`, `taxonomy-templates/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb dieser Wurzeln muss in `.github/architecture-contexts.json` klassifiziert sein. Nur `taxonomy-app` darf Java-Dateien im Root-Package enthalten; seine Composition-Dateien müssen exakt der expliziten Allowlist entsprechen. Ausgelagerte Fachmodule weisen jede Java-Datei im Root-Package zurück, auch kopierte Composition-Klassennamen oder `package-info.java`.
 
 Der Ratchet ist bewusst eine **Ist-Baseline und keine Allowlist idealer Abhängigkeitsrichtungen**. Die gewünschte Architektur wird durch explizite Port-/Refactoring-PRs verbessert und anschließend monoton abgesichert.
 
@@ -299,7 +300,7 @@ Issue #628 bleibt die übergeordnete Implementierungsaufgabe. Die Auslagerung fo
 1. Context-Map und Dependency-Ratchet — implementiert.
 2. Workspace-Autorität und Storage-Zuständigkeit — von der Anwendungsorchestrierung getrennt.
 3. `taxonomy-workspace` — in dieser Revision physisch ausgelagert.
-4. `taxonomy-templates` — nächste unabhängige Auslagerung; in dieser Revision noch nicht vorhanden.
+4. `taxonomy-templates` — in dieser Revision physisch ausgelagert.
 5. `taxonomy-knowledge` und `taxonomy-interop` — offen; eigene APIs stabilisieren und blockierende Implementierungsabhängigkeiten entfernen.
 6. `taxonomy-architecture`, `taxonomy-analysis` und `taxonomy-portfolio` — offen; verbleibende Zyklen vor der jeweiligen Auslagerung auflösen.
 7. `provenance` und `preferences` nach Stabilisierung dieser Grenzen erneut bewerten.
@@ -313,4 +314,14 @@ und Editor. `taxonomy-app` bindet das normale JAR ein; Anwendungskonfiguration u
 SQL-Migrationen bleiben in der Anwendung. Java-Packages und Laufzeitverträge sind unverändert.
 `ArchitectureWorkspaceModuleTest` ist in beiden Architektur-Selektoren enthalten und
 prüft die physische Source- und Klassen-Zuordnung. Maven verbietet Rückabhängigkeiten
-auf die Anwendung. Die sechs anderen geplanten Fachmodule sind noch auszulagern.
+auf die Anwendung. Nach der folgenden Templates-Auslagerung sind noch fünf geplante Fachmodule auszulagern.
+
+## Physisches Templates-Modul
+
+`taxonomy-templates` enthält alle 21 Produktionsklassen für Dokumentvorlagen
+und die mitgelieferte Ressource `document-templates/decision-rationale-report.dotx`.
+Classpath-Name und Inhalt bleiben unverändert. Die Bibliothek hängt weder von
+einem anderen Taxonomy-Fachmodul noch von der Boot-Anwendung ab. 21 Unit-Testklassen
+folgen der Implementierung; Anwendungs-/HTTP-, Security- und UI-Ressourcenverträge
+bleiben in `taxonomy-app`. Globale Konfiguration, Migrationen und Darstellungsressourcen
+bleiben bei der Anwendungszusammensetzung.

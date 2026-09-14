@@ -39,15 +39,15 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
  * recorded in the baseline fails the test. This keeps improvements monotonic
  * while the physical Maven-module extraction is performed incrementally.</p>
  *
- * <p>Every production Java package in the application and extracted modules must also
- * be classified by the checked context map. Root-package composition classes
+ * <p>Every production Java package below the application, workspace and templates module
+ * package roots must be classified by the checked context map. Root-package composition classes
  * are listed explicitly and belong to the composition context. This prevents
  * new code or composition wiring from evading the ratchet through an unmapped
  * package or root-level class.</p>
  */
 class ArchitectureContextDependencyRatchetTest {
 
-    private static final List<String> SOURCE_MODULES = List.of("taxonomy-app", "taxonomy-workspace");
+    private static final List<String> SOURCE_MODULES = List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates");
 
     private static final Comparator<PackageEdge> EDGE_ORDER = Comparator
             .comparing(PackageEdge::fromContext)
