@@ -441,32 +441,40 @@ public class WorkspaceManager {
                     "Workspace provisioning is already running or its state is unavailable");
         }
 
+        int claimed = workspaceRepository.claimProvisioning(workspace.getWorkspaceId(), username,
+                WorkspaceProvisioningStatus.PROVISIONING,
+                List.of(WorkspaceProvisioningStatus.NOT_PROVISIONED, WorkspaceProvisioningStatus.FAILED));
+        if (claimed != 1) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Workspace provisioning was claimed or its lifecycle changed");
+        }
         workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
-        workspaceRepository.save(workspace);
 
         try {
             var systemRepository = systemRepositoryService.getPrimaryRepository();
             String baseBranch = systemRepository.getDefaultBranch();
+            DslGitRepository systemGit = repositoryFactory != null
+                    ? repositoryFactory.getSystemRepository() : gitRepository;
+            String baseCommit = systemGit.getHeadCommit(baseBranch);
+            String systemDsl = baseCommit == null ? null : systemGit.getDslAtCommit(baseCommit);
+            if (baseCommit == null || systemDsl == null) {
+                throw new IllegalStateException("Source repository has no readable checkpoint for " + baseBranch);
+            }
 
             if (repositoryFactory != null) {
                 DslGitRepository workspaceGit =
                         repositoryFactory.getWorkspaceRepository(workspace.getWorkspaceId());
-                DslGitRepository systemGit = repositoryFactory.getSystemRepository();
-
-                String systemDsl = systemGit.getDslAtHead(baseBranch);
-                if (systemDsl != null) {
-                    workspaceGit.commitDsl(
-                            targetBranch,
-                            systemDsl,
-                            username,
-                            "Fork from shared/" + baseBranch);
-                }
+                workspaceGit.commitDsl(
+                        targetBranch,
+                        systemDsl,
+                        username,
+                        "Fork from shared/" + baseBranch);
 
                 workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
                 workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
                 workspace.setTopologyMode(systemRepository.getTopologyMode());
                 workspace.setBaseBranch(baseBranch);
-                workspace.setBaseCommit(systemGit.getHeadCommit(baseBranch));
+                workspace.setBaseCommit(baseCommit);
                 workspace.setCurrentBranch(targetBranch);
                 workspace.setCurrentCommit(workspaceGit.getHeadCommit(targetBranch));
                 workspace.setSyncTargetBranch(baseBranch);
@@ -478,10 +486,7 @@ public class WorkspaceManager {
                         username, workspace.getWorkspaceId(), baseBranch);
             } else {
                 String userBranch = username + "/workspace/" + workspace.getWorkspaceId();
-                String baseCommit = gitRepository.getHeadCommit(baseBranch);
-                if (baseCommit != null) {
-                    gitRepository.createBranch(userBranch, baseBranch);
-                }
+                gitRepository.createBranch(userBranch, baseBranch);
 
                 workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
                 workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
