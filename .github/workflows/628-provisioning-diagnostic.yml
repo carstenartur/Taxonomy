@@ -1,0 +1,30 @@
+name: Inspect provisioning regression cause
+on:
+  push:
+    branches: [verification/628-provisioning-checkpoint]
+    paths: [.github/workflows/628-provisioning-diagnostic.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the actual concurrency exception without changing tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh run download 34865750047 -R carstenartur/Taxonomy -n provisioning-checkpoint-red -D "$RUNNER_TEMP/previous-red"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          root = Path(os.environ['RUNNER_TEMP'], 'previous-red')
+          reports = list(root.rglob('TEST-*WorkspaceProvisioningAtomicityIT.xml'))
+          assert len(reports) == 1
+          for case in ET.parse(reports[0]).getroot().findall('testcase'):
+              for failure in case.findall('error') + case.findall('failure'):
+                  print('TEST', case.get('name'), failure.get('type'))
+                  print((failure.text or '')[:14000])
+          PY
