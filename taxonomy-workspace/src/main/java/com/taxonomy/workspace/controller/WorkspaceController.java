@@ -14,12 +14,16 @@ import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.WorkspaceProjectionService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceLifecycleOperation;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.io.IOException;
 import java.time.Instant;
@@ -74,6 +78,7 @@ public class WorkspaceController {
         this.systemRepositoryService = systemRepositoryService;
     }
 
+    @WorkspaceLifecycleOperation
     @GetMapping("/current")
     @Operation(summary = "Get the current user's workspace",
             description = "Returns workspace metadata including current branch, context, " +
@@ -83,6 +88,7 @@ public class WorkspaceController {
         return ResponseEntity.ok(workspaceManager.getWorkspaceInfo(user));
     }
 
+    @WorkspaceLifecycleOperation
     @GetMapping("/active")
     @Operation(summary = "List all active workspaces",
             description = "Returns all currently active (in-memory) workspaces. " +
@@ -91,6 +97,7 @@ public class WorkspaceController {
         return ResponseEntity.ok(workspaceManager.listActiveWorkspaces());
     }
 
+    @WorkspaceLifecycleOperation
     @GetMapping("/stats")
     @Operation(summary = "Workspace statistics",
             description = "Returns basic statistics about active workspaces.")
@@ -100,6 +107,7 @@ public class WorkspaceController {
         ));
     }
 
+    @WorkspaceLifecycleOperation
     @PostMapping("/evict")
     @Operation(summary = "Evict a user's workspace from memory",
             description = "Removes the in-memory workspace state for the specified user. " +
@@ -116,6 +124,7 @@ public class WorkspaceController {
 
     // ── Multi-Workspace Management ────────────────────────────────
 
+    @WorkspaceLifecycleOperation
     @GetMapping("/list")
     @Operation(summary = "List all workspaces for the current user",
             description = "Returns all non-archived workspaces for the authenticated user.")
@@ -128,6 +137,7 @@ public class WorkspaceController {
         return ResponseEntity.ok(result);
     }
 
+    @WorkspaceLifecycleOperation
     @PostMapping("/create")
     @Operation(summary = "Create a new workspace",
             description = "Creates a new workspace for the authenticated user.")
@@ -152,6 +162,7 @@ public class WorkspaceController {
         }
     }
 
+    @WorkspaceLifecycleOperation
     @PutMapping("/{id}/rename")
     @Operation(summary = "Rename a workspace",
             description = "Changes the display name of a workspace.")
@@ -174,6 +185,7 @@ public class WorkspaceController {
         }
     }
 
+    @WorkspaceLifecycleOperation
     @PutMapping("/{id}/description")
     @Operation(summary = "Update workspace description",
             description = "Updates the description of a workspace.")
@@ -206,6 +218,7 @@ public class WorkspaceController {
         }
     }
 
+    @WorkspaceLifecycleOperation
     @PostMapping("/{id}/archive")
     @Operation(summary = "Archive a workspace",
             description = "Soft-deletes a workspace by marking it as archived.")
@@ -221,6 +234,7 @@ public class WorkspaceController {
         }
     }
 
+    @WorkspaceLifecycleOperation
     @DeleteMapping("/{id}")
     @Operation(summary = "Delete a workspace",
             description = "Permanently deletes a workspace. Only the owner can delete " +
@@ -240,6 +254,7 @@ public class WorkspaceController {
         }
     }
 
+    @WorkspaceLifecycleOperation
     @GetMapping("/{id}/info")
     @Operation(summary = "Get workspace info by ID",
             description = "Returns workspace metadata for the specified workspace.")
@@ -452,12 +467,15 @@ public class WorkspaceController {
 
     // ── Provisioning & Topology ────────────────────────────────────
 
+    @WorkspaceLifecycleOperation
     @GetMapping("/provisioning-status")
     @Operation(summary = "Get workspace provisioning status",
             description = "Returns the current provisioning state of the user's workspace.")
     public ResponseEntity<Map<String, Object>> getProvisioningStatus() {
         String user = workspaceResolver.resolveCurrentUsername();
-        UserWorkspace ws = workspaceManager.findUserWorkspace(user);
+        UserWorkspace ws = WorkspaceContextResolver.requestedWorkspaceId() == null
+                ? workspaceManager.findUserWorkspace(user)
+                : workspaceResolver.resolveCurrentWorkspaceMetadata();
         Map<String, Object> result = new LinkedHashMap<>();
         if (ws == null) {
             result.put("status", "NOT_PROVISIONED");
@@ -470,18 +488,24 @@ public class WorkspaceController {
         return ResponseEntity.ok(result);
     }
 
+    @WorkspaceLifecycleOperation
     @PostMapping("/provision")
     @Operation(summary = "Provision workspace repository",
             description = "Creates the user's personal branch from the shared repository.")
     public ResponseEntity<Map<String, Object>> provisionWorkspace() {
         String user = workspaceResolver.resolveCurrentUsername();
+        String workspaceId = WorkspaceContextResolver.requestedWorkspaceId();
         try {
-            UserWorkspace ws = workspaceManager.provisionWorkspaceRepository(user);
+            UserWorkspace ws = workspaceId == null
+                    ? workspaceManager.provisionWorkspaceRepository(user)
+                    : workspaceManager.provisionWorkspaceRepository(user, workspaceId);
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", ws.getProvisioningStatus().name());
             result.put("branch", ws.getCurrentBranch());
             result.put("baseBranch", ws.getBaseBranch());
             return ResponseEntity.ok(result);
+        } catch (ResponseStatusException | AccessDeniedException e) {
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Provisioning failed",
@@ -490,6 +514,7 @@ public class WorkspaceController {
         }
     }
 
+    @WorkspaceLifecycleOperation
     @GetMapping("/topology")
     @Operation(summary = "Get repository topology",
             description = "Returns the repository topology mode and shared source information.")
