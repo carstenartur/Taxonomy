@@ -6,7 +6,7 @@ The machine-readable source of truth for the planned extraction contexts is `.gi
 
 ## Current Maven reactor
 
-The root reactor currently contains nine modules with different roles:
+The root reactor currently contains ten modules with different roles:
 
 | Module | Current role |
 |---|---|
@@ -16,6 +16,7 @@ The root reactor currently contains nine modules with different roles:
 | `taxonomy-export` | Framework-free diagram/export contracts and implementations |
 | `taxonomy-extension-api` | Framework-free common extension contracts |
 | `taxonomy-workspace` | Workspace authority, versioning, semantic editor history and JGit storage |
+| `taxonomy-templates` | Document-template Git storage, OOXML validation and WebDAV |
 | `taxonomy-app` | Executable Spring Boot application and, currently, most Spring-aware feature implementations |
 | `taxonomy-coverage` | Reactor-wide coverage aggregation |
 | `taxonomy-build` | Build policy and browser/verification contracts |
@@ -275,11 +276,11 @@ reactor so every module's production output is current:
 
 The profile includes all six ownership guards for decision reports, commit
 history, DSL document composition, workspace authority, application schema composition and workspace storage in both `pom.xml` and
-`.mvn/verification-suites.json`. Its twelve selected test classes are synchronized
+`.mvn/verification-suites.json`. Its thirteen selected test classes are synchronized
 between the POM and catalog. Full CI verification remains
 `./mvnw -B verify -Pci`.
 
-The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.
+The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy` and `taxonomy-templates/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.
 
 The ratchet is intentionally a **current-state baseline, not an ideal-direction allowlist**. Architectural direction is improved by explicit port/refactoring PRs and then locked in monotonically.
 
@@ -306,4 +307,14 @@ Physical Maven moves therefore come **after** logical boundaries are enforceable
 remain in the application. Java package names and runtime contracts are unchanged.
 `ArchitectureWorkspaceModuleTest` is included in both architecture selectors and
 requires physical source and compiled ownership. Maven enforces no dependency back
-to the application. The other six planned feature modules remain to be extracted.
+to the application. With templates extracted below, five planned feature modules remain to be extracted.
+
+## Physical templates module
+
+`taxonomy-templates` owns all 21 template production classes and the bundled
+`document-templates/decision-rationale-report.dotx` resource. Its classpath name
+and bytes are unchanged. The library has no dependency on another Taxonomy
+feature module or the Boot application. Twenty-one unit test classes follow
+the implementation; application/HTTP, security and UI resource contracts remain
+in `taxonomy-app`. Global configuration, migration scripts and presentation
+assets remain with application assembly.

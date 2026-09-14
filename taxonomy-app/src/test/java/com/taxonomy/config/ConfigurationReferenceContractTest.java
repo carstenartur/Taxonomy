@@ -138,7 +138,7 @@ class ConfigurationReferenceContractTest {
             }
         }
 
-        for (String module : java.util.List.of("taxonomy-app", "taxonomy-workspace")) {
+        for (String module : java.util.List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates")) {
             Path javaRoot = root.resolve(module + "/src/main/java");
             try (Stream<Path> files = Files.walk(javaRoot)) {
                 for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {

@@ -34,8 +34,8 @@ import static org.assertj.core.api.Assertions.assertThat;
  * recorded in the baseline fails the test. This keeps improvements monotonic
  * while the physical Maven-module extraction is performed incrementally.</p>
  *
- * <p>Every production Java package below the application package root must also
- * be classified by the checked context map. Root-package composition classes
+ * <p>Every production Java package below the application, workspace and templates module
+ * package roots must be classified by the checked context map. Root-package composition classes
  * are listed explicitly and belong to the composition context. This prevents
  * new code or composition wiring from evading the ratchet through an unmapped
  * package or root-level class.</p>
@@ -176,7 +176,7 @@ class ArchitectureContextDependencyRatchetTest {
                 .containsExactlyInAnyOrderElementsOf(policy.rootCompositionClasses());
 
         List<String> unclassifiedPackages = new ArrayList<>();
-        for (String module : List.of("taxonomy-app", "taxonomy-workspace")) {
+        for (String module : List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates")) {
             Path contextRoot = repositoryRoot.resolve(module + "/src/main/java/com/taxonomy");
             assertThat(contextRoot).as("production context root %s", module).isDirectory();
             try (var sources = Files.walk(contextRoot)) {
