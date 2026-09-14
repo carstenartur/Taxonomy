@@ -288,25 +288,23 @@ Commit-Historie, DSL-Dokument-Komposition, Workspace-Autorität, Anwendungsschem
 `.mvn/verification-suites.json`. Die zwölf ausgewählten Testklassen sind zwischen
 POM und Katalog synchronisiert. Die vollständige CI-Verifikation bleibt `./mvnw -B verify -Pci`.
 
-Der Ratchet durchläuft außerdem `taxonomy-app/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb des Root-Packages muss in `.github/architecture-contexts.json` klassifiziert sein. Ein neues Feature-Package kann den Dependency-Guard daher nicht umgehen, indem es außerhalb der vorhandenen Context-Patterns angelegt wird. Root-Level-Composition-Klassen bleiben ausdrücklich zulässig.
+Der Ratchet durchläuft `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb dieser Wurzeln muss in `.github/architecture-contexts.json` klassifiziert sein. Nur `taxonomy-app` darf Java-Dateien im Root-Package enthalten; seine Composition-Dateien müssen exakt der expliziten Allowlist entsprechen. Ausgelagerte Fachmodule weisen jede Java-Datei im Root-Package zurück, auch kopierte Composition-Klassennamen oder `package-info.java`.
 
 Der Ratchet ist bewusst eine **Ist-Baseline und keine Allowlist idealer Abhängigkeitsrichtungen**. Die gewünschte Architektur wird durch explizite Port-/Refactoring-PRs verbessert und anschließend monoton abgesichert.
 
 ## Migrationsreihenfolge
 
-Issue #628 ist der Parent für die Umsetzung. Die vorgesehene Reihenfolge lautet:
+Issue #628 bleibt die übergeordnete Implementierungsaufgabe. Die Auslagerung folgt den tatsächlichen Abhängigkeiten des jeweiligen Kandidaten; Zyklen anderer Kontexte blockieren keine unabhängige Bibliothek. Der folgende Status beschreibt den Code dieser Revision, nicht den Merge-Status eines Pull Requests.
 
-1. Context-Map und Dependency-Ratchet festschreiben;
-2. konkrete Editor-/Workspace-/Versioning-Kopplung entfernen und schmale Ports einführen;
-3. Knowledge-/Search-Packagezyklen entfernen;
-4. Architecture-/Export-/Analysis-Zyklen entfernen;
-5. `taxonomy-workspace` extrahieren;
-6. `taxonomy-knowledge` extrahieren;
-7. `taxonomy-interop` und `taxonomy-templates` in separat reviewbaren Änderungen extrahieren;
-8. Architecture/Analysis/Portfolio erst extrahieren, wenn deren Abhängigkeitsrichtung stabil ist;
-9. `provenance` und `preferences` anhand des gemessenen Abhängigkeitsgraphen statt anhand der Modulzahl neu bewerten.
+1. Context-Map und Dependency-Ratchet — implementiert.
+2. Workspace-Autorität und Storage-Zuständigkeit — von der Anwendungsorchestrierung getrennt.
+3. `taxonomy-workspace` — in dieser Revision physisch ausgelagert.
+4. `taxonomy-templates` — nächste unabhängige Auslagerung; in dieser Revision noch nicht vorhanden.
+5. `taxonomy-knowledge` und `taxonomy-interop` — offen; eigene APIs stabilisieren und blockierende Implementierungsabhängigkeiten entfernen.
+6. `taxonomy-architecture`, `taxonomy-analysis` und `taxonomy-portfolio` — offen; verbleibende Zyklen vor der jeweiligen Auslagerung auflösen.
+7. `provenance` und `preferences` nach Stabilisierung dieser Grenzen erneut bewerten.
 
-Physische Maven-Verschiebungen erfolgen damit **erst nach** der Durchsetzung logischer Grenzen. So bleiben die PRs reviewbar und vorhandene Kopplung wird nicht hinter neuen POM-Abhängigkeiten versteckt.
+Jede ausgelagerte Fachbibliothek bleibt unabhängig von `taxonomy-app`; nur die Anwendung übernimmt Deployment und Komposition.
 
 ## Physisches Workspace-Modul
 
