@@ -1,0 +1,126 @@
+name: Verify reviewed workspace boundaries
+on:
+  push:
+    branches: [verification/628-review-finalization]
+    paths: [.github/workflows/628-reviewed-boundaries.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 623a8f2887534476f930133c07b229976788a26b
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Apply the hash-verified locally tested Java correction
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, json, os, subprocess
+          from pathlib import Path
+          blobs = ['35374ddffea7d74fe138f5c19480670e31bf03b1', '47c06ff82775e689413d3c6783535fca56df10cb', 'fcd699b5d4321955c76d08435474661009c6ebe1']
+          data = b''
+          for sha in blobs:
+              result = json.loads(subprocess.check_output(['gh','api','repos/carstenartur/Taxonomy/git/blobs/'+sha], text=True))
+              chunk = base64.b64decode(result['content'])
+              assert hashlib.sha1(f'blob {len(chunk)}\0'.encode()+chunk).hexdigest() == sha
+              data += chunk
+          patch = gzip.decompress(data)
+          assert hashlib.sha256(patch).hexdigest() == 'bb0207ce0fff88aa4bea9caec54f34be5b93e663b8024f14253cd2edeb9a5724'
+          out = Path(os.environ['RUNNER_TEMP'], 'review-boundaries'); out.mkdir()
+          (out/'source.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--index','--unidiff-zero',str(out/'source.patch')],check=True)
+          paths = subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==12 and all(p.endswith('.java') for p in paths),paths
+          tree = subprocess.check_output(['git','write-tree'],text=True).strip()
+          assert tree == 'b88038cb8ab7c994004ec6722030cd5ebe268a99',tree
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          print('EXACT TEST SOURCE',tree)
+          PY
+      - name: Supply the existing checksum-pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Run affected behavior and integration contracts
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceManagerBehaviorTest,RepositoryWorkspaceServiceTest,GitNativeSyncSnapshotRaceTest,WorkspaceInitialSyncBaseBoundaryTest,WorkspaceConcurrentDefaultInitializationTest,WorkspaceInfoFailureTest,WorkspaceInitialSyncBaseTest,RepositoryWorkspaceSnapshotTest,WorkspaceManagerProvisioningTest,WorkspaceProvisioningProvenanceTest,ExpectedHeadDslCommitterTest,DslCapturedBranchTest,GitNativeSyncMetadataBoundaryTest,GitNativeSyncIntegrationServiceTest,WorkspaceLegacyRetryRecoveryTest test > "$RUNNER_TEMP/review-boundaries/focused.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/review-boundaries/focused.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, shutil, xml.etree.ElementTree as ET
+          counts=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          out=Path(os.environ['RUNNER_TEMP'],'review-boundaries','focused-reports');out.mkdir()
+          for path in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              root=ET.parse(path).getroot()
+              for key in counts: counts[key]+=int(root.get(key,'0'))
+              shutil.copy2(path,out/path.name)
+          print('AFFECTED CONTRACTS',counts)
+          assert counts==dict(tests=87,failures=0,errors=0,skipped=0),counts
+          PY
+      - name: Retain only verified source blobs and an immutable manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,json,subprocess
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==12 and all(p.endswith('.java') for p in paths)
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          entries=[]
+          for path in paths:
+              sha=subprocess.check_output(['git','hash-object',path],text=True).strip()
+              data=json.dumps({'content':Path(path).read_text(),'encoding':'utf-8'})
+              blob=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=data,text=True))
+              assert blob['sha']==sha
+              entries.append({'path':path,'sha':sha,'type':'blob','mode':'100644'})
+          tree=subprocess.check_output(['git','write-tree'],text=True).strip()
+          assert tree=='b88038cb8ab7c994004ec6722030cd5ebe268a99'
+          manifest={'base':'623a8f2887534476f930133c07b229976788a26b','tree':tree,'files':entries}
+          Path(os.environ['RUNNER_TEMP'],'review-boundaries','manifest.json').write_text(json.dumps(manifest,indent=2))
+          print('VERIFIED SOURCE',json.dumps(manifest))
+          print('No branch or commit is changed by this source transport.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: reviewed-workspace-boundaries-focused
+          path: ${{ runner.temp }}/review-boundaries/
+          if-no-files-found: error
+          retention-days: 14
+      - name: Run complete clean default verification
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/review-boundaries/full.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/review-boundaries/full.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,xml.etree.ElementTree as ET
+          counts=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for path in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root=ET.parse(path).getroot()
+              for key in counts: counts[key]+=int(root.get(key,'0'))
+          print('COMPLETE DEFAULT VERIFICATION',counts)
+          assert counts['tests']>4000 and counts['failures']==counts['errors']==0,counts
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()=='b88038cb8ab7c994004ec6722030cd5ebe268a99'
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: reviewed-workspace-boundaries-evidence
+          path: |
+            ${{ runner.temp }}/review-boundaries/
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 14
