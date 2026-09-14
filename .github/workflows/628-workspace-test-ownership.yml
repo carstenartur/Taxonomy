@@ -1,0 +1,90 @@
+name: Verify workspace test ownership
+on:
+  push:
+    branches: [fix/628-workspace-test-ownership]
+    paths: [.github/workflows/628-workspace-test-ownership.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 2a5175ba99b901f00f0ad4fa38f4df42bdfd60e5
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify exact relocation and source boundary
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^{tree})" = c018ebeaaf11da0eb5635328482af9d926aa5ec3
+          git diff --check HEAD^
+          python3 - <<'PY'
+          import subprocess
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          diff = git('diff', '--name-status', '--find-renames=100%', 'HEAD^', 'HEAD').splitlines()
+          assert len(diff) == 2 and all(row.startswith('R100\t') for row in diff), diff
+          for row in diff:
+              _, old, new = row.split('\t')
+              assert git('rev-parse', 'HEAD^:' + old) == git('rev-parse', 'HEAD:' + new)
+          print('EXACT UNCHANGED TEST RELOCATIONS', '\n'.join(diff))
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Supply the existing checksum-pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Complete clean default reactor verification with unchanged coverage checks
+        shell: bash
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/verify.log" 2>&1 || { tail -n 180 "$RUNNER_TEMP/verify.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root = ET.parse(p).getroot()
+              for k in counts: counts[k] += int(root.get(k, '0'))
+          print('COMPLETE DEFAULT REACTOR', counts)
+          assert counts['tests'] > 4000 and counts['failures'] == counts['errors'] == 0, counts
+          for name, expected in [('WorkspaceManagerBehaviorTest', 11), ('WorkspaceManagerProvisioningTest', 6)]:
+              reports = list(Path('taxonomy-workspace/target/surefire-reports').glob('TEST-*.' + name + '.xml'))
+              assert len(reports) == 1, name
+              root = ET.parse(reports[0]).getroot()
+              assert int(root.get('tests')) == expected
+              assert not any(int(root.get(k, '0')) for k in ('failures', 'errors', 'skipped'))
+              assert not list(Path('taxonomy-app/target/surefire-reports').glob('TEST-*.' + name + '.xml'))
+              print('EXECUTED ONCE IN OWNER', name, expected)
+          report = Path('taxonomy-workspace/target/site/jacoco/jacoco.xml')
+          if report.exists():
+              package = next(p for p in ET.parse(report).getroot().findall('package') if p.get('name') == 'com/taxonomy/workspace/service')
+              counter = next(c for c in package.findall('counter') if c.get('type') == 'BRANCH')
+              covered, missed = int(counter.get('covered')), int(counter.get('missed'))
+              print('WORKSPACE SERVICE BRANCH COVERAGE', covered, '/', covered + missed, '=', covered / (covered + missed))
+          print('This supplementary default run does not replace canonical -Pci or external CI/review lanes.')
+          PY
+          git diff --exit-code
+          test "$(git rev-parse HEAD^{tree})" = c018ebeaaf11da0eb5635328482af9d926aa5ec3
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-test-ownership-evidence
+          path: |
+            ${{ runner.temp }}/verify.log
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+            taxonomy-workspace/target/site/jacoco/jacoco.xml
+          if-no-files-found: error
+          retention-days: 7
