@@ -1,4 +1,4 @@
-name: Retain exact workspace first-use source
+name: Retain exact module integration sources
 on:
   push:
     branches: [verification/628-first-use-source]
@@ -12,23 +12,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 21e6465904fb29116baae587d4c90f3ed6ab915d
+          ref: 2c39aaf927c9bf8ef3032d121c6ee78eabc5b338
           fetch-depth: 0
           persist-credentials: false
-      - name: Archive source identity and reachable changes
+      - name: Retain immutable module heads and exact source identities
         run: |
           set -euo pipefail
-          git rev-parse HEAD 'HEAD^{tree}' > "$RUNNER_TEMP/source-identity.txt"
-          git update-ref refs/heads/pinned-workspace-source HEAD
-          git bundle create "$RUNNER_TEMP/first-use-source.bundle" refs/heads/pinned-workspace-source ^418f59f4585c19808295ea011b67502e9bac0172
-          git bundle verify "$RUNNER_TEMP/first-use-source.bundle"
-          git ls-files '*MultiUser*' '*ViewContextIntegrationTest*' '*ArchitectureViewTests*'
-          git grep -n -A35 -B4 'ensureDefaultWorkspaceReady' -- '*.java' || true
+          git update-ref refs/heads/pinned-workspace-source 2c39aaf927c9bf8ef3032d121c6ee78eabc5b338
+          git update-ref refs/heads/pinned-template-source eab39946abecd62802dc6644648174ffa1b4522a
+          git update-ref refs/heads/pinned-interop-source 2b00d033b2149919e4cf810e00098d713abf2b19
+          git show-ref refs/heads/pinned-workspace-source refs/heads/pinned-template-source refs/heads/pinned-interop-source > "$RUNNER_TEMP/source-identity.txt"
+          git bundle create "$RUNNER_TEMP/module-integration-source.bundle" refs/heads/pinned-workspace-source refs/heads/pinned-template-source refs/heads/pinned-interop-source ^418f59f4585c19808295ea011b67502e9bac0172
+          git bundle verify "$RUNNER_TEMP/module-integration-source.bundle"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: workspace-first-use-source
+          name: module-integration-source
           path: |
             ${{ runner.temp }}/source-identity.txt
-            ${{ runner.temp }}/first-use-source.bundle
+            ${{ runner.temp }}/module-integration-source.bundle
           retention-days: 7
           if-no-files-found: error
