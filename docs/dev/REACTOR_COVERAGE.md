@@ -11,6 +11,7 @@ The report must contain all shipped modules as separate JaCoCo groups:
 3. `taxonomy-export`
 4. `taxonomy-extension-api`
 5. `taxonomy-app`
+6. `taxonomy-workspace`
 
 The gate normalizes Maven display names and artifact IDs, but it still fails when any required module is missing. This prevents a highly covered application module from hiding an uninstrumented or untested library module.
 
