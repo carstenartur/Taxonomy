@@ -1,0 +1,29 @@
+name: Analysis evidence inspection
+on:
+  push:
+    branches: [workbench/analysis-memory-live-progress-20260914]
+    paths: [.github/workflows/analysis-evidence-read.yml]
+permissions:
+  actions: read
+jobs:
+  read:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read retained failing assertion without re-executing tests
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          curl --fail --silent --show-error --location -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" https://api.github.com/repos/carstenartur/Taxonomy/actions/artifacts/10367387217/zip -o evidence.zip
+          python - <<'PY'
+          from zipfile import ZipFile
+          from xml.etree import ElementTree as E
+          with ZipFile('evidence.zip') as z:
+              for name in z.namelist():
+                  if name.endswith('TEST-com.taxonomy.analysis.service.LlmServiceBranchCoverageTest.xml'):
+                      r=E.fromstring(z.read(name))
+                      for case in r.findall('testcase'):
+                          for f in list(case.findall('failure'))+list(case.findall('error')):
+                              print(case.get('name'),f.get('message'),f.text[:6000])
+                      break
+          PY
