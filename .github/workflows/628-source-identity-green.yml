@@ -1,0 +1,174 @@
+name: Verify recorded provisioning source
+on:
+  push:
+    branches: [fix/628-provisioning-source-identity]
+    paths: [.github/workflows/628-source-identity-green.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 6ffd90665411b801f820ef5b5c626283c855d422
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Correct only recorded source selection and immutable branch creation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,os
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          manager=Path('taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java')
+          assert git('hash-object',str(manager))=='67706307a0a77128e8e7029d37d10a7a59f26697'
+          text=manager.read_text()
+          old='''            var systemRepository = systemRepositoryService.getPrimaryRepository();
+                      String baseBranch = systemRepository.getDefaultBranch();
+                      DslGitRepository systemGit = repositoryFactory != null
+                              ? repositoryFactory.getSystemRepository() : gitRepository;'''.replace('\n                      ','\n            ')
+          new='''            String recordedRepository = workspace.getSourceRepositoryId();
+                      boolean recordedSource = recordedRepository != null && !recordedRepository.isBlank();
+                      var systemRepository = recordedSource
+                              ? systemRepositoryService.getRepository(recordedRepository.strip())
+                              : systemRepositoryService.getPrimaryRepository();
+                      String recordedBranch = workspace.getSourceBranch();
+                      String baseBranch = recordedBranch != null && !recordedBranch.isBlank()
+                              ? recordedBranch.strip() : systemRepository.getDefaultBranch();
+                      DslGitRepository systemGit = gitRepository;
+                      if (repositoryFactory != null) {
+                          systemGit = recordedSource
+                                  ? repositoryFactory.getCentralRepository(systemRepository.getRepositoryId())
+                                  : repositoryFactory.getSystemRepository();
+                      } else if (recordedSource && !systemRepository.getRepositoryId().equals(
+                              systemRepositoryService.getPrimaryRepository().getRepositoryId())) {
+                          throw new IllegalStateException("Legacy repository cannot provision a different source repository");
+                      }'''.replace('\n                      ','\n            ')
+          assert text.count(old)==1
+          text=text.replace(old,new)
+          old='gitRepository.createBranch(userBranch, baseBranch);'
+          assert text.count(old)==1
+          text=text.replace(old,'gitRepository.createBranchAtCommit(userBranch, baseCommit);')
+          old='workspace.setBaseBranch(baseBranch);'
+          assert text.count(old)==2
+          text=text.replace(old,'workspace.setSourceBranch(baseBranch);\n                '+old)
+          manager.write_text(text)
+          repository=Path('taxonomy-workspace/src/main/java/com/taxonomy/workspace/storage/DslGitRepository.java')
+          assert git('hash-object',str(repository))=='73a0e7ee4be7ad57ad235be9a3f00ef8ac630a1e'
+          text=repository.read_text()
+          marker='    // ── Diff operations ─────────────────────────────────────────────'
+          assert text.count(marker)==1
+          method='''    /** Create a new branch at one captured commit, without rereading a moving source ref. */
+              public String createBranchAtCommit(String newBranch, String commitId) throws IOException {
+                  try (RevWalk walk = new RevWalk(gitRepo)) {
+                      RevCommit captured = walk.parseCommit(ObjectId.fromString(commitId));
+                      updateRef(Constants.R_HEADS + newBranch, captured, ObjectId.zeroId(),
+                              false, systemIdent(), "branch: created from commit " + captured.name());
+                      return captured.name();
+                  }
+              }
+
+          '''.replace('\n              ','\n    ')
+          repository.write_text(text.replace(marker,method+marker))
+          test=Path('taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningProvenanceTest.java')
+          git('add','--',str(manager),str(repository),str(test))
+          actual=git('diff','--cached','--name-only','fbef12de05f902d239220924c6cff03787a2744a').splitlines()
+          assert sorted(actual)==sorted(map(str,(manager,repository,test))),actual
+          git('diff','--cached','--check')
+          out=Path(os.environ['RUNNER_TEMP'],'source-evidence');out.mkdir()
+          (out/'source.patch').write_bytes(subprocess.check_output(['git','diff','--cached','fbef12de05f902d239220924c6cff03787a2744a']))
+          (out/'tree.txt').write_text(git('write-tree'))
+          print('CANDIDATE TREE',git('write-tree'))
+          print(git('diff','--cached','--stat','fbef12de05f902d239220924c6cff03787a2744a'))
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Supply unchanged pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute provenance, snapshot and existing lifecycle contracts
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningProvenanceTest,WorkspaceProvisioningSnapshotTest,WorkspaceProvisioningSourceTest,WorkspaceProvisioningClaimIT,WorkspaceProvisioningBoundaryIT,WorkspaceManagerProvisioningTest,WorkspaceManagerBehaviorTest,WorkspaceRepositoryIsolationTest,WorkspaceInitialSyncBaseTest,WorkspaceInitialSyncBaseBoundaryTest,GitNativeSyncMetadataBoundaryTest,GitNativeSyncIntegrationServiceTest,ArchitectureReportTests test > "$RUNNER_TEMP/source-evidence/focused.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/source-evidence/focused.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,shutil,xml.etree.ElementTree as ET
+          names='WorkspaceProvisioningProvenanceTest WorkspaceProvisioningSnapshotTest WorkspaceProvisioningSourceTest WorkspaceProvisioningClaimIT WorkspaceProvisioningBoundaryIT WorkspaceManagerProvisioningTest WorkspaceManagerBehaviorTest WorkspaceRepositoryIsolationTest WorkspaceInitialSyncBaseTest WorkspaceInitialSyncBaseBoundaryTest GitNativeSyncMetadataBoundaryTest GitNativeSyncIntegrationServiceTest ArchitectureReportTests'.split()
+          counts=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          out=Path(os.environ['RUNNER_TEMP'],'source-evidence','reports');out.mkdir()
+          for name in names:
+              paths=list(Path('.').glob('*/target/surefire-reports/TEST-*.'+name+'.xml'));assert len(paths)==1,(name,paths)
+              root=ET.parse(paths[0]).getroot();result={k:int(root.get(k,'0')) for k in counts}
+              assert result['tests']>0 and result['failures']==result['errors']==result['skipped']==0,(name,result)
+              for k in counts:counts[k]+=result[k]
+              shutil.copy2(paths[0],out/paths[0].name)
+              print(name,result)
+          print('PROVENANCE FOCUSED',counts)
+          PY
+      - name: Retain the three verified Java blobs and exact manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,os,json
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          paths=git('diff','--cached','--name-only','fbef12de05f902d239220924c6cff03787a2744a').splitlines()
+          assert len(paths)==3 and all(p.endswith('.java') for p in paths)
+          files=[]
+          for path in paths:
+              sha=git('hash-object',path)
+              blob=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=json.dumps({'content':Path(path).read_text(),'encoding':'utf-8'}),text=True))
+              assert blob['sha']==sha
+              files.append({'path':path,'sha':sha,'mode':'100644','type':'blob'})
+          out=Path(os.environ['RUNNER_TEMP'],'source-evidence')
+          result={'base':'fbef12de05f902d239220924c6cff03787a2744a','tree':git('write-tree'),'files':files}
+          assert result['tree']==(out/'tree.txt').read_text()
+          git('diff','--exit-code')
+          (out/'manifest.json').write_text(json.dumps(result,indent=2))
+          print('VERIFIED MANIFEST',json.dumps(result))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: provisioning-source-focused
+          path: ${{ runner.temp }}/source-evidence
+          retention-days: 14
+          if-no-files-found: error
+      - name: Execute complete clean default verification
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/source-full.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/source-full.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root=ET.parse(p).getroot()
+              for k in counts:counts[k]+=int(root.get(k,'0'))
+          print('FULL DEFAULT',counts)
+          assert counts['tests']>4000 and counts['failures']==counts['errors']==0,counts
+          PY
+          git diff --exit-code
+          test "$(git write-tree)" = "$(cat "$RUNNER_TEMP/source-evidence/tree.txt")"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: provisioning-source-verification
+          path: |
+            ${{ runner.temp }}/source-evidence
+            ${{ runner.temp }}/source-full.log
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 14
+          if-no-files-found: error
