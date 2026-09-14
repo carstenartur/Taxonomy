@@ -12,7 +12,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.HttpStatus;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.time.Instant;
 import java.util.List;
@@ -167,19 +170,11 @@ public class WorkspaceManager {
         return activeWorkspaces.size();
     }
 
-    /** Find a user's persistent workspace, preferring the active one. */
+    /** Find persistent metadata; lookup failures must not masquerade as absence. */
     public UserWorkspace findUserWorkspace(String username) {
-        try {
-            UserWorkspace active = findActiveWorkspace(username);
-            if (active != null) {
-                return active;
-            }
-            return workspaceRepository.findByUsernameAndSharedFalse(username).orElse(null);
-        } catch (Exception exception) {
-            log.debug("Could not find workspace for '{}': {}",
-                    username, exception.getMessage());
-            return null;
-        }
+        UserWorkspace active = findActiveWorkspace(username);
+        return active != null ? active
+                : workspaceRepository.findByUsernameAndSharedFalse(username).orElse(null);
     }
 
     // ── Multi-workspace management ─────────────────────────────────
@@ -337,30 +332,16 @@ public class WorkspaceManager {
                 .findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(username);
     }
 
-    /** Find the persistent entity for the user's active workspace. */
+    /** Find active metadata, propagating database failures instead of changing selection. */
     public UserWorkspace findActiveWorkspace(String username) {
         String activeWorkspaceId = activeWorkspaceByUser.get(username);
-        if (activeWorkspaceId == null) {
-            return null;
-        }
-        try {
-            return workspaceRepository.findByWorkspaceId(activeWorkspaceId).orElse(null);
-        } catch (Exception exception) {
-            log.debug("Could not find active workspace '{}' for '{}': {}",
-                    activeWorkspaceId, username, exception.getMessage());
-            return null;
-        }
+        return activeWorkspaceId == null ? null
+                : workspaceRepository.findByWorkspaceId(activeWorkspaceId).orElse(null);
     }
 
-    /** Return a workspace by ID, or {@code null} when it cannot be read. */
+    /** Return a workspace by ID, or {@code null} only when the lookup finds no row. */
     public UserWorkspace getWorkspaceById(String workspaceId) {
-        try {
-            return workspaceRepository.findByWorkspaceId(workspaceId).orElse(null);
-        } catch (Exception exception) {
-            log.debug("Could not find workspace '{}': {}",
-                    workspaceId, exception.getMessage());
-            return null;
-        }
+        return workspaceRepository.findByWorkspaceId(workspaceId).orElse(null);
     }
 
     /** Update the description of a non-archived workspace. */
@@ -391,19 +372,37 @@ public class WorkspaceManager {
 
     /** Lazily provision the active workspace repository. */
     public UserWorkspace provisionWorkspaceRepository(String username) {
-        UserWorkspace workspace = null;
-        String activeWorkspaceId = activeWorkspaceByUser.get(username);
-        if (activeWorkspaceId != null) {
-            workspace = workspaceRepository.findByWorkspaceId(activeWorkspaceId).orElse(null);
-        }
-        if (workspace == null) {
-            workspace = workspaceRepository.findByUsernameAndSharedFalse(username)
-                    .orElseThrow(() ->
-                            new IllegalStateException("No workspace metadata for " + username));
-        }
+        return provisionWorkspaceRepository(username, null);
+    }
 
+    /**
+     * Provision one owned workspace without changing another tab's active selection.
+     * The explicit ID is authoritative. A missing explicit row never falls back
+     * to a different workspace. Concurrent calls on this application instance
+     * cannot restart the same provisioning operation.
+     */
+    public synchronized UserWorkspace provisionWorkspaceRepository(String username, String workspaceId) {
+        UserWorkspace workspace = workspaceId == null
+                ? findUserWorkspace(username)
+                : getWorkspaceById(workspaceId);
+        if (workspace == null) {
+            if (workspaceId != null) {
+                throw new AccessDeniedException("Requested workspace is not available to the authenticated user");
+            }
+            throw new IllegalStateException("No workspace metadata for " + username);
+        }
+        if (workspace.getUsername() == null || username == null
+                || !workspace.getUsername().strip().equals(username.strip())
+                || workspace.isArchived() || workspace.isShared()) {
+            throw new AccessDeniedException("Requested workspace is not available to the authenticated user");
+        }
         if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.READY) {
             return workspace;
+        }
+        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING
+                || workspace.getProvisioningStatus() == null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Workspace provisioning is already in progress or its status is unavailable");
         }
 
         workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
