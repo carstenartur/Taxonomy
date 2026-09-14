@@ -1,0 +1,65 @@
+name: Verify published interop history
+on:
+  push:
+    branches: [verification/628-interop-extraction]
+    paths: [.github/workflows/628-interop-history.yml]
+permissions:
+  contents: read
+jobs:
+  history:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: eba5039c2731005f4a76e2f47b120403e8684b1b
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify published identities and follow the actual file histories
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import json, subprocess
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          base = '78fce8222df2890b2782df1764fc27e91acc95ff'
+          move = '814fce3aecbcb2537f5d9538ecae48fe21250da8'
+          head = 'eba5039c2731005f4a76e2f47b120403e8684b1b'
+          assert git('rev-parse', 'HEAD') == head
+          assert git('rev-parse', head + '^{tree}') == 'e1dedeb0ac70216045c9c49f0803aac443a95fc3'
+          assert git('rev-parse', head + '^') == move
+          assert git('rev-parse', move + '^') == base
+          assert git('rev-parse', move + '^{tree}') == 'a5426281fe3beae1102ae135b0fb61d21e5c0b2b'
+          rows = git('diff', '--name-status', '-M100%', base, move).splitlines()
+          assert len(rows) == 27
+          moves = []
+          for row in rows:
+              status, old, new = row.split('\t')
+              assert status == 'R100'
+              assert new == old.replace('taxonomy-app/', 'taxonomy-interop/', 1)
+              blob = git('rev-parse', base + ':' + old)
+              assert git('rev-parse', move + ':' + new) == blob
+              moves.append({'old': old, 'new': new, 'blob': blob})
+          histories = {}
+          for relative in ('IntegrationService.java', 'IntegrationDomainAdapter.java', 'persistence/IntegrationStore.java'):
+              path = 'taxonomy-interop/src/main/java/com/taxonomy/interop/' + relative
+              lines = git('log', '--follow', '--format=%H %s', head, '--', path).splitlines()
+              shas = {line.split(' ', 1)[0] for line in lines}
+              assert move in shas and any(sha not in (head, move) for sha in shas), (path, lines)
+              histories[path] = lines[:8]
+          changed = git('diff', '--name-only', base, head).splitlines()
+          assert not any(path.startswith(('models/', 'verification/')) or path.endswith('.onnx') for path in changed)
+          assert not any('/628-' in path and path.endswith('.yml') for path in changed)
+          result = {'head': head, 'base': base, 'moveCommit': move,
+                    'tree': git('rev-parse', head + '^{tree}'), 'moves': moves, 'histories': histories}
+          Path('interop-history-evidence.json').write_text(json.dumps(result, indent=2))
+          print('VERIFIED: 27 exact R100 relocations, both original parents and the exact published source tree.')
+          print('EXECUTED git log --follow:', json.dumps(histories))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: published-interop-history
+          path: interop-history-evidence.json
+          if-no-files-found: error
+          retention-days: 7
