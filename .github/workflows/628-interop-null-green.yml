@@ -1,0 +1,114 @@
+name: Verify nullable interoperability correction
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-interop-null-green.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      MODEL_DIRECTORY: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: control
+          ref: a90bd8983c2321f273bc4e3cc52c1dbf40f8cbca
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: eba5039c2731005f4a76e2f47b120403e8684b1b
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Reproduce all new failures before changing production
+        run: |
+          python3 ../control/verification/628-fix-nullable-interop.py tests
+          git diff --exit-code
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=IntegrationNullableRequirementTest test > "$RUNNER_TEMP/red.log" 2>&1
+          result=$?
+          set -e
+          if [[ "$result" == 0 ]]; then echo 'Regressions unexpectedly passed'; exit 1; fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          p = Path('taxonomy-interop/target/surefire-reports/TEST-com.taxonomy.interop.IntegrationNullableRequirementTest.xml')
+          if not p.is_file():
+              print(Path(os.environ['RUNNER_TEMP'], 'red.log').read_text()[-10000:])
+              raise SystemExit('No valid JUnit reproduction')
+          root = ET.parse(p).getroot()
+          counts = {k: int(root.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped')}
+          assert counts == {'tests': 10, 'failures': 9, 'errors': 0, 'skipped': 0}, counts
+          print('RED', counts)
+          PY
+      - name: Apply the bounded consumer correction
+        run: python3 ../control/verification/628-fix-nullable-interop.py patch
+      - name: Verify nullable and existing adapter and transport contracts
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=IntegrationNullableRequirementTest,PortfolioInteropAdapterTest,IntegrationPortfolioPortTest,OslcProviderServiceTest,OslcProviderProtocolTest,OslcTransportTest test > "$RUNNER_TEMP/focused.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/focused.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          names = ('IntegrationNullableRequirementTest', 'PortfolioInteropAdapterTest', 'IntegrationPortfolioPortTest', 'OslcProviderServiceTest', 'OslcProviderProtocolTest', 'OslcTransportTest')
+          for name in names:
+              reports = list(Path('.').glob('*/target/surefire-reports/TEST-*.' + name + '.xml'))
+              assert len(reports) == 1, name
+              root = ET.parse(reports[0]).getroot()
+              counts = {k: int(root.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped')}
+              assert counts['tests'] > 0 and not any(counts[k] for k in ('failures', 'errors', 'skipped')), counts
+              print('GREEN', name, counts)
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: source/models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('source/.github/scripts/download-embedding-model.sh') }}
+      - name: Provision the unchanged pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute the complete clean default verification
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/verify.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/verify.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root = ET.parse(p).getroot()
+              for key in counts: counts[key] += int(root.get(key, '0'))
+          assert counts['tests'] > 4000 and counts['failures'] == 0 and counts['errors'] == 0, counts
+          print('COMPLETE CLEAN DEFAULT VERIFICATION', counts)
+          print('This supplementary verification is not a substitute for canonical -Pci and external CI lanes.')
+          PY
+      - name: Retain only the four verified source blobs and immutable manifest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ../control/verification/628-fix-nullable-interop.py publish
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: interop-null-correction-evidence
+          path: |
+            ${{ runner.temp }}/red.log
+            ${{ runner.temp }}/focused.log
+            ${{ runner.temp }}/verify.log
+            ${{ runner.temp }}/interop-null-source.json
+            source/**/target/surefire-reports/TEST-*.xml
+            source/**/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
