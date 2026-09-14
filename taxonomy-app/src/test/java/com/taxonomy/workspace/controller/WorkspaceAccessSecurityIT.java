@@ -15,6 +15,8 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
 
+import static org.assertj.core.api.Assertions.assertThat;
+
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -107,6 +109,62 @@ class WorkspaceAccessSecurityIT {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"displayName\":\"stolen\"}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    @WithMockUser(username = "alice", roles = "ADMIN")
+    void archivingHidesMetadataWithoutDeletingTheWorkspace() throws Exception {
+        UserWorkspace workspace = workspaceRepository.saveAndFlush(
+                workspace("qa-archive-lifecycle", "alice", false));
+
+        mockMvc.perform(get("/api/workspace/{id}/info", workspace.getWorkspaceId()))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/workspace/{id}/archive", workspace.getWorkspaceId())
+                        .with(csrf()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.archived").value(true));
+        mockMvc.perform(get("/api/workspace/{id}/info", workspace.getWorkspaceId()))
+                .andExpect(status().isNotFound());
+
+        UserWorkspace retained = workspaceRepository.findByWorkspaceId(
+                workspace.getWorkspaceId()).orElseThrow();
+        assertThat(retained.isArchived()).isTrue();
+        assertThat(retained.getId()).isEqualTo(workspace.getId());
+        assertThat(retained.getCurrentBranch()).isEqualTo("draft");
+        assertThat(retained.getBaseBranch()).isEqualTo("draft");
+    }
+
+    @Test
+    @WithMockUser(username = "alice", roles = "USER")
+    void archivedOwnedMetadataIsIndistinguishableFromMissing() throws Exception {
+        assertArchivedMetadataHidden("qa-archived-owned", "alice", false);
+    }
+
+    @Test
+    @WithMockUser(username = "alice", roles = "USER")
+    void historicalArchivedSharedMetadataIsNotDisclosed() throws Exception {
+        // Shared workspaces cannot be archived by the public API, but legacy or
+        // administratively persisted rows must not bypass the visibility rule.
+        assertArchivedMetadataHidden("qa-archived-shared", "system", true);
+    }
+
+    @Test
+    @WithMockUser(username = "alice", roles = "ADMIN")
+    void adminRoleDoesNotBypassArchivedMetadataVisibility() throws Exception {
+        assertArchivedMetadataHidden("qa-archived-admin", "alice", false);
+    }
+
+    private void assertArchivedMetadataHidden(
+            String workspaceId, String owner, boolean shared) throws Exception {
+        UserWorkspace archived = workspace(workspaceId, owner, shared);
+        archived.setArchived(true);
+        workspaceRepository.saveAndFlush(archived);
+
+        mockMvc.perform(get("/api/workspace/{id}/info", workspaceId))
+                .andExpect(status().isNotFound());
+        mockMvc.perform(get("/api/workspace/{id}/info", "does-not-exist"))
+                .andExpect(status().isNotFound());
+        assertThat(workspaceRepository.findByWorkspaceId(workspaceId)).isPresent();
     }
 
     private static UserWorkspace workspace(
