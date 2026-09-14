@@ -13,29 +13,20 @@ jobs:
       actions: read
       contents: read
     steps:
-      - name: Read original coverage and browser server evidence
+      - name: Identify every failing critical source from original evidence
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           gh run download 34870099111 -R carstenartur/Taxonomy -n quality-reports-core -D "$RUNNER_TEMP/core"
-          gh run download 34870098939 -R carstenartur/Taxonomy -n document-template-report-e2e -D "$RUNNER_TEMP/browser"
           python3 - <<'PY'
-          import os, re
+          import os
           from pathlib import Path
-          root = Path(os.environ['RUNNER_TEMP'])
-          for p in (root / 'core').rglob('coverage-gate.txt'):
-              print('COVERAGE GATE', p.name, '\n', p.read_text()[:18000])
-          for p in (root / 'browser').rglob('*'):
-              if not p.is_file() or p.suffix not in ('.log', '.txt', '.json'):
-                  continue
-              lines = p.read_text(errors='replace').splitlines()
-              selected = set()
-              for i, line in enumerate(lines):
-                  if re.search(r'409|CONFLICT|not ready|already running|was claimed|Exception', line):
-                      selected.update(range(max(0,i-1), min(len(lines), i+3)))
-              if selected:
-                  print('BROWSER', p.relative_to(root / 'browser'))
-                  print('\n'.join(lines[i] for i in sorted(selected))[-6000:])
+          for p in Path(os.environ['RUNNER_TEMP'], 'core').rglob('coverage-gate.txt'):
+              context = ''
+              for line in p.read_text().splitlines():
+                  if line.startswith('- '): context = line
+                  if 'FAIL' in line:
+                      print(context, '\n', line)
           PY
   verify:
     runs-on: ubuntu-latest
@@ -50,7 +41,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: ed51cf592bbef36e856d120ed3062b6b5ce2ecac
-          fetch-depth: 0
+          fetch-depth: 2
           persist-credentials: false
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with:
@@ -76,7 +67,7 @@ jobs:
           claim = 'taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java'
           replace(claim, 'when(factory.getWorkspaceRepository(id)).thenReturn(destination);',
                   'when(factory.openWorkspaceRepository(id)).thenReturn(destination);')
-          source = 'taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSourceTest.java'
+          source = 'taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSourceTest.java'
           replace(source, 'if (isolated) verify(factory, never()).getWorkspaceRepository(anyString());',
                   'if (isolated) {\n            verify(factory, never()).getWorkspaceRepository(anyString());\n            verify(factory, never()).openWorkspaceRepository(anyString());\n        }')
           paths = [manager, claim, source, 'taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSnapshotTest.java']
@@ -90,6 +81,12 @@ jobs:
           print('CANDIDATE TREE', tree)
           print('EXACT PATHS', '\n'.join(paths))
           PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Supply the existing checksum-pinned model
+        run: bash .github/scripts/download-embedding-model.sh
       - name: Execute snapshot and existing lifecycle regressions
         run: |
           ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningSnapshotTest,WorkspaceProvisioningSourceTest,WorkspaceProvisioningClaimIT,WorkspaceProvisioningBoundaryIT,WorkspaceManagerProvisioningTest,WorkspaceManagerBehaviorTest,WorkspaceRepositoryIsolationTest,ArchitectureReportTests test > "$RUNNER_TEMP/snapshot-focused.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/snapshot-focused.log"; exit 1; }
@@ -129,12 +126,17 @@ jobs:
           Path(os.environ['RUNNER_TEMP'],'snapshot-manifest.json').write_text(json.dumps(result,indent=2))
           print('VERIFIED SOURCE MANIFEST',json.dumps(result))
           PY
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          path: models/bge-small-en-v1.5
-          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
-      - name: Supply the existing checksum-pinned model
-        run: bash .github/scripts/download-embedding-model.sh
+          name: captured-snapshot-focused
+          path: |
+            ${{ runner.temp }}/snapshot-focused.log
+            ${{ runner.temp }}/snapshot.patch
+            ${{ runner.temp }}/snapshot-tree.txt
+            ${{ runner.temp }}/snapshot-manifest.json
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 14
+          if-no-files-found: error
       - name: Execute complete clean default verification
         run: |
           ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/snapshot-full.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/snapshot-full.log"; exit 1; }
