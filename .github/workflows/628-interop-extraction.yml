@@ -52,9 +52,9 @@ jobs:
           python3 ../control/verification/628-interop/verify.py behavior
       - name: Execute the three native JUnit Boot-JAR ownership tests
         run: |
-          ./mvnw -B -ntp -pl taxonomy-build -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceModulePackagingIT,TemplatesModulePackagingIT,InteropModulePackagingIT surefire:test > "$RUNNER_TEMP/interop-packaging.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/interop-packaging.log"; exit 1; }
+          ./mvnw -B -ntp -pl taxonomy-build -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceModulePackagingIT,TemplatesModulePackagingIT,InteropModulePackagingIT test-compile surefire:test > "$RUNNER_TEMP/interop-packaging.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/interop-packaging.log"; exit 1; }
           python3 - <<'PY'
-          import json, xml.etree.ElementTree as ET
+          import xml.etree.ElementTree as ET
           from pathlib import Path
           for name in ('WorkspaceModulePackagingIT','TemplatesModulePackagingIT','InteropModulePackagingIT'):
               path = Path('taxonomy-build/target/surefire-reports/TEST-com.taxonomy.build.' + name + '.xml')
