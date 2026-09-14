@@ -1,0 +1,113 @@
+name: Retain tested interop source only
+on:
+  push:
+    branches: [verification/628-interop-extraction]
+    paths: [.github/workflows/628-interop-publish-source.yml]
+permissions:
+  contents: read
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: control
+          ref: 1f569f40a6aa356f0a232dd6f896d4dfb4acfa1f
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: 78fce8222df2890b2782df1764fc27e91acc95ff
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Reproduce the exact immutable source generators used by the successful tests
+        run: |
+          test "$(git -C ../control rev-parse HEAD)" = 1f569f40a6aa356f0a232dd6f896d4dfb4acfa1f
+          test "$(git rev-parse HEAD)" = 78fce8222df2890b2782df1764fc27e91acc95ff
+          python3 ../control/verification/628-extract-interop.py test
+          python3 ../control/verification/628-extract-interop.py patch
+          python3 ../control/verification/628-interop-corrections.py
+      - name: Reproduce the measured production dependency baseline
+        run: |
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false '-Dtest=ArchitectureContextDependencyRatchetTest#recordInteropExtractionBaseline' test > "$RUNNER_TEMP/measure.log" 2>&1 || { tail -n 160 "$RUNNER_TEMP/measure.log"; exit 1; }
+          python3 ../control/verification/628-extract-interop.py baseline
+      - name: Fresh complete-reactor architecture verification
+        run: |
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false clean verify > "$RUNNER_TEMP/architecture.log" 2>&1 || { tail -n 160 "$RUNNER_TEMP/architecture.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              r = ET.parse(p).getroot()
+              for key in counts: counts[key] += int(r.get(key, '0'))
+          assert counts == {'tests': 37, 'failures': 0, 'errors': 0, 'skipped': 0}, counts
+          print('FRESH ARCHITECTURE', counts)
+          print('Full 4251-test default verification and all three real packaging contracts were executed in run 34825872941. This is source transport recovery, not a replacement full-test run.')
+          PY
+      - name: Export only source files and retain the manifest before any network upload
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, subprocess, sys
+          base = '78fce8222df2890b2782df1764fc27e91acc95ff'
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          assert not Path('models').exists()
+          # Protect source transport from the runtime-only model directory; do not change project configuration.
+          with Path('.git/info/exclude').open('a') as out: out.write('\n/models/\n')
+          git('add', '-A')
+          entries = []
+          for line in git('diff', '--cached', '--name-status', '--no-renames').splitlines():
+              status, path = line.split('\t', 1)
+              assert not path.startswith(('models/', 'verification/')), path
+              assert not path.endswith('.onnx'), path
+              assert path.startswith(('.github/', '.mvn/', 'docs/', 'taxonomy-', 'pom.xml', 'Dockerfile')), path
+              entry = {'status': status, 'path': path}
+              if status != 'D':
+                  entry['blob'] = git('hash-object', path)
+                  entry['size'] = Path(path).stat().st_size
+                  assert entry['size'] < 1000000, entry
+              entries.append(entry)
+          manifest = {'base': base, 'sourceGeneratorCommit': git('-C', '../control', 'rev-parse', 'HEAD'),
+                      'move_tree': json.loads(Path('.git/interop-moves.json').read_text())['tree'],
+                      'final_tree': git('write-tree'), 'entries': entries}
+          Path(os.environ['RUNNER_TEMP'], 'source-manifest.json').write_text(json.dumps(manifest, indent=2))
+          print('SOURCE IDENTITY', json.dumps(manifest), flush=True)
+          print(git('diff', '--cached', '--stat'), flush=True)
+          # Keep the implementation and its generators byte-identical. Restrict the transport's index to this manifest.
+          script = Path('../control/verification/628-extract-interop.py').read_text()
+          script = script.replace("git('add', '-A')\n    final_tree", "git('add', '-u')\n    final_tree")
+          script = script.replace("with urllib.request.urlopen(req, timeout=30) as response: return json.load(response)",
+              "try:\n            with urllib.request.urlopen(req, timeout=30) as response: return json.load(response)\n        except urllib.error.HTTPError as error:\n            print('Git source upload failed:', error.code, error.read().decode('utf-8', errors='replace'), flush=True)\n            raise")
+          sys.argv = ['source-transport', 'publish']
+          exec(compile(script, 'source-transport', 'exec'), {'__name__': '__main__'})
+          result = json.loads(Path(os.environ['RUNNER_TEMP'], 'verified-interop.json').read_text())
+          assert result['final_tree'] == manifest['final_tree'] and result['move_tree'] == manifest['move_tree']
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: interop-source-identity
+          path: |
+            ${{ runner.temp }}/measure.log
+            ${{ runner.temp }}/architecture.log
+            ${{ runner.temp }}/source-manifest.json
+            ${{ runner.temp }}/verified-interop.json
+            source/**/target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
