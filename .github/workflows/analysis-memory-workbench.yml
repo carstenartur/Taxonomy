@@ -41,14 +41,16 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           from xml.etree import ElementTree as E
-          totals=[0,0,0,0]
+          expected={'LlmServiceNormalizationTests':12,'StreamRequirementAnalysisUseCaseTest':3,'AnalysisCapacityTest':1,'HsqldbFileProfileTest':3,'AnalysisApiControllerTest':12,'LlmServiceBranchCoverageTest':15,'LlmTranscriptBoundsTest':1}
+          actual={}
           for p in Path('taxonomy-app/target/surefire-reports').glob('TEST-*.xml'):
               r=E.parse(p).getroot()
               v=[int(r.get(k,0)) for k in ('tests','failures','errors','skipped')]
-              print(r.get('name'), v)
-              totals=[a+b for a,b in zip(totals,v)]
-          print('TOTAL tests/failures/errors/skipped:',totals)
-          assert totals[0]>=50 and totals[1:]==[0,0,0], totals
+              print(r.get('name'),v)
+              assert v[1:]==[0,0,0],v
+              actual[r.get('name').rsplit('.',1)[-1]]=v[0]
+          assert actual==expected,(actual,expected)
+          print('VERIFIED: 47 tests, zero failures/errors/skips')
           PY
       - name: Run browser ordering controls
         working-directory: candidate
