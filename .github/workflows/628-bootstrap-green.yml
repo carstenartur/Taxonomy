@@ -1,0 +1,213 @@
+name: Verify concurrent default bootstrap
+on:
+  push:
+    branches: [fix/628-concurrent-bootstrap]
+    paths: [.github/workflows/628-bootstrap-green.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: aa5b1aa7e956e3e56f0616b5885c3f85f16ba582
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Apply only the reproduced caller correction
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess,os
+          def replace(path,old,new,sha):
+              assert subprocess.check_output(['git','hash-object',path],text=True).strip()==sha,path
+              p=Path(path); text=p.read_text(); assert text.count(old)==1,(path,old)
+              p.write_text(text.replace(old,new))
+          resolver='taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceContextResolver.java'
+          replace(resolver,
+              '&& workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED) {',
+              '&& (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED\n                || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING)) {\n            // The synchronized initializer rereads metadata after an in-flight\n            // default initialization completes; explicit pins never take this path.',
+              '0510c54ceb5ebf3e96ca6f8c7105593757e594a5')
+          controller='taxonomy-workspace/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java'
+          replace(controller,
+              'if (info != null && info.isDefault() && "NOT_PROVISIONED".equals(info.provisioningStatus())) {',
+              'if (info != null && info.isDefault()\n                && ("NOT_PROVISIONED".equals(info.provisioningStatus())\n                || "PROVISIONING".equals(info.provisioningStatus()))) {',
+              'cce6c0977cf0407a23a6dd3fa68d749d0edf727c')
+          test='taxonomy-app/src/test/java/com/taxonomy/workspace/controller/WorkspaceConcurrentBootstrapIT.java'
+          subprocess.run(['git','add','--',resolver,controller,test],check=True)
+          actual=subprocess.check_output(['git','diff','--cached','--name-only','fbef12de05f902d239220924c6cff03787a2744a'],text=True).splitlines()
+          assert sorted(actual)==sorted([resolver,controller,test]),actual
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          out=Path(os.environ['RUNNER_TEMP'],'bootstrap-evidence');out.mkdir()
+          (out/'source.patch').write_bytes(subprocess.check_output(['git','diff','--cached','fbef12de05f902d239220924c6cff03787a2744a']))
+          (out/'tree.txt').write_text(subprocess.check_output(['git','write-tree'],text=True).strip())
+          print('CANDIDATE TREE',(out/'tree.txt').read_text())
+          PY
+          bash .github/scripts/download-embedding-model.sh
+      - name: Verify real concurrency plus existing access and lifecycle boundaries
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceConcurrentBootstrapIT,WorkspaceProvisioningBoundaryIT,WorkspaceProvisioningClaimIT,WorkspaceAccessSecurityIT,WorkspaceScopeGuardRegressionTest,WorkspaceManagerBehaviorTest,WorkspaceManagerProvisioningTest,WorkspaceInitialSyncBaseTest,WorkspaceInitialSyncBaseBoundaryTest,ArchitectureReportTests test > "$RUNNER_TEMP/bootstrap-evidence/focused.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/bootstrap-evidence/focused.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,shutil,xml.etree.ElementTree as ET
+          names='WorkspaceConcurrentBootstrapIT WorkspaceProvisioningBoundaryIT WorkspaceProvisioningClaimIT WorkspaceAccessSecurityIT WorkspaceScopeGuardRegressionTest WorkspaceManagerBehaviorTest WorkspaceManagerProvisioningTest WorkspaceInitialSyncBaseTest WorkspaceInitialSyncBaseBoundaryTest ArchitectureReportTests'.split()
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          out=Path(os.environ['RUNNER_TEMP'],'bootstrap-evidence','reports');out.mkdir()
+          for name in names:
+              paths=list(Path('.').glob('*/target/surefire-reports/TEST-*.'+name+'.xml'));assert len(paths)==1,(name,paths)
+              root=ET.parse(paths[0]).getroot(); counts={k:int(root.get(k,'0')) for k in total}
+              assert counts['tests']>0 and counts['failures']==counts['errors']==counts['skipped']==0,(name,counts)
+              for k in total:total[k]+=counts[k]
+              shutil.copy2(paths[0],out/paths[0].name)
+              print(name,counts)
+          print('BOOTSTRAP FOCUSED',total)
+          PY
+      - name: Retain only the verified three-file source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,os,subprocess
+          paths=subprocess.check_output(['git','diff','--cached','--name-only','fbef12de05f902d239220924c6cff03787a2744a'],text=True).splitlines()
+          assert len(paths)==3 and all(p.endswith('.java') for p in paths)
+          entries=[]
+          for path in paths:
+              sha=subprocess.check_output(['git','hash-object',path],text=True).strip()
+              blob=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=json.dumps({'content':Path(path).read_text(),'encoding':'utf-8'}),text=True))
+              assert blob['sha']==sha
+              entries.append({'path':path,'sha':sha,'mode':'100644','type':'blob'})
+          out=Path(os.environ['RUNNER_TEMP'],'bootstrap-evidence')
+          manifest={'base':'fbef12de05f902d239220924c6cff03787a2744a','tree':(out/'tree.txt').read_text(),'files':entries}
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==manifest['tree']
+          print('VERIFIED MANIFEST',json.dumps(manifest))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: concurrent-bootstrap-focused
+          path: ${{ runner.temp }}/bootstrap-evidence
+          retention-days: 14
+          if-no-files-found: error
+  full:
+    needs: focused
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fbef12de05f902d239220924c6cff03787a2744a
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Apply the exact focused-tested source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -R carstenartur/Taxonomy -n concurrent-bootstrap-focused -D "$RUNNER_TEMP/verified"
+          git apply --index "$RUNNER_TEMP/verified/source.patch"
+          test "$(git write-tree)" = "$(cat "$RUNNER_TEMP/verified/tree.txt")"
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Supply unchanged pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute full clean default verification
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/bootstrap-full.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/bootstrap-full.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root=ET.parse(p).getroot()
+              for k in counts:counts[k]+=int(root.get(k,'0'))
+          print('FULL DEFAULT',counts)
+          assert counts['tests']>4000 and counts['failures']==counts['errors']==0,counts
+          PY
+          git diff --exit-code
+          test "$(git write-tree)" = "$(cat "$RUNNER_TEMP/verified/tree.txt")"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: concurrent-bootstrap-full
+          path: |
+            ${{ runner.temp }}/bootstrap-full.log
+            ${{ runner.temp }}/verified/manifest.json
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 14
+          if-no-files-found: error
+  browser:
+    needs: focused
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fbef12de05f902d239220924c6cff03787a2744a
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Apply only the verified correction, keep browser assertions untouched
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -R carstenartur/Taxonomy -n concurrent-bootstrap-focused -D "$RUNNER_TEMP/verified"
+          git apply --index "$RUNNER_TEMP/verified/source.patch"
+          test "$(git write-tree)" = "$(cat "$RUNNER_TEMP/verified/tree.txt")"
+          sudo apt-get update -qq
+          sudo apt-get install --yes --no-install-recommends libreoffice-writer poppler-utils > "$RUNNER_TEMP/rendering-setup.log" 2>&1
+      - name: Build the browser application and pinned runtime
+        run: |
+          ./mvnw -B -ntp -pl taxonomy-tooling,taxonomy-build -am install -DskipTests -Dtaxonomy.ui.skip=true -Dtaxonomy.quality.skip=true > "$RUNNER_TEMP/browser-build.log" 2>&1 || { tail -n 80 "$RUNNER_TEMP/browser-build.log"; exit 1; }
+          ./mvnw -B -ntp -pl taxonomy-build -am pre-integration-test -DskipTests -Dtaxonomy.ui.skip=false -Dtaxonomy.quality.skip=true -Dtaxonomy.playwright.install.arguments="exec -- playwright install --with-deps chromium" > "$RUNNER_TEMP/browser-runtime.log" 2>&1 || { tail -n 80 "$RUNNER_TEMP/browser-runtime.log"; exit 1; }
+      - name: Execute the unchanged document-template browser acceptance
+        env:
+          TAXONOMY_RENDER_DOCX_PREVIEW: 'true'
+          TAXONOMY_DOCS_IMAGE_DIR: ${{ github.workspace }}/docs/images
+        run: |
+          ./mvnw -B -ntp -pl taxonomy-build -am -Pdocument-template-report-e2e verify -Dtaxonomy.node.executable="${GITHUB_WORKSPACE}/taxonomy-build/target/frontend/node/node" > "$RUNNER_TEMP/bootstrap-browser.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/bootstrap-browser.log"; exit 1; }
+          git diff --exit-code
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: concurrent-bootstrap-browser
+          path: |
+            ${{ runner.temp }}/bootstrap-browser.log
+            ${{ runner.temp }}/browser-*.log
+            target/ui-verification/document-template-report/**
+            taxonomy-build/target/failsafe-reports/TEST-*.xml
+          retention-days: 14
+          if-no-files-found: error
