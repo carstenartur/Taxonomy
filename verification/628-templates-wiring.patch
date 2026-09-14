@@ -1,0 +1,171 @@
+diff --git a/.github/coverage-policy.json b/.github/coverage-policy.json
+index 383b76d4e4435449eb73630c9971298e9d0cd645..072bdf73554d569f1aa9122868509856cb180223 100644
+--- a/.github/coverage-policy.json
++++ b/.github/coverage-policy.json
+@@ -24 +24,2 @@
+-    "taxonomy-workspace"
++    "taxonomy-workspace",
++    "taxonomy-templates"
+diff --git a/.github/scripts/document-template-local-edit-fixtures.test.mjs b/.github/scripts/document-template-local-edit-fixtures.test.mjs
+index 8e62bc92730b4db21914f6b4ffa71332e67f5ede..38df8ac56107a1068476be0e881ab8c8cd19efcd 100644
+--- a/.github/scripts/document-template-local-edit-fixtures.test.mjs
++++ b/.github/scripts/document-template-local-edit-fixtures.test.mjs
+@@ -11 +11 @@ const original = fileURLToPath(new URL(
+-  '../../taxonomy-app/src/main/resources/document-templates/decision-rationale-report.dotx', import.meta.url));
++  '../../taxonomy-templates/src/main/resources/document-templates/decision-rationale-report.dotx', import.meta.url));
+diff --git a/.github/workflows/catalogue-overlay-proposal.yml b/.github/workflows/catalogue-overlay-proposal.yml
+index 5225751e9b4eea5c89128a0d8f95ff3364975726..ea761362bf02429e791b9c9b35b73394109a16d1 100644
+--- a/.github/workflows/catalogue-overlay-proposal.yml
++++ b/.github/workflows/catalogue-overlay-proposal.yml
+@@ -9,0 +10 @@ on:
++      - 'taxonomy-templates/**'
+@@ -20,0 +22 @@ on:
++      - 'taxonomy-templates/**'
+diff --git a/.github/workflows/ci-cd.yml b/.github/workflows/ci-cd.yml
+index a9a4af6af731ec39c8ef870a46b77803ea035737..91ccaaafad9081caca9d53f0f5782e586d3c6e7f 100644
+--- a/.github/workflows/ci-cd.yml
++++ b/.github/workflows/ci-cd.yml
+@@ -178 +178 @@ jobs:
+-          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- pom.xml Dockerfile taxonomy-workspace/pom.xml taxonomy-workspace/src/main taxonomy-app/pom.xml taxonomy-app/src/main ':(exclude)taxonomy-app/src/main/resources/static/**' ':(exclude)taxonomy-app/src/main/resources/templates/**' taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java taxonomy-app/src/test/resources/observability observability .github/scripts/run-observability-performance.sh docs/dev/OBSERVABILITY_PERFORMANCE.md; then
++          if git diff --quiet "${PR_BASE_SHA}...${PR_HEAD_SHA}" -- pom.xml Dockerfile taxonomy-workspace/pom.xml taxonomy-workspace/src/main taxonomy-templates/pom.xml taxonomy-templates/src/main taxonomy-app/pom.xml taxonomy-app/src/main ':(exclude)taxonomy-app/src/main/resources/static/**' ':(exclude)taxonomy-app/src/main/resources/templates/**' taxonomy-app/src/test/java/com/taxonomy/ObservabilityContainerIT.java taxonomy-app/src/test/java/com/taxonomy/ObservabilityPerformanceIT.java taxonomy-app/src/test/resources/observability observability .github/scripts/run-observability-performance.sh docs/dev/OBSERVABILITY_PERFORMANCE.md; then
+ diff --git a/.github/workflows/document-template-report-e2e.yml b/.github/workflows/document-template-report-e2e.yml
+index f0c0eacee8ebb9a8ce98cf9d966d5ae29e6bf66c..5f6f1ee2a8ce1b78d04fb6b14659902c5d5e41f7 100644
+--- a/.github/workflows/document-template-report-e2e.yml
++++ b/.github/workflows/document-template-report-e2e.yml
+@@ -12,0 +13 @@ on:
++      - 'taxonomy-templates/**'
+diff --git a/.github/workflows/jgit-storage-hibernate-contract.yml b/.github/workflows/jgit-storage-hibernate-contract.yml
+index cf14517313075bbdfcb2774cba502d91009c4a60..836878eadf2782c2b869c570e238c909db632225 100644
+--- a/.github/workflows/jgit-storage-hibernate-contract.yml
++++ b/.github/workflows/jgit-storage-hibernate-contract.yml
+@@ -12,0 +13 @@ on:
++      - 'taxonomy-templates/**'
+@@ -32,0 +34 @@ on:
++      - 'taxonomy-templates/**'
+diff --git a/.github/workflows/kubernetes-constrained-smoke.yml b/.github/workflows/kubernetes-constrained-smoke.yml
+index e8619f0a06d58e0854c32460f5781fe51b876864..43c1bf21e9fb6a6b22a6ab1a47f9c7f043ef2c8f 100644
+--- a/.github/workflows/kubernetes-constrained-smoke.yml
++++ b/.github/workflows/kubernetes-constrained-smoke.yml
+@@ -15,0 +16 @@ on:
++      - 'taxonomy-templates/**'
+@@ -29,0 +31 @@ on:
++      - 'taxonomy-templates/**'
+diff --git a/.mvn/verification-suites.json b/.mvn/verification-suites.json
+index e493a020c8d55ece582fa472284cae73f7763adf..761082b3e4def2542a6e9c0304b28c04e060226b 100644
+--- a/.mvn/verification-suites.json
++++ b/.mvn/verification-suites.json
+@@ -16 +16 @@
+-    "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureWorkspaceModuleTest"},
++    "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest"},
+diff --git a/Dockerfile b/Dockerfile
+index d6d5e143511daa97c87f04f2efb477e83eb4d2e3..394df9db2e113ef7674d5837ea57e750f670e933 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -30,0 +31 @@ COPY taxonomy-workspace/pom.xml taxonomy-workspace/pom.xml
++COPY taxonomy-templates/pom.xml taxonomy-templates/pom.xml
+@@ -42,0 +44 @@ COPY taxonomy-workspace/src taxonomy-workspace/src
++COPY taxonomy-templates/src taxonomy-templates/src
+diff --git a/docs/de/MODULE_BOUNDARIES.md b/docs/de/MODULE_BOUNDARIES.md
+index 7a8a40c633c8e94c4cb49fbf8cfcf8cc79b7a93b..7ba1ac2173fb30b6fd36d8a92048ed8324efcea3 100644
+--- a/docs/de/MODULE_BOUNDARIES.md
++++ b/docs/de/MODULE_BOUNDARIES.md
+@@ -9 +9 @@ Die maschinenlesbare Quelle für die geplanten Extraktionskontexte ist `.github/
+-Der Root-Reactor enthält derzeit neun Module mit unterschiedlichen Aufgaben:
++Der Root-Reactor enthält derzeit zehn Module mit unterschiedlichen Aufgaben:
+@@ -18,0 +19 @@ Der Root-Reactor enthält derzeit neun Module mit unterschiedlichen Aufgaben:
++| `taxonomy-templates` | Dokumentvorlagen-Git-Speicher, OOXML-Validierung und WebDAV |
+@@ -288 +289 @@ Commit-Historie, DSL-Dokument-Komposition, Workspace-Autorität, Anwendungsschem
+-`.mvn/verification-suites.json`. Die zwölf ausgewählten Testklassen sind zwischen
++`.mvn/verification-suites.json`. Die dreizehn ausgewählten Testklassen sind zwischen
+@@ -291 +292 @@ POM und Katalog synchronisiert. Die vollständige CI-Verifikation bleibt `./mvnw
+-Der Ratchet durchläuft außerdem `taxonomy-app/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb des Root-Packages muss in `.github/architecture-contexts.json` klassifiziert sein. Ein neues Feature-Package kann den Dependency-Guard daher nicht umgehen, indem es außerhalb der vorhandenen Context-Patterns angelegt wird. Root-Level-Composition-Klassen bleiben ausdrücklich zulässig.
++Der Ratchet durchläuft außerdem `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy` und `taxonomy-templates/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb des Root-Packages muss in `.github/architecture-contexts.json` klassifiziert sein. Ein neues Feature-Package kann den Dependency-Guard daher nicht umgehen, indem es außerhalb der vorhandenen Context-Patterns angelegt wird. Root-Level-Composition-Klassen bleiben ausdrücklich zulässig.
+@@ -318 +319,11 @@ prüft die physische Source- und Klassen-Zuordnung. Maven verbietet Rückabhäng
+-auf die Anwendung. Die sechs anderen geplanten Fachmodule sind noch auszulagern.
++auf die Anwendung. Nach der folgenden Templates-Auslagerung sind noch fünf geplante Fachmodule auszulagern.
++
++## Physisches Templates-Modul
++
++`taxonomy-templates` enthält alle 21 Produktionsklassen für Dokumentvorlagen
++und die mitgelieferte Ressource `document-templates/decision-rationale-report.dotx`.
++Classpath-Name und Inhalt bleiben unverändert. Die Bibliothek hängt weder von
++einem anderen Taxonomy-Fachmodul noch von der Boot-Anwendung ab. 21 Unit-Testklassen
++folgen der Implementierung; Anwendungs-/HTTP-, Security- und UI-Ressourcenverträge
++bleiben in `taxonomy-app`. Globale Konfiguration, Migrationen und Darstellungsressourcen
++bleiben bei der Anwendungszusammensetzung.
+diff --git a/docs/en/MODULE_BOUNDARIES.md b/docs/en/MODULE_BOUNDARIES.md
+index 21903e9aa888f1abda0a6435d93e92e2de6488f4..38bfca557e7a2eb2498ad01a835b19dce6a2e0fc 100644
+--- a/docs/en/MODULE_BOUNDARIES.md
++++ b/docs/en/MODULE_BOUNDARIES.md
+@@ -9 +9 @@ The machine-readable source of truth for the planned extraction contexts is `.gi
+-The root reactor currently contains nine modules with different roles:
++The root reactor currently contains ten modules with different roles:
+@@ -18,0 +19 @@ The root reactor currently contains nine modules with different roles:
++| `taxonomy-templates` | Document-template Git storage, OOXML validation and WebDAV |
+@@ -278 +279 @@ history, DSL document composition, workspace authority, application schema compo
+-`.mvn/verification-suites.json`. Its twelve selected test classes are synchronized
++`.mvn/verification-suites.json`. Its thirteen selected test classes are synchronized
+@@ -282 +283 @@ between the POM and catalog. Full CI verification remains
+-The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.
++The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy` and `taxonomy-templates/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.
+@@ -309 +310,11 @@ requires physical source and compiled ownership. Maven enforces no dependency ba
+-to the application. The other six planned feature modules remain to be extracted.
++to the application. With templates extracted below, five planned feature modules remain to be extracted.
++
++## Physical templates module
++
++`taxonomy-templates` owns all 21 template production classes and the bundled
++`document-templates/decision-rationale-report.dotx` resource. Its classpath name
++and bytes are unchanged. The library has no dependency on another Taxonomy
++feature module or the Boot application. Twenty-one unit test classes follow
++the implementation; application/HTTP, security and UI resource contracts remain
++in `taxonomy-app`. Global configuration, migration scripts and presentation
++assets remain with application assembly.
+diff --git a/pom.xml b/pom.xml
+index 172eefc6fe0fc8cb6384ea689eea79830e90428c..baf621d126cd3e4cba249b5967c23132ba93ecaf 100644
+--- a/pom.xml
++++ b/pom.xml
+@@ -61,0 +62 @@
++        <module>taxonomy-templates</module>
+@@ -398 +399 @@
+-            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureWorkspaceModuleTest</test></properties>
++            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest</test></properties>
+diff --git a/taxonomy-app/pom.xml b/taxonomy-app/pom.xml
+index 8ac36a5956427c0bc1ca62894c8a5b7cef32c562..ef83fd25d2751f74c008eb6ff6e4861fe7cce91f 100644
+--- a/taxonomy-app/pom.xml
++++ b/taxonomy-app/pom.xml
+@@ -14,0 +15,5 @@
++        <dependency>
++            <groupId>com.taxonomy</groupId>
++            <artifactId>taxonomy-templates</artifactId>
++            <version>${project.version}</version>
++        </dependency>
+diff --git a/taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java b/taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java
+index 86f5e8ed296dbafdc8fd8b5227bbe38d576e37ed..aed15d597b9d3a2586876ba479f822d524239f3c 100644
+--- a/taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java
++++ b/taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java
+@@ -37,2 +37,2 @@ import static org.assertj.core.api.Assertions.assertThat;
+- * <p>Every production Java package below the application package root must also
+- * be classified by the checked context map. Root-package composition classes
++ * <p>Every production Java package below the application, workspace and templates module
++ * package roots must be classified by the checked context map. Root-package composition classes
+@@ -179 +179 @@ class ArchitectureContextDependencyRatchetTest {
+-        for (String module : List.of("taxonomy-app", "taxonomy-workspace")) {
++        for (String module : List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates")) {
+diff --git a/taxonomy-app/src/test/java/com/taxonomy/config/ConfigurationReferenceContractTest.java b/taxonomy-app/src/test/java/com/taxonomy/config/ConfigurationReferenceContractTest.java
+index 9c5364ef9449ddfcf56f4c50df7b2bcef3586422..84f6d879a86b6e2001cbd749273d18066f02eb6e 100644
+--- a/taxonomy-app/src/test/java/com/taxonomy/config/ConfigurationReferenceContractTest.java
++++ b/taxonomy-app/src/test/java/com/taxonomy/config/ConfigurationReferenceContractTest.java
+@@ -141 +141 @@ class ConfigurationReferenceContractTest {
+-        for (String module : java.util.List.of("taxonomy-app", "taxonomy-workspace")) {
++        for (String module : java.util.List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates")) {
+diff --git a/taxonomy-coverage/pom.xml b/taxonomy-coverage/pom.xml
+index cfd327b17b3b80ebd63031d432f3c43f35c6c4c5..bc7949b12fdca11404966bfa089e8d6ccba18872 100644
+--- a/taxonomy-coverage/pom.xml
++++ b/taxonomy-coverage/pom.xml
+@@ -18,0 +19,5 @@
++        <dependency>
++            <groupId>com.taxonomy</groupId>
++            <artifactId>taxonomy-templates</artifactId>
++            <version>${project.version}</version>
++        </dependency>
