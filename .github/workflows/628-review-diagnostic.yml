@@ -1,0 +1,42 @@
+name: Inspect module review findings
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-review-diagnostic.yml]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: eba5039c2731005f4a76e2f47b120403e8684b1b
+          persist-credentials: false
+      - name: Read exact review and source call sites
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          url = 'https://api.github.com/repos/carstenartur/Taxonomy/pulls/1064/reviews/5196275044'
+          req = urllib.request.Request(url, headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          with urllib.request.urlopen(req, timeout=30) as response:
+              review = json.load(response)
+          print('REVIEW', review['id'], review['commit_id'], review['state'])
+          for line in review['body'].splitlines():
+              if not line.startswith('|') or 'Unresolved' in line or 'finding' in line.lower():
+                  print(line)
+          for pattern in ('countVisibleWorkspaceMetadata', 'DslWorkspacePreResolutionInterceptor', 'centralRead('):
+              print('\nCALL SITES', pattern)
+              result = subprocess.run(['git', 'grep', '-n', '-F', pattern, '--', '*.java'], capture_output=True, text=True)
+              print(result.stdout[:20000])
+          for p in sorted(Path('.').glob('taxonomy-*/src/test/java/**/*.java')):
+              if any(x in p.name for x in ('PreResolution', 'WorkspaceAccess', 'WorkspaceVisibility', 'OslcTransport', 'InteropAdapter')):
+                  print('TEST', p)
+          print('NESTED INSTRUCTIONS')
+          print(subprocess.run(['git', 'ls-files', '*AGENTS.md', '*CLAUDE.md'], capture_output=True, text=True).stdout)
+          PY
