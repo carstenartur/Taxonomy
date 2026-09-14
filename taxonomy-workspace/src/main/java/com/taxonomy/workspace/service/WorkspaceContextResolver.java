@@ -2,10 +2,12 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -13,6 +15,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * Resolves the current workspace and repository contexts from the authenticated
@@ -140,19 +143,34 @@ public class WorkspaceContextResolver {
     }
 
     private UserWorkspace resolveWorkspace(String username) {
+        UserWorkspace workspace = resolveWorkspaceMetadataForUser(username);
+        if (workspace != null
+                && workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Workspace is not ready; complete provisioning before accessing its repository");
+        }
+        return workspace;
+    }
+
+    /**
+     * Resolve owned, active metadata without granting a repository context.
+     * Lifecycle endpoints use this path so provisioning and recovery remain
+     * accessible before READY. Lookup failures propagate; only an empty lookup
+     * without an explicit pin represents genuine absence.
+     */
+    public UserWorkspace resolveWorkspaceMetadataForUser(String username) {
+        String user = normalizeUsername(username);
         String requestedWorkspaceId = requestedWorkspaceId();
         UserWorkspace workspace = requestedWorkspaceId == null
-                ? findWorkspace(username)
+                ? findWorkspace(user)
                 : workspaceManager.getWorkspaceById(requestedWorkspaceId);
-        // No provisioned workspace keeps the central-read fallback. An actual
-        // selection must satisfy the same rules whether implicit or request-pinned.
         if (workspace == null && requestedWorkspaceId == null) {
             return null;
         }
 
         if (workspace == null
                 || !hasText(workspace.getUsername())
-                || !workspace.getUsername().strip().equals(username.strip())
+                || !workspace.getUsername().strip().equals(user)
                 || workspace.isArchived()
                 || workspace.isShared()) {
             throw new AccessDeniedException(
@@ -184,7 +202,8 @@ public class WorkspaceContextResolver {
         return primary;
     }
 
-    private static String requestedWorkspaceId() {
+    /** Return this request's workspace pin, with header precedence over query. */
+    public static String requestedWorkspaceId() {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
             return null;
