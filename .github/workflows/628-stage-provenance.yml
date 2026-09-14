@@ -1,0 +1,71 @@
+name: Stage locally tested provisioning sources
+on:
+  push:
+    branches: [fix/628-recorded-provisioning-source]
+    paths: [.github/workflows/628-stage-provenance.yml]
+permissions:
+  contents: write
+jobs:
+  stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 2dcd06cb96f4b6faf8d072b359f656026c1dfcf6
+          persist-credentials: false
+      - name: Reconstruct only the four locally tested files and validate every hash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json,subprocess,base64,os
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD^{tree}')=='eeb72439c877867e82809ecb0b979330184ad63f'
+          root='taxonomy-workspace/src/main/java/com/taxonomy/workspace/'
+          manager=root+'service/WorkspaceManager.java'
+          storage=root+'storage/DslGitRepository.java'
+          assert git('hash-object',manager)=='0622ce6092c75a01c26ab40b54c4fdf36ddbfd10'
+          assert git('hash-object',storage)=='73a0e7ee4be7ad57ad235be9a3f00ef8ac630a1e'
+          def replace(path,old,new):
+              p=Path(path); text=p.read_text(); assert text.count(old)==1,(path,old)
+              p.write_text(text.replace(old,new))
+          replace(manager,'import com.taxonomy.workspace.model.RepositoryTopologyMode;','import com.taxonomy.workspace.model.RepositoryTopologyMode;\nimport com.taxonomy.workspace.model.RepositoryLifecycleState;')
+          replace(manager,'    private UserWorkspace provisionWorkspaceRepository(String username, UserWorkspace workspace) {\n        return provisionWorkspaceRepository(username, workspace, "main");\n    }','    private UserWorkspace provisionWorkspaceRepository(String username, UserWorkspace workspace) {\n        // Repository-specific working copies persist their destination branch before\n        // allocation. Retrying them must not redirect an existing tab to "main".\n        String targetBranch = workspace != null && workspace.getSourceBranch() != null\n                && !workspace.getSourceBranch().isBlank() ? workspace.getCurrentBranch() : "main";\n        return provisionWorkspaceRepository(username, workspace, targetBranch);\n    }')
+          old='            var systemRepository = systemRepositoryService.getPrimaryRepository();\n            String baseBranch = systemRepository.getDefaultBranch();\n            DslGitRepository systemGit = repositoryFactory != null\n                    ? repositoryFactory.getSystemRepository() : gitRepository;'
+          new='            if (targetBranch == null || targetBranch.isBlank()) {\n                throw new IllegalStateException("Workspace has no destination branch");\n            }\n            String sourceRepositoryId = workspace.getSourceRepositoryId();\n            boolean recordedSource = sourceRepositoryId != null && !sourceRepositoryId.isBlank();\n            var systemRepository = recordedSource\n                    ? systemRepositoryService.getRepository(sourceRepositoryId.strip())\n                    : systemRepositoryService.getPrimaryRepository();\n            if (systemRepository.getLifecycleState() != RepositoryLifecycleState.ACTIVE) {\n                throw new IllegalStateException("Source repository is not active: "\n                        + systemRepository.getRepositoryId());\n            }\n            String sourceBranch = workspace.getSourceBranch();\n            String baseBranch = sourceBranch != null && !sourceBranch.isBlank()\n                    ? sourceBranch.strip() : systemRepository.getDefaultBranch();\n            if (repositoryFactory == null && recordedSource\n                    && !sourceRepositoryId.strip().equals(\n                            systemRepositoryService.getPrimaryRepository().getRepositoryId())) {\n                throw new IllegalStateException("Legacy storage cannot open the recorded source repository");\n            }\n            DslGitRepository systemGit = repositoryFactory == null ? gitRepository\n                    : recordedSource ? repositoryFactory.getCentralRepository(sourceRepositoryId.strip())\n                    : repositoryFactory.getSystemRepository();'
+          replace(manager,old,new)
+          replace(manager,'gitRepository.createBranch(userBranch, baseBranch);','gitRepository.createBranchAtCommit(userBranch, baseCommit);')
+          anchor='    // ── Diff operations ─────────────────────────────────────────────\n'
+          method='    /**\n     * Create an absent branch at one captured commit, without re-reading another\n     * branch\'s moving HEAD. Existing destination refs are never overwritten.\n     */\n    public String createBranchAtCommit(String newBranch, String commitId) throws IOException {\n        ObjectId snapshot = ObjectId.fromString(commitId);\n        try (RevWalk walk = new RevWalk(gitRepo)) {\n            walk.parseCommit(snapshot);\n        }\n        updateRef(Constants.R_HEADS + newBranch, snapshot, ObjectId.zeroId(), false,\n                systemIdent(), "branch: created at " + commitId);\n        return snapshot.name();\n    }\n\n'
+          replace(storage,anchor,method+anchor)
+          testroot='taxonomy-workspace/src/test/java/com/taxonomy/workspace/'
+          expected={manager:'b3b1540adf00a65fba3ec5397b7902037bb7884b',storage:'5000ae1165a1f25bb9566af3bbaa79806c1437e7',testroot+'service/WorkspaceProvisioningProvenanceTest.java':'048934503b9b0c5e2d8b437d99b21626b02183ae',testroot+'storage/DslCapturedBranchTest.java':'966b6289f3d4af7d2acf69a51fd2bb41fa934a03'}
+          for path,sha in expected.items():
+              if path.startswith(testroot):
+                  blob=json.loads(subprocess.check_output(['gh','api','repos/carstenartur/Taxonomy/git/blobs/'+sha],text=True))
+                  Path(path).write_bytes(base64.b64decode(blob['content']))
+              assert git('hash-object',path)==sha,path
+          subprocess.run(['git','add','--',*expected],check=True)
+          assert sorted(git('diff','--cached','--name-only').splitlines())==sorted(expected)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          assert git('write-tree')=='20b7f52806704e66ebb7d91f1c825379a24dd4fe'
+          entries=[]
+          for path,sha in expected.items():
+              result=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=json.dumps(dict(content=Path(path).read_text(),encoding='utf-8')),text=True))
+              assert result['sha']==sha
+              entries.append(dict(path=path,sha=sha,mode='100644',type='blob'))
+          manifest=dict(base='2dcd06cb96f4b6faf8d072b359f656026c1dfcf6',tree=git('write-tree'),files=entries)
+          out=Path(os.environ['RUNNER_TEMP'],'provenance');out.mkdir()
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          (out/'source.patch').write_bytes(subprocess.check_output(['git','diff','--cached']))
+          print('SOURCE MANIFEST',json.dumps(manifest))
+          print('Object staging only: no tests are rerun, no branch/ref is moved, and this job is not an authoritative CI certificate. The exact source was tested locally; normal PR CI remains required.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: recorded-provenance-source
+          path: ${{ runner.temp }}/provenance
+          retention-days: 14
+          if-no-files-found: error
