@@ -1,0 +1,70 @@
+name: Reproduce captured workspace snapshot defects
+on:
+  push:
+    branches: [fix/628-captured-workspace-snapshot]
+    paths: [.github/workflows/628-snapshot-red.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Read the original core failure only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run view 34870099111 -R carstenartur/Taxonomy --job 104063936608 --log > "$RUNNER_TEMP/original-core.log"
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          lines = Path(os.environ['RUNNER_TEMP'], 'original-core.log').read_text(errors='replace').splitlines()
+          selected = set()
+          for i, line in enumerate(lines):
+              if re.search(r'<<< FAILURE|Rule violated|BUILD FAILURE|\[ERROR\]|##\[error\]', line):
+                  selected.update(range(max(0, i-1), min(len(lines), i+3)))
+          for i in sorted(selected)[-60:]:
+              print(lines[i][-1800:])
+          PY
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ed51cf592bbef36e856d120ed3062b6b5ce2ecac
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Require all four intended assertion failures
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -ntp -Dtest=WorkspaceProvisioningSnapshotTest -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/snapshot-red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          path = Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceProvisioningSnapshotTest.xml')
+          if not path.exists():
+              print(Path(os.environ['RUNNER_TEMP'], 'snapshot-red.log').read_text()[-8000:])
+              raise SystemExit('Regression did not execute')
+          root = ET.parse(path).getroot()
+          counts = {k: int(root.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped')}
+          for case in root.findall('testcase'):
+              for failure in case.findall('failure') + case.findall('error'):
+                  print(case.get('name'), failure.get('message'))
+          print('SNAPSHOT RED', counts)
+          assert counts == dict(tests=4, failures=4, errors=0, skipped=0), counts
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: captured-snapshot-red
+          path: |
+            ${{ runner.temp }}/snapshot-red.log
+            taxonomy-workspace/target/surefire-reports/TEST-*WorkspaceProvisioningSnapshotTest.xml
+          retention-days: 14
+          if-no-files-found: error
