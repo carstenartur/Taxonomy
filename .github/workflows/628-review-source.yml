@@ -1,0 +1,36 @@
+name: Workspace review source inputs
+on:
+  push:
+    branches: [verification/628-review-finalization]
+    paths: [.github/workflows/628-review-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 623a8f2887534476f930133c07b229976788a26b
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Archive exact source and incremental ancestry
+        run: |
+          set -euo pipefail
+          git archive --format=tar HEAD | gzip -n > "$RUNNER_TEMP/review-source.tar.gz"
+          git branch review-source HEAD
+          git bundle create "$RUNNER_TEMP/review-source.bundle" review-source ^418f59f4585c19808295ea011b67502e9bac0172
+          git rev-parse HEAD 'HEAD^{tree}' > "$RUNNER_TEMP/source-identity.txt"
+          cd "$RUNNER_TEMP"
+          sha256sum review-source.tar.gz review-source.bundle > source.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: workspace-review-source
+          path: |
+            ${{ runner.temp }}/review-source.tar.gz
+            ${{ runner.temp }}/review-source.bundle
+            ${{ runner.temp }}/source-identity.txt
+            ${{ runner.temp }}/source.sha256
+          retention-days: 7
+          if-no-files-found: error
