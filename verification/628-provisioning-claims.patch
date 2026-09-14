@@ -1,0 +1,305 @@
+diff --git a/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceManagerProvisioningTest.java b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceManagerProvisioningTest.java
+index fbce2770..3280d98a 100644
+--- a/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceManagerProvisioningTest.java
++++ b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceManagerProvisioningTest.java
+@@ -38,6 +38,8 @@ class WorkspaceManagerProvisioningTest {
+         manager = new WorkspaceManager(wsRepo, 50, sysRepoService, gitRepo);
+ 
+         // Default: save returns the argument
++        when(wsRepo.claimProvisioning(anyString(), anyString(),
++                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
+         when(wsRepo.save(any(UserWorkspace.class)))
+                 .thenAnswer(inv -> inv.getArgument(0));
+     }
+diff --git a/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java
+new file mode 100644
+index 00000000..eb0ee4a4
+--- /dev/null
++++ b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java
+@@ -0,0 +1,95 @@
++package com.taxonomy.workspace.service;
++
++import com.taxonomy.workspace.model.UserWorkspace;
++import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
++import com.taxonomy.workspace.repository.UserWorkspaceRepository;
++import com.taxonomy.workspace.storage.DslGitRepository;
++import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
++import org.junit.jupiter.api.Test;
++import org.springframework.beans.factory.annotation.Autowired;
++import org.springframework.boot.test.context.SpringBootTest;
++import org.springframework.test.context.TestPropertySource;
++import org.springframework.web.server.ResponseStatusException;
++
++import java.time.Instant;
++import java.util.List;
++import java.util.UUID;
++import java.util.concurrent.Callable;
++import java.util.concurrent.CyclicBarrier;
++import java.util.concurrent.Executors;
++import java.util.concurrent.TimeUnit;
++
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.AdditionalAnswers.delegatesTo;
++import static org.mockito.Mockito.*;
++
++/** Separate service instances share only the real JPA repository, never a Java monitor. */
++@SpringBootTest
++@TestPropertySource(properties = {"gemini.api.key=", "openai.api.key=", "deepseek.api.key=",
++        "qwen.api.key=", "llama.api.key=", "mistral.api.key="})
++class WorkspaceProvisioningClaimIT {
++    @Autowired private UserWorkspaceRepository repository;
++    @Autowired private SystemRepositoryService repositories;
++
++    @Test
++    void twoInstancesCannotBothClaimTheSameUnprovisionedRow() throws Exception {
++        String id = UUID.randomUUID().toString();
++        var workspace = new UserWorkspace();
++        workspace.setWorkspaceId(id);
++        workspace.setUsername("claim-owner");
++        workspace.setDisplayName(id);
++        workspace.setCreatedAt(Instant.now());
++        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
++        repository.saveAndFlush(workspace);
++        try {
++            var selected = mock(UserWorkspaceRepository.class, delegatesTo(repository));
++            var barrier = new CyclicBarrier(2);
++            doAnswer(call -> {
++                var row = repository.findByWorkspaceId(id);
++                // Both independent instances observe NOT_PROVISIONED before either may claim it.
++                assertEquals(WorkspaceProvisioningStatus.NOT_PROVISIONED, row.orElseThrow().getProvisioningStatus());
++                barrier.await(10, TimeUnit.SECONDS);
++                return row;
++            }).when(selected).findByWorkspaceId(id);
++            var factory = mock(DslGitRepositoryFactory.class);
++            var central = repositories.getPrimaryRepository();
++            var source = new DslGitRepository();
++            String base = source.commitDsl(central.getDefaultBranch(), "meta { language: \"taxdsl\"; }", "system", "Initial source");
++            when(factory.getSystemRepository()).thenReturn(source);
++            var destination = mock(DslGitRepository.class);
++            when(destination.commitDsl(anyString(), anyString(), anyString(), anyString())).thenReturn(base);
++            when(destination.getHeadCommit("main")).thenReturn(base);
++            when(factory.getWorkspaceRepository(id)).thenReturn(destination);
++            var system = mock(SystemRepositoryService.class);
++            when(system.getPrimaryRepository()).thenReturn(central);
++            var first = new WorkspaceManager(selected, 50, system, factory);
++            var second = new WorkspaceManager(selected, 50, system, factory);
++            try (var executor = Executors.newFixedThreadPool(2)) {
++                Callable<Integer> a = () -> provisionStatus(first, id);
++                Callable<Integer> b = () -> provisionStatus(second, id);
++                var results = executor.invokeAll(List.of(a, b), 20, TimeUnit.SECONDS);
++                var statuses = results.stream().map(future -> {
++                    try { return future.get(); }
++                    catch (Exception failure) { throw new AssertionError(failure); }
++                }).sorted().toList();
++                assertEquals(List.of(200, 409), statuses);
++            }
++            verify(destination, times(1)).commitDsl(anyString(), anyString(), anyString(), anyString());
++            var retained = repository.findByWorkspaceId(id).orElseThrow();
++            assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
++            assertEquals(base, retained.getCurrentCommit());
++            assertNull(retained.getProvisioningError());
++        } finally {
++            repository.findByWorkspaceId(id).ifPresent(repository::delete);
++        }
++    }
++
++    private static int provisionStatus(WorkspaceManager manager, String id) {
++        try {
++            manager.provisionWorkspaceRepository("claim-owner", id);
++            return 200;
++        } catch (ResponseStatusException failure) {
++            return failure.getStatusCode().value();
++        }
++    }
++}
+diff --git a/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSourceTest.java b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSourceTest.java
+new file mode 100644
+index 00000000..e9b2cc95
+--- /dev/null
++++ b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSourceTest.java
+@@ -0,0 +1,61 @@
++package com.taxonomy.workspace.service;
++
++import com.taxonomy.workspace.model.SystemRepository;
++import com.taxonomy.workspace.model.UserWorkspace;
++import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
++import com.taxonomy.workspace.repository.UserWorkspaceRepository;
++import com.taxonomy.workspace.storage.DslGitRepository;
++import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.MethodSource;
++import org.junit.jupiter.params.provider.Arguments;
++
++import java.time.Instant;
++import java.util.Optional;
++import java.util.stream.Stream;
++
++import static org.junit.jupiter.api.Assertions.*;
++import static org.mockito.Mockito.*;
++
++class WorkspaceProvisioningSourceTest {
++    static Stream<Arguments> sourceFailures() {
++        return Stream.of(Arguments.of(false, false), Arguments.of(true, false),
++                Arguments.of(false, true), Arguments.of(true, true));
++    }
++    @ParameterizedTest
++    @MethodSource("sourceFailures")
++    void absentSourceCheckpointFailsProvisioningWithoutPublishingReady(boolean isolated, boolean hasHead) throws Exception {
++        var repository = mock(UserWorkspaceRepository.class);
++        var system = mock(SystemRepositoryService.class);
++        var source = hasHead ? mock(DslGitRepository.class) : new DslGitRepository();
++        if (hasHead) when(source.getHeadCommit("draft")).thenReturn("1".repeat(40));
++        var factory = mock(DslGitRepositoryFactory.class);
++        when(factory.getSystemRepository()).thenReturn(source);
++        when(factory.getWorkspaceRepository("workspace-source-test")).thenReturn(new DslGitRepository());
++        var metadata = new SystemRepository();
++        metadata.setRepositoryId("central-source-test");
++        metadata.setDefaultBranch("draft");
++        when(system.getPrimaryRepository()).thenReturn(metadata);
++        var workspace = new UserWorkspace();
++        workspace.setWorkspaceId("workspace-source-test");
++        workspace.setUsername("source-test");
++        workspace.setCurrentBranch("draft");
++        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
++        workspace.setCreatedAt(Instant.now());
++        when(repository.findByWorkspaceId(workspace.getWorkspaceId())).thenReturn(Optional.of(workspace));
++        when(repository.claimProvisioning(anyString(), anyString(),
++                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
++        when(repository.save(any(UserWorkspace.class))).thenAnswer(call -> call.getArgument(0));
++        var manager = isolated ? new WorkspaceManager(repository, 50, system, factory)
++                : new WorkspaceManager(repository, 50, system, source);
++
++        var failure = assertThrows(RuntimeException.class,
++                () -> manager.provisionWorkspaceRepository("source-test", workspace.getWorkspaceId()));
++        assertEquals(WorkspaceProvisioningStatus.FAILED, workspace.getProvisioningStatus());
++        assertNotNull(workspace.getProvisioningError());
++        assertNull(workspace.getProvisionedAt());
++        assertNull(workspace.getCurrentCommit());
++        assertTrue(failure.getCause() instanceof IllegalStateException);
++        if (isolated) verify(factory, never()).getWorkspaceRepository(anyString());
++    }
++}
+diff --git a/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRepositoryIsolationTest.java b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRepositoryIsolationTest.java
+index 45f11e39..8fbfe331 100644
+--- a/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRepositoryIsolationTest.java
++++ b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRepositoryIsolationTest.java
+@@ -40,6 +40,8 @@ class WorkspaceRepositoryIsolationTest {
+ 
+         manager = new WorkspaceManager(wsRepo, 50, sysRepoService, factory);
+ 
++        when(wsRepo.claimProvisioning(anyString(), anyString(),
++                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
+         when(wsRepo.save(any(UserWorkspace.class)))
+                 .thenAnswer(inv -> inv.getArgument(0));
+     }
+diff --git a/taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java b/taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java
+index 1299cce6..a13dba59 100644
+--- a/taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java
++++ b/taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java
+@@ -1,11 +1,15 @@
+ package com.taxonomy.workspace.repository;
+ 
+ import com.taxonomy.workspace.model.UserWorkspace;
++import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+ import org.springframework.data.jpa.repository.JpaRepository;
+ import org.springframework.data.jpa.repository.Query;
++import org.springframework.data.jpa.repository.Modifying;
+ import org.springframework.data.repository.query.Param;
+ import org.springframework.stereotype.Repository;
++import org.springframework.transaction.annotation.Transactional;
+ 
++import java.util.Collection;
+ import java.util.List;
+ import java.util.Optional;
+ 
+@@ -33,6 +37,21 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
+ 
+     long countByUsernameAndArchivedFalse(String username);
+ 
++    /** Claim a pending/retryable workspace atomically across application instances. */
++    @Transactional
++    @Modifying
++    @Query("""
++            update UserWorkspace w set w.provisioningStatus = :inProgress
++            where w.workspaceId = :workspaceId and w.username = :username
++              and w.archived = false and w.shared = false
++              and w.provisioningStatus in :previousStates
++            """)
++    int claimProvisioning(@Param("workspaceId") String workspaceId,
++                          @Param("username") String username,
++                          @Param("inProgress") WorkspaceProvisioningStatus inProgress,
++                          @Param("previousStates") Collection<WorkspaceProvisioningStatus> previousStates);
++
++
+     /**
+      * Count active, disclosure-authorized rows without materializing metadata.
+      * Archived, missing and unauthorized identifiers intentionally return zero.
+diff --git a/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java b/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java
+index a0884de8..31371ecc 100644
+--- a/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java
++++ b/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java
+@@ -441,32 +441,40 @@ public class WorkspaceManager {
+                     "Workspace provisioning is already running or its state is unavailable");
+         }
+ 
++        int claimed = workspaceRepository.claimProvisioning(workspace.getWorkspaceId(), username,
++                WorkspaceProvisioningStatus.PROVISIONING,
++                List.of(WorkspaceProvisioningStatus.NOT_PROVISIONED, WorkspaceProvisioningStatus.FAILED));
++        if (claimed != 1) {
++            throw new ResponseStatusException(HttpStatus.CONFLICT,
++                    "Workspace provisioning was claimed or its lifecycle changed");
++        }
+         workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
+-        workspaceRepository.save(workspace);
+ 
+         try {
+             var systemRepository = systemRepositoryService.getPrimaryRepository();
+             String baseBranch = systemRepository.getDefaultBranch();
++            DslGitRepository systemGit = repositoryFactory != null
++                    ? repositoryFactory.getSystemRepository() : gitRepository;
++            String baseCommit = systemGit.getHeadCommit(baseBranch);
++            String systemDsl = baseCommit == null ? null : systemGit.getDslAtCommit(baseCommit);
++            if (baseCommit == null || systemDsl == null) {
++                throw new IllegalStateException("Source repository has no readable checkpoint for " + baseBranch);
++            }
+ 
+             if (repositoryFactory != null) {
+                 DslGitRepository workspaceGit =
+                         repositoryFactory.getWorkspaceRepository(workspace.getWorkspaceId());
+-                DslGitRepository systemGit = repositoryFactory.getSystemRepository();
+-
+-                String systemDsl = systemGit.getDslAtHead(baseBranch);
+-                if (systemDsl != null) {
+-                    workspaceGit.commitDsl(
+-                            targetBranch,
+-                            systemDsl,
+-                            username,
+-                            "Fork from shared/" + baseBranch);
+-                }
++                workspaceGit.commitDsl(
++                        targetBranch,
++                        systemDsl,
++                        username,
++                        "Fork from shared/" + baseBranch);
+ 
+                 workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+                 workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
+                 workspace.setTopologyMode(systemRepository.getTopologyMode());
+                 workspace.setBaseBranch(baseBranch);
+-                workspace.setBaseCommit(systemGit.getHeadCommit(baseBranch));
++                workspace.setBaseCommit(baseCommit);
+                 workspace.setCurrentBranch(targetBranch);
+                 workspace.setCurrentCommit(workspaceGit.getHeadCommit(targetBranch));
+                 workspace.setSyncTargetBranch(baseBranch);
+@@ -478,10 +486,7 @@ public class WorkspaceManager {
+                         username, workspace.getWorkspaceId(), baseBranch);
+             } else {
+                 String userBranch = username + "/workspace/" + workspace.getWorkspaceId();
+-                String baseCommit = gitRepository.getHeadCommit(baseBranch);
+-                if (baseCommit != null) {
+-                    gitRepository.createBranch(userBranch, baseBranch);
+-                }
++                gitRepository.createBranch(userBranch, baseBranch);
+ 
+                 workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
+                 workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
