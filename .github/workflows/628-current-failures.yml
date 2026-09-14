@@ -1,0 +1,35 @@
+name: Inspect retained workspace CI failures
+on:
+  push:
+    branches: [verification/628-current-failures]
+    paths: [.github/workflows/628-current-failures.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Summarize original logs without modifying test results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          for run in 34870099111 34870098939 34869260333; do
+            gh run view "$run" -R carstenartur/Taxonomy --log > "$RUNNER_TEMP/run-$run.log"
+          done
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, re
+          for run in (34870099111, 34870098939, 34869260333):
+              lines = Path(os.environ['RUNNER_TEMP'], f'run-{run}.log').read_text(errors='replace').splitlines()
+              print(f'=== ORIGINAL RUN {run} ===')
+              matches = [i for i, line in enumerate(lines) if re.search(r'<<< FAILURE|AssertionError|AssertionFailedError|Rule violated|BUILD FAILURE|Caused by:|\[ERROR\]   |Error: .*|not ok [0-9]', line)]
+              selected = set()
+              for i in matches:
+                  selected.update(range(max(0, i-1), min(len(lines), i+4)))
+              for i in sorted(selected)[-100:]:
+                  print(lines[i][-1500:])
+          PY
