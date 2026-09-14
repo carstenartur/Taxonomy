@@ -1,0 +1,51 @@
+name: Verify workspace resolution and lifecycle correction
+on:
+  push:
+    branches: [verification/628-resolution-lifecycle]
+    paths: [.github/workflows/628-resolution-lifecycle-green.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 2036b1542de1e4fc2eac0622412a7ea3ac0f70a1
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Execute new resolver and HTTP lifecycle regressions
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceResolutionFailureTest,WorkspaceProvisioningBoundaryIT,WorkspaceImplicitSelectionTest,WorkspaceContextResolverTest,WorkspaceContextResolverRequestPinningTest,WorkspaceScopeGuardRegressionTest,WorkspaceRequestIsolationTest,WorkspaceResolverTest,WorkspaceAccessSecurityIT,WorkspaceManagerBehaviorTest,WorkspaceManagerProvisioningTest,ExplicitWorkspacePinValidationInterceptorTest,WorkspaceControllerBranchCoverageTest test > "$RUNNER_TEMP/focused.log" 2>&1 || { tail -n 140 "$RUNNER_TEMP/focused.log"; exit 1; }
+      - name: Provision the existing checksum-pinned model
+        env:
+          MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute complete clean default verification
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/verify.log" 2>&1 || { tail -n 140 "$RUNNER_TEMP/verify.log"; exit 1; }
+          git diff --exit-code
+          git rev-parse HEAD 'HEAD^{tree}' > "$RUNNER_TEMP/verified-source.txt"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-resolution-lifecycle-correction
+          path: |
+            ${{ runner.temp }}/focused.log
+            ${{ runner.temp }}/verify.log
+            ${{ runner.temp }}/verified-source.txt
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 14
