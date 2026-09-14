@@ -4,7 +4,7 @@ on:
     branches: [workbench/analysis-memory-live-progress-20260914]
     paths: [.github/workflows/analysis-memory-workbench.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
   live-runtime:
     runs-on: ubuntu-latest
@@ -20,36 +20,54 @@ jobs:
         with:
           path: candidate
           ref: 618da4aaadea9d71f50b19185c7108ce0135e228
-          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Install focused live runtime and regressions
+      - name: Install complete live runtime and regressions
         working-directory: candidate
         run: |
           test "$(git rev-parse HEAD)" = 618da4aaadea9d71f50b19185c7108ce0135e228
           python ../tools/.github/scripts/analysis-live-tests.py
           python ../tools/.github/scripts/analysis-live-integration.py
           cp ../tools/taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisProgressController.java taxonomy-app/src/main/java/com/taxonomy/analysis/controller/
+          python ../tools/.github/scripts/analysis-live-ui-integration.py
+          python ../tools/.github/scripts/analysis-live-refinements.py
+          python ../tools/.github/scripts/analysis-live-worker-fence.py
+          cp ../tools/.github/scripts/analysis-live-progress.test.mjs .github/scripts/
           git diff --check
       - name: Execute live runtime and compatibility tests
         working-directory: candidate
         run: |
           set +e
-          ./mvnw -B -pl taxonomy-app -am '-Dtest=AnalysisMemoryGuardTest,AnalysisProgressRegistryTest,GatewayInterruptedAnalysisTest,HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,AnalysisApiWorkspaceBoundaryTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest,LlmService*,GeminiGatewayTest,OpenAiCompatibleGatewayTest' -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/analysis-live.log" 2>&1
+          ./mvnw -B -pl taxonomy-app -am '-Dtest=AnalysisMemoryGuardTest,AnalysisProgressRegistryTest,GatewayInterruptedAnalysisTest,HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,AnalysisApiWorkspaceBoundaryTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest,LlmService*,GeminiGatewayTest,OpenAiCompatibleGatewayTest,*ConfigurationReference*' -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/analysis-live.log" 2>&1
           code=$?
           grep -E 'ERROR|Tests run:|BUILD SUCCESS|BUILD FAILURE' "$RUNNER_TEMP/analysis-live.log" | tail -100
           exit "$code"
-      - name: Browser ordering controls
+      - name: Browser live lifecycle and existing ordering controls
         working-directory: candidate
-        run: node --test .github/scripts/analysis-operation-controller.test.mjs
+        run: |
+          node --check taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
+          node --check taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
+          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-operation-controller.test.mjs
+      - name: Publish passing source to fix branch
+        working-directory: candidate
+        run: |
+          git fetch origin fix/analysis-memory-live-progress
+          test "$(git rev-parse FETCH_HEAD)" = 618da4aaadea9d71f50b19185c7108ce0135e228
+          git add taxonomy-app/src/main/java/com/taxonomy/analysis taxonomy-app/src/main/resources/application.properties taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session.js taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js taxonomy-app/src/test/java/com/taxonomy/analysis docs/de/CONFIGURATION_REFERENCE.md docs/en/CONFIGURATION_REFERENCE.md .github/scripts/analysis-live-progress.test.mjs
+          git diff --cached --check
+          git -c user.name='OpenAI Assistant' -c user.email='assistant@openai.com' commit -m 'fix(analysis): expose scoped live progress and stop safely under resource pressure'
+          git rev-parse HEAD HEAD^{tree} | tee "$RUNNER_TEMP/analysis-live-source.txt"
+          git show --stat --oneline
+          git push origin HEAD:refs/heads/fix/analysis-memory-live-progress
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: analysis-live-runtime-evidence
           path: |
             ${{ runner.temp }}/analysis-live.log
+            ${{ runner.temp }}/analysis-live-source.txt
             candidate/**/target/surefire-reports/*.xml
           retention-days: 7
