@@ -1,0 +1,127 @@
+name: Verify sequential module integration
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-stacked-integration-check.yml]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 619e3550930830359b31c5a70a58a9c8882e768c
+          fetch-depth: 0
+          persist-credentials: false
+          show-progress: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Verify the linear stack, source equivalence and review concerns
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess, urllib.request
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'stack-check'
+          out.mkdir()
+          base = '09a92ee3ad822631a42c13377fe059d57de357bf'
+          heads = {1062:'b654ee72d80c78a8a310721f97e9318e518476cf',1063:'558541521c1f6af032828e0f474f4e9986f03a57',1064:'619e3550930830359b31c5a70a58a9c8882e768c'}
+          allowed = {'docs/de/MODULE_BOUNDARIES.md','docs/dev/REACTOR_COVERAGE.md','docs/en/MODULE_BOUNDARIES.md','taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java'}
+          def git(*args,cwd=None,check=True):
+              p=subprocess.run(['git',*args],cwd=cwd,capture_output=True,text=True,env={**os.environ,'GIT_EDITOR':'true'})
+              if check and p.returncode: raise RuntimeError(p.stdout+p.stderr)
+              return p
+          git('config','user.name','Taxonomy integration verification')
+          git('config','user.email','noreply@github.com')
+          old_parent='8cd4395d93ba56c80ae6ea5dff031944772e7771'
+          new_parent=base
+          results={}
+          for number,head in heads.items():
+              work=out/str(number)
+              git('worktree','add','--detach',str(work),head)
+              attempt=git('rebase','--onto',new_parent,old_parent,cwd=work,check=False)
+              resolutions=[]
+              for i in range(10):
+                  if attempt.returncode == 0: break
+                  conflicts=git('diff','--name-only','--diff-filter=U',cwd=work).stdout.splitlines()
+                  assert conflicts and set(conflicts)<=allowed,(number,conflicts,attempt.stdout,attempt.stderr)
+                  for path in conflicts:
+                      # These exact files already contain the resolved combination
+                      # of workspace and template changes in the original PR tree.
+                      value=subprocess.check_output(['git','show',head+':'+path])
+                      (work/path).write_bytes(value)
+                      git('add','--',path,cwd=work)
+                  resolutions+=conflicts
+                  if git('diff','--cached','--quiet',cwd=work,check=False).returncode==0:
+                      attempt=git('rebase','--skip',cwd=work,check=False)
+                  else: attempt=git('rebase','--continue',cwd=work,check=False)
+              assert attempt.returncode==0,(number,attempt.stdout,attempt.stderr)
+              new=git('rev-parse','HEAD',cwd=work).stdout.strip()
+              tree=git('rev-parse','HEAD^{tree}',cwd=work).stdout.strip()
+              assert tree==git('rev-parse',head+'^{tree}').stdout.strip()
+              assert not git('rev-list','--merges',base+'..HEAD',cwd=work).stdout.strip()
+              diff=git('diff','--find-renames=50%','--name-status',base,'HEAD',cwd=work).stdout.splitlines()
+              renames=[line.split('\t')[1:] for line in diff if line.startswith('R')]
+              histories=[]
+              for oldpath,newpath in renames:
+                  before=git('log','--follow','--format=%H',base,'--',oldpath,cwd=work).stdout.splitlines()
+                  after=git('log','--follow','--format=%H','HEAD','--',newpath,cwd=work).stdout.splitlines()
+                  assert before and set(before)<=set(after),(number,oldpath,newpath,set(before)-set(after))
+                  histories.append({'old':oldpath,'new':newpath,'historic_commits':len(before)})
+              results[str(number)]={'original':head,'linear':new,'tree':tree,'resolved_paths':resolutions,'verified_histories':histories,'commits':git('log','--reverse','--format=%H %s',new_parent+'..HEAD',cwd=work).stdout}
+              print('VERIFIED',number,'tree',tree,'full file histories',len(histories),'resolutions',resolutions,flush=True)
+              print('SLICE',results[str(number)]['commits'],flush=True)
+              old_parent=head
+              new_parent=new
+          # Verify the concrete review's dependency claim using Maven's actual reactor.
+          work=out/'1064'
+          workflow=work/'.github/workflows/catalogue-overlay-proposal.yml'
+          source=workflow.read_text()
+          corrected=re.sub(r"^      - 'taxonomy-(workspace|templates|interop)/\*\*'\n",'',source,flags=re.M)
+          assert source!=corrected and source.count("      - 'taxonomy-")-corrected.count("      - 'taxonomy-")==6
+          workflow.write_text(corrected)
+          log=out/'tooling.log'
+          with log.open('w') as output:
+              result=subprocess.run(['./mvnw','-B','-pl','taxonomy-tooling','-am','verify','-Dtaxonomy.ui.skip=true','-Dtaxonomy.quality.skip=true'],cwd=work,stdout=output,stderr=subprocess.STDOUT)
+          assert result.returncode==0,log.read_text()[-10000:]
+          text=log.read_text()
+          reactor=text.split('Reactor Build Order:',1)[1].split('[INFO] ----------------',1)[0]
+          print('ACTUAL TOOLING REACTOR',reactor,flush=True)
+          assert 'Workspace' not in reactor and 'Interop' not in reactor and 'Templates' not in reactor
+          jars=list((work/'taxonomy-tooling/target').glob('taxonomy-tooling-*.jar'))
+          jars=[p for p in jars if not p.name.endswith(('-sources.jar','-javadoc.jar'))]
+          assert len(jars)==1,jars
+          subprocess.run(['java','-cp',str(jars[0]),'com.taxonomy.tooling.CatalogueOverlayProposalGenerator','--root',str(work)],cwd=work,check=True)
+          (out/'catalogue-overlay-proposal.yml').write_text(corrected)
+          seen=set()
+          for number in heads:
+              req=urllib.request.Request(f'https://api.github.com/repos/carstenartur/Taxonomy/pulls/{number}/reviews?per_page=100',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+              with urllib.request.urlopen(req,timeout=30) as response: reviews=json.load(response)
+              print('REVIEW FINDINGS',number,flush=True)
+              for review in reviews:
+                  for line in review['body'].splitlines():
+                      if line.startswith('|') and re.search(r'critical|moderate|unresolved|finding',line,re.I) and line not in seen:
+                          seen.add(line);print(line,flush=True)
+              req=urllib.request.Request(f'https://api.github.com/repos/carstenartur/Taxonomy/pulls/{number}/comments?per_page=100',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN']})
+              with urllib.request.urlopen(req,timeout=30) as response: comments=json.load(response)
+              for c in comments: print('INLINE',c['id'],c.get('path'),c['body'],flush=True)
+          (out/'evidence.json').write_text(json.dumps(results,indent=2))
+          print('No remote references or protection rules changed.',flush=True)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: sequential-module-integration-proof
+          path: |
+            ${{ runner.temp }}/stack-check/evidence.json
+            ${{ runner.temp }}/stack-check/tooling.log
+            ${{ runner.temp }}/stack-check/catalogue-overlay-proposal.yml
+          retention-days: 7
+          if-no-files-found: warn
