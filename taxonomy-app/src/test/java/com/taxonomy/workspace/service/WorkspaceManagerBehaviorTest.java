@@ -163,17 +163,19 @@ class WorkspaceManagerBehaviorTest {
     }
 
     @Test
-    void lookupFallbacksReturnNullOnRepositoryFailures() {
+    void lookupFailuresPropagateWithoutMasqueradingAsMissingRows() {
         assertNull(manager.findActiveWorkspace("alice"));
         manager.getOrCreateWorkspace("alice", "active");
-        when(repository.findByWorkspaceId("active"))
-                .thenThrow(new IllegalStateException("read failed"));
-        assertNull(manager.findActiveWorkspace("alice"));
-        assertNull(manager.findUserWorkspace("alice"));
+        IllegalStateException outage = new IllegalStateException("read failed");
+        when(repository.findByWorkspaceId("active")).thenThrow(outage);
+        assertSame(outage, assertThrows(IllegalStateException.class,
+                () -> manager.findActiveWorkspace("alice")));
+        assertSame(outage, assertThrows(IllegalStateException.class,
+                () -> manager.findUserWorkspace("alice")));
 
-        when(repository.findByWorkspaceId("candidate"))
-                .thenThrow(new IllegalStateException("read failed"));
-        assertNull(manager.getWorkspaceById("candidate"));
+        when(repository.findByWorkspaceId("candidate")).thenThrow(outage);
+        assertSame(outage, assertThrows(IllegalStateException.class,
+                () -> manager.getWorkspaceById("candidate")));
     }
 
     @Test
