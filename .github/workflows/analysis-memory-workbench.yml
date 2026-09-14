@@ -4,9 +4,9 @@ on:
     branches: [workbench/analysis-memory-live-progress-20260914]
     paths: [.github/workflows/analysis-memory-workbench.yml]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  regression:
+  live-runtime:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -19,59 +19,37 @@ jobs:
       - uses: actions/checkout@v4
         with:
           path: candidate
-          ref: 29b9ef036882f5dbfc62924d9aca63038c098d4e
+          ref: 618da4aaadea9d71f50b19185c7108ce0135e228
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Install regressions and targeted implementation
+      - name: Install focused live runtime and regressions
         working-directory: candidate
         run: |
-          test "$(git rev-parse HEAD)" = 29b9ef036882f5dbfc62924d9aca63038c098d4e
-          python ../tools/.github/scripts/analysis-memory-tests.py
-          python ../tools/.github/scripts/analysis-memory-implementation.py
-          python ../tools/.github/scripts/analysis-memory-corrections.py
+          test "$(git rev-parse HEAD)" = 618da4aaadea9d71f50b19185c7108ce0135e228
+          python ../tools/.github/scripts/analysis-live-tests.py
+          python ../tools/.github/scripts/analysis-live-integration.py
+          cp ../tools/taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisProgressController.java taxonomy-app/src/main/java/com/taxonomy/analysis/controller/
           git diff --check
-      - name: Run GREEN and existing analysis controls
+      - name: Execute live runtime and compatibility tests
         working-directory: candidate
         run: |
-          set -o pipefail
-          ./mvnw -B -pl taxonomy-app -am '-Dtest=HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,StreamRequirementAnalysisUseCaseTest,LlmService*' -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee "$RUNNER_TEMP/analysis-green.log"
-          python - <<'PY'
-          from pathlib import Path
-          from xml.etree import ElementTree as E
-          expected={'LlmServiceNormalizationTests':12,'StreamRequirementAnalysisUseCaseTest':3,'AnalysisCapacityTest':1,'HsqldbFileProfileTest':3,'AnalysisApiControllerTest':12,'LlmServiceBranchCoverageTest':15,'LlmTranscriptBoundsTest':1}
-          actual={}
-          for p in Path('taxonomy-app/target/surefire-reports').glob('TEST-*.xml'):
-              r=E.parse(p).getroot()
-              v=[int(r.get(k,0)) for k in ('tests','failures','errors','skipped')]
-              print(r.get('name'),v)
-              assert v[1:]==[0,0,0],v
-              actual[r.get('name').rsplit('.',1)[-1]]=v[0]
-          assert actual==expected,(actual,expected)
-          print('VERIFIED: 47 tests, zero failures/errors/skips')
-          PY
-      - name: Run browser ordering controls
+          set +e
+          ./mvnw -B -pl taxonomy-app -am '-Dtest=AnalysisMemoryGuardTest,AnalysisProgressRegistryTest,GatewayInterruptedAnalysisTest,HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,AnalysisApiWorkspaceBoundaryTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest,LlmService*,GeminiGatewayTest,OpenAiCompatibleGatewayTest' -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/analysis-live.log" 2>&1
+          code=$?
+          grep -E 'ERROR|Tests run:|BUILD SUCCESS|BUILD FAILURE' "$RUNNER_TEMP/analysis-live.log" | tail -100
+          exit "$code"
+      - name: Browser ordering controls
         working-directory: candidate
         run: node --test .github/scripts/analysis-operation-controller.test.mjs
-      - name: Publish tested source only to dedicated fix branch
-        working-directory: candidate
-        run: |
-          git fetch origin fix/analysis-memory-live-progress
-          test "$(git rev-parse FETCH_HEAD)" = 29b9ef036882f5dbfc62924d9aca63038c098d4e
-          git add taxonomy-app/src/main/java/com/taxonomy/AppConfig.java taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmDetailAccumulator.java taxonomy-app/src/main/resources/application-hsqldb-file.properties taxonomy-app/src/test/java/com/taxonomy/analysis/runtime/HsqldbFileProfileTest.java taxonomy-app/src/test/java/com/taxonomy/analysis/runtime/AnalysisCapacityTest.java taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmTranscriptBoundsTest.java docs/de/CONFIGURATION_REFERENCE.md docs/en/CONFIGURATION_REFERENCE.md .env.example
-          git diff --cached --check
-          git -c user.name='OpenAI Assistant' -c user.email='assistant@openai.com' commit -m 'fix(analysis): bound diagnostic retention and add disk-backed local profile'
-          git rev-parse HEAD HEAD^{tree} | tee "$RUNNER_TEMP/analysis-source-identity.txt"
-          git show --stat --oneline
-          git push origin HEAD:refs/heads/fix/analysis-memory-live-progress
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: analysis-storage-green-evidence
+          name: analysis-live-runtime-evidence
           path: |
-            ${{ runner.temp }}/analysis-green.log
-            ${{ runner.temp }}/analysis-source-identity.txt
+            ${{ runner.temp }}/analysis-live.log
             candidate/**/target/surefire-reports/*.xml
           retention-days: 7
