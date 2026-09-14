@@ -1,0 +1,54 @@
+name: Reproduce implicit workspace selection
+on:
+  push:
+    branches: [verification/628-implicit-workspace-selection]
+    paths: [.github/workflows/628-implicit-selection-red.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: e41c36dba9ae137def111676dbd406a8d44d8ddc
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Confirm unchanged production and execute the real-manager regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git hash-object taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceContextResolver.java)" = 5c99cffeb3c06c43b245b91c2269c90714c3a108
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceImplicitSelectionTest test > "$RUNNER_TEMP/red.log" 2>&1
+          result=$?
+          set -e
+          if [[ "$result" == 0 ]]; then echo 'Expected regression failures are absent'; exit 1; fi
+          python3 - <<'PY'
+          import os, pathlib, xml.etree.ElementTree as ET
+          path = pathlib.Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceImplicitSelectionTest.xml')
+          if not path.exists():
+              print(pathlib.Path(os.environ['RUNNER_TEMP'], 'red.log').read_text()[-15000:])
+              raise SystemExit('Compilation or infrastructure failure is not a reproduced defect')
+          root = ET.parse(path).getroot()
+          counts = {k: int(root.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped')}
+          assert counts == {'tests': 12, 'failures': 9, 'errors': 0, 'skipped': 0}, counts
+          for failure in root.findall('testcase/failure'):
+              assert 'Expecting code to raise a throwable' in failure.get('message', ''), failure.attrib
+          print('REPRODUCED implicit archived/foreign/shared/ownerless selection:', counts)
+          print('Three valid/no-workspace controls pass; all nine rejection assertions fail before correction.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: implicit-selection-red
+          path: |
+            ${{ runner.temp }}/red.log
+            taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceImplicitSelectionTest.xml
+          if-no-files-found: error
+          retention-days: 7
