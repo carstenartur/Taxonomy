@@ -1,0 +1,45 @@
+name: Inspect interop extraction inputs
+on:
+  push:
+    branches: [verification/628-interop-extraction]
+    paths: [.github/workflows/628-interop-inspect.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 78fce8222df2890b2782df1764fc27e91acc95ff
+          persist-credentials: false
+      - name: Read source ownership and dependency inputs
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re, json
+          for p in sorted(Path('.').rglob('AGENTS.md')):
+              print('INSTRUCTIONS', p, '\n' + p.read_text())
+          root = Path('taxonomy-app/src/main/java/com/taxonomy/interop')
+          for p in sorted(root.rglob('*.java')):
+              imports = re.findall(r'^import (?:static )?(com\.taxonomy\.[^;]+);', p.read_text(), re.M)
+              print('PRODUCTION', str(p), json.dumps(imports))
+          for p in sorted(Path('taxonomy-app/src/test').rglob('*.java')):
+              s = p.read_text()
+              if '/interop/' in str(p) or 'IntegrationDomainAdapter' in s:
+                  print('TEST', str(p), 'spring=' + str('@SpringBootTest' in s), json.dumps(re.findall(r'^import (?:static )?(com\.taxonomy\.[^;]+);', s, re.M)))
+          for p in sorted(Path('taxonomy-app/src').rglob('*.java')):
+              s = p.read_text()
+              if 'IntegrationDomainAdapter' in s or ('/interop/' in str(p) and ('.requirements()' in s or 'RequirementView' in s)):
+                  print('ADAPTER USES', str(p))
+                  for n, line in enumerate(s.splitlines(), 1):
+                      if any(x in line for x in ('IntegrationDomainAdapter', '.requirements()', 'RequirementView')) or (p.name == 'IntegrationDomainAdapter.java' and re.match(r'    public ', line)):
+                          print(n, line)
+          for context in ('knowledge', 'architecture', 'analysis', 'portfolio', 'interop'):
+              print('CONTEXT', context)
+              for e in json.loads(Path('.github/architecture-dependency-baseline.json').read_text())['edges']:
+                  if e['fromContext'] == context:
+                      print(json.dumps(e))
+          PY
