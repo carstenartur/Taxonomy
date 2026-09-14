@@ -159,6 +159,14 @@
         };
         return {
             button: button,
+            finished: function (status) {
+                title.textContent = text('Analyse beendet', 'Analysis finished');
+                state.textContent = status === 'SUCCESS'
+                    ? text('Vollständiges Ergebnis empfangen.', 'Complete result received.')
+                    : text('Teilergebnis oder Fehler empfangen; Einzelheiten stehen im Analysestatus.',
+                        'Partial result or error received; see the analysis status for details.');
+                button.disabled = true;
+            },
             unavailable: function (reason) {
                 state.textContent = reason === 'WAITING_FOR_RUN'
                     ? text('Warte auf Aufnahme des Laufs; noch keine LLM-Anfrage bestätigt.', 'Waiting for admission; no LLM request confirmed yet.')
@@ -244,6 +252,10 @@
             },
             onUnavailable: view.unavailable, onCancelling: view.cancelling
         });
+        monitor.finish = function (status) {
+            monitor.stop();
+            view.finished(status);
+        };
         view.button.addEventListener('click', monitor.cancel);
         active = monitor;
         return monitor;

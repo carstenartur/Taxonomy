@@ -396,7 +396,7 @@
                 return r.json();
             })
             .then(result => {
-                if (progress) progress.stop();
+                if (progress) progress.finish(result.status);
                 setAnalyzing(false);
                 if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
                 applyScoreEnvelope(result);
