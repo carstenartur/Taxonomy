@@ -1,0 +1,91 @@
+name: Verify linear module integration without publishing
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-linear-history-check.yml]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 619e3550930830359b31c5a70a58a9c8882e768c
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check immutable module histories and read current review results
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          out = Path(os.environ['RUNNER_TEMP']) / 'linear-history'
+          out.mkdir()
+          old_base = '8cd4395d93ba56c80ae6ea5dff031944772e7771'
+          main = '09a92ee3ad822631a42c13377fe059d57de357bf'
+          heads = {1062:'b654ee72d80c78a8a310721f97e9318e518476cf',1063:'558541521c1f6af032828e0f474f4e9986f03a57',1064:'619e3550930830359b31c5a70a58a9c8882e768c'}
+          def git(*args, cwd=None, check=True):
+              p = subprocess.run(['git',*args], cwd=cwd, capture_output=True, text=True)
+              if check and p.returncode: raise RuntimeError(p.stdout + p.stderr)
+              return p
+          git('config','user.name','Taxonomy integration verification')
+          git('config','user.email','noreply@github.com')
+          evidence = {}
+          for number, head in heads.items():
+              work = out / str(number)
+              git('worktree','add','--detach',str(work),head)
+              attempt = git('rebase','--onto',main,old_base,cwd=work,check=False)
+              print('REPLAY', number, 'exit', attempt.returncode, attempt.stdout, attempt.stderr)
+              entry = {'original':head, 'rebase_exit':attempt.returncode}
+              if attempt.returncode:
+                  entry['conflicts'] = git('status','--short',cwd=work).stdout
+                  print('CONFLICTS', entry['conflicts'])
+                  git('rebase','--abort',cwd=work)
+              else:
+                  linear = git('rev-parse','HEAD',cwd=work).stdout.strip()
+                  tree = git('rev-parse','HEAD^{tree}',cwd=work).stdout.strip()
+                  original_tree = git('rev-parse',head+'^{tree}').stdout.strip()
+                  assert tree == original_tree, (number,tree,original_tree)
+                  assert not git('rev-list','--merges',main+'..HEAD',cwd=work).stdout.strip()
+                  git('merge-base','--is-ancestor',main,'HEAD',cwd=work)
+                  commits = git('log','--reverse','--format=%H %s',main+'..HEAD',cwd=work).stdout
+                  changes = git('diff','--find-renames=100%','--name-status',main,'HEAD',cwd=work).stdout
+                  paths = ['taxonomy-workspace/src/main/java/com/taxonomy/workspace/storage/DslGitRepository.java',
+                      'taxonomy-workspace/src/main/java/com/taxonomy/versioning/controller/DslWorkspacePreResolutionInterceptor.java']
+                  if number >= 1063: paths += ['taxonomy-templates/src/main/resources/document-templates/decision-rationale-report.dotx']
+                  if number >= 1064: paths += ['taxonomy-interop/src/main/java/com/taxonomy/interop/IntegrationService.java']
+                  followed = {}
+                  for path in paths:
+                      git('cat-file','-e','HEAD:'+path,cwd=work)
+                      raw = git('log','--follow','--format=%H %s','HEAD','--',path,cwd=work).stdout
+                      historical = [line for line in raw.splitlines() if git('merge-base','--is-ancestor',line.split()[0],old_base,cwd=work,check=False).returncode == 0]
+                      assert historical, (number,path,'No pre-extraction history')
+                      followed[path] = {'commits':len(raw.splitlines()),'pre_extraction':historical[:3]}
+                  entry.update(linear=linear,tree=tree,commits=commits,followed=followed)
+                  print('EXACT TREE MATCH',number,tree)
+                  print('LINEAR COMMITS',commits)
+                  print('FILE HISTORY',json.dumps(followed))
+                  (out / (str(number)+'-changes.txt')).write_text(changes)
+              url = f'https://api.github.com/repos/carstenartur/Taxonomy/pulls/{number}/reviews?per_page=100'
+              req = urllib.request.Request(url,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=30) as response: reviews=json.load(response)
+              latest=reviews[-1] if reviews else {}
+              entry['latest_review']={k:latest.get(k) for k in ('id','commit_id','body','state')}
+              print('LATEST REVIEW',number,json.dumps(entry['latest_review']))
+              evidence[str(number)] = entry
+          (out / 'evidence.json').write_text(json.dumps(evidence,indent=2))
+          print('Read-only experiment. No remote reference or policy was modified.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: linear-module-history-proof
+          path: |
+            ${{ runner.temp }}/linear-history/evidence.json
+            ${{ runner.temp }}/linear-history/*-changes.txt
+          retention-days: 7
+          if-no-files-found: warn
