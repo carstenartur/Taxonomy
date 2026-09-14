@@ -1,7 +1,7 @@
 package com.taxonomy.interop.oslc;
 
 import com.taxonomy.exchange.OslcRdf;
-import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.interop.IntegrationPortfolioPort;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
@@ -24,7 +24,7 @@ class OslcProviderServiceTest {
     void historicalArchitectureReadUsesExactCommitAndSerializesReturnedState() throws IOException {
         WorkspaceArchitectureReadPort architecture = mock(WorkspaceArchitectureReadPort.class);
         OslcProviderService service = new OslcProviderService(
-                mock(ProjectPortfolioService.class),
+                mock(IntegrationPortfolioPort.class),
                 architecture,
                 mock(SystemRepositoryService.class),
                 mock(RepositoryMembershipService.class),

@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
  */
 class ArchitectureContextDependencyRatchetTest {
 
-    private static final List<String> SOURCE_MODULES = List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates");
+    private static final List<String> SOURCE_MODULES = List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates", "taxonomy-interop");
 
     private static final Comparator<PackageEdge> EDGE_ORDER = Comparator
             .comparing(PackageEdge::fromContext)

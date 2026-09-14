@@ -8,6 +8,7 @@ on:
       - 'taxonomy-app/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx'
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
+      - 'taxonomy-interop/**'
       - 'taxonomy-app/src/main/resources/data/nato-taxonomy.json'
       - 'docs/en/CATALOGUE_OVERLAY_PROPOSALS.md'
       - 'docs/de/CATALOGUE_OVERLAY_PROPOSALS.md'
@@ -20,6 +21,7 @@ on:
       - 'taxonomy-app/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx'
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
+      - 'taxonomy-interop/**'
       - 'taxonomy-app/src/main/resources/data/nato-taxonomy.json'
       - '.github/workflows/catalogue-overlay-proposal.yml'
   workflow_dispatch:

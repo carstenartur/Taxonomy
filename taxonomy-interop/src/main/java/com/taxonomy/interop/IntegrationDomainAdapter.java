@@ -1,5 +1,6 @@
 package com.taxonomy.interop;
 
+import com.taxonomy.interop.IntegrationPortfolioPort.*;
 import com.taxonomy.dsl.ast.BlockAst;
 import com.taxonomy.dsl.command.ArchitectureCommand;
 import com.taxonomy.dsl.command.ArchitectureCommand.*;
@@ -11,10 +12,6 @@ import com.taxonomy.exchange.OslcRdf;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore.Connection;
 import com.taxonomy.interop.persistence.IntegrationStore.Identity;
-import com.taxonomy.portfolio.dto.PortfolioDtos.*;
-import com.taxonomy.portfolio.model.PortfolioTypes.*;
-import com.taxonomy.portfolio.service.PortfolioGitService;
-import com.taxonomy.portfolio.service.ProjectPortfolioService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.WorkspaceDocument;
 import com.taxonomy.workspace.service.WorkspaceContext;
@@ -34,13 +31,12 @@ import java.util.function.UnaryOperator;
 /** Adapts reviewed canonical DTOs to existing portfolio services and typed DSL commands. */
 @Service
 public class IntegrationDomainAdapter {
-    private final ProjectPortfolioService projects;
-    private final PortfolioGitService portfolio;
+    private final IntegrationPortfolioPort projects;
     private final IntegrationJson json;
-    public IntegrationDomainAdapter(ProjectPortfolioService projects, PortfolioGitService portfolio, IntegrationJson json) {
-        this.projects = projects; this.portfolio = portfolio; this.json = json;
+    public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json) {
+        this.projects = projects; this.json = json;
     }
-    public record Snapshot(InternalState state, Map<String, Artifact> items, List<RequirementView> requirements, List<MappingLoss> losses) {}
+    public record Snapshot(InternalState state, Map<String, Artifact> items, List<RequirementData> requirements, List<MappingLoss> losses) {}
     public record AppliedRequirement(String businessIdentity, Long requirementId) {}
 
     /** Bind only identities actually delivered in a reviewed file; this is not an external acknowledgement. */
@@ -48,7 +44,7 @@ public class IntegrationDomainAdapter {
                                                           WorkspaceDocument document, Map<String, Artifact> selected) {
         Map<String, AppliedRequirement> result = new TreeMap<>();
         if (connection.projectId() != null) {
-            for (RequirementView requirement : current.requirements()) {
+            for (RequirementData requirement : current.requirements()) {
                 String external = connection.connectorId().equals(OslcRdf.RM_PROFILE)
                         ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
                         : "taxonomy-requirement-" + requirement.id();
@@ -65,9 +61,9 @@ public class IntegrationDomainAdapter {
         return result;
     }
     public Snapshot snapshot(RepositoryContext context, Connection connection, List<Identity> mappings, WorkspaceDocument document) {
-        List<RequirementView> requirements = connection.projectId() == null ? List.of()
+        List<RequirementData> requirements = connection.projectId() == null ? List.of()
                 : projects.listRequirements(connection.projectId(), context.username(), workspace(context));
-        Map<Long, RequirementView> byId = new LinkedHashMap<>(); requirements.forEach(r -> byId.put(r.id(), r));
+        Map<Long, RequirementData> byId = new LinkedHashMap<>(); requirements.forEach(r -> byId.put(r.id(), r));
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(document.dsl());
         Map<String, Artifact> items = new TreeMap<>();
         List<MappingLoss> losses = new ArrayList<>();
@@ -80,8 +76,8 @@ public class IntegrationDomainAdapter {
                 items.put(mapping.externalId(), current); continue;
             }
             if (baseline.kind() == ArtifactKind.REQUIREMENT && mapping.requirementId() != null) {
-                RequirementView requirement = byId.get(mapping.requirementId());
-                if (requirement == null || requirement.status() == RequirementStatus.ARCHIVED) continue;
+                RequirementData requirement = byId.get(mapping.requirementId());
+                if (requirement == null || requirement.archived()) continue;
                 current = new Artifact(baseline.id(), baseline.kind(), baseline.type(), requirement.title(), requirement.currentVersion().text(), baseline.attributes(), baseline.extensions());
             } else if (baseline.kind() == ArtifactKind.ELEMENT || baseline.kind() == ArtifactKind.VIEW) {
                 String kind = baseline.kind() == ArtifactKind.ELEMENT ? "element" : "view";
@@ -133,7 +129,7 @@ public class IntegrationDomainAdapter {
         if (identity.startsWith("requirement:") && connection.projectId() != null) {
             String key = identity.substring("requirement:".length());
             var requirement = projects.listRequirements(connection.projectId(), context.username(), workspace(context)).stream()
-                    .filter(r -> r.requirementKey().equals(key) && r.status() != RequirementStatus.ARCHIVED).findFirst().orElseThrow(IntegrationProblem::missing);
+                    .filter(r -> r.requirementKey().equals(key) && !r.archived()).findFirst().orElseThrow(IntegrationProblem::missing);
             return new AppliedRequirement(identity, requirement.id());
         }
         if (identity.startsWith("element:") && ArchitectureSemanticPatch.index(dsl).containsKey(identity)) return new AppliedRequirement(identity, null);
@@ -150,7 +146,7 @@ public class IntegrationDomainAdapter {
         if (connection.projectId() != null) {
             Map<Long, Identity> known = new LinkedHashMap<>(); mappings.stream().filter(m -> m.requirementId() != null).forEach(m -> known.put(m.requirementId(), m));
             List<Artifact> added = new ArrayList<>();
-            for (RequirementView requirement : current.requirements()) if (requirement.status() != RequirementStatus.ARCHIVED) {
+            for (RequirementData requirement : current.requirements()) if (!requirement.archived()) {
                 Identity existing = known.get(requirement.id());
                 if (existing != null && items.containsKey(existing.externalId())) continue;
                 boolean oslc = connection.connectorId().equals(OslcRdf.RM_PROFILE);
@@ -294,27 +290,24 @@ public class IntegrationDomainAdapter {
 
     public AppliedRequirement applyRequirement(RepositoryContext context, Connection connection, Artifact value, Identity previous, String rationale) {
         if (value == null) {
-            if (previous != null && previous.requirementId() != null) projects.updateRequirement(connection.projectId(), previous.requirementId(),
-                    new UpdateRequirementRequest(null, RequirementStatus.ARCHIVED, null, null, null, null, null), context.username(), workspace(context));
+            if (previous != null && previous.requirementId() != null) projects.archiveRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context));
             return new AppliedRequirement(previous.businessIdentity(), previous.requirementId());
         }
         if (value.title().isBlank() || value.title().length() > 240 || value.text().isBlank() || value.text().length() > 100000)
             throw new IntegrationProblem("REQUIREMENT_MAPPING_REQUIRED", 422, "Requirement title/text is outside the documented portfolio profile; reject or remap this object");
-        SourceReference provenance = new SourceReference(null, null, List.of(), "integration:" + connection.id() + ":" + stableId(connection.id(), value.id()), null, value.text());
+        ImportProvenance provenance = new ImportProvenance("integration:" + connection.id() + ":" + stableId(connection.id(), value.id()), value.text());
         if (previous == null || previous.requirementId() == null) {
             String key = "EXT-" + stableId(connection.id(), value.id()).substring(4).toUpperCase(java.util.Locale.ROOT);
-            RequirementView created = projects.createRequirement(connection.projectId(), new CreateRequirementRequest(key, value.title(), value.text(),
-                    RequirementStatus.DRAFT, 50, Criticality.MEDIUM, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED, context.username(), rationale, provenance),
+            RequirementData created = projects.createRequirement(connection.projectId(), new ImportedRequirement(key, value.title(), value.text(), rationale, provenance),
                     context.username(), workspace(context));
             return new AppliedRequirement(created.requirementKey(), created.id());
         }
-        RequirementView before = projects.getRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context));
+        RequirementData before = projects.getRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context));
         boolean textChanged = !before.currentVersion().text().equals(value.text());
-        boolean requiresReview = textChanged || before.status() == RequirementStatus.ARCHIVED;
+        boolean requiresReview = textChanged || before.archived();
         if (!before.title().equals(value.title()) || requiresReview)
-            projects.updateRequirement(connection.projectId(), previous.requirementId(), new UpdateRequirementRequest(value.title(), requiresReview ? RequirementStatus.DRAFT : null,
-                    null, null, null, requiresReview ? ReviewStatus.PROPOSED : null, null), context.username(), workspace(context));
-        if (textChanged) projects.addRequirementVersion(connection.projectId(), previous.requirementId(), new CreateRequirementVersionRequest(value.text(), rationale, provenance), context.username(), workspace(context));
+            projects.updateRequirement(connection.projectId(), previous.requirementId(), value.title(), requiresReview, context.username(), workspace(context));
+        if (textChanged) projects.addRequirementVersion(connection.projectId(), previous.requirementId(), value.text(), rationale, provenance, context.username(), workspace(context));
         return new AppliedRequirement(previous.businessIdentity(), previous.requirementId());
     }
 
@@ -391,7 +384,7 @@ public class IntegrationDomainAdapter {
         return relationKey(relation, ids).id();
     }
     public UnaryOperator<String> portfolioContribution(RepositoryContext context) {
-        return source -> ArchitectureSemanticPatch.applyProjection(source, portfolio.contributeTo(source, context.username(), workspace(context)));
+        return source -> ArchitectureSemanticPatch.applyProjection(source, projects.contributeTo(source, context.username(), workspace(context)));
     }
     private Map<String, String> exchangeProperties(Connection connection, Artifact artifact) {
         return Map.of("x-exchange-connection", connection.id().toString(), "x-exchange-id", artifact.id(), "x-exchange-profile", connection.connectorId(),
