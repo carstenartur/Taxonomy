@@ -1,0 +1,80 @@
+name: Reproduce workspace resolution and lifecycle failures
+on:
+  push:
+    branches: [verification/628-resolution-lifecycle]
+    paths: [.github/workflows/628-resolution-lifecycle-red.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 6036c37cc39751bfe96a77b73afb5fb4b618886b
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: '**/pom.xml'
+      - name: Reproduce real-manager resolution failures
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceResolutionFailureTest test > "$RUNNER_TEMP/resolution-red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          p = Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceResolutionFailureTest.xml')
+          if not p.exists():
+              print(Path(os.environ['RUNNER_TEMP'], 'resolution-red.log').read_text()[-14000:])
+              raise SystemExit('No behavioral test result')
+          r = ET.parse(p).getroot()
+          counts = {k: int(r.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped')}
+          print('RESOLUTION RED', counts)
+          for tc in r.findall('testcase'):
+              for f in tc.findall('failure'):
+                  print(tc.get('name'), f.get('message'))
+          assert counts == dict(tests=25, failures=20, errors=0, skipped=0), counts
+          PY
+      - name: Reproduce pinned provisioning through real MVC and JPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningBoundaryIT test > "$RUNNER_TEMP/lifecycle-red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          p = Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.controller.WorkspaceProvisioningBoundaryIT.xml')
+          if not p.exists():
+              print(Path(os.environ['RUNNER_TEMP'], 'lifecycle-red.log').read_text()[-16000:])
+              raise SystemExit('No HTTP test result')
+          r = ET.parse(p).getroot()
+          counts = {k: int(r.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped')}
+          print('LIFECYCLE RED', counts)
+          for tc in r.findall('testcase'):
+              for f in tc.findall('failure') + tc.findall('error'):
+                  print(tc.get('name'), f.get('message'))
+          assert counts['tests'] == 11 and counts['failures'] > 0 and counts['errors'] == counts['skipped'] == 0, counts
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-resolution-lifecycle-red
+          path: |
+            ${{ runner.temp }}/*-red.log
+            **/target/surefire-reports/TEST-*WorkspaceResolutionFailureTest.xml
+            **/target/surefire-reports/TEST-*WorkspaceProvisioningBoundaryIT.xml
+          retention-days: 14
+          if-no-files-found: error
