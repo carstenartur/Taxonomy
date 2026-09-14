@@ -1,0 +1,61 @@
+name: Reproduce concurrent workspace bootstrap
+on:
+  push:
+    branches: [fix/628-concurrent-bootstrap]
+    paths: [.github/workflows/628-bootstrap-red.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: aa5b1aa7e956e3e56f0616b5885c3f85f16ba582
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Supply unchanged pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Reproduce two invalid implicit responses with a passing explicit-pin control
+        run: |
+          set +e
+          ./mvnw -B -ntp -Dtest=WorkspaceConcurrentBootstrapIT -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/bootstrap-red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,xml.etree.ElementTree as ET
+          path=Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.controller.WorkspaceConcurrentBootstrapIT.xml')
+          if not path.exists():
+              print(Path(os.environ['RUNNER_TEMP'],'bootstrap-red.log').read_text()[-10000:])
+              raise SystemExit('HTTP regression did not execute')
+          root=ET.parse(path).getroot()
+          counts={k:int(root.get(k,'0')) for k in ('tests','failures','errors','skipped')}
+          for case in root.findall('testcase'):
+              for f in case.findall('failure')+case.findall('error'): print(case.get('name'),f.get('message'))
+          print('BOOTSTRAP RED',counts)
+          assert counts==dict(tests=3,failures=2,errors=0,skipped=0),counts
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-concurrent-bootstrap-red
+          path: |
+            ${{ runner.temp }}/bootstrap-red.log
+            taxonomy-app/target/surefire-reports/TEST-*WorkspaceConcurrentBootstrapIT.xml
+          retention-days: 14
+          if-no-files-found: error
