@@ -12,23 +12,23 @@ selected changes to another user's workspace.
 
 | File | What to do |
 |---|---|
-| `taxonomy-app/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java` | Add the new operation method |
-| `taxonomy-app/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java` | Add the new REST endpoint |
+| `taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java` | Add the new operation method |
+| `taxonomy-workspace/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java` | Add the new REST endpoint |
 
 ---
 
 ## Files usually touched
 
-- `taxonomy-app/…/workspace/service/WorkspaceManager.java` — orchestrates the operation
-- `taxonomy-app/…/workspace/controller/WorkspaceController.java` — REST endpoint
-- `taxonomy-app/…/workspace/service/WorkspaceResolver.java` — if the operation needs
+- `taxonomy-workspace/…/workspace/service/WorkspaceManager.java` — orchestrates the operation
+- `taxonomy-workspace/…/workspace/controller/WorkspaceController.java` — REST endpoint
+- `taxonomy-workspace/…/workspace/service/WorkspaceResolver.java` — if the operation needs
   to resolve a workspace by name or context
-- `taxonomy-app/…/workspace/service/WorkspaceProjectionService.java` — if the operation
+- `taxonomy-workspace/…/workspace/service/WorkspaceProjectionService.java` — if the operation
   produces a new projected view
 - `taxonomy-domain/…/dto/WorkspaceInfo.java` — if the operation returns new workspace metadata
-- `taxonomy-app/…/versioning/service/VersioningFacade.java` — if the operation involves
+- `taxonomy-workspace/…/versioning/service/VersioningFacade.java` — if the operation involves
   DSL content or Git operations (branching, merging, cherry-picking)
-- `taxonomy-app/…/versioning/service/SelectiveTransferService.java` — for cherry-pick style transfers between workspaces
+- `taxonomy-workspace/…/versioning/service/SelectiveTransferService.java` — for cherry-pick style transfers between workspaces
 
 ---
 
@@ -84,12 +84,16 @@ New workspace operations typically follow the pattern
 ## Tests to run
 
 ```bash
-# App module unit tests
-./mvnw test -pl taxonomy-app
+# Workspace and application unit tests, including their required reactor modules
+./mvnw test -pl taxonomy-app -am
 
 # Full verify if you changed the UI or application configuration
 ./mvnw verify -DexcludedGroups="real-llm"
 ```
+
+`taxonomy-app` depends on `taxonomy-workspace`; `-am` includes the workspace
+library and its unit tests instead of requiring preinstalled sibling artifacts.
+Application-level endpoint, persistence and restart tests remain in `taxonomy-app`.
 
 Relevant test classes:
 - `WorkspaceControllerTest` — endpoint status codes, response shapes

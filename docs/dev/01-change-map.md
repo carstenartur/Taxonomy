@@ -18,7 +18,7 @@ For the stable extension anchor behind each task, follow the link in the
 | Add a new relation type | `taxonomy-domain`, `taxonomy-app`, `taxonomy-dsl` | `RelationType.java` + `RelationCompatibilityMatrix.java` | `./mvnw test -pl taxonomy-domain -am` + `./mvnw test -pl taxonomy-app -am` | [add-relation-type](tasks/add-relation-type.md) | [Relation types](07-extension-points.md#relation-types-and-compatibility-rules) |
 | Add an architecture view step | `taxonomy-app` | `ArchitecturePipelineStep.java` + `ArchitecturePipelineStepRegistry.java` | `./mvnw test -pl taxonomy-app -am` | [add-architecture-view-step](tasks/add-architecture-view-step.md) | [Pipeline steps](07-extension-points.md#architecture-view-pipeline-steps) |
 | Add a document import mapping | `taxonomy-app` | `DocumentAnalysisService.java` + `DocumentParserService.java` | `./mvnw test -pl taxonomy-app -am` | [add-document-import-mapping](tasks/add-document-import-mapping.md) | [Import profiles / mappings](07-extension-points.md#import-profiles-and-document-mappings) |
-| Add a workspace operation | `taxonomy-app` | `WorkspaceManager.java` + `VersioningFacade.java` | `./mvnw test -pl taxonomy-app -am` | [add-workspace-operation](tasks/add-workspace-operation.md) | [Workspace/versioning](07-extension-points.md#workspace-and-versioning-operations) |
+| Add a workspace operation | `taxonomy-workspace`, `taxonomy-app` | `WorkspaceManager.java` + `VersioningFacade.java` | `./mvnw test -pl taxonomy-app -am` | [add-workspace-operation](tasks/add-workspace-operation.md) | [Workspace/versioning](07-extension-points.md#workspace-and-versioning-operations) |
 | Add a UI panel | `taxonomy-app` | `resources/templates/index.html` + `static/js/` | `./mvnw verify -DexcludedGroups="real-llm"` | [add-ui-panel](tasks/add-ui-panel.md) | [UI panels](07-extension-points.md#ui-panels) |
 | Add a DSL property | `taxonomy-dsl`, `taxonomy-app` | `TaxDslParser.java` + `TaxDslSerializer.java` | `./mvnw test -pl taxonomy-dsl -am` | [add-dsl-property](tasks/add-dsl-property.md) | [DSL grammar / properties](07-extension-points.md#dsl-grammar-and-property-additions) |
 
@@ -41,7 +41,7 @@ Use this index if you have already located a file and want to find the relevant 
 | `taxonomy-app/…/export/controller/` | [add-export-format](tasks/add-export-format.md) |
 | `taxonomy-app/…/provenance/service/` | [add-document-import-mapping](tasks/add-document-import-mapping.md) |
 | `taxonomy-app/…/relations/service/` | [add-relation-type](tasks/add-relation-type.md) |
-| `taxonomy-app/…/workspace/service/` | [add-workspace-operation](tasks/add-workspace-operation.md) |
+| `taxonomy-workspace/…/workspace/service/` | [add-workspace-operation](tasks/add-workspace-operation.md) |
 | `resources/templates/index.html` | [add-ui-panel](tasks/add-ui-panel.md) |
 | `resources/static/js/` | [add-ui-panel](tasks/add-ui-panel.md) |
 | `resources/prompts/` | [add-llm-provider](tasks/add-llm-provider.md) |
