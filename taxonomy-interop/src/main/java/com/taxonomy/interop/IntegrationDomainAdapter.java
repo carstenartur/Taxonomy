@@ -78,7 +78,7 @@ public class IntegrationDomainAdapter {
             if (baseline.kind() == ArtifactKind.REQUIREMENT && mapping.requirementId() != null) {
                 RequirementData requirement = byId.get(mapping.requirementId());
                 if (requirement == null || requirement.archived()) continue;
-                current = new Artifact(baseline.id(), baseline.kind(), baseline.type(), requirement.title(), requirement.currentVersion().text(), baseline.attributes(), baseline.extensions());
+                current = new Artifact(baseline.id(), baseline.kind(), baseline.type(), requirement.title(), requirement.requireCurrentVersion().text(), baseline.attributes(), baseline.extensions());
             } else if (baseline.kind() == ArtifactKind.ELEMENT || baseline.kind() == ArtifactKind.VIEW) {
                 String kind = baseline.kind() == ArtifactKind.ELEMENT ? "element" : "view";
                 BlockAst block = blocks.get(kind + ":" + mapping.businessIdentity()); if (block == null) continue;
@@ -115,7 +115,7 @@ public class IntegrationDomainAdapter {
             pruneConnections(items, losses);
         }
         InternalState state = new InternalState(context.repositoryId(), document.state().workspaceScopeKey(), context.branch(), document.state().commitId(),
-                document.state().semanticRevision(), connection.projectId(), json.fingerprint(requirements.stream().map(r -> List.of(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList()));
+                document.state().semanticRevision(), connection.projectId(), json.fingerprint(requirements.stream().map(r -> java.util.Arrays.asList(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList()));
         return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses));
     }
 
@@ -154,7 +154,7 @@ public class IntegrationDomainAdapter {
                         : oslc ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
                         : "taxonomy-requirement-" + requirement.id();
                 Artifact artifact = new Artifact(id, ArtifactKind.REQUIREMENT, oslc ? OslcRdf.RM + "Requirement" : "taxonomy-object", requirement.title(),
-                        requirement.currentVersion().text(), Map.of(), Map.of()); items.put(ExchangeItems.key(artifact), artifact); added.add(artifact);
+                        requirement.requireCurrentVersion().text(), Map.of(), Map.of()); items.put(ExchangeItems.key(artifact), artifact); added.add(artifact);
             }
             if (connection.connectorId().equals(ReqifExchangeCodec.PROFILE) && previous != null && !added.isEmpty()) {
                 // Local additions have their own stable specification; imported multi-level hierarchies stay intact.
@@ -303,7 +303,7 @@ public class IntegrationDomainAdapter {
             return new AppliedRequirement(created.requirementKey(), created.id());
         }
         RequirementData before = projects.getRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context));
-        boolean textChanged = !before.currentVersion().text().equals(value.text());
+        boolean textChanged = !before.requireCurrentVersion().text().equals(value.text());
         boolean requiresReview = textChanged || before.archived();
         if (!before.title().equals(value.title()) || requiresReview)
             projects.updateRequirement(connection.projectId(), previous.requirementId(), value.title(), requiresReview, context.username(), workspace(context));

@@ -17,6 +17,18 @@ public interface IntegrationPortfolioPort {
                            Long currentVersionId, Instant updatedAt, VersionData currentVersion) {
         public boolean archived() { return "ARCHIVED".equals(status); }
         public boolean approved() { return "APPROVED".equals(status); }
+        /**
+         * Content operations require a readable version. Optional status, version
+         * identity and timestamps remain unchanged; absent content must never be
+         * exported as empty text or mistaken for a deleted requirement.
+         */
+        public VersionData requireCurrentVersion() {
+            if (currentVersion == null || currentVersion.text() == null) {
+                throw new IntegrationProblem("REQUIREMENT_VERSION_UNAVAILABLE", 409,
+                        "Requirement has no readable current version; repair it before exchanging content");
+            }
+            return currentVersion;
+        }
     }
     record RequirementsPage(List<RequirementData> requirements, boolean hasNext) {}
     record ImportProvenance(String sectionReference, String originalText) {}
