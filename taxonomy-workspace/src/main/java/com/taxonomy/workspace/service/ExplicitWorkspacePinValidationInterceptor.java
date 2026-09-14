@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
+import org.springframework.web.method.HandlerMethod;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 /**
@@ -30,6 +31,16 @@ public class ExplicitWorkspacePinValidationInterceptor implements HandlerInterce
                              Object handler) {
         String requestedWorkspaceId = explicitWorkspaceId(request);
         if (requestedWorkspaceId == null) {
+            return true;
+        }
+
+        if (handler instanceof HandlerMethod method
+                && method.hasMethodAnnotation(WorkspaceLifecycleOperation.class)) {
+            var metadata = workspaceResolver.resolveCurrentWorkspaceMetadata();
+            if (metadata == null || !requestedWorkspaceId.equals(metadata.getWorkspaceId())) {
+                throw new AccessDeniedException(
+                        "Pinned workspace does not match the resolved lifecycle metadata");
+            }
             return true;
         }
 
