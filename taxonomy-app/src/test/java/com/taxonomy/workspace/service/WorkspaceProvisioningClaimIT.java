@@ -30,6 +30,8 @@ import static org.mockito.Mockito.*;
 class WorkspaceProvisioningClaimIT {
     @Autowired private UserWorkspaceRepository repository;
     @Autowired private SystemRepositoryService repositories;
+    @Autowired private WorkspaceManager managedWorkspaceManager;
+    @Autowired private org.springframework.transaction.PlatformTransactionManager transactions;
 
     @Test
     void twoInstancesCannotBothClaimTheSameUnprovisionedRow() throws Exception {
@@ -79,6 +81,40 @@ class WorkspaceProvisioningClaimIT {
             assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
             assertEquals(base, retained.getCurrentCommit());
             assertNull(retained.getProvisioningError());
+        } finally {
+            repository.findByWorkspaceId(id).ifPresent(repository::delete);
+        }
+    }
+
+    @Test
+    void defaultProvisioningDoesNotInheritAReadOnlyCallerTransaction() {
+        String id = UUID.randomUUID().toString();
+        var workspace = new UserWorkspace();
+        workspace.setWorkspaceId(id);
+        workspace.setUsername("readonly-provision-owner");
+        workspace.setDisplayName(id);
+        workspace.setCreatedAt(Instant.now());
+        workspace.setDefault(true);
+        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        repository.saveAndFlush(workspace);
+        try {
+            var readOnly = new org.springframework.transaction.support.TransactionTemplate(transactions);
+            readOnly.setReadOnly(true);
+            UserWorkspace result = assertDoesNotThrow(() -> readOnly.execute(status -> {
+                assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isCurrentTransactionReadOnly());
+                var ready = managedWorkspaceManager.provisionDefaultWorkspaceRepository(
+                        workspace.getUsername(), id);
+                assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isCurrentTransactionReadOnly());
+                return ready;
+            }));
+            assertNotNull(result);
+            assertEquals(WorkspaceProvisioningStatus.READY, result.getProvisioningStatus());
+            var retained = repository.findByWorkspaceId(id).orElseThrow();
+            assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
+            assertNotNull(retained.getCurrentCommit());
+            assertEquals("draft", retained.getCurrentBranch());
         } finally {
             repository.findByWorkspaceId(id).ifPresent(repository::delete);
         }

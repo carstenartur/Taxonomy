@@ -88,7 +88,15 @@ public class WorkspaceController {
             return ResponseEntity.ok(workspaceManager.getWorkspaceMetadataInfo(
                     workspaceResolver.resolveCurrentWorkspaceMetadata()));
         }
-        return ResponseEntity.ok(workspaceManager.getWorkspaceInfo(user));
+        WorkspaceInfo info = workspaceManager.getWorkspaceInfo(user);
+        // The browser pins the identity returned here. Finish the existing
+        // implicit-default initialization before publishing that initial pin.
+        // Explicit pins above and non-default/failed metadata remain recovery paths.
+        if (info != null && info.isDefault() && "NOT_PROVISIONED".equals(info.provisioningStatus())) {
+            workspaceResolver.resolveCurrentRepositoryContext();
+            info = workspaceManager.getWorkspaceInfo(user);
+        }
+        return ResponseEntity.ok(info);
     }
 
     @GetMapping("/active")

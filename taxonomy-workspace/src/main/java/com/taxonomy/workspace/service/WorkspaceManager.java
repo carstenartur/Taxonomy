@@ -13,6 +13,10 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -44,6 +48,14 @@ public class WorkspaceManager {
     private final SystemRepositoryService systemRepositoryService;
     private final DslGitRepository gitRepository;
     private final DslGitRepositoryFactory repositoryFactory;
+    private TransactionTemplate provisioningOutsideReadOnlyTransaction;
+
+    @Autowired
+    void configureProvisioningTransactions(PlatformTransactionManager transactions) {
+        provisioningOutsideReadOnlyTransaction = new TransactionTemplate(transactions);
+        provisioningOutsideReadOnlyTransaction.setPropagationBehavior(
+                TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
+    }
 
     /** Active workspace states keyed by workspace ID. */
     private final ConcurrentMap<String, UserWorkspaceState> activeWorkspaces =
@@ -441,6 +453,18 @@ public class WorkspaceManager {
                     "Workspace provisioning is already running or its state is unavailable");
         }
 
+        // Lazy first use may be reached from a read-only report/query. Suspend
+        // only that transaction so each repository write owns a writable boundary;
+        // keep existing writable callers joined, including atomic integration flows.
+        if (TransactionSynchronizationManager.isCurrentTransactionReadOnly()) {
+            if (provisioningOutsideReadOnlyTransaction == null) {
+                throw new IllegalStateException("Provisioning transaction boundary is not configured");
+            }
+            String workspaceId = workspace.getWorkspaceId();
+            return provisioningOutsideReadOnlyTransaction.execute(status ->
+                    provisionWorkspaceRepository(username,
+                            workspaceRepository.findByWorkspaceId(workspaceId).orElse(null), targetBranch));
+        }
         int claimed = workspaceRepository.claimProvisioning(workspace.getWorkspaceId(), username,
                 WorkspaceProvisioningStatus.PROVISIONING,
                 List.of(WorkspaceProvisioningStatus.NOT_PROVISIONED, WorkspaceProvisioningStatus.FAILED));
