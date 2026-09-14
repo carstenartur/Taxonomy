@@ -57,7 +57,12 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
             throw new IllegalStateException(
                     "Workspace context resolver returned null for a workspace-scoped operation");
         }
-        if (WorkspaceContext.SHARED.equals(workspaceContext)) {
+        // RepositoryContext permits a workspace ID only for WORKSPACE scope.
+        // Central contexts now carry real repository/user identities and no
+        // longer equal the legacy SHARED sentinel, so validate isolation itself.
+        if (repositoryContext.workspaceId() == null
+                || workspaceContext.workspaceId() == null
+                || workspaceContext.workspaceId().isBlank()) {
             throw new IllegalStateException(
                     "Authenticated workspace-scoped operation did not resolve an isolated workspace");
         }
