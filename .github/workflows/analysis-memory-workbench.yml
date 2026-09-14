@@ -4,7 +4,7 @@ on:
     branches: [workbench/analysis-memory-live-progress-20260914]
     paths: [.github/workflows/analysis-memory-workbench.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
   regression:
     runs-on: ubuntu-latest
@@ -20,48 +20,56 @@ jobs:
         with:
           path: candidate
           ref: 29b9ef036882f5dbfc62924d9aca63038c098d4e
-          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Install behavioral reproductions only
+      - name: Install regressions and targeted implementation
         working-directory: candidate
         run: |
           test "$(git rev-parse HEAD)" = 29b9ef036882f5dbfc62924d9aca63038c098d4e
           python ../tools/.github/scripts/analysis-memory-tests.py
-      - name: Run RED and existing controls
+          python ../tools/.github/scripts/analysis-memory-implementation.py
+          git diff --check
+      - name: Run GREEN and existing analysis controls
         working-directory: candidate
         run: |
-          set +e
           set -o pipefail
-          ./mvnw -B -pl taxonomy-app -am -Dtest=HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,StreamRequirementAnalysisUseCaseTest -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee "$RUNNER_TEMP/analysis-red.log"
-          code=${PIPESTATUS[0]}
-          echo "Maven exit=$code"
-          test "$code" -ne 0 || exit 1
+          ./mvnw -B -pl taxonomy-app -am '-Dtest=HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,StreamRequirementAnalysisUseCaseTest,LlmService*' -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee "$RUNNER_TEMP/analysis-green.log"
           python - <<'PY'
           from pathlib import Path
           from xml.etree import ElementTree as E
           reports=list(Path('taxonomy-app/target/surefire-reports').glob('TEST-*.xml'))
-          assert len(reports)==5, [p.name for p in reports]
           totals=[0,0,0,0]
           for p in reports:
-              root=E.parse(p).getroot()
-              values=[int(root.get(k,0)) for k in ('tests','failures','errors','skipped')]
-              print(root.get('name'), values)
-              totals=[a+b for a,b in zip(totals,values)]
+              r=E.parse(p).getroot()
+              v=[int(r.get(k,0)) for k in ('tests','failures','errors','skipped')]
+              print(r.get('name'), v)
+              totals=[a+b for a,b in zip(totals,v)]
           print('TOTAL tests/failures/errors/skipped:',totals)
-          assert totals[1:]==[5,0,0], totals
+          assert totals[0]>=50 and totals[1:]==[0,0,0], totals
           PY
       - name: Run browser ordering controls
         working-directory: candidate
         run: node --test .github/scripts/analysis-operation-controller.test.mjs
+      - name: Publish tested source only to dedicated fix branch
+        working-directory: candidate
+        run: |
+          git fetch origin fix/analysis-memory-live-progress
+          test "$(git rev-parse FETCH_HEAD)" = 29b9ef036882f5dbfc62924d9aca63038c098d4e
+          git add taxonomy-app/src/main/java/com/taxonomy/AppConfig.java taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmDetailAccumulator.java taxonomy-app/src/main/resources/application-hsqldb-file.properties taxonomy-app/src/test/java/com/taxonomy/analysis/runtime/HsqldbFileProfileTest.java taxonomy-app/src/test/java/com/taxonomy/analysis/runtime/AnalysisCapacityTest.java taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmTranscriptBoundsTest.java docs/de/CONFIGURATION_REFERENCE.md docs/en/CONFIGURATION_REFERENCE.md .env.example
+          git diff --cached --check
+          git -c user.name='OpenAI Assistant' -c user.email='assistant@openai.com' commit -m 'fix(analysis): bound diagnostic retention and add disk-backed local profile'
+          git rev-parse HEAD HEAD^{tree} | tee "$RUNNER_TEMP/analysis-source-identity.txt"
+          git show --stat --oneline
+          git push origin HEAD:refs/heads/fix/analysis-memory-live-progress
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: analysis-red-evidence
+          name: analysis-storage-green-evidence
           path: |
-            ${{ runner.temp }}/analysis-red.log
+            ${{ runner.temp }}/analysis-green.log
+            ${{ runner.temp }}/analysis-source-identity.txt
             candidate/**/target/surefire-reports/*.xml
           retention-days: 7
