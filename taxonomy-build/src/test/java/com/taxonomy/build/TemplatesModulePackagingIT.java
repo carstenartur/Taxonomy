@@ -34,9 +34,19 @@ class TemplatesModulePackagingIT {
             assertThat(names).doesNotContain("BOOT-INF/classes/document-templates/decision-rationale-report.dotx");
             assertThat(names).anyMatch(n -> n.startsWith("BOOT-INF/classes/db/migration/"));
             var entries = new HashSet<String>();
-            try (var library = new ZipInputStream(jar.getInputStream(jar.getEntry(libraries.getFirst())))) {
-                for (var entry = library.getNextEntry(); entry != null; entry = library.getNextEntry()) {
-                    entries.add(entry.getName());
+            for (String name : names) {
+                if (!name.startsWith("BOOT-INF/lib/") || !name.endsWith(".jar")) {
+                    continue;
+                }
+                try (var library = new ZipInputStream(jar.getInputStream(jar.getEntry(name)))) {
+                    for (var entry = library.getNextEntry(); entry != null; entry = library.getNextEntry()) {
+                        String path = entry.getName();
+                        if ((path.startsWith("com/taxonomy/templates/") && path.endsWith(".class"))
+                                || path.equals("document-templates/decision-rationale-report.dotx")) {
+                            assertThat(name).as("library owning %s", path).isEqualTo(libraries.getFirst());
+                            assertThat(entries.add(path)).as("single occurrence of %s", path).isTrue();
+                        }
+                    }
                 }
             }
             assertThat(entries).contains("document-templates/decision-rationale-report.dotx",

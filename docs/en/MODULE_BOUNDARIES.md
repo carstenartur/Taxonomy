@@ -280,25 +280,23 @@ history, DSL document composition, workspace authority, application schema compo
 between the POM and catalog. Full CI verification remains
 `./mvnw -B verify -Pci`.
 
-The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy` and `taxonomy-templates/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.
+The ratchet walks `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`, `taxonomy-templates/src/main/java/com/taxonomy`: every production Java package below these roots must be classified in `.github/architecture-contexts.json`. Only `taxonomy-app` may contain root-package Java files, and its composition files must exactly match the explicit allow-list. Extracted feature modules reject every root-package Java file, including a copied composition-class name or `package-info.java`.
 
 The ratchet is intentionally a **current-state baseline, not an ideal-direction allowlist**. Architectural direction is improved by explicit port/refactoring PRs and then locked in monotonically.
 
 ## Migration order
 
-Issue #628 is the implementation parent. The intended order is:
+Issue #628 remains the implementation parent. Extraction follows each candidate's actual dependencies; cycles in unrelated contexts do not block an independent library. The status below describes the code in this revision, not the merge status of a pull request.
 
-1. freeze the context map and dependency ratchet;
-2. remove concrete editor/workspace/versioning coupling and expose narrow ports;
-3. remove knowledge/search package cycles;
-4. remove architecture/export/analysis cycles;
-5. extract `taxonomy-workspace`;
-6. extract `taxonomy-knowledge`;
-7. extract `taxonomy-interop` and `taxonomy-templates` in independently reviewable changes;
-8. extract architecture/analysis/portfolio only after their dependency direction is stable;
-9. reassess `provenance` and `preferences` from the measured dependency graph rather than module-count aesthetics.
+1. Context map and dependency ratchet — implemented.
+2. Workspace authority and storage ownership — separated from application orchestration.
+3. `taxonomy-workspace` — physically extracted in this revision.
+4. `taxonomy-templates` — physically extracted in this revision.
+5. `taxonomy-knowledge` and `taxonomy-interop` — pending; stabilize their owned APIs and remove blocking implementation dependencies.
+6. `taxonomy-architecture`, `taxonomy-analysis` and `taxonomy-portfolio` — pending; resolve their remaining cycles before each extraction.
+7. Reassess `provenance` and `preferences` after those boundaries are stable.
 
-Physical Maven moves therefore come **after** logical boundaries are enforceable. This keeps each PR reviewable and avoids hiding existing coupling behind new POM dependencies.
+Every extracted feature library must remain independent of `taxonomy-app`; the application is the only deployment/composition root.
 
 ## Physical workspace module
 
