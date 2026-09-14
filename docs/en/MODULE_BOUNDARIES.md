@@ -6,7 +6,7 @@ The machine-readable source of truth for the planned extraction contexts is `.gi
 
 ## Current Maven reactor
 
-The root reactor currently contains eight modules with different roles:
+The root reactor currently contains nine modules with different roles:
 
 | Module | Current role |
 |---|---|
@@ -15,6 +15,7 @@ The root reactor currently contains eight modules with different roles:
 | `taxonomy-dsl` | Framework-free TaxDSL parser, model, validation, differ and command logic |
 | `taxonomy-export` | Framework-free diagram/export contracts and implementations |
 | `taxonomy-extension-api` | Framework-free common extension contracts |
+| `taxonomy-workspace` | Workspace authority, versioning, semantic editor history and JGit storage |
 | `taxonomy-app` | Executable Spring Boot application and, currently, most Spring-aware feature implementations |
 | `taxonomy-coverage` | Reactor-wide coverage aggregation |
 | `taxonomy-build` | Build policy and browser/verification contracts |
