@@ -6,7 +6,7 @@ Die maschinenlesbare Quelle für die geplanten Extraktionskontexte ist `.github/
 
 ## Aktueller Maven-Reactor
 
-Der Root-Reactor enthält derzeit acht Module mit unterschiedlichen Aufgaben:
+Der Root-Reactor enthält derzeit neun Module mit unterschiedlichen Aufgaben:
 
 | Modul | Aktuelle Aufgabe |
 |---|---|
@@ -15,6 +15,7 @@ Der Root-Reactor enthält derzeit acht Module mit unterschiedlichen Aufgaben:
 | `taxonomy-dsl` | Frameworkfreier TaxDSL-Parser, Modell, Validierung, Differ und Command-Logik |
 | `taxonomy-export` | Frameworkfreie Diagramm-/Export-Verträge und Implementierungen |
 | `taxonomy-extension-api` | Frameworkfreie gemeinsame Extension-Verträge |
+| `taxonomy-workspace` | Workspace-Zuständigkeit, Versionierung, semantische Editor-Historie und JGit-Speicher |
 | `taxonomy-app` | Ausführbare Spring-Boot-Anwendung und derzeit der Großteil der Spring-basierten Feature-Implementierungen |
 | `taxonomy-coverage` | Reactor-weite Coverage-Aggregation |
 | `taxonomy-build` | Build-Policy sowie Browser-/Verifikationsverträge |

@@ -121,7 +121,7 @@ done
 printf '%s\n' "${required_reports[@]}" > "$evidence_dir/required-reports.txt"
 
 "${maven[@]}" -B -ntp -nsu \
-  -pl taxonomy-app \
+  -pl taxonomy-app -am \
   -Dincludes=io.github.carstenartur \
   -DoutputType=text \
   -DoutputFile="$PWD/$evidence_dir/dependency-tree.txt" \
