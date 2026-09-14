@@ -1,0 +1,228 @@
+name: Verify concurrent default workspace readiness
+on:
+  push:
+    branches: [fix/628-concurrent-default-readiness]
+    paths: [.github/workflows/628-concurrent-readiness.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: a339904754546eb9f9ac0e5b070666566e21c7cc
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Require the four intended concurrent-reader failures
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/readiness/red"
+          set +e
+          ./mvnw -B -ntp -Dtest=WorkspaceConcurrentDefaultInitializationTest -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/readiness/red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, shutil, xml.etree.ElementTree as ET
+          p=Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceConcurrentDefaultInitializationTest.xml')
+          if not p.exists():
+              print(Path(os.environ['RUNNER_TEMP'],'readiness/red.log').read_text()[-8000:])
+              raise SystemExit('Regression did not execute')
+          root=ET.parse(p).getroot()
+          result={k:int(root.get(k,'0')) for k in ('tests','failures','errors','skipped')}
+          for case in root.findall('testcase'):
+              for failure in case.findall('failure')+case.findall('error'): print(case.get('name'), failure.get('message'))
+          print('READINESS RED',result)
+          assert result==dict(tests=6,failures=4,errors=0,skipped=0),result
+          shutil.copy2(p,Path(os.environ['RUNNER_TEMP'],'readiness/red',p.name))
+          PY
+      - name: Join an ongoing implicit initialization without retrying its failure
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess, os
+          def sha(path): return subprocess.check_output(['git','hash-object',path],text=True).strip()
+          root='taxonomy-workspace/src/main/java/com/taxonomy/workspace/'
+          controller=root+'controller/WorkspaceController.java'
+          resolver=root+'service/WorkspaceContextResolver.java'
+          manager=root+'service/WorkspaceManager.java'
+          test='taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceConcurrentDefaultInitializationTest.java'
+          expected={controller:('cce6c0977cf0407a23a6dd3fa68d749d0edf727c','cde623ad0f43d2342fbdf8ffbb362b971e4083de'),resolver:('0510c54ceb5ebf3e96ca6f8c7105593757e594a5','781169e8ac4c0b89ae0764eb045aa2a78bccbaa6'),manager:('67706307a0a77128e8e7029d37d10a7a59f26697','0622ce6092c75a01c26ab40b54c4fdf36ddbfd10')}
+          for path,(before,after) in expected.items(): assert sha(path)==before,path
+          assert sha(test)=='62ddcfb7697704f7c80b39409d5b58c08f6c67d0'
+          def replace(path,old,new):
+              p=Path(path); text=p.read_text(); assert text.count(old)==1,(path,old)
+              p.write_text(text.replace(old,new))
+          replace(controller,'        if (info != null && info.isDefault() && "NOT_PROVISIONED".equals(info.provisioningStatus())) {','        if (info != null && info.isDefault()\n                && ("NOT_PROVISIONED".equals(info.provisioningStatus())\n                || "PROVISIONING".equals(info.provisioningStatus()))) {')
+          replace(resolver,'        // Explicit tab pins and failed/in-progress attempts require lifecycle recovery.\n        if (workspace != null && workspace.isDefault() && requestedWorkspaceId() == null\n                && workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED) {','        // Join this manager\'s ongoing initialization before re-reading readiness.\n        // Explicit pins and failed attempts still require lifecycle recovery.\n        if (workspace != null && workspace.isDefault() && requestedWorkspaceId() == null\n                && (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED\n                || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING)) {')
+          anchor='            throw new AccessDeniedException("No automatic default workspace was selected");\n        }\n'
+          insert='        // A concurrent implicit reader may have observed PROVISIONING before\n        // obtaining this monitor. Re-read here, but never turn the winner\'s\n        // failure into an unrequested automatic retry.\n        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.FAILED) {\n            throw new ResponseStatusException(HttpStatus.CONFLICT,\n                    "Default workspace initialization failed; retry provisioning explicitly");\n        }\n'
+          replace(manager,anchor,anchor+insert)
+          for path,(before,after) in expected.items(): assert sha(path)==after,path
+          paths=[*expected,test]
+          subprocess.run(['git','add','--',*paths],check=True)
+          actual=subprocess.check_output(['git','diff','--cached','--name-only','fbef12de05f902d239220924c6cff03787a2744a'],text=True).splitlines()
+          assert sorted(actual)==sorted(paths),actual
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          out=Path(os.environ['RUNNER_TEMP'],'readiness')
+          (out/'source.patch').write_bytes(subprocess.check_output(['git','diff','--cached','fbef12de05f902d239220924c6cff03787a2744a']))
+          (out/'tree.txt').write_text(subprocess.check_output(['git','write-tree'],text=True).strip())
+          print('CANDIDATE TREE',(out/'tree.txt').read_text())
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - run: bash .github/scripts/download-embedding-model.sh
+      - name: Run all affected first-use, provenance and lifecycle tests
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceInitialSyncBaseTest,WorkspaceInitialSyncBaseBoundaryTest,WorkspaceProvisioningSnapshotTest,WorkspaceProvisioningSourceTest,WorkspaceProvisioningClaimIT,WorkspaceProvisioningBoundaryIT,WorkspaceManagerProvisioningTest,WorkspaceManagerBehaviorTest,WorkspaceRepositoryIsolationTest,ArchitectureReportTests,GitNativeSyncMetadataBoundaryTest,GitNativeSyncIntegrationServiceTest,WorkspaceConcurrentDefaultInitializationTest,WorkspaceResolutionFailureTest,WorkspaceImplicitSelectionTest,WorkspaceContextResolverRequestPinningTest test > "$RUNNER_TEMP/readiness/green.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/readiness/green.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,shutil,xml.etree.ElementTree as ET
+          names='WorkspaceInitialSyncBaseTest WorkspaceInitialSyncBaseBoundaryTest WorkspaceProvisioningSnapshotTest WorkspaceProvisioningSourceTest WorkspaceProvisioningClaimIT WorkspaceProvisioningBoundaryIT WorkspaceManagerProvisioningTest WorkspaceManagerBehaviorTest WorkspaceRepositoryIsolationTest ArchitectureReportTests GitNativeSyncMetadataBoundaryTest GitNativeSyncIntegrationServiceTest WorkspaceConcurrentDefaultInitializationTest WorkspaceResolutionFailureTest WorkspaceImplicitSelectionTest WorkspaceContextResolverRequestPinningTest'.split()
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          out=Path(os.environ['RUNNER_TEMP'],'readiness/green');out.mkdir()
+          for name in names:
+              paths=list(Path('.').glob('*/target/surefire-reports/TEST-*.'+name+'.xml'));assert len(paths)==1,(name,paths)
+              root=ET.parse(paths[0]).getroot()
+              counts={k:int(root.get(k,'0')) for k in total}
+              assert counts['tests']>0 and counts['failures']==counts['errors']==counts['skipped']==0,(name,counts)
+              for k in total:total[k]+=counts[k]
+              shutil.copy2(paths[0],out/paths[0].name)
+              print(name,counts)
+          assert total==dict(tests=122,failures=0,errors=0,skipped=0),total
+          print('READINESS GREEN',total)
+          PY
+      - name: Retain exactly the verified Java blobs without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,json,subprocess
+          paths=subprocess.check_output(['git','diff','--cached','--name-only','fbef12de05f902d239220924c6cff03787a2744a'],text=True).splitlines()
+          assert len(paths)==4 and all(p.endswith('.java') for p in paths)
+          entries=[]
+          for path in paths:
+              sha=subprocess.check_output(['git','hash-object',path],text=True).strip()
+              blob=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=json.dumps({'content':Path(path).read_text(),'encoding':'utf-8'}),text=True))
+              assert blob['sha']==sha
+              entries.append(dict(path=path,sha=sha,mode='100644',type='blob'))
+          out=Path(os.environ['RUNNER_TEMP'],'readiness')
+          manifest=dict(base='fbef12de05f902d239220924c6cff03787a2744a',tree=(out/'tree.txt').read_text(),files=entries)
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          print('VERIFIED MANIFEST',json.dumps(manifest))
+          # Preserve only the missing Git object delta for offline source review.
+          subprocess.run(['git','bundle','create',str(out/'source-delta.bundle'),'2c39aaf9..HEAD'],check=True)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: concurrent-readiness-focused
+          path: ${{ runner.temp }}/readiness
+          retention-days: 14
+          if-no-files-found: error
+  acceptance:
+    needs: focused
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [default, browser]
+    env:
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fbef12de05f902d239220924c6cff03787a2744a
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Apply and verify the exact four-file candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -R carstenartur/Taxonomy -n concurrent-readiness-focused -D "$RUNNER_TEMP/verified"
+          git apply --index "$RUNNER_TEMP/verified/source.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,json,subprocess
+          manifest=json.loads(Path(os.environ['RUNNER_TEMP'],'verified/manifest.json').read_text())
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==manifest['tree']
+          print('EXACT ACCEPTANCE TREE',manifest['tree'])
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        if: matrix.lane == 'default'
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Execute complete clean default verification
+        if: matrix.lane == 'default'
+        run: |
+          bash .github/scripts/download-embedding-model.sh
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/readiness-default.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/readiness-default.log"; exit 1; }
+      - name: Install existing browser and rendering prerequisites
+        if: matrix.lane == 'browser'
+        run: |
+          docker info > /dev/null
+          sudo apt-get update -qq
+          sudo apt-get install --yes --no-install-recommends libreoffice-writer poppler-utils > "$RUNNER_TEMP/readiness-browser-prerequisites.log" 2>&1
+          ./mvnw -B -ntp -pl taxonomy-tooling,taxonomy-build -am install -DskipTests -Dtaxonomy.ui.skip=true -Dtaxonomy.quality.skip=true > "$RUNNER_TEMP/readiness-browser-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/readiness-browser-build.log"; exit 1; }
+          ./mvnw -B -ntp -pl taxonomy-build pre-integration-test -Dtaxonomy.ui.skip=false -Dtaxonomy.quality.skip=true -Dtaxonomy.playwright.install.arguments="exec -- playwright install --with-deps chromium" > "$RUNNER_TEMP/readiness-browser-setup.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/readiness-browser-setup.log"; exit 1; }
+      - name: Execute the unchanged real document-template browser journey
+        if: matrix.lane == 'browser'
+        env:
+          TAXONOMY_RENDER_DOCX_PREVIEW: 'true'
+          TAXONOMY_DOCS_IMAGE_DIR: ${{ github.workspace }}/docs/images
+        run: |
+          ./mvnw -B -ntp -pl taxonomy-build -Pdocument-template-report-e2e verify -Dtaxonomy.node.executable="${GITHUB_WORKSPACE}/taxonomy-build/target/frontend/node/node" > "$RUNNER_TEMP/readiness-browser.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/readiness-browser.log"; exit 1; }
+      - name: Report actual test results and unchanged source
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,json,subprocess,xml.etree.ElementTree as ET
+          totals=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              suite=ET.parse(p).getroot()
+              for k in totals:totals[k]+=int(suite.get(k,'0'))
+          print('ACCEPTANCE ${{ matrix.lane }}',totals)
+          assert totals['tests']>0 and totals['failures']==totals['errors']==0,totals
+          manifest=json.loads(Path(os.environ['RUNNER_TEMP'],'verified/manifest.json').read_text())
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==manifest['tree']
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: concurrent-readiness-${{ matrix.lane }}
+          path: |
+            ${{ runner.temp }}/readiness-*.log
+            ${{ runner.temp }}/verified/manifest.json
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+            target/ui-verification/document-template-report/**
+          retention-days: 14
+          if-no-files-found: error
