@@ -1,0 +1,86 @@
+name: Diagnose exact workspace browser conflicts
+on:
+  push:
+    branches: [fix/628-captured-workspace-snapshot]
+    paths: [.github/workflows/628-browser-conflict-diagnostic.yml]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 2a5175ba99b901f00f0ad4fa38f4df42bdfd60e5
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Add response observation to the unchanged acceptance journey
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('.github/scripts/document-template-local-edit-acceptance.mjs')
+          text=p.read_text()
+          old="    context.on('page', target => {"
+          assert text.count(old)==1
+          observation="""
+                target.on('response', async response => {
+                  if (response.status() !== 409) return;
+                  try {
+                    const request = response.request();
+                    console.log('PROVISIONING_HTTP', JSON.stringify({
+                      path: new URL(response.url()).pathname,
+                      workspace: request.headers()['x-taxonomy-workspace-id'] || null,
+                      method: request.method(), status: response.status(),
+                      body: (await response.text()).slice(0, 3000)
+                    }));
+                  } catch (error) {
+                    console.log('PROVISIONING_HTTP_OBSERVATION_FAILED', String(error));
+                  }
+                });
+          """
+          p.write_text(text.replace(old,old+observation))
+          PY
+      - name: Install the unchanged rendering prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install --yes --no-install-recommends libreoffice-writer poppler-utils > "$RUNNER_TEMP/rendering-setup.log" 2>&1
+      - name: Build the exact production source
+        run: |
+          ./mvnw -B -ntp -pl taxonomy-tooling,taxonomy-build -am install -DskipTests -Dtaxonomy.ui.skip=true -Dtaxonomy.quality.skip=true > "$RUNNER_TEMP/browser-build.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/browser-build.log"; exit 1; }
+      - name: Install pinned Node and Chromium
+        run: |
+          ./mvnw -B -ntp -pl taxonomy-build pre-integration-test -Dtaxonomy.ui.skip=false -Dtaxonomy.quality.skip=true -Dtaxonomy.playwright.install.arguments="exec -- playwright install --with-deps chromium" > "$RUNNER_TEMP/browser-setup.log" 2>&1 || { tail -n 60 "$RUNNER_TEMP/browser-setup.log"; exit 1; }
+      - name: Run the real journey and preserve its exit status
+        env:
+          TAXONOMY_RENDER_DOCX_PREVIEW: 'true'
+          TAXONOMY_DOCS_IMAGE_DIR: ${{ github.workspace }}/docs/images
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-build -Pdocument-template-report-e2e verify -Dtaxonomy.node.executable="${GITHUB_WORKSPACE}/taxonomy-build/target/frontend/node/node" > "$RUNNER_TEMP/browser-conflict.log" 2>&1
+          result=$?
+          set -e
+          python3 - <<'PY'
+          from pathlib import Path
+          import os
+          root=Path('target/ui-verification/document-template-report')
+          for p in root.rglob('*.log'):
+              lines=[l for l in p.read_text(errors='replace').splitlines() if 'PROVISIONING_HTTP' in l]
+              if lines: print(p.name, '\n'+'\n'.join(lines))
+          print('ACCEPTANCE RESULT\n'+'\n'.join(Path(os.environ['RUNNER_TEMP'],'browser-conflict.log').read_text(errors='replace').splitlines()[-30:]))
+          PY
+          exit "$result"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-browser-conflict-diagnostic
+          path: |
+            ${{ runner.temp }}/browser-*.log
+            target/ui-verification/document-template-report/**
+            taxonomy-build/target/failsafe-reports/TEST-*.xml
+          retention-days: 14
+          if-no-files-found: error
