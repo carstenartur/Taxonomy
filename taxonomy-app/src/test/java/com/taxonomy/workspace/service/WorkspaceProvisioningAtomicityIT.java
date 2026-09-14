@@ -151,6 +151,7 @@ class WorkspaceProvisioningAtomicityIT {
         var metadata = new SystemRepository();
         metadata.setRepositoryId("atomic-source");
         metadata.setDefaultBranch("draft");
+        metadata.setTopologyMode(com.taxonomy.workspace.model.RepositoryTopologyMode.INTERNAL_SHARED);
         when(service.getPrimaryRepository()).thenAnswer(invocation -> {
             selections.incrementAndGet();
             return metadata;
