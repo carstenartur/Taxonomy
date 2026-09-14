@@ -31,6 +31,7 @@ jobs:
           test "$(git rev-parse HEAD)" = 29b9ef036882f5dbfc62924d9aca63038c098d4e
           python ../tools/.github/scripts/analysis-memory-tests.py
           python ../tools/.github/scripts/analysis-memory-implementation.py
+          python ../tools/.github/scripts/analysis-memory-corrections.py
           git diff --check
       - name: Run GREEN and existing analysis controls
         working-directory: candidate
@@ -40,9 +41,8 @@ jobs:
           python - <<'PY'
           from pathlib import Path
           from xml.etree import ElementTree as E
-          reports=list(Path('taxonomy-app/target/surefire-reports').glob('TEST-*.xml'))
           totals=[0,0,0,0]
-          for p in reports:
+          for p in Path('taxonomy-app/target/surefire-reports').glob('TEST-*.xml'):
               r=E.parse(p).getroot()
               v=[int(r.get(k,0)) for k in ('tests','failures','errors','skipped')]
               print(r.get('name'), v)
