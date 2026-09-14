@@ -1,0 +1,95 @@
+name: Verify physical module packaging review
+
+on:
+  push:
+    branches: [verification/628-physical-workspace]
+    paths: [.github/workflows/628-packaging-review.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: workspace
+            source: f6ca34c29297f38ca1fce656c893d87645da1841
+            base: 711c48ab7f254dabd0800f1acd1c3318a0fc5b67
+            architectureTests: 29
+          - name: templates
+            source: 3e7fddf0faeae7e30eb6faecb889fb304b899478
+            base: e52b9dd40732a683c954950f1198b523cfe93263
+            architectureTests: 33
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    env:
+      SOURCE_BASE: ${{ matrix.base }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: ${{ matrix.source }}
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Prepare bounded review corrections
+        run: python3 ../control/verification/628-packaging-review.py prepare
+      - name: Verify architecture and build the real Boot application
+        env:
+          EXPECTED_TESTS: ${{ matrix.architectureTests }}
+        run: |
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false clean verify > "$RUNNER_TEMP/architecture.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/architecture.log"; exit 1; }
+          python3 - <<'PY'
+          import os, xml.etree.ElementTree as ET
+          from pathlib import Path
+          totals = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for path in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              root = ET.parse(path).getroot()
+              for key in totals:
+                  totals[key] += int(root.get(key, '0'))
+          assert totals['tests'] == int(os.environ['EXPECTED_TESTS']), totals
+          assert all(totals[k] == 0 for k in ('failures', 'errors', 'skipped')), totals
+          print('COMPLETE ARCHITECTURE', totals)
+          PY
+      - name: Demonstrate old packaging checks accept actual duplicate bytes
+        run: python3 ../control/verification/628-packaging-review.py old
+      - name: Scan every nested library for feature code and resource ownership
+        run: python3 ../control/verification/628-packaging-review.py patch
+      - name: Prove corrected checks reject the same duplicate bytes
+        run: python3 ../control/verification/628-packaging-review.py new
+      - name: Verify original unmodified application passes corrected contracts
+        run: python3 ../control/verification/628-packaging-review.py clean
+      - name: Retain exact verified code without updating branch refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ../control/verification/628-packaging-review.py publish
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: module-packaging-${{ matrix.name }}-review-evidence
+          path: |
+            ${{ runner.temp }}/architecture.log
+            ${{ runner.temp }}/old-*.log
+            ${{ runner.temp }}/new-*.log
+            ${{ runner.temp }}/real-packaging-green.log
+            ${{ runner.temp }}/verified-packaging-change.json
+            source/**/target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
