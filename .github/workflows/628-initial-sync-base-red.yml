@@ -1,0 +1,52 @@
+name: Reproduce initial synchronization base
+on:
+  push:
+    branches: [fix/628-initial-sync-base]
+    paths: [.github/workflows/628-initial-sync-base-red.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: fd4d7049a5f8a0e5e5f123ea6925435ca5961fa6
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Require both actual merge-base failures
+        run: |
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceInitialSyncBaseTest test > "$RUNNER_TEMP/initial-base-red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, xml.etree.ElementTree as ET
+          path=Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceInitialSyncBaseTest.xml')
+          if not path.exists():
+              print(Path(os.environ['RUNNER_TEMP'],'initial-base-red.log').read_text()[-8000:])
+              raise SystemExit('Regression did not execute')
+          root=ET.parse(path).getroot()
+          counts={k:int(root.get(k,'0')) for k in ('tests','failures','errors','skipped')}
+          for case in root.findall('testcase'):
+              for failure in case.findall('failure')+case.findall('error'):
+                  print(case.get('name'),failure.get('message'))
+          print('INITIAL BASE RED',counts)
+          assert counts==dict(tests=2,failures=2,errors=0,skipped=0),counts
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: initial-sync-base-red
+          path: |
+            ${{ runner.temp }}/initial-base-red.log
+            taxonomy-workspace/target/surefire-reports/TEST-*WorkspaceInitialSyncBaseTest.xml
+          retention-days: 14
+          if-no-files-found: error
