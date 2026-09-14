@@ -1,0 +1,45 @@
+name: Prepare verified linear module candidates
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-linear-candidates.yml]
+permissions:
+  contents: read
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: read
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ae88099331ed3606c6c29cec819c36076e99821e
+          path: control
+          persist-credentials: false
+          show-progress: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 619e3550930830359b31c5a70a58a9c8882e768c
+          path: source
+          persist-credentials: false
+          show-progress: false
+      - name: Obtain complete public history quietly
+        working-directory: source
+        run: git fetch --quiet --unshallow origin > "$RUNNER_TEMP/fetch.log" 2>&1
+      - name: Verify source identity, every relocated file history and retain Git objects
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ../control/verification/628-linearize-reviewed-stack.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: verified-linear-module-candidates
+          path: |
+            ${{ runner.temp }}/linear-candidates/manifest.json
+            ${{ runner.temp }}/linear-candidates/*-resolution.patch
+          if-no-files-found: warn
+          retention-days: 7
