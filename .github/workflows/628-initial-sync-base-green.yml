@@ -1,0 +1,236 @@
+name: Verify recorded first synchronization base
+on:
+  push:
+    branches: [fix/628-initial-sync-base]
+    paths: [.github/workflows/628-initial-sync-base-green.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+      actions: read
+    defaults:
+      run:
+        working-directory: source
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 4ac467cb8906c5e1ae0336087e6e31fc389e9c3d
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: dac9aa9899f37f1c69345cec9368da35ba3f75b0
+          path: inputs
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: source/models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('source/.github/scripts/download-embedding-model.sh') }}
+      - name: Copy only the two regression classes and supply the pinned model
+        run: |
+          cp ../inputs/taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceInitialSyncBase*Test.java taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/
+          bash .github/scripts/download-embedding-model.sh
+      - name: Require four intended failures and the existing-tracking control
+        run: |
+          mkdir -p "$RUNNER_TEMP/initial-base-evidence"
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceInitialSyncBaseTest,WorkspaceInitialSyncBaseBoundaryTest test > "$RUNNER_TEMP/initial-base-evidence/red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, shutil, xml.etree.ElementTree as ET
+          out=Path(os.environ['RUNNER_TEMP'],'initial-base-evidence','red-reports'); out.mkdir()
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for name in ('WorkspaceInitialSyncBaseTest','WorkspaceInitialSyncBaseBoundaryTest'):
+              p=Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.'+name+'.xml')
+              if not p.exists():
+                  print(Path(os.environ['RUNNER_TEMP'],'initial-base-evidence','red.log').read_text()[-8000:])
+                  raise SystemExit('Regression did not execute: '+name)
+              root=ET.parse(p).getroot()
+              for k in total: total[k]+=int(root.get(k,'0'))
+              for case in root.findall('testcase'):
+                  for f in case.findall('failure')+case.findall('error'): print(case.get('name'),f.get('message'))
+              shutil.copy2(p,out/p.name)
+          print('COMBINED RED',total)
+          assert total==dict(tests=5,failures=4,errors=0,skipped=0),total
+          PY
+      - name: Use the recorded source commit only when establishing the first base
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess, os
+          path='taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java'
+          assert subprocess.check_output(['git','hash-object',path],text=True).strip()=='bc1e7b4244f5dd654d94aa3475a42a659ef0244a'
+          p=Path(path); text=p.read_text()
+          old='workspaceGit, sourceRepository, sourceBranch, username, userBranch);'
+          assert text.count(old)==2
+          text=text.replace(old,'workspaceGit, sourceRepository, sourceBranch, username, userBranch,\n                workspaceMetadata.getBaseCommit());')
+          old='''    private WorkspaceMergeState initialiseWorkspaceMergeBase(
+                      DslGitRepository workspaceGit,
+                      DslGitRepository sourceRepository,
+                      String sourceBranch,
+                      String username,
+                      String userBranch) throws IOException {'''
+          old=old.replace('                      ','            ')
+          assert text.count(old)==1
+          text=text.replace(old,old.replace('String userBranch) throws IOException {','String userBranch,\n            String baseCommit) throws IOException {'))
+          old='''        String source = valueOrEmpty(sourceRepository.getDslAtHead(sourceBranch));
+                  String seeded = valueOrEmpty(workspaceGit.getDslAtHead(SEEDED_BRANCH));
+                  String commonBase = !seeded.isBlank() ? seeded : source;'''
+          old=old.replace('\n                  ','\n        ')
+          assert text.count(old)==1
+          new='''        String commonBase;
+                  if (baseCommit != null && !baseCommit.isBlank()) {
+                      // Initial provisioning records the exact fork point. A newer source
+                      // HEAD is not the common ancestor of independent local/remote edits.
+                      commonBase = valueOrEmpty(sourceRepository.getDslAtCommit(baseCommit));
+                  } else {
+                      // Preserve the compatibility path for metadata without a fork point.
+                      String source = valueOrEmpty(sourceRepository.getDslAtHead(sourceBranch));
+                      String seeded = valueOrEmpty(workspaceGit.getDslAtHead(SEEDED_BRANCH));
+                      commonBase = !seeded.isBlank() ? seeded : source;
+                  }'''
+          new=new.replace('\n                  ','\n        ')
+          p.write_text(text.replace(old,new))
+          tests=['taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/'+n+'.java' for n in ('WorkspaceInitialSyncBaseTest','WorkspaceInitialSyncBaseBoundaryTest')]
+          subprocess.run(['git','add','--',path,*tests],check=True)
+          actual=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert sorted(actual)==sorted([path,*tests]),actual
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          out=Path(os.environ['RUNNER_TEMP'],'initial-base-evidence')
+          (out/'source.patch').write_bytes(subprocess.check_output(['git','diff','--cached','HEAD']))
+          (out/'tree.txt').write_text(subprocess.check_output(['git','write-tree'],text=True).strip())
+          print('CANDIDATE TREE',(out/'tree.txt').read_text())
+          PY
+      - name: Run first-sync, snapshot, metadata and actual lifecycle contracts together
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceInitialSyncBaseTest,WorkspaceInitialSyncBaseBoundaryTest,WorkspaceProvisioningSnapshotTest,WorkspaceProvisioningSourceTest,WorkspaceProvisioningClaimIT,WorkspaceProvisioningBoundaryIT,WorkspaceManagerProvisioningTest,WorkspaceManagerBehaviorTest,WorkspaceRepositoryIsolationTest,ArchitectureReportTests,GitNativeSyncMetadataBoundaryTest,GitNativeSyncIntegrationServiceTest test > "$RUNNER_TEMP/initial-base-evidence/green.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/initial-base-evidence/green.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, shutil, xml.etree.ElementTree as ET
+          names='WorkspaceInitialSyncBaseTest WorkspaceInitialSyncBaseBoundaryTest WorkspaceProvisioningSnapshotTest WorkspaceProvisioningSourceTest WorkspaceProvisioningClaimIT WorkspaceProvisioningBoundaryIT WorkspaceManagerProvisioningTest WorkspaceManagerBehaviorTest WorkspaceRepositoryIsolationTest ArchitectureReportTests GitNativeSyncMetadataBoundaryTest GitNativeSyncIntegrationServiceTest'.split()
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          out=Path(os.environ['RUNNER_TEMP'],'initial-base-evidence','green-reports'); out.mkdir()
+          for name in names:
+              files=list(Path('.').glob('*/target/surefire-reports/TEST-*.'+name+'.xml'))
+              assert len(files)==1,(name,files)
+              root=ET.parse(files[0]).getroot()
+              counts={k:int(root.get(k,'0')) for k in total}
+              assert counts['tests']>0 and counts['failures']==counts['errors']==counts['skipped']==0,(name,counts)
+              for k in total: total[k]+=counts[k]
+              shutil.copy2(files[0],out/files[0].name)
+              print(name,counts)
+          assert total==dict(tests=75,failures=0,errors=0,skipped=0),total
+          print('COMBINED GREEN',total)
+          PY
+      - name: Retain only the three verified Java blobs without branch changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, subprocess
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==3 and all(p.endswith('.java') for p in paths)
+          entries=[]
+          for path in paths:
+              sha=subprocess.check_output(['git','hash-object',path],text=True).strip()
+              blob=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=json.dumps({'content':Path(path).read_text(),'encoding':'utf-8'}),text=True))
+              assert blob['sha']==sha
+              entries.append({'path':path,'sha':sha,'mode':'100644','type':'blob'})
+          out=Path(os.environ['RUNNER_TEMP'],'initial-base-evidence')
+          manifest={'base':'4ac467cb8906c5e1ae0336087e6e31fc389e9c3d','tree':(out/'tree.txt').read_text(),'files':entries}
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==manifest['tree']
+          print('VERIFIED MANIFEST',json.dumps(manifest))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: initial-sync-base-focused
+          path: ${{ runner.temp }}/initial-base-evidence
+          retention-days: 14
+          if-no-files-found: error
+  full:
+    needs: focused
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 4ac467cb8906c5e1ae0336087e6e31fc389e9c3d
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Apply the exact focused-verified source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -R carstenartur/Taxonomy -n initial-sync-base-focused -D "$RUNNER_TEMP/verified"
+          git apply --index "$RUNNER_TEMP/verified/source.patch"
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,json,subprocess
+          manifest=json.loads(Path(os.environ['RUNNER_TEMP'],'verified','manifest.json').read_text())
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==manifest['tree']
+          for entry in manifest['files']:
+              assert subprocess.check_output(['git','hash-object',entry['path']],text=True).strip()==entry['sha']
+          print('FULL SOURCE',manifest['tree'])
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Supply the existing checksum-pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute complete clean default verification
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/initial-base-full.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/initial-base-full.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,json,subprocess,xml.etree.ElementTree as ET
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root=ET.parse(p).getroot()
+              for k in total: total[k]+=int(root.get(k,'0'))
+          print('FULL DEFAULT',total)
+          assert total['tests']>4000 and total['failures']==total['errors']==0,total
+          manifest=json.loads(Path(os.environ['RUNNER_TEMP'],'verified','manifest.json').read_text())
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==manifest['tree']
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: initial-sync-base-full
+          path: |
+            ${{ runner.temp }}/initial-base-full.log
+            ${{ runner.temp }}/verified/manifest.json
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 14
+          if-no-files-found: error
