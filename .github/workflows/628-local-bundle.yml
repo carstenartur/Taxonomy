@@ -1,0 +1,36 @@
+name: Workspace local checkout
+on:
+  push:
+    branches: [verification/628-physical-workspace]
+    paths: [.github/workflows/628-local-bundle.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 418f59f4585c19808295ea011b67502e9bac0172
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export tracked source with its existing ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 418f59f4585c19808295ea011b67502e9bac0172
+          git bundle create "$RUNNER_TEMP/taxonomy-1062.bundle" HEAD
+          git bundle verify "$RUNNER_TEMP/taxonomy-1062.bundle"
+          git rev-parse HEAD 'HEAD^{tree}' > "$RUNNER_TEMP/source-identity.txt"
+          cd "$RUNNER_TEMP"
+          sha256sum taxonomy-1062.bundle > source.sha256
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: workspace-local-checkout
+          path: |
+            ${{ runner.temp }}/taxonomy-1062.bundle
+            ${{ runner.temp }}/source-identity.txt
+            ${{ runner.temp }}/source.sha256
+          retention-days: 1
+          if-no-files-found: error
