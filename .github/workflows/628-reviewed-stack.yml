@@ -1,0 +1,131 @@
+name: Verify corrected module successor trees
+on:
+  push:
+    branches: [verification/628-review-finalization]
+    paths: [.github/workflows/628-reviewed-stack.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: f977ffa6f71e28d981b34b39333cf1114de4e7b2
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Calculate exact native merges of the bounded correction
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GIT_AUTHOR_NAME: Workspace verification
+          GIT_AUTHOR_EMAIL: verification@users.noreply.github.com
+          GIT_COMMITTER_NAME: Workspace verification
+          GIT_COMMITTER_EMAIL: verification@users.noreply.github.com
+        run: |
+          python3 - <<'PY'
+          import base64,gzip,hashlib,json,os,subprocess
+          from pathlib import Path
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          base='623a8f2887534476f930133c07b229976788a26b'
+          template='31a0409d3eb7c3ecfc5d004c45cd36af32068baa'
+          interop='f977ffa6f71e28d981b34b39333cf1114de4e7b2'
+          for sha in (base,template,interop): git('cat-file','-e',sha+'^{commit}')
+          git('checkout','--detach',base)
+          parts=['35374ddffea7d74fe138f5c19480670e31bf03b1','47c06ff82775e689413d3c6783535fca56df10cb','fcd699b5d4321955c76d08435474661009c6ebe1']
+          data=b''
+          for sha in parts:
+              blob=json.loads(subprocess.check_output(['gh','api','repos/carstenartur/Taxonomy/git/blobs/'+sha],text=True))
+              data+=base64.b64decode(blob['content'])
+          patch=gzip.decompress(data)
+          assert hashlib.sha256(patch).hexdigest()=='bb0207ce0fff88aa4bea9caec54f34be5b93e663b8024f14253cd2edeb9a5724'
+          subprocess.run(['git','apply','--index','--unidiff-zero'],input=patch,check=True)
+          wt=git('write-tree');assert wt=='b88038cb8ab7c994004ec6722030cd5ebe268a99',wt
+          workspace=git('commit-tree',wt,'-p',base,'-m','Local verification-only workspace candidate')
+          tt=git('merge-tree','--write-tree',template,workspace).splitlines()[0]
+          mergedTemplate=git('commit-tree',tt,'-p',template,'-p',workspace,'-m','Local verification-only template integration')
+          it=git('merge-tree','--write-tree',interop,mergedTemplate).splitlines()[0]
+          candidate=git('commit-tree',it,'-p',interop,'-p',mergedTemplate,'-m','Local verification-only interop integration')
+          manifests=[]
+          for label,old,tree in [('templates',template,tt),('interop',interop,it)]:
+              paths=git('diff','--no-renames','--name-only',old,tree).splitlines()
+              assert paths and all(p.endswith('.java') for p in paths),paths
+              assert all(p.startswith(('taxonomy-workspace/','taxonomy-app/src/test/')) for p in paths),paths
+              entries=[]
+              for path in paths:
+                  spec=git('ls-tree',tree,'--',path)
+                  if not spec: entries.append({'path':path,'mode':'100644','type':'blob','sha':None})
+                  else:
+                      mode,kind,sha=spec.split('\t')[0].split()
+                      assert kind=='blob' and mode=='100644'
+                      entries.append({'path':path,'mode':mode,'type':kind,'sha':sha})
+              manifests.append({'module':label,'old_head':old,'base_tree':git('rev-parse',old+'^{tree}'),'tree':tree,'files':entries})
+              print('NATIVE MERGE',label,tree,'changed paths',len(paths))
+          out=Path(os.environ['RUNNER_TEMP'],'stack');out.mkdir()
+          (out/'manifest.json').write_text(json.dumps({'workspace_tree':wt,'successors':manifests},indent=2))
+          git('reset','--hard',candidate)
+          assert git('status','--porcelain')==''
+          print('COMBINED SOURCE',it)
+          PY
+      - name: Supply the existing checksum-pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute affected contracts on the combined three-module application
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceManagerBehaviorTest,RepositoryWorkspaceServiceTest,GitNativeSyncSnapshotRaceTest,WorkspaceInitialSyncBaseBoundaryTest,WorkspaceConcurrentDefaultInitializationTest,WorkspaceInfoFailureTest,WorkspaceInitialSyncBaseTest,RepositoryWorkspaceSnapshotTest,WorkspaceManagerProvisioningTest,WorkspaceProvisioningProvenanceTest,ExpectedHeadDslCommitterTest,DslCapturedBranchTest,GitNativeSyncMetadataBoundaryTest,GitNativeSyncIntegrationServiceTest,WorkspaceLegacyRetryRecoveryTest test > "$RUNNER_TEMP/stack/focused.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/stack/focused.log"; exit 1; }
+          python3 - <<'PY'
+          import os,shutil,xml.etree.ElementTree as ET
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'],'stack','focused-reports');out.mkdir()
+          counts=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              root=ET.parse(p).getroot()
+              for k in counts:counts[k]+=int(root.get(k,'0'))
+              shutil.copy2(p,out/p.name)
+          print('COMBINED AFFECTED CONTRACTS',counts)
+          assert counts==dict(tests=87,failures=0,errors=0,skipped=0),counts
+          PY
+      - name: Verify reactor architecture and ordinary library packaging
+        run: |
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false verify > "$RUNNER_TEMP/stack/architecture.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/stack/architecture.log"; exit 1; }
+          git diff --exit-code
+      - name: Retain exact merged source objects, not generated outputs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          p=Path(os.environ['RUNNER_TEMP'],'stack','manifest.json');manifest=json.loads(p.read_text())
+          seen=set()
+          for successor in manifest['successors']:
+              for entry in successor['files']:
+                  sha=entry['sha']
+                  if sha is None or sha in seen: continue
+                  content=subprocess.check_output(['git','cat-file','blob',sha],text=True)
+                  data=json.dumps({'content':content,'encoding':'utf-8'})
+                  actual=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=data,text=True))
+                  assert actual['sha']==sha
+                  seen.add(sha)
+          print('VERIFIED SUCCESSOR MANIFEST',p.read_text())
+          print('No PR branch has been moved and no review gate has been changed.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: corrected-module-successors
+          path: |
+            ${{ runner.temp }}/stack/
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 14
+          if-no-files-found: error
