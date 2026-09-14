@@ -1,0 +1,33 @@
+name: Read captured snapshot verification evidence
+on:
+  push:
+    branches: [fix/628-captured-workspace-snapshot]
+    paths: [.github/workflows/628-snapshot-evidence-read.yml]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the retained manifest, original JUnit and relevant run identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 34877815598 -R carstenartur/Taxonomy -n captured-snapshot-focused -D "$RUNNER_TEMP/focused"
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, subprocess, xml.etree.ElementTree as ET
+          root=Path(os.environ['RUNNER_TEMP'],'focused')
+          manifests=list(root.rglob('snapshot-manifest.json'))
+          assert len(manifests)==1
+          print('VERIFIED MANIFEST',manifests[0].read_text())
+          for path in root.rglob('TEST-*.xml'):
+              suite=ET.parse(path).getroot()
+              print(suite.get('name'),{k:int(suite.get(k,'0')) for k in ('tests','failures','errors','skipped')})
+          for sha in ('24db6b0a7fa52f0c67de476c7973ce93e1cfc6c4','3857fbc8c52cf0ad51fc668f7f586aec0489881d'):
+              data=json.loads(subprocess.check_output(['gh','api','repos/carstenartur/Taxonomy/actions/runs?head_sha='+sha+'&event=push'],text=True))
+              for run in data['workflow_runs']:
+                  print('RUN',run['id'],run['name'],run['status'],run['conclusion'])
+          PY
