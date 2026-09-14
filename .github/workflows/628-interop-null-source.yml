@@ -1,0 +1,54 @@
+name: Retain focused-tested interop correction source
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-interop-null-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      actions: read
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: control
+          ref: a90bd8983c2321f273bc4e3cc52c1dbf40f8cbca
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: eba5039c2731005f4a76e2f47b120403e8684b1b
+          persist-credentials: false
+      - name: Verify completed red-green stages and retain identical source blobs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request
+          req = urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/actions/jobs/103939250681', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN']})
+          with urllib.request.urlopen(req, timeout=30) as response: job = json.load(response)
+          assert job['head_sha'] == 'e59ce31c2bfe4e6d7a732b6f1f36edef3a7dad4d'
+          for name in ('Reproduce all new failures before changing production', 'Apply the bounded consumer correction', 'Verify nullable and existing adapter and transport contracts'):
+              step = next(s for s in job['steps'] if s['name'] == name)
+              assert step['status'] == 'completed' and step['conclusion'] == 'success', step
+              print('VERIFIED EXECUTED STAGE', name)
+          print('This source transport does not claim the full verification run has finished.')
+          PY
+          python3 ../control/verification/628-fix-nullable-interop.py tests
+          python3 ../control/verification/628-fix-nullable-interop.py patch
+          python3 ../control/verification/628-fix-nullable-interop.py publish
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: interop-null-source-identity
+          path: ${{ runner.temp }}/interop-null-source.json
+          retention-days: 7
+          if-no-files-found: error
