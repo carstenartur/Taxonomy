@@ -54,7 +54,9 @@ jobs:
           print('RED: physical interop module is missing; one expected assertion failure, no execution errors')
           PY
       - name: Perform byte-identical moves and bind the narrow portfolio port
-        run: python3 ../control/verification/628-extract-interop.py patch
+        run: |
+          python3 ../control/verification/628-extract-interop.py patch
+          python3 ../control/verification/628-interop-corrections.py
       - name: Measure only the deliberately changed dependency edges
         run: |
           ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false '-Dtest=ArchitectureContextDependencyRatchetTest#recordInteropExtractionBaseline' test > "$RUNNER_TEMP/measure.log" 2>&1 || { tail -n 160 "$RUNNER_TEMP/measure.log"; exit 1; }
