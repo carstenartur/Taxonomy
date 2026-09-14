@@ -6,54 +6,58 @@ on:
 permissions:
   contents: read
 jobs:
-  inspect:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
           ref: c121be0701ad5dd4716e1e6922be23a6db2f6d9f
           persist-credentials: false
-      - name: Inspect actual source and test ownership
-        shell: bash
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Add regression before production changes
+        run: cp ../control/verification/628-interop/ArchitectureInteropModuleTest.java taxonomy-app/src/test/java/com/taxonomy/
+      - name: Reproduce physical and dependency boundary failures
         run: |
+          set +e
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ArchitectureInteropModuleTest test > "$RUNNER_TEMP/interop-red.log" 2>&1
+          result=$?
+          set -e
+          if [[ "$result" == 0 ]]; then echo 'Expected the new boundary regression to fail'; exit 1; fi
           python3 - <<'PY'
-          import json, re, subprocess
+          import os, xml.etree.ElementTree as ET
           from pathlib import Path
-          def notice(title, value):
-              message = json.dumps(value, ensure_ascii=True).replace('%', '%25').replace('\r', '%0D').replace('\n', '%0A')
-              print('::notice title=' + title + '::' + message)
-          files = [Path(p) for p in subprocess.check_output(['git', 'ls-files'], text=True).splitlines() if p.endswith('.java')]
-          owners = {}
-          for path in files:
-              if '/src/main/java/' not in str(path): continue
-              match = re.search(r'^package\s+([\w.]+);', path.read_text(), re.M)
-              if match: owners[match.group(1) + '.' + path.stem] = str(path)
-          rows = []
-          external = set()
-          for path in files:
-              if '/src/main/java/com/taxonomy/interop/' not in str(path): continue
-              imports = re.findall(r'^import\s+(?:static\s+)?([^;]+);', path.read_text(), re.M)
-              application_imports = []
-              for item in imports:
-                  if not item.startswith('com.taxonomy.'): external.add(item); continue
-                  targets = {owner for name, owner in owners.items() if name == item or item.startswith(name + '.') or (item.endswith('.*') and name.startswith(item[:-1]))}
-                  bad = sorted(t for t in targets if t.startswith('taxonomy-app/') and '/com/taxonomy/interop/' not in t)
-                  if bad: application_imports.append([item, bad])
-              if application_imports: rows.append([str(path), application_imports])
-          notice('INTEROP_REMAINING_APP_IMPORTS', rows)
-          notice('INTEROP_EXTERNAL_IMPORTS', sorted(external))
-          references = []
-          for path in files:
-              text = path.read_text()
-              matches = [[i, line.strip()] for i, line in enumerate(text.splitlines(), 1) if 'IntegrationDomainAdapter' in line or ('interop/' in str(path) and 'requirements()' in line)]
-              if matches: references.append([str(path), matches])
-          notice('DOMAIN_ADAPTER_REFERENCES', references)
-          notice('INTEROP_TEST_FILES', [str(p) for p in files if '/src/test/' in str(p) and ('/interop/' in str(p) or 'Interop' in p.name or 'IntegrationDomain' in p.name)])
-          reverse = []
-          for path in files:
-              if '/src/main/' not in str(path) or '/com/taxonomy/interop/' in str(path): continue
-              matches = re.findall(r'^import\s+(?:static\s+)?(com\.taxonomy\.interop[^;]*);', path.read_text(), re.M)
-              if matches: reverse.append([str(path), matches])
-          notice('INTEROP_REVERSE_IMPORTS', reverse)
+          report = Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureInteropModuleTest.xml')
+          if not report.is_file():
+              print(Path(os.environ['RUNNER_TEMP'], 'interop-red.log').read_text()[-12000:])
+              raise SystemExit('No JUnit result: compilation or infrastructure failure is not valid evidence')
+          root = ET.parse(report).getroot()
+          assert [root.get(k) for k in ('tests','failures','errors','skipped')] == ['2','2','0','0'], root.attrib
+          failures = {case.get('name'): case.find('failure').get('message','') for case in root.findall('testcase')}
+          assert 'physical interoperability Maven module' in failures['interoperabilityImplementationBelongsToItsLibrary']
+          assert 'com.taxonomy.portfolio' in failures['interoperabilityUsesPortsInsteadOfApplicationImplementations']
+          print('RED VERIFIED: 2 expected failures, no errors/skips; production tree unchanged')
           PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: interop-boundary-red
+          path: |
+            ${{ runner.temp }}/interop-red.log
+            source/taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureInteropModuleTest.xml
+          if-no-files-found: error
+          retention-days: 7
