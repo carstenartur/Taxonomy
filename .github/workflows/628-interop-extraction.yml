@@ -8,7 +8,9 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: source
@@ -22,6 +24,7 @@ jobs:
         with:
           path: source
           ref: c121be0701ad5dd4716e1e6922be23a6db2f6d9f
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with:
@@ -29,35 +32,47 @@ jobs:
           distribution: temurin
           cache: maven
           cache-dependency-path: source/**/pom.xml
-      - name: Add regression before production changes
-        run: cp ../control/verification/628-interop/ArchitectureInteropModuleTest.java taxonomy-app/src/test/java/com/taxonomy/
-      - name: Reproduce physical and dependency boundary failures
+      - name: Implement the port and extract real sources
+        run: python3 ../control/verification/628-interop/assemble.py
+      - name: Measure only the expected explicit-port dependency delta
         run: |
           set +e
-          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ArchitectureInteropModuleTest test > "$RUNNER_TEMP/interop-red.log" 2>&1
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false -Dtest=ArchitectureContextDependencyRatchetTest test > "$RUNNER_TEMP/interop-delta.log" 2>&1
           result=$?
           set -e
-          if [[ "$result" == 0 ]]; then echo 'Expected the new boundary regression to fail'; exit 1; fi
+          if [[ "$result" == 0 ]]; then echo 'Expected the explicit-port dependency delta'; exit 1; fi
+          python3 ../control/verification/628-interop/verify.py ratchet || { tail -n 110 "$RUNNER_TEMP/interop-delta.log"; exit 1; }
+      - name: Verify the complete reactor architecture and package the application
+        run: |
+          ./mvnw -B -ntp -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false clean verify > "$RUNNER_TEMP/interop-architecture.log" 2>&1 || { tail -n 110 "$RUNNER_TEMP/interop-architecture.log"; exit 1; }
+          python3 ../control/verification/628-interop/verify.py architecture
+      - name: Execute all existing interoperability and new adapter behavior tests
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false '-Dtest=IntegrationArchitectureProjectionTest,IntegrationDiffTest,IntegrationFlowTest,IntegrationJournalTest,IntegrationJsonTest,IntegrationRestartTest,IntegrationServiceCheckpointConflictTest,IntegrationDownloadTest,OslcProviderProtocolTest,OslcProviderServiceTest,OslcRemoteProfilesTest,OslcTransportTest,PortfolioInteropAdapterTest' test > "$RUNNER_TEMP/interop-behavior.log" 2>&1 || { tail -n 150 "$RUNNER_TEMP/interop-behavior.log"; exit 1; }
+          python3 ../control/verification/628-interop/verify.py behavior
+      - name: Execute the three native JUnit Boot-JAR ownership tests
+        run: |
+          ./mvnw -B -ntp -pl taxonomy-build -am -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceModulePackagingIT,TemplatesModulePackagingIT,InteropModulePackagingIT surefire:test > "$RUNNER_TEMP/interop-packaging.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/interop-packaging.log"; exit 1; }
           python3 - <<'PY'
-          import os, xml.etree.ElementTree as ET
+          import json, xml.etree.ElementTree as ET
           from pathlib import Path
-          report = Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureInteropModuleTest.xml')
-          if not report.is_file():
-              print(Path(os.environ['RUNNER_TEMP'], 'interop-red.log').read_text()[-12000:])
-              raise SystemExit('No JUnit result: compilation or infrastructure failure is not valid evidence')
-          root = ET.parse(report).getroot()
-          assert [root.get(k) for k in ('tests','failures','errors','skipped')] == ['2','2','0','0'], root.attrib
-          failures = {case.get('name'): case.find('failure').get('message','') for case in root.findall('testcase')}
-          assert 'physical interoperability Maven module' in failures['interoperabilityImplementationBelongsToItsLibrary']
-          assert 'com.taxonomy.portfolio' in failures['interoperabilityUsesPortsInsteadOfApplicationImplementations']
-          print('RED VERIFIED: 2 expected failures, no errors/skips; production tree unchanged')
+          for name in ('WorkspaceModulePackagingIT','TemplatesModulePackagingIT','InteropModulePackagingIT'):
+              path = Path('taxonomy-build/target/surefire-reports/TEST-com.taxonomy.build.' + name + '.xml')
+              root = ET.parse(path).getroot()
+              assert [root.get(k) for k in ('tests','failures','errors','skipped')] == ['1','0','0','0'], root.attrib
+          print('PACKAGING: 3/3 native JUnit tests passed')
           PY
+      - name: Publish verified Git objects only without changing any product ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 ../control/verification/628-interop/verify.py publish
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: interop-boundary-red
+          name: interop-extraction-evidence
           path: |
-            ${{ runner.temp }}/interop-red.log
-            source/taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureInteropModuleTest.xml
+            ${{ runner.temp }}/interop-*.log
+            ${{ runner.temp }}/interop-*.json
+            source/**/target/surefire-reports/TEST-*.xml
           if-no-files-found: error
           retention-days: 7
