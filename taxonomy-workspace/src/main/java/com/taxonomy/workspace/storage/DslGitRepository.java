@@ -251,6 +251,20 @@ public class DslGitRepository implements AutoCloseable {
         return source.getObjectId().name();
     }
 
+    /**
+     * Create an absent branch at one captured commit, without re-reading another
+     * branch's moving HEAD. Existing destination refs are never overwritten.
+     */
+    public String createBranchAtCommit(String newBranch, String commitId) throws IOException {
+        ObjectId snapshot = ObjectId.fromString(commitId);
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            walk.parseCommit(snapshot);
+        }
+        updateRef(Constants.R_HEADS + newBranch, snapshot, ObjectId.zeroId(), false,
+                systemIdent(), "branch: created at " + commitId);
+        return snapshot.name();
+    }
+
     // ── Diff operations ─────────────────────────────────────────────
 
     /** Compute a semantic model diff between two commits. */

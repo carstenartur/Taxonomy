@@ -5,6 +5,7 @@ import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import com.taxonomy.dto.ContextRef;
 import com.taxonomy.dto.WorkspaceInfo;
 import com.taxonomy.workspace.model.RepositoryTopologyMode;
+import com.taxonomy.workspace.model.RepositoryLifecycleState;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
@@ -442,7 +443,11 @@ public class WorkspaceManager {
     }
 
     private UserWorkspace provisionWorkspaceRepository(String username, UserWorkspace workspace) {
-        return provisionWorkspaceRepository(username, workspace, "main");
+        // Repository-specific working copies persist their destination branch before
+        // allocation. Retrying them must not redirect an existing tab to "main".
+        String targetBranch = workspace != null && workspace.getSourceBranch() != null
+                && !workspace.getSourceBranch().isBlank() ? workspace.getCurrentBranch() : "main";
+        return provisionWorkspaceRepository(username, workspace, targetBranch);
     }
 
     private UserWorkspace provisionWorkspaceRepository(
@@ -482,10 +487,29 @@ public class WorkspaceManager {
         workspace.setProvisioningStatus(WorkspaceProvisioningStatus.PROVISIONING);
 
         try {
-            var systemRepository = systemRepositoryService.getPrimaryRepository();
-            String baseBranch = systemRepository.getDefaultBranch();
-            DslGitRepository systemGit = repositoryFactory != null
-                    ? repositoryFactory.getSystemRepository() : gitRepository;
+            if (targetBranch == null || targetBranch.isBlank()) {
+                throw new IllegalStateException("Workspace has no destination branch");
+            }
+            String sourceRepositoryId = workspace.getSourceRepositoryId();
+            boolean recordedSource = sourceRepositoryId != null && !sourceRepositoryId.isBlank();
+            var systemRepository = recordedSource
+                    ? systemRepositoryService.getRepository(sourceRepositoryId.strip())
+                    : systemRepositoryService.getPrimaryRepository();
+            if (systemRepository.getLifecycleState() != RepositoryLifecycleState.ACTIVE) {
+                throw new IllegalStateException("Source repository is not active: "
+                        + systemRepository.getRepositoryId());
+            }
+            String sourceBranch = workspace.getSourceBranch();
+            String baseBranch = sourceBranch != null && !sourceBranch.isBlank()
+                    ? sourceBranch.strip() : systemRepository.getDefaultBranch();
+            if (repositoryFactory == null && recordedSource
+                    && !sourceRepositoryId.strip().equals(
+                            systemRepositoryService.getPrimaryRepository().getRepositoryId())) {
+                throw new IllegalStateException("Legacy storage cannot open the recorded source repository");
+            }
+            DslGitRepository systemGit = repositoryFactory == null ? gitRepository
+                    : recordedSource ? repositoryFactory.getCentralRepository(sourceRepositoryId.strip())
+                    : repositoryFactory.getSystemRepository();
             String baseCommit = systemGit.getHeadCommit(baseBranch);
             String systemDsl = baseCommit == null ? null : systemGit.getDslAtCommit(baseCommit);
             if (baseCommit == null || systemDsl == null || systemDsl.isBlank()) {
@@ -517,7 +541,7 @@ public class WorkspaceManager {
                         username, workspace.getWorkspaceId(), baseBranch);
             } else {
                 String userBranch = username + "/workspace/" + workspace.getWorkspaceId();
-                gitRepository.createBranch(userBranch, baseBranch);
+                gitRepository.createBranchAtCommit(userBranch, baseCommit);
 
                 workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
                 workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
