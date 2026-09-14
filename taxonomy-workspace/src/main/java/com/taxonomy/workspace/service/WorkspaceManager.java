@@ -427,6 +427,13 @@ public class WorkspaceManager {
         if (workspace == null || !workspace.isDefault()) {
             throw new AccessDeniedException("No automatic default workspace was selected");
         }
+        // A concurrent implicit reader may have observed PROVISIONING before
+        // obtaining this monitor. Re-read here, but never turn the winner's
+        // failure into an unrequested automatic retry.
+        if (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.FAILED) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Default workspace initialization failed; retry provisioning explicitly");
+        }
         String branch = workspace.getCurrentBranch();
         if (branch == null || branch.isBlank()) {
             throw new IllegalStateException("Default workspace has no current branch");
