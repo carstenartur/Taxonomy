@@ -1,0 +1,165 @@
+name: Verify captured workspace snapshot correction
+on:
+  push:
+    branches: [fix/628-captured-workspace-snapshot]
+    paths: [.github/workflows/628-snapshot-green.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Read original coverage and browser server evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download 34870099111 -R carstenartur/Taxonomy -n quality-reports-core -D "$RUNNER_TEMP/core"
+          gh run download 34870098939 -R carstenartur/Taxonomy -n document-template-report-e2e -D "$RUNNER_TEMP/browser"
+          python3 - <<'PY'
+          import os, re
+          from pathlib import Path
+          root = Path(os.environ['RUNNER_TEMP'])
+          for p in (root / 'core').rglob('coverage-gate.txt'):
+              print('COVERAGE GATE', p.name, '\n', p.read_text()[:18000])
+          for p in (root / 'browser').rglob('*'):
+              if not p.is_file() or p.suffix not in ('.log', '.txt', '.json'):
+                  continue
+              lines = p.read_text(errors='replace').splitlines()
+              selected = set()
+              for i, line in enumerate(lines):
+                  if re.search(r'409|CONFLICT|not ready|already running|was claimed|Exception', line):
+                      selected.update(range(max(0,i-1), min(len(lines), i+3)))
+              if selected:
+                  print('BROWSER', p.relative_to(root / 'browser'))
+                  print('\n'.join(lines[i] for i in sorted(selected))[-6000:])
+          PY
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ed51cf592bbef36e856d120ed3062b6b5ce2ecac
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Apply only the reproduced correction and matching test boundary
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import subprocess, os
+          def replace(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              assert text.count(old) == 1, (path, old)
+              p.write_text(text.replace(old, new))
+          manager = 'taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java'
+          assert subprocess.check_output(['git', 'hash-object', manager], text=True).strip() == 'a17dc187d5041a2cd05e2b7937dd9c730d72227b'
+          replace(manager, 'if (baseCommit == null || systemDsl == null) {',
+                  'if (baseCommit == null || systemDsl == null || systemDsl.isBlank()) {')
+          replace(manager, 'repositoryFactory.getWorkspaceRepository(workspace.getWorkspaceId());',
+                  'repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());')
+          claim = 'taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java'
+          replace(claim, 'when(factory.getWorkspaceRepository(id)).thenReturn(destination);',
+                  'when(factory.openWorkspaceRepository(id)).thenReturn(destination);')
+          source = 'taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSourceTest.java'
+          replace(source, 'if (isolated) verify(factory, never()).getWorkspaceRepository(anyString());',
+                  'if (isolated) {\n            verify(factory, never()).getWorkspaceRepository(anyString());\n            verify(factory, never()).openWorkspaceRepository(anyString());\n        }')
+          paths = [manager, claim, source, 'taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSnapshotTest.java']
+          subprocess.run(['git', 'add', '--', *paths], check=True)
+          actual = subprocess.check_output(['git','diff','--cached','--name-only','2a5175ba99b901f00f0ad4fa38f4df42bdfd60e5'], text=True).splitlines()
+          assert sorted(actual) == sorted(paths), actual
+          subprocess.run(['git','diff','--cached','--check'], check=True)
+          Path(os.environ['RUNNER_TEMP'], 'snapshot.patch').write_bytes(subprocess.check_output(['git','diff','--cached','2a5175ba99b901f00f0ad4fa38f4df42bdfd60e5']))
+          tree = subprocess.check_output(['git','write-tree'], text=True).strip()
+          Path(os.environ['RUNNER_TEMP'], 'snapshot-tree.txt').write_text(tree)
+          print('CANDIDATE TREE', tree)
+          print('EXACT PATHS', '\n'.join(paths))
+          PY
+      - name: Execute snapshot and existing lifecycle regressions
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningSnapshotTest,WorkspaceProvisioningSourceTest,WorkspaceProvisioningClaimIT,WorkspaceProvisioningBoundaryIT,WorkspaceManagerProvisioningTest,WorkspaceManagerBehaviorTest,WorkspaceRepositoryIsolationTest,ArchitectureReportTests test > "$RUNNER_TEMP/snapshot-focused.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/snapshot-focused.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          names = 'WorkspaceProvisioningSnapshotTest WorkspaceProvisioningSourceTest WorkspaceProvisioningClaimIT WorkspaceProvisioningBoundaryIT WorkspaceManagerProvisioningTest WorkspaceManagerBehaviorTest WorkspaceRepositoryIsolationTest ArchitectureReportTests'.split()
+          counts = dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for name in names:
+              matches = list(Path('.').glob('*/target/surefire-reports/TEST-*.' + name + '.xml'))
+              assert len(matches) == 1, (name, matches)
+              root = ET.parse(matches[0]).getroot()
+              result = {k:int(root.get(k,'0')) for k in counts}
+              assert result['tests'] > 0 and result['failures'] == result['errors'] == result['skipped'] == 0, (name,result)
+              if name == 'WorkspaceProvisioningSnapshotTest': assert result['tests'] == 4
+              for k in counts: counts[k] += result[k]
+              print(name, result)
+          print('FOCUSED RESULT', counts)
+          PY
+      - name: Retain verified Java blobs only, without changing any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, subprocess, os
+          from pathlib import Path
+          paths = subprocess.check_output(['git','diff','--cached','--name-only','2a5175ba99b901f00f0ad4fa38f4df42bdfd60e5'], text=True).splitlines()
+          assert len(paths) == 4 and all(p.endswith('.java') for p in paths)
+          manifest = []
+          for path in paths:
+              data = {'content':Path(path).read_text(), 'encoding':'utf-8'}
+              blob = json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'], input=json.dumps(data), text=True))
+              expected = subprocess.check_output(['git','hash-object',path], text=True).strip()
+              assert blob['sha'] == expected
+              manifest.append({'path':path,'sha':expected,'mode':'100644','type':'blob'})
+          result = {'tree':Path(os.environ['RUNNER_TEMP'],'snapshot-tree.txt').read_text(),'files':manifest}
+          Path(os.environ['RUNNER_TEMP'],'snapshot-manifest.json').write_text(json.dumps(result,indent=2))
+          print('VERIFIED SOURCE MANIFEST',json.dumps(result))
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Supply the existing checksum-pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute complete clean default verification
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/snapshot-full.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/snapshot-full.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET, os, subprocess
+          counts = dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for path in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root=ET.parse(path).getroot()
+              for k in counts: counts[k] += int(root.get(k,'0'))
+          print('FULL DEFAULT RESULT',counts)
+          assert counts['tests'] > 4000 and counts['failures'] == counts['errors'] == 0
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip() == Path(os.environ['RUNNER_TEMP'],'snapshot-tree.txt').read_text()
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: captured-snapshot-verification
+          path: |
+            ${{ runner.temp }}/snapshot-*.log
+            ${{ runner.temp }}/snapshot.patch
+            ${{ runner.temp }}/snapshot-tree.txt
+            ${{ runner.temp }}/snapshot-manifest.json
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 14
+          if-no-files-found: error
