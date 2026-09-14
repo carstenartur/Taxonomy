@@ -1,0 +1,127 @@
+name: Verify provisioning checkpoint boundaries
+on:
+  push:
+    branches: [verification/628-provisioning-checkpoint]
+    paths: [.github/workflows/628-provisioning-checkpoint-green.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: a9d1fd828751ce3a6531575da479649e6a02d2aa
+          path: control
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 2c39aaf927c9bf8ef3032d121c6ee78eabc5b338
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Apply only the four deliverable Java paths
+        run: |
+          cp ../control/taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSourceTest.java taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/
+          cp ../control/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningAtomicityIT.java taxonomy-app/src/test/java/com/taxonomy/workspace/service/
+          python3 ../control/verification/provisioning-fix.py
+          python3 ../control/verification/provisioning-lock-fix.py
+          git add -- taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceContextResolver.java taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningSourceTest.java taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningAtomicityIT.java
+          test "$(git diff --cached --name-only | wc -l)" -eq 4
+          git diff --cached --check
+          git diff --cached --stat
+          echo "CANDIDATE_TREE=$(git write-tree)"
+      - name: Execute new and existing provisioning, HTTP and first-use contracts
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningSourceTest,WorkspaceProvisioningAtomicityIT,WorkspaceProvisioningBoundaryIT,WorkspaceResolutionFailureTest,WorkspaceManagerBehaviorTest,WorkspaceManagerProvisioningTest,WorkspaceImplicitSelectionTest,ViewContextIntegrationTest,ArchitectureViewTests test > "$RUNNER_TEMP/focused.log" 2>&1 || {
+            tail -n 100 "$RUNNER_TEMP/focused.log"
+            python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              for case in ET.parse(p).getroot().findall('testcase'):
+                  for f in case.findall('failure') + case.findall('error'):
+                      print(p.name, case.get('name'), (f.text or '')[:6500])
+          PY
+            exit 1
+          }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              root = ET.parse(p).getroot()
+              for k in counts: counts[k] += int(root.get(k, '0'))
+          print('FOCUSED GREEN', counts)
+          assert counts == dict(tests=100, failures=0, errors=0, skipped=0), counts
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: source/models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('source/.github/scripts/download-embedding-model.sh') }}
+      - name: Provision the unchanged checksum-pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute complete clean default verification
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/verify.log" 2>&1 || { tail -n 160 "$RUNNER_TEMP/verify.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root = ET.parse(p).getroot()
+              for k in counts: counts[k] += int(root.get(k, '0'))
+          print('COMPLETE CLEAN DEFAULT VERIFICATION', counts)
+          assert counts['tests'] > 4000 and counts['failures'] == counts['errors'] == 0, counts
+          print('This default verification does not replace canonical -Pci, external lanes or exact-head review.')
+          PY
+      - name: Retain exact verified source blobs without updating any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git diff --exit-code
+          python3 - <<'PY'
+          from pathlib import Path
+          import json, os, subprocess
+          def git(*args): return subprocess.check_output(['git', *args], text=True).strip()
+          assert git('rev-parse', 'HEAD') == '2c39aaf927c9bf8ef3032d121c6ee78eabc5b338'
+          paths = git('diff', '--cached', '--name-only').splitlines()
+          assert len(paths) == 4 and all(p.endswith('.java') for p in paths)
+          entries = []
+          for p in paths:
+              result = json.loads(subprocess.check_output(['gh', 'api', '--method', 'POST', 'repos/carstenartur/Taxonomy/git/blobs', '--input', '-'], input=json.dumps({'content': Path(p).read_text(), 'encoding': 'utf-8'}), text=True))
+              assert result['sha'] == git('hash-object', p)
+              entries.append({'path': p, 'sha': result['sha'], 'mode': '100644', 'type': 'blob'})
+          manifest = {'base': git('rev-parse', 'HEAD'), 'tree': git('write-tree'), 'entries': entries}
+          Path(os.environ['RUNNER_TEMP'], 'verified-source.json').write_text(json.dumps(manifest, indent=2))
+          print('VERIFIED SOURCE', json.dumps(manifest))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: provisioning-checkpoint-verification
+          path: |
+            ${{ runner.temp }}/focused.log
+            ${{ runner.temp }}/verify.log
+            ${{ runner.temp }}/verified-source.json
+            source/**/target/surefire-reports/TEST-*.xml
+            source/**/target/failsafe-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
