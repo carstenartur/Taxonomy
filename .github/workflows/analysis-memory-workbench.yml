@@ -25,7 +25,7 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Install additional behavioral regressions and terminal display correction
+      - name: Prepare exact candidate and additional regressions
         working-directory: candidate
         run: |
           test "$(git rev-parse HEAD)" = 024a660d040b481a1354fa4c0dc7d475595ce032
@@ -34,31 +34,29 @@ jobs:
           python ../tools/.github/scripts/analysis-live-terminal-result.py
           python - <<'PY'
           from pathlib import Path
-          p=Path('taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java')
-          s=p.read_text()
+          p=Path('taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java');s=p.read_text()
           old='assertThat(result.getScores()).containsEntry("BP", 80).doesNotContainKey("CP");'
           assert s.count(old)==1
-          s=s.replace(old,'// A single category receives its full parent budget after existing normalization.\n            assertThat(result.getScores()).containsEntry("BP", 100).doesNotContainKey("CP");')
-          p.write_text(s)
+          p.write_text(s.replace(old,'// A single category receives its full parent budget after existing normalization.\n            assertThat(result.getScores()).containsEntry("BP", 100).doesNotContainKey("CP");'))
           PY
           git diff --check
-      - name: Execute pipeline and HTTP regressions with existing controls
+      - name: Execute 108 pipeline and HTTP tests
         working-directory: candidate
         run: |
           set +e
           ./mvnw -B -pl taxonomy-app -am '-Dtest=AnalysisMemoryGuardTest,AnalysisProgressRegistryTest,GatewayInterruptedAnalysisTest,HsqldbFileProfileTest,LlmTranscriptBoundsTest,AnalysisCapacityTest,AnalysisApiControllerTest,AnalysisProgressControllerTest,AnalysisApiWorkspaceBoundaryTest,AnalyzeRequirementUseCaseTest,StreamRequirementAnalysisUseCaseTest,LlmService*,GeminiGatewayTest,OpenAiCompatibleGatewayTest,*ConfigurationReference*' -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/analysis-pipeline.log" 2>&1
           code=$?
-          grep -E 'ERROR|Tests run:|BUILD SUCCESS|BUILD FAILURE' "$RUNNER_TEMP/analysis-pipeline.log" | tail -100
+          grep -E 'ERROR|Tests run:|BUILD SUCCESS|BUILD FAILURE' "$RUNNER_TEMP/analysis-pipeline.log" | tail -80
           mkdir -p "$RUNNER_TEMP/pipeline-xml"
           cp taxonomy-app/target/surefire-reports/TEST-*.xml "$RUNNER_TEMP/pipeline-xml/"
-          python - <<'PY'
-          from pathlib import Path
-          from xml.etree import ElementTree as E
-          for p in Path('taxonomy-app/target/surefire-reports').glob('TEST-*.xml'):
-              for case in E.parse(p).getroot().findall('testcase'):
-                  for f in list(case.findall('failure'))+list(case.findall('error')):
-                      print(case.get('name'),f.get('message'),(f.text or '')[:3000])
-          PY
+          exit "$code"
+      - name: Package application required by existing ContainerTestUtils
+        working-directory: candidate
+        run: |
+          set +e
+          ./mvnw -B -pl taxonomy-app -am package -DskipTests > "$RUNNER_TEMP/analysis-package.log" 2>&1
+          code=$?
+          tail -35 "$RUNNER_TEMP/analysis-package.log"
           exit "$code"
       - name: Execute real-browser component acceptance
         working-directory: candidate
@@ -66,7 +64,7 @@ jobs:
           set +e
           ./mvnw -B -pl taxonomy-app -am -Dtest=AnalysisLiveProgressUiIT -DexcludedGroups=real-llm -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/analysis-browser.log" 2>&1
           code=$?
-          grep -E 'ERROR|Tests run:|BUILD SUCCESS|BUILD FAILURE' "$RUNNER_TEMP/analysis-browser.log" | tail -100
+          grep -E 'ERROR|Tests run:|BUILD SUCCESS|BUILD FAILURE' "$RUNNER_TEMP/analysis-browser.log" | tail -80
           python - <<'PY'
           from pathlib import Path
           from xml.etree import ElementTree as E
@@ -79,7 +77,7 @@ jobs:
       - name: Node live lifecycle and existing ordering controls
         working-directory: candidate
         run: node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-operation-controller.test.mjs
-      - name: Check actual test counts and publish staged tested source
+      - name: Validate counts and stage only the tested source
         working-directory: candidate
         run: |
           python - <<'PY'
@@ -90,8 +88,7 @@ jobs:
           for p in Path(os.environ['RUNNER_TEMP'],'pipeline-xml').glob('TEST-*.xml'):
               r=E.parse(p).getroot();v=[int(r.get(k,0)) for k in ('tests','failures','errors','skipped')]
               print(r.get('name'),v);totals=[a+b for a,b in zip(totals,v)]
-          print('PIPELINE TOTAL:',totals)
-          assert totals==[108,0,0,0],totals
+          print('PIPELINE TOTAL:',totals);assert totals==[108,0,0,0],totals
           r=E.parse('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.AnalysisLiveProgressUiIT.xml').getroot()
           v=[int(r.get(k,0)) for k in ('tests','failures','errors','skipped')]
           print('BROWSER TOTAL:',v);assert v==[3,0,0,0],v
@@ -107,6 +104,7 @@ jobs:
           name: analysis-live-acceptance-evidence
           path: |
             ${{ runner.temp }}/analysis-pipeline.log
+            ${{ runner.temp }}/analysis-package.log
             ${{ runner.temp }}/analysis-browser.log
             ${{ runner.temp }}/analysis-acceptance-source.txt
             ${{ runner.temp }}/pipeline-xml/*.xml
