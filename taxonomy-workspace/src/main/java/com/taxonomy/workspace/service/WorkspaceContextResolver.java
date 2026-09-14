@@ -141,11 +141,15 @@ public class WorkspaceContextResolver {
 
     private UserWorkspace resolveWorkspace(String username) {
         String requestedWorkspaceId = requestedWorkspaceId();
-        if (requestedWorkspaceId == null) {
-            return findWorkspace(username);
+        UserWorkspace workspace = requestedWorkspaceId == null
+                ? findWorkspace(username)
+                : workspaceManager.getWorkspaceById(requestedWorkspaceId);
+        // No provisioned workspace keeps the central-read fallback. An actual
+        // selection must satisfy the same rules whether implicit or request-pinned.
+        if (workspace == null && requestedWorkspaceId == null) {
+            return null;
         }
 
-        UserWorkspace workspace = workspaceManager.getWorkspaceById(requestedWorkspaceId);
         if (workspace == null
                 || !hasText(workspace.getUsername())
                 || !workspace.getUsername().strip().equals(username.strip())
