@@ -75,13 +75,17 @@ public class OslcProviderService {
     }
     private void requirement(OslcRdf graph, RequirementData requirement, long projectId, Links links, boolean version) {
         String current = links.uri("/projects/" + projectId + "/requirements/" + requirement.id());
-        String immutable = links.uri("/projects/" + projectId + "/requirements/" + requirement.id() + "/versions/" + requirement.currentVersionId());
+        var currentVersion = requirement.requireCurrentVersion();
+        String immutable = requirement.currentVersionId() == null ? null
+                : links.uri("/projects/" + projectId + "/requirements/" + requirement.id() + "/versions/" + requirement.currentVersionId());
         String uri = version ? immutable : current;
+        var modified = version ? currentVersion.createdAt() : requirement.updatedAt();
         graph.type(uri, RM + "Requirement").literal(uri, DCT + "identifier", version ? requirement.currentVersionId().toString() : requirement.requirementKey())
-                .literal(uri, DCT + "title", version ? requirement.requirementKey() : requirement.title()).literal(uri, DCT + "description", requirement.currentVersion().text())
-                .literal(uri, DCT + "modified", version ? requirement.currentVersion().createdAt().toString() : requirement.updatedAt().toString())
+                .literal(uri, DCT + "title", version ? requirement.requirementKey() : requirement.title()).literal(uri, DCT + "description", currentVersion.text())
+                .literal(uri, DCT + "modified", modified == null ? null : modified.toString())
                 .link(uri, OSLC + "instanceShape", links.uri("/shapes/requirement"));
-        if (version) graph.link(uri, DCT + "isVersionOf", current); else graph.link(uri, DCT + "hasVersion", immutable);
+        if (version) graph.link(uri, DCT + "isVersionOf", current);
+        else if (immutable != null) graph.link(uri, DCT + "hasVersion", immutable);
     }
     public OslcRdf shape(Links links) {
         String shape = links.uri("/shapes/requirement"); OslcRdf graph = new OslcRdf();
