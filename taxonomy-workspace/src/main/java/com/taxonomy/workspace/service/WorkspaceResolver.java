@@ -89,6 +89,11 @@ public class WorkspaceResolver {
         return resolved;
     }
 
+    /** Authorized lifecycle metadata; deliberately does not cache a usable repository context. */
+    public com.taxonomy.workspace.model.UserWorkspace resolveCurrentWorkspaceMetadata() {
+        return contextResolver.resolveWorkspaceMetadataForUser(resolveCurrentUsername());
+    }
+
     private static void cache(
             RequestAttributes attributes, String attributeName, Object value) {
         if (attributes != null) {
