@@ -15,6 +15,10 @@ jobs:
       run:
         working-directory: source
         shell: bash
+    env:
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+      MODEL_DIRECTORY: ${{ github.workspace }}/source/models/bge-small-en-v1.5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -32,6 +36,12 @@ jobs:
           distribution: temurin
           cache: maven
           cache-dependency-path: source/**/pom.xml
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: source/models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('source/.github/scripts/download-embedding-model.sh') }}
+      - name: Provision and verify the unchanged pinned model
+        run: bash .github/scripts/download-embedding-model.sh
       - name: Introduce physical ownership regression before extraction
         run: |
           python3 -m py_compile ../control/verification/628-extract-interop.py
@@ -71,7 +81,7 @@ jobs:
           for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
               r = ET.parse(p).getroot()
               for k in total: total[k] += int(r.get(k, '0'))
-          assert total['tests'] >= 34 and not any(total[k] for k in ('failures', 'errors', 'skipped')), total
+          assert total['tests'] == 37 and not any(total[k] for k in ('failures', 'errors', 'skipped')), total
           print('ARCHITECTURE', total)
           PY
       - name: Run complete default verification with the pinned model
@@ -79,13 +89,19 @@ jobs:
           ./mvnw -B -ntp verify -DexcludedGroups=real-llm -Dtaxonomy.model.download.skip=false > "$RUNNER_TEMP/verify.log" 2>&1 || { tail -n 200 "$RUNNER_TEMP/verify.log"; exit 1; }
           python3 - <<'PY'
           from pathlib import Path
-          import xml.etree.ElementTree as ET
+          import json, os, xml.etree.ElementTree as ET
           total = {k: 0 for k in ('tests', 'failures', 'errors', 'skipped')}
+          selected = {}
           for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
               r = ET.parse(p).getroot()
-              for k in total: total[k] += int(r.get(k, '0'))
+              counts = {k: int(r.get(k, '0')) for k in total}
+              for k in total: total[k] += counts[k]
+              if '.interop.' in r.get('name', '') or 'OnnxEmbeddingServiceTest' in r.get('name', '') or 'OnnxRestEndpointTest' in r.get('name', ''):
+                  selected[r.get('name')] = counts
           assert total['tests'] > 1000 and not total['failures'] and not total['errors'], total
           print('DEFAULT VERIFICATION', total)
+          print('INTEROP AND ONNX SUITES', json.dumps(selected))
+          Path(os.environ['RUNNER_TEMP'], 'test-summary.json').write_text(json.dumps({'total': total, 'selected': selected}, indent=2))
           print('Default verification is not canonical -Pci; browser, database and full quality gates remain required.')
           PY
       - name: Execute actual packaged ownership contracts for all three libraries
@@ -114,8 +130,8 @@ jobs:
             ${{ runner.temp }}/architecture.log
             ${{ runner.temp }}/verify.log
             ${{ runner.temp }}/packaging.log
+            ${{ runner.temp }}/test-summary.json
             ${{ runner.temp }}/verified-interop.json
             source/**/target/surefire-reports/TEST-*.xml
-            source/target/interop-dependency-baseline.json
           if-no-files-found: error
           retention-days: 7
