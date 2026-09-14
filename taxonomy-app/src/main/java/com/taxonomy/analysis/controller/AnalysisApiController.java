@@ -42,6 +42,10 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
+import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.web.context.request.RequestContextHolder;
+import org.springframework.web.context.request.ServletRequestAttributes;
 import java.net.URI;
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -49,6 +53,11 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
+import java.util.concurrent.RejectedExecutionException;
+import com.taxonomy.analysis.service.AnalysisRunControl;
+import org.springframework.web.server.ResponseStatusException;
 
 /**
  * HTTP/SSE transport adapter for requirement analysis. Business orchestration is
@@ -62,6 +71,9 @@ public class AnalysisApiController {
     static final String ANALYSIS_OPERATION_ID_HEADER = "X-Analysis-Operation-Id";
 
     private static final Logger log = LoggerFactory.getLogger(AnalysisApiController.class);
+
+    @Autowired
+    private AnalysisProgressRegistry analysisProgressRegistry;
 
     private final TaxonomyService taxonomyService;
     private final ExecutorService analysisExecutor;
@@ -116,6 +128,9 @@ public class AnalysisApiController {
         String operationId = newOperationId();
         try {
             String username = workspaceResolver.resolveCurrentUsername();
+            WorkspaceContext context = resolveWorkspaceContext(username);
+            try (var run = analysisProgressRegistry == null ? null
+                    : analysisProgressRegistry.open(operationId, username, context, null)) {
             AnalyzeRequirementResult result = analyzeRequirementUseCase.analyze(
                     new AnalyzeRequirementCommand(
                             request.getBusinessText(),
@@ -123,10 +138,12 @@ public class AnalysisApiController {
                             request.getMaxArchitectureNodes(),
                             request.getProvider(),
                             username,
-                            resolveWorkspaceContext(username)));
+                            context));
+            if (run != null) run.finish(result.analysisResult().getStatus());
             return ResponseEntity.ok()
                     .header(ANALYSIS_OPERATION_ID_HEADER, operationId)
                     .body(result.analysisResult());
+            }
         } catch (UnknownAnalysisProviderException e) {
             @SuppressWarnings("unchecked")
             ResponseEntity<AnalysisResult> badProvider = (ResponseEntity<AnalysisResult>)
@@ -148,7 +165,26 @@ public class AnalysisApiController {
             @RequestParam String businessText,
             @Parameter(description = "LLM provider override")
             @RequestParam(required = false) String provider) {
-        SseEmitter emitter = new SseEmitter(120_000L);
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes
+                && attributes.getRequest().getHeader("Last-Event-ID") != null) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "A disconnected stream is not restarted. Observe the existing analysis operation instead.");
+        }
+        SseEmitter emitter = new SseEmitter(1_800_000L);
+        AtomicBoolean completed = new AtomicBoolean();
+        AtomicBoolean disconnected = new AtomicBoolean();
+        AtomicReference<Thread> worker = new AtomicReference<>();
+        Runnable cancelWorker = () -> {
+            synchronized (worker) {
+                if (completed.get()) return;
+                disconnected.set(true);
+                Thread thread = worker.get();
+                if (thread != null) thread.interrupt();
+            }
+        };
+        emitter.onTimeout(cancelWorker);
+        emitter.onError(error -> cancelWorker.run());
+        emitter.onCompletion(cancelWorker);
         String operationId = newOperationId();
         AtomicLong eventSequence = new AtomicLong();
 
@@ -175,18 +211,26 @@ public class AnalysisApiController {
         // context is still available. Native EventSource cannot send the custom
         // header, so WorkspaceContextResolver accepts its equivalent query value.
         String username = workspaceResolver.resolveCurrentUsername();
-        resolveWorkspaceContext(username);
+        WorkspaceContext streamContext = resolveWorkspaceContext(username);
 
         StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
                 businessText, provider, LocaleContextHolder.getLocale());
+        try {
         analysisExecutor.execute(() -> {
-            try {
+            worker.set(Thread.currentThread());
+            try (var run = analysisProgressRegistry == null ? null
+                    : analysisProgressRegistry.open(operationId, username, streamContext, null)) {
+                if (disconnected.get()) Thread.currentThread().interrupt();
+                AnalysisRunControl.checkpoint();
                 streamRequirementAnalysisUseCase.stream(command, event -> {
                     AnalysisSseEventMapper.MappedEvent mapped = analysisSseEventMapper.map(event);
                     sendEvent(emitter, operationId, eventSequence.incrementAndGet(),
                             mapped.name(), mapped.payload());
                     if (event instanceof AnalysisStreamEvent.Complete
                             || event instanceof AnalysisStreamEvent.Error) {
+                        if (run != null) run.finish(event instanceof AnalysisStreamEvent.Complete complete
+                                ? complete.status() : ((AnalysisStreamEvent.Error) event).status());
+                        completed.set(true);
                         emitter.complete();
                     }
                 });
@@ -201,8 +245,20 @@ public class AnalysisApiController {
                         "status", "ERROR",
                         "errorMessage", "Analysis failed. Retry the operation or inspect administrator diagnostics."));
                 emitter.complete();
+            } finally {
+                synchronized (worker) {
+                    completed.set(true);
+                    worker.set(null);
+                    if (disconnected.get()) Thread.interrupted();
+                }
             }
         });
+        } catch (RejectedExecutionException full) {
+            completed.set(true);
+            emitter.complete();
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Analysis queue is full; retry after an active run finishes.");
+        }
         return emitter;
     }
 
@@ -290,6 +346,10 @@ public class AnalysisApiController {
     }
 
     private String newOperationId() {
+        if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
+            String requested = attributes.getRequest().getHeader(ANALYSIS_OPERATION_ID_HEADER);
+            if (requested != null && !requested.isBlank()) return requested;
+        }
         return UUID.randomUUID().toString();
     }
 

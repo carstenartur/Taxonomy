@@ -42,11 +42,8 @@
                 }
                 SC().runInteractiveAnalysis();
             } else {
-                if (S.currentView === 'list' || S.currentView === 'tabs') {
-                    SC().runStreamingAnalysis();
-                } else {
-                    SC().runAnalysis();
-                }
+                // Visualization never selects a different analysis algorithm or loses architecture options.
+                SC().runAnalysis();
             }
         });
 

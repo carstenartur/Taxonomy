@@ -74,6 +74,7 @@ public class GeminiGateway implements LlmGateway {
 
     @Override
     public String sendHttpRequest(String prompt, String apiKey) {
+        AnalysisRunControl.checkpoint();
         // REPLAY: return a previously recorded response — skips throttle and real API call.
         if (recordReplayService != null && recordReplayService.isReplayMode()) {
             Optional<String> recorded = recordReplayService.replay(prompt);
@@ -107,6 +108,7 @@ public class GeminiGateway implements LlmGateway {
             while (true) {
                 ResponseEntity<String> response;
                 try {
+                    AnalysisRunControl.phase("LLM_REQUEST", null);
                     response = restTemplate.exchange(
                             providerConfig.getGeminiUrl() + apiKey, HttpMethod.POST, entity, String.class);
                 } catch (HttpClientErrorException e) {
@@ -122,11 +124,7 @@ public class GeminiGateway implements LlmGateway {
                         long backoffMs = 1000L * (1L << (attempt - 1));
                         log.warn("Gemini API server error {} — retry {}/{} after {}ms",
                                 e.getStatusCode(), attempt, maxRetries, backoffMs);
-                        try {
-                            Thread.sleep(backoffMs);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                        }
+                        AnalysisRunControl.pause("RETRY_WAIT", backoffMs);
                         continue;
                     }
                     throw new RuntimeException("Gemini API server error " + e.getStatusCode() + ": " +
@@ -140,11 +138,7 @@ public class GeminiGateway implements LlmGateway {
                             long backoffMs = 1000L * (1L << (attempt - 1));
                             log.warn("Gemini API read timeout after {}s — retry {}/{} after {}ms",
                                     timeoutSeconds, attempt, maxRetries, backoffMs);
-                            try {
-                                Thread.sleep(backoffMs);
-                            } catch (InterruptedException ie) {
-                                Thread.currentThread().interrupt();
-                            }
+                            AnalysisRunControl.pause("RETRY_WAIT", backoffMs);
                             continue;
                         }
                         throw new LlmTimeoutException(
@@ -180,6 +174,8 @@ public class GeminiGateway implements LlmGateway {
             }
         } catch (LlmRateLimitException | LlmTimeoutException e) {
             throw e;
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception e) {
             log.error("Error calling Gemini API", e);
             return null;
@@ -210,11 +206,7 @@ public class GeminiGateway implements LlmGateway {
             if (sleepMs > 0) {
                 log.debug("Gemini RPM throttle: sleeping {}ms (rpm={}, calls in window={})",
                         sleepMs, rpm, callTimestamps.size());
-                try {
-                    Thread.sleep(sleepMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
-                }
+                AnalysisRunControl.pause("WAITING_RATE_LIMIT", sleepMs);
             }
         }
 

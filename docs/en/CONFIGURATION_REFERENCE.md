@@ -262,3 +262,15 @@ table-type migration. Never use `TAXONOMY_DDL_AUTO=create` against retained data
 `TAXONOMY_SEARCH_DIRECTORY_TYPE` defaults to `local-filesystem` in this profile;
 `TAXONOMY_SEARCH_DIRECTORY_ROOT` defaults to `./data/lucene-index`. Filesystem
 backing reduces heap residency but is not a guarantee against out-of-memory errors.
+
+## Live analysis runtime / Laufzeit der Live-Analyse
+
+| Environment variable | Spring property | Default |
+|---|---|---|
+| `TAXONOMY_ANALYSIS_RUNTIME_WARNING_PERCENT` | `taxonomy.analysis.runtime.warning-percent` | `80` |
+| `TAXONOMY_ANALYSIS_RUNTIME_STOP_PERCENT` | `taxonomy.analysis.runtime.stop-percent` | `92` |
+| `TAXONOMY_ANALYSIS_RUNTIME_MINIMUM_HEADROOM_MB` | `taxonomy.analysis.runtime.minimum-headroom-mb` | `16` |
+| `TAXONOMY_ANALYSIS_RUNTIME_PRESSURE_SECONDS` | `taxonomy.analysis.runtime.pressure-seconds` | `5` |
+| `TAXONOMY_ANALYSIS_RUNTIME_MAXIMUM_DURATION_SECONDS` | `taxonomy.analysis.runtime.maximum-duration-seconds` | `1800` |
+
+Warning < stop <= 98 percent; at least 1 MiB reserve; nonnegative pressure grace; positive deadline. Limits are checked cooperatively before calls and during rate-limit/retry waits. In-flight HTTP calls retain their configured timeout. Neither native memory nor one large allocation can be guaranteed safe by a heap sample. Completed scores are retained when the next step is stopped. Live telemetry is process-local, owner/workspace/repository/branch-scoped, limited to 4 active and 16 retained runs (10-minute terminal retention), 32 call previews and 8192 score entries. Preview text is limited to 8192 characters per prompt/response and loaded separately; omitted entries are counted. Durable portfolio jobs and semantic history remain separate and unchanged.

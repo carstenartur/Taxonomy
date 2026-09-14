@@ -343,6 +343,32 @@
 
         console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
         const analysisStart = new Date();
+        var operationId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID()
+            : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function (c) {
+                return (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16);
+            });
+        S.currentReasons = {};
+        S.lastAnalysisStatus = 'IN_PROGRESS';
+        applyLocalRawScores({}, true);
+        var progress = window.TaxonomyAnalysisProgress
+            ? window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
+                var previous = S.currentEffectiveScores || {};
+                var previousRaw = S.currentRawScores || {};
+                applyLocalRawScores(snapshot.rawScores || {}, true);
+                var changed = Object.keys(S.currentScores || {}).filter(function (code) {
+                    return previous[code] !== S.currentScores[code] || previousRaw[code] !== S.currentRawScores[code];
+                });
+                if (!changed.length) return;
+                if (S.currentView === 'list' || S.currentView === 'tabs') {
+                    changed.forEach(function (code) {
+                        applyScoreToNode(code, S.currentScores[code], null,
+                            S.currentScoreDetails[code], S.currentRawScores[code]);
+                    });
+                } else {
+                    B().renderView(S.taxonomyData, S.currentScores);
+                }
+            }) : null;
+
 
         setAnalyzing(true);
         B().clearStatus();
@@ -362,7 +388,7 @@
 
         fetch('/api/analyze', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Analysis-Operation-Id': operationId },
             body: JSON.stringify(requestBody)
         })
             .then(r => {
@@ -370,8 +396,9 @@
                 return r.json();
             })
             .then(result => {
+                if (progress) progress.stop();
                 setAnalyzing(false);
-                S.taxonomyData = result.tree;
+                if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
                 applyScoreEnvelope(result);
                 S.currentReasons = result.reasons || {};
                 S.currentDiscrepancies = result.discrepancies || [];
@@ -476,6 +503,7 @@
                 }
             })
             .catch(err => {
+                if (progress) { progress.cancel(); progress.stop(); }
                 setAnalyzing(false);
                 S.lastAnalysisStatus = 'ERROR';
                 B().showStatus('danger', t('scoring.analysis.error', err.message));
