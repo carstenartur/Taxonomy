@@ -1,0 +1,115 @@
+name: Verify implicit workspace selection correction
+on:
+  push:
+    branches: [verification/628-implicit-workspace-selection]
+    paths: [.github/workflows/628-implicit-selection-green.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: workspace
+            source: 46fee7883d17bcd9ccb177962da1f40b1ef6e892
+            base: 19843ed9a45be03825112e52d8cd16790c2551c3
+            tree: ec2d115d24a4fc7e2e4d6ce49d45549660797a62
+          - label: all-three-modules
+            source: 2b00d033b2149919e4cf810e00098d713abf2b19
+            base: 43ab430c4b9bb149a2851b084417244601478282
+            tree: 93de2f28514b604f0c36349bf3d79b770798d0ac
+    env:
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: '**/pom.xml'
+      - name: Verify source-only candidate identity and two-file boundary
+        env:
+          SOURCE: ${{ matrix.source }}
+          BASE: ${{ matrix.base }}
+          TREE: ${{ matrix.tree }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$SOURCE"
+          test "$(git rev-parse HEAD^{tree})" = "$TREE"
+          test "$(git rev-parse HEAD^)" = "$BASE"
+          git diff --check "$BASE" HEAD
+          python3 - <<'PY'
+          import os, subprocess
+          expected = {'taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceContextResolver.java',
+                      'taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceImplicitSelectionTest.java'}
+          changed = subprocess.check_output(['git', 'diff', '--name-only', os.environ['BASE'], 'HEAD'], text=True).splitlines()
+          assert set(changed) == expected, changed
+          print('EXACT CANDIDATE', os.environ['SOURCE'], os.environ['TREE'], sorted(changed))
+          PY
+      - name: Run new regressions and existing resolver and HTTP security contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceImplicitSelectionTest,WorkspaceContextResolverTest,WorkspaceContextResolverRequestPinningTest,WorkspaceScopeGuardRegressionTest,WorkspaceRequestIsolationTest,WorkspaceResolverTest,WorkspaceAccessSecurityIT test > "$RUNNER_TEMP/focused.log" 2>&1 || { tail -n 140 "$RUNNER_TEMP/focused.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          names = ('WorkspaceImplicitSelectionTest', 'WorkspaceContextResolverTest', 'WorkspaceContextResolverRequestPinningTest',
+                   'WorkspaceScopeGuardRegressionTest', 'WorkspaceRequestIsolationTest', 'WorkspaceResolverTest', 'WorkspaceAccessSecurityIT')
+          total = 0
+          for name in names:
+              matches = list(Path('.').glob('*/target/surefire-reports/TEST-*.' + name + '.xml'))
+              assert len(matches) == 1, (name, matches)
+              root = ET.parse(matches[0]).getroot()
+              counts = {key: int(root.get(key, '0')) for key in ('tests', 'failures', 'errors', 'skipped')}
+              assert counts['tests'] > 0 and not any(counts[key] for key in ('failures', 'errors', 'skipped')), (name, counts)
+              if name == 'WorkspaceImplicitSelectionTest': assert counts['tests'] == 12, counts
+              total += counts['tests']
+              print('GREEN', name, counts)
+          print('FOCUSED TOTAL', total)
+          PY
+      - name: Provision the unchanged checksum-pinned embedding model
+        shell: bash
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute complete clean default verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/verify.log" 2>&1 || { tail -n 180 "$RUNNER_TEMP/verify.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for path in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root = ET.parse(path).getroot()
+              for key in counts: counts[key] += int(root.get(key, '0'))
+          assert counts['tests'] > 4000 and counts['failures'] == 0 and counts['errors'] == 0, counts
+          print('COMPLETE CLEAN DEFAULT VERIFY', counts)
+          print('This does not replace canonical -Pci or external database/UI/security lanes.')
+          PY
+          git diff --exit-code
+          git diff --cached --exit-code
+          git rev-parse HEAD HEAD^{tree} | tee "$RUNNER_TEMP/verified-source.txt"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: implicit-selection-green-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/focused.log
+            ${{ runner.temp }}/verify.log
+            ${{ runner.temp }}/verified-source.txt
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
