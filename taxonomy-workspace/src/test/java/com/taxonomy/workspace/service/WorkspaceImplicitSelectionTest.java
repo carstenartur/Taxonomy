@@ -96,7 +96,7 @@ class WorkspaceImplicitSelectionTest {
         WorkspaceContext legacy = resolver.resolveForUser("alice");
         assertThat(legacy.username()).isEqualTo("alice");
         assertThat(legacy.workspaceId()).isEqualTo("workspace-a");
-        assertThat(legacy.branch()).isEqualTo("draft");
+        assertThat(legacy.currentBranch()).isEqualTo("draft");
     }
 
     @Test
