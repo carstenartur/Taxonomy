@@ -1,0 +1,51 @@
+name: Reproduce recorded provisioning source
+on:
+  push:
+    branches: [fix/628-provisioning-source-identity]
+    paths: [.github/workflows/628-source-identity-red.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 6ffd90665411b801f820ef5b5c626283c855d422
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Require four intended provenance failures
+        run: |
+          set +e
+          ./mvnw -B -ntp -Dtest=WorkspaceProvisioningProvenanceTest -Dsurefire.failIfNoSpecifiedTests=false test > "$RUNNER_TEMP/source-red.log" 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import os,xml.etree.ElementTree as ET
+          path=Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceProvisioningProvenanceTest.xml')
+          if not path.exists():
+              print(Path(os.environ['RUNNER_TEMP'],'source-red.log').read_text()[-10000:])
+              raise SystemExit('Provenance tests did not execute')
+          root=ET.parse(path).getroot()
+          counts={k:int(root.get(k,'0')) for k in ('tests','failures','errors','skipped')}
+          for case in root.findall('testcase'):
+              for f in case.findall('failure')+case.findall('error'): print(case.get('name'),f.get('message'))
+          print('SOURCE RED',counts)
+          assert counts==dict(tests=4,failures=4,errors=0,skipped=0),counts
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: provisioning-source-red
+          path: |
+            ${{ runner.temp }}/source-red.log
+            taxonomy-workspace/target/surefire-reports/TEST-*WorkspaceProvisioningProvenanceTest.xml
+          retention-days: 14
+          if-no-files-found: error
