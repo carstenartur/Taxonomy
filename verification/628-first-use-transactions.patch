@@ -1,0 +1,179 @@
+diff --git a/taxonomy-app/src/test/java/com/taxonomy/workspace/controller/WorkspaceProvisioningBoundaryIT.java b/taxonomy-app/src/test/java/com/taxonomy/workspace/controller/WorkspaceProvisioningBoundaryIT.java
+index d57c1b51..e665b291 100644
+--- a/taxonomy-app/src/test/java/com/taxonomy/workspace/controller/WorkspaceProvisioningBoundaryIT.java
++++ b/taxonomy-app/src/test/java/com/taxonomy/workspace/controller/WorkspaceProvisioningBoundaryIT.java
+@@ -137,6 +137,50 @@ class WorkspaceProvisioningBoundaryIT {
+         assertThat(pending.getProvisioningStatus()).isEqualTo(WorkspaceProvisioningStatus.READY);
+     }
+ 
++    @Test
++    void currentDefaultWorkspaceResponseIsReadyForItsBrowserPin() throws Exception {
++        // Persist the automatically created metadata before the HTTP request,
++        // just as a completed first-login transaction does in the browser flow.
++        UserWorkspace pending = workspace(USER, WorkspaceProvisioningStatus.NOT_PROVISIONED);
++        pending.setDefault(true);
++        rows.saveAndFlush(pending);
++        var response = mvc.perform(get("/api/workspace/current"))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.provisioningStatus").value("READY"))
++                .andExpect(jsonPath("$.currentBranch").value("draft"))
++                .andReturn().getResponse();
++        String id = tools.jackson.databind.json.JsonMapper.builder().build()
++                .readTree(response.getContentAsString()).get("workspaceId").textValue();
++        var workspace = rows.findByWorkspaceId(id).orElseThrow();
++        assertThat(workspace.isDefault()).isTrue();
++        assertThat(workspace.getCurrentCommit()).isNotBlank();
++        mvc.perform(get("/api/dsl/branches").header(HEADER, id)).andExpect(status().isOk());
++        mvc.perform(get("/api/proposals/pending").header(HEADER, id)).andExpect(status().isOk());
++    }
++
++    @Test
++    void explicitlyPinnedDefaultMetadataDoesNotTriggerProvisioning() throws Exception {
++        UserWorkspace pending = workspace(USER, WorkspaceProvisioningStatus.NOT_PROVISIONED);
++        pending.setDefault(true);
++        rows.saveAndFlush(pending);
++        mvc.perform(get("/api/workspace/current").header(HEADER, pending.getWorkspaceId()))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.provisioningStatus").value("NOT_PROVISIONED"));
++        assertThat(pending.getCurrentCommit()).isNull();
++        mvc.perform(get("/api/dsl/branches").header(HEADER, pending.getWorkspaceId()))
++                .andExpect(status().isConflict());
++    }
++
++    @Test
++    void unpinnedNonDefaultMetadataDoesNotTriggerProvisioning() throws Exception {
++        UserWorkspace pending = workspace(USER, WorkspaceProvisioningStatus.NOT_PROVISIONED);
++        manager.switchWorkspace(USER, pending.getWorkspaceId());
++        mvc.perform(get("/api/workspace/current"))
++                .andExpect(status().isOk())
++                .andExpect(jsonPath("$.provisioningStatus").value("NOT_PROVISIONED"));
++        assertThat(pending.getCurrentCommit()).isNull();
++    }
++
+     private UserWorkspace workspace(String owner, WorkspaceProvisioningStatus state) {
+         UserWorkspace workspace = new UserWorkspace();
+         String id = "provisioning-boundary-" + UUID.randomUUID();
+diff --git a/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java
+index eb0ee4a4..c26d1318 100644
+--- a/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java
++++ b/taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java
+@@ -30,6 +30,8 @@ import static org.mockito.Mockito.*;
+ class WorkspaceProvisioningClaimIT {
+     @Autowired private UserWorkspaceRepository repository;
+     @Autowired private SystemRepositoryService repositories;
++    @Autowired private WorkspaceManager managedWorkspaceManager;
++    @Autowired private org.springframework.transaction.PlatformTransactionManager transactions;
+ 
+     @Test
+     void twoInstancesCannotBothClaimTheSameUnprovisionedRow() throws Exception {
+@@ -84,6 +86,40 @@ class WorkspaceProvisioningClaimIT {
+         }
+     }
+ 
++    @Test
++    void defaultProvisioningDoesNotInheritAReadOnlyCallerTransaction() {
++        String id = UUID.randomUUID().toString();
++        var workspace = new UserWorkspace();
++        workspace.setWorkspaceId(id);
++        workspace.setUsername("readonly-provision-owner");
++        workspace.setDisplayName(id);
++        workspace.setCreatedAt(Instant.now());
++        workspace.setDefault(true);
++        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
++        repository.saveAndFlush(workspace);
++        try {
++            var readOnly = new org.springframework.transaction.support.TransactionTemplate(transactions);
++            readOnly.setReadOnly(true);
++            UserWorkspace result = assertDoesNotThrow(() -> readOnly.execute(status -> {
++                assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
++                        .isCurrentTransactionReadOnly());
++                var ready = managedWorkspaceManager.provisionDefaultWorkspaceRepository(
++                        workspace.getUsername(), id);
++                assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
++                        .isCurrentTransactionReadOnly());
++                return ready;
++            }));
++            assertNotNull(result);
++            assertEquals(WorkspaceProvisioningStatus.READY, result.getProvisioningStatus());
++            var retained = repository.findByWorkspaceId(id).orElseThrow();
++            assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
++            assertNotNull(retained.getCurrentCommit());
++            assertEquals("draft", retained.getCurrentBranch());
++        } finally {
++            repository.findByWorkspaceId(id).ifPresent(repository::delete);
++        }
++    }
++
+     private static int provisionStatus(WorkspaceManager manager, String id) {
+         try {
+             manager.provisionWorkspaceRepository("claim-owner", id);
+diff --git a/taxonomy-workspace/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java b/taxonomy-workspace/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java
+index 77a8e0e6..cce6c097 100644
+--- a/taxonomy-workspace/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java
++++ b/taxonomy-workspace/src/main/java/com/taxonomy/workspace/controller/WorkspaceController.java
+@@ -88,7 +88,15 @@ public class WorkspaceController {
+             return ResponseEntity.ok(workspaceManager.getWorkspaceMetadataInfo(
+                     workspaceResolver.resolveCurrentWorkspaceMetadata()));
+         }
+-        return ResponseEntity.ok(workspaceManager.getWorkspaceInfo(user));
++        WorkspaceInfo info = workspaceManager.getWorkspaceInfo(user);
++        // The browser pins the identity returned here. Finish the existing
++        // implicit-default initialization before publishing that initial pin.
++        // Explicit pins above and non-default/failed metadata remain recovery paths.
++        if (info != null && info.isDefault() && "NOT_PROVISIONED".equals(info.provisioningStatus())) {
++            workspaceResolver.resolveCurrentRepositoryContext();
++            info = workspaceManager.getWorkspaceInfo(user);
++        }
++        return ResponseEntity.ok(info);
+     }
+ 
+     @GetMapping("/active")
+diff --git a/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java b/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java
+index 31371ecc..a17dc187 100644
+--- a/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java
++++ b/taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java
+@@ -13,6 +13,10 @@ import org.slf4j.LoggerFactory;
+ import org.springframework.beans.factory.annotation.Autowired;
+ import org.springframework.beans.factory.annotation.Value;
+ import org.springframework.stereotype.Service;
++import org.springframework.transaction.PlatformTransactionManager;
++import org.springframework.transaction.TransactionDefinition;
++import org.springframework.transaction.support.TransactionSynchronizationManager;
++import org.springframework.transaction.support.TransactionTemplate;
+ import org.springframework.security.access.AccessDeniedException;
+ import org.springframework.http.HttpStatus;
+ import org.springframework.web.server.ResponseStatusException;
+@@ -44,6 +48,14 @@ public class WorkspaceManager {
+     private final SystemRepositoryService systemRepositoryService;
+     private final DslGitRepository gitRepository;
+     private final DslGitRepositoryFactory repositoryFactory;
++    private TransactionTemplate provisioningOutsideReadOnlyTransaction;
++
++    @Autowired
++    void configureProvisioningTransactions(PlatformTransactionManager transactions) {
++        provisioningOutsideReadOnlyTransaction = new TransactionTemplate(transactions);
++        provisioningOutsideReadOnlyTransaction.setPropagationBehavior(
++                TransactionDefinition.PROPAGATION_NOT_SUPPORTED);
++    }
+ 
+     /** Active workspace states keyed by workspace ID. */
+     private final ConcurrentMap<String, UserWorkspaceState> activeWorkspaces =
+@@ -441,6 +453,18 @@ public class WorkspaceManager {
+                     "Workspace provisioning is already running or its state is unavailable");
+         }
+ 
++        // Lazy first use may be reached from a read-only report/query. Suspend
++        // only that transaction so each repository write owns a writable boundary;
++        // keep existing writable callers joined, including atomic integration flows.
++        if (TransactionSynchronizationManager.isCurrentTransactionReadOnly()) {
++            if (provisioningOutsideReadOnlyTransaction == null) {
++                throw new IllegalStateException("Provisioning transaction boundary is not configured");
++            }
++            String workspaceId = workspace.getWorkspaceId();
++            return provisioningOutsideReadOnlyTransaction.execute(status ->
++                    provisionWorkspaceRepository(username,
++                            workspaceRepository.findByWorkspaceId(workspaceId).orElse(null), targetBranch));
++        }
+         int claimed = workspaceRepository.claimProvisioning(workspace.getWorkspaceId(), username,
+                 WorkspaceProvisioningStatus.PROVISIONING,
+                 List.of(WorkspaceProvisioningStatus.NOT_PROVISIONED, WorkspaceProvisioningStatus.FAILED));
