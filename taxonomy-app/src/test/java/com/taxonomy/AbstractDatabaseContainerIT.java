@@ -102,6 +102,7 @@ abstract class AbstractDatabaseContainerIT {
     @Order(6)
     void apiKeyNotConfiguredWithoutEnvironmentVariable() throws Exception {
         JsonNode diagnostics = getDiagnostics();
+        assertThat(diagnostics.get("apiKeyConfigured")).isNotNull();
         assertThat(diagnostics.get("apiKeyConfigured").booleanValue()).isFalse();
         assertThat(diagnostics.get("apiKeyPrefix").isNull()).isTrue();
     }
@@ -198,7 +199,10 @@ abstract class AbstractDatabaseContainerIT {
         assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
         String workspaceId = MAPPER.readTree(created.body()).get("workspaceId").textValue();
         String endpoint = "/api/architecture/editor?workspaceId=" + workspaceId;
-        JsonNode initial = MAPPER.readTree(httpGet(endpoint).body()).get("document");
+        provisionCreatedWorkspace(workspaceId, endpoint);
+        HttpResponse<String> initialResponse = httpGet(endpoint);
+        assertThat(initialResponse.statusCode()).as(initialResponse.body()).isEqualTo(200);
+        JsonNode initial = MAPPER.readTree(initialResponse.body()).get("document");
         JsonNode context = initial.get("context");
         String id = java.util.UUID.randomUUID().toString();
         var command = java.util.Map.of("context", context, "metadata", editorMetadata(id), "kind", "CREATE_ELEMENT",
@@ -239,6 +243,21 @@ abstract class AbstractDatabaseContainerIT {
         assertThat(reloaded.get("dsl").textValue()).contains("Database journal test");
     }
 
+    /** Exercise the public lifecycle instead of relying on an unprovisioned repository. */
+    private void provisionCreatedWorkspace(String workspaceId, String repositoryEndpoint) throws Exception {
+        HttpResponse<String> unavailable = httpGet(repositoryEndpoint);
+        assertThat(unavailable.statusCode()).as(unavailable.body()).isEqualTo(409);
+        String query = "?workspaceId=" + workspaceId;
+        HttpResponse<String> provisioned = httpPost("/api/workspace/provision" + query,
+                java.util.Map.of(), null);
+        assertThat(provisioned.statusCode()).as(provisioned.body()).isEqualTo(200);
+        assertThat(MAPPER.readTree(provisioned.body()).get("status").textValue()).isEqualTo("READY");
+        HttpResponse<String> metadata = httpGet("/api/workspace/" + workspaceId + "/info" + query);
+        assertThat(metadata.statusCode()).as(metadata.body()).isEqualTo(200);
+        assertThat(MAPPER.readTree(metadata.body()).get("workspaceId").textValue()).isEqualTo(workspaceId);
+        assertThat(MAPPER.readTree(metadata.body()).get("provisioningStatus").textValue()).isEqualTo("READY");
+    }
+
     private static java.util.Map<String, String> editorMetadata(String id) {
         return java.util.Map.of("commandId", id, "correlationId", id, "causationId", id, "rationale", "Database acceptance");
     }
@@ -250,7 +269,9 @@ abstract class AbstractDatabaseContainerIT {
         assertThat(created.statusCode()).as(created.body()).isEqualTo(200);
         String workspace = MAPPER.readTree(created.body()).get("workspaceId").textValue();
         String query = "?workspaceId=" + workspace;
-        assertThat(httpGet("/api/architecture/editor" + query).statusCode()).isEqualTo(200);
+        provisionCreatedWorkspace(workspace, "/api/architecture/editor" + query);
+        HttpResponse<String> initialResponse = httpGet("/api/architecture/editor" + query);
+        assertThat(initialResponse.statusCode()).as(initialResponse.body()).isEqualTo(200);
         String connection = java.util.UUID.randomUUID().toString();
         var connectionResponse = httpPost("/api/integrations" + query, java.util.Map.of("id", connection, "name", "Database Archi contract", "connectorId", "archimate-3.1", "authority", "BIDIRECTIONAL",
                 "externalScope", java.util.Map.of("systemType", "Reference Archi", "repository", "model-db")), null);
