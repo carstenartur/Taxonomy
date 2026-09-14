@@ -17,6 +17,12 @@ module.write_text(module.read_text().replace('    <dependencies>\n', '    <depen
 for p in Path('taxonomy-app/src/main/java').rglob('*.java'):
     assert not re.search(r'^import org\.apache\.hc\.', p.read_text(), re.M), p
 
+workflow = Path('.github/workflows/ci-cd.yml')
+s = workflow.read_text()
+old = 'taxonomy-templates/pom.xml taxonomy-templates/src/main taxonomy-app/pom.xml'
+assert s.count(old) == 1
+workflow.write_text(s.replace(old, 'taxonomy-templates/pom.xml taxonomy-templates/src/main taxonomy-interop/pom.xml taxonomy-interop/src/main taxonomy-app/pom.xml'))
+
 for lang in ('en', 'de'):
     p = Path('docs') / lang / 'MODULE_BOUNDARIES.md'
     s = p.read_text()
@@ -45,6 +51,5 @@ for lang in ('en', 'de'):
     assert s.count(old) == 1, (lang, 'migration list')
     p.write_text(s.replace(old, new, 1))
 
-# Source discovery must not treat a test fixture as an application source change.
 assert len(json.loads(Path('.mvn/verification-suites.json').read_text())['profiles']['architecture-tests']['test'].split(',')) == 14
-print('INTEGRATION: HTTP dependency moved without a version change; module counts and migration status aligned')
+print('INTEGRATION: HTTP dependency moved without a version change; module counts, migration status and performance-sensitive source paths aligned')
