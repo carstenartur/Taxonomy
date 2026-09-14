@@ -56,13 +56,6 @@ jobs:
                   report=ET.parse(p).getroot()
                   assert all(int(report.get(k,'0'))==0 for k in ('failures','errors','skipped'))
               print('INPUT',folder,manifest['tree'])
-          # Normalize only the indentation of the unchanged following section comment.
-          repository=Path('taxonomy-workspace/src/main/java/com/taxonomy/workspace/storage/DslGitRepository.java')
-          text=repository.read_text()
-          old='              // ── Diff operations ─────────────────────────────────────────────'
-          assert text.count(old)==1
-          repository.write_text(text.replace(old,old[10:]))
-          git('add','--',str(repository))
           assert set(git('diff','--cached','--name-only').splitlines())==paths
           git('diff','--cached','--check')
           out=Path(os.environ['RUNNER_TEMP'],'integration');out.mkdir()
