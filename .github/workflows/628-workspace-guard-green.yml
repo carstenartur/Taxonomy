@@ -1,0 +1,112 @@
+name: Verify workspace scope correction
+on:
+  push:
+    branches: [verification/628-review-followup]
+    paths: [.github/workflows/628-workspace-guard-green.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: main
+            source: 8cd4395d93ba56c80ae6ea5dff031944772e7771
+            module: taxonomy-app
+          - label: modular
+            source: eba5039c2731005f4a76e2f47b120403e8684b1b
+            module: taxonomy-workspace
+    env:
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      MODEL_DIRECTORY: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    defaults:
+      run:
+        working-directory: source
+        shell: bash
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: correction
+          ref: c5a819a153d3944d7833b28ee77808d8004a81d3
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: source
+          ref: ${{ matrix.source }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Apply only the published two-file correction
+        env:
+          OWNER_MODULE: ${{ matrix.module }}
+        run: |
+          guard=src/main/java/com/taxonomy/versioning/controller/DslWorkspacePreResolutionInterceptor.java
+          test=src/test/java/com/taxonomy/versioning/controller/WorkspaceScopeGuardRegressionTest.java
+          test "$(git hash-object "$OWNER_MODULE/$guard")" = f58150c9ca184e8a579400d113dff89f864dae90
+          cp "../correction/taxonomy-app/$guard" "$OWNER_MODULE/$guard"
+          cp "../correction/taxonomy-app/$test" "taxonomy-app/$test"
+          git add -- "$OWNER_MODULE/$guard" "taxonomy-app/$test"
+          git diff --cached --check
+          test "$(git diff --cached --name-only | wc -l)" -eq 2
+          if [[ "$OWNER_MODULE" == taxonomy-app ]]; then
+            test "$(git write-tree)" = f6f248ac2b6025a51a34fb1cc755e00f1b3ada83
+          fi
+          echo "TESTED_TREE=$(git write-tree)"
+          git diff --cached --stat
+      - name: Verify the regressions and existing resolver contracts
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceScopeGuardRegressionTest,DslWorkspacePreResolutionInterceptorTest,WorkspaceRequestIsolationTest,WorkspaceResolverTest test > "$RUNNER_TEMP/focused.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/focused.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          names = ('WorkspaceScopeGuardRegressionTest', 'DslWorkspacePreResolutionInterceptorTest', 'WorkspaceRequestIsolationTest', 'WorkspaceResolverTest')
+          for name in names:
+              reports = list(Path('taxonomy-app/target/surefire-reports').glob('TEST-*.' + name + '.xml'))
+              assert len(reports) == 1, name
+              root = ET.parse(reports[0]).getroot()
+              counts = {k: int(root.get(k, '0')) for k in ('tests', 'failures', 'errors', 'skipped')}
+              assert counts['tests'] > 0 and not any(counts[k] for k in ('failures', 'errors', 'skipped')), counts
+              print('GREEN', name, counts)
+          PY
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: source/models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('source/.github/scripts/download-embedding-model.sh') }}
+      - name: Provision the existing checksum-pinned local model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute complete clean default verification
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/verify.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/verify.log"; exit 1; }
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          counts = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              result = ET.parse(p).getroot()
+              for key in counts: counts[key] += int(result.get(key, '0'))
+          assert counts['tests'] > 1000 and counts['failures'] == 0 and counts['errors'] == 0, counts
+          print('COMPLETE CLEAN DEFAULT VERIFICATION', counts)
+          print('Supplementary default verification does not replace the canonical -Pci and external CI lanes.')
+          PY
+          git diff --exit-code
+          echo "VERIFIED_TREE=$(git write-tree)"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-guard-green-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/focused.log
+            ${{ runner.temp }}/verify.log
+            source/**/target/surefire-reports/TEST-*.xml
+            source/**/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
