@@ -1,13 +1,13 @@
-name: Complete analysis candidate preflight (temporary)
+name: Verify consolidated analysis correction (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  preflight:
+  verification:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -16,60 +16,87 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: { java-version: '21', distribution: temurin, cache: maven }
-      - name: Assemble immutable final candidate
+      - name: Assemble and bind the exact locally tested candidate
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
-          import base64,hashlib,json,os,subprocess,urllib.request
+          import base64,gzip,hashlib,json,os,subprocess,urllib.request
           from pathlib import Path
           out=Path('/tmp/analysis-complete');out.mkdir()
-          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
           def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
-          assert git('rev-parse','HEAD')=='7bada07047ad49f2f15428b3236111e535145483'
-          for i,sha in enumerate(['a7f7dfa2ee0c2593cf7f3d52836646f6b747867f','e7b94cef8c93fd335c634fbcce15772f37226b29','7fe586d8ec20eead69e11f941dd38b47de232918']):
-              with urllib.request.urlopen(urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers=headers)) as response: data=base64.b64decode(json.load(response)['content'])
-              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
-              patch=out/(str(i)+'.patch');patch.write_bytes(data.replace(b'\n diff --git ',b'\ndiff --git '))
-              subprocess.run(['git','apply','--check',str(patch)],check=True)
-              subprocess.run(['git','apply',str(patch)],check=True)
-          subprocess.run(['git','diff','--check'],check=True)
-          subprocess.run(['git','add','-u'],check=True)
-          tree=git('write-tree');assert tree=='274e4fd7e2ae30dcf4ad6a01a65048b04ba615f2',tree
-          paths=git('diff','--cached','--name-only').splitlines();assert len(paths)==9
-          (out/'manifest.json').write_text(json.dumps({'base':git('rev-parse','HEAD'),'tree':tree,'files':{p:git('hash-object',p) for p in paths},'run':os.environ['GITHUB_RUN_ID']},indent=2)+'\n')
+          base='7bada07047ad49f2f15428b3236111e535145483'
+          blob='d94209b86c369e3c91e5c846fd8437471581595b'
+          assert git('rev-parse','HEAD')==base
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          with urllib.request.urlopen(urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+blob,headers=headers)) as response:
+              data=base64.b64decode(json.load(response)['content'])
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==blob
+          patch=gzip.decompress(data)
+          assert hashlib.sha256(patch).hexdigest()=='73f81c7da3064d99f7da622483f192c079ea95b4b8371d3c889545fb5d048e80'
+          (out/'candidate.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--index',str(out/'candidate.patch')],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          paths=git('diff','--cached','--name-only').splitlines();assert len(paths)==9,paths
+          tree=git('write-tree');assert tree=='41056f783c8ea00554363beaa6cf57ea89ba5007',tree
+          doc={'base':base,'tree':tree,'files':{p:git('hash-object',p) for p in paths},'verificationRun':os.environ['GITHUB_RUN_ID']}
+          # A local-only commit makes source-owning ratchets inspect this exact tree.
+          # It is not pushed and no remote ref is changed by this workflow.
+          subprocess.run(['git','-c','user.name=Analysis verification','-c','user.email=verification@invalid.example','commit','-m','Verify exact analysis candidate locally on runner'],check=True)
+          assert git('status','--porcelain')==''
+          doc['runnerCommit']=git('rev-parse','HEAD')
+          (out/'manifest.json').write_text(json.dumps(doc,indent=2)+'\n')
+          print(json.dumps(doc,indent=2))
+      - name: Verify Docker availability
+        run: docker info
       - name: Restore canonical pinned embedding model
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: models/bge-small-en-v1.5
           key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
-      - name: Complete reactor unit tests including ONNX
+      - name: Complete Maven verification including integration tests
         env:
           TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
           TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          FRONTEND_API_BASE_REF: 29b9ef036882f5dbfc62924d9aca63038c098d4e
         run: |
           set -o pipefail
-          ./mvnw -B -ntp test -Pci -DrunOnnxTests=true -DexcludedGroups=real-llm 2>&1 | tee /tmp/analysis-complete/reactor-unit.log
-      - name: Complete Maven-owned frontend and strict bootstrap contracts
+          ./mvnw -B -ntp verify -DexcludedGroups=real-llm -DrunOnnxTests=true 2>&1 | tee /tmp/analysis-complete/maven-full.log
+      - name: Complete Maven-owned frontend contracts
         run: |
           set -o pipefail
           ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee /tmp/analysis-complete/frontend.log
-          node .github/scripts/test-taxonomy-base-path.mjs | tee /tmp/analysis-complete/base-path.log
-      - name: Verify source identity after all tests
+          .cache/ui-frontend/node/node .github/scripts/test-taxonomy-base-path.mjs | tee /tmp/analysis-complete/base-path.log
+      - name: Publish only verified source blobs, never refs
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
-          import json,subprocess
+          import base64,hashlib,json,os,subprocess,urllib.request,zipfile
           from pathlib import Path
-          doc=json.loads(Path('/tmp/analysis-complete/manifest.json').read_text())
-          for path,sha in doc['files'].items(): assert subprocess.check_output(['git','hash-object',path],text=True).strip()==sha,path
-          assert subprocess.check_output(['git','diff','--name-only'],text=True).strip()==''
-          assert subprocess.check_output(['git','write-tree'],text=True).strip()==doc['tree']
+          out=Path('/tmp/analysis-complete');doc=json.loads((out/'manifest.json').read_text())
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD^{tree}')==doc['tree']
+          assert git('diff','--name-only')==''
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
+          with zipfile.ZipFile(out/'tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for path,sha in doc['files'].items():
+                  data=Path(path).read_bytes()
+                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha,path
+                  request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',headers=headers,
+                      data=json.dumps({'content':base64.b64encode(data).decode(),'encoding':'base64'}).encode(),method='POST')
+                  with urllib.request.urlopen(request) as response: assert json.load(response)['sha']==sha
+                  archive.writestr(path,data)
+          doc['fullVerification']='passed'
+          (out/'manifest.json').write_text(json.dumps(doc,indent=2)+'\n')
+          print(json.dumps(doc,indent=2))
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: analysis-complete-preflight-${{ github.sha }}
+          name: analysis-consolidated-full-${{ github.sha }}
           path: |
             /tmp/analysis-complete
             **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: error
