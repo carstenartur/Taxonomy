@@ -20,6 +20,8 @@
     "taxonomy-dsl",
     "taxonomy-export",
     "taxonomy-extension-api",
-    "taxonomy-app"
+    "taxonomy-app",
+    "taxonomy-workspace",
+    "taxonomy-templates"
   ]
 }

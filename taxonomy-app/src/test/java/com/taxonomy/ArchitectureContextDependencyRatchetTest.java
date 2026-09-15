@@ -6,6 +6,10 @@ import com.tngtech.archunit.core.domain.JavaClasses;
 import com.tngtech.archunit.core.importer.ClassFileImporter;
 import com.tngtech.archunit.core.importer.ImportOption;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -23,6 +27,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
 
 /**
  * Ratchets direct class dependencies between the bounded contexts that are
@@ -34,13 +39,15 @@ import static org.assertj.core.api.Assertions.assertThat;
  * recorded in the baseline fails the test. This keeps improvements monotonic
  * while the physical Maven-module extraction is performed incrementally.</p>
  *
- * <p>Every production Java package below the application package root must also
- * be classified by the checked context map. Root-package composition classes
+ * <p>Every production Java package below the application, workspace and templates module
+ * package roots must be classified by the checked context map. Root-package composition classes
  * are listed explicitly and belong to the composition context. This prevents
  * new code or composition wiring from evading the ratchet through an unmapped
  * package or root-level class.</p>
  */
 class ArchitectureContextDependencyRatchetTest {
+
+    private static final List<String> SOURCE_MODULES = List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates");
 
     private static final Comparator<PackageEdge> EDGE_ORDER = Comparator
             .comparing(PackageEdge::fromContext)
@@ -72,6 +79,44 @@ class ArchitectureContextDependencyRatchetTest {
                         + "\n\nIf the change is intentional, review the dependency direction and update the baseline to:\n"
                         + renderBaseline(actual))
                 .isEmpty();
+    }
+
+    @ParameterizedTest(name = "{0}: {1}")
+    @MethodSource("featureModuleRootSources")
+    void rejectsRootPackageSourcesInFeatureModules(
+            String module, String fileName, @TempDir Path fixture) throws Exception {
+        ContextPolicy policy = readAndValidateContextPolicy(
+                findRepositoryRoot().resolve(".github/architecture-contexts.json"));
+        for (String sourceModule : SOURCE_MODULES) {
+            Path root = Files.createDirectories(fixture.resolve(
+                    sourceModule + "/src/main/java/com/taxonomy"));
+            if ("taxonomy-app".equals(sourceModule)) {
+                for (String compositionFile : policy.rootCompositionClasses()) {
+                    Files.writeString(root.resolve(compositionFile), "package com.taxonomy;\n");
+                }
+            } else {
+                String context = sourceModule.substring("taxonomy-".length());
+                Path packageRoot = Files.createDirectories(root.resolve(context));
+                Files.writeString(packageRoot.resolve("Sample.java"),
+                        "package com.taxonomy." + context + ";\n");
+            }
+        }
+        // The application allow-list and classified feature packages remain valid.
+        validateSourceCoverage(fixture, policy);
+        Files.writeString(fixture.resolve(
+                module + "/src/main/java/com/taxonomy/" + fileName), "package com.taxonomy;\n");
+        assertThatExceptionOfType(AssertionError.class)
+                .isThrownBy(() -> validateSourceCoverage(fixture, policy))
+                .withMessageContaining(module)
+                .withMessageContaining(fileName);
+    }
+
+    private static java.util.stream.Stream<Arguments> featureModuleRootSources() {
+        return SOURCE_MODULES.stream()
+                .filter(module -> !"taxonomy-app".equals(module))
+                .flatMap(module -> java.util.stream.Stream.of(
+                                "UnexpectedRoot.java", "AppConfig.java", "package-info.java")
+                        .map(fileName -> Arguments.of(module, fileName)));
     }
 
     private ContextPolicy readAndValidateContextPolicy(Path policyPath) throws Exception {
@@ -175,20 +220,35 @@ class ArchitectureContextDependencyRatchetTest {
                         + " but found " + actualRootJavaFiles)
                 .containsExactlyInAnyOrderElementsOf(policy.rootCompositionClasses());
 
-        List<String> unclassifiedPackages;
-        try (var sources = Files.walk(packageRoot)) {
-            unclassifiedPackages = sources
-                    .filter(Files::isRegularFile)
-                    .filter(path -> path.getFileName().toString().endsWith(".java"))
-                    .map(Path::getParent)
-                    .map(packageRoot::relativize)
-                    .map(Path::toString)
-                    .filter(relativePackage -> !relativePackage.isEmpty())
-                    .map(relativePackage -> "com.taxonomy." + relativePackage.replace('\\', '.').replace('/', '.'))
-                    .filter(packageName -> contextFor(packageName, policy.contexts()) == null)
-                    .distinct()
-                    .sorted()
-                    .toList();
+        Set<String> unclassifiedPackages = new TreeSet<>();
+        for (String module : SOURCE_MODULES) {
+            Path contextRoot = repositoryRoot.resolve(module + "/src/main/java/com/taxonomy");
+            assertThat(contextRoot).as("production context root %s", module).isDirectory();
+            if (!"taxonomy-app".equals(module)) {
+                try (var rootSources = Files.list(contextRoot)) {
+                    assertThat(rootSources.filter(Files::isRegularFile)
+                            .map(path -> path.getFileName().toString())
+                            .filter(fileName -> fileName.endsWith(".java"))
+                            .sorted().toList())
+                            .as("Root-package Java files are reserved for taxonomy-app, not %s", module)
+                            .isEmpty();
+                }
+            }
+            try (var sources = Files.walk(contextRoot)) {
+                unclassifiedPackages.addAll(sources
+                        .filter(Files::isRegularFile)
+                        .filter(path -> path.getFileName().toString().endsWith(".java"))
+                        .map(Path::getParent)
+                        .map(contextRoot::relativize)
+                        .map(Path::toString)
+                        .filter(relativePackage -> !relativePackage.isEmpty())
+                        .map(relativePackage -> "com.taxonomy." + relativePackage.replace('\\', '.').replace('/', '.'))
+                        .filter(packageName -> contextFor(packageName, policy.contexts()) == null)
+                        .distinct()
+                        .sorted()
+                        .toList());
+            }
+
         }
 
         assertThat(unclassifiedPackages)

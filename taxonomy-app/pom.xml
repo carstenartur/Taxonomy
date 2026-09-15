@@ -12,6 +12,16 @@
     <name>Taxonomy Application</name>
     <description>Spring Boot application: controllers, services, persistence, search, export, and configuration</description>
     <dependencies>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-templates</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-workspace</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <!-- Validate DNS at connection establishment for scoped OSLC transport. -->
         <dependency>
             <groupId>org.apache.httpcomponents.client5</groupId>
