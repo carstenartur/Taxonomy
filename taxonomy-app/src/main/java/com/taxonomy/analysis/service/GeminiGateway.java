@@ -188,29 +188,29 @@ public class GeminiGateway implements LlmGateway {
      * Paces outgoing calls using a sliding-window approach with the configured
      * {@code llm.rpm} preference (default {@value DEFAULT_RPM} for Gemini free tier).
      */
-    synchronized void throttle() {
+    void throttle() {
         if (preferencesService == null) return;
-        int rpm = preferencesService.getInt("llm.rpm", DEFAULT_RPM);
-        if (rpm <= 0) return;
-
-        long now = System.currentTimeMillis();
-        long windowStart = now - 60_000L;
-
-        while (!callTimestamps.isEmpty() && callTimestamps.peekFirst() < windowStart) {
-            callTimestamps.pollFirst();
-        }
-
-        if (callTimestamps.size() >= rpm) {
-            long oldest = callTimestamps.peekFirst();
-            long sleepMs = oldest + 60_000L - System.currentTimeMillis() + THROTTLE_BUFFER_MS;
-            if (sleepMs > 0) {
-                log.debug("Gemini RPM throttle: sleeping {}ms (rpm={}, calls in window={})",
-                        sleepMs, rpm, callTimestamps.size());
-                AnalysisRunControl.pause("WAITING_RATE_LIMIT", sleepMs);
+        while (true) {
+            AnalysisRunControl.checkpoint();
+            int rpm = preferencesService.getInt("llm.rpm", DEFAULT_RPM);
+            if (rpm <= 0) return;
+            long sleepMs;
+            synchronized (callTimestamps) {
+                long now = System.currentTimeMillis();
+                long windowStart = now - 60_000L;
+                while (!callTimestamps.isEmpty() && callTimestamps.peekFirst() < windowStart) {
+                    callTimestamps.pollFirst();
+                }
+                if (callTimestamps.size() < rpm) {
+                    callTimestamps.addLast(now);
+                    return;
+                }
+                sleepMs = Math.max(1L, callTimestamps.peekFirst() + 60_000L - now + THROTTLE_BUFFER_MS);
             }
+            // Never hold the window lock while waiting: every analysis must remain cancellable.
+            // Recheck capacity after waking instead of reserving cancelled calls or allowing a burst.
+            AnalysisRunControl.pause("WAITING_RATE_LIMIT", sleepMs);
         }
-
-        callTimestamps.addLast(System.currentTimeMillis());
     }
 
     private void applyCurrentTimeout() {

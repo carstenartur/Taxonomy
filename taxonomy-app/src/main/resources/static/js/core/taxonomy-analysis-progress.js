@@ -68,7 +68,10 @@
                     var reason = error.status === 404 && !seen ? 'WAITING_FOR_RUN'
                         : error.name === 'AbortError' || error.code === 'ABORTED' || error.code === 'TIMEOUT'
                             ? 'CONNECTION_TIMEOUT' : error.message;
-                    options.onUnavailable(reason);
+                    var terminal = error.status === 400 || error.status === 401 || error.status === 403
+                        || (error.status === 404 && seen);
+                    options.onUnavailable(reason, terminal);
+                    if (terminal) { cancelPending = false; stop(); }
                 }
             } finally {
                 options.clearTimeout(timeout);
@@ -154,7 +157,8 @@
                         'Partial result or error received; see the analysis status for details.');
                 button.disabled = true;
             },
-            unavailable: function (reason) {
+            unavailable: function (reason, terminal) {
+                if (terminal) button.disabled = true;
                 state.textContent = reason === 'WAITING_FOR_RUN'
                     ? text('Warte auf Aufnahme des Laufs; noch keine LLM-Anfrage bestätigt.', 'Waiting for admission; no LLM request confirmed yet.')
                     : text('Statusverbindung unterbrochen; letzter Stand bleibt sichtbar. ', 'Status connection interrupted; retaining the last state. ') + reason;

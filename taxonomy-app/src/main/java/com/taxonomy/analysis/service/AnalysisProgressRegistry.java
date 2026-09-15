@@ -117,7 +117,7 @@ public class AnalysisProgressRegistry {
     private Run require(String id, String owner, WorkspaceContext context) {
         Scope scope = Scope.of(owner, context);
         reap();
-        Run run = runs.get(id);
+        Run run = runs.get(canonicalId(id));
         if (run == null || !run.scope.equals(scope)) {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Analysis not found");
         }
@@ -129,7 +129,8 @@ public class AnalysisProgressRegistry {
         runs.entrySet().removeIf(e -> !e.getValue().active() && now - e.getValue().finishedAt > RETENTION_MILLIS);
     }
 
-    private static String canonicalId(String id) {
+    /** Shared strict ID contract for admission headers and subsequent observation/cancellation. */
+    public static String canonicalId(String id) {
         try {
             String canonical = UUID.fromString(id).toString();
             if (!canonical.equals(id)) throw new IllegalArgumentException();
@@ -241,6 +242,9 @@ public class AnalysisProgressRegistry {
         }
         synchronized void finish(String resultStatus) {
             if (!active()) return;
+            // cancel() and finish() share the run monitor: a cancellation accepted first wins.
+            // Do not replace a resource-stop reason that the worker has already recorded.
+            if (cancelled && stopReason == null) stopped(AnalysisStoppedException.Reason.CANCELLED);
             String terminalStatus = "CANCELLED".equals(stopReason) ? "CANCELLED"
                     : "SUCCESS".equals(resultStatus) ? "COMPLETED"
                     : "PARTIAL".equals(resultStatus) ? "PARTIAL" : "ERROR";

@@ -50,6 +50,7 @@ import java.net.URI;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicLong;
@@ -57,6 +58,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.RejectedExecutionException;
 import com.taxonomy.analysis.service.AnalysisRunControl;
+import com.taxonomy.analysis.service.AnalysisStoppedException;
 import org.springframework.web.server.ResponseStatusException;
 
 /**
@@ -220,20 +222,33 @@ public class AnalysisApiController {
             worker.set(Thread.currentThread());
             try (var run = analysisProgressRegistry == null ? null
                     : analysisProgressRegistry.open(operationId, username, streamContext, null)) {
-                if (disconnected.get()) Thread.currentThread().interrupt();
-                AnalysisRunControl.checkpoint();
-                streamRequirementAnalysisUseCase.stream(command, event -> {
-                    AnalysisSseEventMapper.MappedEvent mapped = analysisSseEventMapper.map(event);
-                    sendEvent(emitter, operationId, eventSequence.incrementAndGet(),
-                            mapped.name(), mapped.payload());
-                    if (event instanceof AnalysisStreamEvent.Complete
-                            || event instanceof AnalysisStreamEvent.Error) {
-                        if (run != null) run.finish(event instanceof AnalysisStreamEvent.Complete complete
-                                ? complete.status() : ((AnalysisStreamEvent.Error) event).status());
-                        completed.set(true);
-                        emitter.complete();
-                    }
-                });
+                try {
+                    if (disconnected.get()) Thread.currentThread().interrupt();
+                    AnalysisRunControl.checkpoint();
+                    streamRequirementAnalysisUseCase.stream(command, event -> {
+                        AnalysisSseEventMapper.MappedEvent mapped = analysisSseEventMapper.map(event);
+                        sendEvent(emitter, operationId, eventSequence.incrementAndGet(),
+                                mapped.name(), mapped.payload());
+                        if (event instanceof AnalysisStreamEvent.Complete
+                                || event instanceof AnalysisStreamEvent.Error) {
+                            if (run != null) run.finish(event instanceof AnalysisStreamEvent.Complete complete
+                                    ? complete.status() : ((AnalysisStreamEvent.Error) event).status());
+                            completed.set(true);
+                            emitter.complete();
+                        }
+                    });
+                } catch (AnalysisStoppedException stopped) {
+                    // Preflight can stop before the use case gets a chance to emit a terminal event.
+                    // Finalize inside the handle scope so close() cannot turn a resource stop into ERROR.
+                    if (run != null) run.finish("PARTIAL");
+                    var mapped = analysisSseEventMapper.map(new AnalysisStreamEvent.Error(
+                            "PARTIAL", stopped.getMessage(), stopped.partialScores(),
+                            List.of(stopped.getMessage()), stopped.partialDiscrepancies(), List.of(),
+                            stopped.partialReasons()));
+                    completed.set(true);
+                    sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload());
+                    emitter.complete();
+                }
             } catch (UnknownAnalysisProviderException e) {
                 sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
                         "status", "ERROR",
@@ -348,7 +363,9 @@ public class AnalysisApiController {
     private String newOperationId() {
         if (RequestContextHolder.getRequestAttributes() instanceof ServletRequestAttributes attributes) {
             String requested = attributes.getRequest().getHeader(ANALYSIS_OPERATION_ID_HEADER);
-            if (requested != null && !requested.isBlank()) return requested;
+            if (requested != null && !requested.isBlank()) {
+                return AnalysisProgressRegistry.canonicalId(requested);
+            }
         }
         return UUID.randomUUID().toString();
     }

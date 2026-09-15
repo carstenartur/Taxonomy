@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
-const source = readFileSync('taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', 'utf8');
-const clientSource = readFileSync('taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js', 'utf8');
-const apiSource = readFileSync('taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', 'utf8');
-const routingSource = readFileSync('taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-api-routing.js', 'utf8');
+const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', import.meta.url), 'utf8');
+const clientSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js', import.meta.url), 'utf8');
+const apiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8');
+const routingSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-api-routing.js', import.meta.url), 'utf8');
 const id = 'cb2a3d71-e849-4a50-9855-1f9cb8f81402';
 function fixture(fetcher) {
     const scope = { workspaceId: 'workspace-a', generation: 1, invalidating: false };
@@ -290,3 +290,25 @@ test('a deferred cancellation does not write to an already completed run', async
     assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
     assert.equal(f.timers.size, 0);
 });
+
+
+test('a known run disappearing terminates polling and cancellation without discarding the last snapshot', async () => {
+    let count = 0;
+    const f = fixture(async () => ++count === 1 ? response(snapshot()) : response({}, 404));
+    await f.step(0); await f.step(1000);
+    assert.equal(f.snapshots.length, 1);
+    assert.equal(f.timers.size, 0, 'expired runs must not be polled forever');
+    assert.equal(f.monitor.isCurrent(), false);
+    assert.equal(await f.monitor.cancel(), false);
+    assert.equal(f.calls.length, 2);
+});
+
+for (const status of [400, 401, 403]) {
+    test(`permanent observation rejection ${status} releases the polling timer`, async () => {
+        const f = fixture(async () => response({}, status));
+        await f.step(0);
+        assert.equal(f.unavailable.length, 1);
+        assert.equal(f.timers.size, 0);
+        assert.equal(f.monitor.isCurrent(), false);
+    });
+}

@@ -341,6 +341,15 @@
             return;
         }
 
+        // Dynamic lifecycle modules install observation, routing and workspace guards together.
+        // A premature click must not clear prior results or silently start an unobservable analysis.
+        if (!window.TaxonomyAnalysisSession || window.__taxonomyAnalysisSessionLoading
+                || !window.TaxonomyAnalysisProgress
+                || typeof window.TaxonomyAnalysisProgress.start !== 'function') {
+            B().showStatus('warning', t('scoring.lifecycle.not.ready'));
+            return;
+        }
+
         console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
         const analysisStart = new Date();
         var operationId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID()
@@ -350,8 +359,7 @@
         S.currentReasons = {};
         S.lastAnalysisStatus = 'IN_PROGRESS';
         applyLocalRawScores({}, true);
-        var progress = window.TaxonomyAnalysisProgress
-            ? window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
+        var progress = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
                 var previous = S.currentEffectiveScores || {};
                 var previousRaw = S.currentRawScores || {};
                 applyLocalRawScores(snapshot.rawScores || {}, true);
@@ -367,7 +375,7 @@
                 } else {
                     B().renderView(S.taxonomyData, S.currentScores);
                 }
-            }) : null;
+            });
 
 
         setAnalyzing(true);
