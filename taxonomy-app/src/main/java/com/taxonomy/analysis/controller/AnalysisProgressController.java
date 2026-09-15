@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 
@@ -36,10 +37,20 @@ public class AnalysisProgressController {
     }
 
     @GetMapping("/{operationId}")
-    public ResponseEntity<AnalysisProgressRegistry.Snapshot> status(@PathVariable String operationId) {
+    public ResponseEntity<AnalysisProgressRegistry.Snapshot> status(
+            @PathVariable String operationId,
+            @RequestParam(defaultValue = "false") boolean waitForRegistration) {
         String owner = workspaceResolver.resolveCurrentUsername();
         WorkspaceContext context = workspaceResolver.resolveCurrentContext();
-        return privateResponse(registry.snapshot(operationId, owner, context));
+        try {
+            return privateResponse(registry.snapshot(operationId, owner, context));
+        } catch (ResponseStatusException unavailable) {
+            if (!waitForRegistration || unavailable.getStatusCode().value() != 404) throw unavailable;
+            // An early poll can precede POST registration. Reveal no foreign run and allocate no work.
+            // This acknowledges a pending observation, not acceptance of the analysis request itself.
+            return ResponseEntity.accepted().cacheControl(CacheControl.noStore())
+                    .header("Retry-After", "1").build();
+        }
     }
 
     @GetMapping("/{operationId}/calls/{callId}")

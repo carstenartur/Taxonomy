@@ -143,3 +143,29 @@ test('explicitly stopped monitoring cannot cancel a superseded run', async () =>
     assert.equal(f.calls.length, 0);
     assert.equal(f.timers.size, 0);
 });
+
+test('early admission polls accept an empty pending response without starting a run', async () => {
+    let count = 0;
+    const f = fixture(async () => ++count === 1
+        ? { ok: true, status: 202, json: async () => { throw new Error('pending response has no JSON body'); } }
+        : response(snapshot(count)));
+    await f.step(0);
+    assert.deepEqual(f.unavailable, ['WAITING_FOR_RUN']);
+    assert.equal(f.snapshots.length, 0);
+    await f.step(1000); await f.step(1000);
+    assert.equal(f.snapshots.length, 2);
+    assert.ok(f.calls.slice(0, 2).every(call => call.url.endsWith('&waitForRegistration=true')));
+    assert.ok(!f.calls[2].url.includes('waitForRegistration'));
+    assert.ok(f.calls.every(call => !call.options.method));
+    f.monitor.stop();
+});
+
+test('a known run disappearing is not reported as pending admission', async () => {
+    let count = 0;
+    const f = fixture(async () => response(++count === 1 ? snapshot() : {}, count === 1 ? 200 : 404));
+    await f.step(0); await f.step(1000);
+    assert.deepEqual(f.unavailable, ['HTTP 404']);
+    assert.equal(f.snapshots.length, 1);
+    assert.ok(!f.calls[1].url.includes('waitForRegistration'));
+    f.monitor.stop();
+});

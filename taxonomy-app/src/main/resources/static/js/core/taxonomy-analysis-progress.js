@@ -22,6 +22,8 @@
         function url(suffix) {
             var target = base + (suffix || '');
             if (initial.workspaceId) target += '?workspaceId=' + encodeURIComponent(initial.workspaceId);
+            // The POST may not have registered this run yet. Observation must not log a 404.
+            if (!suffix && !seen) target += (target.indexOf('?') >= 0 ? '&' : '?') + 'waitForRegistration=true';
             return options.resolveUrl ? options.resolveUrl(target) : target;
         }
         function stop() {
@@ -53,7 +55,7 @@
                 var response = await options.fetch(url(), {
                     headers: headers(), cache: 'no-store', signal: request.signal
                 });
-                if (response.status === 404 && !seen) {
+                if ((response.status === 202 || response.status === 404) && !seen) {
                     if (current()) options.onUnavailable('WAITING_FOR_RUN');
                     return;
                 }
