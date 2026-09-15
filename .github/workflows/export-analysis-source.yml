@@ -1,0 +1,45 @@
+name: Export analysis source for local verification (temporary)
+on:
+  push:
+    branches: [verify/1067-source-for-local-checks]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: b744aa5950fc1a32935e1896788a2964e4bedafb
+          persist-credentials: false
+      - name: Archive exact original source and immutable verification builders
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,hashlib,json,os,subprocess,urllib.request
+          from pathlib import Path
+          out=Path('/tmp/analysis-source-export'); out.mkdir()
+          subprocess.run(['git','archive','--format=zip','-o',str(out/'source.zip'),'HEAD'],check=True)
+          blobs={'analysis-completion-base.py':'146c096efcccad2cf1b80e7c0eba9c018b738407',
+                 'analysis-completion-wrapper.py':'aef0e181033830405df698dd1402bd407029a933'}
+          for name,sha in blobs.items():
+              request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,
+                  headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request) as response: blob=json.load(response)
+              content=base64.b64decode(blob['content'])
+              assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha
+              (out/name).write_bytes(content)
+          manifest={'commit':subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip(),
+                    'tree':subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip(),
+                    'archiveSha256':hashlib.sha256((out/'source.zip').read_bytes()).hexdigest(),
+                    'builders':blobs}
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print(json.dumps(manifest))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: analysis-source-b744aa59
+          path: /tmp/analysis-source-export
+          retention-days: 1
+          if-no-files-found: error
