@@ -1,26 +1,27 @@
-name: Analysis exact source snapshot (temporary)
+name: Analysis patch identity check (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
   contents: read
 jobs:
-  snapshot:
+  identity:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: e952154a242da558a4df8544f31eac335d026dd1
-          persist-credentials: false
-      - name: Archive unchanged source, not a build or acceptance claim
+      - name: Export transmitted bytes for integrity comparison, not acceptance
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
         run: |
-          test "$(git rev-parse HEAD)" = e952154a242da558a4df8544f31eac335d026dd1
-          test "$(git rev-parse HEAD^{tree})" = 94348e138f1ca8dda5eb19219b8c075adfb1aa7f
-          git archive --format=zip HEAD > /tmp/taxonomy-e952154a-source.zip
+          import base64,json,os,urllib.request
+          from pathlib import Path
+          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/ba5a806bc2f464163c591cb3c9e8335a46f566fa',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(request) as response: content=base64.b64decode(json.load(response)['content'])
+          Path('/tmp/transmitted-patch.txt').write_bytes(content)
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: taxonomy-e952154a-source
-          path: /tmp/taxonomy-e952154a-source.zip
+          name: analysis-patch-transmission
+          path: /tmp/transmitted-patch.txt
           retention-days: 1
           if-no-files-found: error
