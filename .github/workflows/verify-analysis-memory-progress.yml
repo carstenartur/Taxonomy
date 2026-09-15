@@ -7,28 +7,27 @@ permissions:
 jobs:
   provision:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: { persist-credentials: false, fetch-depth: 2 }
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Materialize production and test compilation dependencies
+        run: ./mvnw -B -ntp -DskipTests test
       - name: Export immutable public source and Maven artifacts only
         run: |
           set -euo pipefail
           mkdir -p target/provision
           git fetch --depth=1 origin 29b9ef036882f5dbfc62924d9aca63038c098d4e
           git archive --format=zip 29b9ef036882f5dbfc62924d9aca63038c098d4e -o target/provision/source.zip
-          test -d "$HOME/.m2/repository"
           du -sh "$HOME/.m2/repository"
           tar -czf target/provision/maven-repository.tar.gz -C "$HOME/.m2" repository
-          if test -d "$HOME/.m2/wrapper"; then
-            tar -czf target/provision/maven-wrapper.tar.gz -C "$HOME/.m2" wrapper
-          fi
+          tar -czf target/provision/maven-wrapper.tar.gz -C "$HOME/.m2" wrapper
           sha256sum target/provision/*
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: analysis-isolated-workspace
+          name: analysis-java-test-workspace
           path: target/provision/**
           retention-days: 1
           compression-level: 0
