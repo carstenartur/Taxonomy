@@ -13,6 +13,7 @@ import org.openqa.selenium.TakesScreenshot;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.WebDriverWait;
 import org.springframework.core.io.ClassPathResource;
+import org.springframework.web.util.UriComponentsBuilder;
 import org.testcontainers.Testcontainers;
 import org.testcontainers.containers.Network;
 
@@ -22,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -32,7 +34,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Real-browser component contract. The application/use-case and authorization boundaries have separate Java tests. */
 @Tag("ui-acceptance")
 class AnalysisLiveProgressUiIT {
-    private static final String ID = "cb2a3d71-e849-4a50-9855-1f9cb8f81402";
+    static final String ID = "cb2a3d71-e849-4a50-9855-1f9cb8f81402";
     private static final AtomicReference<String> STATUS = new AtomicReference<>("RUNNING");
     private static final AtomicInteger SEQUENCE = new AtomicInteger(1);
     private static final AtomicInteger DETAIL_REQUESTS = new AtomicInteger();
@@ -113,7 +115,7 @@ class AnalysisLiveProgressUiIT {
         assertThat(UNEXPECTED_REQUESTS.get()).isZero();
     }
 
-    private static void serve(HttpExchange exchange) throws IOException {
+    static void serve(HttpExchange exchange) throws IOException {
         String path = exchange.getRequestURI().getPath();
         if (path.equals("/fixture")) {
             send(exchange, "text/html", """
@@ -135,8 +137,10 @@ class AnalysisLiveProgressUiIT {
             return;
         }
         if (path.equals("/favicon.ico")) { exchange.sendResponseHeaders(204, -1); exchange.close(); return; }
+        // Admission polling adds its own flag; scope depends on the workspace parameter, not query order.
+        var query = UriComponentsBuilder.fromUri(exchange.getRequestURI()).build().getQueryParams();
         boolean pinned = "workspace-a".equals(exchange.getRequestHeaders().getFirst("X-Taxonomy-Workspace-Id"))
-                && "workspaceId=workspace-a".equals(exchange.getRequestURI().getRawQuery());
+                && List.of("workspace-a").equals(query.get("workspaceId"));
         if (!pinned) { UNEXPECTED_REQUESTS.incrementAndGet(); exchange.sendResponseHeaders(403, -1); exchange.close(); return; }
         if (path.endsWith("/cancel") && exchange.getRequestMethod().equals("POST")) {
             if (!"fixture-token".equals(exchange.getRequestHeaders().getFirst("X-CSRF-TOKEN"))) UNEXPECTED_REQUESTS.incrementAndGet();
