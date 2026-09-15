@@ -32,7 +32,7 @@
             request = null;
         }
         async function cancel() {
-            if (cancelling) return;
+            if (stopped || cancelling) return false;
             cancelling = true;
             try {
                 var response = await options.fetch(url('/cancel'), {
@@ -135,7 +135,7 @@
         var state = node('div', text('Warte auf den Server …', 'Waiting for the server …'));
         var resources = node('div');
         var warning = node('div', '', 'fw-bold');
-        var button = node('button', text('Analyse abbrechen', 'Cancel analysis'), 'btn btn-sm btn-outline-danger mt-2');
+        var button = node('button', text('Analyse abbrechen', 'Cancel analysis'), 'btn btn-sm btn-danger mt-2');
         button.type = 'button';
         panel.append(title, state, resources, warning, button);
         var anchor = document.getElementById('statusArea') || document.getElementById('analyzeBtn');

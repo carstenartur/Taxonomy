@@ -179,6 +179,7 @@ public class AuthorizationRulesConfigurer {
 
         auth.requestMatchers(HttpMethod.POST, "/api/account/change-password").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/analyze").authenticated();
+        auth.requestMatchers(HttpMethod.POST, "/api/analysis-runs/*/cancel").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/justify-leaf").authenticated();
 
         auth.requestMatchers(HttpMethod.GET, "/api/**").authenticated();

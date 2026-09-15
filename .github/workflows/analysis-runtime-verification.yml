@@ -1,51 +1,40 @@
-name: Analysis terminal-label correction (temporary)
+name: Analysis admission-race verification (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
   contents: write
 jobs:
-  prepare:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: 077429a2aae4c7f68a321021a647722f64537171
-          persist-credentials: false
-      - name: Verify exact one-line correction
+        with: {persist-credentials: false}
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Prepare exact locally verified candidate
         run: |
-          node --input-type=module <<'JS'
-          import {readFileSync,writeFileSync} from 'node:fs';
-          import {createHash} from 'node:crypto';
-          import assert from 'node:assert/strict';
-          const path='.github/scripts/ui-role-state-flow.mjs';
-          const hash=content=>createHash('sha1').update('blob '+Buffer.byteLength(content)+'\0').update(content).digest('hex');
-          const before=readFileSync(path,'utf8');
-          assert.equal(hash(before),'c68e0e614b28ec69a33aaee9b44c0888a5dd68cd');
-          assert.equal(before.split('/Analysis ended|Analyse beendet/').length,2);
-          const after=before.replace('/Analysis ended|Analyse beendet/','/Analysis finished|Analyse beendet/');
-          assert.equal(hash(after),'5ffcef2a6cec915ebaa12ec98983edfdf724ba6b');
-          writeFileSync(path,after);
-          JS
+          node .github/scripts/workbench-admission.mjs prepare
           git diff --check
-          git diff --stat
-          node --check .github/scripts/ui-role-state-flow.mjs
-          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-operation-controller.test.mjs
+          mkdir -p target
+      - name: Verify admission, isolation and existing call boundaries
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp test '-Dtest=AnalysisProgress*Test,AnalysisRunAuthorizationTest,AnalysisRunControlBoundaryTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/admission-java.log
+          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-operation-controller.test.mjs 2>&1 | tee target/admission-js.log
           node .github/scripts/test-taxonomy-base-path.mjs
-      - name: Upload verified blob only; never change a product ref
+      - name: Publish only the four verified blobs, never refs
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          node --input-type=module <<'JS'
-          import {readFileSync} from 'node:fs';
-          import assert from 'node:assert/strict';
-          const response=await fetch('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',{
-            method:'POST',headers:{Authorization:'Bearer '+process.env.GH_TOKEN,'Content-Type':'application/json',Accept:'application/vnd.github+json'},
-            body:JSON.stringify({content:readFileSync('.github/scripts/ui-role-state-flow.mjs','utf8'),encoding:'utf-8'})
-          });
-          assert.equal(response.status,201);
-          const blob=await response.json();
-          assert.equal(blob.sha,'5ffcef2a6cec915ebaa12ec98983edfdf724ba6b');
-          console.log('Verified terminal-label blob:',blob.sha);
-          JS
+        run: node .github/scripts/workbench-admission.mjs publish
+      - name: Preserve evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: analysis-admission-${{ github.sha }}
+          path: |
+            target/admission-*.log
+            target/admission-manifest.json
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7

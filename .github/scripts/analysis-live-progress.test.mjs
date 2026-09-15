@@ -125,3 +125,21 @@ test('terminal status releases timers and allows lazy details only in the origin
     await assert.rejects(f.monitor.detail(1), /STALE_ANALYSIS/);
     assert.equal(f.calls.length, 2);
 });
+
+
+test('terminal observation never sends a later cancellation write', async () => {
+    const f = fixture(async () => response(snapshot(2, 'COMPLETED')));
+    await f.step(0);
+    assert.equal(await f.monitor.cancel(), false);
+    assert.equal(f.calls.length, 1);
+    assert.ok(f.calls.every(call => !call.options.method));
+    assert.equal(f.timers.size, 0);
+});
+
+test('explicitly stopped monitoring cannot cancel a superseded run', async () => {
+    const f = fixture(async () => response(snapshot()));
+    f.monitor.stop();
+    assert.equal(await f.monitor.cancel(), false);
+    assert.equal(f.calls.length, 0);
+    assert.equal(f.timers.size, 0);
+});

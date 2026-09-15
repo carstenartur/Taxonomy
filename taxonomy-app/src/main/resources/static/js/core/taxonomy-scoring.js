@@ -392,7 +392,11 @@
             body: JSON.stringify(requestBody)
         })
             .then(r => {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
+                if (!r.ok) {
+                    const error = new Error('HTTP ' + r.status);
+                    error.httpStatus = r.status;
+                    throw error;
+                }
                 return r.json();
             })
             .then(result => {
@@ -503,7 +507,11 @@
                 }
             })
             .catch(err => {
-                if (progress) { progress.cancel(); progress.stop(); }
+                if (progress) {
+                    // A rejected HTTP request is not an active job. A lost connection may be.
+                    if (!err.httpStatus) progress.cancel();
+                    progress.finish('ERROR');
+                }
                 setAnalyzing(false);
                 S.lastAnalysisStatus = 'ERROR';
                 B().showStatus('danger', t('scoring.analysis.error', err.message));

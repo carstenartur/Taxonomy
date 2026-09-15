@@ -1,30 +1,4 @@
-"""Disposable, exact-count baseline amendment after reviewing workspace ownership."""
-from pathlib import Path
-import json
-
-baseline = Path('.github/architecture-dependency-baseline.json')
-doc = Path('docs/internal/ANALYSIS_PROGRESS_DEPENDENCIES.md')
-text = baseline.read_text()
-data = json.loads(text)
-assert json.dumps(data, indent=2) + '\n' == text, 'Preserve existing baseline formatting'
-key = lambda edge: tuple(edge[name] for name in ('fromContext', 'fromPackage', 'toContext', 'toPackage'))
-original = {key(edge): edge['classDependencyCount'] for edge in data['edges']}
-controller = ('analysis', 'com.taxonomy.analysis.controller', 'workspace', 'com.taxonomy.workspace.service')
-service = ('analysis', 'com.taxonomy.analysis.service', 'workspace', 'com.taxonomy.workspace.service')
-assert original[controller] == 2 and service not in original
-for edge in data['edges']:
-    if key(edge) == controller:
-        edge['classDependencyCount'] = 3
-new = dict(zip(('fromContext', 'fromPackage', 'toContext', 'toPackage'), service))
-new['classDependencyCount'] = 2
-data['edges'].append(new)
-data['edges'].sort(key=key)
-updated = {key(edge): edge['classDependencyCount'] for edge in data['edges']}
-assert {k: v for k, v in updated.items() if k not in (controller, service)} == {
-    k: v for k, v in original.items() if k != controller}
-assert {(k[0], k[2]) for k in original} == {(k[0], k[2]) for k in updated}, 'No new context-level dependency direction'
-baseline.write_text(json.dumps(data, indent=2) + '\n')
-doc.write_text('''# Analysis live-progress dependency review
+# Analysis live-progress dependency review
 
 The live-progress implementation in PR #1067 adds two measured package-level
 edges to the existing **analysis -> workspace** ownership direction. This is a
@@ -64,9 +38,3 @@ The cancellation regression suite exercises the actual shared Spring Security
 rules and MVC controller: owner access with valid CSRF, authentication and CSRF
 rejection, denial of other owners/workspaces/repositories/branches, and denial of
 unrelated sibling writes. Existing metadata/detail scope tests remain intact.
-''')
-helper = Path('.github/scripts/workbench-analysis-review.py')
-source = helper.read_text()
-old = 'FILES = [CONTROL, REGISTRY'
-assert source.count(old) == 1
-helper.write_text(source.replace(old, "FILES = ['.github/architecture-dependency-baseline.json', 'docs/internal/ANALYSIS_PROGRESS_DEPENDENCIES.md', CONTROL, REGISTRY"))
