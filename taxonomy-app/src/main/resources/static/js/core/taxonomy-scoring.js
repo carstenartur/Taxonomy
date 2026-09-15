@@ -354,10 +354,23 @@
 
         console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
         const analysisStart = new Date();
-        var operationId = typeof crypto.randomUUID === 'function' ? crypto.randomUUID()
-            : '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function (c) {
-                return (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16);
-            });
+        var operationId;
+        try {
+            if (typeof crypto !== 'undefined' && crypto && typeof crypto.randomUUID === 'function') {
+                operationId = crypto.randomUUID();
+            } else if (typeof crypto !== 'undefined' && crypto && typeof crypto.getRandomValues === 'function') {
+                operationId = '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function (c) {
+                    return (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16);
+                });
+            } else {
+                B().showStatus('danger', t('scoring.secure.id.unavailable'));
+                return;
+            }
+        } catch (error) {
+            // Disabled browser cryptography must not erase existing results or start untracked work.
+            B().showStatus('danger', t('scoring.secure.id.unavailable'));
+            return;
+        }
         S.currentReasons = {};
         S.currentDiscrepancies = [];
         S.currentProductCoverageGaps = [];

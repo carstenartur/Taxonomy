@@ -2,9 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
+import { webcrypto } from 'node:crypto';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js', import.meta.url), 'utf8');
-function fixture() {
+function fixture(options = {}) {
     const statuses = [], calls = [], observations = [], renders = [], order = [];
     let rejectRequest;
     const sessionState = { ready: true, workspaceId: 'workspace-a' };
@@ -25,6 +26,7 @@ function fixture() {
         crypto: { randomUUID: () => 'cb2a3d71-e849-4a50-9855-1f9cb8f81402' },
         fetch: (...args) => { calls.push(args); order.push('post'); return new Promise((resolve, reject) => { rejectRequest = reject; }); }
     };
+    if (Object.hasOwn(options, 'crypto')) sandbox.crypto = options.crypto;
     vm.runInNewContext(source, sandbox);
     function progress() { window.TaxonomyAnalysisProgress = { start: (...args) => {
         observations.push(args); order.push('monitor'); return { finish() {}, stop() {}, cancel() {} };
@@ -128,4 +130,37 @@ test('a ready central-scope POST carries an explicit empty workspace pin', () =>
     f.window.TaxonomyScoring.runAnalysis();
     assert.equal(f.calls[0][0], '/api/analyze');
     assert.equal(f.calls[0][1].headers['X-Taxonomy-Workspace-Id'], '');
+});
+
+
+for (const [name, crypto] of [
+    ['absent', undefined],
+    ['null', null],
+    ['missing both methods', {}],
+    ['non-callable methods', { randomUUID: true, getRandomValues: true }],
+    ['disabled random UUID', { randomUUID() { throw new Error('disabled'); } }],
+    ['disabled random values', { getRandomValues() { throw new Error('disabled'); } }]
+]) {
+    test(`unavailable secure operation IDs (${name}) report a failure without starting or clearing anything`, () => {
+        const f = fixture({ crypto }); f.progress();
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        assert.doesNotThrow(() => f.window.TaxonomyScoring.runAnalysis());
+        assert.deepEqual(f.statuses, [['danger', 'scoring.secure.id.unavailable']]);
+        assert.equal(f.calls.length, 0);
+        assert.equal(f.observations.length, 0);
+        assert.equal(f.renders.length, 0);
+        assert.equal(f.state.currentArchView.title, 'old architecture');
+        assert.equal(f.state.currentReasons.CP, 'retained reason');
+        assert.equal(f.state.lastAnalysisStatus, 'SUCCESS');
+    });
+}
+
+test('secure random-values fallback supplies the same canonical version-four ID to monitor and POST', () => {
+    const f = fixture({ crypto: { getRandomValues: webcrypto.getRandomValues.bind(webcrypto) } }); f.progress();
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+    assert.doesNotThrow(() => f.window.TaxonomyScoring.runAnalysis());
+    assert.equal(f.calls.length, 1);
+    const id = f.calls[0][1].headers['X-Analysis-Operation-Id'];
+    assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    assert.equal(id, f.observations[0][0]);
 });
