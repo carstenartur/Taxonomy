@@ -68,6 +68,19 @@ class AnalysisTerminalContractTest {
         assertTrue(registry.recent("alice", scope, null, null).isEmpty());
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"MEMORY_PRESSURE", "TIME_LIMIT"})
+    void recordedResourceStopCannotBecomeSuccessWhenTheCallerFinishesLate(String reason) {
+        try (var handle = registry.open(null, "alice", scope, null)) {
+            assertThrows(AnalysisStoppedException.class, () -> AnalysisRunControl.call("MOCK", "CP", () -> {
+                throw new AnalysisStoppedException(AnalysisStoppedException.Reason.valueOf(reason));
+            }));
+            handle.finish("SUCCESS");
+            assertEquals("PARTIAL", registry.snapshot(handle.id(), "alice", scope).status());
+            assertEquals(reason, registry.snapshot(handle.id(), "alice", scope).stopReason());
+        }
+    }
+
     private static void assertBadId(org.junit.jupiter.api.function.Executable operation) {
         assertEquals(400, assertThrows(ResponseStatusException.class, operation).getStatusCode().value());
     }

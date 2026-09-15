@@ -2,6 +2,7 @@ package com.taxonomy.analysis.service;
 
 import com.taxonomy.dto.AnalysisProvenance;
 import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.core.env.Environment;
 import org.springframework.http.HttpStatus;
@@ -59,6 +60,31 @@ public class AnalysisProgressRegistry {
                            int evaluatedNodes, boolean scoresTruncated, Map<String, Integer> rawScores,
                            List<CallView> calls, long omittedCalls, AnalysisMemoryGuard.Reading memory,
                            String databaseStorage, String indexStorage, AnalysisProvenance provenance) { }
+
+    /** Immutable decision made at the run's cancellation/completion linearization point. */
+    public record Terminal(String status, String stopReason) {
+        public String resultStatus() {
+            return "COMPLETED".equals(status) ? "SUCCESS"
+                    : "CANCELLED".equals(status) || "PARTIAL".equals(status) ? "PARTIAL" : "ERROR";
+        }
+        public String message(String previous) {
+            if (stopReason == null || (previous != null && previous.contains(stopReason))) return previous;
+            String stopped = stopReason + ": Analysis stopped cooperatively";
+            return previous == null || previous.isBlank() ? stopped : previous + "; " + stopped;
+        }
+        public List<String> warnings(List<String> previous) {
+            var warnings = new ArrayList<String>(previous == null ? List.of() : previous);
+            if (stopReason != null && warnings.stream().noneMatch(value -> value != null && value.contains(stopReason))) {
+                warnings.add(message(null));
+            }
+            return List.copyOf(warnings);
+        }
+        public void reconcile(AnalysisResult result) {
+            result.setStatus(resultStatus());
+            result.setWarnings(warnings(result.getWarnings()));
+            result.setErrorMessage(message(result.getErrorMessage()));
+        }
+    }
 
     public Handle open(String requestedId, String owner, WorkspaceContext context,
                        AnalysisProvenance provenance) {
@@ -216,10 +242,15 @@ public class AnalysisProgressRegistry {
             control = new AnalysisRunControl(run, () -> run.cancelled, run.guard);
         }
         public String id() { return run.id; }
-        public void finish(String status) {
-            run.finish(status);
+        public void finish(String status) { finishAndGet(status); }
+        public void finish(AnalysisResult result) {
+            finishAndGet(result.getStatus()).reconcile(result);
+        }
+        public Terminal finishAndGet(String status) {
+            Terminal terminal = run.finish(status);
             // Do not acquire the registry monitor while holding the run monitor.
             capacityReleased();
+            return terminal;
         }
         @Override public void close() {
             if (closed) return;
@@ -314,12 +345,13 @@ public class AnalysisProgressRegistry {
             });
             phase("STOPPING", null);
         }
-        synchronized void finish(String resultStatus) {
-            if (!active()) return;
+        synchronized Terminal finish(String resultStatus) {
+            if (!active()) return new Terminal(status, stopReason);
             // cancel() and finish() share the run monitor: a cancellation accepted first wins.
             // Do not replace a resource-stop reason that the worker has already recorded.
             if (cancelled && stopReason == null) stopped(AnalysisStoppedException.Reason.CANCELLED);
             String terminalStatus = "CANCELLED".equals(stopReason) ? "CANCELLED"
+                    : stopReason != null ? "PARTIAL"
                     : "SUCCESS".equals(resultStatus) ? "COMPLETED"
                     : "PARTIAL".equals(resultStatus) ? "PARTIAL" : "ERROR";
             phase = "FINISHED";
@@ -328,6 +360,7 @@ public class AnalysisProgressRegistry {
             // reap() observes this volatile state without taking the run monitor.
             // Publish the timestamp and terminal metadata before making the run inactive.
             status = terminalStatus;
+            return new Terminal(status, stopReason);
         }
         synchronized Snapshot snapshot() {
             return new Snapshot(id, status, phase, node, stopReason, sequence, startedAt, lastActivityAt,

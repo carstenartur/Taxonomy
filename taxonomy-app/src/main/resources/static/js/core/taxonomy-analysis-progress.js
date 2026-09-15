@@ -6,7 +6,8 @@
     function createMonitor(options) {
         var initial = options.context();
         var stopped = false, timer = null, request = null, sequence = 0, cancelling = false;
-        var seen = false, cancelPending = false;
+        var seen = false, cancelPending = false, cancelInFlight = false, cancelAcknowledged = false, cancelUncertain = false;
+        var cleanupStarted = false;
         var id = options.id;
         function current() {
             var now = options.context();
@@ -23,8 +24,11 @@
         async function cancel() {
             if (stopped || cancelling || cancelPending) return false;
             cancelling = true;
+            cancelInFlight = true;
+            cancelUncertain = false;
             try {
                 await options.api.cancelRun(id, { workspaceId: initial.workspaceId });
+                cancelAcknowledged = true;
                 if (current() && options.onCancelling) options.onCancelling();
             } catch (error) {
                 cancelling = false;
@@ -33,11 +37,82 @@
                     // only a later observed RUNNING state permits this rejected write to retry.
                     cancelPending = true;
                     if (current() && options.onCancelling) options.onCancelling();
-                } else if (current()) options.onUnavailable(error.message);
+                } else {
+                    // A lost write response cannot safely be retried by automatic cleanup.
+                    // A later explicit user click may retry, but observation never does.
+                    cancelUncertain = true;
+                    if (current()) options.onUnavailable(error.message);
+                }
+            } finally { cancelInFlight = false; }
+        }
+
+        // UI invalidation must not erase a pending cancellation. A separate, bounded
+        // observer retains the original identity without touching old or new UI state.
+        function cancelAndStop() {
+            if (cleanupStarted || stopped) return false;
+            cleanupStarted = true;
+            stop();
+            var done = false, cleanupTimer = null, cleanupRequest = null, readTimeout = null;
+            var cleanupSeen = seen;
+            var deadline = options.setTimeout(endCleanup, 30000);
+            function endCleanup() {
+                if (done) return;
+                done = true;
+                options.clearTimeout(deadline);
+                if (cleanupTimer !== null) options.clearTimeout(cleanupTimer);
+                if (readTimeout !== null) options.clearTimeout(readTimeout);
+                if (cleanupRequest) cleanupRequest.abort();
+                cleanupTimer = readTimeout = cleanupRequest = null;
             }
+            async function cleanupPoll() {
+                if (done) return;
+                if (cancelAcknowledged || cancelUncertain) { endCleanup(); return; }
+                if (cancelInFlight) {
+                    cleanupTimer = options.setTimeout(cleanupPoll, 1000);
+                    return;
+                }
+                var writing = false;
+                cleanupRequest = new AbortController();
+                readTimeout = options.setTimeout(function () {
+                    if (cleanupRequest) cleanupRequest.abort();
+                }, 5000);
+                try {
+                    var response = await options.api.getRunStatus(id, {
+                        workspaceId: initial.workspaceId, waitForRegistration: !cleanupSeen,
+                        signal: cleanupRequest.signal
+                    });
+                    if (done) return;
+                    if (response.status === 202 && !cleanupSeen) return;
+                    var data = await response.json();
+                    if (done || data.operationId !== id) return;
+                    cleanupSeen = true;
+                    if (['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED', 'CANCELLING'].indexOf(data.status) >= 0) {
+                        endCleanup(); return;
+                    }
+                    if (data.status !== 'RUNNING') return;
+                    writing = true;
+                    await options.api.cancelRun(id, {
+                        workspaceId: initial.workspaceId, signal: cleanupRequest.signal
+                    });
+                    cancelAcknowledged = true;
+                    endCleanup();
+                } catch (error) {
+                    // Never retry a write whose delivery is ambiguous. The bounded server
+                    // operation deadline remains the final safeguard when transport is lost.
+                    if (writing || error.status === 400 || error.status === 401 || error.status === 403
+                            || (error.status === 404 && cleanupSeen)) endCleanup();
+                } finally {
+                    if (readTimeout !== null) options.clearTimeout(readTimeout);
+                    readTimeout = null;
+                    cleanupRequest = null;
+                    if (!done) cleanupTimer = options.setTimeout(cleanupPoll, 1000);
+                }
+            }
+            cleanupTimer = options.setTimeout(cleanupPoll, 0);
+            return true;
         }
         async function poll() {
-            if (!current()) { if (!stopped) cancel(); stop(); return; }
+            if (!current()) { if (!stopped) cancelAndStop(); return; }
             request = new AbortController();
             var timeout = options.setTimeout(function () { if (request) request.abort(); }, 5000);
             try {
@@ -94,7 +169,7 @@
             return data;
         }
         timer = options.setTimeout(poll, 0);
-        return { stop: stop, cancel: cancel, detail: detail, isCurrent: current };
+        return { stop: stop, cancel: cancel, cancelAndStop: cancelAndStop, detail: detail, isCurrent: current };
     }
 
     function context() {
@@ -239,7 +314,7 @@
         };
     }
     function start(id, onScores) {
-        if (active) { active.cancel(); active.stop(); }
+        if (active) active.cancelAndStop();
         var view = presentation();
         var monitor = createMonitor({
             id: id, context: context, api: window.TaxonomyAnalysisSessionApi,
@@ -250,6 +325,10 @@
             },
             onUnavailable: view.unavailable, onCancelling: view.cancelling
         });
+        monitor.transportFailed = function () {
+            monitor.cancelAndStop();
+            view.unavailable('CONNECTION_LOST', true);
+        };
         monitor.finish = function (status) {
             monitor.stop();
             view.finished(status);
@@ -262,7 +341,7 @@
     if (typeof document !== 'undefined' && document.addEventListener) {
         ['taxonomy:analysis-invalidated', 'taxonomy:analysis-cancelled'].forEach(function (name) {
             document.addEventListener(name, function () {
-                if (active) { active.cancel(); active.stop(); active = null; }
+                if (active) { active.cancelAndStop(); active = null; }
             });
         });
     }

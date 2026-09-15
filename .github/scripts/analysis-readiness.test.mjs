@@ -6,7 +6,7 @@ import { webcrypto } from 'node:crypto';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js', import.meta.url), 'utf8');
 function fixture(options = {}) {
-    const statuses = [], calls = [], observations = [], renders = [], order = [];
+    const statuses = [], calls = [], observations = [], renders = [], order = [], progressActions = [];
     let rejectRequest;
     const sessionState = { ready: true, workspaceId: 'workspace-a' };
     const state = { currentDiscrepancies: ['old discrepancy'], currentProductCoverageGaps: ['old gap'],
@@ -29,10 +29,11 @@ function fixture(options = {}) {
     if (Object.hasOwn(options, 'crypto')) sandbox.crypto = options.crypto;
     vm.runInNewContext(source, sandbox);
     function progress() { window.TaxonomyAnalysisProgress = { start: (...args) => {
-        observations.push(args); order.push('monitor'); return { finish() {}, stop() {}, cancel() {} };
+        observations.push(args); order.push('monitor'); return { finish() { progressActions.push('finish'); }, stop() { progressActions.push('stop'); },
+            cancel() { progressActions.push('cancel'); }, transportFailed() { progressActions.push('transportFailed'); } };
     } }; }
     return { window, state, sessionState, statuses, calls, observations, progress, renders, order,
-        rejectRequest: error => rejectRequest(error) };
+        progressActions, rejectRequest: error => rejectRequest(error) };
 }
 
 for (const phase of ['no lifecycle', 'progress loaded before lifecycle', 'loader still running']) {
@@ -228,4 +229,24 @@ test('expert-entered raw scores still reject unknown catalogue identities', () =
     const f = fixture(); f.state.taxonomyData = [liveFamily, liveProduct];
     assert.throws(() => f.window.TaxonomyScoring.applyLocalRawScores(
         { [unresolvedProviderKey]: 90 }, true), /Cannot resolve taxonomy score/);
+});
+
+
+test('lost POST uses bounded original-operation cleanup instead of premature terminal finish', async () => {
+    const f = fixture(); f.progress();
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+    f.window.TaxonomyScoring.runAnalysis();
+    f.rejectRequest(new TypeError('network connection lost'));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.progressActions, ['transportFailed']);
+    assert.equal(f.calls.length, 1);
+});
+
+test('rejected HTTP admission finishes normally without a cleanup cancellation', async () => {
+    const f = fixture(); f.progress();
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+    f.window.TaxonomyScoring.runAnalysis();
+    f.rejectRequest(Object.assign(new Error('HTTP 503'), { httpStatus: 503 }));
+    await new Promise(resolve => setImmediate(resolve));
+    assert.deepEqual(f.progressActions, ['finish']);
 });

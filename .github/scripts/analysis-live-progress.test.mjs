@@ -340,3 +340,92 @@ test('all central observation endpoints retain the explicit pin through named ro
     }
     f.monitor.stop();
 });
+
+
+for (const change of ['none', 'workspace', 'generation']) {
+    test(`abandoned POST cleanup survives late admission and ${change} change without stale UI updates`, async () => {
+        let reads = 0;
+        const f = fixture(async (url, options) => options.method === 'POST'
+            ? response(snapshot(3, 'CANCELLING'))
+            : ++reads === 1 ? response(null, 202) : response(snapshot(2)));
+        f.monitor.cancelAndStop();
+        f.monitor.cancelAndStop();
+        f.monitor.stop();
+        if (change === 'workspace') f.scope.workspaceId = 'workspace-b';
+        if (change === 'generation') f.scope.generation++;
+        await f.step(0); await f.step(1000);
+        assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+        assert.ok(f.calls.every(call => call.url.includes('workspaceId=workspace-a')));
+        const cancel = f.calls.find(call => call.options.method === 'POST');
+        assert.equal(cancel.options.headers['x-csrf-token'], 'test-token');
+        assert.equal(cancel.options.headers['x-taxonomy-workspace-id'], 'workspace-a');
+        assert.equal(f.snapshots.length, 0);
+        assert.equal(f.timers.size, 0);
+    });
+}
+
+test('abandoned POST cleanup never writes to an operation already completed', async () => {
+    const f = fixture(async () => response(snapshot(2, 'COMPLETED')));
+    f.monitor.cancelAndStop(); await f.step(0);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0].options.method, 'GET');
+    assert.equal(f.timers.size, 0);
+});
+
+test('abandoned unregistered POST cleanup stops at its independent bounded deadline', async () => {
+    const f = fixture(async () => response(null, 202));
+    f.monitor.cancelAndStop(); await f.step(0); await f.step(1000);
+    await f.step(30000);
+    assert.equal(f.timers.size, 0);
+    assert.ok(f.calls.every(call => call.options.method === 'GET'));
+    assert.equal(f.snapshots.length, 0);
+});
+
+test('cleanup does not duplicate an already in-flight user cancellation', async () => {
+    let release;
+    const f = fixture(() => new Promise(resolve => { release = resolve; }));
+    const cancel = f.monitor.cancel();
+    f.monitor.cancelAndStop(); await f.step(0);
+    assert.equal(f.calls.length, 1);
+    release(response(snapshot(2, 'CANCELLING'))); await cancel;
+    await f.step(1000);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.timers.size, 0);
+});
+
+test('cleanup aborts a stalled status read at the bounded deadline', async () => {
+    const f = fixture((url, options) => new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+    }));
+    f.monitor.cancelAndStop(); const read = f.step(0);
+    await f.step(30000); await read;
+    assert.equal(f.calls[0].options.signal.aborted, true);
+    assert.equal(f.timers.size, 0);
+});
+
+test('cleanup stops at authorization failure without attempting a cancellation write', async () => {
+    const f = fixture(async () => response({ detail: 'denied' }, 403));
+    f.monitor.cancelAndStop(); await f.step(0);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.timers.size, 0);
+});
+
+test('cleanup never retries an ambiguous cancellation write', async () => {
+    const f = fixture(async (url, options) => {
+        if (options.method === 'POST') throw new Error('connection lost after submission');
+        return response(snapshot());
+    });
+    f.monitor.cancelAndStop(); await f.step(0);
+    assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+    assert.equal(f.timers.size, 0);
+});
+
+
+test('cleanup cannot repeat an earlier user cancel whose response was lost', async () => {
+    const f = fixture(async () => { throw new Error('response lost after cancel submission'); });
+    await f.monitor.cancel();
+    f.monitor.cancelAndStop(); await f.step(0);
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0].options.method, 'POST');
+    assert.equal(f.timers.size, 0);
+});

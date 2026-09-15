@@ -141,7 +141,7 @@ public class AnalysisApiController {
                             request.getProvider(),
                             username,
                             context));
-            if (run != null) run.finish(result.analysisResult().getStatus());
+            if (run != null) run.finish(result.analysisResult());
             return ResponseEntity.ok()
                     .header(ANALYSIS_OPERATION_ID_HEADER, operationId)
                     .body(result.analysisResult());
@@ -218,6 +218,12 @@ public class AnalysisApiController {
         // header, so WorkspaceContextResolver accepts its equivalent query value.
         String username = workspaceResolver.resolveCurrentUsername();
         WorkspaceContext streamContext = resolveWorkspaceContext(username);
+        // Unlike POST, legacy SSE is not routed through the DSL interceptor.
+        // Full analysis still requires the same isolated-workspace admission.
+        if (streamContext.workspaceId() == null || streamContext.workspaceId().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                    "Full analysis requires an isolated workspace");
+        }
 
         StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
                 businessText, provider, LocaleContextHolder.getLocale());
@@ -230,44 +236,36 @@ public class AnalysisApiController {
         analysisExecutor.execute(() -> {
             worker.set(Thread.currentThread());
             try (var run = reservation == null ? null : reservation.open()) {
+                com.taxonomy.analysis.usecase.AnalysisStreamEventHandler emit = event -> {
+                    if (completed.get()) return;
+                    // Freeze the authoritative outcome before sending any terminal bytes.
+                    AnalysisStreamEvent outbound = reconcileTerminal(event, run);
+                    boolean terminal = outbound instanceof AnalysisStreamEvent.Complete
+                            || outbound instanceof AnalysisStreamEvent.Error;
+                    if (terminal) completed.set(true);
+                    var mapped = analysisSseEventMapper.map(outbound);
+                    sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload());
+                    if (terminal) emitter.complete();
+                };
                 try {
                     if (disconnected.get()) Thread.currentThread().interrupt();
                     AnalysisRunControl.checkpoint();
-                    streamRequirementAnalysisUseCase.stream(command, event -> {
-                        AnalysisSseEventMapper.MappedEvent mapped = analysisSseEventMapper.map(event);
-                        sendEvent(emitter, operationId, eventSequence.incrementAndGet(),
-                                mapped.name(), mapped.payload());
-                        if (event instanceof AnalysisStreamEvent.Complete
-                                || event instanceof AnalysisStreamEvent.Error) {
-                            if (run != null) run.finish(event instanceof AnalysisStreamEvent.Complete complete
-                                    ? complete.status() : ((AnalysisStreamEvent.Error) event).status());
-                            completed.set(true);
-                            emitter.complete();
-                        }
-                    });
+                    streamRequirementAnalysisUseCase.stream(command, emit);
+                    if (!completed.get()) emit.handle(new AnalysisStreamEvent.Error("ERROR",
+                            "Analysis ended without a terminal result", Map.of(), List.of(), List.of(), List.of()));
                 } catch (AnalysisStoppedException stopped) {
-                    // Preflight can stop before the use case gets a chance to emit a terminal event.
-                    // Finalize inside the handle scope so close() cannot turn a resource stop into ERROR.
-                    if (run != null) run.finish("PARTIAL");
-                    var mapped = analysisSseEventMapper.map(new AnalysisStreamEvent.Error(
-                            "PARTIAL", stopped.getMessage(), stopped.partialScores(),
-                            List.of(stopped.getMessage()), stopped.partialDiscrepancies(), List.of(),
-                            stopped.partialReasons()));
-                    completed.set(true);
-                    sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload());
-                    emitter.complete();
+                    emit.handle(new AnalysisStreamEvent.Error("PARTIAL", stopped.getMessage(),
+                            stopped.partialScores(), List.of(stopped.getMessage()),
+                            stopped.partialDiscrepancies(), List.of(), stopped.partialReasons()));
+                } catch (UnknownAnalysisProviderException failure) {
+                    emit.handle(new AnalysisStreamEvent.Error("ERROR", "Unknown provider: " + failure.getProvider(),
+                            Map.of(), List.of(), List.of(), List.of()));
+                } catch (Exception failure) {
+                    log.error("Streaming analysis failed", failure);
+                    emit.handle(new AnalysisStreamEvent.Error("ERROR",
+                            "Analysis failed. Retry the operation or inspect administrator diagnostics.",
+                            Map.of(), List.of(), List.of(), List.of()));
                 }
-            } catch (UnknownAnalysisProviderException e) {
-                sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
-                        "status", "ERROR",
-                        "errorMessage", "Unknown provider: " + e.getProvider()));
-                emitter.complete();
-            } catch (Exception e) {
-                log.error("Streaming analysis failed", e);
-                sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
-                        "status", "ERROR",
-                        "errorMessage", "Analysis failed. Retry the operation or inspect administrator diagnostics."));
-                emitter.complete();
             } finally {
                 synchronized (worker) {
                     completed.set(true);
@@ -369,6 +367,23 @@ public class AnalysisApiController {
         } catch (Exception e) {
             emitter.completeWithError(e);
         }
+    }
+
+    private static AnalysisStreamEvent reconcileTerminal(AnalysisStreamEvent event,
+            AnalysisProgressRegistry.Handle run) {
+        if (run == null) return event;
+        if (event instanceof AnalysisStreamEvent.Complete complete) {
+            var terminal = run.finishAndGet(complete.status());
+            return new AnalysisStreamEvent.Complete(terminal.resultStatus(), complete.allScores(),
+                    terminal.warnings(complete.warnings()), complete.discrepancies(), complete.productCoverageGaps());
+        }
+        if (event instanceof AnalysisStreamEvent.Error error) {
+            var terminal = run.finishAndGet(error.status());
+            return new AnalysisStreamEvent.Error(terminal.resultStatus(), terminal.message(error.errorMessage()),
+                    error.partialScores(), terminal.warnings(error.warnings()), error.discrepancies(),
+                    error.productCoverageGaps(), error.partialReasons());
+        }
+        return event;
     }
 
     private String newOperationId() {

@@ -65,7 +65,7 @@ public class AnalyzeRequirementUseCase {
         try (var run = analysisProgressRegistry.open(null, command.username(),
                 command.workspaceContext(), command.provenance())) {
             AnalyzeRequirementResult result = analyze(command, command.provenance() == null);
-            run.finish(result.analysisResult().getStatus());
+            run.finish(result.analysisResult());
             return result;
         }
     }

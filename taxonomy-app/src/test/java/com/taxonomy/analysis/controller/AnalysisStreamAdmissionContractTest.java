@@ -30,6 +30,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 class AnalysisStreamAdmissionContractTest {
+    private static final WorkspaceContext SCOPE = new WorkspaceContext("alice", "alice-ws", "draft");
     private static final String ID = "cb2a3d71-e849-4a50-9855-1f9cb8f81402";
     private final ExecutorService executor = mock(ExecutorService.class);
     private final StreamRequirementAnalysisUseCase streaming = mock(StreamRequirementAnalysisUseCase.class);
@@ -43,7 +44,7 @@ class AnalysisStreamAdmissionContractTest {
         when(taxonomy.isInitialized()).thenReturn(true);
         var resolver = mock(WorkspaceResolver.class);
         when(resolver.resolveCurrentUsername()).thenReturn("alice");
-        when(resolver.resolveCurrentContext()).thenReturn(WorkspaceContext.SHARED);
+        when(resolver.resolveCurrentContext()).thenReturn(SCOPE);
         var controller = new AnalysisApiController(taxonomy, executor, new ObjectMapper(), full, streaming,
                 mock(AnalyzeNodeChildrenUseCase.class), mock(JustifyLeafUseCase.class), new AnalysisSseEventMapper(),
                 mock(RepositoryStateService.class), resolver, mock(MessageSource.class));
@@ -70,7 +71,7 @@ class AnalysisStreamAdmissionContractTest {
     @Test void malformedObservationIsNotMistakenForPendingAdmission() throws Exception {
         mvc.perform(get("/api/analysis-runs/not-a-uuid").param("waitForRegistration", "true"))
                 .andExpect(status().isBadRequest());
-        assertTrue(registry.recent("alice", WorkspaceContext.SHARED, null, null).isEmpty());
+        assertTrue(registry.recent("alice", SCOPE, null, null).isEmpty());
     }
 
     @Test void cooperativeStopBeforeStreamingIsPartialAndDoesNotInvokeTheProvider() throws Exception {
@@ -89,7 +90,7 @@ class AnalysisStreamAdmissionContractTest {
         assertTrue(body.contains("\"status\":\"PARTIAL\""), body);
         assertTrue(body.contains("CANCELLED"), body);
         assertFalse(body.contains("\"status\":\"ERROR\""), body);
-        assertEquals("CANCELLED", registry.snapshot(ID, "alice", WorkspaceContext.SHARED).status());
+        assertEquals("CANCELLED", registry.snapshot(ID, "alice", SCOPE).status());
         verifyNoInteractions(streaming);
     }
 
@@ -103,7 +104,7 @@ class AnalysisStreamAdmissionContractTest {
                 .andExpect(status().isConflict()).andExpect(request().asyncNotStarted());
         verify(executor, times(1)).execute(any());
         assertSame(accepted, queued.get());
-        assertEquals("RUNNING", registry.snapshot(ID, "alice", WorkspaceContext.SHARED).status());
+        assertEquals("RUNNING", registry.snapshot(ID, "alice", SCOPE).status());
         assertFalse(AnalysisRunControl.active(), "Admission must not bind the HTTP thread's run control");
         verifyNoInteractions(streaming);
     }
@@ -118,7 +119,7 @@ class AnalysisStreamAdmissionContractTest {
                         .param("businessText", "communications"))
                 .andExpect(status().isServiceUnavailable()).andExpect(request().asyncNotStarted());
         verify(executor, times(4)).execute(any());
-        assertEquals(4, registry.recent("alice", WorkspaceContext.SHARED, null, null).size());
+        assertEquals(4, registry.recent("alice", SCOPE, null, null).size());
         assertFalse(AnalysisRunControl.active());
         verifyNoInteractions(streaming);
     }
@@ -128,13 +129,13 @@ class AnalysisStreamAdmissionContractTest {
         mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
                         .param("businessText", "communications"))
                 .andExpect(status().isServiceUnavailable()).andExpect(request().asyncNotStarted());
-        assertTrue(registry.recent("alice", WorkspaceContext.SHARED, null, null).isEmpty());
+        assertTrue(registry.recent("alice", SCOPE, null, null).isEmpty());
         assertFalse(AnalysisRunControl.active());
         doAnswer(call -> { queued.set(call.getArgument(0)); return null; }).when(executor).execute(any());
         mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
                         .param("businessText", "communications"))
                 .andExpect(request().asyncStarted());
-        assertEquals(ID, registry.snapshot(ID, "alice", WorkspaceContext.SHARED).operationId());
+        assertEquals(ID, registry.snapshot(ID, "alice", SCOPE).operationId());
     }
 
     @Test void cancellationOfQueuedReservationIsObservedByWorkerWithoutLeakingThreadContext() throws Exception {
@@ -142,7 +143,7 @@ class AnalysisStreamAdmissionContractTest {
                         .param("businessText", "communications"))
                 .andExpect(request().asyncStarted()).andReturn();
         assertFalse(AnalysisRunControl.active());
-        assertEquals("CANCELLING", registry.cancel(ID, "alice", WorkspaceContext.SHARED).status());
+        assertEquals("CANCELLING", registry.cancel(ID, "alice", SCOPE).status());
         var workerFailure = new AtomicReference<Throwable>();
         Thread worker = Thread.ofPlatform().start(() -> {
             try {
@@ -155,7 +156,7 @@ class AnalysisStreamAdmissionContractTest {
         assertFalse(worker.isAlive());
         assertNull(workerFailure.get());
         mvc.perform(asyncDispatch(request)).andExpect(status().isOk());
-        assertEquals("CANCELLED", registry.snapshot(ID, "alice", WorkspaceContext.SHARED).status());
+        assertEquals("CANCELLED", registry.snapshot(ID, "alice", SCOPE).status());
         verifyNoInteractions(streaming);
     }
 }

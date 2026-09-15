@@ -564,8 +564,8 @@
             .catch(err => {
                 if (progress) {
                     // A rejected HTTP request is not an active job. A lost connection may be.
-                    if (!err.httpStatus) progress.cancel();
-                    progress.finish('ERROR');
+                    if (!err.httpStatus) progress.transportFailed();
+                    else progress.finish('ERROR');
                 }
                 setAnalyzing(false);
                 S.lastAnalysisStatus = 'ERROR';
