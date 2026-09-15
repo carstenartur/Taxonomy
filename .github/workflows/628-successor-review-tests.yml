@@ -1,0 +1,145 @@
+name: Verify bounded successor review corrections
+on:
+  push:
+    branches: [verification/628-integrate-37a6]
+    paths: [.github/workflows/628-successor-review-tests.yml]
+permissions:
+  contents: read
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: templates
+            target: 31a0409d3eb7c3ecfc5d004c45cd36af32068baa
+          - label: interop
+            target: f977ffa6f71e28d981b34b39333cf1114de4e7b2
+    env:
+      WORKSPACE_HEAD: 37a6eedfb64067667985650bddd50102b21ddad3
+      TARGET_HEAD: ${{ matrix.target }}
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37a6eedfb64067667985650bddd50102b21ddad3
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Apply exactly the two test-only review changes to the native integration
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$TARGET_HEAD"
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          target, workspace = os.environ['TARGET_HEAD'], os.environ['WORKSPACE_HEAD']
+          tree=git('merge-tree','--write-tree',target,workspace)
+          assert len(tree)==40 and '\n' not in tree
+          subprocess.run(['git','checkout','--detach',target],check=True)
+          subprocess.run(['git','read-tree','--reset','-u',tree],check=True)
+          claim=Path('taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java')
+          ratchet=Path('taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java')
+          text=claim.read_text()
+          old='            try (var executor = Executors.newFixedThreadPool(2)) {'
+          new='            var executor = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());\n            try {'
+          assert text.count(old)==1
+          text=text.replace(old,new)
+          old='                assertEquals(List.of(200, 409), statuses);\n            }'
+          new='''                assertEquals(List.of(200, 409), statuses);
+                      } finally {
+                          executor.shutdownNow();
+                          assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS),
+                                  "Provisioning test workers did not terminate");
+                      }'''.replace('\n                      ','\n            ')
+          assert text.count(old)==1
+          claim.write_text(text.replace(old,new))
+          text=ratchet.read_text()
+          old='        List<String> unclassifiedPackages = new ArrayList<>();'
+          assert text.count(old)==1
+          ratchet.write_text(text.replace(old,'        Set<String> unclassifiedPackages = new TreeSet<>();'))
+          assert sorted(git('diff','--name-only').splitlines()) == sorted([str(claim),str(ratchet)])
+          subprocess.run(['git','add','--',str(claim),str(ratchet)],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          final=git('write-tree')
+          for module in ('taxonomy-templates','taxonomy-interop'):
+              assert git('ls-tree',target,'--',module)==git('ls-tree',final,'--',module),module
+          out=Path(os.environ['RUNNER_TEMP'])/'review-evidence'; out.mkdir()
+          manifest={'target':target,'workspace':workspace,'base_tree':git('rev-parse',target+'^{tree}'),'integration_tree':tree,'tree':final,'entries':[]}
+          for path in git('diff','--no-renames','--name-only',target,final).splitlines():
+              entry=git('ls-tree',final,'--',path)
+              if entry:
+                  mode,kind,sha=entry.split('\t')[0].split()
+                  manifest['entries'].append({'path':path,'mode':mode,'type':kind,'sha':sha})
+              else:
+                  manifest['entries'].append({'path':path,'mode':'100644','type':'blob','sha':None})
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          (out/'review-only.patch').write_text(subprocess.check_output(['git','diff',tree,final],text=True))
+          (out/'source.patch').write_text(subprocess.check_output(['git','diff','--binary',target,final],text=True))
+          print('TWO TEST FILES', (out/'review-only.patch').read_text())
+          print('CANDIDATE',final)
+          PY
+      - name: Supply the unchanged model for application startup
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute the actual claim race and architecture guard suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningClaimIT,ArchitectureContextDependencyRatchetTest test > "$RUNNER_TEMP/review-evidence/tests.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/review-evidence/tests.log"; exit 1; }
+          python3 - <<'PY'
+          import json, os, subprocess, xml.etree.ElementTree as ET
+          from pathlib import Path
+          counts=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for name in ('WorkspaceProvisioningClaimIT','ArchitectureContextDependencyRatchetTest'):
+              paths=list(Path('.').glob('*/target/surefire-reports/TEST-*.'+name+'.xml'))
+              assert len(paths)==1,(name,paths)
+              root=ET.parse(paths[0]).getroot()
+              actual={k:int(root.get(k,'0')) for k in counts}
+              assert actual['tests']>0 and actual['failures']==actual['errors']==actual['skipped']==0,(name,actual)
+              for k in counts: counts[k]+=actual[k]
+              print('EXECUTED',name,actual)
+          out=Path(os.environ['RUNNER_TEMP'])/'review-evidence'
+          manifest=json.loads((out/'manifest.json').read_text())
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==manifest['tree']
+          (out/'results.json').write_text(json.dumps(counts,indent=2))
+          print('FOCUSED RESULT',counts)
+          PY
+      - name: Retain only the two executed test blobs, without moving branches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'review-evidence'
+          manifest=json.loads((out/'manifest.json').read_text())
+          paths=['taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java','taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java']
+          for path in paths:
+              body=json.dumps({'content':Path(path).read_text(),'encoding':'utf-8'})
+              blob=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=body,text=True))
+              assert blob['sha']==subprocess.check_output(['git','hash-object',path],text=True).strip()
+          print('VERIFIED MANIFEST',json.dumps(manifest))
+          print('Only the two focused suites were run on this final test-only adjustment; full canonical CI is still required.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: successor-review-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/review-evidence/
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
