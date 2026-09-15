@@ -1,32 +1,91 @@
-name: Prepare offline analysis test dependencies (temporary)
+name: Consolidated analysis terminal preflight (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  dependencies:
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 60
     steps:
-      - name: Download pinned public test dependencies
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p /tmp/analysis-test-dependencies
-          for path in \
-            org/junit/platform/junit-platform-console-standalone/6.0.3/junit-platform-console-standalone-6.0.3.jar \
-            com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar \
-            net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar \
-            net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar \
-            org/ow2/asm/asm/9.9.1/asm-9.9.1.jar; do
-            curl --fail --silent --show-error --location --retry 2 "https://repo.maven.apache.org/maven2/$path" -o "/tmp/analysis-test-dependencies/${path##*/}"
-          done
-          cd /tmp/analysis-test-dependencies
-          sha256sum *.jar > SHA256SUMS
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          name: analysis-pinned-test-dependencies
-          path: /tmp/analysis-test-dependencies
+          ref: 7bada07047ad49f2f15428b3236111e535145483
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Assemble exact locally tested candidate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,hashlib,json,os,subprocess,urllib.request
+          from pathlib import Path
+          out=Path('/tmp/analysis-delivery');out.mkdir()
+          api='https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD')=='7bada07047ad49f2f15428b3236111e535145483'
+          for kind,sha in [('product','a7f7dfa2ee0c2593cf7f3d52836646f6b747867f'),('tests','e7b94cef8c93fd335c634fbcce15772f37226b29')]:
+              with urllib.request.urlopen(urllib.request.Request(api+sha,headers=headers)) as response: data=base64.b64decode(json.load(response)['content'])
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+              data=data.replace(b'\n diff --git ',b'\ndiff --git ')
+              if kind=='product': assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()=='01463510266cb0485c6b244e9f0f41211be730d6'
+              patch=out/(kind+'.patch');patch.write_bytes(data)
+              subprocess.run(['git','apply','--check',str(patch)],check=True)
+              subprocess.run(['git','apply',str(patch)],check=True)
+          expected={
+            '.github/scripts/product-score-streaming.test.mjs':'fd3767ddaad08b818b76cf8c8c27874166d76bbc',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java':'ed4e0b38048d9b72e122620ff60ed4680885ea83',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisProgressRegistry.java':'4a4d38619f50e7f7d844e6e3e734db134e9dab44',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java':'4d42c15d61f2c6966b8f06b371e570575fbb15fe',
+            'taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js':'fa618fab142043950b7eee6a89f8a6d020427287',
+            'taxonomy-app/src/test/java/com/taxonomy/analysis/controller/AnalysisCompletionContractTest.java':'0227a654acbfbc35406bc8e1ea42e69f7de312b7',
+            'taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmServiceBranchCoverageTest.java':'df3a8299fefbb57c716d929e335d921a4f4ed777',
+            'taxonomy-domain/src/main/java/com/taxonomy/dto/AnalysisResult.java':'27fbc8e1896471ecf1abfdbc202f9a79cf07939c',
+            'taxonomy-domain/src/main/java/com/taxonomy/dto/AnalysisScoreSemantics.java':'8208f4261a14e0a9e653ece3320af172bf50c98a'}
+          assert set(git('diff','--name-only').splitlines())==set(expected)
+          for path,sha in expected.items(): assert git('hash-object',path)==sha,path
+          subprocess.run(['git','diff','--check'],check=True)
+          subprocess.run(['git','add','--',*expected],check=True)
+          tree=git('write-tree');assert tree=='4f163fcca94f7330a5bf03420f5943406238d2d0',tree
+          (out/'manifest.json').write_text(json.dumps({'base':git('rev-parse','HEAD'),'tree':tree,'files':expected,'run':os.environ['GITHUB_RUN_ID']},indent=2)+'\n')
+      - name: Complete reactor unit tests, no real provider calls
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp test -DexcludedGroups=real-llm 2>&1 | tee /tmp/analysis-delivery/reactor-unit.log
+      - name: Complete Maven-owned frontend contracts
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee /tmp/analysis-delivery/frontend-contracts.log
+          node .github/scripts/test-taxonomy-base-path.mjs | tee /tmp/analysis-delivery/base-path.log
+      - name: Publish only verified blobs, not branch refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,json,os,subprocess,urllib.request,zipfile
+          from pathlib import Path
+          out=Path('/tmp/analysis-delivery');manifest=json.loads((out/'manifest.json').read_text())
+          with zipfile.ZipFile(out/'tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for path,sha in manifest['files'].items():
+                  content=Path(path).read_bytes()
+                  assert subprocess.check_output(['git','hash-object',path],text=True).strip()==sha
+                  request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',
+                      data=json.dumps({'content':base64.b64encode(content).decode(),'encoding':'base64'}).encode(),
+                      headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+                  with urllib.request.urlopen(request) as response: assert json.load(response)['sha']==sha
+                  archive.writestr(path,content)
+          assert subprocess.check_output(['git','diff','--name-only'],text=True).strip()==''
+      - name: Preserve exact source and execution evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: analysis-delivery-preflight-${{ github.sha }}
+          path: |
+            /tmp/analysis-delivery
+            **/target/surefire-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: error
