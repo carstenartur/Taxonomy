@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const source = readFileSync('taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', 'utf8');
 const clientSource = readFileSync('taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js', 'utf8');
 const apiSource = readFileSync('taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', 'utf8');
+const routingSource = readFileSync('taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-api-routing.js', 'utf8');
 const id = 'cb2a3d71-e849-4a50-9855-1f9cb8f81402';
 function fixture(fetcher) {
     const scope = { workspaceId: 'workspace-a', generation: 1, invalidating: false };
@@ -25,6 +26,7 @@ function fixture(fetcher) {
     const window = {
         location: { href: 'https://taxonomy.example/', origin: 'https://taxonomy.example' },
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        __TaxonomyAnalysisSessionContext: { runtime: scope },
         fetch: async (url, options) => {
             calls.push({ url, options: { ...options, headers: Object.fromEntries(options.headers) } });
             return fetcher(url, options);
@@ -34,6 +36,7 @@ function fixture(fetcher) {
         URL, Request, Headers, Response, CustomEvent, setTimeout: schedule, clearTimeout: unschedule });
     vm.runInContext(clientSource, sandbox);
     vm.runInContext(apiSource, sandbox);
+    vm.runInContext(routingSource, sandbox);
     vm.runInContext(source, sandbox);
     const monitor = window.TaxonomyAnalysisProgress.createMonitor({
         id, context: () => ({ ...scope }), api: window.TaxonomyAnalysisSessionApi,
@@ -48,7 +51,7 @@ function fixture(fetcher) {
         await entry[1].fn();
         await new Promise(resolve => setImmediate(resolve));
     }
-    return { scope, timers, calls, snapshots, unavailable, authFailures, monitor, step };
+    return { scope, timers, calls, snapshots, unavailable, authFailures, api: window.TaxonomyAnalysisSessionApi, monitor, step };
 }
 function response(data, status = 200) {
     return new Response(status === 202 ? null : JSON.stringify(data), { status });
@@ -244,5 +247,18 @@ test('authorization failure is reported centrally and never retried as a cancell
     assert.equal(f.authFailures.length, 1);
     assert.equal(f.authFailures[0].status, 403);
     assert.deepEqual(f.unavailable, ['HTTP 403: Denied']);
+    f.monitor.stop();
+});
+
+
+test('unscoped session requests still follow the active tab while operation cancellation stays pinned', async () => {
+    const f = fixture(async () => response(snapshot()));
+    f.scope.workspaceId = 'workspace-b';
+    await f.api.request('/api/analysis-drafts/current', {});
+    await f.monitor.cancel();
+    assert.equal(f.calls.length, 2);
+    assert.match(f.calls[0].url, /analysis-drafts\/current\?workspaceId=workspace-b$/);
+    assert.match(f.calls[1].url, /cancel\?workspaceId=workspace-a$/);
+    assert.equal(f.calls[1].options.headers['x-taxonomy-workspace-id'], 'workspace-a');
     f.monitor.stop();
 });

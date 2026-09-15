@@ -124,8 +124,8 @@ class AnalysisLiveProgressUiIT {
                     <style>body{font:16px sans-serif;margin:2rem}.alert{padding:1rem;border:1px solid #999}pre{white-space:pre-wrap}</style>
                     </head><body><div id="statusArea"></div><div id="partialScores"></div><div id="llmCommLogContent"></div>
                     <script src="/api-client.js"></script><script src="/analysis-session-api.js"></script>
-                    <script src="/progress.js"></script><script>
-                    window.__TaxonomyAnalysisSessionContext={runtime:{workspaceId:'workspace-a',analysisGeneration:1}};
+                    <script>window.__TaxonomyAnalysisSessionContext={runtime:{workspaceId:'workspace-a',analysisGeneration:1}};</script>
+                    <script src="/analysis-session-routing.js"></script><script src="/progress.js"></script><script>
                     window.monitor=TaxonomyAnalysisProgress.start('%s',function(s){
                         document.getElementById('partialScores').textContent=JSON.stringify(s.rawScores);
                     });</script></body></html>
@@ -136,6 +136,7 @@ class AnalysisLiveProgressUiIT {
             case "/progress.js" -> "static/js/core/taxonomy-analysis-progress.js";
             case "/api-client.js" -> "static/js/api/taxonomy-api-client.js";
             case "/analysis-session-api.js" -> "static/js/api/analysis-session-api.js";
+            case "/analysis-session-routing.js" -> "static/js/core/taxonomy-analysis-session-api-routing.js";
             case "/js/security/taxonomy-role-surface.js" -> "static/js/security/taxonomy-role-surface.js";
             case "/js/security/taxonomy-ui-semantics.js" -> "static/js/security/taxonomy-ui-semantics.js";
             default -> null;

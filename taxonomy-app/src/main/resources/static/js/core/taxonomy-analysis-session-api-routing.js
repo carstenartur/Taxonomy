@@ -35,8 +35,9 @@
             && applicationApiPath(resolved).indexOf('/api/') === 0;
     }
 
-    function workspaceScopedUrl(input) {
-        if (!runtime.workspaceId || typeof input !== 'string') return input;
+    function workspaceScopedUrl(input, pinnedWorkspaceId) {
+        var workspaceId = pinnedWorkspaceId || runtime.workspaceId;
+        if (!workspaceId || typeof input !== 'string') return input;
         var resolved;
         try {
             resolved = new URL(input, window.location.href);
@@ -45,7 +46,7 @@
         }
         if (!isSameApplicationApi(resolved)) return input;
 
-        resolved.searchParams.set(WORKSPACE_QUERY_PARAMETER, runtime.workspaceId);
+        resolved.searchParams.set(WORKSPACE_QUERY_PARAMETER, workspaceId);
         return /^[a-z][a-z0-9+.-]*:/i.test(input)
             ? resolved.href
             : resolved.pathname + resolved.search + resolved.hash;
@@ -64,7 +65,10 @@
             if (typeof original !== 'function') return;
             client[methodName] = function () {
                 var args = Array.prototype.slice.call(arguments);
-                args[0] = workspaceScopedUrl(args[0]);
+                // Explicitly scoped operation calls (including cancellation after a
+                // tab switch) must retain the same workspace in URL and header.
+                var policy = methodName === 'request' ? args[2] : null;
+                args[0] = workspaceScopedUrl(args[0], policy && policy.pinnedWorkspaceId);
                 return original.apply(client, args);
             };
         });

@@ -2,7 +2,7 @@
 (function () {
     'use strict';
 
-    function request(url, options) {
+    function request(url, options, pinnedWorkspaceId) {
         var client = window.TaxonomyApiClient;
         if (!client || typeof client.request !== 'function') {
             return Promise.reject(new Error('Taxonomy API client is not available'));
@@ -10,7 +10,8 @@
         var method = String((options && options.method) || 'GET').toUpperCase();
         return client.request(url, options, {
             idempotent: method === 'GET' || method === 'HEAD',
-            signal: options && options.signal
+            signal: options && options.signal,
+            pinnedWorkspaceId: pinnedWorkspaceId
         });
     }
 
@@ -32,7 +33,7 @@
         if (method === 'POST') options.keepalive = true;
         // The existing client captured the external base-path wrapper at startup.
         // No automatic retries: polling owns observation retries, never writes.
-        return request(url, options);
+        return request(url, options, scope.workspaceId);
     }
 
     function getRunStatus(operationId, scope) {
