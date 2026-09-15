@@ -1,40 +1,30 @@
-name: Analysis admission-race verification (temporary)
+name: Analysis source snapshot (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  verify:
+  snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with: {persist-credentials: false}
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
-        with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Prepare exact locally verified candidate
-        run: |
-          node .github/scripts/workbench-admission.mjs prepare
-          git diff --check
-          mkdir -p target
-      - name: Verify admission, isolation and existing call boundaries
-        run: |
-          set -o pipefail
-          ./mvnw -B -ntp test '-Dtest=AnalysisProgress*Test,AnalysisRunAuthorizationTest,AnalysisRunControlBoundaryTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/admission-java.log
-          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-operation-controller.test.mjs 2>&1 | tee target/admission-js.log
-          node .github/scripts/test-taxonomy-base-path.mjs
-      - name: Publish only the four verified blobs, never refs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: node .github/scripts/workbench-admission.mjs publish
-      - name: Preserve evidence
-        if: always()
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: analysis-admission-${{ github.sha }}
-          path: |
-            target/admission-*.log
-            target/admission-manifest.json
-            **/target/surefire-reports/TEST-*.xml
-          retention-days: 7
+          ref: 795cb969651f48762a47537646a4c984f39f5934
+          persist-credentials: false
+          fetch-depth: 8
+      - name: Archive only clean versioned source and its baseline
+        run: |
+          test "$(git rev-parse HEAD^{tree})" = e84d1063312f341c2b1066912fd34255d1c000eb
+          mkdir -p /tmp/taxonomy-source
+          git archive --format=tar HEAD | gzip > /tmp/taxonomy-source/head.tar.gz
+          git archive --format=tar 29b9ef036882f5dbfc62924d9aca63038c098d4e | gzip > /tmp/taxonomy-source/base.tar.gz
+          git rev-parse HEAD HEAD^{tree} > /tmp/taxonomy-source/identity.txt
+          sha256sum /tmp/taxonomy-source/*.tar.gz > /tmp/taxonomy-source/SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: analysis-source-795cb969
+          path: /tmp/taxonomy-source
+          retention-days: 1
+          if-no-files-found: error
