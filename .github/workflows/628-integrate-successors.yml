@@ -1,0 +1,114 @@
+name: Verify existing module successor integrations
+on:
+  push:
+    branches: [verification/628-integrate-37a6]
+    paths: [.github/workflows/628-integrate-successors.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: templates
+            target: 31a0409d3eb7c3ecfc5d004c45cd36af32068baa
+          - label: interop
+            target: f977ffa6f71e28d981b34b39333cf1114de4e7b2
+    env:
+      WORKSPACE_HEAD: 37a6eedfb64067667985650bddd50102b21ddad3
+      OLD_WORKSPACE: 3ac412f5735f95b41a760465a4e16b650e97ba53
+      TARGET_HEAD: ${{ matrix.target }}
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37a6eedfb64067667985650bddd50102b21ddad3
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Compute and inspect the exact native merge, without rewriting a branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "$TARGET_HEAD"
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          def git(*args):
+              return subprocess.check_output(['git', *args], text=True).strip()
+          current, old, target = (os.environ[k] for k in ('WORKSPACE_HEAD','OLD_WORKSPACE','TARGET_HEAD'))
+          assert git('merge-base', target, current) == old
+          tree = git('merge-tree', '--write-tree', target, current)
+          assert len(tree) == 40 and '\n' not in tree, tree
+          paths = git('diff', '--no-renames', '--name-only', target, tree).splitlines()
+          inherited = git('diff', '--no-renames', '--name-only', old, current).splitlines()
+          assert sorted(paths) == sorted(inherited), (paths, inherited)
+          assert all(p.startswith(('taxonomy-workspace/', 'taxonomy-app/src/test/java/com/taxonomy/workspace/')) for p in paths), paths
+          entries = []
+          for path in paths:
+              expected = git('ls-tree', current, '--', path)
+              actual = git('ls-tree', tree, '--', path)
+              assert actual == expected, (path, actual, expected)
+              if actual:
+                  mode, kind, sha = actual.split('\t')[0].split()
+                  assert kind == 'blob' and mode == '100644', actual
+                  entries.append({'path': path, 'mode': mode, 'type': kind, 'sha': sha})
+              else:
+                  entries.append({'path': path, 'mode': '100644', 'type': 'blob', 'sha': None})
+          for module in ('taxonomy-templates', 'taxonomy-interop'):
+              assert git('ls-tree', target, '--', module) == git('ls-tree', tree, '--', module), module
+          manifest = {'workspace': current, 'target': target, 'base_tree': git('rev-parse', target + '^{tree}'), 'tree': tree, 'entries': entries}
+          out = Path(os.environ['RUNNER_TEMP']) / 'integration-evidence'
+          out.mkdir()
+          (out / 'manifest.json').write_text(json.dumps(manifest, indent=2))
+          (out / 'source.patch').write_text(subprocess.check_output(['git','diff','--binary',target,tree],text=True))
+          subprocess.run(['git','checkout','--detach',target],check=True)
+          subprocess.run(['git','read-tree','--reset','-u',tree],check=True)
+          assert git('write-tree') == tree
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          print('NATIVE INTEGRATION', json.dumps(manifest), flush=True)
+          PY
+      - name: Supply the unchanged checksum-pinned embedding model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Run complete clean default verification on the native merge tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/integration-evidence/verify.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/integration-evidence/verify.log"; exit 1; }
+          python3 - <<'PY'
+          import json, os, subprocess, xml.etree.ElementTree as ET
+          from pathlib import Path
+          counts = dict.fromkeys(('tests','failures','errors','skipped'), 0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root = ET.parse(p).getroot()
+              for k in counts: counts[k] += int(root.get(k, '0'))
+          assert counts['tests'] > 4000 and counts['failures'] == counts['errors'] == 0, counts
+          out = Path(os.environ['RUNNER_TEMP']) / 'integration-evidence'
+          manifest = json.loads((out/'manifest.json').read_text())
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip() == manifest['tree']
+          (out/'results.json').write_text(json.dumps(counts,indent=2))
+          print('COMPLETE DEFAULT VERIFICATION', counts)
+          print('VERIFIED TREE', manifest['tree'])
+          print('This is not a substitute for canonical -Pci, external lanes or exact-head review.')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: successor-integration-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/integration-evidence/
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
