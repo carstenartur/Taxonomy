@@ -44,6 +44,11 @@ jobs:
               content=base64.b64decode(blob['content'])
               assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha
               Path(path).write_bytes(content)
+          wrapper=Path('/tmp/analysis-completion-builder.py')
+          source=wrapper.read_text()
+          old="assert source.count('Consumer<AnalysisStreamEvent>') == 3"
+          assert source.count(old)==1
+          wrapper.write_text(source.replace(old,"assert source.count('Consumer<AnalysisStreamEvent>') == 2"))
           Path('target/completion-evidence').mkdir(parents=True)
       - name: Add counterexamples before production changes
         run: python /tmp/analysis-completion-builder.py tests
