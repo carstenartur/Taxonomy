@@ -7,7 +7,7 @@ permissions:
 jobs:
   snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -15,7 +15,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Archive only cached test library jars
+      - name: Resolve and compile tests for offline execution (not a verification claim)
+        run: ./mvnw -B -ntp test -DskipTests
+      - name: Archive only test library jars and compiled test resources
         shell: python
         run: |
           from pathlib import Path
@@ -23,11 +25,12 @@ jobs:
           root = Path.home() / '.m2/repository'
           groups = ['org/junit', 'org/mockito', 'org/assertj', 'org/opentest4j', 'org/apiguardian', 'net/bytebuddy', 'org/objenesis', 'org/springframework/spring-test', 'org/hamcrest', 'org/awaitility', 'org/apache/maven/surefire']
           jars = sorted({p for group in groups for p in (root / group).rglob('*.jar')})
-          assert jars, 'Test dependencies were not restored'
+          assert jars, 'Test dependencies were not resolved'
           with zipfile.ZipFile('/tmp/analysis-test-libraries.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
               for path in jars:
-                  archive.write(path, path.relative_to(root))
-                  print(path.relative_to(root))
+                  archive.write(path, 'libraries/' + str(path.relative_to(root)))
+              for path in Path('taxonomy-app/target/test-classes').rglob('*'):
+                  if path.is_file(): archive.write(path, 'test-classes/' + str(path.relative_to('taxonomy-app/target/test-classes')))
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: analysis-test-libraries
