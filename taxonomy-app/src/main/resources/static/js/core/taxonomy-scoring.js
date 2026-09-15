@@ -343,7 +343,9 @@
 
         // Dynamic lifecycle modules install observation, routing and workspace guards together.
         // A premature click must not clear prior results or silently start an unobservable analysis.
-        if (!window.TaxonomyAnalysisSession || window.__taxonomyAnalysisSessionLoading
+        const session = window.TaxonomyAnalysisSession;
+        const sessionState = session && typeof session.state === 'function' ? session.state() : null;
+        if (!sessionState || sessionState.ready !== true || window.__taxonomyAnalysisSessionLoading
                 || !window.TaxonomyAnalysisProgress
                 || typeof window.TaxonomyAnalysisProgress.start !== 'function') {
             B().showStatus('warning', t('scoring.lifecycle.not.ready'));
@@ -357,8 +359,19 @@
                 return (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16);
             });
         S.currentReasons = {};
+        S.currentDiscrepancies = [];
+        S.currentProductCoverageGaps = [];
+        S.currentArchView = null;
+        S.evaluatedNodes = new Set();
+        S.storedBusinessText = null;
+        S.lastAnalyzedText = null;
+        S.pendingProposalNodeCode = null;
+        S.lastAnalysisProvider = null;
+        window._currentProvisionalRelations = [];
         S.lastAnalysisStatus = 'IN_PROGRESS';
         applyLocalRawScores({}, true);
+        var lifecycle = window.__TaxonomyAnalysisSessionContext;
+        if (lifecycle && typeof lifecycle.clearDerivedUi === 'function') lifecycle.clearDerivedUi();
         B().renderView(S.taxonomyData, S.currentScores);
         var progress = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
                 var previous = S.currentEffectiveScores || {};
@@ -395,9 +408,11 @@
             requestBody.provider = provider;
         }
 
+        const workspacePin = sessionState.workspaceId == null ? '' : sessionState.workspaceId;
         fetch('/api/analyze', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json', 'X-Analysis-Operation-Id': operationId },
+            headers: { 'Content-Type': 'application/json', 'X-Analysis-Operation-Id': operationId,
+                'X-Taxonomy-Workspace-Id': workspacePin },
             body: JSON.stringify(requestBody)
         })
             .then(r => {

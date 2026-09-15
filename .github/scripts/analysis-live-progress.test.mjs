@@ -8,8 +8,8 @@ const clientSource = readFileSync(new URL('../../taxonomy-app/src/main/resources
 const apiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8');
 const routingSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-api-routing.js', import.meta.url), 'utf8');
 const id = 'cb2a3d71-e849-4a50-9855-1f9cb8f81402';
-function fixture(fetcher) {
-    const scope = { workspaceId: 'workspace-a', generation: 1, invalidating: false };
+function fixture(fetcher, workspaceId = 'workspace-a') {
+    const scope = { workspaceId, generation: 1, invalidating: false };
     const timers = new Map(), calls = [], snapshots = [], unavailable = [];
     let serial = 0;
     const authFailures = [];
@@ -312,3 +312,31 @@ for (const status of [400, 401, 403]) {
         assert.equal(f.monitor.isCurrent(), false);
     });
 }
+
+
+for (const workspaceId of [null, '']) {
+    test(`central scope ${String(workspaceId)} remains explicit for cancellation after a workspace change`, async () => {
+        const f = fixture(async () => response(snapshot()), workspaceId);
+        f.scope.workspaceId = 'workspace-b';
+        await f.monitor.cancel();
+        const url = new URL(f.calls[0].url, 'https://taxonomy.example/');
+        assert.equal(url.searchParams.has('workspaceId'), true);
+        assert.equal(url.searchParams.get('workspaceId'), '');
+        assert.equal(f.calls[0].options.headers['x-taxonomy-workspace-id'], '');
+        f.monitor.stop();
+    });
+}
+
+test('all central observation endpoints retain the explicit pin through named routing', async () => {
+    const f = fixture(async () => response(snapshot()));
+    await f.api.getRunStatus(id, { workspaceId: null });
+    await f.api.getRunCallDetail(id, 1, { workspaceId: null });
+    await f.api.cancelRun(id, { workspaceId: null });
+    for (const call of f.calls) {
+        const url = new URL(call.url, 'https://taxonomy.example/');
+        assert.equal(url.searchParams.has('workspaceId'), true);
+        assert.equal(url.searchParams.get('workspaceId'), '');
+        assert.equal(call.options.headers['x-taxonomy-workspace-id'], '');
+    }
+    f.monitor.stop();
+});

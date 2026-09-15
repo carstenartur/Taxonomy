@@ -50,6 +50,8 @@ class AnalysisTerminalContractTest {
                 throw new AnalysisStoppedException(AnalysisStoppedException.Reason.valueOf(reason));
             }));
             registry.cancel(handle.id(), "alice", scope);
+            var cancellation = assertThrows(AnalysisStoppedException.class, AnalysisRunControl::checkpoint);
+            assertEquals(AnalysisStoppedException.Reason.CANCELLED, cancellation.reason());
             handle.finish("PARTIAL");
             assertEquals(reason, registry.snapshot(handle.id(), "alice", scope).stopReason());
             assertEquals("PARTIAL", registry.snapshot(handle.id(), "alice", scope).status());

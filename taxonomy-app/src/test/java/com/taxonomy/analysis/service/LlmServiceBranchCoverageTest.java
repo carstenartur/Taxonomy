@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -110,6 +111,22 @@ class LlmServiceBranchCoverageTest {
         }
     }
 
+
+    @Test
+    void ordinaryStreamingFailureRetainsReasonsFromCompletedRoots() {
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(
+                node("BP", null, "BP"), node("CP", null, "CP"))));
+        when(taxonomyService.getChildrenOf("BP")).thenReturn(List.of());
+        when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                .thenReturn("completed-root").thenThrow(new IllegalStateException("provider unavailable"));
+        when(gateway.extractResponseText("completed-root"))
+                .thenReturn("{\"BP\":{\"score\":80,\"reason\":\"retained evidence\"}}");
+        service.analyzeStreaming("requirement", callback);
+        verify(callback).onError(eq("PARTIAL"), anyString(),
+                argThat(scores -> scores.containsKey("BP")),
+                argThat(reasons -> "retained evidence".equals(reasons.get("BP"))),
+                anyList(), anyList(), anyList());
+    }
 
     @BeforeEach
     void setUp() {
@@ -303,7 +320,7 @@ class LlmServiceBranchCoverageTest {
         when(gateway.sendHttpRequest(anyString(), anyString())).thenThrow(new IllegalStateException("stream failed"));
         service.analyzeStreaming("requirement", callback);
         verify(callback).onError(
-                anyString(), anyString(), any(), anyList(), anyList(), anyList());
+                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList());
     }
 
     @Test

@@ -521,7 +521,7 @@ public class LlmService {
         } catch (Exception e) {
             log.error("Streaming analysis failed", e);
             callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
-                    allScores, warnings, allDiscrepancies, productCoverageGaps);
+                    allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps);
         }
     }
 

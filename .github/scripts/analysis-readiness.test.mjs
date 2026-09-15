@@ -7,9 +7,13 @@ const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/stati
 function fixture() {
     const statuses = [], calls = [], observations = [], renders = [], order = [];
     let rejectRequest;
-    const state = { currentReasons: { CP: 'retained reason' }, currentRawScores: { CP: 80 },
+    const sessionState = { ready: true, workspaceId: 'workspace-a' };
+    const state = { currentDiscrepancies: ['old discrepancy'], currentProductCoverageGaps: ['old gap'],
+        currentArchView: { title: 'old architecture' }, evaluatedNodes: new Set(['CP']),
+        storedBusinessText: 'old requirement', lastAnalyzedText: 'old requirement',
+        pendingProposalNodeCode: 'CP', lastAnalysisProvider: 'old provider', currentReasons: { CP: 'retained reason' }, currentRawScores: { CP: 80 },
         lastAnalysisStatus: 'SUCCESS', taxonomyData: [], currentScoreDetails: {}, currentScores: { CP: 80 } };
-    const window = { TaxonomyState: state, TaxonomyBrowse: {
+    const window = { _currentProvisionalRelations: ['old relation'], TaxonomyState: state, TaxonomyBrowse: {
         showStatus: (...args) => statuses.push(args), clearStatus() {},
         renderView: (tree, scores) => { renders.push({ tree, scores: { ...scores } }); order.push('render'); }
     } };
@@ -25,7 +29,7 @@ function fixture() {
     function progress() { window.TaxonomyAnalysisProgress = { start: (...args) => {
         observations.push(args); order.push('monitor'); return { finish() {}, stop() {}, cancel() {} };
     } }; }
-    return { window, state, statuses, calls, observations, progress, renders, order,
+    return { window, state, sessionState, statuses, calls, observations, progress, renders, order,
         rejectRequest: error => rejectRequest(error) };
 }
 
@@ -34,7 +38,7 @@ for (const phase of ['no lifecycle', 'progress loaded before lifecycle', 'loader
         const f = fixture();
         if (phase !== 'no lifecycle') f.progress();
         if (phase === 'loader still running') {
-            f.window.TaxonomyAnalysisSession = {};
+            f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
             f.window.__taxonomyAnalysisSessionLoading = true;
         }
         f.window.TaxonomyScoring.runAnalysis();
@@ -49,12 +53,13 @@ for (const phase of ['no lifecycle', 'progress loaded before lifecycle', 'loader
 test('once lifecycle is ready full analysis always starts observation before its POST', () => {
     const f = fixture();
     f.progress();
-    f.window.TaxonomyAnalysisSession = {};
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
     f.window.__taxonomyAnalysisSessionLoading = false;
     f.window.TaxonomyScoring.runAnalysis();
     assert.equal(f.observations.length, 1);
     assert.equal(f.calls.length, 1);
     assert.equal(f.calls[0][0], '/api/analyze');
+    assert.equal(f.calls[0][1].headers['X-Taxonomy-Workspace-Id'], 'workspace-a');
     assert.equal(f.calls[0][1].headers['X-Analysis-Operation-Id'], f.observations[0][0]);
     assert.equal(JSON.parse(f.calls[0][1].body).includeArchitectureView, true);
 });
@@ -65,7 +70,7 @@ for (const view of ['list', 'tabs', 'tree', 'sunburst', 'graph']) {
         const f = fixture();
         f.progress();
         f.state.currentView = view;
-        f.window.TaxonomyAnalysisSession = {};
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
         f.window.TaxonomyScoring.runAnalysis();
         assert.equal(f.renders.length, 1);
         assert.deepEqual(f.renders[0].scores, {});
@@ -78,3 +83,49 @@ for (const view of ['list', 'tabs', 'tree', 'sunburst', 'graph']) {
         assert.equal(f.statuses.at(-1)[0], 'danger');
     });
 }
+
+
+for (const reason of ['restoring', 'conflict', 'invalidating', 'unresolved']) {
+    test(`full analysis cannot enter while workspace state is ${reason}`, () => {
+        const f = fixture(); f.progress();
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        f.sessionState.ready = false;
+        f.sessionState[reason] = true;
+        f.window.TaxonomyScoring.runAnalysis();
+        assert.equal(f.calls.length, 0);
+        assert.equal(f.observations.length, 0);
+        assert.equal(f.renders.length, 0);
+        assert.equal(f.state.currentArchView.title, 'old architecture');
+        assert.equal(f.state.currentReasons.CP, 'retained reason');
+    });
+}
+
+test('new requirement cannot inherit old architecture, gaps, relations or export evidence after rejection', async () => {
+    const f = fixture(); f.progress();
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+    f.window.TaxonomyScoring.runAnalysis();
+    function assertClean() {
+        assert.equal(f.state.currentDiscrepancies.length, 0);
+        assert.equal(f.state.currentProductCoverageGaps.length, 0);
+        assert.equal(f.state.currentArchView, null);
+        assert.equal(f.state.evaluatedNodes.size, 0);
+        assert.equal(f.window._currentProvisionalRelations.length, 0);
+        assert.equal(f.state.lastAnalyzedText, null);
+        assert.equal(f.state.storedBusinessText, null);
+        assert.equal(f.state.lastAnalysisProvider, null);
+    }
+    assertClean();
+    const error = Object.assign(new Error('HTTP 503'), { httpStatus: 503 });
+    f.rejectRequest(error);
+    await new Promise(resolve => setImmediate(resolve));
+    assertClean();
+});
+
+test('a ready central-scope POST carries an explicit empty workspace pin', () => {
+    const f = fixture(); f.progress();
+    f.sessionState.workspaceId = null;
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+    f.window.TaxonomyScoring.runAnalysis();
+    assert.equal(f.calls[0][0], '/api/analyze');
+    assert.equal(f.calls[0][1].headers['X-Taxonomy-Workspace-Id'], '');
+});

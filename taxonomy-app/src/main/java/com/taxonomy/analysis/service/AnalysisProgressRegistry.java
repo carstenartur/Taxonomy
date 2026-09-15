@@ -62,7 +62,42 @@ public class AnalysisProgressRegistry {
 
     public Handle open(String requestedId, String owner, WorkspaceContext context,
                        AnalysisProvenance provenance) {
-        return reserve(requestedId, owner, context, provenance).open();
+        return (provenance == null
+                ? reserve(requestedId, owner, context, null)
+                : awaitDurableAdmission(requestedId, owner, context, provenance)).open();
+    }
+
+    /**
+     * Durable portfolio work already has a bounded executor and a persisted claim.
+     * Back-pressure its existing worker instead of turning transient telemetry
+     * saturation into a permanent item failure. Waiting allocates no run or extra
+     * task and binds no thread-local control; request/SSE admission remains fail-fast.
+     */
+    private synchronized Reservation awaitDurableAdmission(String requestedId, String owner,
+            WorkspaceContext context, AnalysisProvenance provenance) {
+        Scope.of(owner, context);
+        String id = requestedId == null ? UUID.randomUUID().toString() : canonicalId(requestedId);
+        while (true) {
+            if (Thread.currentThread().isInterrupted()) {
+                throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
+            }
+            if (runs.containsKey(id)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Analysis ID already exists");
+            }
+            if (runs.values().stream().filter(Run::active).count() < MAX_ACTIVE) {
+                return reserve(id, owner, context, provenance);
+            }
+            try {
+                wait();
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
+            }
+        }
+    }
+
+    private synchronized void capacityReleased() {
+        notifyAll();
     }
 
     /** Reserve admission on the request thread without binding its thread-local run control. */
@@ -167,6 +202,7 @@ public class AnalysisProgressRegistry {
             closed = true;
             synchronized (AnalysisProgressRegistry.this) {
                 runs.remove(run.id, run);
+                capacityReleased();
             }
         }
     }
@@ -180,12 +216,19 @@ public class AnalysisProgressRegistry {
             control = new AnalysisRunControl(run, () -> run.cancelled, run.guard);
         }
         public String id() { return run.id; }
-        public void finish(String status) { run.finish(status); }
+        public void finish(String status) {
+            run.finish(status);
+            // Do not acquire the registry monitor while holding the run monitor.
+            capacityReleased();
+        }
         @Override public void close() {
             if (closed) return;
             closed = true;
             try { if (run.active()) run.finish("ERROR"); }
-            finally { control.close(); }
+            finally {
+                control.close();
+                capacityReleased();
+            }
         }
     }
 
@@ -263,7 +306,7 @@ public class AnalysisProgressRegistry {
             phase("LLM_FAILED", null);
         }
         @Override public synchronized void stopped(AnalysisStoppedException.Reason reason) {
-            stopReason = reason.name();
+            if (stopReason == null) stopReason = reason.name();
             long now = System.nanoTime();
             calls.stream().filter(call -> "STARTED".equals(call.status)).forEach(call -> {
                 call.status = "STOPPED";

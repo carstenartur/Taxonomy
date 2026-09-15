@@ -23,9 +23,10 @@
         var url = '/api/analysis-runs/' + encodeURIComponent(operationId) + suffix;
         var headers = {};
         var query = [];
-        if (scope.workspaceId) {
-            query.push('workspaceId=' + encodeURIComponent(scope.workspaceId));
-            headers['X-Taxonomy-Workspace-Id'] = scope.workspaceId;
+        if (scope.workspaceId !== undefined) {
+            var workspacePin = scope.workspaceId === null ? '' : scope.workspaceId;
+            query.push('workspaceId=' + encodeURIComponent(workspacePin));
+            headers['X-Taxonomy-Workspace-Id'] = workspacePin;
         }
         if (!suffix && scope.waitForRegistration) query.push('waitForRegistration=true');
         if (query.length) url += '?' + query.join('&');
