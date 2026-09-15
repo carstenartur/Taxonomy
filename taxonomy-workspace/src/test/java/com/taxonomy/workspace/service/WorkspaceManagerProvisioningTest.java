@@ -38,6 +38,8 @@ class WorkspaceManagerProvisioningTest {
         manager = new WorkspaceManager(wsRepo, 50, sysRepoService, gitRepo);
 
         // Default: save returns the argument
+        when(wsRepo.claimProvisioning(anyString(), anyString(),
+                eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection())).thenReturn(1);
         when(wsRepo.save(any(UserWorkspace.class)))
                 .thenAnswer(inv -> inv.getArgument(0));
     }

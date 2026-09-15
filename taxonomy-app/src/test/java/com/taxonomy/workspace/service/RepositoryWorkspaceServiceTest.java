@@ -29,6 +29,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -77,14 +78,13 @@ class RepositoryWorkspaceServiceTest {
             return workspace;
         });
         when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
-        when(sourceGit.getDslAtHead("main"))
+        when(sourceGit.getDslAtCommit("source-commit"))
                 .thenReturn("meta { language: \"taxdsl\"; }\n");
         when(sourceGit.getHeadCommit("main")).thenReturn("source-commit");
-        when(repositoryFactory.createWorkspaceRepository(
-                anyString(), eq("source-repository"), eq("main")))
+        when(repositoryFactory.openWorkspaceRepository(anyString()))
                 .thenReturn(workspaceGit);
-        when(workspaceGit.getHeadCommit("draft")).thenReturn("workspace-seed-commit");
-        when(workspaceGit.createBranch("sync-base", "draft"))
+        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn("workspace-seed-commit");
+        when(workspaceGit.createBranchAtCommit(eq("sync-base"), anyString()))
                 .thenReturn("workspace-seed-commit");
 
         UserWorkspace workspace = service.createWorkingCopy(
@@ -99,7 +99,9 @@ class RepositoryWorkspaceServiceTest {
         assertEquals("workspace-seed-commit", workspace.getCurrentCommit());
         assertEquals("source-commit", workspace.getLastFetchedCommit());
         assertEquals("source-commit", workspace.getLastIntegratedCommit());
-        verify(workspaceGit).createBranch("sync-base", "draft");
+        verify(workspaceGit).createBranchAtCommit("sync-base", "workspace-seed-commit");
+        verify(workspaceGit).commitDslIfHeadMatches(eq("draft"), isNull(),
+                eq("meta { language: \"taxdsl\"; }\n"), eq("alice"), anyString());
         verify(workspaceGit, never()).commitDsl(
                 anyString(), anyString(), anyString(), anyString());
         verify(repositoryFactory, never()).deleteWorkspaceRepository(anyString());
@@ -117,14 +119,13 @@ class RepositoryWorkspaceServiceTest {
             return workspace;
         });
         when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
-        when(sourceGit.getDslAtHead("main"))
+        when(sourceGit.getDslAtCommit("source-commit"))
                 .thenReturn("meta { language: \"taxdsl\"; }\n");
         when(sourceGit.getHeadCommit("main")).thenReturn("source-commit");
-        when(repositoryFactory.createWorkspaceRepository(
-                anyString(), eq("source-repository"), eq("main")))
+        when(repositoryFactory.openWorkspaceRepository(anyString()))
                 .thenReturn(workspaceGit);
-        when(workspaceGit.getHeadCommit("draft")).thenReturn("workspace-seed-commit");
-        when(workspaceGit.createBranch("sync-base", "draft"))
+        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn("workspace-seed-commit");
+        when(workspaceGit.createBranchAtCommit(eq("sync-base"), anyString()))
                 .thenThrow(new IOException("tracking ref failed"));
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
@@ -151,11 +152,10 @@ class RepositoryWorkspaceServiceTest {
             return workspace;
         });
         when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
-        when(sourceGit.getDslAtHead("main"))
+        when(sourceGit.getDslAtCommit("source-commit"))
                 .thenReturn("meta { language: \"taxdsl\"; }\n");
         when(sourceGit.getHeadCommit("main")).thenReturn("source-commit");
-        when(repositoryFactory.createWorkspaceRepository(
-                anyString(), eq("source-repository"), eq("main")))
+        when(repositoryFactory.openWorkspaceRepository(anyString()))
                 .thenThrow(new IllegalStateException("seed failed"));
 
         assertThrows(IllegalStateException.class,
@@ -196,6 +196,7 @@ class RepositoryWorkspaceServiceTest {
         verify(workspaceRepository, never()).save(any());
         verify(repositoryFactory, never()).createWorkspaceRepository(
                 anyString(), anyString(), anyString());
+        verify(repositoryFactory, never()).openWorkspaceRepository(anyString());
     }
 
     @Test
@@ -204,12 +205,11 @@ class RepositoryWorkspaceServiceTest {
         when(workspaceRepository.save(any(UserWorkspace.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
-        when(sourceGit.getDslAtHead("main")).thenReturn("portfolio dsl");
+        when(sourceGit.getDslAtCommit("source-head")).thenReturn("portfolio dsl");
         when(sourceGit.getHeadCommit("main")).thenReturn("source-head");
-        when(repositoryFactory.createWorkspaceRepository(
-                anyString(), eq("source-repository"), eq("main"))).thenReturn(workspaceGit);
-        when(workspaceGit.getHeadCommit("draft")).thenReturn("workspace-head");
-        when(workspaceGit.createBranch("sync-base", "draft")).thenReturn("workspace-head");
+        when(repositoryFactory.openWorkspaceRepository(anyString())).thenReturn(workspaceGit);
+        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn("workspace-head");
+        when(workspaceGit.createBranchAtCommit(eq("sync-base"), anyString())).thenReturn("workspace-head");
 
         UserWorkspace workspace = service.createWorkingCopy(
                 " alice ", "source-repository", " ", " Workspace ", "description");
@@ -226,7 +226,7 @@ class RepositoryWorkspaceServiceTest {
         when(workspaceRepository.save(any(UserWorkspace.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
-        when(sourceGit.getDslAtHead("main")).thenReturn("  ");
+        when(sourceGit.getDslAtCommit("source-head")).thenReturn("  ");
         when(sourceGit.getHeadCommit("main")).thenReturn("source-head");
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
@@ -240,7 +240,7 @@ class RepositoryWorkspaceServiceTest {
     @Test
     void missingWorkspaceSeedHeadFailsAndDeletesAttemptedStorage() throws Exception {
         configureValidSourceAndWorkspace();
-        when(workspaceGit.getHeadCommit("draft")).thenReturn(null);
+        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn(null);
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> service.createWorkingCopy(
@@ -253,8 +253,8 @@ class RepositoryWorkspaceServiceTest {
     @Test
     void missingTrackingHeadFailsAndDeletesAttemptedStorage() throws Exception {
         configureValidSourceAndWorkspace();
-        when(workspaceGit.getHeadCommit("draft")).thenReturn("workspace-head");
-        when(workspaceGit.createBranch("sync-base", "draft")).thenReturn(null);
+        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn("workspace-head");
+        when(workspaceGit.createBranchAtCommit(eq("sync-base"), anyString())).thenReturn(null);
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> service.createWorkingCopy(
@@ -267,7 +267,7 @@ class RepositoryWorkspaceServiceTest {
     @Test
     void cleanupFailureIsSuppressedOnProvisioningFailure() throws Exception {
         configureValidSourceAndWorkspace();
-        when(workspaceGit.getHeadCommit("draft")).thenReturn(null);
+        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn(null);
         doThrow(new IllegalStateException("cleanup failed"))
                 .when(repositoryFactory).deleteWorkspaceRepository(anyString());
 
@@ -295,9 +295,8 @@ class RepositoryWorkspaceServiceTest {
         when(workspaceRepository.save(any(UserWorkspace.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         when(repositoryFactory.getCentralRepository("source-repository")).thenReturn(sourceGit);
-        when(sourceGit.getDslAtHead("main")).thenReturn("portfolio dsl");
+        when(sourceGit.getDslAtCommit("source-head")).thenReturn("portfolio dsl");
         when(sourceGit.getHeadCommit("main")).thenReturn("source-head");
-        when(repositoryFactory.createWorkspaceRepository(
-                anyString(), eq("source-repository"), eq("main"))).thenReturn(workspaceGit);
+        when(repositoryFactory.openWorkspaceRepository(anyString())).thenReturn(workspaceGit);
     }
 }

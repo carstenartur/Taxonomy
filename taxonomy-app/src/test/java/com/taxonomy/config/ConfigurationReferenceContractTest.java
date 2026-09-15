@@ -138,13 +138,15 @@ class ConfigurationReferenceContractTest {
             }
         }
 
-        Path javaRoot = root.resolve("taxonomy-app/src/main/java");
-        try (Stream<Path> files = Files.walk(javaRoot)) {
-            for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
-                String source = Files.readString(file, StandardCharsets.UTF_8);
-                collectValueProperties(source, explicitPropertyVariables, variables);
-                collectConditionalProperties(source, explicitPropertyVariables, variables);
-                collectConfigurationProperties(source, explicitPropertyVariables, variables);
+        for (String module : java.util.List.of("taxonomy-app", "taxonomy-workspace")) {
+            Path javaRoot = root.resolve(module + "/src/main/java");
+            try (Stream<Path> files = Files.walk(javaRoot)) {
+                for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
+                    String source = Files.readString(file, StandardCharsets.UTF_8);
+                    collectValueProperties(source, explicitPropertyVariables, variables);
+                    collectConditionalProperties(source, explicitPropertyVariables, variables);
+                    collectConfigurationProperties(source, explicitPropertyVariables, variables);
+                }
             }
         }
         return Set.copyOf(variables);

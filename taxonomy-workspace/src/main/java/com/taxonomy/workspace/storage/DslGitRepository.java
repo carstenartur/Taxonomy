@@ -161,6 +161,18 @@ public class DslGitRepository implements AutoCloseable {
         }
     }
 
+    /** Commit only if the branch still has the exact head used to compute this content. */
+    public String commitDslIfHeadMatches(String branch, String expectedHead, String dslText,
+                                        String author, String message) throws IOException {
+        return new ExpectedHeadDslCommitter().commit(this,
+                new ExpectedHeadDslCommitter.CommitRequest(branch, expectedHead, dslText, author, message)).commitId();
+    }
+
+    /** Verify a no-op or recovery without adopting a concurrent branch head. */
+    public String verifyExpectedHead(String branch, String expectedHead) throws IOException {
+        return new ExpectedHeadDslCommitter().verifyExpectedHead(this, branch, expectedHead);
+    }
+
     // ── Read operations ─────────────────────────────────────────────
 
     /** Read DSL text at a specific commit. */
@@ -249,6 +261,20 @@ public class DslGitRepository implements AutoCloseable {
         log.info("Created branch '{}' from '{}' at {}",
                 newBranch, fromBranch, source.getObjectId().name());
         return source.getObjectId().name();
+    }
+
+    /**
+     * Create an absent branch at one captured commit, without re-reading another
+     * branch's moving HEAD. Existing destination refs are never overwritten.
+     */
+    public String createBranchAtCommit(String newBranch, String commitId) throws IOException {
+        ObjectId snapshot = ObjectId.fromString(commitId);
+        try (RevWalk walk = new RevWalk(gitRepo)) {
+            walk.parseCommit(snapshot);
+        }
+        updateRef(Constants.R_HEADS + newBranch, snapshot, ObjectId.zeroId(), false,
+                systemIdent(), "branch: created at " + commitId);
+        return snapshot.name();
     }
 
     // ── Diff operations ─────────────────────────────────────────────

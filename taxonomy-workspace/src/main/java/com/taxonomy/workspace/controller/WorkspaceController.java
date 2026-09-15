@@ -14,6 +14,9 @@ import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceManager;
 import com.taxonomy.workspace.service.WorkspaceProjectionService;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
+import com.taxonomy.workspace.service.WorkspaceMetadataOperation;
+import org.springframework.web.server.ResponseStatusException;
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
 import io.swagger.v3.oas.annotations.Operation;
@@ -78,9 +81,24 @@ public class WorkspaceController {
     @Operation(summary = "Get the current user's workspace",
             description = "Returns workspace metadata including current branch, context, " +
                     "and timestamps for the authenticated user.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<WorkspaceInfo> getCurrentWorkspace() {
         String user = workspaceResolver.resolveCurrentUsername();
-        return ResponseEntity.ok(workspaceManager.getWorkspaceInfo(user));
+        if (WorkspaceContextResolver.requestedWorkspaceId() != null) {
+            return ResponseEntity.ok(workspaceManager.getWorkspaceMetadataInfo(
+                    workspaceResolver.resolveCurrentWorkspaceMetadata()));
+        }
+        WorkspaceInfo info = workspaceManager.getWorkspaceInfo(user);
+        // The browser pins the identity returned here. Finish the existing
+        // implicit-default initialization before publishing that initial pin.
+        // Explicit pins above and non-default/failed metadata remain recovery paths.
+        if (info != null && info.isDefault()
+                && ("NOT_PROVISIONED".equals(info.provisioningStatus())
+                || "PROVISIONING".equals(info.provisioningStatus()))) {
+            workspaceResolver.resolveCurrentRepositoryContext();
+            info = workspaceManager.getWorkspaceInfo(user);
+        }
+        return ResponseEntity.ok(info);
     }
 
     @GetMapping("/active")
@@ -119,6 +137,7 @@ public class WorkspaceController {
     @GetMapping("/list")
     @Operation(summary = "List all workspaces for the current user",
             description = "Returns all non-archived workspaces for the authenticated user.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<List<Map<String, Object>>> listWorkspaces() {
         String user = workspaceResolver.resolveCurrentUsername();
         List<UserWorkspace> workspaces = workspaceManager.listUserWorkspaces(user);
@@ -131,6 +150,7 @@ public class WorkspaceController {
     @PostMapping("/create")
     @Operation(summary = "Create a new workspace",
             description = "Creates a new workspace for the authenticated user.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<Map<String, Object>> createWorkspace(@RequestBody Map<String, String> body) {
         String user = workspaceResolver.resolveCurrentUsername();
         String displayName = body.get("displayName");
@@ -155,6 +175,7 @@ public class WorkspaceController {
     @PutMapping("/{id}/rename")
     @Operation(summary = "Rename a workspace",
             description = "Changes the display name of a workspace.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<Map<String, Object>> renameWorkspace(
             @PathVariable String id, @RequestBody Map<String, String> body) {
         String user = workspaceResolver.resolveCurrentUsername();
@@ -177,6 +198,7 @@ public class WorkspaceController {
     @PutMapping("/{id}/description")
     @Operation(summary = "Update workspace description",
             description = "Updates the description of a workspace.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<Map<String, Object>> updateDescription(
             @PathVariable String id, @RequestBody Map<String, String> body) {
         String user = workspaceResolver.resolveCurrentUsername();
@@ -209,6 +231,7 @@ public class WorkspaceController {
     @PostMapping("/{id}/archive")
     @Operation(summary = "Archive a workspace",
             description = "Soft-deletes a workspace by marking it as archived.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<Map<String, Object>> archiveWorkspace(@PathVariable String id) {
         String user = workspaceResolver.resolveCurrentUsername();
         try {
@@ -225,6 +248,7 @@ public class WorkspaceController {
     @Operation(summary = "Delete a workspace",
             description = "Permanently deletes a workspace. Only the owner can delete " +
                     "their own non-shared, non-default workspaces.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<Map<String, Object>> deleteWorkspace(@PathVariable String id) {
         String user = workspaceResolver.resolveCurrentUsername();
         try {
@@ -243,6 +267,7 @@ public class WorkspaceController {
     @GetMapping("/{id}/info")
     @Operation(summary = "Get workspace info by ID",
             description = "Returns workspace metadata for the specified workspace.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<Map<String, Object>> getWorkspaceInfo(@PathVariable String id) {
         UserWorkspace ws = workspaceManager.getWorkspaceById(id);
         if (ws == null) {
@@ -455,9 +480,12 @@ public class WorkspaceController {
     @GetMapping("/provisioning-status")
     @Operation(summary = "Get workspace provisioning status",
             description = "Returns the current provisioning state of the user's workspace.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<Map<String, Object>> getProvisioningStatus() {
         String user = workspaceResolver.resolveCurrentUsername();
-        UserWorkspace ws = workspaceManager.findUserWorkspace(user);
+        UserWorkspace ws = WorkspaceContextResolver.requestedWorkspaceId() == null
+                ? workspaceManager.findUserWorkspace(user)
+                : workspaceResolver.resolveCurrentWorkspaceMetadata();
         Map<String, Object> result = new LinkedHashMap<>();
         if (ws == null) {
             result.put("status", "NOT_PROVISIONED");
@@ -473,15 +501,22 @@ public class WorkspaceController {
     @PostMapping("/provision")
     @Operation(summary = "Provision workspace repository",
             description = "Creates the user's personal branch from the shared repository.")
+    @WorkspaceMetadataOperation
     public ResponseEntity<Map<String, Object>> provisionWorkspace() {
         String user = workspaceResolver.resolveCurrentUsername();
         try {
-            UserWorkspace ws = workspaceManager.provisionWorkspaceRepository(user);
+            String pinned = WorkspaceContextResolver.requestedWorkspaceId();
+            UserWorkspace ws = pinned == null
+                    ? workspaceManager.provisionWorkspaceRepository(user)
+                    : workspaceManager.provisionWorkspaceRepository(user,
+                            workspaceResolver.resolveCurrentWorkspaceMetadata().getWorkspaceId());
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("status", ws.getProvisioningStatus().name());
             result.put("branch", ws.getCurrentBranch());
             result.put("baseBranch", ws.getBaseBranch());
             return ResponseEntity.ok(result);
+        } catch (ResponseStatusException | org.springframework.security.access.AccessDeniedException e) {
+            throw e;
         } catch (Exception e) {
             return ResponseEntity.internalServerError().body(Map.of(
                     "error", "Provisioning failed",

@@ -2,6 +2,9 @@ package com.taxonomy.workspace.service;
 
 import com.taxonomy.workspace.model.SystemRepository;
 import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import org.springframework.http.HttpStatus;
+import org.springframework.web.server.ResponseStatusException;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -140,12 +143,42 @@ public class WorkspaceContextResolver {
     }
 
     private UserWorkspace resolveWorkspace(String username) {
+        UserWorkspace workspace = resolveWorkspaceMetadataForUser(username);
+        // Keep the existing first-use experience for automatically created default
+        // workspaces, but finish initialization before exposing a usable context.
+        // Join this manager's ongoing initialization before re-reading readiness.
+        // Explicit pins and failed attempts still require lifecycle recovery.
+        if (workspace != null && workspace.isDefault() && requestedWorkspaceId() == null
+                && (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED
+                || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING)) {
+            workspace = workspaceManager.provisionDefaultWorkspaceRepository(
+                    username, workspace.getWorkspaceId());
+        }
+        if (workspace != null
+                && workspace.getProvisioningStatus() != WorkspaceProvisioningStatus.READY) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Workspace repository is not ready; complete provisioning before using it");
+        }
+        return workspace;
+    }
+
+    /**
+     * Resolve and authorize metadata without opening a repository or requiring
+     * completed provisioning. Only lifecycle endpoints may use this distinction.
+     * Database failures propagate; only a successful empty lookup means absence.
+     */
+    public UserWorkspace resolveWorkspaceMetadataForUser(String username) {
+        username = normalizeUsername(username);
         String requestedWorkspaceId = requestedWorkspaceId();
-        if (requestedWorkspaceId == null) {
-            return findWorkspace(username);
+        UserWorkspace workspace = requestedWorkspaceId == null
+                ? findWorkspace(username)
+                : workspaceManager.getWorkspaceById(requestedWorkspaceId);
+        // No provisioned workspace keeps the central-read fallback. An actual
+        // selection must satisfy the same rules whether implicit or request-pinned.
+        if (workspace == null && requestedWorkspaceId == null) {
+            return null;
         }
 
-        UserWorkspace workspace = workspaceManager.getWorkspaceById(requestedWorkspaceId);
         if (workspace == null
                 || !hasText(workspace.getUsername())
                 || !workspace.getUsername().strip().equals(username.strip())
@@ -180,7 +213,8 @@ public class WorkspaceContextResolver {
         return primary;
     }
 
-    private static String requestedWorkspaceId() {
+    /** Exact tab selection, with header precedence over the query transport. */
+    public static String requestedWorkspaceId() {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
             return null;

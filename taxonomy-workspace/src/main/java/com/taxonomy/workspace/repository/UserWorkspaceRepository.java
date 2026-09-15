@@ -1,11 +1,15 @@
 package com.taxonomy.workspace.repository;
 
 import com.taxonomy.workspace.model.UserWorkspace;
+import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -32,6 +36,21 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
     Optional<UserWorkspace> findByUsernameAndDisplayName(String username, String displayName);
 
     long countByUsernameAndArchivedFalse(String username);
+
+    /** Claim a pending/retryable workspace atomically across application instances. */
+    @Transactional
+    @Modifying
+    @Query("""
+            update UserWorkspace w set w.provisioningStatus = :inProgress
+            where w.workspaceId = :workspaceId and w.username = :username
+              and w.archived = false and w.shared = false
+              and w.provisioningStatus in :previousStates
+            """)
+    int claimProvisioning(@Param("workspaceId") String workspaceId,
+                          @Param("username") String username,
+                          @Param("inProgress") WorkspaceProvisioningStatus inProgress,
+                          @Param("previousStates") Collection<WorkspaceProvisioningStatus> previousStates);
+
 
     /**
      * Count active, disclosure-authorized rows without materializing metadata.
