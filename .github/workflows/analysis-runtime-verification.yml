@@ -1,83 +1,26 @@
-name: Analysis remaining review verification (temporary)
+name: Analysis exact source snapshot (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  verify:
+  snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 8620c8856f8b417c688b72aa522591ae73219c29
+          ref: e952154a242da558a4df8544f31eac335d026dd1
           persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
-        with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Apply exact candidate without changing product refs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
+      - name: Archive unchanged source, not a build or acceptance claim
         run: |
-          import base64,gzip,hashlib,json,os,subprocess,urllib.request
-          from pathlib import Path
-          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='8620c8856f8b417c688b72aa522591ae73219c29'
-          assert not subprocess.check_output(['git','status','--porcelain'],text=True).strip()
-          sha='dbe0a5545124d5cf077e36cc19c0b136abfbf976'
-          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-          with urllib.request.urlopen(request) as response: content=base64.b64decode(json.load(response)['content'])
-          assert hashlib.sha1(('blob '+str(len(content))+'\0').encode()+content).hexdigest()==sha
-          patch=gzip.decompress(base64.b64decode(content))
-          assert hashlib.sha256(patch).hexdigest()=='5e23f1cac594d81d0102199a4c1016ea1193f57a9d03715150589cd99c2d4878'
-          subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
-          subprocess.run(['git','apply','--index','-'],input=patch,check=True)
-          assert subprocess.check_output(['git','write-tree'],text=True).strip()=='ac67d6a1ed4c1a0ee0719045661827b1083ec592'
-          path=Path('taxonomy-app/src/test/java/com/taxonomy/AnalysisLiveProgressUiIT.java')
-          text=path.read_text()
-          assert text.count('Boolean.TRUE.equals(browser.executeScript(')==1
-          path.write_text(text.replace('Boolean.TRUE.equals(browser.executeScript(', 'Boolean.TRUE.equals(driver.executeScript('))
-          subprocess.run(['git','add',str(path)],check=True)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
-          assert subprocess.check_output(['git','write-tree'],text=True).strip()=='94348e138f1ca8dda5eb19219b8c075adfb1aa7f'
-          patch=subprocess.check_output(['git','diff','--cached','--binary','--full-index'])
-          assert hashlib.sha256(patch).hexdigest()=='66b657514b49dfb8d4119282694f5a3e12c9dc3ea6fdfe36467336666531a19d'
-          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
-          assert len(paths)==7
-          out=Path('target/remaining-review-evidence');out.mkdir(parents=True,exist_ok=True)
-          (out/'patch.diff').write_bytes(patch)
-          files={path:subprocess.check_output(['git','hash-object',path],text=True).strip() for path in paths}
-          (out/'manifest.json').write_text(json.dumps({'base':'8620c8856f8b417c688b72aa522591ae73219c29','tree':'94348e138f1ca8dda5eb19219b8c075adfb1aa7f','files':files},indent=2)+'\n')
-      - name: Execute Maven analysis and actual MVC regressions
-        run: |
-          set -o pipefail
-          ./mvnw -B -ntp test '-Dtest=Analysis*Test,Gateway*Test,GeminiGatewayTest,OpenAiCompatibleGatewayTest,LlmTranscriptBoundsTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/remaining-review-evidence/maven.log
-      - name: Execute real startup command and bootstrap contract
-        run: |
-          set -o pipefail
-          npm --prefix .github run test:analysis-session-startup 2>&1 | tee target/remaining-review-evidence/node.log
-          node .github/scripts/test-taxonomy-base-path.mjs 2>&1 | tee target/remaining-review-evidence/basepath.log
-      - name: Publish tested blobs only
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
-        run: |
-          import base64,json,os,urllib.request,zipfile
-          from pathlib import Path
-          manifest=json.loads(Path('target/remaining-review-evidence/manifest.json').read_text())
-          with zipfile.ZipFile('target/remaining-review-evidence/tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
-              for path,expected in manifest['files'].items():
-                  content=Path(path).read_bytes()
-                  request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',data=json.dumps({'content':base64.b64encode(content).decode(),'encoding':'base64'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
-                  with urllib.request.urlopen(request) as response: assert json.load(response)['sha']==expected,path
-                  archive.writestr(path,content)
+          test "$(git rev-parse HEAD)" = e952154a242da558a4df8544f31eac335d026dd1
+          test "$(git rev-parse HEAD^{tree})" = 94348e138f1ca8dda5eb19219b8c075adfb1aa7f
+          git archive --format=zip HEAD > /tmp/taxonomy-e952154a-source.zip
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
         with:
-          name: analysis-remaining-review-evidence
-          path: |
-            target/remaining-review-evidence
-            **/target/surefire-reports/TEST-*.xml
-          retention-days: 7
+          name: taxonomy-e952154a-source
+          path: /tmp/taxonomy-e952154a-source.zip
+          retention-days: 1
           if-no-files-found: error
