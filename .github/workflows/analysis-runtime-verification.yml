@@ -6,7 +6,7 @@ on:
 permissions:
   contents: write
 concurrency:
-  group: analysis-runtime-review-${{ github.ref }}
+  group: analysis-runtime-review-${{ github.sha }}
   cancel-in-progress: false
 jobs:
   regression:
@@ -34,11 +34,12 @@ jobs:
         run: |
           set -o pipefail
           python .github/scripts/workbench-analysis-review.py fix 2>&1 | tee target/analysis-patch.log
+          python .github/scripts/workbench-analysis-baseline.py
           git diff --check
-      - name: Real call-boundary, security and existing analysis regressions
+      - name: Real call-boundary, security, architecture and existing analysis regressions
         run: |
           set -o pipefail
-          ./mvnw -B -ntp test '-Dtest=Analysis*Test,LlmCallDetailAccumulatorTest,LlmService*Test,HsqldbFileProfileTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/analysis-review.log
+          ./mvnw -B -ntp test '-Dtest=Analysis*Test,LlmTranscriptBoundsTest,GatewayInterruptedAnalysisTest,LlmService*Test,HsqldbFileProfileTest,ArchitectureContextDependencyRatchetTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/analysis-review.log
       - name: JavaScript and delivery contracts
         run: |
           set -o pipefail
