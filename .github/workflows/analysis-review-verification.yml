@@ -1,27 +1,48 @@
-name: Analysis review evidence (temporary)
+name: Analysis review regressions (temporary)
 on:
   push:
     branches: [fix/analysis-review-verification]
 permissions:
   contents: read
 jobs:
-  source:
+  regressions:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: 24ba60d112b81a12bdd908c1ec6abd5e2632cc61
+          fetch-depth: 0
           persist-credentials: false
-      - name: Export exact product sources for offline verification
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Add only the new regression cases to unchanged product sources
+        env:
+          VERIFY_REF: ${{ github.sha }}
         run: |
-          test "$(git rev-parse HEAD)" = 24ba60d112b81a12bdd908c1ec6abd5e2632cc61
-          git archive --format=zip --output="$RUNNER_TEMP/taxonomy-source.zip" HEAD
-          git rev-parse HEAD HEAD^{tree} > "$RUNNER_TEMP/source-identity.txt"
+          test "$(git rev-parse HEAD^{tree})" = 416a4a59715f30ad5fb08f15b03ae103ed038a21
+          file=taxonomy-app/src/test/java/com/taxonomy/analysis/service/AnalysisReviewRegressionTest.java
+          git show "$VERIFY_REF:$file" > "$file"
+      - name: Execute RED cases
+        run: |
+          mkdir -p target
+          set +e
+          set -o pipefail
+          ./mvnw -B -ntp test -Dtest=AnalysisReviewRegressionTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/review-red.log
+          result=$?
+          test "$result" -ne 0 || exit 1
+          python - <<'PY'
+          import xml.etree.ElementTree as E
+          p='taxonomy-app/target/surefire-reports/TEST-com.taxonomy.analysis.service.AnalysisReviewRegressionTest.xml'
+          r=E.parse(p).getroot()
+          print('RED evidence:',r.attrib)
+          assert (int(r.get('tests')),int(r.get('failures')),int(r.get('errors')),int(r.get('skipped'))) == (8,7,0,0)
+          PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
-          name: analysis-source-24ba60d1
+          name: analysis-review-red
           path: |
-            ${{ runner.temp }}/taxonomy-source.zip
-            ${{ runner.temp }}/source-identity.txt
-          retention-days: 2
+            target/review-red.log
+            **/target/surefire-reports/TEST-com.taxonomy.analysis.service.AnalysisReviewRegressionTest.xml
+          retention-days: 7
