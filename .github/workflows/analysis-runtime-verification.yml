@@ -1,70 +1,29 @@
-name: Analysis failure-boundary regressions (temporary)
+name: Analysis exact-source snapshot (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  verify:
+  snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 78f221fd0cd401e5ea75ea4e43af1ade278e85e8
+          ref: 025d3548abfd70e5b1499169276cec0302636f69
           persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
-        with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Apply exact locally reproduced corrections
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
+      - name: Export only tracked source and source identity
         run: |
-          import base64,gzip,hashlib,json,os,subprocess,urllib.request
-          from pathlib import Path
-          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='78f221fd0cd401e5ea75ea4e43af1ade278e85e8'
-          assert not subprocess.check_output(['git','status','--porcelain'],text=True).strip()
-          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/64c967e70187afe0cc3de248a599f2cdb3765afa',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-          with urllib.request.urlopen(req) as response:
-              patch=gzip.decompress(base64.b64decode(json.load(response)['content']))
-          assert hashlib.sha256(patch).hexdigest()=='95e3d64351836981da4bff203614b1fe3483e66f7696ceda203044aef54f4ac2'
-          subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
-          subprocess.run(['git','apply','--index','-'],input=patch,check=True)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
-          expected={
-            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisRunControl.java':'1b86b13b643a26562148ef7e6fc23967290a4bed',
-            'taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java':'094cd8345e90f8db3f7ccca3c4355f2203d2c27e',
-            'taxonomy-app/src/test/java/com/taxonomy/analysis/service/AnalysisFailureBoundaryTest.java':'2524e3b8fe85a473cddb920aff8507f84bb67de0'}
-          assert set(subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines())==set(expected)
-          for path,sha in expected.items():
-              assert subprocess.check_output(['git','hash-object',path],text=True).strip()==sha,path
-          out=Path('target/failure-evidence');out.mkdir(parents=True,exist_ok=True)
-          (out/'patch.diff').write_bytes(patch)
-          (out/'manifest.json').write_text(json.dumps({'base':'78f221fd0cd401e5ea75ea4e43af1ade278e85e8','tree':subprocess.check_output(['git','write-tree'],text=True).strip(),'files':expected},indent=2)+'\n')
-      - name: Focused Java and actual MVC regression verification
-        run: |
-          set -o pipefail
-          ./mvnw -B -ntp test '-Dtest=AnalysisFailureBoundaryTest,AnalysisApiControllerTest,AnalysisApiWorkspaceBoundaryTest,AnalysisRunControlBoundaryTest,GatewayInterruptedAnalysisTest,AnalysisStoppedEvidenceTest,AnalysisProgressPublicationTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/failure-evidence/maven.log
-          node --test .github/scripts/analysis-live-progress.test.mjs | tee target/failure-evidence/node.log
-      - name: Publish only verified source blobs, not product refs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
-        run: |
-          import base64,json,os,urllib.request
-          from pathlib import Path
-          manifest=json.loads(Path('target/failure-evidence/manifest.json').read_text())
-          for path,expected in manifest['files'].items():
-              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',data=json.dumps({'content':base64.b64encode(Path(path).read_bytes()).decode(),'encoding':'base64'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
-              with urllib.request.urlopen(req) as response:
-                  assert json.load(response)['sha']==expected,path
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 025d3548abfd70e5b1499169276cec0302636f69
+          mkdir -p /tmp/analysis-source
+          git rev-parse HEAD HEAD^{tree} > /tmp/analysis-source/identity.txt
+          git ls-tree -r HEAD > /tmp/analysis-source/blobs.txt
+          git archive --format=zip --output=/tmp/analysis-source/source.zip HEAD -- '*.java' '*.js' '*.mjs' '*.json' '*.xml' '*.md' '*.properties' '*.yml' '*.yaml' '*.sh' 'mvnw' '.mvn'
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
         with:
-          name: analysis-failure-boundary-evidence
-          path: |
-            target/failure-evidence
-            **/target/surefire-reports/TEST-*.xml
-          retention-days: 7
+          name: analysis-source-025d3548
+          path: /tmp/analysis-source
+          retention-days: 1
           if-no-files-found: error
