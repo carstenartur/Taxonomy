@@ -28,20 +28,22 @@ jobs:
           key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
       - name: Provision canonical embedding model
         run: bash .github/scripts/download-embedding-model.sh
-      - name: Fetch hash-verified external test builder
+      - name: Fetch hash-verified external test builders
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
           import base64,hashlib,json,os,urllib.request
           from pathlib import Path
-          sha='146c096efcccad2cf1b80e7c0eba9c018b738407'
-          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,
-              headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-          with urllib.request.urlopen(request) as response: blob=json.load(response)
-          content=base64.b64decode(blob['content'])
-          assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha
-          Path('/tmp/analysis-completion-builder.py').write_bytes(content)
+          builders={'/tmp/analysis-completion-base.py':'146c096efcccad2cf1b80e7c0eba9c018b738407',
+                    '/tmp/analysis-completion-builder.py':'aef0e181033830405df698dd1402bd407029a933'}
+          for path,sha in builders.items():
+              request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,
+                  headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(request) as response: blob=json.load(response)
+              content=base64.b64decode(blob['content'])
+              assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha
+              Path(path).write_bytes(content)
           Path('target/completion-evidence').mkdir(parents=True)
       - name: Add counterexamples before production changes
         run: python /tmp/analysis-completion-builder.py tests
@@ -58,6 +60,11 @@ jobs:
           counts=[dict(report.attrib) for report in reports]
           assert java.returncode!=0 and sum(int(report.attrib['failures']) for report in reports)>=8, counts
           print('JAVA RED',json.dumps(counts))
+          for report in reports:
+              for case in report.findall('testcase'):
+                  problem=case.find('failure')
+                  if problem is None: problem=case.find('error')
+                  if problem is not None: print('RED',case.attrib.get('name'),problem.attrib.get('type'),problem.attrib.get('message','')[:600])
           for path in paths: (folder/('red-'+path.name)).write_bytes(path.read_bytes())
           with (folder/'js-red.log').open('w') as log:
               js=subprocess.run(['node','--test','.github/scripts/analysis-readiness.test.mjs','.github/scripts/analysis-live-progress.test.mjs'],stdout=log,stderr=subprocess.STDOUT)
@@ -85,6 +92,22 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python /tmp/analysis-completion-builder.py publish
+      - name: Summarize executed failures without hiding logs
+        if: failure()
+        shell: python
+        run: |
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          for path in Path('.').rglob('TEST-*.xml'):
+              if 'target/surefire-reports' not in str(path): continue
+              root=ET.parse(path).getroot()
+              for case in root.findall('testcase'):
+                  issue=case.find('failure')
+                  if issue is None: issue=case.find('error')
+                  if issue is not None: print(path,case.attrib,issue.attrib,(issue.text or '')[:2500])
+          for name in ('java-green.log','js-green.log','all-unit.log','ui-contracts.log'):
+              path=Path('target/completion-evidence')/name
+              if path.exists(): print('\nLOG',name,'\n',path.read_text()[-7000:])
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
