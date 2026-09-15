@@ -4,19 +4,40 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync('taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', 'utf8');
+const clientSource = readFileSync('taxonomy-app/src/main/resources/static/js/api/taxonomy-api-client.js', 'utf8');
+const apiSource = readFileSync('taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', 'utf8');
 const id = 'cb2a3d71-e849-4a50-9855-1f9cb8f81402';
 function fixture(fetcher) {
     const scope = { workspaceId: 'workspace-a', generation: 1, invalidating: false };
     const timers = new Map(), calls = [], snapshots = [], unavailable = [];
     let serial = 0;
-    const window = {};
-    vm.runInNewContext(source, { window, AbortController, console, document: { addEventListener() {} } });
+    const authFailures = [];
+    const schedule = (fn, delay) => { const key = ++serial; timers.set(key, { fn, delay }); return key; };
+    const unschedule = key => timers.delete(key);
+    const document = {
+        addEventListener() {}, getElementById() { return null; },
+        querySelector(selector) {
+            return selector === 'meta[name="_csrf"]' ? { content: 'test-token' }
+                : selector === 'meta[name="_csrf_header"]' ? { content: 'X-CSRF-TOKEN' } : null;
+        },
+        dispatchEvent(event) { authFailures.push(event.detail); }
+    };
+    const window = {
+        location: { href: 'https://taxonomy.example/', origin: 'https://taxonomy.example' },
+        TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
+        fetch: async (url, options) => {
+            calls.push({ url, options: { ...options, headers: Object.fromEntries(options.headers) } });
+            return fetcher(url, options);
+        }
+    };
+    const sandbox = vm.createContext({ window, document, AbortController, console,
+        URL, Request, Headers, Response, CustomEvent, setTimeout: schedule, clearTimeout: unschedule });
+    vm.runInContext(clientSource, sandbox);
+    vm.runInContext(apiSource, sandbox);
+    vm.runInContext(source, sandbox);
     const monitor = window.TaxonomyAnalysisProgress.createMonitor({
-        id, context: () => ({ ...scope }),
-        fetch: async (url, options) => { calls.push({ url, options }); return fetcher(url, options); },
-        headers: () => ({ 'X-CSRF-TOKEN': 'test-token' }),
-        setTimeout: (fn, delay) => { const key = ++serial; timers.set(key, { fn, delay }); return key; },
-        clearTimeout: key => timers.delete(key),
+        id, context: () => ({ ...scope }), api: window.TaxonomyAnalysisSessionApi,
+        setTimeout: schedule, clearTimeout: unschedule,
         onSnapshot: (value, changed) => snapshots.push({ value, changed }),
         onUnavailable: message => unavailable.push(message)
     });
@@ -27,10 +48,10 @@ function fixture(fetcher) {
         await entry[1].fn();
         await new Promise(resolve => setImmediate(resolve));
     }
-    return { scope, timers, calls, snapshots, unavailable, monitor, step };
+    return { scope, timers, calls, snapshots, unavailable, authFailures, monitor, step };
 }
 function response(data, status = 200) {
-    return { ok: status >= 200 && status < 300, status, json: async () => data };
+    return new Response(status === 202 ? null : JSON.stringify(data), { status });
 }
 function snapshot(sequence = 1, status = 'RUNNING') {
     return { operationId: id, sequence, status, phase: 'LLM_REQUEST', calls: [{ id: 1, status: 'STARTED' }],
@@ -44,8 +65,8 @@ test('observes a started call and partial scores before completion; never starts
     assert.equal(f.snapshots[0].value.rawScores.CP, 80);
     assert.equal(f.snapshots[0].value.memory.warning, true);
     assert.equal(f.calls.length, 1);
-    assert.equal(f.calls[0].options.method, undefined);
-    assert.equal(f.calls[0].options.headers['X-Taxonomy-Workspace-Id'], 'workspace-a');
+    assert.equal(f.calls[0].options.method, 'GET');
+    assert.equal(f.calls[0].options.headers['x-taxonomy-workspace-id'], 'workspace-a');
     assert.match(f.calls[0].url, /workspaceId=workspace-a/);
     f.monitor.stop();
     assert.equal(f.timers.size, 0);
@@ -88,8 +109,8 @@ test('cancellation is explicit, deduplicated, CSRF-protected and pinned to origi
     await Promise.all([f.monitor.cancel(), f.monitor.cancel()]);
     assert.equal(f.calls.length, 1);
     assert.equal(f.calls[0].options.method, 'POST');
-    assert.equal(f.calls[0].options.headers['X-CSRF-TOKEN'], 'test-token');
-    assert.equal(f.calls[0].options.headers['X-Taxonomy-Workspace-Id'], 'workspace-a');
+    assert.equal(f.calls[0].options.headers['x-csrf-token'], 'test-token');
+    assert.equal(f.calls[0].options.headers['x-taxonomy-workspace-id'], 'workspace-a');
     assert.match(f.calls[0].url, /\/cancel\?workspaceId=workspace-a$/);
     assert.equal(f.snapshots.length, 0);
     f.monitor.stop();
@@ -99,10 +120,10 @@ test('temporary connection failure retries observation without repeating analysi
     let fail = true;
     const f = fixture(async () => { if (fail) { fail = false; throw new Error('offline'); } return response(snapshot()); });
     await f.step(0); await f.step(1000);
-    assert.deepEqual(f.unavailable, ['offline']);
+    assert.deepEqual(f.unavailable, ['Network request failed']);
     assert.equal(f.snapshots.length, 1);
     assert.equal(f.calls.length, 2);
-    assert.ok(f.calls.every(call => !call.options.method));
+    assert.ok(f.calls.every(call => call.options.method === 'GET'));
     f.monitor.stop();
 });
 
@@ -132,7 +153,7 @@ test('terminal observation never sends a later cancellation write', async () => 
     await f.step(0);
     assert.equal(await f.monitor.cancel(), false);
     assert.equal(f.calls.length, 1);
-    assert.ok(f.calls.every(call => !call.options.method));
+    assert.ok(f.calls.every(call => call.options.method === 'GET'));
     assert.equal(f.timers.size, 0);
 });
 
@@ -156,7 +177,7 @@ test('early admission polls accept an empty pending response without starting a 
     assert.equal(f.snapshots.length, 2);
     assert.ok(f.calls.slice(0, 2).every(call => call.url.endsWith('&waitForRegistration=true')));
     assert.ok(!f.calls[2].url.includes('waitForRegistration'));
-    assert.ok(f.calls.every(call => !call.options.method));
+    assert.ok(f.calls.every(call => call.options.method === 'GET'));
     f.monitor.stop();
 });
 
@@ -167,5 +188,61 @@ test('a known run disappearing is not reported as pending admission', async () =
     assert.deepEqual(f.unavailable, ['HTTP 404']);
     assert.equal(f.snapshots.length, 1);
     assert.ok(!f.calls[1].url.includes('waitForRegistration'));
+    f.monitor.stop();
+});
+
+
+test('all three telemetry operations use canonical CSRF, request IDs and no-store transport', async () => {
+    const f = fixture(async url => response(url.includes('/calls/') ? { prompt: 'bounded' } : snapshot()));
+    await f.step(0);
+    await f.monitor.detail('1/a?b');
+    await f.monitor.cancel();
+    assert.equal(f.calls.length, 3);
+    assert.match(f.calls[1].url, /calls\/1%2Fa%3Fb\?workspaceId=workspace-a$/);
+    for (const { options } of f.calls) {
+        assert.equal(options.headers['x-taxonomy-workspace-id'], 'workspace-a');
+        assert.ok(options.headers['x-request-id']);
+        assert.equal(options.cache, 'no-store');
+        assert.equal(options.credentials, 'same-origin');
+    }
+    assert.equal(f.calls[2].options.headers['x-csrf-token'], 'test-token');
+    assert.equal(f.calls[2].options.keepalive, true);
+    f.monitor.stop();
+    assert.equal(f.timers.size, 0);
+});
+
+test('the polling deadline aborts the canonical request and reports a timeout', async () => {
+    const f = fixture((url, options) => new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    }));
+    const pending = f.step(0);
+    await f.step(5000);
+    await pending;
+    assert.equal(f.calls[0].options.signal.aborted, true);
+    assert.deepEqual(f.unavailable, ['CONNECTION_TIMEOUT']);
+    f.monitor.stop();
+    assert.equal(f.timers.size, 0);
+});
+
+test('stopping the monitor aborts the actual transport without a late UI error', async () => {
+    const f = fixture((url, options) => new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+    }));
+    const pending = f.step(0);
+    f.monitor.stop();
+    await pending;
+    assert.equal(f.calls[0].options.signal.aborted, true);
+    assert.equal(f.snapshots.length, 0);
+    assert.equal(f.unavailable.length, 0);
+    assert.equal(f.timers.size, 0);
+});
+
+test('authorization failure is reported centrally and never retried as a cancellation write', async () => {
+    const f = fixture(async () => response({ detail: 'Denied' }, 403));
+    await f.monitor.cancel();
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.authFailures.length, 1);
+    assert.equal(f.authFailures[0].status, 403);
+    assert.deepEqual(f.unavailable, ['HTTP 403: Denied']);
     f.monitor.stop();
 });

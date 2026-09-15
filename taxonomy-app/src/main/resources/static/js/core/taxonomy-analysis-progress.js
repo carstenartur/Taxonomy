@@ -8,23 +8,10 @@
         var stopped = false, timer = null, request = null, sequence = 0, cancelling = false;
         var seen = false;
         var id = options.id;
-        var base = '/api/analysis-runs/' + encodeURIComponent(id);
         function current() {
             var now = options.context();
             return !stopped && now.workspaceId === initial.workspaceId
                 && now.generation === initial.generation && !now.invalidating;
-        }
-        function headers() {
-            var result = Object.assign({}, options.headers ? options.headers() : {});
-            if (initial.workspaceId) result['X-Taxonomy-Workspace-Id'] = initial.workspaceId;
-            return result;
-        }
-        function url(suffix) {
-            var target = base + (suffix || '');
-            if (initial.workspaceId) target += '?workspaceId=' + encodeURIComponent(initial.workspaceId);
-            // The POST may not have registered this run yet. Observation must not log a 404.
-            if (!suffix && !seen) target += (target.indexOf('?') >= 0 ? '&' : '?') + 'waitForRegistration=true';
-            return options.resolveUrl ? options.resolveUrl(target) : target;
         }
         function stop() {
             stopped = true;
@@ -37,10 +24,7 @@
             if (stopped || cancelling) return false;
             cancelling = true;
             try {
-                var response = await options.fetch(url('/cancel'), {
-                    method: 'POST', headers: headers(), cache: 'no-store', keepalive: true
-                });
-                if (!response.ok) throw new Error('HTTP ' + response.status);
+                await options.api.cancelRun(id, { workspaceId: initial.workspaceId });
                 if (current() && options.onCancelling) options.onCancelling();
             } catch (error) {
                 cancelling = false;
@@ -52,14 +36,13 @@
             request = new AbortController();
             var timeout = options.setTimeout(function () { if (request) request.abort(); }, 5000);
             try {
-                var response = await options.fetch(url(), {
-                    headers: headers(), cache: 'no-store', signal: request.signal
+                var response = await options.api.getRunStatus(id, {
+                    workspaceId: initial.workspaceId, waitForRegistration: !seen, signal: request.signal
                 });
-                if ((response.status === 202 || response.status === 404) && !seen) {
+                if (response.status === 202 && !seen) {
                     if (current()) options.onUnavailable('WAITING_FOR_RUN');
                     return;
                 }
-                if (!response.ok) throw new Error('HTTP ' + response.status);
                 var data = await response.json();
                 if (!current()) return;
                 if (data.operationId !== id || !Number.isSafeInteger(data.sequence)
@@ -70,7 +53,12 @@
                 options.onSnapshot(data, changed);
                 if (['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) >= 0) stop();
             } catch (error) {
-                if (current()) options.onUnavailable(error.name === 'AbortError' ? 'CONNECTION_TIMEOUT' : error.message);
+                if (current()) {
+                    var reason = error.status === 404 && !seen ? 'WAITING_FOR_RUN'
+                        : error.name === 'AbortError' || error.code === 'ABORTED' || error.code === 'TIMEOUT'
+                            ? 'CONNECTION_TIMEOUT' : error.message;
+                    options.onUnavailable(reason);
+                }
             } finally {
                 options.clearTimeout(timeout);
                 request = null;
@@ -83,10 +71,7 @@
             if (now.workspaceId !== initial.workspaceId || now.generation !== initial.generation) {
                 throw new Error('STALE_ANALYSIS');
             }
-            var response = await options.fetch(url('/calls/' + encodeURIComponent(callId)), {
-                headers: headers(), cache: 'no-store'
-            });
-            if (!response.ok) throw new Error('HTTP ' + response.status);
+            var response = await options.api.getRunCallDetail(id, callId, { workspaceId: initial.workspaceId });
             var data = await response.json();
             now = options.context();
             if (now.workspaceId !== initial.workspaceId || now.generation !== initial.generation || now.invalidating) {
@@ -104,13 +89,6 @@
         return { workspaceId: runtime.workspaceId || '', generation: runtime.analysisGeneration || 0,
             invalidating: Boolean(runtime.invalidating) };
     }
-    function csrfHeaders() {
-        var token = document.querySelector('meta[name="_csrf"]');
-        var header = document.querySelector('meta[name="_csrf_header"]');
-        var result = {};
-        if (token && token.content) result[header && header.content || 'X-CSRF-TOKEN'] = token.content;
-        return result;
-    }
     function german() {
         var i18n = window.TaxonomyI18n;
         return String(i18n && i18n.getLocale ? i18n.getLocale() : document.documentElement.lang || '').startsWith('de');
@@ -121,10 +99,6 @@
         if (value !== undefined) element.textContent = value;
         if (className) element.className = className;
         return element;
-    }
-    function resolveUrl(url) {
-        return window.TaxonomyI18n && window.TaxonomyI18n.resolveUrl
-            ? window.TaxonomyI18n.resolveUrl(url) : url;
     }
     function presentation() {
         var previous = document.getElementById('analysisLiveProgress');
@@ -246,8 +220,8 @@
         if (active) { active.cancel(); active.stop(); }
         var view = presentation();
         var monitor = createMonitor({
-            id: id, context: context, fetch: window.fetch.bind(window), headers: csrfHeaders,
-            resolveUrl: resolveUrl, setTimeout: window.setTimeout.bind(window), clearTimeout: window.clearTimeout.bind(window),
+            id: id, context: context, api: window.TaxonomyAnalysisSessionApi,
+            setTimeout: window.setTimeout.bind(window), clearTimeout: window.clearTimeout.bind(window),
             onSnapshot: function (snapshot, changed) {
                 view.render(snapshot, monitor);
                 if (changed && onScores) onScores(snapshot);

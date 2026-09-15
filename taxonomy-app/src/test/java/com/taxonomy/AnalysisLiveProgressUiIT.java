@@ -123,6 +123,7 @@ class AnalysisLiveProgressUiIT {
                     <meta name="_csrf" content="fixture-token"><meta name="_csrf_header" content="X-CSRF-TOKEN">
                     <style>body{font:16px sans-serif;margin:2rem}.alert{padding:1rem;border:1px solid #999}pre{white-space:pre-wrap}</style>
                     </head><body><div id="statusArea"></div><div id="partialScores"></div><div id="llmCommLogContent"></div>
+                    <script src="/api-client.js"></script><script src="/analysis-session-api.js"></script>
                     <script src="/progress.js"></script><script>
                     window.__TaxonomyAnalysisSessionContext={runtime:{workspaceId:'workspace-a',analysisGeneration:1}};
                     window.monitor=TaxonomyAnalysisProgress.start('%s',function(s){
@@ -131,9 +132,23 @@ class AnalysisLiveProgressUiIT {
                     """.formatted(ID));
             return;
         }
-        if (path.equals("/progress.js")) {
-            send(exchange, "application/javascript", new ClassPathResource("static/js/core/taxonomy-analysis-progress.js")
+        String script = switch (path) {
+            case "/progress.js" -> "static/js/core/taxonomy-analysis-progress.js";
+            case "/api-client.js" -> "static/js/api/taxonomy-api-client.js";
+            case "/analysis-session-api.js" -> "static/js/api/analysis-session-api.js";
+            case "/js/security/taxonomy-role-surface.js" -> "static/js/security/taxonomy-role-surface.js";
+            case "/js/security/taxonomy-ui-semantics.js" -> "static/js/security/taxonomy-ui-semantics.js";
+            default -> null;
+        };
+        if (script != null) {
+            send(exchange, "application/javascript", new ClassPathResource(script)
                     .getContentAsString(StandardCharsets.UTF_8));
+            return;
+        }
+        if (path.equals("/api/account/me")) {
+            send(exchange, "application/json", """
+                    {"username":"fixture-user","roles":[],"administrator":false,"architectureMutationAllowed":false}
+                    """);
             return;
         }
         if (path.equals("/favicon.ico")) { exchange.sendResponseHeaders(204, -1); exchange.close(); return; }
