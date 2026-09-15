@@ -1,0 +1,242 @@
+name: Verify reviewed recovery fixes and module stack
+on:
+  push:
+    branches: [fix/628-recovery-strategies]
+    paths: [.github/workflows/628-recovery-green.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  focused:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: source
+    env:
+      MODEL_DIRECTORY: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/source/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37a6eedfb64067667985650bddd50102b21ddad3
+          path: source
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 47d1728821da1c01570392613a8aba44b6496031
+          path: inputs
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: source/**/pom.xml
+      - name: Execute the expanded failing regressions before production changes
+        run: |
+          mkdir -p "$RUNNER_TEMP/recovery-evidence/red-reports"
+          cp ../inputs/taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceFactoryRetryRecoveryTest.java taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/
+          cp ../inputs/taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceDivergedStrategyScopeTest.java taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/
+          git diff --exit-code
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceFactoryRetryRecoveryTest,WorkspaceDivergedStrategyScopeTest test > "$RUNNER_TEMP/recovery-evidence/red.log" 2>&1
+          code=$?
+          set -e
+          test "$code" -ne 0
+          python3 - <<'PY'
+          import os,shutil,xml.etree.ElementTree as ET
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'recovery-evidence'
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for name in ('WorkspaceFactoryRetryRecoveryTest','WorkspaceDivergedStrategyScopeTest'):
+              p=Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.'+name+'.xml')
+              if not p.exists():
+                  print((out/'red.log').read_text()[-10000:]); raise SystemExit('No valid regression: '+name)
+              root=ET.parse(p).getroot()
+              for k in total: total[k]+=int(root.get(k,'0'))
+              for case in root.findall('testcase'):
+                  for failure in case.findall('failure')+case.findall('error'): print(case.get('name'),failure.get('message'))
+              shutil.copy2(p,out/'red-reports'/p.name)
+          assert total==dict(tests=8,failures=8,errors=0,skipped=0),total
+          print('RED',total)
+          PY
+      - name: Apply only the two production corrections and their regression contracts
+        run: python3 ../inputs/verification/628-recovery-patch.py
+      - name: Supply the existing checksum-pinned embedding model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Verify all affected existing and new recovery contracts
+        env:
+          TESTS: WorkspaceFactoryRetryRecoveryTest,WorkspaceDivergedStrategyScopeTest,WorkspaceLegacyRetryRecoveryTest,WorkspaceProvisioningProvenanceTest,WorkspaceProvisioningClaimIT,GitNativeSyncSnapshotRaceTest,GitNativeSyncIntegrationServiceTest,WorkspaceProvisioningBoundaryIT,WorkspaceManagerBehaviorTest,WorkspaceManagerProvisioningTest,WorkspaceInitialSyncBaseTest,WorkspaceInitialSyncBaseBoundaryTest,WorkspaceProvisioningSnapshotTest,WorkspaceProvisioningSourceTest,WorkspaceConcurrentDefaultInitializationTest,DslCapturedBranchTest,ArchitectureReportTests
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest="$TESTS" test > "$RUNNER_TEMP/recovery-evidence/green.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/recovery-evidence/green.log"; exit 1; }
+          python3 - <<'PY'
+          import json,os,shutil,subprocess,xml.etree.ElementTree as ET
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'recovery-evidence'; (out/'green-reports').mkdir()
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for name in os.environ['TESTS'].split(','):
+              paths=list(Path('.').glob('*/target/surefire-reports/TEST-*.'+name+'.xml'))
+              assert len(paths)==1,(name,paths)
+              root=ET.parse(paths[0]).getroot()
+              counts={k:int(root.get(k,'0')) for k in total}
+              assert counts['tests']>0 and counts['failures']==counts['errors']==counts['skipped']==0,(name,counts)
+              for k in total:total[k]+=counts[k]
+              shutil.copy2(paths[0],out/'green-reports'/paths[0].name)
+              print(name,counts)
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==(out/'tree.txt').read_text()
+          (out/'results.json').write_text(json.dumps(total,indent=2))
+          print('FOCUSED GREEN',total)
+          PY
+      - name: Retain only verified Java source blobs without moving a branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==5 and all(p.endswith('.java') for p in paths),paths
+          entries=[]
+          for p in paths:
+              sha=subprocess.check_output(['git','hash-object',p],text=True).strip()
+              data=json.dumps({'content':Path(p).read_text(),'encoding':'utf-8'})
+              blob=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=data,text=True))
+              assert sha==blob['sha']
+              entries.append({'path':p,'mode':'100644','type':'blob','sha':sha})
+          out=Path(os.environ['RUNNER_TEMP'])/'recovery-evidence'
+          manifest={'base':'37a6eedfb64067667985650bddd50102b21ddad3','tree':(out/'tree.txt').read_text(),'entries':entries}
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          print('VERIFIED SOURCE',json.dumps(manifest))
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: reviewed-recovery-focused
+          path: ${{ runner.temp }}/recovery-evidence/
+          retention-days: 7
+          if-no-files-found: error
+  integrated:
+    needs: focused
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: workspace
+            target: 37a6eedfb64067667985650bddd50102b21ddad3
+          - label: templates
+            target: 31a0409d3eb7c3ecfc5d004c45cd36af32068baa
+          - label: interop
+            target: f977ffa6f71e28d981b34b39333cf1114de4e7b2
+    env:
+      TARGET: ${{ matrix.target }}
+      LABEL: ${{ matrix.label }}
+      MODEL_DIRECTORY: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 37a6eedfb64067667985650bddd50102b21ddad3
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Integrate the exact focused-verified correction and successor test fix
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run download "$GITHUB_RUN_ID" -R carstenartur/Taxonomy -n reviewed-recovery-focused -D "$RUNNER_TEMP/focused"
+          python3 - <<'PY'
+          import json,os,subprocess
+          from pathlib import Path
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          target=os.environ['TARGET']; workspace='37a6eedfb64067667985650bddd50102b21ddad3'
+          tree=git('merge-tree','--write-tree',target,workspace)
+          assert len(tree)==40 and '\n' not in tree
+          subprocess.run(['git','checkout','--detach',target],check=True)
+          subprocess.run(['git','read-tree','--reset','-u',tree],check=True)
+          patch=Path(os.environ['RUNNER_TEMP'])/'focused/source.patch'
+          subprocess.run(['git','apply','--index',str(patch)],check=True)
+          if os.environ['LABEL']!='workspace':
+              p=Path('taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java')
+              text=p.read_text(); old='        List<String> unclassifiedPackages = new ArrayList<>();'
+              assert text.count(old)==1
+              p.write_text(text.replace(old,'        Set<String> unclassifiedPackages = new TreeSet<>();'))
+              subprocess.run(['git','add',str(p)],check=True)
+          final=git('write-tree')
+          for module in ('taxonomy-templates','taxonomy-interop'):
+              assert git('ls-tree',target,'--',module)==git('ls-tree',final,'--',module),module
+          entries=[]
+          for path in git('diff','--no-renames','--name-only',target,final).splitlines():
+              found=git('ls-tree',final,'--',path)
+              if found:
+                  mode,kind,sha=found.split('\t')[0].split()
+                  entries.append({'path':path,'mode':mode,'type':kind,'sha':sha})
+              else:entries.append({'path':path,'mode':'100644','type':'blob','sha':None})
+          out=Path(os.environ['RUNNER_TEMP'])/'integration'; out.mkdir()
+          manifest={'target':target,'base_tree':git('rev-parse',target+'^{tree}'),'tree':final,'entries':entries}
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2))
+          (out/'source.patch').write_text(subprocess.check_output(['git','diff','--binary',target,final],text=True))
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          print('INTEGRATED SOURCE',json.dumps(manifest))
+          PY
+      - name: Supply the existing pinned model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Execute complete clean default verification
+        run: |
+          ./mvnw -B -ntp clean verify -DexcludedGroups=real-llm > "$RUNNER_TEMP/integration/verify.log" 2>&1 || { tail -n 120 "$RUNNER_TEMP/integration/verify.log"; exit 1; }
+          python3 - <<'PY'
+          import json,os,subprocess,xml.etree.ElementTree as ET
+          from pathlib import Path
+          out=Path(os.environ['RUNNER_TEMP'])/'integration'
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
+              root=ET.parse(p).getroot()
+              for k in total:total[k]+=int(root.get(k,'0'))
+          assert total['tests']>4000 and total['failures']==total['errors']==0,total
+          manifest=json.loads((out/'manifest.json').read_text())
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==manifest['tree']
+          (out/'results.json').write_text(json.dumps(total,indent=2))
+          print('FULL DEFAULT RESULT',total)
+          print('VERIFIED TREE',manifest['tree'])
+          PY
+      - name: Verify the real claim race and package ownership after the full build
+        run: |
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceProvisioningClaimIT,ArchitectureContextDependencyRatchetTest test > "$RUNNER_TEMP/integration/review.log" 2>&1 || { tail -n 100 "$RUNNER_TEMP/integration/review.log"; exit 1; }
+      - name: Retain the two final test blobs without branch changes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json,subprocess
+          from pathlib import Path
+          for p in ('taxonomy-app/src/test/java/com/taxonomy/ArchitectureContextDependencyRatchetTest.java','taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java'):
+              data=json.dumps({'content':Path(p).read_text(),'encoding':'utf-8'})
+              blob=json.loads(subprocess.check_output(['gh','api','-X','POST','repos/carstenartur/Taxonomy/git/blobs','--input','-'],input=data,text=True))
+              assert blob['sha']==subprocess.check_output(['git','hash-object',p],text=True).strip()
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: reviewed-recovery-${{ matrix.label }}
+          path: |
+            ${{ runner.temp }}/integration/
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
