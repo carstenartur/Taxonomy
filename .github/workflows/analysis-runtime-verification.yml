@@ -1,39 +1,84 @@
-name: Analysis test library snapshot (temporary)
+name: Analysis stop-evidence source verification (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  snapshot:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 795cb969651f48762a47537646a4c984f39f5934
+          ref: 24ba60d112b81a12bdd908c1ec6abd5e2632cc61
           persist-credentials: false
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
-        with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Resolve and compile tests for offline execution (not a verification claim)
-        run: ./mvnw -B -ntp test -DskipTests
-      - name: Archive only test library jars and compiled test resources
+          fetch-depth: 0
+      - name: Apply the locally compiled and tested patch to the exact product base
+        env:
+          GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
+          import base64, gzip, hashlib, json, os, subprocess, urllib.request
           from pathlib import Path
-          import zipfile
-          root = Path.home() / '.m2/repository'
-          groups = ['org/junit', 'org/mockito', 'org/assertj', 'org/opentest4j', 'org/apiguardian', 'net/bytebuddy', 'org/objenesis', 'org/springframework/spring-test', 'org/hamcrest', 'org/awaitility', 'org/apache/maven/surefire']
-          jars = sorted({p for group in groups for p in (root / group).rglob('*.jar')})
-          assert jars, 'Test dependencies were not resolved'
-          with zipfile.ZipFile('/tmp/analysis-test-libraries.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
-              for path in jars:
-                  archive.write(path, 'libraries/' + str(path.relative_to(root)))
-              for path in Path('taxonomy-app/target/test-classes').rglob('*'):
-                  if path.is_file(): archive.write(path, 'test-classes/' + str(path.relative_to('taxonomy-app/target/test-classes')))
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip() == '24ba60d112b81a12bdd908c1ec6abd5e2632cc61'
+          assert not subprocess.check_output(['git','status','--porcelain'],text=True).strip()
+          req = urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/02a56a486b83697f9fd447843b781969a37eea94', headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(req) as response:
+              compressed = base64.b64decode(json.load(response)['content'])
+          patch = gzip.decompress(compressed)
+          assert hashlib.sha256(patch).hexdigest() == '4b0945dec3f4ada5bcc2961fc57286898eec63e20530db589ec6f41855836e05'
+          subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
+          subprocess.run(['git','apply','--index','-'],input=patch,check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          expected = {
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisRunControl.java':'d854720c7524e7734979dac903c738410c2bb1ce',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisProgressRegistry.java':'796746fd104cf7e0cc842715e6519e9025c96335',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisStoppedException.java':'8313620808b75d31b7d280428af7fddcb3d514d4',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmDetailAccumulator.java':'71426bb4913b4f09cefb6d8d1d813f44a77be14a',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java':'8da32f0d46e4c3682556b06eeff55301e9c34e56',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisEventCallback.java':'a87db07f40d66c2227f8ab443a8e756a154f3a3a',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/usecase/AnalysisStreamEvent.java':'950c020578323454a5adef5bcaf4152a2aeb797d',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCase.java':'f853ba596ebdb28d8ccb12dd3342212675aa0123',
+            'taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisSseEventMapper.java':'b91aa5d708d4c509451e67ddaa14087dcc6c068a',
+            'taxonomy-app/src/test/java/com/taxonomy/analysis/service/AnalysisStoppedEvidenceTest.java':'474d3ff351ddc1ce0ec67a65f3f1606871f2326e',
+            'taxonomy-app/src/test/java/com/taxonomy/analysis/service/AnalysisProgressPublicationTest.java':'0a152e41ecbda98ac4faede3f57cafc93fb081e3',
+            'taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js':'cfcb4e6fcaf5b269950d210c89de7729a498f6fb',
+            'taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js':'1f33bb5a7629e4c92efccbbdbdd015da9fcbc76e',
+            '.github/scripts/analysis-live-progress.test.mjs':'23b086d1e539acc35da0718940bf43b280f03c65'
+          }
+          paths = subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert set(paths) == set(expected)
+          for path, sha in expected.items():
+              assert subprocess.check_output(['git','hash-object',path],text=True).strip() == sha, path
+          output=Path('target/stop-evidence'); output.mkdir(parents=True,exist_ok=True)
+          (output/'patch.diff').write_bytes(patch)
+          manifest={'base':'24ba60d112b81a12bdd908c1ec6abd5e2632cc61','tree':subprocess.check_output(['git','write-tree'],text=True).strip(),'files':expected}
+          (output/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print(json.dumps(manifest,indent=2))
+      - name: Re-execute real-client lifecycle and base-path regressions
+        run: |
+          set -o pipefail
+          node --test .github/scripts/analysis-live-progress.test.mjs | tee target/stop-evidence/node-tests.log
+          node .github/scripts/test-taxonomy-base-path.mjs | tee target/stop-evidence/base-path.log
+      - name: Publish only checked source blobs, never commits or refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,json,os,urllib.request
+          from pathlib import Path
+          manifest=json.loads(Path('target/stop-evidence/manifest.json').read_text())
+          for path,expected in manifest['files'].items():
+              content=base64.b64encode(Path(path).read_bytes()).decode()
+              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',data=json.dumps({'content':content,'encoding':'base64'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+              with urllib.request.urlopen(req) as response:
+                  assert json.load(response)['sha']==expected,path
+          print('All fourteen source blobs match the locally compiled/tested files. No product ref changed.')
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
-          name: analysis-test-libraries
-          path: /tmp/analysis-test-libraries.zip
-          retention-days: 1
+          name: analysis-stop-evidence-source
+          path: target/stop-evidence
+          retention-days: 7
           if-no-files-found: error
