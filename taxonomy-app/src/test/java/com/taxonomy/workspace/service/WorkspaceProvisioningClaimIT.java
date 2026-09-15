@@ -30,6 +30,8 @@ import static org.mockito.Mockito.*;
 class WorkspaceProvisioningClaimIT {
     @Autowired private UserWorkspaceRepository repository;
     @Autowired private SystemRepositoryService repositories;
+    @Autowired private WorkspaceManager managedWorkspaceManager;
+    @Autowired private org.springframework.transaction.PlatformTransactionManager transactions;
 
     @Test
     void twoInstancesCannotBothClaimTheSameUnprovisionedRow() throws Exception {
@@ -59,12 +61,13 @@ class WorkspaceProvisioningClaimIT {
             var destination = mock(DslGitRepository.class);
             when(destination.commitDsl(anyString(), anyString(), anyString(), anyString())).thenReturn(base);
             when(destination.getHeadCommit("main")).thenReturn(base);
-            when(factory.getWorkspaceRepository(id)).thenReturn(destination);
+            when(factory.openWorkspaceRepository(id)).thenReturn(destination);
             var system = mock(SystemRepositoryService.class);
             when(system.getPrimaryRepository()).thenReturn(central);
             var first = new WorkspaceManager(selected, 50, system, factory);
             var second = new WorkspaceManager(selected, 50, system, factory);
-            try (var executor = Executors.newFixedThreadPool(2)) {
+            var executor = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+            try {
                 Callable<Integer> a = () -> provisionStatus(first, id);
                 Callable<Integer> b = () -> provisionStatus(second, id);
                 var results = executor.invokeAll(List.of(a, b), 20, TimeUnit.SECONDS);
@@ -73,12 +76,50 @@ class WorkspaceProvisioningClaimIT {
                     catch (Exception failure) { throw new AssertionError(failure); }
                 }).sorted().toList();
                 assertEquals(List.of(200, 409), statuses);
+            } finally {
+                executor.shutdownNow();
+                assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS),
+              "Provisioning test workers did not terminate");
             }
             verify(destination, times(1)).commitDsl(anyString(), anyString(), anyString(), anyString());
             var retained = repository.findByWorkspaceId(id).orElseThrow();
             assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
             assertEquals(base, retained.getCurrentCommit());
             assertNull(retained.getProvisioningError());
+        } finally {
+            repository.findByWorkspaceId(id).ifPresent(repository::delete);
+        }
+    }
+
+    @Test
+    void defaultProvisioningDoesNotInheritAReadOnlyCallerTransaction() {
+        String id = UUID.randomUUID().toString();
+        var workspace = new UserWorkspace();
+        workspace.setWorkspaceId(id);
+        workspace.setUsername("readonly-provision-owner");
+        workspace.setDisplayName(id);
+        workspace.setCreatedAt(Instant.now());
+        workspace.setDefault(true);
+        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        repository.saveAndFlush(workspace);
+        try {
+            var readOnly = new org.springframework.transaction.support.TransactionTemplate(transactions);
+            readOnly.setReadOnly(true);
+            UserWorkspace result = assertDoesNotThrow(() -> readOnly.execute(status -> {
+                assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isCurrentTransactionReadOnly());
+                var ready = managedWorkspaceManager.provisionDefaultWorkspaceRepository(
+                        workspace.getUsername(), id);
+                assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
+                        .isCurrentTransactionReadOnly());
+                return ready;
+            }));
+            assertNotNull(result);
+            assertEquals(WorkspaceProvisioningStatus.READY, result.getProvisioningStatus());
+            var retained = repository.findByWorkspaceId(id).orElseThrow();
+            assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
+            assertNotNull(retained.getCurrentCommit());
+            assertEquals("draft", retained.getCurrentBranch());
         } finally {
             repository.findByWorkspaceId(id).ifPresent(repository::delete);
         }

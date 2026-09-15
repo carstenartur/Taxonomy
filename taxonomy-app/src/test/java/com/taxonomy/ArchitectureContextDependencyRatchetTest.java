@@ -220,7 +220,7 @@ class ArchitectureContextDependencyRatchetTest {
                         + " but found " + actualRootJavaFiles)
                 .containsExactlyInAnyOrderElementsOf(policy.rootCompositionClasses());
 
-        List<String> unclassifiedPackages = new ArrayList<>();
+        Set<String> unclassifiedPackages = new TreeSet<>();
         for (String module : SOURCE_MODULES) {
             Path contextRoot = repositoryRoot.resolve(module + "/src/main/java/com/taxonomy");
             assertThat(contextRoot).as("production context root %s", module).isDirectory();
