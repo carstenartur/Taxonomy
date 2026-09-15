@@ -99,6 +99,22 @@ class AnalysisLiveProgressUiIT {
         assertThat(driver.findElement(By.id("analysisLiveProgress")).getAttribute("aria-live")).isEqualTo("polite");
     }
 
+    @Test void aCallExpandedWhilePendingLoadsDetailsWhenItsResponseArrives() {
+        var summary = driver.findElement(By.cssSelector("#llmCommLogContent summary"));
+        summary.click();
+        wait.until(browser -> Boolean.TRUE.equals(driver.executeScript(
+                "return document.querySelector('#llmCommLogContent details').open")));
+        assertThat(DETAIL_REQUESTS.get()).isZero();
+        SEQUENCE.set(2);
+        wait.until(browser -> browser.findElement(By.id("llmCommLogContent")).getText().contains("diagnostic-prompt"));
+        assertThat(DETAIL_REQUESTS.get()).isEqualTo(1);
+        SEQUENCE.incrementAndGet();
+        wait.until(browser -> browser.findElement(By.id("partialScores")).getText().contains("80"));
+        assertThat(DETAIL_REQUESTS.get()).isEqualTo(1);
+        assertThat(driver.findElements(By.cssSelector("#llmCommLogContent img"))).isEmpty();
+        assertThat(driver.executeScript("return window.injected || false")).isEqualTo(false);
+    }
+
     @Test void authoritativeResponseFinishesThePanelBeforeTheNextPoll() {
         driver.executeScript("window.monitor.finish('SUCCESS')");
         assertThat(driver.findElement(By.id("analysisLiveProgress")).getText())

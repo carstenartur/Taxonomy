@@ -60,8 +60,14 @@ public class AnalysisProgressRegistry {
                            List<CallView> calls, long omittedCalls, AnalysisMemoryGuard.Reading memory,
                            String databaseStorage, String indexStorage, AnalysisProvenance provenance) { }
 
-    public synchronized Handle open(String requestedId, String owner, WorkspaceContext context,
-                                    AnalysisProvenance provenance) {
+    public Handle open(String requestedId, String owner, WorkspaceContext context,
+                       AnalysisProvenance provenance) {
+        return reserve(requestedId, owner, context, provenance).open();
+    }
+
+    /** Reserve admission on the request thread without binding its thread-local run control. */
+    public synchronized Reservation reserve(String requestedId, String owner, WorkspaceContext context,
+                                            AnalysisProvenance provenance) {
         Scope scope = Scope.of(owner, context);
         String id = requestedId == null ? UUID.randomUUID().toString() : canonicalId(requestedId);
         reap();
@@ -77,7 +83,7 @@ public class AnalysisProgressRegistry {
         }
         Run run = new Run(id, scope, provenance);
         runs.put(id, run);
-        return new Handle(run);
+        return new Reservation(run);
     }
 
     public synchronized Snapshot snapshot(String id, String owner, WorkspaceContext context) {
@@ -137,6 +143,31 @@ public class AnalysisProgressRegistry {
             return canonical;
         } catch (IllegalArgumentException invalid) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Analysis ID must be a canonical UUID");
+        }
+    }
+
+    /** A queued run counts toward capacity and can be cancelled before a worker claims it. */
+    public final class Reservation implements AutoCloseable {
+        private final Run run;
+        private boolean claimed, closed;
+
+        private Reservation(Run run) { this.run = run; }
+
+        /** Attach control only on the thread that actually executes this run. */
+        public synchronized Handle open() {
+            if (claimed || closed) throw new IllegalStateException("Analysis reservation is no longer available");
+            Handle handle = new Handle(run);
+            claimed = true;
+            return handle;
+        }
+
+        /** Roll back an unclaimed admission if scheduling fails; never remove a worker-owned run. */
+        @Override public synchronized void close() {
+            if (claimed || closed) return;
+            closed = true;
+            synchronized (AnalysisProgressRegistry.this) {
+                runs.remove(run.id, run);
+            }
         }
     }
 

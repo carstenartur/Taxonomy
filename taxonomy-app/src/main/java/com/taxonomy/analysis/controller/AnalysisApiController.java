@@ -217,11 +217,15 @@ public class AnalysisApiController {
 
         StreamRequirementAnalysisCommand command = new StreamRequirementAnalysisCommand(
                 businessText, provider, LocaleContextHolder.getLocale());
+        // Conflicts and capacity failures must retain their HTTP status, before async response commitment.
+        // Reservation does not install thread-local control; the executor's worker claims that ownership.
+        var reservation = analysisProgressRegistry == null ? null
+                : analysisProgressRegistry.reserve(operationId, username, streamContext, null);
+        boolean scheduled = false;
         try {
         analysisExecutor.execute(() -> {
             worker.set(Thread.currentThread());
-            try (var run = analysisProgressRegistry == null ? null
-                    : analysisProgressRegistry.open(operationId, username, streamContext, null)) {
+            try (var run = reservation == null ? null : reservation.open()) {
                 try {
                     if (disconnected.get()) Thread.currentThread().interrupt();
                     AnalysisRunControl.checkpoint();
@@ -268,11 +272,14 @@ public class AnalysisApiController {
                 }
             }
         });
+        scheduled = true;
         } catch (RejectedExecutionException full) {
             completed.set(true);
             emitter.complete();
             throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
                     "Analysis queue is full; retry after an active run finishes.");
+        } finally {
+            if (!scheduled && reservation != null) reservation.close();
         }
         return emitter;
     }

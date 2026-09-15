@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.controller;
 
 import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import com.taxonomy.analysis.service.AnalysisRunControl;
 import com.taxonomy.analysis.usecase.*;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.versioning.service.RepositoryStateService;
@@ -17,7 +18,9 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.UUID;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -86,6 +89,72 @@ class AnalysisStreamAdmissionContractTest {
         assertTrue(body.contains("\"status\":\"PARTIAL\""), body);
         assertTrue(body.contains("CANCELLED"), body);
         assertFalse(body.contains("\"status\":\"ERROR\""), body);
+        assertEquals("CANCELLED", registry.snapshot(ID, "alice", WorkspaceContext.SHARED).status());
+        verifyNoInteractions(streaming);
+    }
+
+    @Test void duplicateSseIdIsRejectedBeforeQueuingAndKeepsTheOriginalRun() throws Exception {
+        mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
+                        .param("businessText", "communications"))
+                .andExpect(request().asyncStarted());
+        Runnable accepted = queued.get();
+        mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
+                        .param("businessText", "communications"))
+                .andExpect(status().isConflict()).andExpect(request().asyncNotStarted());
+        verify(executor, times(1)).execute(any());
+        assertSame(accepted, queued.get());
+        assertEquals("RUNNING", registry.snapshot(ID, "alice", WorkspaceContext.SHARED).status());
+        assertFalse(AnalysisRunControl.active(), "Admission must not bind the HTTP thread's run control");
+        verifyNoInteractions(streaming);
+    }
+
+    @Test void queuedSseReservationsCountTowardCapacityBeforeAnyWorkerStarts() throws Exception {
+        for (int i = 0; i < 4; i++) {
+            mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", UUID.randomUUID().toString())
+                            .param("businessText", "communications"))
+                    .andExpect(request().asyncStarted());
+        }
+        mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
+                        .param("businessText", "communications"))
+                .andExpect(status().isServiceUnavailable()).andExpect(request().asyncNotStarted());
+        verify(executor, times(4)).execute(any());
+        assertEquals(4, registry.recent("alice", WorkspaceContext.SHARED, null, null).size());
+        assertFalse(AnalysisRunControl.active());
+        verifyNoInteractions(streaming);
+    }
+
+    @Test void rejectedQueueSubmissionReleasesItsReservationForTheSameId() throws Exception {
+        doThrow(new RejectedExecutionException("full")).when(executor).execute(any());
+        mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
+                        .param("businessText", "communications"))
+                .andExpect(status().isServiceUnavailable()).andExpect(request().asyncNotStarted());
+        assertTrue(registry.recent("alice", WorkspaceContext.SHARED, null, null).isEmpty());
+        assertFalse(AnalysisRunControl.active());
+        doAnswer(call -> { queued.set(call.getArgument(0)); return null; }).when(executor).execute(any());
+        mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
+                        .param("businessText", "communications"))
+                .andExpect(request().asyncStarted());
+        assertEquals(ID, registry.snapshot(ID, "alice", WorkspaceContext.SHARED).operationId());
+    }
+
+    @Test void cancellationOfQueuedReservationIsObservedByWorkerWithoutLeakingThreadContext() throws Exception {
+        var request = mvc.perform(get("/api/analyze-stream").header("X-Analysis-Operation-Id", ID)
+                        .param("businessText", "communications"))
+                .andExpect(request().asyncStarted()).andReturn();
+        assertFalse(AnalysisRunControl.active());
+        assertEquals("CANCELLING", registry.cancel(ID, "alice", WorkspaceContext.SHARED).status());
+        var workerFailure = new AtomicReference<Throwable>();
+        Thread worker = Thread.ofPlatform().start(() -> {
+            try {
+                assertFalse(AnalysisRunControl.active());
+                queued.get().run();
+                assertFalse(AnalysisRunControl.active(), "Worker must release its thread-local control");
+            } catch (Throwable failure) { workerFailure.set(failure); }
+        });
+        worker.join(3000);
+        assertFalse(worker.isAlive());
+        assertNull(workerFailure.get());
+        mvc.perform(asyncDispatch(request)).andExpect(status().isOk());
         assertEquals("CANCELLED", registry.snapshot(ID, "alice", WorkspaceContext.SHARED).status());
         verifyNoInteractions(streaming);
     }

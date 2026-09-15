@@ -135,6 +135,22 @@
         var entries = new Map();
         var omitted = node('div', '', 'text-muted p-2');
         if (log) log.append(omitted);
+        async function loadDetail(entry, monitor) {
+            if (!entry.details.open || entry.loaded || entry.loading || entry.call.status === 'STARTED') return;
+            entry.loading = true;
+            try {
+                var detail = await monitor.detail(entry.call.id);
+                if (!entry.details.isConnected) return;
+                entry.body.textContent = 'Prompt\n' + detail.prompt + '\n\nResponse\n' + detail.response
+                    + (detail.truncated ? '\n\n' + text('Diagnosevorschau gekürzt; Bewertungen bleiben vollständig.',
+                        'Diagnostic preview truncated; scores remain complete.') : '');
+                entry.loaded = true;
+            } catch (error) {
+                if (entry.details.isConnected) {
+                    entry.body.textContent = text('Details nicht verfügbar: ', 'Details unavailable: ') + error.message;
+                }
+            } finally { entry.loading = false; }
+        }
         var phases = {
             PREPARING: ['Analyse vorbereiten', 'Preparing analysis'],
             LLM_PREPARING: ['LLM-Anfrage vorbereiten', 'Preparing LLM request'],
@@ -201,26 +217,17 @@
                         entry = { details: details, summary: summary, body: body, loaded: false, loading: false, call: call };
                         entries.set(call.id, entry);
                         log.append(details);
-                        details.addEventListener('toggle', async function () {
-                            if (!details.open || entry.loaded || entry.loading || entry.call.status === 'STARTED') return;
-                            entry.loading = true;
-                            try {
-                                var detail = await monitor.detail(call.id);
-                                if (!details.isConnected) return;
-                                body.textContent = 'Prompt\n' + detail.prompt + '\n\nResponse\n' + detail.response
-                                    + (detail.truncated ? '\n\n' + text('Diagnosevorschau gekürzt; Bewertungen bleiben vollständig.',
-                                        'Diagnostic preview truncated; scores remain complete.') : '');
-                                entry.loaded = true;
-                            } catch (error) { body.textContent = text('Details nicht verfügbar: ', 'Details unavailable: ') + error.message; }
-                            finally { entry.loading = false; }
-                        });
+                        details.addEventListener('toggle', function () { loadDetail(entry, monitor); });
                     }
                     if (entry) {
+                        var becameReady = entry.call.status === 'STARTED' && call.status !== 'STARTED';
                         entry.call = call;
                         var seconds = call.status === 'STARTED'
                             ? Math.max(0, Math.floor((snapshot.serverTime - call.startedAt) / 1000))
                             : Math.floor(call.durationMillis / 1000);
                         entry.summary.textContent = call.provider + ' · ' + call.node + ' · ' + call.status + ' · ' + seconds + ' s';
+                        // An open pending row needs no second toggle when its response arrives.
+                        if (becameReady) loadDetail(entry, monitor);
                     }
                 });
                 entries.forEach(function (entry, key) { if (!kept.has(key)) { entry.details.remove(); entries.delete(key); } });

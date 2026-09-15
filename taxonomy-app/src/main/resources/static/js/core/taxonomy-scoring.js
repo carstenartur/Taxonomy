@@ -359,6 +359,7 @@
         S.currentReasons = {};
         S.lastAnalysisStatus = 'IN_PROGRESS';
         applyLocalRawScores({}, true);
+        B().renderView(S.taxonomyData, S.currentScores);
         var progress = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
                 var previous = S.currentEffectiveScores || {};
                 var previousRaw = S.currentRawScores || {};
