@@ -1,0 +1,56 @@
+name: Reproduce reviewed workspace recovery defects
+on:
+  push:
+    branches: [fix/628-recovery-strategies]
+    paths: [.github/workflows/628-recovery-red.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 0e017a01f06c8ed4f909dda7c773a528d614f6bc
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Require all six assertion failures, not setup errors
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -ntp -Dsurefire.failIfNoSpecifiedTests=false -Dtest=WorkspaceFactoryRetryRecoveryTest,WorkspaceDivergedStrategyScopeTest test > "$RUNNER_TEMP/recovery-red.log" 2>&1
+          code=$?
+          set -e
+          test "$code" -ne 0
+          python3 - <<'PY'
+          import os, xml.etree.ElementTree as ET
+          from pathlib import Path
+          total=dict.fromkeys(('tests','failures','errors','skipped'),0)
+          for name in ('WorkspaceFactoryRetryRecoveryTest','WorkspaceDivergedStrategyScopeTest'):
+              path=Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.'+name+'.xml')
+              if not path.is_file():
+                  print(Path(os.environ['RUNNER_TEMP'],'recovery-red.log').read_text()[-10000:])
+                  raise SystemExit('No executed regression suite: '+name)
+              suite=ET.parse(path).getroot()
+              for k in total:total[k]+=int(suite.get(k,'0'))
+              for case in suite.findall('testcase'):
+                  for fail in case.findall('failure')+case.findall('error'):
+                      print('REPRODUCED',case.get('name'),fail.get('message'))
+          print('RED RESULT',total)
+          assert total==dict(tests=6,failures=6,errors=0,skipped=0),total
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-recovery-red
+          path: |
+            ${{ runner.temp }}/recovery-red.log
+            taxonomy-workspace/target/surefire-reports/TEST-*WorkspaceFactoryRetryRecoveryTest.xml
+            taxonomy-workspace/target/surefire-reports/TEST-*WorkspaceDivergedStrategyScopeTest.xml
+          retention-days: 7
+          if-no-files-found: error
