@@ -33,14 +33,22 @@ jobs:
           assert hashlib.sha256(patch).hexdigest()=='5e23f1cac594d81d0102199a4c1016ea1193f57a9d03715150589cd99c2d4878'
           subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
           subprocess.run(['git','apply','--index','-'],input=patch,check=True)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
           assert subprocess.check_output(['git','write-tree'],text=True).strip()=='ac67d6a1ed4c1a0ee0719045661827b1083ec592'
+          path=Path('taxonomy-app/src/test/java/com/taxonomy/AnalysisLiveProgressUiIT.java')
+          text=path.read_text()
+          assert text.count('Boolean.TRUE.equals(browser.executeScript(')==1
+          path.write_text(text.replace('Boolean.TRUE.equals(browser.executeScript(', 'Boolean.TRUE.equals(driver.executeScript('))
+          subprocess.run(['git','add',str(path)],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()=='94348e138f1ca8dda5eb19219b8c075adfb1aa7f'
+          patch=subprocess.check_output(['git','diff','--cached','--binary'])
+          assert hashlib.sha256(patch).hexdigest()=='e73dd2957b78070bf6b159b833fb3aed884bddc26df73ac3a654d6919ba7bfd8'
           paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
           assert len(paths)==7
           out=Path('target/remaining-review-evidence');out.mkdir(parents=True,exist_ok=True)
           (out/'patch.diff').write_bytes(patch)
           files={path:subprocess.check_output(['git','hash-object',path],text=True).strip() for path in paths}
-          (out/'manifest.json').write_text(json.dumps({'base':'8620c8856f8b417c688b72aa522591ae73219c29','tree':'ac67d6a1ed4c1a0ee0719045661827b1083ec592','files':files},indent=2)+'\n')
+          (out/'manifest.json').write_text(json.dumps({'base':'8620c8856f8b417c688b72aa522591ae73219c29','tree':'94348e138f1ca8dda5eb19219b8c075adfb1aa7f','files':files},indent=2)+'\n')
       - name: Execute Maven analysis and actual MVC regressions
         run: |
           set -o pipefail
