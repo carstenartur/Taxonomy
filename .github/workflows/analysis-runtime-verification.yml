@@ -1,30 +1,32 @@
-name: Export exact analysis review source (temporary)
+name: Prepare offline analysis test dependencies (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
   contents: read
 jobs:
-  source:
+  dependencies:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: 7bada07047ad49f2f15428b3236111e535145483
-          persist-credentials: false
-          fetch-depth: 1
-      - name: Export immutable source without build output or credentials
+      - name: Download pinned public test dependencies
+        shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = 7bada07047ad49f2f15428b3236111e535145483
-          test "$(git rev-parse HEAD^{tree})" = f1ff619755ed2ee368183ba9935b58c06f714efd
-          mkdir -p /tmp/analysis-source
-          git archive --format=tar HEAD > /tmp/analysis-source/source.tar
-          git rev-parse HEAD HEAD^{tree} > /tmp/analysis-source/identity.txt
-          sha256sum /tmp/analysis-source/source.tar > /tmp/analysis-source/source.sha256
+          set -euo pipefail
+          mkdir -p /tmp/analysis-test-dependencies
+          for path in \
+            org/junit/platform/junit-platform-console-standalone/6.0.3/junit-platform-console-standalone-6.0.3.jar \
+            com/jayway/jsonpath/json-path/2.10.0/json-path-2.10.0.jar \
+            net/minidev/json-smart/2.6.0/json-smart-2.6.0.jar \
+            net/minidev/accessors-smart/2.6.0/accessors-smart-2.6.0.jar \
+            org/ow2/asm/asm/9.9.1/asm-9.9.1.jar; do
+            curl --fail --silent --show-error --location --retry 2 "https://repo.maven.apache.org/maven2/$path" -o "/tmp/analysis-test-dependencies/${path##*/}"
+          done
+          cd /tmp/analysis-test-dependencies
+          sha256sum *.jar > SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: analysis-source-7bada070
-          path: /tmp/analysis-source
+          name: analysis-pinned-test-dependencies
+          path: /tmp/analysis-test-dependencies
           retention-days: 7
           if-no-files-found: error
