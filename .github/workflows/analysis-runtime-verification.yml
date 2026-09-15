@@ -8,6 +8,9 @@ jobs:
   preflight:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    env:
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -16,6 +19,13 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Restore pinned embedding model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Verify or provision the same pinned model as canonical CI
+        run: bash .github/scripts/download-embedding-model.sh
       - name: Verify exact predecessor and install regression tests only
         env:
           GH_TOKEN: ${{ github.token }}
