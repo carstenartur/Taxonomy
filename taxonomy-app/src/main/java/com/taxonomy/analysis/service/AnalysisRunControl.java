@@ -68,6 +68,8 @@ public final class AnalysisRunControl implements AutoCloseable {
             if (current != null) current.observer.stopped(stopped.reason());
             throw stopped;
         } catch (RuntimeException failure) {
+            // A provider exception must not hide a stop that arrived during its call.
+            checkpoint();
             if (current != null) current.observer.failed(id, failure.getClass().getSimpleName(),
                     (System.nanoTime() - started) / 1_000_000);
             throw failure;

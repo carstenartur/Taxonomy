@@ -361,10 +361,14 @@ public class AnalysisApiController {
             // An explicit tab pin is an authorization boundary. Never turn a
             // denied or foreign workspace into an implicit shared analysis.
             throw exception;
+        } catch (ResponseStatusException exception) {
+            throw exception;
         } catch (Exception e) {
-            log.warn("Falling back to shared workspace context for user '{}' due to: {}",
+            log.warn("Rejecting analysis because workspace context is unavailable for user '{}': {}",
                     username, e.toString(), e);
-            return WorkspaceContext.SHARED;
+            // A fallback identity cannot be observed or cancelled through the scoped APIs.
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE,
+                    "Workspace context is unavailable; analysis was not started", e);
         }
     }
 
