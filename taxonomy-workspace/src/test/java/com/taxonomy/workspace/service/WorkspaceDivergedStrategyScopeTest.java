@@ -9,7 +9,7 @@ import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.SyncIntegrationService.DivergedStrategy;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.io.IOException;
 import java.util.Optional;
@@ -28,15 +28,15 @@ class WorkspaceDivergedStrategyScopeTest {
     };
 
     @ParameterizedTest
-    @EnumSource(value = DivergedStrategy.class, names = {"KEEP_MINE", "TAKE_SHARED"})
-    void chosenSideAffectsOnlyTheSelectedWorkspaceAndItsSource(DivergedStrategy strategy) throws Exception {
+    @CsvSource({"KEEP_MINE,true", "TAKE_SHARED,true", "KEEP_MINE,false", "TAKE_SHARED,false"})
+    void chosenSideAffectsOnlyTheSelectedRepository(DivergedStrategy strategy, boolean isolated) throws Exception {
         try (var factory = new DslGitRepositoryFactory(null)) {
             var primary = factory.getSystemRepository();
             String primaryHead = primary.commitDsl("draft", PRIMARY, "primary-owner", "Primary seed");
             primary.createBranchAtCommit("work", primaryHead);
             var source = factory.getCentralRepository("selected-source");
             String remoteHead = source.commitDsl("release", REMOTE, "source-owner", "Remote change");
-            var local = factory.openWorkspaceRepository("selected-workspace");
+            var local = isolated ? factory.openWorkspaceRepository("selected-workspace") : source;
             local.commitDsl("work", LOCAL, "selected-user", "Local change");
             var sourceMetadata = new SystemRepository();
             sourceMetadata.setRepositoryId("selected-source");
@@ -54,7 +54,9 @@ class WorkspaceDivergedStrategyScopeTest {
             var rows = mock(UserWorkspaceRepository.class);
             when(rows.findByWorkspaceId("selected-workspace")).thenReturn(Optional.of(workspace));
             var contexts = mock(WorkspaceContextResolver.class);
-            var context = RepositoryContext.workspace("selected-source", "selected-workspace", "work", "selected-user");
+            var context = isolated
+                    ? RepositoryContext.workspace("selected-source", "selected-workspace", "work", "selected-user")
+                    : RepositoryContext.centralWrite("selected-source", "work", "selected-user");
             when(contexts.resolveRepositoryContextForUser("selected-user")).thenReturn(context);
             var syncRows = mock(SyncStateRepository.class);
             when(syncRows.findByUsername("selected-user")).thenReturn(Optional.of(new SyncState()));
@@ -67,16 +69,22 @@ class WorkspaceDivergedStrategyScopeTest {
 
             String selected = strategy == DivergedStrategy.KEEP_MINE ? LOCAL : REMOTE;
             assertEquals(selected, local.getDslAtHead("work"));
-            assertEquals(strategy == DivergedStrategy.KEEP_MINE ? LOCAL : REMOTE, source.getDslAtHead("release"));
-            assertEquals(selected, local.getDslAtHead("sync-base"));
+            assertEquals(selected, source.getDslAtHead("release"));
             assertEquals(primaryHead, primary.getHeadCommit("draft"));
             assertEquals(primaryHead, primary.getHeadCommit("work"));
             assertEquals(PRIMARY, primary.getDslAtHead("draft"));
-            assertEquals(local.getHeadCommit("work"), workspace.getCurrentCommit());
-            verify(rows).save(workspace);
+            if (isolated) {
+                assertEquals(selected, local.getDslAtHead("sync-base"));
+                assertEquals(local.getHeadCommit("work"), workspace.getCurrentCommit());
+                verify(rows).save(workspace);
+            } else {
+                verifyNoInteractions(rows);
+            }
             verifyNoInteractions(semantic);
+            String materializedBranch = !isolated && strategy == DivergedStrategy.KEEP_MINE ? "release" : "work";
             verify(portfolio).materializePortfolio(selected, "selected-user",
-                    new WorkspaceContext("selected-user", "selected-workspace", "work", "selected-source"));
+                    new WorkspaceContext("selected-user", isolated ? "selected-workspace" : null,
+                            materializedBranch, "selected-source"));
         }
     }
 }
