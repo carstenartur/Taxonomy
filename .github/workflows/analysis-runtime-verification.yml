@@ -41,8 +41,8 @@ jobs:
           subprocess.run(['git','add',str(path)],check=True)
           subprocess.run(['git','diff','--cached','--check'],check=True)
           assert subprocess.check_output(['git','write-tree'],text=True).strip()=='94348e138f1ca8dda5eb19219b8c075adfb1aa7f'
-          patch=subprocess.check_output(['git','diff','--cached','--binary'])
-          assert hashlib.sha256(patch).hexdigest()=='e73dd2957b78070bf6b159b833fb3aed884bddc26df73ac3a654d6919ba7bfd8'
+          patch=subprocess.check_output(['git','diff','--cached','--binary','--full-index'])
+          assert hashlib.sha256(patch).hexdigest()=='66b657514b49dfb8d4119282694f5a3e12c9dc3ea6fdfe36467336666531a19d'
           paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
           assert len(paths)==7
           out=Path('target/remaining-review-evidence');out.mkdir(parents=True,exist_ok=True)
