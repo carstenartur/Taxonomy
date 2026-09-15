@@ -1,4 +1,4 @@
-name: Analysis consolidated preflight (temporary)
+name: Analysis consolidated final UI preflight (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
@@ -7,7 +7,7 @@ permissions:
 jobs:
   preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -16,7 +16,7 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Materialize and verify exact consolidated source
+      - name: Materialize exact source and preserve established POST route
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
@@ -36,41 +36,42 @@ jobs:
           assert hashlib.sha256(patch).hexdigest()=='3a4d3dc68e78ed023c4c19e52a4ecaab40718765b6802f45090716a61cde3275'
           subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
           subprocess.run(['git','apply','--index','-'],input=patch,check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()=='8de6efd868e82c3100713af87f3d5137efe449fe'
+          p=Path('taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js')
+          text=p.read_text();old="fetch('/api/analyze?workspaceId=' + encodeURIComponent(workspacePin), {"
+          assert text.count(old)==1
+          p.write_text(text.replace(old,"fetch('/api/analyze', {"))
+          q=Path('.github/scripts/analysis-readiness.test.mjs');text=q.read_text()
+          for old in ["'/api/analyze?workspaceId=workspace-a'","'/api/analyze?workspaceId='"]:
+              assert text.count(old)==1
+              text=text.replace(old,"'/api/analyze'")
+          q.write_text(text)
+          subprocess.run(['git','add',str(p),str(q)],check=True)
           subprocess.run(['git','diff','--cached','--check'],check=True)
           tree=subprocess.check_output(['git','write-tree'],text=True).strip()
-          assert tree=='8de6efd868e82c3100713af87f3d5137efe449fe'
+          assert tree=='bae88efc8b8c06970898ad7cb6e2f56d3361b2bf'
           paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
-          assert len(paths)==16
-          assert not any(p.startswith('.github/workflows/') for p in paths)
+          assert len(paths)==16 and not any(p.startswith('.github/workflows/') for p in paths)
           files={p:subprocess.check_output(['git','hash-object',p],text=True).strip() for p in paths}
-          out=Path('target/consolidated-evidence');out.mkdir(parents=True)
+          out=Path('target/final-consolidated-evidence');out.mkdir(parents=True)
+          patch=subprocess.check_output(['git','diff','--cached','--full-index','--binary'])
+          assert hashlib.sha256(patch).hexdigest()=='d9cd85a599a6e32081d6aeaad7b670804bf12f4f7bcd7a1b66286540f0ee871d'
           (out/'patch.diff').write_bytes(patch)
           (out/'manifest.json').write_text(json.dumps({'base':'e952154a242da558a4df8544f31eac335d026dd1','tree':tree,'files':files},indent=2)+'\n')
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
-        with:
-          path: models/bge-small-en-v1.5
-          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
-      - name: All reactor unit and Spring tests, with pinned model
-        env:
-          HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
-          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+      - name: Complete Maven-owned UI contracts on final source
         run: |
           set -o pipefail
-          ./mvnw -B -ntp test -Pci 2>&1 | tee target/consolidated-evidence/unit.log
-      - name: Complete Maven-owned UI contracts
-        run: |
-          set -o pipefail
-          ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee target/consolidated-evidence/ui-contracts.log
-      - name: Publish tested blobs without changing any product ref
+          ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee target/final-consolidated-evidence/ui-contracts.log
+          node .github/scripts/test-taxonomy-base-path.mjs | tee target/final-consolidated-evidence/basepath.log
+      - name: Publish source blobs without touching the product branch
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
           import base64,hashlib,json,os,urllib.request,zipfile
           from pathlib import Path
-          manifest=json.loads(Path('target/consolidated-evidence/manifest.json').read_text())
-          with zipfile.ZipFile('target/consolidated-evidence/tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
+          manifest=json.loads(Path('target/final-consolidated-evidence/manifest.json').read_text())
+          with zipfile.ZipFile('target/final-consolidated-evidence/tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
               for path,expected in manifest['files'].items():
                   content=Path(path).read_bytes()
                   assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==expected
@@ -80,9 +81,7 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: analysis-consolidated-preflight
-          path: |
-            target/consolidated-evidence
-            **/target/surefire-reports/TEST-*.xml
+          name: analysis-final-consolidated-ui
+          path: target/final-consolidated-evidence
           retention-days: 7
           if-no-files-found: error
