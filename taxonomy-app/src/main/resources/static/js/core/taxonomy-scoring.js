@@ -143,7 +143,7 @@
     // Explicit compatibility boundary for interactive provider batches and expert-entered raw
     // scores. All browser consumers receive comparable relevance, including report requests and
     // saved drafts. Resolve the role/parent once from the loaded catalogue, never from percentages.
-    function applyLocalRawScores(scores, replace) {
+    function applyLocalRawScores(scores, replace, allowUnresolvedProviderKeys) {
         var raw = replace ? {} : Object.assign({}, S.currentRawScores || {});
         Object.entries(scores || {}).forEach(function ([code, value]) {
             raw[code] = clampScore(value);
@@ -168,7 +168,18 @@
         var effective = {}, details = {}, suitability = {}, warnings = [];
         Object.entries(raw).forEach(function ([code, value]) {
             var context = contexts.get(code);
-            if (!context) throw new Error('Cannot resolve taxonomy score ' + code + '.');
+            if (!context) {
+                if (!allowUnresolvedProviderKeys) throw new Error('Cannot resolve taxonomy score ' + code + '.');
+                // Match AnalysisScoreSemantics at the provider boundary without inventing a catalogue node.
+                // Expert-entered local scores retain the strict identity check above.
+                effective[code] = value;
+                details[code] = { nodeCode: code, kind: 'HIERARCHICAL_RELEVANCE',
+                    rawScore: value, effectiveRelevance: value, parentCode: null, parentScore: null };
+                if (warnings.length < 100) warnings.push('Score semantics could not resolve taxonomy node ' + code
+                    + '; treating its value as hierarchical relevance.');
+                else if (warnings.length === 100) warnings.push('Additional score-semantics warnings were suppressed.');
+                return;
+            }
             var parentScore = context.parentCode && Number.isFinite(raw[context.parentCode])
                 ? raw[context.parentCode] : null;
             var product = context.role === 'PRODUCT';
@@ -352,6 +363,13 @@
             return;
         }
 
+        // Analysis produces workspace-scoped evidence. Central read-only context may be
+        // observed, but cannot enter the isolated-workspace analysis endpoints.
+        if (typeof sessionState.workspaceId !== 'string' || !sessionState.workspaceId.trim()) {
+            B().showStatus('warning', t('guard.blocked.readonly'));
+            return;
+        }
+
         console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
         const analysisStart = new Date();
         var operationId;
@@ -389,7 +407,7 @@
         var progress = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
                 var previous = S.currentEffectiveScores || {};
                 var previousRaw = S.currentRawScores || {};
-                applyLocalRawScores(snapshot.rawScores || {}, true);
+                applyLocalRawScores(snapshot.rawScores || {}, true, true);
                 var changed = Object.keys(S.currentScores || {}).filter(function (code) {
                     return previous[code] !== S.currentScores[code] || previousRaw[code] !== S.currentRawScores[code];
                 });

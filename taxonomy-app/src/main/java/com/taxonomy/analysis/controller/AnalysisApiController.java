@@ -172,7 +172,11 @@ public class AnalysisApiController {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                     "A disconnected stream is not restarted. Observe the existing analysis operation instead.");
         }
-        SseEmitter emitter = new SseEmitter(1_800_000L);
+        // The reserved operation owns the configured deadline, including executor-queue time.
+        // A second servlet deadline can expire first and discard the terminal partial result.
+        // Keep transport open until the worker's terminal event or client disconnect; provider
+        // request timeouts and the bounded admission/operation guards remain in force.
+        SseEmitter emitter = new SseEmitter(0L);
         AtomicBoolean completed = new AtomicBoolean();
         AtomicBoolean disconnected = new AtomicBoolean();
         AtomicReference<Thread> worker = new AtomicReference<>();

@@ -15,13 +15,13 @@ function fixture(options = {}) {
         pendingProposalNodeCode: 'CP', lastAnalysisProvider: 'old provider', currentReasons: { CP: 'retained reason' }, currentRawScores: { CP: 80 },
         lastAnalysisStatus: 'SUCCESS', taxonomyData: [], currentScoreDetails: {}, currentScores: { CP: 80 } };
     const window = { _currentProvisionalRelations: ['old relation'], TaxonomyState: state, TaxonomyBrowse: {
-        showStatus: (...args) => statuses.push(args), clearStatus() {},
+        showStatus: (...args) => statuses.push(args), clearStatus() {}, ensureNodeRendered() {},
         renderView: (tree, scores) => { renders.push({ tree, scores: { ...scores } }); order.push('render'); }
     } };
     const textField = { value: 'communications', classList: { remove() {} } };
-    const document = { getElementById: id => id === 'businessText' ? textField
+    const document = { querySelector: () => null, getElementById: id => id === 'businessText' ? textField
         : id === 'includeArchitectureView' ? { checked: true } : null };
-    const sandbox = { window, document, console: { log() {}, error() {} },
+    const sandbox = { window, document, CSS: { escape: value => value }, console: { log() {}, error() {} },
         TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml: text => text },
         crypto: { randomUUID: () => 'cb2a3d71-e849-4a50-9855-1f9cb8f81402' },
         fetch: (...args) => { calls.push(args); order.push('post'); return new Promise((resolve, reject) => { rejectRequest = reject; }); }
@@ -123,14 +123,21 @@ test('new requirement cannot inherit old architecture, gaps, relations or export
     assertClean();
 });
 
-test('a ready central-scope POST carries an explicit empty workspace pin', () => {
-    const f = fixture(); f.progress();
-    f.sessionState.workspaceId = null;
-    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
-    f.window.TaxonomyScoring.runAnalysis();
-    assert.equal(f.calls[0][0], '/api/analyze');
-    assert.equal(f.calls[0][1].headers['X-Taxonomy-Workspace-Id'], '');
-});
+for (const workspaceId of [null, '', ' \t', undefined]) {
+    test(`read-only or missing workspace (${JSON.stringify(workspaceId)}) cannot admit a workspace-scoped analysis`, () => {
+        const f = fixture(); f.progress();
+        f.sessionState.workspaceId = workspaceId;
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        assert.doesNotThrow(() => f.window.TaxonomyScoring.runAnalysis());
+        assert.deepEqual(f.statuses, [['warning', 'guard.blocked.readonly']]);
+        assert.equal(f.calls.length, 0);
+        assert.equal(f.observations.length, 0);
+        assert.equal(f.renders.length, 0);
+        assert.equal(f.state.currentArchView.title, 'old architecture');
+        assert.equal(f.state.currentReasons.CP, 'retained reason');
+        assert.equal(f.state.lastAnalysisStatus, 'SUCCESS');
+    });
+}
 
 
 for (const [name, crypto] of [
@@ -163,4 +170,62 @@ test('secure random-values fallback supplies the same canonical version-four ID 
     const id = f.calls[0][1].headers['X-Analysis-Operation-Id'];
     assert.match(id, /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
     assert.equal(id, f.observations[0][0]);
+});
+
+
+// Use actual catalogue identities and roles, never a fabricated taxonomy.
+const liveCatalogue = JSON.parse(readFileSync(new URL(
+    '../../taxonomy-app/src/main/resources/data/nato-taxonomy.json', import.meta.url), 'utf8'));
+const liveProduct = liveCatalogue.nodePatches.find(node => node.analysisRole === 'PRODUCT'
+    && liveCatalogue.nodePatches.some(parent => parent.code === node.parentCode));
+assert.ok(liveProduct, 'Expected a real product with its real family in the catalogue');
+const liveFamily = liveCatalogue.nodePatches.find(node => node.code === liveProduct.parentCode);
+const unresolvedProviderKey = '__unresolved_provider_key__';
+
+for (const view of ['list', 'tabs', 'tree', 'sunburst', 'graph']) {
+    test(`live ${view} scores preserve unresolved provider evidence without interrupting known scores`, () => {
+        const f = fixture(); f.progress();
+        f.state.taxonomyData = [liveFamily, liveProduct];
+        f.state.currentView = view;
+        f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+        f.window.TaxonomyScoring.runAnalysis();
+        const receive = f.observations[0][1];
+        assert.doesNotThrow(() => receive({ rawScores: {
+            [unresolvedProviderKey]: 90, [liveFamily.code]: 40, [liveProduct.code]: 80
+        } }));
+        assert.equal(f.state.currentRawScores[unresolvedProviderKey], 90);
+        assert.equal(f.state.currentScores[liveProduct.code], 32);
+        const detail = f.state.currentScoreDetails[unresolvedProviderKey];
+        assert.equal(detail.kind, 'HIERARCHICAL_RELEVANCE');
+        assert.equal(detail.rawScore, 90);
+        assert.equal(detail.effectiveRelevance, 90);
+        assert.equal(detail.parentCode, null);
+        assert.equal(detail.parentScore, null);
+        assert.ok(f.state.currentScoreSemanticsWarnings.some(w => w.includes(unresolvedProviderKey)));
+        assert.doesNotThrow(() => receive({ rawScores: {
+            [liveFamily.code]: 50, [liveProduct.code]: 70, [unresolvedProviderKey]: 5
+        } }));
+        assert.equal(f.state.currentScores[liveProduct.code], 35);
+        assert.equal(f.state.currentRawScores[unresolvedProviderKey], 5);
+        assert.equal(f.calls.length, 1, 'Status updates must not restart analysis');
+    });
+}
+
+test('unresolved-provider diagnostics are bounded without dropping typed score evidence', () => {
+    const f = fixture(); f.progress();
+    f.state.taxonomyData = [liveFamily, liveProduct];
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+    f.window.TaxonomyScoring.runAnalysis();
+    const scores = Object.fromEntries(Array.from({ length: 200 }, (_, i) => ['unresolved-provider-' + i, 50]));
+    assert.doesNotThrow(() => f.observations[0][1]({ rawScores: scores }));
+    assert.equal(Object.keys(f.state.currentRawScores).length, 200);
+    assert.equal(Object.keys(f.state.currentScoreDetails).length, 200);
+    assert.equal(f.state.currentScoreSemanticsWarnings.length, 101);
+    assert.equal(f.state.currentScoreSemanticsWarnings.at(-1), 'Additional score-semantics warnings were suppressed.');
+});
+
+test('expert-entered raw scores still reject unknown catalogue identities', () => {
+    const f = fixture(); f.state.taxonomyData = [liveFamily, liveProduct];
+    assert.throws(() => f.window.TaxonomyScoring.applyLocalRawScores(
+        { [unresolvedProviderKey]: 90 }, true), /Cannot resolve taxonomy score/);
 });

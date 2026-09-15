@@ -274,3 +274,7 @@ backing reduces heap residency but is not a guarantee against out-of-memory erro
 | `TAXONOMY_ANALYSIS_RUNTIME_MAXIMUM_DURATION_SECONDS` | `taxonomy.analysis.runtime.maximum-duration-seconds` | `1800` |
 
 Warning < stop <= 98 percent; at least 1 MiB reserve; nonnegative pressure grace; positive deadline. Limits are checked cooperatively before calls and during rate-limit/retry waits. In-flight HTTP calls retain their configured timeout. Neither native memory nor one large allocation can be guaranteed safe by a heap sample. Completed scores are retained when the next step is stopped. Live telemetry is process-local, owner/workspace/repository/branch-scoped, limited to 4 active and 16 retained runs (10-minute terminal retention), 32 call previews and 8192 score entries. Preview text is limited to 8192 characters per prompt/response and loaded separately; omitted entries are counted. Durable portfolio jobs and semantic history remain separate and unchanged.
+
+### Streaming transport lifetime
+
+The legacy SSE connection has no independent servlet timeout. The configured analysis deadline starts when the operation is reserved and includes executor-queue time; the worker emits the terminal result and closes the connection. Client disconnects still cancel the worker, and provider HTTP timeouts remain unchanged. This avoids a fixed transport timeout discarding an otherwise valid long analysis or its partial result. Intermediary/proxy timeouts can still disconnect the transport; observe the retained operation status rather than restarting it.

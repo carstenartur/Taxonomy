@@ -258,7 +258,7 @@ class AnalysisApiControllerTest {
         } finally {
             org.springframework.context.i18n.LocaleContextHolder.setLocale(previous);
         }
-        assertThat(emitter.getTimeout()).isEqualTo(1_800_000L);
+        assertThat(emitter.getTimeout()).isZero();
 
         ArgumentCaptor<StreamRequirementAnalysisCommand> captor =
                 ArgumentCaptor.forClass(StreamRequirementAnalysisCommand.class);
@@ -331,6 +331,49 @@ class AnalysisApiControllerTest {
                         "Analysis failed. Retry the operation or inspect administrator diagnostics.")))
                 .andExpect(content().string(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("sensitive provider diagnostics"))));
+    }
+
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(longs = {60, 7200})
+    void queuedStreamKeepsTransportOpenUntilItsConfiguredOperationDeadline(long seconds) throws Exception {
+        var queued = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+        var executor = org.mockito.Mockito.mock(ExecutorService.class);
+        doAnswer(invocation -> {
+            queued.set(invocation.getArgument(0));
+            return null;
+        }).when(executor).execute(any());
+        var registry = new com.taxonomy.analysis.service.AnalysisProgressRegistry(
+                new org.springframework.mock.env.MockEnvironment().withProperty(
+                        "taxonomy.analysis.runtime.maximum-duration-seconds", Long.toString(seconds)));
+        var candidate = new AnalysisApiController(taxonomyService, executor, new ObjectMapper(),
+                analyzeRequirementUseCase, streamRequirementAnalysisUseCase,
+                analyzeNodeChildrenUseCase, justifyLeafUseCase, new AnalysisSseEventMapper(),
+                repositoryStateService, workspaceResolver, messageSource);
+        org.springframework.test.util.ReflectionTestUtils.setField(candidate, "analysisProgressRegistry", registry);
+        var mvc = MockMvcBuilders.standaloneSetup(candidate).build();
+        String id = UUID.randomUUID().toString();
+        var pending = mvc.perform(get("/api/analyze-stream")
+                        .param("businessText", "Need resilient communications")
+                        .header(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER, id))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted())
+                .andReturn();
+        assertThat(pending.getRequest().getAsyncContext().getTimeout()).isZero();
+        // The operation deadline starts at reservation, including time in the executor queue.
+        var runs = (Map<?, ?>) org.springframework.test.util.ReflectionTestUtils.getField(registry, "runs");
+        Object run = runs.get(id);
+        Object guard = org.springframework.test.util.ReflectionTestUtils.getField(run, "guard");
+        long started = (Long) org.springframework.test.util.ReflectionTestUtils.getField(guard, "started");
+        org.springframework.test.util.ReflectionTestUtils.setField(guard, "clock",
+                (java.util.function.LongSupplier) () -> started + seconds * 1000);
+        queued.get().run();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch(pending))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("TIME_LIMIT")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("PARTIAL")));
+        assertThat(registry.snapshot(id, "alice", new WorkspaceContext("alice", "alice-ws", "draft"))
+                .stopReason()).isEqualTo("TIME_LIMIT");
+        verifyNoInteractions(streamRequirementAnalysisUseCase);
     }
 
     private void assertValidOperationId(ResponseEntity<?> response) {
