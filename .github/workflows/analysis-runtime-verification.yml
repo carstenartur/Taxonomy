@@ -4,35 +4,75 @@ on:
     branches: [fix/analysis-runtime-observability]
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: analysis-runtime-review-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with: {persist-credentials: false, fetch-depth: 1}
+        with: {persist-credentials: false, fetch-depth: 0}
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Source identity
+      - name: Source identity and JavaScript RED
         run: |
           git rev-parse HEAD HEAD^{tree}
           git diff --check
-      - name: Real call-boundary and security regressions
-        run: |
           mkdir -p target
+          python .github/scripts/workbench-analysis-review.py tests
+          set +e
+          node --test .github/scripts/analysis-live-progress.test.mjs > target/analysis-js-red.log 2>&1
+          result=$?
+          cat target/analysis-js-red.log
+          test "$result" -eq 1
+          grep -q '# fail 2' target/analysis-js-red.log
+      - name: Apply reviewed corrections
+        run: |
+          python .github/scripts/workbench-analysis-review.py fix
+          git diff --check
+      - name: Real call-boundary, security and existing analysis regressions
+        run: |
           set -o pipefail
-          ./mvnw -B -ntp test -Dtest=AnalysisRunControlBoundaryTest,AnalysisRunAuthorizationTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/analysis-review.log
-      - name: Preserve evidence
+          ./mvnw -B -ntp test '-Dtest=Analysis*Test,LlmCallDetailAccumulatorTest,LlmService*Test,HsqldbFileProfileTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/analysis-review.log
+      - name: JavaScript and delivery contracts
+        run: |
+          set -o pipefail
+          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-operation-controller.test.mjs 2>&1 | tee target/analysis-js-green.log
+          node .github/scripts/test-taxonomy-base-path.mjs
+          bash .github/scripts/ci-core-contracts.sh
+      - name: Publish only tested source blobs, not refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python .github/scripts/workbench-analysis-review.py publish-blobs
+      - name: Preserve focused source and execution evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: analysis-review-${{ github.sha }}
+          name: analysis-review-focused-${{ github.sha }}
           path: |
-            target/analysis-review.log
+            target/analysis-*.log
+            target/review-evidence/manifest.json
+            target/review-evidence/tested-sources.zip
+            target/review-evidence/review-fix.patch
             **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: warn
+      - name: Complete default verification
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp verify -DexcludedGroups=real-llm 2>&1 | tee target/analysis-review-full.log
+      - name: Preserve complete verification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: analysis-review-full-${{ github.sha }}
+          path: |
+            target/analysis-review-full.log
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+            **/target/analysis-ui-evidence/**
           retention-days: 7
           if-no-files-found: warn
