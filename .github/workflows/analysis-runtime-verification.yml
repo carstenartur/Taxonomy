@@ -36,7 +36,8 @@ jobs:
           import base64,hashlib,json,os,urllib.request
           from pathlib import Path
           builders={'/tmp/analysis-completion-base.py':'146c096efcccad2cf1b80e7c0eba9c018b738407',
-                    '/tmp/analysis-completion-builder.py':'aef0e181033830405df698dd1402bd407029a933'}
+                    '/tmp/prepare-completion-builder.py':'0939234a647b1f87a4ff5494cadec0643e156d3a',
+                    '/tmp/analysis-completion-builder.py':'f1961e8cfc2d520364f138da287c92b242c49936'}
           for path,sha in builders.items():
               request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,
                   headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
@@ -44,11 +45,6 @@ jobs:
               content=base64.b64decode(blob['content'])
               assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha
               Path(path).write_bytes(content)
-          wrapper=Path('/tmp/analysis-completion-builder.py')
-          source=wrapper.read_text()
-          old="assert source.count('Consumer<AnalysisStreamEvent>') == 3"
-          assert source.count(old)==1
-          wrapper.write_text(source.replace(old,"assert source.count('Consumer<AnalysisStreamEvent>') == 2"))
           Path('target/completion-evidence').mkdir(parents=True)
       - name: Add counterexamples before production changes
         run: python /tmp/analysis-completion-builder.py tests
@@ -63,12 +59,12 @@ jobs:
           paths=[Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.analysis.controller.AnalysisCompletionContractTest.xml'),Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.analysis.service.AnalysisTerminalContractTest.xml')]
           reports=[ET.parse(path).getroot() for path in paths]
           counts=[dict(report.attrib) for report in reports]
-          assert java.returncode!=0 and sum(int(report.attrib['failures']) for report in reports)>=8, counts
           print('JAVA RED',json.dumps(counts))
+          assert java.returncode!=0 and sum(int(report.attrib['failures']) for report in reports)>=8, counts
+          assert sum(int(report.attrib['errors']) for report in reports)==0, counts
           for report in reports:
               for case in report.findall('testcase'):
                   problem=case.find('failure')
-                  if problem is None: problem=case.find('error')
                   if problem is not None: print('RED',case.attrib.get('name'),problem.attrib.get('type'),problem.attrib.get('message','')[:600])
           for path in paths: (folder/('red-'+path.name)).write_bytes(path.read_bytes())
           with (folder/'js-red.log').open('w') as log:
@@ -97,6 +93,17 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python /tmp/analysis-completion-builder.py publish
+      - name: Preserve resolved test-only libraries for local exact-source checks
+        if: always()
+        shell: python
+        run: |
+          from pathlib import Path
+          import zipfile
+          root=Path.home()/'.m2/repository'
+          groups=['com/jayway/jsonpath','net/minidev','org/ow2/asm','org/springframework/security/spring-security-test','org/springframework/boot/spring-boot-test','org/springframework/boot/spring-boot-test-autoconfigure','org/junit/platform/junit-platform-launcher']
+          with zipfile.ZipFile('target/completion-evidence/test-libraries.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for group in groups:
+                  for path in (root/group).rglob('*.jar'): archive.write(path,str(path.relative_to(root)))
       - name: Summarize executed failures without hiding logs
         if: failure()
         shell: python
