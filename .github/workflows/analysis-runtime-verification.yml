@@ -1,27 +1,88 @@
-name: Analysis patch identity check (temporary)
+name: Analysis consolidated preflight (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  identity:
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 30
     steps:
-      - name: Export transmitted bytes for integrity comparison, not acceptance
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: e952154a242da558a4df8544f31eac335d026dd1
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Materialize and verify exact consolidated source
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
-          import base64,json,os,urllib.request
+          import base64,gzip,hashlib,json,os,subprocess,urllib.request
           from pathlib import Path
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='e952154a242da558a4df8544f31eac335d026dd1'
           request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/ba5a806bc2f464163c591cb3c9e8335a46f566fa',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-          with urllib.request.urlopen(request) as response: content=base64.b64decode(json.load(response)['content'])
-          Path('/tmp/transmitted-patch.txt').write_bytes(content)
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+          with urllib.request.urlopen(request) as response: content=base64.b64decode(json.load(response)['content']).decode()
+          repairs=[(2691,2693,'pc','t'),(4474,4477,'Fin','/'),(8363,8366,'690','8F7'),(12971,12973,'Cs','d'),(13401,13402,'a','c')]
+          for start,end,old,new in reversed(repairs):
+              assert content[start:end]==old
+              content=content[:start]+new+content[end:]
+          raw=content.encode()
+          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()=='b9cac7a952f64b036c2e89428acc3d4592fd9e61'
+          patch=gzip.decompress(base64.b64decode(content))
+          assert hashlib.sha256(patch).hexdigest()=='3a4d3dc68e78ed023c4c19e52a4ecaab40718765b6802f45090716a61cde3275'
+          subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
+          subprocess.run(['git','apply','--index','-'],input=patch,check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          tree=subprocess.check_output(['git','write-tree'],text=True).strip()
+          assert tree=='8de6efd868e82c3100713af87f3d5137efe449fe'
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==16
+          assert not any(p.startswith('.github/workflows/') for p in paths)
+          files={p:subprocess.check_output(['git','hash-object',p],text=True).strip() for p in paths}
+          out=Path('target/consolidated-evidence');out.mkdir(parents=True)
+          (out/'patch.diff').write_bytes(patch)
+          (out/'manifest.json').write_text(json.dumps({'base':'e952154a242da558a4df8544f31eac335d026dd1','tree':tree,'files':files},indent=2)+'\n')
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
-          name: analysis-patch-transmission
-          path: /tmp/transmitted-patch.txt
-          retention-days: 1
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: All reactor unit and Spring tests, with pinned model
+        env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp test -Pci 2>&1 | tee target/consolidated-evidence/unit.log
+      - name: Complete Maven-owned UI contracts
+        run: |
+          set -o pipefail
+          ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee target/consolidated-evidence/ui-contracts.log
+      - name: Publish tested blobs without changing any product ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,hashlib,json,os,urllib.request,zipfile
+          from pathlib import Path
+          manifest=json.loads(Path('target/consolidated-evidence/manifest.json').read_text())
+          with zipfile.ZipFile('target/consolidated-evidence/tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for path,expected in manifest['files'].items():
+                  content=Path(path).read_bytes()
+                  assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==expected
+                  request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',data=json.dumps({'content':base64.b64encode(content).decode(),'encoding':'base64'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+                  with urllib.request.urlopen(request) as response: assert json.load(response)['sha']==expected
+                  archive.writestr(path,content)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: analysis-consolidated-preflight
+          path: |
+            target/consolidated-evidence
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
           if-no-files-found: error
