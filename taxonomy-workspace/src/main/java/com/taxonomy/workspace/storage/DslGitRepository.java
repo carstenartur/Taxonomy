@@ -161,6 +161,18 @@ public class DslGitRepository implements AutoCloseable {
         }
     }
 
+    /** Commit only if the branch still has the exact head used to compute this content. */
+    public String commitDslIfHeadMatches(String branch, String expectedHead, String dslText,
+                                        String author, String message) throws IOException {
+        return new ExpectedHeadDslCommitter().commit(this,
+                new ExpectedHeadDslCommitter.CommitRequest(branch, expectedHead, dslText, author, message)).commitId();
+    }
+
+    /** Verify a no-op or recovery without adopting a concurrent branch head. */
+    public String verifyExpectedHead(String branch, String expectedHead) throws IOException {
+        return new ExpectedHeadDslCommitter().verifyExpectedHead(this, branch, expectedHead);
+    }
+
     // ── Read operations ─────────────────────────────────────────────
 
     /** Read DSL text at a specific commit. */

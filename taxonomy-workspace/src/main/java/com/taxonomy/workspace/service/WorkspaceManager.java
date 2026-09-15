@@ -510,7 +510,12 @@ public class WorkspaceManager {
             DslGitRepository systemGit = repositoryFactory == null ? gitRepository
                     : recordedSource ? repositoryFactory.getCentralRepository(sourceRepositoryId.strip())
                     : repositoryFactory.getSystemRepository();
-            String baseCommit = systemGit.getHeadCommit(baseBranch);
+            String legacyBranch = username + "/workspace/" + workspace.getWorkspaceId();
+            String existingLegacyHead = repositoryFactory == null
+                    ? gitRepository.getHeadCommit(legacyBranch) : null;
+            String recordedBase = workspace.getBaseCommit();
+            String baseCommit = existingLegacyHead != null && recordedBase != null
+                    ? recordedBase : systemGit.getHeadCommit(baseBranch);
             String systemDsl = baseCommit == null ? null : systemGit.getDslAtCommit(baseCommit);
             if (baseCommit == null || systemDsl == null || systemDsl.isBlank()) {
                 throw new IllegalStateException("Source repository has no readable checkpoint for " + baseBranch);
@@ -540,8 +545,15 @@ public class WorkspaceManager {
                 log.info("Provisioned workspace for user '{}': repo='ws-{}', base='{}'",
                         username, workspace.getWorkspaceId(), baseBranch);
             } else {
-                String userBranch = username + "/workspace/" + workspace.getWorkspaceId();
-                gitRepository.createBranchAtCommit(userBranch, baseCommit);
+                String userBranch = legacyBranch;
+                if (existingLegacyHead == null) {
+                    gitRepository.createBranchAtCommit(userBranch, baseCommit);
+                } else if (recordedBase != null && recordedBase.equals(existingLegacyHead)) {
+                    // Adopt only the recorded, unchanged result of an earlier allocation.
+                    gitRepository.verifyExpectedHead(userBranch, recordedBase);
+                } else {
+                    throw new IllegalStateException("Existing workspace branch does not match its recorded checkpoint");
+                }
 
                 workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
                 workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
@@ -605,7 +617,7 @@ public class WorkspaceManager {
 
     private WorkspaceInfo toWorkspaceInfo(UserWorkspaceState state) {
         ContextRef context = state.getCurrentContext();
-        String provisioningStatus = "READY";
+        String provisioningStatus = "NOT_PROVISIONED";
         String topologyMode = "INTERNAL_SHARED";
         String sourceRepositoryId = null;
         String workspaceId = state.getUsername() + "-workspace";
@@ -614,26 +626,23 @@ public class WorkspaceManager {
         boolean archived = false;
         boolean defaultWorkspace = false;
 
-        try {
-            UserWorkspace workspace = findActiveWorkspace(state.getUsername());
-            if (workspace == null) {
-                workspace = workspaceRepository
-                        .findByUsernameAndSharedFalse(state.getUsername())
-                        .orElse(null);
-            }
-            if (workspace != null) {
-                provisioningStatus = workspace.getProvisioningStatus().name();
-                topologyMode = workspace.getTopologyMode().name();
-                sourceRepositoryId = workspace.getSourceRepositoryId();
-                workspaceId = workspace.getWorkspaceId();
-                displayName = workspace.getDisplayName();
-                description = workspace.getDescription();
-                archived = workspace.isArchived();
-                defaultWorkspace = workspace.isDefault();
-            }
-        } catch (Exception exception) {
-            log.debug("Could not read provisioning info for '{}': {}",
-                    state.getUsername(), exception.getMessage());
+        UserWorkspace workspace = findActiveWorkspace(state.getUsername());
+        if (workspace == null) {
+            workspace = workspaceRepository
+                    .findByUsernameAndSharedFalse(state.getUsername())
+                    .orElse(null);
+        }
+        if (workspace != null) {
+            provisioningStatus = workspace.getProvisioningStatus() == null
+                    ? "NOT_PROVISIONED" : workspace.getProvisioningStatus().name();
+            topologyMode = workspace.getTopologyMode() == null
+                    ? topologyMode : workspace.getTopologyMode().name();
+            sourceRepositoryId = workspace.getSourceRepositoryId();
+            workspaceId = workspace.getWorkspaceId();
+            displayName = workspace.getDisplayName();
+            description = workspace.getDescription();
+            archived = workspace.isArchived();
+            defaultWorkspace = workspace.isDefault();
         }
 
         return new WorkspaceInfo(

@@ -41,7 +41,10 @@ class WorkspaceInitialSyncBaseBoundaryTest {
         when(factory.getSystemRepository()).thenReturn(source);
         when(factory.getCentralRepository("source-id")).thenReturn(source);
         when(factory.openWorkspaceRepository("workspace-id")).thenReturn(destination);
-        when(source.getDslAtHead("draft")).thenReturn(REMOTE);
+        when(source.getHeadCommit("draft")).thenReturn("2".repeat(40));
+        when(source.getDslAtCommit("2".repeat(40))).thenReturn(REMOTE);
+        when(destination.getHeadCommit("main")).thenReturn("3".repeat(40));
+        when(destination.getDslAtCommit("3".repeat(40))).thenReturn(LOCAL);
         when(destination.getDslAtHead("main")).thenReturn(LOCAL);
         when(source.getDslAtCommit(CAPTURED))
                 .thenReturn(baseState == BaseState.BLANK_SNAPSHOT ? " \t\n" : null);
@@ -74,7 +77,7 @@ class WorkspaceInitialSyncBaseBoundaryTest {
             service.publishFromWorkspaceToShared("base-owner", "workspace-id");
             verify(merger).mergeContent(TRACKED, LOCAL, REMOTE);
             verify(merger).mergeContent(TRACKED, REMOTE, LOCAL);
-            verify(source, never()).getDslAtCommit(anyString());
+            verify(source, never()).getDslAtCommit(CAPTURED);
         } else {
             assertThrows(IOException.class,
                     () -> service.syncFromSharedToWorkspace("base-owner", "workspace-id"));

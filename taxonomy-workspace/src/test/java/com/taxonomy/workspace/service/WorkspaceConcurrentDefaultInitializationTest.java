@@ -95,7 +95,8 @@ class WorkspaceConcurrentDefaultInitializationTest {
                 if (fails) throw new IllegalStateException("Source storage unavailable");
                 return call.callRealMethod();
             }).when(factory).openWorkspaceRepository(ID);
-            try (var executor = Executors.newFixedThreadPool(2)) {
+            var executor = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+            try {
                 var initializer = executor.submit(() -> manager.provisionDefaultWorkspaceRepository(USER, ID));
                 try {
                     assertTrue(opening.await(10, TimeUnit.SECONDS), "Provisioning did not reach storage");
@@ -141,6 +142,10 @@ class WorkspaceConcurrentDefaultInitializationTest {
                     verify(rows, times(1)).claimProvisioning(eq(ID), eq(USER),
                             eq(WorkspaceProvisioningStatus.PROVISIONING), anyCollection());
                 } finally { release.countDown(); }
+            } finally {
+                release.countDown();
+                executor.shutdownNow();
+                assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS), "Concurrent workers did not terminate");
             }
         }
     }
