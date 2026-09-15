@@ -1,4 +1,4 @@
-name: Analysis secure-ID preflight (temporary)
+name: Central scope admission verification (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
@@ -7,66 +7,73 @@ permissions:
 jobs:
   preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 8fefb82699591c5e1be84d0d0cc1289d075ddbdd
+          ref: 0e8697371f8173716d7240585c33d42714c27ebc
           persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Verify source and add regression tests only
+      - name: Verify exact predecessor and install regression tests only
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
           import base64,hashlib,json,os,subprocess,urllib.request
           from pathlib import Path
-          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='8fefb82699591c5e1be84d0d0cc1289d075ddbdd'
-          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/858d0c9c4d385bf98c4207620c2ce18026349f92',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='0e8697371f8173716d7240585c33d42714c27ebc'
+          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/8e71d84b966224a40f2678f9ea1a6d34b24c6539',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
           with urllib.request.urlopen(request) as response: patch=base64.b64decode(json.load(response)['content'])
-          assert hashlib.sha256(patch).hexdigest()=='24b3eb6761cb81797ad9e6c1e3eeda9ba4f5b599de09756f819fe2ab8b575b79'
-          out=Path('target/secure-id-evidence');out.mkdir(parents=True)
+          assert hashlib.sha256(patch).hexdigest()=='0b4f0504ba5507c38a94af7c24331dfa7bc20dbae405c023546020d762e7e74a'
+          out=Path('target/central-admission-evidence');out.mkdir(parents=True)
           (out/'patch.diff').write_bytes(patch)
           subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
-          subprocess.run(['git','apply','--index','--include=.github/scripts/analysis-readiness.test.mjs','-'],input=patch,check=True)
-      - name: Reproduce six intended failure cases
+          subprocess.run(['git','apply','--index','--include=.github/scripts/analysis-readiness.test.mjs','--include=taxonomy-app/src/test/java/com/taxonomy/versioning/controller/ExplicitCentralAnalysisAdmissionTest.java','-'],input=patch,check=True)
+      - name: Reproduce HTTP admission failures and premature browser POSTs
         run: |
           set +e
-          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-session-startup.test.mjs > target/secure-id-evidence/red.log 2>&1
+          ./mvnw -B -ntp test -Dtest=ExplicitCentralAnalysisAdmissionTest -Dsurefire.failIfNoSpecifiedTests=false > target/central-admission-evidence/java-red.log 2>&1
           result=$?
-          cat target/secure-id-evidence/red.log
+          test "$result" -ne 0 || exit 1
+          grep -q 'Tests run: 4, Failures: 0, Errors: 2, Skipped: 0' target/central-admission-evidence/java-red.log || exit 1
+          node --test .github/scripts/analysis-readiness.test.mjs > target/central-admission-evidence/js-red.log 2>&1
+          result=$?
           test "$result" -eq 1 || exit 1
-          grep -q '# fail 6' target/secure-id-evidence/red.log
-      - name: Apply and identify exact production correction
+          grep -q '# fail 4' target/central-admission-evidence/js-red.log
+      - name: Apply the exact two production changes
         shell: python
         run: |
           import json,subprocess
           from pathlib import Path
-          out=Path('target/secure-id-evidence')
-          subprocess.run(['git','apply','--index','--exclude=.github/scripts/analysis-readiness.test.mjs',str(out/'patch.diff')],check=True)
+          out=Path('target/central-admission-evidence')
+          subprocess.run(['git','apply','--index','--exclude=.github/scripts/analysis-readiness.test.mjs','--exclude=taxonomy-app/src/test/java/com/taxonomy/versioning/controller/ExplicitCentralAnalysisAdmissionTest.java',str(out/'patch.diff')],check=True)
           subprocess.run(['git','diff','--cached','--check'],check=True)
-          expected={'.github/scripts/analysis-readiness.test.mjs':'1d8bb5fb6fca890427cdca2fae578cfee0334036','taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js':'9a0838f6a5885a595fe37611ed73a2aa606ff851','taxonomy-app/src/main/resources/i18n/messages.properties':'9f481a438c418f31d26444b3b10452ff41668670','taxonomy-app/src/main/resources/i18n/messages_de.properties':'3ee894d8020719a060e82b38bc781710cf77e720'}
+          expected={'.github/scripts/analysis-readiness.test.mjs':'733ce68a88af7ce2f7a5d3bcd93a25367db897ff','taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DslWorkspacePreResolutionInterceptor.java':'a0ab4d4fe8c9611cfe03e601f1524ca127806496','taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js':'5a1daab09ef5f1a85092785904aa376c8e7920cd','taxonomy-app/src/test/java/com/taxonomy/versioning/controller/ExplicitCentralAnalysisAdmissionTest.java':'ec2295dc5c32e90d089d65f2910165bf00f8df71'}
           paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
           assert set(paths)==set(expected)
           for path,sha in expected.items(): assert subprocess.check_output(['git','hash-object',path],text=True).strip()==sha
           tree=subprocess.check_output(['git','write-tree'],text=True).strip()
-          (out/'manifest.json').write_text(json.dumps({'base':'8fefb82699591c5e1be84d0d0cc1289d075ddbdd','tree':tree,'files':expected},indent=2)+'\n')
-      - name: Full Maven-owned UI contracts and focused regression GREEN
+          (out/'manifest.json').write_text(json.dumps({'base':'0e8697371f8173716d7240585c33d42714c27ebc','tree':tree,'files':expected},indent=2)+'\n')
+      - name: Run all reactor unit tests without selecting individual classes
         run: |
           set -o pipefail
-          ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee target/secure-id-evidence/ui-contracts.log
-          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-session-startup.test.mjs 2>&1 | tee target/secure-id-evidence/green.log
-          node .github/scripts/test-taxonomy-base-path.mjs 2>&1 | tee target/secure-id-evidence/basepath.log
-      - name: Publish only tested source blobs without changing any product reference
+          ./mvnw -B -ntp test -DexcludedGroups=real-llm 2>&1 | tee target/central-admission-evidence/unit-green.log
+      - name: Full Maven-owned UI contracts and lifecycle regressions
+        run: |
+          set -o pipefail
+          ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee target/central-admission-evidence/ui-contracts.log
+          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-session-startup.test.mjs 2>&1 | tee target/central-admission-evidence/js-green.log
+          node .github/scripts/test-taxonomy-base-path.mjs 2>&1 | tee target/central-admission-evidence/basepath.log
+      - name: Publish only tested source blobs without changing any product ref
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
           import base64,hashlib,json,os,urllib.request,zipfile
           from pathlib import Path
-          out=Path('target/secure-id-evidence')
+          out=Path('target/central-admission-evidence')
           manifest=json.loads((out/'manifest.json').read_text())
           with zipfile.ZipFile(out/'tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
               for path,expected in manifest['files'].items():
@@ -78,7 +85,9 @@ jobs:
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: analysis-secure-id-evidence
-          path: target/secure-id-evidence
+          name: analysis-central-admission-evidence
+          path: |
+            target/central-admission-evidence
+            **/target/surefire-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: error
