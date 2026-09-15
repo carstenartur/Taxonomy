@@ -6,7 +6,7 @@ The machine-readable source of truth for the planned extraction contexts is `.gi
 
 ## Current Maven reactor
 
-The root reactor currently contains eight modules with different roles:
+The root reactor currently contains eleven modules with different roles:
 
 | Module | Current role |
 |---|---|
@@ -15,6 +15,9 @@ The root reactor currently contains eight modules with different roles:
 | `taxonomy-dsl` | Framework-free TaxDSL parser, model, validation, differ and command logic |
 | `taxonomy-export` | Framework-free diagram/export contracts and implementations |
 | `taxonomy-extension-api` | Framework-free common extension contracts |
+| `taxonomy-workspace` | Workspace authority, versioning, semantic editor history and JGit storage |
+| `taxonomy-templates` | Document-template Git storage, OOXML validation and WebDAV |
+| `taxonomy-interop` | Reviewed external-tool interoperability, mappings, checkpoints and OSLC; portfolio access through an explicit port |
 | `taxonomy-app` | Executable Spring Boot application and, currently, most Spring-aware feature implementations |
 | `taxonomy-coverage` | Reactor-wide coverage aggregation |
 | `taxonomy-build` | Build policy and browser/verification contracts |
@@ -274,26 +277,49 @@ reactor so every module's production output is current:
 
 The profile includes all six ownership guards for decision reports, commit
 history, DSL document composition, workspace authority, application schema composition and workspace storage in both `pom.xml` and
-`.mvn/verification-suites.json`. Its eleven selected test classes are synchronized
+`.mvn/verification-suites.json`. Its fourteen selected test classes are synchronized
 between the POM and catalog. Full CI verification remains
 `./mvnw -B verify -Pci`.
 
-The ratchet also walks `taxonomy-app/src/main/java/com/taxonomy`: every production Java package below the root package must be classified in `.github/architecture-contexts.json`. A new feature package therefore cannot evade the dependency guard merely by being created outside the existing context patterns. Root-level composition classes remain explicitly permitted.
+The ratchet walks `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`, `taxonomy-templates/src/main/java/com/taxonomy`, `taxonomy-interop/src/main/java/com/taxonomy`: every production Java package below these roots must be classified in `.github/architecture-contexts.json`. Only `taxonomy-app` may contain root-package Java files, and its composition files must exactly match the explicit allow-list. Extracted feature modules reject every root-package Java file, including a copied composition-class name or `package-info.java`.
 
 The ratchet is intentionally a **current-state baseline, not an ideal-direction allowlist**. Architectural direction is improved by explicit port/refactoring PRs and then locked in monotonically.
 
 ## Migration order
 
-Issue #628 is the implementation parent. The intended order is:
+Issue #628 remains the implementation parent. Extraction follows each candidate's actual dependencies; cycles in unrelated contexts do not block an independent library. The status below describes the code in this revision, not the merge status of a pull request.
 
-1. freeze the context map and dependency ratchet;
-2. remove concrete editor/workspace/versioning coupling and expose narrow ports;
-3. remove knowledge/search package cycles;
-4. remove architecture/export/analysis cycles;
-5. extract `taxonomy-workspace`;
-6. extract `taxonomy-knowledge`;
-7. extract `taxonomy-interop` and `taxonomy-templates` in independently reviewable changes;
-8. extract architecture/analysis/portfolio only after their dependency direction is stable;
-9. reassess `provenance` and `preferences` from the measured dependency graph rather than module-count aesthetics.
+1. Context map and dependency ratchet — implemented.
+2. Workspace authority and storage ownership — separated from application orchestration.
+3. `taxonomy-workspace` — physically extracted in this revision.
+4. `taxonomy-templates` — physically extracted in this revision.
+5. `taxonomy-interop` — physically extracted through a scoped portfolio port in this revision.
+6. `taxonomy-knowledge` — pending; stabilize its owned APIs and remove blocking implementation dependencies.
+7. `taxonomy-architecture`, `taxonomy-analysis` and `taxonomy-portfolio` — pending; resolve their remaining cycles before each extraction.
+8. Reassess `provenance` and `preferences` after those boundaries are stable.
 
-Physical Maven moves therefore come **after** logical boundaries are enforceable. This keeps each PR reviewable and avoids hiding existing coupling behind new POM dependencies.
+Every extracted feature library must remain independent of `taxonomy-app`; the application is the only deployment/composition root.
+
+## Physical workspace module
+
+`taxonomy-workspace` owns the workspace, versioning and editor production packages.
+`taxonomy-app` depends on its ordinary JAR; application configuration and SQL migrations
+remain in the application. Java package names and runtime contracts are unchanged.
+`ArchitectureWorkspaceModuleTest` is included in both architecture selectors and
+requires physical source and compiled ownership. Maven enforces no dependency back
+to the application. With templates and interoperability extracted below, four planned feature modules remain to be extracted.
+
+## Physical templates module
+
+`taxonomy-templates` owns all 21 template production classes and the bundled
+`document-templates/decision-rationale-report.dotx` resource. Its classpath name
+and bytes are unchanged. The library has no dependency on another Taxonomy
+feature module or the Boot application. Twenty-one unit test classes follow
+the implementation; application/HTTP, security and UI resource contracts remain
+in `taxonomy-app`. Global configuration, migration scripts and presentation
+assets remain with application assembly.
+
+
+## Physical interoperability module
+
+`taxonomy-interop` now owns all interoperability production packages. It depends on the existing foundations and workspace, not on the application or portfolio implementation. `IntegrationPortfolioPort` exposes only the required scoped project/requirement operations and neutral values. `PortfolioInteropAdapter` in application composition delegates to the unchanged portfolio services, including access checks and locking. The original import decisions, provenance and checkpoint ordering remain in interoperability. Application-level flow, journal and restart tests remain in `taxonomy-app`; eight existing unit-test classes move with the library. Four planned feature modules remain after workspace, templates and interoperability. Physical ownership here describes this source revision, not PR merge status.
