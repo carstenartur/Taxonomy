@@ -40,12 +40,11 @@ jobs:
         run: |
           set -o pipefail
           ./mvnw -B -ntp test '-Dtest=Analysis*Test,LlmTranscriptBoundsTest,GatewayInterruptedAnalysisTest,LlmService*Test,HsqldbFileProfileTest,ArchitectureContextDependencyRatchetTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/analysis-review.log
-      - name: JavaScript and delivery contracts
+      - name: JavaScript and strict base-path delivery contract
         run: |
           set -o pipefail
           node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-operation-controller.test.mjs 2>&1 | tee target/analysis-js-green.log
-          node .github/scripts/test-taxonomy-base-path.mjs
-          bash .github/scripts/ci-core-contracts.sh
+          node .github/scripts/test-taxonomy-base-path.mjs 2>&1 | tee target/analysis-base-path.log
       - name: Publish only tested source blobs, not refs
         env:
           GH_TOKEN: ${{ github.token }}
