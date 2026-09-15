@@ -1,0 +1,52 @@
+name: Analysis memory and progress verification
+on:
+  push:
+    branches: [verify/analysis-memory-progress-20260915]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Reproduce absent file profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p taxonomy-app/src/test/java/com/taxonomy/shared/config
+          cat > taxonomy-app/src/test/java/com/taxonomy/shared/config/HsqldbFileProfileTest.java <<'JAVA'
+          package com.taxonomy.shared.config;
+          import org.junit.jupiter.api.Test;
+          import static org.junit.jupiter.api.Assertions.*;
+          class HsqldbFileProfileTest {
+              @Test void fileProfileIsAvailableWithoutManualPropertyOverrides() {
+                  assertNotNull(getClass().getResource("/application-hsqldb-file.properties"),
+                      "A single selectable HSQLDB file profile must be supplied");
+              }
+          }
+          JAVA
+          mkdir -p target/analysis-verification
+          set +e
+          ./mvnw -B -ntp -Dtest=HsqldbFileProfileTest -Dsurefire.failIfNoSpecifiedTests=false test > target/analysis-verification/red.log 2>&1
+          result=$?
+          set -e
+          tail -80 target/analysis-verification/red.log
+          test "$result" -ne 0
+          grep -F 'A single selectable HSQLDB file profile must be supplied' target/analysis-verification/red.log
+      - name: Capture source for isolated implementation
+        if: always()
+        run: |
+          mkdir -p target/analysis-verification
+          git archive --format=zip 29b9ef036882f5dbfc62924d9aca63038c098d4e -o target/analysis-verification/source.zip
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: analysis-red-and-source
+          path: |
+            target/analysis-verification/**
+            **/target/surefire-reports/TEST-*HsqldbFileProfileTest.xml
+          retention-days: 7
