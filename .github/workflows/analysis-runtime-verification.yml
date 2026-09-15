@@ -1,53 +1,38 @@
-name: Analysis runtime verification (temporary)
-
+name: Analysis runtime review regressions (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
   workflow_dispatch:
-    inputs:
-      full:
-        description: Run the complete default verification suite after focused regressions
-        type: boolean
-        default: false
-
 permissions:
   contents: read
-
 concurrency:
-  group: analysis-runtime-verification-${{ github.ref }}
+  group: analysis-runtime-review-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
   regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with: { persist-credentials: false, fetch-depth: 0 }
+        with: {persist-credentials: false, fetch-depth: 1}
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
-        with: { java-version: '21', distribution: temurin, cache: maven }
+        with: {java-version: '21', distribution: temurin, cache: maven}
       - name: Source identity
         run: |
           git rev-parse HEAD HEAD^{tree}
           git diff --check
-      - name: Focused regressions
+      - name: Real call-boundary and security regressions
         run: |
           mkdir -p target
           set -o pipefail
-          ./mvnw -B -ntp test -Dtest=HsqldbFileProfileTest,AnalysisRuntime*Test -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/analysis-runtime-focused.log
-      - name: Complete verification
-        if: github.event_name == 'workflow_dispatch' && inputs.full
-        run: |
-          set -o pipefail
-          ./mvnw -B -ntp verify -DexcludedGroups=real-llm 2>&1 | tee target/analysis-runtime-full.log
-      - name: Preserve executed evidence
+          ./mvnw -B -ntp test -Dtest=AnalysisRunControlBoundaryTest,AnalysisRunAuthorizationTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/analysis-review.log
+      - name: Preserve evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: analysis-runtime-${{ github.sha }}
+          name: analysis-review-${{ github.sha }}
           path: |
-            target/analysis-runtime-*.log
+            target/analysis-review.log
             **/target/surefire-reports/TEST-*.xml
-            **/target/failsafe-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: warn

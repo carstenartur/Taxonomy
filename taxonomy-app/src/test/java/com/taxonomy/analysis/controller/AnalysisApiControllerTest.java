@@ -258,7 +258,7 @@ class AnalysisApiControllerTest {
         } finally {
             org.springframework.context.i18n.LocaleContextHolder.setLocale(previous);
         }
-        assertThat(emitter.getTimeout()).isEqualTo(120_000L);
+        assertThat(emitter.getTimeout()).isEqualTo(1_800_000L);
 
         ArgumentCaptor<StreamRequirementAnalysisCommand> captor =
                 ArgumentCaptor.forClass(StreamRequirementAnalysisCommand.class);

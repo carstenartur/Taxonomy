@@ -13,11 +13,18 @@ import com.taxonomy.shared.config.ExportConfig;
 import com.taxonomy.relations.service.HypothesisService;
 import com.taxonomy.versioning.service.RepositoryStateService;
 import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import com.taxonomy.analysis.service.AnalysisRunControl;
+import com.taxonomy.analysis.service.AnalysisStoppedException;
 
 import java.util.Locale;
 
 @Service
 public class AnalyzeRequirementUseCase {
+
+    @Autowired
+    private AnalysisProgressRegistry analysisProgressRegistry;
 
     private final LlmService llmService;
     private final AiPromptBudgetPolicy promptBudgetPolicy;
@@ -51,7 +58,16 @@ public class AnalyzeRequirementUseCase {
      * claim has been revalidated and locked.
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
-        return analyze(command, command.provenance() == null);
+        if (analysisProgressRegistry == null || AnalysisRunControl.active()) {
+            return analyze(command, command.provenance() == null);
+        }
+        // Portfolio/Copilot callers retain their durable job and claim boundaries.
+        try (var run = analysisProgressRegistry.open(null, command.username(),
+                command.workspaceContext(), command.provenance())) {
+            AnalyzeRequirementResult result = analyze(command, command.provenance() == null);
+            run.finish(result.analysisResult().getStatus());
+            return result;
+        }
     }
 
     private AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command,
@@ -62,13 +78,31 @@ public class AnalyzeRequirementUseCase {
                     command.businessText(), command.provider());
 
             AnalysisResult result = llmService.analyzeWithBudget(command.businessText());
-            enrichWithRelationHypotheses(command, result, persistHypotheses);
-            enrichWithArchitectureView(command, result);
+            if (result.getErrorMessage() == null || !isCooperativeStop(result.getErrorMessage())) {
+                try {
+                    AnalysisRunControl.phase("RELATIONS", null);
+                    enrichWithRelationHypotheses(command, result, persistHypotheses);
+                    AnalysisRunControl.phase("ARCHITECTURE", null);
+                    enrichWithArchitectureView(command, result);
+                } catch (AnalysisStoppedException stopped) {
+                    result.setStatus("PARTIAL");
+                    result.setErrorMessage(stopped.getMessage());
+                    var warnings = new java.util.ArrayList<>(result.getWarnings() == null
+                            ? java.util.List.<String>of() : result.getWarnings());
+                    warnings.add(stopped.getMessage());
+                    result.setWarnings(warnings);
+                }
+            }
             populateViewContext(command, result);
             return new AnalyzeRequirementResult(result);
         } finally {
             llmService.clearRequestProvider();
         }
+    }
+
+    private static boolean isCooperativeStop(String message) {
+        return message.startsWith("MEMORY_PRESSURE:") || message.startsWith("CANCELLED:")
+                || message.startsWith("TIME_LIMIT:");
     }
 
     private void applyProviderOverride(String provider) {

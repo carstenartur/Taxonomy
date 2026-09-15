@@ -51,6 +51,66 @@ class LlmServiceBranchCoverageTest {
 
     private LlmService service;
 
+    @Test
+    void cancellationBetweenRootsRetainsCompletedScoresWithoutAllocatingAnotherTree() {
+        var registry = new AnalysisProgressRegistry(new org.springframework.core.env.StandardEnvironment());
+        var scope = new com.taxonomy.workspace.service.WorkspaceContext("alice", "work-a", "draft", "repo-a");
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(
+                node("BP", null, "BP"), node("CP", null, "CP"))));
+        when(taxonomyService.getChildrenOf("BP")).thenReturn(List.of());
+        when(gateway.extractResponseText("first-body"))
+                .thenReturn("{\"BP\":{\"score\":80,\"reason\":\"completed evidence\"}}");
+        try (var run = registry.open(null, "alice", scope, null)) {
+            when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenAnswer(invocation -> {
+                registry.cancel(run.id(), "alice", scope);
+                return "first-body";
+            });
+            AnalysisResult result = service.analyzeWithBudget("requirement");
+            assertThat(result.getStatus()).isEqualTo("PARTIAL");
+            assertThat(result.getErrorMessage()).startsWith("CANCELLED:");
+            // A single category receives its full parent budget after existing normalization.
+            assertThat(result.getScores()).containsEntry("BP", 100).doesNotContainKey("CP");
+            assertThat(result.getReasons()).containsEntry("BP", "completed evidence");
+            assertThat(result.getTree()).isEmpty();
+            verify(taxonomyService, never()).getFullTree();
+            verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest(anyString(), anyString());
+            run.finish(result.getStatus());
+            assertThat(registry.snapshot(run.id(), "alice", scope).status()).isEqualTo("CANCELLED");
+        }
+        assertThat(AnalysisRunControl.active()).isFalse();
+    }
+
+    @Test
+    void cancellationBetweenProductBatchesKeepsEarlierCategoryAndProductEvidence() {
+        var registry = new AnalysisProgressRegistry(new org.springframework.core.env.StandardEnvironment());
+        var scope = new com.taxonomy.workspace.service.WorkspaceContext("alice", "work-a", "draft", "repo-a");
+        TaxonomyNode category = node("IP-C", "IP-F", "IP");
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        ReflectionTestUtils.setField(service, "productBatchSize", 1);
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("category-body");
+        when(gateway.extractResponseText("category-body")).thenReturn("{\"IP-C\":80}");
+        when(gateway.extractResponseText("product-body"))
+                .thenReturn("{\"IP-P1\":{\"score\":75,\"reason\":\"completed product\"}}");
+        try (var run = registry.open(null, "alice", scope, null)) {
+            when(gateway.sendHttpRequest("product prompt", "test-key")).thenAnswer(invocation -> {
+                registry.cancel(run.id(), "alice", scope);
+                return "product-body";
+            });
+            var stopped = org.assertj.core.api.Assertions.catchThrowableOfType(
+                    () -> service.analyzeSingleBatchDetailed("requirement", List.of(category, first, second), 100),
+                    AnalysisStoppedException.class);
+            assertThat(stopped).isNotNull();
+            assertThat(stopped.partialScores()).containsKeys("IP-C", "IP-P1").doesNotContainKey("IP-P2");
+            assertThat(stopped.partialScores()).containsEntry("IP-P1", 75);
+            assertThat(stopped.partialReasons()).containsEntry("IP-P1", "completed product");
+            verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest("product prompt", "test-key");
+        }
+    }
+
+
     @BeforeEach
     void setUp() {
         service = new LlmService(providerConfig, gatewayRegistry, new ObjectMapper(), taxonomyService,
