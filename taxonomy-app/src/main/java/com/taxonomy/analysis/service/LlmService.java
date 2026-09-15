@@ -370,6 +370,7 @@ public class LlmService {
             } catch (AnalysisStoppedException stopped) {
                 allScores.putAll(stopped.partialScores());
                 allReasons.putAll(stopped.partialReasons());
+                allDiscrepancies.addAll(stopped.partialDiscrepancies());
                 warnings.add(stopped.getMessage());
                 stop = stopped;
                 break;
@@ -470,6 +471,7 @@ public class LlmService {
      */
     public void analyzeStreaming(String businessText, AnalysisEventCallback callback) {
         Map<String, Integer> allScores = new HashMap<>();
+        Map<String, String> allReasons = new LinkedHashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -487,6 +489,7 @@ public class LlmService {
                 LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100);
                 int rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0);
                 allScores.put(root.getCode(), rootScore);
+                if (rootDetail.getReasons() != null) allReasons.putAll(rootDetail.getReasons());
                 if (rootDetail.getDiscrepancy() != null) {
                     allDiscrepancies.add(rootDetail.getDiscrepancy());
                 }
@@ -500,7 +503,7 @@ public class LlmService {
                     if (!level1Children.isEmpty()) {
                         callback.onExpanding(root.getCode(),
                                 level1Children.stream().map(TaxonomyNode::getCode).toList());
-                        analyzeStreamingNodes(businessText, level1Children, allScores,
+                        analyzeStreamingNodes(businessText, level1Children, allScores, allReasons,
                                 allDiscrepancies, productCoverageGaps, warnings, callback, rootScore);
                     }
                 }
@@ -510,9 +513,11 @@ public class LlmService {
                     warnings, allDiscrepancies, productCoverageGaps);
         } catch (AnalysisStoppedException stopped) {
             allScores.putAll(stopped.partialScores());
+            allReasons.putAll(stopped.partialReasons());
+            allDiscrepancies.addAll(stopped.partialDiscrepancies());
             warnings.add(stopped.getMessage());
             callback.onError("PARTIAL", stopped.getMessage(),
-                    allScores, warnings, allDiscrepancies, productCoverageGaps);
+                    allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps);
         } catch (Exception e) {
             log.error("Streaming analysis failed", e);
             callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
@@ -523,6 +528,7 @@ public class LlmService {
     private void analyzeStreamingNodes(String businessText,
                                         List<TaxonomyNode> nodes,
                                         Map<String, Integer> allScores,
+                                        Map<String, String> allReasons,
                                         List<TaxonomyDiscrepancy> allDiscrepancies,
                                         List<ProductCoverageGap> productCoverageGaps,
                                         List<String> warnings,
@@ -533,6 +539,7 @@ public class LlmService {
         SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
         LlmCallDetail detail = batch.detail();
         allScores.putAll(detail.getScores());
+        if (detail.getReasons() != null) allReasons.putAll(detail.getReasons());
         if (detail.getDiscrepancy() != null) {
             allDiscrepancies.add(detail.getDiscrepancy());
         }
@@ -553,7 +560,7 @@ public class LlmService {
                 if (!children.isEmpty()) {
                     callback.onExpanding(entry.getKey(),
                             children.stream().map(TaxonomyNode::getCode).toList());
-                    analyzeStreamingNodes(businessText, children, allScores,
+                    analyzeStreamingNodes(businessText, children, allScores, allReasons,
                             allDiscrepancies, productCoverageGaps, warnings, callback,
                             entry.getValue());
                 }

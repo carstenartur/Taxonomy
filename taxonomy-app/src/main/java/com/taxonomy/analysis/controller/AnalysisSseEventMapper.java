@@ -88,6 +88,7 @@ public class AnalysisSseEventMapper {
             payload.put("errorMessage", error.errorMessage());
             payload.put("partialScores", semantics.effectiveScores());
             payload.put("rawScores", error.partialScores());
+            payload.put("reasons", error.partialReasons() == null ? Map.of() : error.partialReasons());
             payload.put("effectiveScores", semantics.effectiveScores());
             payload.put("productSuitabilityScores", semantics.productSuitabilityScores());
             payload.put("scoreDetails", semantics.scoreDetails());

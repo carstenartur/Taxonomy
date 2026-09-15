@@ -217,6 +217,15 @@ public class AnalysisProgressRegistry {
             });
             phase("SCORING", null);
         }
+        @Override public synchronized void stoppedAfterResponse(long id, LlmCallDetail detail,
+                long duration, AnalysisStoppedException.Reason reason) {
+            // The provider response is complete even when subsequent work must stop.
+            // Keep the same bounded evidence as a normal response and publish STOPPING atomically.
+            completed(id, detail, duration);
+            calls.stream().filter(call -> call.id == id).findFirst()
+                    .ifPresent(call -> call.status = "STOPPED");
+            stopped(reason);
+        }
         @Override public synchronized void failed(long id, String failure, long duration) {
             calls.stream().filter(c -> c.id == id).findFirst().ifPresent(c -> { c.status = "FAILED"; c.duration = duration; });
             phase("LLM_FAILED", null);
@@ -232,12 +241,15 @@ public class AnalysisProgressRegistry {
         }
         synchronized void finish(String resultStatus) {
             if (!active()) return;
-            status = "CANCELLED".equals(stopReason) ? "CANCELLED"
+            String terminalStatus = "CANCELLED".equals(stopReason) ? "CANCELLED"
                     : "SUCCESS".equals(resultStatus) ? "COMPLETED"
                     : "PARTIAL".equals(resultStatus) ? "PARTIAL" : "ERROR";
             phase = "FINISHED";
             finishedAt = System.currentTimeMillis();
             touch();
+            // reap() observes this volatile state without taking the run monitor.
+            // Publish the timestamp and terminal metadata before making the run inactive.
+            status = terminalStatus;
         }
         synchronized Snapshot snapshot() {
             return new Snapshot(id, status, phase, node, stopReason, sequence, startedAt, lastActivityAt,

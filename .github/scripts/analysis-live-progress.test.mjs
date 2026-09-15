@@ -262,3 +262,31 @@ test('unscoped session requests still follow the active tab while operation canc
     assert.equal(f.calls[1].options.headers['x-taxonomy-workspace-id'], 'workspace-a');
     f.monitor.stop();
 });
+
+test('cancellation before registration is retained and delivered once admission is observed', async () => {
+    let admitted = false;
+    const f = fixture(async (url, options) => response(
+        options.method === 'POST' ? snapshot(2, 'CANCELLING') : snapshot(),
+        !admitted ? options.method === 'POST' ? 404 : 202 : 200));
+    await f.monitor.cancel();
+    await f.monitor.cancel();
+    assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+    await f.step(0);
+    assert.equal(f.snapshots.length, 0);
+    admitted = true;
+    await f.step(1000);
+    assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 2);
+    await f.step(1000);
+    assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 2);
+    assert.ok(!f.unavailable.some(message => message.includes('404')));
+    f.monitor.stop();
+});
+
+test('a deferred cancellation does not write to an already completed run', async () => {
+    const f = fixture(async (url, options) => options.method === 'POST'
+        ? response({}, 404) : response(snapshot(2, 'COMPLETED')));
+    await f.monitor.cancel();
+    await f.step(0);
+    assert.equal(f.calls.filter(call => call.options.method === 'POST').length, 1);
+    assert.equal(f.timers.size, 0);
+});

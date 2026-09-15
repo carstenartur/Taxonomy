@@ -698,6 +698,7 @@
                     eventSource.close();
                     setAnalyzing(false);
                     S.lastAnalysisStatus = data.status || 'PARTIAL';
+                    if (data.reasons) Object.assign(S.currentReasons, data.reasons);
                     applyScoreEnvelope({
                         scores: data.partialScores,
                         rawScores: data.rawScores,

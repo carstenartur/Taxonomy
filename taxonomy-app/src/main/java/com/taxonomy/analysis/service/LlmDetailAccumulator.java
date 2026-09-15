@@ -57,7 +57,7 @@ final class LlmDetailAccumulator {
     }
 
     private static void append(StringBuilder target, String value) {
-        if (target.length() >= TEXT_LIMIT) return;
+        if (value.isEmpty()) return;
         if (value.length() <= TEXT_LIMIT - target.length()) {
             target.append(value);
             return;

@@ -12,6 +12,10 @@ public final class AnalysisRunControl implements AutoCloseable {
         void completed(long callId, LlmCallDetail detail, long durationMillis);
         void failed(long callId, String failure, long durationMillis);
         void stopped(AnalysisStoppedException.Reason reason);
+        default void stoppedAfterResponse(long callId, LlmCallDetail detail, long durationMillis,
+                                          AnalysisStoppedException.Reason reason) {
+            stopped(reason);
+        }
     }
 
     private static final ThreadLocal<AnalysisRunControl> CURRENT = new ThreadLocal<>();
@@ -72,6 +76,8 @@ public final class AnalysisRunControl implements AutoCloseable {
             // The final provider call may outlive cancellation, the deadline or heap reserves.
             checkpoint();
         } catch (AnalysisStoppedException stopped) {
+            if (current != null) current.observer.stoppedAfterResponse(
+                    id, detail, (System.nanoTime() - started) / 1_000_000, stopped.reason());
             throw stopped.withPartial(detail);
         }
         if (current != null) current.observer.completed(id, detail, (System.nanoTime() - started) / 1_000_000);

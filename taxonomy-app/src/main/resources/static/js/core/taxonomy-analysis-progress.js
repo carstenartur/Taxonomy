@@ -6,7 +6,7 @@
     function createMonitor(options) {
         var initial = options.context();
         var stopped = false, timer = null, request = null, sequence = 0, cancelling = false;
-        var seen = false;
+        var seen = false, cancelPending = false;
         var id = options.id;
         function current() {
             var now = options.context();
@@ -21,14 +21,19 @@
             request = null;
         }
         async function cancel() {
-            if (stopped || cancelling) return false;
+            if (stopped || cancelling || cancelPending) return false;
             cancelling = true;
             try {
                 await options.api.cancelRun(id, { workspaceId: initial.workspaceId });
                 if (current() && options.onCancelling) options.onCancelling();
             } catch (error) {
                 cancelling = false;
-                if (current()) options.onUnavailable(error.message);
+                if (error.status === 404 && !seen) {
+                    // Registration can follow the first cancel request. Keep the intent;
+                    // only a later observed RUNNING state permits this rejected write to retry.
+                    cancelPending = true;
+                    if (current() && options.onCancelling) options.onCancelling();
+                } else if (current()) options.onUnavailable(error.message);
             }
         }
         async function poll() {
@@ -51,7 +56,13 @@
                 sequence = data.sequence;
                 seen = true;
                 options.onSnapshot(data, changed);
-                if (['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) >= 0) stop();
+                if (['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) >= 0) {
+                    cancelPending = false;
+                    stop();
+                } else if (cancelPending && data.status === 'RUNNING') {
+                    cancelPending = false;
+                    await cancel();
+                }
             } catch (error) {
                 if (current()) {
                     var reason = error.status === 404 && !seen ? 'WAITING_FOR_RUN'
