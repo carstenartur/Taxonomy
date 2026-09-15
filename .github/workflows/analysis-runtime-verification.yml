@@ -1,74 +1,125 @@
-name: Analysis evidence readout (temporary, no tests rerun)
+name: Analysis terminal and cleanup contract verification (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: read
-  actions: read
+  contents: write
+concurrency:
+  group: analysis-terminal-cleanup-verification
+  cancel-in-progress: false
 jobs:
-  readout:
+  regression:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 50
+    env:
+      TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: b744aa5950fc1a32935e1896788a2964e4bedafb
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Provision canonical embedding model
+        run: bash .github/scripts/download-embedding-model.sh
+      - name: Fetch hash-verified external test builder
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,hashlib,json,os,urllib.request
+          from pathlib import Path
+          sha='146c096efcccad2cf1b80e7c0eba9c018b738407'
+          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,
+              headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(request) as response: blob=json.load(response)
+          content=base64.b64decode(blob['content'])
+          assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha
+          Path('/tmp/analysis-completion-builder.py').write_bytes(content)
+          Path('target/completion-evidence').mkdir(parents=True)
+      - name: Add counterexamples before production changes
+        run: python /tmp/analysis-completion-builder.py tests
+      - name: Execute unchanged-code Java and browser-contract counterexamples
+        shell: python
+        run: |
+          import subprocess,xml.etree.ElementTree as ET,json
+          from pathlib import Path
+          folder=Path('target/completion-evidence')
+          with (folder/'java-red.log').open('w') as log:
+              java=subprocess.run(['./mvnw','-B','-ntp','test','-Dtest=AnalysisCompletionContractTest,AnalysisTerminalContractTest','-Dsurefire.failIfNoSpecifiedTests=false'],stdout=log,stderr=subprocess.STDOUT)
+          paths=[Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.analysis.controller.AnalysisCompletionContractTest.xml'),Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.analysis.service.AnalysisTerminalContractTest.xml')]
+          reports=[ET.parse(path).getroot() for path in paths]
+          counts=[dict(report.attrib) for report in reports]
+          assert java.returncode!=0 and sum(int(report.attrib['failures']) for report in reports)>=8, counts
+          print('JAVA RED',json.dumps(counts))
+          for path in paths: (folder/('red-'+path.name)).write_bytes(path.read_bytes())
+          with (folder/'js-red.log').open('w') as log:
+              js=subprocess.run(['node','--test','.github/scripts/analysis-readiness.test.mjs','.github/scripts/analysis-live-progress.test.mjs'],stdout=log,stderr=subprocess.STDOUT)
+          assert js.returncode==1,(folder/'js-red.log').read_text()[-3000:]
+          print((folder/'js-red.log').read_text()[-700:])
+      - name: Apply the consolidated correction
+        run: |
+          python /tmp/analysis-completion-builder.py fix
+          git diff --check
+      - name: Verify all affected server and client regression contracts
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp test '-Dtest=Analysis*Test,LlmService*Test,ExplicitCentralAnalysisAdmissionTest,ProjectRequirementAnalysisAsyncDispatchTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/completion-evidence/java-green.log
+          node --test .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-live-progress.test.mjs .github/scripts/product-score-streaming.test.mjs 2>&1 | tee target/completion-evidence/js-green.log
+      - name: Every reactor unit test
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp test -DexcludedGroups=real-llm 2>&1 | tee target/completion-evidence/all-unit.log
+      - name: Complete Maven-owned UI contracts and bootstrap
+        run: |
+          set -o pipefail
+          ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee target/completion-evidence/ui-contracts.log
+          node .github/scripts/test-taxonomy-base-path.mjs 2>&1 | tee target/completion-evidence/basepath.log
+      - name: Publish tested source objects without changing product refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python /tmp/analysis-completion-builder.py publish
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: analysis-completion-contract-evidence
+          path: |
+            target/completion-evidence
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
+  manifest:
+    needs: regression
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
-          name: analysis-final-regression-evidence
-          run-id: 35013367189
-          github-token: ${{ github.token }}
+          name: analysis-completion-contract-evidence
           path: evidence
-      - name: Validate frozen source and summarize actual completed reports
+      - name: Verify source archive and report exact tested identities
         shell: python
         run: |
-          import collections, hashlib, json, re, xml.etree.ElementTree as ET, zipfile
+          import hashlib,json,zipfile,collections,xml.etree.ElementTree as ET
           from pathlib import Path
-          root = Path('evidence')
-          folder = root / 'target/final-analysis-evidence'
-          manifest = json.loads((folder / 'manifest.json').read_text())
-          assert manifest['base'] == '0e8697371f8173716d7240585c33d42714c27ebc'
-          assert manifest['tree'] == '06f4f53fdee304a07182da3ba7d6643eaf54b2ff'
-          assert manifest['verificationRun'] == '35013367189'
-          with zipfile.ZipFile(folder / 'tested-sources.zip') as archive:
-              assert set(archive.namelist()) == set(manifest['files'])
-              for name, expected in manifest['files'].items():
-                  content = archive.read(name)
-                  actual = hashlib.sha1(b'blob ' + str(len(content)).encode() + b'\0' + content).hexdigest()
-                  assert actual == expected, name
-          totals = collections.Counter()
-          modules = collections.defaultdict(collections.Counter)
-          selected = []
-          for path in sorted(root.rglob('TEST-*.xml')):
-              assert 'surefire-reports' in str(path), path
-              suite = ET.parse(path).getroot()
-              assert suite.tag == 'testsuite', (path, suite.tag)
-              counts = {key: int(suite.attrib.get(key, 0)) for key in ('tests', 'failures', 'errors', 'skipped')}
-              totals.update(counts)
-              totals['suites'] += 1
-              module = str(path.relative_to(root)).split('/')[0]
-              modules[module].update(counts)
-              modules[module]['suites'] += 1
-              if suite.attrib.get('name', '').endswith(('AnalysisApiControllerTest', 'ExplicitCentralAnalysisAdmissionTest', 'LlmServiceBranchCoverageTest')):
-                  selected.append({'suite': suite.attrib['name'], **counts,
-                      'cases': [case.attrib.get('name') for case in suite.findall('testcase')]})
-          assert totals['tests'] > 4000 and totals['failures'] == 0 and totals['errors'] == 0, totals
-          assert any(item['suite'].endswith('ExplicitCentralAnalysisAdmissionTest') for item in selected)
-          js = (folder / 'js-green.log').read_text()
-          node_counts = {key: int(re.findall(r'^# ' + key + r' (\d+)$', js, re.M)[-1])
-              for key in ('tests', 'pass', 'fail', 'skipped')}
-          assert node_counts['fail'] == 0 and node_counts['pass'] > 50, node_counts
-          assert '# fail 6\n' in (folder / 'js-red.log').read_text()
-          for name in ('java-focused-green.log', 'unit-green.log', 'ui-contracts.log'):
-              assert 'BUILD SUCCESS' in (folder / name).read_text(), name
-          summary = {'sourceCommit': 'b744aa5950fc1a32935e1896788a2964e4bedafb',
-              'sourceTree': manifest['tree'], 'verificationRun': manifest['verificationRun'],
-              'sourceBlobsVerified': len(manifest['files']), 'unitTests': dict(totals),
-              'modules': {key: dict(value) for key, value in modules.items()},
-              'combinedFocusedNodeRun': node_counts, 'selectedRegressionReports': selected,
-              'scope': 'Readout of completed preflight evidence, not a new test run or full integration acceptance'}
-          Path('summary.json').write_text(json.dumps(summary, indent=2) + '\n')
-          print(json.dumps(summary, indent=2))
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        with:
-          name: analysis-preflight-readout-b744aa59
-          path: summary.json
-          retention-days: 7
-          if-no-files-found: error
+          folder=Path('evidence/target/completion-evidence')
+          manifest=json.loads((folder/'manifest.json').read_text())
+          with zipfile.ZipFile(folder/'tested-sources.zip') as archive:
+              for path,sha in manifest['files'].items():
+                  content=archive.read(path)
+                  assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha,path
+          total=collections.Counter()
+          for path in Path('evidence').rglob('TEST-*.xml'):
+              suite=ET.parse(path).getroot()
+              total.update({key:int(suite.attrib.get(key,0)) for key in ('tests','failures','errors','skipped')})
+              total['suites']+=1
+          assert total['failures']==0 and total['errors']==0,total
+          print('UNIT',dict(total))
+          print(json.dumps(manifest,indent=2))
