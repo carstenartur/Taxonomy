@@ -1,29 +1,75 @@
-name: Analysis exact source snapshot (temporary)
+name: Analysis remaining review verification (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  snapshot:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: 8620c8856f8b417c688b72aa522591ae73219c29
           persist-credentials: false
-      - name: Export exact tracked source only (not a test result)
+          fetch-depth: 0
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Apply exact candidate without changing product refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
         run: |
-          test "$(git rev-parse HEAD)" = 8620c8856f8b417c688b72aa522591ae73219c29
-          test -z "$(git status --porcelain)"
-          git archive --format=zip HEAD -o /tmp/taxonomy-source-8620c885.zip
-          git rev-parse HEAD HEAD^{tree} > /tmp/source-identity.txt
+          import base64,gzip,hashlib,json,os,subprocess,urllib.request
+          from pathlib import Path
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='8620c8856f8b417c688b72aa522591ae73219c29'
+          assert not subprocess.check_output(['git','status','--porcelain'],text=True).strip()
+          sha='dbe0a5545124d5cf077e36cc19c0b136abfbf976'
+          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(request) as response: content=base64.b64decode(json.load(response)['content'])
+          assert hashlib.sha1(('blob '+str(len(content))+'\0').encode()+content).hexdigest()==sha
+          patch=gzip.decompress(base64.b64decode(content))
+          assert hashlib.sha256(patch).hexdigest()=='5e23f1cac594d81d0102199a4c1016ea1193f57a9d03715150589cd99c2d4878'
+          subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
+          subprocess.run(['git','apply','--index','-'],input=patch,check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()=='ac67d6a1ed4c1a0ee0719045661827b1083ec592'
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==7
+          out=Path('target/remaining-review-evidence');out.mkdir(parents=True,exist_ok=True)
+          (out/'patch.diff').write_bytes(patch)
+          files={path:subprocess.check_output(['git','hash-object',path],text=True).strip() for path in paths}
+          (out/'manifest.json').write_text(json.dumps({'base':'8620c8856f8b417c688b72aa522591ae73219c29','tree':'ac67d6a1ed4c1a0ee0719045661827b1083ec592','files':files},indent=2)+'\n')
+      - name: Execute Maven analysis and actual MVC regressions
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp test '-Dtest=Analysis*Test,Gateway*Test,GeminiGatewayTest,OpenAiCompatibleGatewayTest,LlmTranscriptBoundsTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/remaining-review-evidence/maven.log
+      - name: Execute real startup command and bootstrap contract
+        run: |
+          set -o pipefail
+          npm --prefix .github run test:analysis-session-startup 2>&1 | tee target/remaining-review-evidence/node.log
+          node .github/scripts/test-taxonomy-base-path.mjs 2>&1 | tee target/remaining-review-evidence/basepath.log
+      - name: Publish tested blobs only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,json,os,urllib.request,zipfile
+          from pathlib import Path
+          manifest=json.loads(Path('target/remaining-review-evidence/manifest.json').read_text())
+          with zipfile.ZipFile('target/remaining-review-evidence/tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for path,expected in manifest['files'].items():
+                  content=Path(path).read_bytes()
+                  request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',data=json.dumps({'content':base64.b64encode(content).decode(),'encoding':'base64'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
+                  with urllib.request.urlopen(request) as response: assert json.load(response)['sha']==expected,path
+                  archive.writestr(path,content)
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
-          name: taxonomy-exact-source-8620c885
+          name: analysis-remaining-review-evidence
           path: |
-            /tmp/taxonomy-source-8620c885.zip
-            /tmp/source-identity.txt
-          retention-days: 1
+            target/remaining-review-evidence
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
           if-no-files-found: error
