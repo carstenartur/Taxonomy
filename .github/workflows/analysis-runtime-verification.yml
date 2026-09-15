@@ -22,6 +22,7 @@ jobs:
           git rev-parse HEAD HEAD^{tree}
           git diff --check
           mkdir -p target
+          sed -i 's/if (cancelling) return false;/if (cancelling) return;/' .github/scripts/workbench-analysis-review.py
           python .github/scripts/workbench-analysis-review.py tests
           set +e
           node --test .github/scripts/analysis-live-progress.test.mjs > target/analysis-js-red.log 2>&1
@@ -31,7 +32,8 @@ jobs:
           grep -q '# fail 2' target/analysis-js-red.log
       - name: Apply reviewed corrections
         run: |
-          python .github/scripts/workbench-analysis-review.py fix
+          set -o pipefail
+          python .github/scripts/workbench-analysis-review.py fix 2>&1 | tee target/analysis-patch.log
           git diff --check
       - name: Real call-boundary, security and existing analysis regressions
         run: |
