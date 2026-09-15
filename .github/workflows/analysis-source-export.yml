@@ -1,29 +1,82 @@
-name: Exact analysis source export (temporary)
+name: Analysis transport preflight (temporary)
 on:
   push:
     branches: [verify/1067-transport-boundaries-20260915]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  export:
+  preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: 0e8697371f8173716d7240585c33d42714c27ebc
           fetch-depth: 0
           persist-credentials: false
-      - name: Export exact source and Git ancestry without running or changing the application
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Prepare hash-pinned external helper and Node runtime
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           test "$(git rev-parse HEAD)" = 0e8697371f8173716d7240585c33d42714c27ebc
-          git branch export-analysis-source HEAD
-          git branch export-analysis-base 29b9ef036882f5dbfc62924d9aca63038c098d4e
-          git bundle create /tmp/taxonomy-analysis-source.bundle export-analysis-source export-analysis-base
-          git bundle verify /tmp/taxonomy-analysis-source.bundle
+          mkdir -p target/transport-review
+          curl --fail --silent --show-error -H "Authorization: Bearer $GH_TOKEN" -H 'Accept: application/vnd.github+json' https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/9dc7561d58da7ffee3e853daf077abd9fc5c5aa4 | python -c 'import base64,json,sys; open("/tmp/analysis-transport-review.py","wb").write(base64.b64decode(json.load(sys.stdin)["content"]))'
+          test "$(git hash-object /tmp/analysis-transport-review.py)" = 9dc7561d58da7ffee3e853daf077abd9fc5c5aa4
+          python -m py_compile /tmp/analysis-transport-review.py
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml generate-resources -Pcontracts
+          python /tmp/analysis-transport-review.py tests
+      - name: Reproduce both defects before correcting production code
+        run: |
+          set +e
+          .cache/ui-frontend/node/node --test .github/scripts/analysis-readiness.test.mjs > target/transport-review/js-red.log 2>&1
+          js_result=$?
+          ./mvnw -B -ntp test -Dtest=AnalysisStreamAdmissionContractTest -Dsurefire.failIfNoSpecifiedTests=false > target/transport-review/java-red.log 2>&1
+          java_result=$?
+          set -e
+          cat target/transport-review/js-red.log
+          tail -n 90 target/transport-review/java-red.log
+          test "$js_result" -eq 1
+          test "$java_result" -eq 1
+          grep -q '# fail 4' target/transport-review/js-red.log
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          report = Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.analysis.controller.AnalysisStreamAdmissionContractTest.xml')
+          root = E.parse(report).getroot()
+          failures = [case for case in root.findall('testcase') if case.find('failure') is not None]
+          assert len(failures) == 3, [(c.attrib, c.find('failure').text) for c in failures]
+          assert all('transportDoesNotRaceTheConfiguredOperationDeadline' in c.attrib['name'] for c in failures)
+          assert int(root.attrib['errors']) == 0
+          Path('target/transport-review/java-red.xml').write_bytes(report.read_bytes())
+          PY
+      - name: Apply both source corrections and execute related Java regressions
+        run: |
+          set -euo pipefail
+          python /tmp/analysis-transport-review.py fix
+          git diff --check
+          ./mvnw -B -ntp test '-Dtest=Analysis*Test,LlmService*Test,LlmTranscriptBoundsTest,Gateway*Test,ProjectRequirementAnalysisAsyncDispatchTest,WorkspaceContextResolverRequestPinningTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/transport-review/java-green.log
+      - name: Execute complete Maven-owned UI contracts and strict bootstrap contract
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml test -Pcontracts 2>&1 | tee target/transport-review/ui-contracts-green.log
+          .cache/ui-frontend/node/node --test .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-session-startup.test.mjs 2>&1 | tee target/transport-review/js-green.log
+          .cache/ui-frontend/node/node .github/scripts/test-taxonomy-base-path.mjs
+      - name: Publish only exact tested source blobs, never refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python /tmp/analysis-transport-review.py publish | tee target/transport-review/manifest.log
+          git diff --stat
+          git diff --check
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
-          name: taxonomy-analysis-source
-          path: /tmp/taxonomy-analysis-source.bundle
-          retention-days: 1
+          name: analysis-transport-preflight
+          path: |
+            target/transport-review/**
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
           if-no-files-found: error
