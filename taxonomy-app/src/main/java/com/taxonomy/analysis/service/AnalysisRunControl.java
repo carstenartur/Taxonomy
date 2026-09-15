@@ -53,18 +53,29 @@ public final class AnalysisRunControl implements AutoCloseable {
 
     public static LlmCallDetail call(String provider, String node, Supplier<LlmCallDetail> operation) {
         checkpoint();
-        AnalysisRunControl current = CURRENT.get();
+        var current = CURRENT.get();
         long id = current == null ? 0 : current.observer.started(provider, node);
         long started = System.nanoTime();
+        LlmCallDetail detail;
         try {
-            LlmCallDetail detail = operation.get();
-            if (current != null) current.observer.completed(id, detail, (System.nanoTime() - started) / 1_000_000);
-            return detail;
+            detail = operation.get();
+        } catch (AnalysisStoppedException stopped) {
+            // A cooperative stop is not a provider failure, including stops inside retries.
+            if (current != null) current.observer.stopped(stopped.reason());
+            throw stopped;
         } catch (RuntimeException failure) {
             if (current != null) current.observer.failed(id, failure.getClass().getSimpleName(),
                     (System.nanoTime() - started) / 1_000_000);
             throw failure;
         }
+        try {
+            // The final provider call may outlive cancellation, the deadline or heap reserves.
+            checkpoint();
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped.withPartial(detail);
+        }
+        if (current != null) current.observer.completed(id, detail, (System.nanoTime() - started) / 1_000_000);
+        return detail;
     }
 
     public static void pause(String phase, long millis) {

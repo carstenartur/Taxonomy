@@ -159,6 +159,7 @@ public class AnalysisProgressRegistry {
 
     private static final class Call {
         final long id, startedAt;
+        final long startedNanos = System.nanoTime();
         final String provider, node;
         String status = "STARTED", prompt = "", response = "";
         long duration;
@@ -222,6 +223,11 @@ public class AnalysisProgressRegistry {
         }
         @Override public synchronized void stopped(AnalysisStoppedException.Reason reason) {
             stopReason = reason.name();
+            long now = System.nanoTime();
+            calls.stream().filter(call -> "STARTED".equals(call.status)).forEach(call -> {
+                call.status = "STOPPED";
+                call.duration = TimeUnit.NANOSECONDS.toMillis(Math.max(0, now - call.startedNanos));
+            });
             phase("STOPPING", null);
         }
         synchronized void finish(String resultStatus) {
