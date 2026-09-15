@@ -1,77 +1,30 @@
-name: Publish verified terminal candidate sources (temporary)
+name: Export exact analysis review source (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  publish:
+  source:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: b744aa5950fc1a32935e1896788a2964e4bedafb
+          ref: 7bada07047ad49f2f15428b3236111e535145483
           persist-credentials: false
-          fetch-depth: 0
-      - name: Reproduce and verify exact already-tested sources
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
+          fetch-depth: 1
+      - name: Export immutable source without build output or credentials
         run: |
-          import base64,hashlib,json,os,subprocess,urllib.request,zipfile
-          from pathlib import Path
-          builders={'/tmp/analysis-completion-base.py':'146c096efcccad2cf1b80e7c0eba9c018b738407',
-                    '/tmp/prepare-completion-builder.py':'0939234a647b1f87a4ff5494cadec0643e156d3a',
-                    '/tmp/analysis-completion-builder.py':'f1961e8cfc2d520364f138da287c92b242c49936'}
-          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
-          api='https://api.github.com/repos/carstenartur/Taxonomy/git/blobs'
-          for path,sha in builders.items():
-              with urllib.request.urlopen(urllib.request.Request(api+'/'+sha,headers=headers)) as response: blob=json.load(response)
-              content=base64.b64decode(blob['content'])
-              assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha
-              Path(path).write_bytes(content)
-          subprocess.run(['python','/tmp/analysis-completion-builder.py','tests'],check=True)
-          subprocess.run(['python','/tmp/analysis-completion-builder.py','fix'],check=True)
-          expected={
-            '.github/scripts/analysis-live-progress.test.mjs':'f05d18ad74da8df5c0f4483db68e58d5358bd3df',
-            '.github/scripts/analysis-readiness.test.mjs':'18e5b8acb0996e3f965c3249f834b913332db628',
-            'taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java':'906f7fbdc6dbd232e0f2d324bc471a39e1e48735',
-            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisProgressRegistry.java':'8efc59f688a7f7764ca54e6c50ed4d039539bb1a',
-            'taxonomy-app/src/main/java/com/taxonomy/analysis/usecase/AnalyzeRequirementUseCase.java':'a0b16b54f1a0f0e6aeabe4a5c2137ac319e4afce',
-            'taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js':'680a0588116a4d944ae8b9631ebc971609aaeb13',
-            'taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js':'13e10d1fec2a5a4b73436f9b1909f3d8cd073217',
-            'taxonomy-app/src/test/java/com/taxonomy/analysis/controller/AnalysisCompletionContractTest.java':'9463163dd50d2848910237c690b74fbaf5e38705',
-            'taxonomy-app/src/test/java/com/taxonomy/analysis/controller/AnalysisStreamAdmissionContractTest.java':'06626c4300d1c185b15ba5bf4c98405c93ef5144',
-            'taxonomy-app/src/test/java/com/taxonomy/analysis/service/AnalysisTerminalContractTest.java':'c2eba790699062c0f9949880716168f2deed2a7d'}
-          changed={row[3:] for row in subprocess.check_output(['git','status','--porcelain','--untracked-files=all'],text=True).splitlines()}
-          assert changed==set(expected),changed
-          for path,sha in expected.items():
-              content=Path(path).read_bytes()
-              assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==sha,path
-          subprocess.run(['git','diff','--check'],check=True)
-          subprocess.run(['git','add','--',*expected],check=True)
-          tree=subprocess.check_output(['git','write-tree'],text=True).strip()
-          assert tree=='f1ff619755ed2ee368183ba9935b58c06f714efd',tree
-          out=Path('/tmp/terminal-published-sources');out.mkdir()
-          with zipfile.ZipFile(out/'tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
-              for path,sha in expected.items():
-                  content=Path(path).read_bytes()
-                  request=urllib.request.Request(api,data=json.dumps({'content':base64.b64encode(content).decode(),'encoding':'base64'}).encode(),
-                      headers={**headers,'Content-Type':'application/json'},method='POST')
-                  with urllib.request.urlopen(request) as response: assert json.load(response)['sha']==sha
-                  archive.writestr(path,content)
-          (out/'candidate.patch').write_bytes(subprocess.check_output(['git','diff','--cached','--full-index','--binary','HEAD']))
-          manifest={'base':'b744aa5950fc1a32935e1896788a2964e4bedafb','tree':tree,'files':expected,
-                    'executedTestRun':35021444502,'testEvidenceArtifact':10418695689,
-                    'testEvidenceSha256':'e1f9b9b22e74bccd83f7c74c9e58621a4dce8959fca1a9ba4f988988a983f81658',
-                    'testResult':'4789 reactor unit cases in 557 suites passed; affected 88 JavaScript cases and complete UI contracts passed. That run failed only while packaging its source manifest.',
-                    'builders':builders,'publicationRun':os.environ['GITHUB_RUN_ID']}
-          (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
-          print(json.dumps(manifest,indent=2))
+          test "$(git rev-parse HEAD)" = 7bada07047ad49f2f15428b3236111e535145483
+          test "$(git rev-parse HEAD^{tree})" = f1ff619755ed2ee368183ba9935b58c06f714efd
+          mkdir -p /tmp/analysis-source
+          git archive --format=tar HEAD > /tmp/analysis-source/source.tar
+          git rev-parse HEAD HEAD^{tree} > /tmp/analysis-source/identity.txt
+          sha256sum /tmp/analysis-source/source.tar > /tmp/analysis-source/source.sha256
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: verified-terminal-candidate-sources
-          path: /tmp/terminal-published-sources
+          name: analysis-source-7bada070
+          path: /tmp/analysis-source
           retention-days: 7
           if-no-files-found: error
