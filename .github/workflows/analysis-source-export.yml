@@ -1,0 +1,29 @@
+name: Exact analysis source export (temporary)
+on:
+  push:
+    branches: [verify/1067-transport-boundaries-20260915]
+permissions:
+  contents: read
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 0e8697371f8173716d7240585c33d42714c27ebc
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export exact source and Git ancestry without running or changing the application
+        run: |
+          test "$(git rev-parse HEAD)" = 0e8697371f8173716d7240585c33d42714c27ebc
+          git branch export-analysis-source HEAD
+          git branch export-analysis-base 29b9ef036882f5dbfc62924d9aca63038c098d4e
+          git bundle create /tmp/taxonomy-analysis-source.bundle export-analysis-source export-analysis-base
+          git bundle verify /tmp/taxonomy-analysis-source.bundle
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: taxonomy-analysis-source
+          path: /tmp/taxonomy-analysis-source.bundle
+          retention-days: 1
+          if-no-files-found: error
