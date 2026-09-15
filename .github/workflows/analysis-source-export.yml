@@ -31,13 +31,13 @@ jobs:
       - name: Reproduce both defects before correcting production code
         run: |
           set +e
-          .cache/ui-frontend/node/node --test .github/scripts/analysis-readiness.test.mjs > target/transport-review/js-red.log 2>&1
+          .cache/ui-frontend/node/node --test --test-reporter=tap .github/scripts/analysis-readiness.test.mjs > target/transport-review/js-red.log 2>&1
           js_result=$?
           ./mvnw -B -ntp test -Dtest=AnalysisStreamAdmissionContractTest -Dsurefire.failIfNoSpecifiedTests=false > target/transport-review/java-red.log 2>&1
           java_result=$?
           set -e
-          cat target/transport-review/js-red.log
-          tail -n 90 target/transport-review/java-red.log
+          tail -n 12 target/transport-review/js-red.log
+          tail -n 50 target/transport-review/java-red.log
           test "$js_result" -eq 1
           test "$java_result" -eq 1
           grep -q '# fail 4' target/transport-review/js-red.log
@@ -51,18 +51,40 @@ jobs:
           assert all('transportDoesNotRaceTheConfiguredOperationDeadline' in c.attrib['name'] for c in failures)
           assert int(root.attrib['errors']) == 0
           Path('target/transport-review/java-red.xml').write_bytes(report.read_bytes())
+          print('Confirmed RED: three deadline assertions, four unknown-provider-key assertions; all controls pass.')
           PY
       - name: Apply both source corrections and execute related Java regressions
         run: |
           set -euo pipefail
           python /tmp/analysis-transport-review.py fix
           git diff --check
-          ./mvnw -B -ntp test '-Dtest=Analysis*Test,LlmService*Test,LlmTranscriptBoundsTest,Gateway*Test,ProjectRequirementAnalysisAsyncDispatchTest,WorkspaceContextResolverRequestPinningTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/transport-review/java-green.log
+          ./mvnw -B -ntp test '-Dtest=Analysis*Test,LlmService*Test,LlmTranscriptBoundsTest,Gateway*Test,ProjectRequirementAnalysisAsyncDispatchTest,WorkspaceContextResolverRequestPinningTest' -Dsurefire.failIfNoSpecifiedTests=false > target/transport-review/java-green.log 2>&1 || { tail -n 150 target/transport-review/java-green.log; exit 1; }
+          tail -n 35 target/transport-review/java-green.log
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as E
+          totals = {key: 0 for key in ['tests','failures','errors','skipped']}
+          suites = 0
+          reason_case = False
+          for p in Path('.').glob('**/target/surefire-reports/TEST-*.xml'):
+              r = E.parse(p).getroot()
+              suites += 1
+              for key in totals: totals[key] += int(r.attrib.get(key, 0))
+              for case in r.findall('testcase'):
+                  if case.attrib.get('name') == 'ordinaryStreamingFailureRetainsReasonsFromCompletedRoots':
+                      assert case.find('failure') is None and case.find('error') is None and case.find('skipped') is None
+                      reason_case = True
+          assert reason_case, 'Existing ordinary streaming failure counterexample must actually execute'
+          assert totals['tests'] > 0 and totals['failures'] == totals['errors'] == totals['skipped'] == 0
+          print('JAVA_GREEN', suites, totals, 'ordinaryStreamingFailureRetainsReasonsFromCompletedRoots: PASS')
+          PY
       - name: Execute complete Maven-owned UI contracts and strict bootstrap contract
         run: |
           set -euo pipefail
-          ./mvnw -B -ntp -f .github/ui-verification-pom.xml test -Pcontracts 2>&1 | tee target/transport-review/ui-contracts-green.log
-          .cache/ui-frontend/node/node --test .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-session-startup.test.mjs 2>&1 | tee target/transport-review/js-green.log
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml test -Pcontracts > target/transport-review/ui-contracts-green.log 2>&1 || { tail -n 150 target/transport-review/ui-contracts-green.log; exit 1; }
+          tail -n 20 target/transport-review/ui-contracts-green.log
+          .cache/ui-frontend/node/node --test --test-reporter=tap .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-session-startup.test.mjs > target/transport-review/js-green.log 2>&1 || { cat target/transport-review/js-green.log; exit 1; }
+          tail -n 10 target/transport-review/js-green.log
           .cache/ui-frontend/node/node .github/scripts/test-taxonomy-base-path.mjs
       - name: Publish only exact tested source blobs, never refs
         env:
