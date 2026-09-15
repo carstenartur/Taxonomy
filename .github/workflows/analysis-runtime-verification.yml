@@ -1,4 +1,4 @@
-name: Analysis source snapshot (temporary)
+name: Analysis test library snapshot (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
@@ -13,18 +13,24 @@ jobs:
         with:
           ref: 795cb969651f48762a47537646a4c984f39f5934
           persist-credentials: false
-          fetch-depth: 8
-      - name: Archive only clean versioned source and its baseline
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Archive only cached test library jars
+        shell: python
         run: |
-          test "$(git rev-parse HEAD^{tree})" = e84d1063312f341c2b1066912fd34255d1c000eb
-          mkdir -p /tmp/taxonomy-source
-          git archive --format=tar HEAD | gzip > /tmp/taxonomy-source/head.tar.gz
-          git archive --format=tar 29b9ef036882f5dbfc62924d9aca63038c098d4e | gzip > /tmp/taxonomy-source/base.tar.gz
-          git rev-parse HEAD HEAD^{tree} > /tmp/taxonomy-source/identity.txt
-          sha256sum /tmp/taxonomy-source/*.tar.gz > /tmp/taxonomy-source/SHA256SUMS
+          from pathlib import Path
+          import zipfile
+          root = Path.home() / '.m2/repository'
+          groups = ['org/junit', 'org/mockito', 'org/assertj', 'org/opentest4j', 'org/apiguardian', 'net/bytebuddy', 'org/objenesis', 'org/springframework/spring-test', 'org/hamcrest', 'org/awaitility', 'org/apache/maven/surefire']
+          jars = sorted({p for group in groups for p in (root / group).rglob('*.jar')})
+          assert jars, 'Test dependencies were not restored'
+          with zipfile.ZipFile('/tmp/analysis-test-libraries.zip', 'w', zipfile.ZIP_DEFLATED) as archive:
+              for path in jars:
+                  archive.write(path, path.relative_to(root))
+                  print(path.relative_to(root))
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: analysis-source-795cb969
-          path: /tmp/taxonomy-source
+          name: analysis-test-libraries
+          path: /tmp/analysis-test-libraries.zip
           retention-days: 1
           if-no-files-found: error
