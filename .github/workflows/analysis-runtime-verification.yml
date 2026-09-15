@@ -1,20 +1,23 @@
-name: Central scope admission verification (temporary)
+name: Consolidated final analysis regression verification (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
   contents: write
+concurrency:
+  group: analysis-consolidated-verification
+  cancel-in-progress: false
 jobs:
   preflight:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 45
     env:
       TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
       TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 0e8697371f8173716d7240585c33d42714c27ebc
+          ref: 73659792f59a1f2cd1d6c6648b213bea3660076c
           persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
@@ -24,80 +27,232 @@ jobs:
         with:
           path: models/bge-small-en-v1.5
           key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
-      - name: Verify or provision the same pinned model as canonical CI
+      - name: Verify or provision canonical model
         run: bash .github/scripts/download-embedding-model.sh
-      - name: Verify exact predecessor and install regression tests only
+      - name: Add regression tests before changing production behavior
+        shell: python
+        run: |
+          import subprocess
+          from pathlib import Path
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip() == '73659792f59a1f2cd1d6c6648b213bea3660076c'
+          assert not Path('.github/workflows/analysis-runtime-verification.yml').exists()
+          Path('target/final-analysis-evidence').mkdir(parents=True)
+          test=Path('.github/scripts/analysis-readiness.test.mjs')
+          text=test.read_text()
+          old='clearStatus() {},'
+          assert text.count(old)==1
+          text=text.replace(old,'clearStatus() {}, ensureNodeRendered() {},')
+          old="const document = { getElementById:"
+          assert text.count(old)==1
+          text=text.replace(old,"const document = { querySelector: () => null, getElementById:")
+          old='const sandbox = { window, document, console:'
+          assert text.count(old)==1
+          text=text.replace(old,'const sandbox = { window, document, CSS: { escape: value => value }, console:')
+          text += '''
+
+          // Use actual catalogue identities and roles, never a fabricated taxonomy.
+          const liveCatalogue = JSON.parse(readFileSync(new URL(
+              '../../taxonomy-app/src/main/resources/data/nato-taxonomy.json', import.meta.url), 'utf8'));
+          const liveProduct = liveCatalogue.nodePatches.find(node => node.analysisRole === 'PRODUCT'
+              && liveCatalogue.nodePatches.some(parent => parent.code === node.parentCode));
+          assert.ok(liveProduct, 'Expected a real product with its real family in the catalogue');
+          const liveFamily = liveCatalogue.nodePatches.find(node => node.code === liveProduct.parentCode);
+          const unresolvedProviderKey = '__unresolved_provider_key__';
+
+          for (const view of ['list', 'tabs', 'tree', 'sunburst', 'graph']) {
+              test(`live ${view} scores preserve unresolved provider evidence without interrupting known scores`, () => {
+                  const f = fixture(); f.progress();
+                  f.state.taxonomyData = [liveFamily, liveProduct];
+                  f.state.currentView = view;
+                  f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+                  f.window.TaxonomyScoring.runAnalysis();
+                  const receive = f.observations[0][1];
+                  assert.doesNotThrow(() => receive({ rawScores: {
+                      [unresolvedProviderKey]: 90, [liveFamily.code]: 40, [liveProduct.code]: 80
+                  } }));
+                  assert.equal(f.state.currentRawScores[unresolvedProviderKey], 90);
+                  assert.equal(f.state.currentScores[liveProduct.code], 32);
+                  assert.ok(f.state.currentScoreSemanticsWarnings.some(w => w.includes(unresolvedProviderKey)));
+                  assert.doesNotThrow(() => receive({ rawScores: {
+                      [liveFamily.code]: 50, [liveProduct.code]: 70, [unresolvedProviderKey]: 5
+                  } }));
+                  assert.equal(f.state.currentScores[liveProduct.code], 35);
+                  assert.equal(f.state.currentRawScores[unresolvedProviderKey], 5);
+                  assert.equal(f.calls.length, 1, 'Status updates must not restart analysis');
+              });
+          }
+
+          test('expert-entered raw scores still reject unknown catalogue identities', () => {
+              const f = fixture(); f.state.taxonomyData = [liveFamily, liveProduct];
+              assert.throws(() => f.window.TaxonomyScoring.applyLocalRawScores(
+                  { [unresolvedProviderKey]: 90 }, true), /Cannot resolve taxonomy score/);
+          });
+          '''
+          test.write_text(text)
+          test=Path('taxonomy-app/src/test/java/com/taxonomy/analysis/controller/AnalysisApiControllerTest.java')
+          text=test.read_text()
+          old='assertThat(emitter.getTimeout()).isEqualTo(1_800_000L);'
+          assert text.count(old)==1
+          text=text.replace(old,'assertThat(emitter.getTimeout()).isZero();')
+          marker='    private void assertValidOperationId(ResponseEntity<?> response) {'
+          assert text.count(marker)==1
+          added='''
+              @org.junit.jupiter.params.ParameterizedTest
+              @org.junit.jupiter.params.provider.ValueSource(longs = {60, 7200})
+              void queuedStreamKeepsTransportOpenUntilItsConfiguredOperationDeadline(long seconds) throws Exception {
+                  var queued = new java.util.concurrent.atomic.AtomicReference<Runnable>();
+                  var executor = org.mockito.Mockito.mock(ExecutorService.class);
+                  doAnswer(invocation -> {
+                      queued.set(invocation.getArgument(0));
+                      return null;
+                  }).when(executor).execute(any());
+                  var registry = new com.taxonomy.analysis.service.AnalysisProgressRegistry(
+                          new org.springframework.mock.env.MockEnvironment().withProperty(
+                                  "taxonomy.analysis.runtime.maximum-duration-seconds", Long.toString(seconds)));
+                  var candidate = new AnalysisApiController(taxonomyService, executor, new ObjectMapper(),
+                          analyzeRequirementUseCase, streamRequirementAnalysisUseCase,
+                          analyzeNodeChildrenUseCase, justifyLeafUseCase, new AnalysisSseEventMapper(),
+                          repositoryStateService, workspaceResolver, messageSource);
+                  org.springframework.test.util.ReflectionTestUtils.setField(candidate, "analysisProgressRegistry", registry);
+                  var mvc = MockMvcBuilders.standaloneSetup(candidate).build();
+                  String id = UUID.randomUUID().toString();
+                  var pending = mvc.perform(get("/api/analyze-stream")
+                                  .param("businessText", "Need resilient communications")
+                                  .header(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER, id))
+                          .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.request().asyncStarted())
+                          .andReturn();
+                  assertThat(pending.getRequest().getAsyncContext().getTimeout()).isZero();
+                  // The operation deadline starts at reservation, including time in the executor queue.
+                  var runs = (Map<?, ?>) org.springframework.test.util.ReflectionTestUtils.getField(registry, "runs");
+                  Object run = runs.get(id);
+                  Object guard = org.springframework.test.util.ReflectionTestUtils.getField(run, "guard");
+                  long started = (Long) org.springframework.test.util.ReflectionTestUtils.getField(guard, "started");
+                  org.springframework.test.util.ReflectionTestUtils.setField(guard, "clock",
+                          (java.util.function.LongSupplier) () -> started + seconds * 1000);
+                  queued.get().run();
+                  mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch(pending))
+                          .andExpect(status().isOk())
+                          .andExpect(content().string(org.hamcrest.Matchers.containsString("TIME_LIMIT")))
+                          .andExpect(content().string(org.hamcrest.Matchers.containsString("PARTIAL")));
+                  assertThat(registry.snapshot(id, "alice", new WorkspaceContext("alice", "alice-ws", "draft"))
+                          .stopReason()).isEqualTo("TIME_LIMIT");
+                  verifyNoInteractions(streamRequirementAnalysisUseCase);
+              }
+
+          '''
+          test.write_text(text.replace(marker,added+marker))
+      - name: Reproduce both failures against unchanged production behavior
+        shell: python
+        run: |
+          import subprocess,xml.etree.ElementTree as ET
+          from pathlib import Path
+          out=Path('target/final-analysis-evidence')
+          with (out/'java-red.log').open('w') as log:
+              result=subprocess.run(['./mvnw','-B','-ntp','test','-Dtest=AnalysisApiControllerTest','-Dsurefire.failIfNoSpecifiedTests=false'],stdout=log,stderr=subprocess.STDOUT)
+          report=ET.parse('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.analysis.controller.AnalysisApiControllerTest.xml').getroot()
+          assert result.returncode != 0 and int(report.attrib['failures'])==3 and int(report.attrib['errors'])==0, report.attrib
+          print('JAVA RED: exactly three expected transport-lifetime assertion failures; no execution errors')
+          with (out/'js-red.log').open('w') as log:
+              result=subprocess.run(['node','--test','.github/scripts/analysis-readiness.test.mjs'],stdout=log,stderr=subprocess.STDOUT)
+          log=(out/'js-red.log').read_text()
+          assert result.returncode==1 and '# fail 5\n' in log, log[-5000:]
+          print('JS RED: exactly five expected live-view failures; strict expert-input control retained')
+      - name: Correct the two confirmed product defects together
+        shell: python
+        run: |
+          from pathlib import Path
+          def replace(path,old,new):
+              p=Path(path);s=p.read_text();assert s.count(old)==1,(path,old,s.count(old));p.write_text(s.replace(old,new))
+          replace('taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java',
+              '        SseEmitter emitter = new SseEmitter(1_800_000L);',
+              '''        // The reserved operation owns the configured deadline, including executor-queue time.
+                  // A second servlet deadline can expire first and discard the terminal partial result.
+                  // Keep transport open until the worker's terminal event or client disconnect; provider
+                  // request timeouts and the bounded admission/operation guards remain in force.
+                  SseEmitter emitter = new SseEmitter(0L);''')
+          replace('taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js',
+              'function applyLocalRawScores(scores, replace) {',
+              'function applyLocalRawScores(scores, replace, allowUnresolvedProviderKeys) {')
+          replace('taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js',
+              "            if (!context) throw new Error('Cannot resolve taxonomy score ' + code + '.');",
+              '''            if (!context) {
+                          if (!allowUnresolvedProviderKeys) throw new Error('Cannot resolve taxonomy score ' + code + '.');
+                          // Match the server's permissive provider boundary without inventing a catalogue node.
+                          // Expert-entered local scores retain the strict identity check above.
+                          effective[code] = value;
+                          if (warnings.length < 100) warnings.push('Unresolved provider score ' + code
+                              + ' retained without taxonomy context.');
+                          return;
+                      }''')
+          replace('taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js',
+              'applyLocalRawScores(snapshot.rawScores || {}, true);',
+              'applyLocalRawScores(snapshot.rawScores || {}, true, true);')
+          for language,body in {
+              'en': '\n### Streaming transport lifetime\n\nThe legacy SSE connection has no independent servlet timeout. The configured analysis deadline starts when the operation is reserved and includes executor-queue time; the worker emits the terminal result and closes the connection. Client disconnects still cancel the worker, and provider HTTP timeouts remain unchanged. This avoids a fixed transport timeout discarding an otherwise valid long analysis or its partial result. Intermediary/proxy timeouts can still disconnect the transport; observe the retained operation status rather than restarting it.\n',
+              'de': '\n### Laufzeit der Streaming-Verbindung\n\nDie bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfigurierte Analyselaufzeit beginnt mit der Reservierung und schließt die Wartezeit in der Executor-Warteschlange ein; der Worker sendet das Endergebnis und schließt die Verbindung. Ein Verbindungsabbruch bricht weiterhin den Worker ab, und die HTTP-Zeitlimits der Provider bleiben unverändert. So verwirft kein festes Transportlimit eine zulässige lange Analyse oder deren Teilergebnis. Vorgeschaltete Proxys können die Verbindung weiterhin beenden; dann den gespeicherten Operationsstatus abfragen statt die Analyse neu zu starten.\n'
+          }.items():
+              p=Path('docs')/language/'CONFIGURATION_REFERENCE.md';p.write_text(p.read_text()+body)
+          # The review's ordinary-failure-reasons claim is already fixed; preserve that code unchanged.
+          service=Path('taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java').read_text()
+          assert 'allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps);\n        }\n    }' in service
+      - name: Focused regression GREEN
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp test '-Dtest=Analysis*Test,LlmService*Test,ExplicitCentralAnalysisAdmissionTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/final-analysis-evidence/java-focused-green.log
+          node --test .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-live-progress.test.mjs .github/scripts/product-score-streaming.test.mjs 2>&1 | tee target/final-analysis-evidence/js-green.log
+      - name: All reactor unit tests
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp test -DexcludedGroups=real-llm 2>&1 | tee target/final-analysis-evidence/unit-green.log
+      - name: Complete Maven-owned UI contracts
+        run: |
+          set -o pipefail
+          ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee target/final-analysis-evidence/ui-contracts.log
+          node .github/scripts/test-taxonomy-base-path.mjs 2>&1 | tee target/final-analysis-evidence/basepath.log
+      - name: Freeze and publish tested source objects only
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
-          import base64,hashlib,json,os,subprocess,urllib.request
+          import base64,hashlib,json,os,subprocess,urllib.request,zipfile
           from pathlib import Path
-          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='0e8697371f8173716d7240585c33d42714c27ebc'
-          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/8e71d84b966224a40f2678f9ea1a6d34b24c6539',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-          with urllib.request.urlopen(request) as response: patch=base64.b64decode(json.load(response)['content'])
-          assert hashlib.sha256(patch).hexdigest()=='0b4f0504ba5507c38a94af7c24331dfa7bc20dbae405c023546020d762e7e74a'
-          out=Path('target/central-admission-evidence');out.mkdir(parents=True)
-          (out/'patch.diff').write_bytes(patch)
-          subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
-          subprocess.run(['git','apply','--index','--include=.github/scripts/analysis-readiness.test.mjs','--include=taxonomy-app/src/test/java/com/taxonomy/versioning/controller/ExplicitCentralAnalysisAdmissionTest.java','-'],input=patch,check=True)
-      - name: Reproduce HTTP admission failures and premature browser POSTs
-        run: |
-          set +e
-          ./mvnw -B -ntp test -Dtest=ExplicitCentralAnalysisAdmissionTest -Dsurefire.failIfNoSpecifiedTests=false > target/central-admission-evidence/java-red.log 2>&1
-          result=$?
-          test "$result" -ne 0 || exit 1
-          grep -q 'Tests run: 4, Failures: 0, Errors: 2, Skipped: 0' target/central-admission-evidence/java-red.log || exit 1
-          node --test .github/scripts/analysis-readiness.test.mjs > target/central-admission-evidence/js-red.log 2>&1
-          result=$?
-          test "$result" -eq 1 || exit 1
-          grep -q '# fail 4' target/central-admission-evidence/js-red.log
-      - name: Apply the exact two production changes
-        shell: python
-        run: |
-          import json,subprocess
-          from pathlib import Path
-          out=Path('target/central-admission-evidence')
-          subprocess.run(['git','apply','--index','--exclude=.github/scripts/analysis-readiness.test.mjs','--exclude=taxonomy-app/src/test/java/com/taxonomy/versioning/controller/ExplicitCentralAnalysisAdmissionTest.java',str(out/'patch.diff')],check=True)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
-          expected={'.github/scripts/analysis-readiness.test.mjs':'733ce68a88af7ce2f7a5d3bcd93a25367db897ff','taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DslWorkspacePreResolutionInterceptor.java':'a0ab4d4fe8c9611cfe03e601f1524ca127806496','taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js':'5a1daab09ef5f1a85092785904aa376c8e7920cd','taxonomy-app/src/test/java/com/taxonomy/versioning/controller/ExplicitCentralAnalysisAdmissionTest.java':'ec2295dc5c32e90d089d65f2910165bf00f8df71'}
-          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
-          assert set(paths)==set(expected)
-          for path,sha in expected.items(): assert subprocess.check_output(['git','hash-object',path],text=True).strip()==sha
+          base='0e8697371f8173716d7240585c33d42714c27ebc'
+          out=Path('target/final-analysis-evidence')
+          paths=['.github/scripts/analysis-readiness.test.mjs','taxonomy-app/src/main/java/com/taxonomy/versioning/controller/DslWorkspacePreResolutionInterceptor.java','taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js','taxonomy-app/src/test/java/com/taxonomy/versioning/controller/ExplicitCentralAnalysisAdmissionTest.java','taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java','taxonomy-app/src/test/java/com/taxonomy/analysis/controller/AnalysisApiControllerTest.java','docs/en/CONFIGURATION_REFERENCE.md','docs/de/CONFIGURATION_REFERENCE.md']
+          subprocess.run(['git','diff','--check'],check=True)
+          assert set(subprocess.check_output(['git','diff',base,'--name-only'],text=True).splitlines()) == set(paths)
+          subprocess.run(['git','add','--',*paths],check=True)
           tree=subprocess.check_output(['git','write-tree'],text=True).strip()
-          (out/'manifest.json').write_text(json.dumps({'base':'0e8697371f8173716d7240585c33d42714c27ebc','tree':tree,'files':expected},indent=2)+'\n')
-      - name: Run all reactor unit tests without selecting individual classes
-        run: |
-          set -o pipefail
-          ./mvnw -B -ntp test -DexcludedGroups=real-llm 2>&1 | tee target/central-admission-evidence/unit-green.log
-      - name: Full Maven-owned UI contracts and lifecycle regressions
-        run: |
-          set -o pipefail
-          ./mvnw -B -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee target/central-admission-evidence/ui-contracts.log
-          node --test .github/scripts/analysis-live-progress.test.mjs .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-session-startup.test.mjs 2>&1 | tee target/central-admission-evidence/js-green.log
-          node .github/scripts/test-taxonomy-base-path.mjs 2>&1 | tee target/central-admission-evidence/basepath.log
-      - name: Publish only tested source blobs without changing any product ref
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
-        run: |
-          import base64,hashlib,json,os,urllib.request,zipfile
-          from pathlib import Path
-          out=Path('target/central-admission-evidence')
-          manifest=json.loads((out/'manifest.json').read_text())
+          manifest={'base':base,'tree':tree,'files':{},'verificationRun':os.environ['GITHUB_RUN_ID']}
           with zipfile.ZipFile(out/'tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
-              for path,expected in manifest['files'].items():
+              for path in paths:
                   content=Path(path).read_bytes()
-                  assert hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()==expected
+                  sha=hashlib.sha1(b'blob '+str(len(content)).encode()+b'\0'+content).hexdigest()
                   request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',data=json.dumps({'content':base64.b64encode(content).decode(),'encoding':'base64'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
-                  with urllib.request.urlopen(request) as response: assert json.load(response)['sha']==expected
+                  with urllib.request.urlopen(request) as response: assert json.load(response)['sha']==sha
+                  manifest['files'][path]=sha
                   archive.writestr(path,content)
+          (out/'patch.diff').write_bytes(subprocess.check_output(['git','diff','--cached','--full-index',base,'--',*paths]))
+          (out/'manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+          print(json.dumps(manifest,indent=2))
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: analysis-central-admission-evidence
+          name: analysis-final-regression-evidence
           path: |
-            target/central-admission-evidence
+            target/final-analysis-evidence
             **/target/surefire-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: error
+  source-manifest:
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: analysis-final-regression-evidence
+          path: evidence
+      - name: Show exactly tested source manifest
+        run: cat evidence/target/final-analysis-evidence/manifest.json
