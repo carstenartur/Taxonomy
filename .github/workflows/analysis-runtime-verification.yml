@@ -1,94 +1,29 @@
-name: Analysis final review regressions (temporary)
+name: Analysis exact source snapshot (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
 permissions:
-  contents: write
+  contents: read
 jobs:
-  verify:
+  snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 025d3548abfd70e5b1499169276cec0302636f69
+          ref: 8620c8856f8b417c688b72aa522591ae73219c29
           persist-credentials: false
-          fetch-depth: 0
-      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
-        with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Apply hash-verified candidate without changing any product refs
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
+      - name: Export exact tracked source only (not a test result)
         run: |
-          import base64,gzip,hashlib,json,os,subprocess,urllib.request
-          from pathlib import Path
-          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='025d3548abfd70e5b1499169276cec0302636f69'
-          assert not subprocess.check_output(['git','status','--porcelain'],text=True).strip()
-          pieces=['6d432f737db8be08c12fd0323e82ba4544f66492','cc29df9c174e9b3fa5cb4460de9604b1406b20dc','5203f507882b1a61b5921c4c9bccde1f8ab0ad93','ea53e2b7a18b77fea3f0ccb80919c16df1a84e0a','934e0d55809445e513a97849376bda74a6714a58','b12f6a05bd61a5405fcaf327be441f61e4e6e55b']
-          content=b''
-          for sha in pieces:
-              request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-              with urllib.request.urlopen(request) as response:
-                  piece=base64.b64decode(json.load(response)['content'])
-              assert hashlib.sha1(('blob '+str(len(piece))+'\0').encode()+piece).hexdigest()==sha
-              content+=piece
-          patch=gzip.decompress(base64.b64decode(content))
-          assert hashlib.sha256(patch).hexdigest()=='b2eb8d4eb6520250f3ac6571865071325115446e785a98e4c44e6ac56a21e62a'
-          subprocess.run(['git','apply','--check','--index','-'],input=patch,check=True)
-          subprocess.run(['git','apply','--index','-'],input=patch,check=True)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
-          expected={
-            '.github/package.json':'15e2fa24937de39ea5e41fdba0de1abc0334b9c3',
-            '.github/scripts/analysis-live-progress.test.mjs':'ab6b1ef2c3833ca9371f881c987f38a5a393e9db',
-            '.github/scripts/analysis-readiness.test.mjs':'b39e427ce1f35fdde52ad702b5170e1888b68d63',
-            'taxonomy-app/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java':'13a868c7571660652b19706aa23772a7830bf8d8',
-            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisProgressRegistry.java':'e5dd046a22702abdbc2353f97b21cc46349c0cc8',
-            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/GeminiGateway.java':'c00a20b7d20f97eb1afdc2fd5df2940053b5c6f5',
-            'taxonomy-app/src/main/java/com/taxonomy/analysis/service/OpenAiCompatibleGateway.java':'b09bbd27a7710a71ce03dd8c87d81b50090941b4',
-            'taxonomy-app/src/main/resources/i18n/messages.properties':'b8d9e55388b0d1cd8eac022da787345aef36db79',
-            'taxonomy-app/src/main/resources/i18n/messages_de.properties':'74e6c6aa42714f2aceec152bb866008ed9f39b81',
-            'taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js':'f8b322334f3ea1facb73d477df8859a101dbf5ee',
-            'taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js':'3458cec461c28810cd7d289e6190219164f8391c',
-            'taxonomy-app/src/test/java/com/taxonomy/analysis/controller/AnalysisStreamAdmissionContractTest.java':'128ce412fb8e9f2417ba8a82c20c9fa65b589049',
-            'taxonomy-app/src/test/java/com/taxonomy/analysis/service/AnalysisTerminalContractTest.java':'0590703bb08f4dac7173ba5aad15d4b072eec80a',
-            'taxonomy-app/src/test/java/com/taxonomy/analysis/service/GatewayThrottleCancellationTest.java':'a8876ae2a70d06c0e6cd56d5b41746b6458ca913'}
-          assert set(subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines())==set(expected)
-          for path,sha in expected.items():
-              assert subprocess.check_output(['git','hash-object',path],text=True).strip()==sha,path
-          out=Path('target/final-review-evidence');out.mkdir(parents=True,exist_ok=True)
-          (out/'patch.diff').write_bytes(patch)
-          (out/'manifest.json').write_text(json.dumps({'base':'025d3548abfd70e5b1499169276cec0302636f69','tree':subprocess.check_output(['git','write-tree'],text=True).strip(),'files':expected},indent=2)+'\n')
-      - name: Maven analysis, gateway, MVC and registry regressions
-        run: |
-          set -o pipefail
-          ./mvnw -B -ntp test '-Dtest=Analysis*Test,Gateway*Test,GeminiGatewayTest,OpenAiCompatibleGatewayTest,LlmTranscriptBoundsTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/final-review-evidence/maven.log
-      - name: Actual npm lifecycle command and bootstrap contract
-        run: |
-          set -o pipefail
-          npm --prefix .github run test:analysis-session-startup 2>&1 | tee target/final-review-evidence/node.log
-          node .github/scripts/test-taxonomy-base-path.mjs 2>&1 | tee target/final-review-evidence/basepath.log
-      - name: Publish verified source blobs only
-        env:
-          GH_TOKEN: ${{ github.token }}
-        shell: python
-        run: |
-          import base64,json,os,urllib.request,zipfile
-          from pathlib import Path
-          manifest=json.loads(Path('target/final-review-evidence/manifest.json').read_text())
-          with zipfile.ZipFile('target/final-review-evidence/tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
-              for path,expected in manifest['files'].items():
-                  content=Path(path).read_bytes()
-                  request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',data=json.dumps({'content':base64.b64encode(content).decode(),'encoding':'base64'}).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'},method='POST')
-                  with urllib.request.urlopen(request) as response:
-                      assert json.load(response)['sha']==expected,path
-                  archive.writestr(path,content)
+          test "$(git rev-parse HEAD)" = 8620c8856f8b417c688b72aa522591ae73219c29
+          test -z "$(git status --porcelain)"
+          git archive --format=zip HEAD -o /tmp/taxonomy-source-8620c885.zip
+          git rev-parse HEAD HEAD^{tree} > /tmp/source-identity.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
         with:
-          name: analysis-final-review-evidence
+          name: taxonomy-exact-source-8620c885
           path: |
-            target/final-review-evidence
-            **/target/surefire-reports/TEST-*.xml
-          retention-days: 7
+            /tmp/taxonomy-source-8620c885.zip
+            /tmp/source-identity.txt
+          retention-days: 1
           if-no-files-found: error
