@@ -6,7 +6,7 @@ permissions:
   contents: write
 concurrency:
   group: analysis-consolidated-verification
-  cancel-in-progress: false
+  cancel-in-progress: true
 jobs:
   preflight:
     runs-on: ubuntu-latest
@@ -72,6 +72,12 @@ jobs:
                   } }));
                   assert.equal(f.state.currentRawScores[unresolvedProviderKey], 90);
                   assert.equal(f.state.currentScores[liveProduct.code], 32);
+                  const detail = f.state.currentScoreDetails[unresolvedProviderKey];
+                  assert.equal(detail.kind, 'HIERARCHICAL_RELEVANCE');
+                  assert.equal(detail.rawScore, 90);
+                  assert.equal(detail.effectiveRelevance, 90);
+                  assert.equal(detail.parentCode, null);
+                  assert.equal(detail.parentScore, null);
                   assert.ok(f.state.currentScoreSemanticsWarnings.some(w => w.includes(unresolvedProviderKey)));
                   assert.doesNotThrow(() => receive({ rawScores: {
                       [liveFamily.code]: 50, [liveProduct.code]: 70, [unresolvedProviderKey]: 5
@@ -81,6 +87,19 @@ jobs:
                   assert.equal(f.calls.length, 1, 'Status updates must not restart analysis');
               });
           }
+
+          test('unresolved-provider diagnostics are bounded without dropping typed score evidence', () => {
+              const f = fixture(); f.progress();
+              f.state.taxonomyData = [liveFamily, liveProduct];
+              f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+              f.window.TaxonomyScoring.runAnalysis();
+              const scores = Object.fromEntries(Array.from({ length: 200 }, (_, i) => ['unresolved-provider-' + i, 50]));
+              assert.doesNotThrow(() => f.observations[0][1]({ rawScores: scores }));
+              assert.equal(Object.keys(f.state.currentRawScores).length, 200);
+              assert.equal(Object.keys(f.state.currentScoreDetails).length, 200);
+              assert.equal(f.state.currentScoreSemanticsWarnings.length, 101);
+              assert.equal(f.state.currentScoreSemanticsWarnings.at(-1), 'Additional score-semantics warnings were suppressed.');
+          });
 
           test('expert-entered raw scores still reject unknown catalogue identities', () => {
               const f = fixture(); f.state.taxonomyData = [liveFamily, liveProduct];
@@ -155,8 +174,8 @@ jobs:
           with (out/'js-red.log').open('w') as log:
               result=subprocess.run(['node','--test','.github/scripts/analysis-readiness.test.mjs'],stdout=log,stderr=subprocess.STDOUT)
           log=(out/'js-red.log').read_text()
-          assert result.returncode==1 and '# fail 5\n' in log, log[-5000:]
-          print('JS RED: exactly five expected live-view failures; strict expert-input control retained')
+          assert result.returncode==1 and '# fail 6\n' in log, log[-5000:]
+          print('JS RED: exactly six expected live-score failures; strict expert-input control retained')
       - name: Correct the two confirmed product defects together
         shell: python
         run: |
@@ -177,11 +196,14 @@ jobs:
               "            if (!context) throw new Error('Cannot resolve taxonomy score ' + code + '.');",
               '''            if (!context) {
                           if (!allowUnresolvedProviderKeys) throw new Error('Cannot resolve taxonomy score ' + code + '.');
-                          // Match the server's permissive provider boundary without inventing a catalogue node.
+                          // Match AnalysisScoreSemantics at the provider boundary without inventing a catalogue node.
                           // Expert-entered local scores retain the strict identity check above.
                           effective[code] = value;
-                          if (warnings.length < 100) warnings.push('Unresolved provider score ' + code
-                              + ' retained without taxonomy context.');
+                          details[code] = { nodeCode: code, kind: 'HIERARCHICAL_RELEVANCE',
+                              rawScore: value, effectiveRelevance: value, parentCode: null, parentScore: null };
+                          if (warnings.length < 100) warnings.push('Score semantics could not resolve taxonomy node ' + code
+                              + '; treating its value as hierarchical relevance.');
+                          else if (warnings.length === 100) warnings.push('Additional score-semantics warnings were suppressed.');
                           return;
                       }''')
           replace('taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js',
@@ -192,7 +214,6 @@ jobs:
               'de': '\n### Laufzeit der Streaming-Verbindung\n\nDie bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfigurierte Analyselaufzeit beginnt mit der Reservierung und schließt die Wartezeit in der Executor-Warteschlange ein; der Worker sendet das Endergebnis und schließt die Verbindung. Ein Verbindungsabbruch bricht weiterhin den Worker ab, und die HTTP-Zeitlimits der Provider bleiben unverändert. So verwirft kein festes Transportlimit eine zulässige lange Analyse oder deren Teilergebnis. Vorgeschaltete Proxys können die Verbindung weiterhin beenden; dann den gespeicherten Operationsstatus abfragen statt die Analyse neu zu starten.\n'
           }.items():
               p=Path('docs')/language/'CONFIGURATION_REFERENCE.md';p.write_text(p.read_text()+body)
-          # The review's ordinary-failure-reasons claim is already fixed; preserve that code unchanged.
           service=Path('taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmService.java').read_text()
           assert 'allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps);\n        }\n    }' in service
       - name: Focused regression GREEN
