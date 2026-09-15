@@ -146,9 +146,11 @@ public class WorkspaceContextResolver {
         UserWorkspace workspace = resolveWorkspaceMetadataForUser(username);
         // Keep the existing first-use experience for automatically created default
         // workspaces, but finish initialization before exposing a usable context.
-        // Explicit tab pins and failed/in-progress attempts require lifecycle recovery.
+        // Join this manager's ongoing initialization before re-reading readiness.
+        // Explicit pins and failed attempts still require lifecycle recovery.
         if (workspace != null && workspace.isDefault() && requestedWorkspaceId() == null
-                && workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED) {
+                && (workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.NOT_PROVISIONED
+                || workspace.getProvisioningStatus() == WorkspaceProvisioningStatus.PROVISIONING)) {
             workspace = workspaceManager.provisionDefaultWorkspaceRepository(
                     username, workspace.getWorkspaceId());
         }

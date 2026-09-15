@@ -43,10 +43,9 @@ public class RepositoryWorkspaceService {
      * remain durable even though the caller receives an exception. Each Spring Data
      * {@code save} operation supplies its own transaction boundary.</p>
      *
-     * <p>The factory performs the one and only initial DSL seed on the historic
-     * {@code draft} workspace branch. The service records that commit and creates the
-     * semantic {@code sync-base} ref at exactly the same commit; it must not manufacture a
-     * second, unrelated initial commit on another branch.</p>
+     * <p>Capture one immutable source checkpoint, seed the historic {@code draft}
+     * branch once, and create {@code sync-base} at that same workspace commit.
+     * A concurrent source update must not change either the copied content or its provenance.</p>
      */
     public UserWorkspace createWorkingCopy(
             String username,
@@ -91,23 +90,23 @@ public class RepositoryWorkspaceService {
         try {
             DslGitRepository sourceGit =
                     repositoryFactory.getCentralRepository(source.getRepositoryId());
-            String sourceDsl = sourceGit.getDslAtHead(sourceBranch);
             String sourceCommit = sourceGit.getHeadCommit(sourceBranch);
+            String sourceDsl = sourceCommit == null ? null : sourceGit.getDslAtCommit(sourceCommit);
             if (sourceDsl == null || sourceDsl.isBlank() || sourceCommit == null) {
                 throw new IllegalStateException(
                         "Source branch has no architecture content: " + sourceBranch);
             }
 
             workspaceStorageAttempted = true;
-            DslGitRepository workspaceGit = repositoryFactory.createWorkspaceRepository(
-                    workspace.getWorkspaceId(), source.getRepositoryId(), sourceBranch);
-            String workspaceCommit = workspaceGit.getHeadCommit(WORKSPACE_BRANCH);
+            DslGitRepository workspaceGit = repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
+            String workspaceCommit = workspaceGit.commitDslIfHeadMatches(
+                    WORKSPACE_BRANCH, null, sourceDsl, user, "Fork from " + source.getRepositoryId() + "/" + sourceBranch);
             if (workspaceCommit == null) {
                 throw new IllegalStateException(
                         "Workspace seed did not create branch " + WORKSPACE_BRANCH);
             }
-            String trackingCommit = workspaceGit.createBranch(
-                    TRACKING_BRANCH, WORKSPACE_BRANCH);
+            String trackingCommit = workspaceGit.createBranchAtCommit(
+                    TRACKING_BRANCH, workspaceCommit);
             if (trackingCommit == null) {
                 throw new IllegalStateException(
                         "Workspace seed did not create tracking branch " + TRACKING_BRANCH);

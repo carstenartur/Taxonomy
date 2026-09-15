@@ -137,6 +137,50 @@ class WorkspaceProvisioningBoundaryIT {
         assertThat(pending.getProvisioningStatus()).isEqualTo(WorkspaceProvisioningStatus.READY);
     }
 
+    @Test
+    void currentDefaultWorkspaceResponseIsReadyForItsBrowserPin() throws Exception {
+        // Persist the automatically created metadata before the HTTP request,
+        // just as a completed first-login transaction does in the browser flow.
+        UserWorkspace pending = workspace(USER, WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        pending.setDefault(true);
+        rows.saveAndFlush(pending);
+        var response = mvc.perform(get("/api/workspace/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.provisioningStatus").value("READY"))
+                .andExpect(jsonPath("$.currentBranch").value("draft"))
+                .andReturn().getResponse();
+        String id = tools.jackson.databind.json.JsonMapper.builder().build()
+                .readTree(response.getContentAsString()).get("workspaceId").textValue();
+        var workspace = rows.findByWorkspaceId(id).orElseThrow();
+        assertThat(workspace.isDefault()).isTrue();
+        assertThat(workspace.getCurrentCommit()).isNotBlank();
+        mvc.perform(get("/api/dsl/branches").header(HEADER, id)).andExpect(status().isOk());
+        mvc.perform(get("/api/proposals/pending").header(HEADER, id)).andExpect(status().isOk());
+    }
+
+    @Test
+    void explicitlyPinnedDefaultMetadataDoesNotTriggerProvisioning() throws Exception {
+        UserWorkspace pending = workspace(USER, WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        pending.setDefault(true);
+        rows.saveAndFlush(pending);
+        mvc.perform(get("/api/workspace/current").header(HEADER, pending.getWorkspaceId()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.provisioningStatus").value("NOT_PROVISIONED"));
+        assertThat(pending.getCurrentCommit()).isNull();
+        mvc.perform(get("/api/dsl/branches").header(HEADER, pending.getWorkspaceId()))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void unpinnedNonDefaultMetadataDoesNotTriggerProvisioning() throws Exception {
+        UserWorkspace pending = workspace(USER, WorkspaceProvisioningStatus.NOT_PROVISIONED);
+        manager.switchWorkspace(USER, pending.getWorkspaceId());
+        mvc.perform(get("/api/workspace/current"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.provisioningStatus").value("NOT_PROVISIONED"));
+        assertThat(pending.getCurrentCommit()).isNull();
+    }
+
     private UserWorkspace workspace(String owner, WorkspaceProvisioningStatus state) {
         UserWorkspace workspace = new UserWorkspace();
         String id = "provisioning-boundary-" + UUID.randomUUID();

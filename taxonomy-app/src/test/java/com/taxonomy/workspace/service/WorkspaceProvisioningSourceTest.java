@@ -56,6 +56,9 @@ class WorkspaceProvisioningSourceTest {
         assertNull(workspace.getProvisionedAt());
         assertNull(workspace.getCurrentCommit());
         assertTrue(failure.getCause() instanceof IllegalStateException);
-        if (isolated) verify(factory, never()).getWorkspaceRepository(anyString());
+        if (isolated) {
+            verify(factory, never()).getWorkspaceRepository(anyString());
+            verify(factory, never()).openWorkspaceRepository(anyString());
+        }
     }
 }
