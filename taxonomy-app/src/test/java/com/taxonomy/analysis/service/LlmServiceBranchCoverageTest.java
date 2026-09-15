@@ -112,6 +112,57 @@ class LlmServiceBranchCoverageTest {
     }
 
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(AnalysisStoppedException.Reason.class)
+    void stoppedProductResultKeepsFamilyWeightedSemanticsWithoutLoadingAResponseTree(
+            AnalysisStoppedException.Reason reason) throws Exception {
+        // Real catalogue identities and role: nato-taxonomy.json classifies IP-1011 under IP-1065.
+        TaxonomyNode root = node("IP", null, "IP");
+        TaxonomyNode family = node("IP-1065", "IP", "IP");
+        TaxonomyNode otherFamily = node("IP-1069", "IP", "IP");
+        TaxonomyNode product = node("IP-1011", "IP-1065", "IP");
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family, otherFamily));
+        when(taxonomyService.getChildrenOf("IP-1065")).thenReturn(List.of(product));
+        when(catalogueOverlayService.isProduct("IP-1011")).thenReturn(true);
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("root", "families");
+        when(gateway.extractResponseText("root")).thenReturn("{\"IP\":100}");
+        when(gateway.extractResponseText("families")).thenReturn("{\"IP-1065\":40,\"IP-1069\":60}");
+        var retained = new LlmCallDetail();
+        retained.setScores(Map.of("IP-1011", 75));
+        retained.setReasons(Map.of("IP-1011", "completed product rationale"));
+        when(gateway.sendHttpRequest("product prompt", "test-key"))
+                .thenThrow(new AnalysisStoppedException(reason).withPartial(retained));
+
+        AnalysisResult result = service.analyzeWithBudget("target information products");
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getErrorMessage()).startsWith(reason.name() + ":");
+        assertThat(result.getTree()).isEmpty();
+        verify(taxonomyService, never()).getFullTree();
+        verify(taxonomyService, never()).getFingerprintTree();
+        verify(taxonomyService, never()).getNodeByCode(anyString());
+        assertProductSemantics(result);
+        result.refreshScoreSemantics();
+        assertProductSemantics(result);
+        var json = new ObjectMapper();
+        String serialized = json.writeValueAsString(result);
+        assertProductSemantics(json.readValue(serialized, AnalysisResult.class));
+        assertThat(serialized).doesNotContain("nameEn", "descriptionEn", "semanticEmbedding");
+        result.getRawScores().put("IP-1065", 20);
+        assertThat(result.getScores()).containsEntry("IP-1011", 15);
+    }
+
+    private static void assertProductSemantics(AnalysisResult result) {
+        assertThat(result.getRawScores()).containsEntry("IP-1011", 75);
+        assertThat(result.getProductSuitabilityScores()).containsEntry("IP-1011", 75);
+        assertThat(result.getScores()).containsEntry("IP-1011", 30);
+        var detail = result.getScoreDetails().get("IP-1011");
+        assertThat(detail.isProductSuitability()).isTrue();
+        assertThat(detail.parentCode()).isEqualTo("IP-1065");
+        assertThat(detail.parentScore()).isEqualTo(40);
+        assertThat(result.getReasons()).containsEntry("IP-1011", "completed product rationale");
+    }
+
     @Test
     void ordinaryStreamingFailureRetainsReasonsFromCompletedRoots() {
         when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(

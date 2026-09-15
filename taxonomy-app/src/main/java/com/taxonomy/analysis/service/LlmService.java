@@ -3,6 +3,7 @@ package com.taxonomy.analysis.service;
 import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
@@ -318,6 +319,7 @@ public class LlmService {
      */
     public AnalysisResult analyzeWithBudget(String businessText) {
         Map<String, Integer> allScores = new HashMap<>();
+        Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts = new LinkedHashMap<>();
         Map<String, String> allReasons = new LinkedHashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
@@ -341,6 +343,8 @@ public class LlmService {
                 continue;
             }
             try {
+                // Capture scalar context before the provider can return a cooperative stop.
+                captureScoreContexts(List.of(root), scoreContexts);
                 // Score root independently (0-100) to gauge branch relevance
                 LlmCallDetail rootDetail = callLlmPropagatingDetailed(
                         businessText, List.of(root), 100);
@@ -361,7 +365,7 @@ public class LlmService {
                     if (!level1Children.isEmpty()) {
                         analyzeNodesPropagating(
                                 businessText, level1Children, allScores, allReasons,
-                                allDiscrepancies, productCoverageGaps, warnings, score);
+                                allDiscrepancies, productCoverageGaps, warnings, score, scoreContexts);
                     }
                 }
 
@@ -393,6 +397,10 @@ public class LlmService {
         }
 
         AnalysisResult result = new AnalysisResult(allScores, annotatedTree);
+        if (stop != null) {
+            scoreContexts.keySet().retainAll(allScores.keySet());
+            result.setScoreSemanticsContext(scoreContexts);
+        }
         result.setReasons(allReasons);
         result.setProvider(getActiveProviderName());
         result.setDiscrepancies(allDiscrepancies);
@@ -425,8 +433,10 @@ public class LlmService {
                                           List<TaxonomyDiscrepancy> allDiscrepancies,
                                           List<ProductCoverageGap> productCoverageGaps,
                                           List<String> warnings,
-                                          int parentScore) {
+                                          int parentScore,
+                                          Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts) {
         if (nodes == null || nodes.isEmpty()) return;
+        captureScoreContexts(nodes, scoreContexts);
 
         SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
         LlmCallDetail detail = batch.detail();
@@ -453,7 +463,7 @@ public class LlmService {
                 if (!children.isEmpty()) {
                     analyzeNodesPropagating(
                             businessText, children, allScores, allReasons,
-                            allDiscrepancies, productCoverageGaps, warnings, entry.getValue());
+                            allDiscrepancies, productCoverageGaps, warnings, entry.getValue(), scoreContexts);
                 }
             }
         }
@@ -919,6 +929,14 @@ public class LlmService {
                 "The product family is relevant, but none of its " + candidateCodes.size()
                         + " catalogued products reached the suitability threshold of "
                         + minimumProductScore() + "."));
+    }
+
+    private void captureScoreContexts(List<TaxonomyNode> nodes,
+            Map<String, AnalysisScoreSemantics.NodeContext> contexts) {
+        for (TaxonomyNode node : nodes) {
+            contexts.putIfAbsent(node.getCode(), new AnalysisScoreSemantics.NodeContext(
+                    node.getParentCode(), isProduct(node) ? "PRODUCT" : "CATEGORY"));
+        }
     }
 
     private boolean isProduct(TaxonomyNode node) {

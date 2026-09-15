@@ -732,7 +732,10 @@
             S.storedBusinessText = text;
             S.lastAnalyzedText = text;
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
-            let statusMsg = t('analyze.complete', matchedCount);
+            const partial = data.status === 'PARTIAL' || data.status === 'CANCELLED';
+            let statusMsg = partial
+                ? t('analyze.partial', (data.warnings || []).join(' ') || t('analyze.incomplete'), matchedCount)
+                : t('analyze.complete', matchedCount);
             if (S.currentDiscrepancies.length > 0) {
                 statusMsg += ' ' + t('analyze.discrepancies', S.currentDiscrepancies.length);
                 console.log('[Taxonomy] Discrepancies:', S.currentDiscrepancies);
@@ -742,7 +745,7 @@
                     'analyze.product.coverage.gaps', S.currentProductCoverageGaps.length);
                 console.log('[Taxonomy] Product coverage gaps:', S.currentProductCoverageGaps);
             }
-            B().showStatus('success', statusMsg);
+            B().showStatus(partial ? 'warning' : data.status === 'ERROR' ? 'danger' : 'success', statusMsg);
             B().updateExportGroupVisibility();
         });
 
@@ -754,7 +757,11 @@
                     setAnalyzing(false);
                     S.lastAnalysisStatus = data.status || 'PARTIAL';
                     if (data.reasons) Object.assign(S.currentReasons, data.reasons);
-                    applyScoreEnvelope({
+                    if (data.scoreSemanticsUnavailable) {
+                        // A failed server-side projection supplies raw evidence only. Rebuild
+                        // comparable relevance from the already loaded catalogue, not raw suitability.
+                        applyLocalRawScores(data.rawScores || S.currentRawScores, true, true);
+                    } else applyScoreEnvelope({
                         scores: data.partialScores,
                         rawScores: data.rawScores,
                         effectiveScores: data.effectiveScores || data.partialScores,
@@ -773,7 +780,10 @@
             }
         });
 
-        eventSource.onerror = function () {
+        eventSource.onerror = function (event) {
+            // A valid named "error" event already finalized the result in its handler.
+            // Malformed payloads and bodyless transport failures still need the error path.
+            if (event && event.data && S.lastAnalysisStatus !== 'IN_PROGRESS') return;
             eventSource.close();
             setAnalyzing(false);
             S.lastAnalysisStatus = 'ERROR';

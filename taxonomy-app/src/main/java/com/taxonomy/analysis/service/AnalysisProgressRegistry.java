@@ -154,7 +154,7 @@ public class AnalysisProgressRegistry {
     public synchronized Snapshot cancel(String id, String owner, WorkspaceContext context) {
         Run run = require(id, owner, context);
         synchronized (run) {
-            if (run.active()) { run.cancelled = true; run.status = "CANCELLING"; run.touch(); }
+            run.requestCancellation();
             return run.snapshot();
         }
     }
@@ -221,6 +221,9 @@ public class AnalysisProgressRegistry {
             claimed = true;
             return handle;
         }
+
+        /** Retain a transport disconnect even if a provider consumes the thread interrupt. */
+        public void cancel() { run.requestCancellation(); }
 
         /** Roll back an unclaimed admission if scheduling fails; never remove a worker-owned run. */
         @Override public synchronized void close() {
@@ -294,6 +297,9 @@ public class AnalysisProgressRegistry {
         boolean scoresTruncated;
         Run(String id, Scope scope, AnalysisProvenance provenance) { this.id = id; this.scope = scope; this.provenance = provenance; }
         boolean active() { return "RUNNING".equals(status) || "CANCELLING".equals(status); }
+        synchronized void requestCancellation() {
+            if (active()) { cancelled = true; status = "CANCELLING"; touch(); }
+        }
         void touch() { sequence++; lastActivityAt = System.currentTimeMillis(); }
         @Override public synchronized void phase(String phase, String node) {
             this.phase = bounded(phase, 64);

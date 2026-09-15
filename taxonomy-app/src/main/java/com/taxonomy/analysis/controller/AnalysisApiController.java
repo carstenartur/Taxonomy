@@ -180,10 +180,13 @@ public class AnalysisApiController {
         AtomicBoolean completed = new AtomicBoolean();
         AtomicBoolean disconnected = new AtomicBoolean();
         AtomicReference<Thread> worker = new AtomicReference<>();
+        AtomicReference<AnalysisProgressRegistry.Reservation> admission = new AtomicReference<>();
         Runnable cancelWorker = () -> {
             synchronized (worker) {
                 if (completed.get()) return;
                 disconnected.set(true);
+                var reserved = admission.get();
+                if (reserved != null) reserved.cancel();
                 Thread thread = worker.get();
                 if (thread != null) thread.interrupt();
             }
@@ -231,6 +234,7 @@ public class AnalysisApiController {
         // Reservation does not install thread-local control; the executor's worker claims that ownership.
         var reservation = analysisProgressRegistry == null ? null
                 : analysisProgressRegistry.reserve(operationId, username, streamContext, null);
+        admission.set(reservation);
         boolean scheduled = false;
         try {
         analysisExecutor.execute(() -> {
@@ -238,17 +242,42 @@ public class AnalysisApiController {
             try (var run = reservation == null ? null : reservation.open()) {
                 com.taxonomy.analysis.usecase.AnalysisStreamEventHandler emit = event -> {
                     if (completed.get()) return;
-                    // Freeze the authoritative outcome before sending any terminal bytes.
-                    AnalysisStreamEvent outbound = reconcileTerminal(event, run);
-                    boolean terminal = outbound instanceof AnalysisStreamEvent.Complete
-                            || outbound instanceof AnalysisStreamEvent.Error;
-                    if (terminal) completed.set(true);
-                    var mapped = analysisSseEventMapper.map(outbound);
-                    sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload());
+                    boolean terminal = event instanceof AnalysisStreamEvent.Complete
+                            || event instanceof AnalysisStreamEvent.Error;
+                    if (disconnected.get()) {
+                        if (terminal) { reconcileTerminal(event, run); completed.set(true); }
+                        else AnalysisRunControl.checkpoint();
+                        return;
+                    }
+                    AnalysisStreamEvent outbound = event;
+                    AnalysisSseEventMapper.MappedEvent mapped;
+                    try {
+                        // Preparing an envelope may load catalogue metadata and fail. Do not
+                        // publish a successful terminal decision until this step has succeeded.
+                        mapped = analysisSseEventMapper.map(outbound);
+                    } catch (RuntimeException mappingFailure) {
+                        if (!terminal) throw mappingFailure;
+                        log.error("Could not render terminal analysis evidence", mappingFailure);
+                        outbound = terminalMappingFailure(event);
+                        mapped = minimalTerminalError((AnalysisStreamEvent.Error) outbound);
+                    }
+                    if (terminal) {
+                        // Freeze exactly once before sending bytes, then adjust only outcome
+                        // metadata. Neither reconciliation nor the fallback reloads the catalogue.
+                        outbound = reconcileTerminal(outbound, run);
+                        mapped = withTerminalOutcome(mapped, outbound);
+                        completed.set(true);
+                    }
+                    if (!sendEvent(emitter, operationId, eventSequence.incrementAndGet(), mapped.name(), mapped.payload())) {
+                        cancelWorker.run();
+                    }
                     if (terminal) emitter.complete();
                 };
                 try {
-                    if (disconnected.get()) Thread.currentThread().interrupt();
+                    if (disconnected.get()) {
+                        if (reservation != null) reservation.cancel();
+                        Thread.currentThread().interrupt();
+                    }
                     AnalysisRunControl.checkpoint();
                     streamRequirementAnalysisUseCase.stream(command, emit);
                     if (!completed.get()) emit.handle(new AnalysisStreamEvent.Error("ERROR",
@@ -343,7 +372,7 @@ public class AnalysisApiController {
         }
     }
 
-    private void sendEvent(SseEmitter emitter,
+    private boolean sendEvent(SseEmitter emitter,
                            String operationId,
                            long sequence,
                            String eventName,
@@ -362,11 +391,51 @@ public class AnalysisApiController {
                     .id(operationId + ":" + sequence)
                     .name(eventName)
                     .data(objectMapper.writeValueAsString(envelope)));
+            return true;
         } catch (IOException e) {
             emitter.complete();
         } catch (Exception e) {
             emitter.completeWithError(e);
         }
+        return false;
+    }
+
+    private static AnalysisStreamEvent.Error terminalMappingFailure(AnalysisStreamEvent event) {
+        String message = "The terminal result could not be fully rendered; collected raw evidence is retained.";
+        if (event instanceof AnalysisStreamEvent.Complete complete) {
+            return new AnalysisStreamEvent.Error("ERROR", message, complete.allScores(), complete.warnings(),
+                    complete.discrepancies(), complete.productCoverageGaps());
+        }
+        var error = (AnalysisStreamEvent.Error) event;
+        String prior = error.errorMessage();
+        return new AnalysisStreamEvent.Error("ERROR", prior == null || prior.isBlank() ? message : prior + " " + message,
+                error.partialScores(), error.warnings(), error.discrepancies(), error.productCoverageGaps(), error.partialReasons());
+    }
+
+    /** No catalogue lookup, derived-score fabrication, or retry of the failed mapper. */
+    private static AnalysisSseEventMapper.MappedEvent minimalTerminalError(AnalysisStreamEvent.Error error) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("rawScores", error.partialScores());
+        payload.put("reasons", error.partialReasons() == null ? Map.of() : error.partialReasons());
+        payload.put("discrepancies", error.discrepancies());
+        payload.put("productCoverageGaps", error.productCoverageGaps());
+        payload.put("scoreSemanticsUnavailable", true);
+        return new AnalysisSseEventMapper.MappedEvent("error", payload);
+    }
+
+    private static AnalysisSseEventMapper.MappedEvent withTerminalOutcome(
+            AnalysisSseEventMapper.MappedEvent mapped, AnalysisStreamEvent event) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        ((Map<?, ?>) mapped.payload()).forEach((key, value) -> payload.put(String.valueOf(key), value));
+        if (event instanceof AnalysisStreamEvent.Complete complete) {
+            payload.put("status", complete.status());
+            payload.put("warnings", complete.warnings());
+        } else if (event instanceof AnalysisStreamEvent.Error error) {
+            payload.put("status", error.status());
+            payload.put("errorMessage", error.errorMessage());
+            payload.put("warnings", error.warnings());
+        }
+        return new AnalysisSseEventMapper.MappedEvent(mapped.name(), payload);
     }
 
     private static AnalysisStreamEvent reconcileTerminal(AnalysisStreamEvent event,

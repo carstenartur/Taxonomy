@@ -44,6 +44,7 @@ class AnalysisCompletionContractTest {
     private final StreamRequirementAnalysisUseCase stream = mock(StreamRequirementAnalysisUseCase.class);
     private final WorkspaceResolver resolver = mock(WorkspaceResolver.class);
     private final AnalysisSseEventMapper mapper = spy(new AnalysisSseEventMapper());
+    private final ObjectMapper json = spy(new ObjectMapper());
     private final AtomicReference<Runnable> queued = new AtomicReference<>();
     private MockMvc mvc;
 
@@ -53,7 +54,7 @@ class AnalysisCompletionContractTest {
         when(resolver.resolveCurrentContext()).thenReturn(scope);
         doAnswer(invocation -> { queued.set(invocation.getArgument(0)); return null; })
                 .when(executor).execute(any());
-        var controller = new AnalysisApiController(taxonomy, executor, new ObjectMapper(), analyze, stream,
+        var controller = new AnalysisApiController(taxonomy, executor, json, analyze, stream,
                 mock(AnalyzeNodeChildrenUseCase.class), mock(JustifyLeafUseCase.class), mapper,
                 mock(RepositoryStateService.class), resolver, mock(MessageSource.class));
         ReflectionTestUtils.setField(controller, "analysisProgressRegistry", registry);
@@ -115,15 +116,19 @@ class AnalysisCompletionContractTest {
         assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("CANCELLED");
     }
 
-    @Test void finalizationPrecedesTerminalMappingAndLateCancellationCannotChangeIt() throws Exception {
+    @Test void finalizationPrecedesTerminalBytesAndLateCancellationCannotChangeIt() throws Exception {
         doAnswer(invocation -> {
             AnalysisStreamEvent event = invocation.getArgument(0);
             if (event instanceof AnalysisStreamEvent.Complete) {
-                assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("COMPLETED");
-                assertThat(registry.cancel(id, "alice", scope).status()).isEqualTo("COMPLETED");
+                assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("RUNNING");
             }
             return invocation.callRealMethod();
         }).when(mapper).map(any());
+        doAnswer(invocation -> {
+            assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("COMPLETED");
+            assertThat(registry.cancel(id, "alice", scope).status()).isEqualTo("COMPLETED");
+            return invocation.callRealMethod();
+        }).when(json).writeValueAsString(any());
         doAnswer(invocation -> {
             AnalysisStreamEventHandler emit = invocation.getArgument(1);
             emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80), List.of(), List.of(), List.of()));
@@ -133,6 +138,21 @@ class AnalysisCompletionContractTest {
         }).when(stream).stream(any(), any());
         assertThat(executeStream()).contains("\"status\":\"SUCCESS\"").doesNotContain("late duplicate");
         verify(mapper, times(1)).map(any());
+    }
+
+    @Test void cancellationAcceptedDuringTerminalPreparationWinsBeforeAnyTerminalBytes() throws Exception {
+        doAnswer(invocation -> {
+            registry.cancel(id, "alice", scope);
+            return invocation.callRealMethod();
+        }).when(mapper).map(any());
+        doAnswer(invocation -> {
+            AnalysisStreamEventHandler emit = invocation.getArgument(1);
+            emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80), List.of(), List.of(), List.of()));
+            return null;
+        }).when(stream).stream(any(), any());
+        assertThat(executeStream()).contains("\"status\":\"PARTIAL\"", "CANCELLED", "\"CP\":80")
+                .doesNotContain("\"status\":\"SUCCESS\"");
+        assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("CANCELLED");
     }
 
     @Test void streamWithoutTerminalCallbackStillClosesWithAnExplicitFailure() throws Exception {
@@ -150,6 +170,59 @@ class AnalysisCompletionContractTest {
         mvc.perform(request).andExpect(status().isForbidden());
         verifyNoInteractions(executor, stream);
         assertThat(registry.recent("alice", new WorkspaceContext("alice", null, "draft"), null, null)).isEmpty();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"complete", "error", "cancelled"})
+    void terminalMappingFailureStillDeliversOneClosedEvidenceBearingTerminalEvent(String ending) throws Exception {
+        doThrow(new IllegalStateException("catalogue projection unavailable")).when(mapper).map(any());
+        doAnswer(invocation -> {
+            AnalysisStreamEventHandler emit = invocation.getArgument(1);
+            if ("cancelled".equals(ending)) registry.cancel(id, "alice", scope);
+            if ("complete".equals(ending)) {
+                emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80),
+                        List.of("retained warning"), List.of(), List.of()));
+            } else {
+                emit.handle(new AnalysisStreamEvent.Error("PARTIAL", "retained diagnostic", Map.of("CP", 80),
+                        List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason")));
+            }
+            return null;
+        }).when(stream).stream(any(), any());
+        String body = executeStream();
+        assertThat(body).contains("event:error", "\"CP\":80", "retained warning", "scoreSemanticsUnavailable");
+        assertThat(body.split("event:error", -1)).hasSize(2);
+        assertThat(body).doesNotContain("catalogue projection unavailable", "\"status\":\"SUCCESS\"");
+        if (!"complete".equals(ending)) assertThat(body).contains("retained reason", "retained diagnostic");
+        assertThat(registry.snapshot(id, "alice", scope).status())
+                .isEqualTo("cancelled".equals(ending) ? "CANCELLED" : "ERROR");
+        assertThat(com.taxonomy.analysis.service.AnalysisRunControl.active()).isFalse();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"error", "completion", "timeout"})
+    void disconnectRemainsCancelledEvenWhenProviderConsumesTheInterrupt(String signal) throws Exception {
+        MvcResult pending = mvc.perform(get("/api/analyze-stream").param("businessText", "resilient communications")
+                        .header(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER, id))
+                .andExpect(request().asyncStarted()).andReturn();
+        doAnswer(invocation -> {
+            var async = (org.springframework.mock.web.MockAsyncContext) pending.getRequest().getAsyncContext();
+            var event = new jakarta.servlet.AsyncEvent(async, new java.io.IOException("connection closed"));
+            for (var listener : async.getListeners()) {
+                if ("error".equals(signal)) listener.onError(event);
+                else if ("timeout".equals(signal)) listener.onTimeout(event);
+                else listener.onComplete(event);
+            }
+            // Some HTTP clients consume the transient interrupt when handling failed I/O.
+            Thread.interrupted();
+            assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("CANCELLING");
+            assertThat(org.junit.jupiter.api.Assertions.assertThrows(
+                    com.taxonomy.analysis.service.AnalysisStoppedException.class,
+                    com.taxonomy.analysis.service.AnalysisRunControl::checkpoint).reason())
+                    .isEqualTo(com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED);
+            throw new com.taxonomy.analysis.service.AnalysisStoppedException(
+                    com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED);
+        }).when(stream).stream(any(), any());
+        try { queued.get().run(); } finally { Thread.interrupted(); }
+        assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("CANCELLED");
+        assertThat(com.taxonomy.analysis.service.AnalysisRunControl.active()).isFalse();
     }
 
     private String executeStream() throws Exception {
