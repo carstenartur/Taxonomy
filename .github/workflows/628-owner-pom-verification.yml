@@ -25,14 +25,14 @@ jobs:
           mkdir -p /tmp/628-owner-pom
           python harness/.github/scripts/build-pom-boundary-review.py tests candidate
           git -C candidate diff --check
-      - name: Execute the current unsafe read and valid-alias controls
+      - name: Execute unsafe reads and valid-alias controls
         working-directory: candidate
         run: |
           set +e
           ./mvnw -B -ntp -pl taxonomy-build -am test '-Dtest=ArchitectureModuleGraphTest#ownerPom*' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-owner-pom/red.log 2>&1
           result=$?
           cp taxonomy-build/target/surefire-reports/TEST-com.taxonomy.ArchitectureModuleGraphTest.xml /tmp/628-owner-pom/red.xml
-          tail -45 /tmp/628-owner-pom/red.log
+          tail -30 /tmp/628-owner-pom/red.log
           test "$result" -eq 1
       - name: Require two behavior failures and two passing controls
         shell: python
@@ -42,30 +42,35 @@ jobs:
           counts={k:int(root.get(k,'0')) for k in ('tests','failures','errors','skipped')}
           assert counts=={'tests':4,'failures':2,'errors':0,'skipped':0},counts
           print(counts)
-      - name: Correct the real-path boundary and run every affected guard
+      - name: Correct the real-path boundary and execute every affected guard
         working-directory: candidate
         run: |
           set -o pipefail
           python ../harness/.github/scripts/build-pom-boundary-review.py patch .
           ./mvnw -B -ntp test '-Dtest=ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,ArchitectureSelectorSynchronizationTest,ArchitectureExceptionLedgerTest' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-owner-pom/green.log 2>&1 || { tail -140 /tmp/628-owner-pom/green.log; exit 1; }
           tail -35 /tmp/628-owner-pom/green.log
-      - name: Inspect actual reports, not just a successful Maven exit
+      - name: Verify all original and additional cases actually executed
         shell: python
         run: |
           from pathlib import Path
           import json,xml.etree.ElementTree as ET
+          expected={'com.taxonomy.ArchitectureModuleGraphTest':138,
+                    'com.taxonomy.ArchitectureModuleExtractionTest':1,
+                    'com.taxonomy.ArchitectureSelectorSynchronizationTest':59,
+                    'com.taxonomy.ArchitectureExceptionLedgerTest':6}
           suites={}
           for path in Path('candidate').glob('**/target/surefire-reports/TEST-*.xml'):
               root=ET.parse(path).getroot()
               counts={k:int(root.get(k,'0')) for k in ('tests','failures','errors','skipped')}
               assert counts['failures']==counts['errors']==counts['skipped']==0,(path,counts)
               suites[root.get('name')]=counts
-          assert len(suites)==4,suites
-          assert suites['com.taxonomy.ArchitectureModuleGraphTest']['tests']==131,suites
-          assert suites['com.taxonomy.ArchitectureExceptionLedgerTest']['tests']==6,suites
+              if root.get('name')=='com.taxonomy.ArchitectureModuleGraphTest':
+                  assert len([c for c in root.findall('testcase') if c.get('name','').startswith('ownerPom')])==4
+          assert set(suites)==set(expected),suites
+          for name,count in expected.items(): assert suites[name]['tests']==count,(name,suites[name])
           Path('/tmp/628-owner-pom/green-counts.json').write_text(json.dumps(suites,indent=2)+'\n')
           print(suites)
-      - name: Publish verified source and native candidate identities without changing PR heads
+      - name: Publish verified source and candidate identities without changing PR heads
         env:
           GH_TOKEN: ${{ github.token }}
         run: python harness/.github/scripts/build-pom-boundary-review.py publish-candidates candidate /tmp/628-owner-pom
