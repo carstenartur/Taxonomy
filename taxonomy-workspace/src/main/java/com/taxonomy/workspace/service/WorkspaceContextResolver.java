@@ -170,6 +170,9 @@ public class WorkspaceContextResolver {
     public UserWorkspace resolveWorkspaceMetadataForUser(String username) {
         username = normalizeUsername(username);
         String requestedWorkspaceId = requestedWorkspaceId();
+        // A missing pin follows the active workspace. A present empty pin is an
+        // explicit central read and must not trigger any implicit metadata lookup.
+        if (requestedWorkspaceId != null && requestedWorkspaceId.isEmpty()) return null;
         UserWorkspace workspace = requestedWorkspaceId == null
                 ? findWorkspace(username)
                 : workspaceManager.getWorkspaceById(requestedWorkspaceId);
@@ -220,12 +223,12 @@ public class WorkspaceContextResolver {
             return null;
         }
         String header = servletAttributes.getRequest().getHeader(WORKSPACE_HEADER);
-        if (hasText(header)) {
+        if (header != null) {
             return header.strip();
         }
         String parameter = servletAttributes.getRequest()
                 .getParameter(WORKSPACE_QUERY_PARAMETER);
-        return hasText(parameter) ? parameter.strip() : null;
+        return parameter == null ? null : parameter.strip();
     }
 
     private static String requireRepositoryId(SystemRepository repository) {

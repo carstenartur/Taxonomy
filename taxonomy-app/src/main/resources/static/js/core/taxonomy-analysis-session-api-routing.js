@@ -35,8 +35,11 @@
             && applicationApiPath(resolved).indexOf('/api/') === 0;
     }
 
-    function workspaceScopedUrl(input) {
-        if (!runtime.workspaceId || typeof input !== 'string') return input;
+    function workspaceScopedUrl(input, pinnedWorkspaceId) {
+        // An explicit null/empty pin means central scope, not the active tab.
+        var explicitPin = pinnedWorkspaceId !== undefined;
+        var workspaceId = explicitPin ? pinnedWorkspaceId : runtime.workspaceId;
+        if ((!explicitPin && !workspaceId) || typeof input !== 'string') return input;
         var resolved;
         try {
             resolved = new URL(input, window.location.href);
@@ -45,7 +48,7 @@
         }
         if (!isSameApplicationApi(resolved)) return input;
 
-        resolved.searchParams.set(WORKSPACE_QUERY_PARAMETER, runtime.workspaceId);
+        resolved.searchParams.set(WORKSPACE_QUERY_PARAMETER, workspaceId == null ? '' : workspaceId);
         return /^[a-z][a-z0-9+.-]*:/i.test(input)
             ? resolved.href
             : resolved.pathname + resolved.search + resolved.hash;
@@ -64,7 +67,10 @@
             if (typeof original !== 'function') return;
             client[methodName] = function () {
                 var args = Array.prototype.slice.call(arguments);
-                args[0] = workspaceScopedUrl(args[0]);
+                // Explicitly scoped operation calls (including cancellation after a
+                // tab switch) must retain the same workspace in URL and header.
+                var policy = methodName === 'request' ? args[2] : null;
+                args[0] = workspaceScopedUrl(args[0], policy ? policy.pinnedWorkspaceId : undefined);
                 return original.apply(client, args);
             };
         });

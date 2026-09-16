@@ -3,6 +3,7 @@ package com.taxonomy.analysis.service;
 import tools.jackson.databind.ObjectMapper;
 import jakarta.annotation.PostConstruct;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
@@ -318,6 +319,7 @@ public class LlmService {
      */
     public AnalysisResult analyzeWithBudget(String businessText) {
         Map<String, Integer> allScores = new HashMap<>();
+        Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts = new LinkedHashMap<>();
         Map<String, String> allReasons = new LinkedHashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
@@ -333,6 +335,7 @@ public class LlmService {
         List<String> completedRoots = new ArrayList<>();
         List<String> skippedRoots  = new ArrayList<>();
         boolean rateLimitHit = false;
+        AnalysisStoppedException stop = null;
 
         for (TaxonomyNode root : roots) {
             if (rateLimitHit) {
@@ -340,6 +343,8 @@ public class LlmService {
                 continue;
             }
             try {
+                // Capture scalar context before the provider can return a cooperative stop.
+                captureScoreContexts(List.of(root), scoreContexts);
                 // Score root independently (0-100) to gauge branch relevance
                 LlmCallDetail rootDetail = callLlmPropagatingDetailed(
                         businessText, List.of(root), 100);
@@ -360,12 +365,19 @@ public class LlmService {
                     if (!level1Children.isEmpty()) {
                         analyzeNodesPropagating(
                                 businessText, level1Children, allScores, allReasons,
-                                allDiscrepancies, productCoverageGaps, warnings, score);
+                                allDiscrepancies, productCoverageGaps, warnings, score, scoreContexts);
                     }
                 }
 
                 completedRoots.add(root.getName());
 
+            } catch (AnalysisStoppedException stopped) {
+                allScores.putAll(stopped.partialScores());
+                allReasons.putAll(stopped.partialReasons());
+                allDiscrepancies.addAll(stopped.partialDiscrepancies());
+                warnings.add(stopped.getMessage());
+                stop = stopped;
+                break;
             } catch (LlmRateLimitException e) {
                 rateLimitHit = true;
                 skippedRoots.add(root.getName());
@@ -378,20 +390,27 @@ public class LlmService {
         }
 
         // Build the annotated tree from whatever scores were collected
-        List<TaxonomyNodeDto> rawTree = taxonomyService.getFullTree();
+        List<TaxonomyNodeDto> rawTree = stop == null ? taxonomyService.getFullTree() : List.of();
         List<TaxonomyNodeDto> annotatedTree = new ArrayList<>();
         for (TaxonomyNodeDto rootDto : rawTree) {
             annotatedTree.add(taxonomyService.applyScores(rootDto, allScores));
         }
 
         AnalysisResult result = new AnalysisResult(allScores, annotatedTree);
+        if (stop != null) {
+            scoreContexts.keySet().retainAll(allScores.keySet());
+            result.setScoreSemanticsContext(scoreContexts);
+        }
         result.setReasons(allReasons);
         result.setProvider(getActiveProviderName());
         result.setDiscrepancies(allDiscrepancies);
         result.setProductCoverageGaps(productCoverageGaps);
         result.setWarnings(warnings);
 
-        if (rateLimitHit) {
+        if (stop != null) {
+            result.setStatus("PARTIAL");
+            result.setErrorMessage(stop.getMessage());
+        } else if (rateLimitHit) {
             String msg = "Rate limit reached after processing: " +
                     String.join(", ", completedRoots) + ". Skipped: " +
                     String.join(", ", skippedRoots) + ".";
@@ -414,8 +433,10 @@ public class LlmService {
                                           List<TaxonomyDiscrepancy> allDiscrepancies,
                                           List<ProductCoverageGap> productCoverageGaps,
                                           List<String> warnings,
-                                          int parentScore) {
+                                          int parentScore,
+                                          Map<String, AnalysisScoreSemantics.NodeContext> scoreContexts) {
         if (nodes == null || nodes.isEmpty()) return;
+        captureScoreContexts(nodes, scoreContexts);
 
         SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
         LlmCallDetail detail = batch.detail();
@@ -442,7 +463,7 @@ public class LlmService {
                 if (!children.isEmpty()) {
                     analyzeNodesPropagating(
                             businessText, children, allScores, allReasons,
-                            allDiscrepancies, productCoverageGaps, warnings, entry.getValue());
+                            allDiscrepancies, productCoverageGaps, warnings, entry.getValue(), scoreContexts);
                 }
             }
         }
@@ -460,6 +481,7 @@ public class LlmService {
      */
     public void analyzeStreaming(String businessText, AnalysisEventCallback callback) {
         Map<String, Integer> allScores = new HashMap<>();
+        Map<String, String> allReasons = new LinkedHashMap<>();
         List<TaxonomyDiscrepancy> allDiscrepancies = new ArrayList<>();
         List<ProductCoverageGap> productCoverageGaps = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
@@ -477,6 +499,7 @@ public class LlmService {
                 LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100);
                 int rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0);
                 allScores.put(root.getCode(), rootScore);
+                if (rootDetail.getReasons() != null) allReasons.putAll(rootDetail.getReasons());
                 if (rootDetail.getDiscrepancy() != null) {
                     allDiscrepancies.add(rootDetail.getDiscrepancy());
                 }
@@ -490,7 +513,7 @@ public class LlmService {
                     if (!level1Children.isEmpty()) {
                         callback.onExpanding(root.getCode(),
                                 level1Children.stream().map(TaxonomyNode::getCode).toList());
-                        analyzeStreamingNodes(businessText, level1Children, allScores,
+                        analyzeStreamingNodes(businessText, level1Children, allScores, allReasons,
                                 allDiscrepancies, productCoverageGaps, warnings, callback, rootScore);
                     }
                 }
@@ -498,16 +521,24 @@ public class LlmService {
 
             callback.onComplete(warnings.isEmpty() ? "SUCCESS" : "PARTIAL", allScores,
                     warnings, allDiscrepancies, productCoverageGaps);
+        } catch (AnalysisStoppedException stopped) {
+            allScores.putAll(stopped.partialScores());
+            allReasons.putAll(stopped.partialReasons());
+            allDiscrepancies.addAll(stopped.partialDiscrepancies());
+            warnings.add(stopped.getMessage());
+            callback.onError("PARTIAL", stopped.getMessage(),
+                    allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps);
         } catch (Exception e) {
             log.error("Streaming analysis failed", e);
             callback.onError("PARTIAL", "Analysis failed: " + e.getMessage(),
-                    allScores, warnings, allDiscrepancies, productCoverageGaps);
+                    allScores, allReasons, warnings, allDiscrepancies, productCoverageGaps);
         }
     }
 
     private void analyzeStreamingNodes(String businessText,
                                         List<TaxonomyNode> nodes,
                                         Map<String, Integer> allScores,
+                                        Map<String, String> allReasons,
                                         List<TaxonomyDiscrepancy> allDiscrepancies,
                                         List<ProductCoverageGap> productCoverageGaps,
                                         List<String> warnings,
@@ -518,6 +549,7 @@ public class LlmService {
         SiblingBatchResult batch = scoreSiblingBatch(businessText, nodes, parentScore);
         LlmCallDetail detail = batch.detail();
         allScores.putAll(detail.getScores());
+        if (detail.getReasons() != null) allReasons.putAll(detail.getReasons());
         if (detail.getDiscrepancy() != null) {
             allDiscrepancies.add(detail.getDiscrepancy());
         }
@@ -538,7 +570,7 @@ public class LlmService {
                 if (!children.isEmpty()) {
                     callback.onExpanding(entry.getKey(),
                             children.stream().map(TaxonomyNode::getCode).toList());
-                    analyzeStreamingNodes(businessText, children, allScores,
+                    analyzeStreamingNodes(businessText, children, allScores, allReasons,
                             allDiscrepancies, productCoverageGaps, warnings, callback,
                             entry.getValue());
                 }
@@ -577,6 +609,8 @@ public class LlmService {
             detail.setError(errorMsg);
             recordFailure(errorMsg);
             return detail;
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception e) {
             log.error("Error in detailed LLM call", e);
             LlmCallDetail detail = new LlmCallDetail();
@@ -640,24 +674,49 @@ public class LlmService {
 
         LlmCallDetail categoryDetail =
                 callLlmPropagatingDetailed(businessText, categories, parentScore);
-        LlmCallDetail productDetail = callProductBatchesDetailed(businessText, products);
+        LlmCallDetail productDetail;
+        try {
+            productDetail = callProductBatchesDetailed(businessText, products);
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped.withPartial(categoryDetail);
+        }
         return new SiblingBatchResult(
                 mergeDetails(List.of(categoryDetail, productDetail)),
                 !hasError(productDetail));
     }
 
-    private LlmCallDetail callProductBatchesDetailed(
-            String businessText, List<TaxonomyNode> products) {
+    private LlmCallDetail callProductBatchesDetailed(String businessText,
+                                                      List<TaxonomyNode> products) {
+        List<TaxonomyNode> ordered = products.stream()
+                .sorted(Comparator.comparing(TaxonomyNode::getCode,
+                        Comparator.nullsLast(String::compareTo)))
+                .toList();
         int batchSize = Math.max(1, Math.min(10, productBatchSize));
-        List<LlmCallDetail> details = new ArrayList<>();
-        for (int from = 0; from < products.size(); from += batchSize) {
-            int to = Math.min(products.size(), from + batchSize);
-            details.add(callProductBatchDetailed(businessText, products.subList(from, to)));
+        LlmDetailAccumulator accumulator = new LlmDetailAccumulator();
+        for (int from = 0; from < ordered.size(); from += batchSize) {
+            List<TaxonomyNode> batch = ordered.subList(from, Math.min(from + batchSize, ordered.size()));
+            try {
+                accumulator.add(callProductBatchDetailed(businessText, batch));
+            } catch (AnalysisStoppedException stopped) {
+                throw stopped.withPartial(accumulator.result());
+            }
         }
-        return mergeDetails(details);
+        LlmCallDetail result = accumulator.result();
+        if (result.getProvider() == null) result.setProvider(getActiveProviderName());
+        return result;
     }
 
-    private LlmCallDetail callProductBatchDetailed(
+    private LlmCallDetail callProductBatchDetailed(String businessText, List<TaxonomyNode> products) {
+        return AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
+                () -> performProductBatchDetailed(businessText, products));
+    }
+
+    private LlmCallDetail callLlmPropagatingDetailed(String businessText, List<TaxonomyNode> nodes, int parentScore) {
+        return AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
+                () -> performLlmPropagatingDetailed(businessText, nodes, parentScore));
+    }
+
+    private LlmCallDetail performProductBatchDetailed(
             String businessText, List<TaxonomyNode> products) {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setProvider(getActiveProviderName());
@@ -763,6 +822,8 @@ public class LlmService {
             detail.setScores(parsed.scores());
             detail.setReasons(parsed.reasons());
             recordSuccess();
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception exception) {
             String error = "Failed to parse independent product response: " + exception.getMessage();
             log.error(error, exception);
@@ -811,50 +872,11 @@ public class LlmService {
     }
 
     private LlmCallDetail mergeDetails(List<LlmCallDetail> details) {
-        if (details.size() == 1) {
-            return details.get(0);
-        }
-        LlmCallDetail merged = new LlmCallDetail();
-        merged.setProvider(getActiveProviderName());
-        Map<String, Integer> scores = new LinkedHashMap<>();
-        Map<String, String> reasons = new LinkedHashMap<>();
-        StringBuilder prompts = new StringBuilder();
-        StringBuilder responses = new StringBuilder();
-        List<String> errors = new ArrayList<>();
-        long duration = 0;
-        for (int index = 0; index < details.size(); index++) {
-            LlmCallDetail detail = details.get(index);
-            if (detail.getScores() != null) {
-                scores.putAll(detail.getScores());
-            }
-            if (detail.getReasons() != null) {
-                reasons.putAll(detail.getReasons());
-            }
-            if (detail.getPrompt() != null && !detail.getPrompt().isBlank()) {
-                prompts.append("--- call ").append(index + 1).append(" ---\n")
-                        .append(detail.getPrompt()).append('\n');
-            }
-            if (detail.getRawResponse() != null && !detail.getRawResponse().isBlank()) {
-                responses.append("--- call ").append(index + 1).append(" ---\n")
-                        .append(detail.getRawResponse()).append('\n');
-            }
-            if (detail.getError() != null && !detail.getError().isBlank()) {
-                errors.add(detail.getError());
-            }
-            if (merged.getDiscrepancy() == null && detail.getDiscrepancy() != null) {
-                merged.setDiscrepancy(detail.getDiscrepancy());
-            }
-            duration += detail.getDurationMs();
-        }
-        merged.setScores(scores);
-        merged.setReasons(reasons);
-        merged.setPrompt(prompts.toString());
-        merged.setRawResponse(responses.toString());
-        merged.setDurationMs(duration);
-        if (!errors.isEmpty()) {
-            merged.setError(String.join(" | ", errors));
-        }
-        return merged;
+        LlmDetailAccumulator accumulator = new LlmDetailAccumulator();
+        details.forEach(accumulator::add);
+        LlmCallDetail result = accumulator.result();
+        if (result.getProvider() == null) result.setProvider(getActiveProviderName());
+        return result;
     }
 
     private void addAnalysisWarning(List<String> warnings,
@@ -909,6 +931,14 @@ public class LlmService {
                         + minimumProductScore() + "."));
     }
 
+    private void captureScoreContexts(List<TaxonomyNode> nodes,
+            Map<String, AnalysisScoreSemantics.NodeContext> contexts) {
+        for (TaxonomyNode node : nodes) {
+            contexts.putIfAbsent(node.getCode(), new AnalysisScoreSemantics.NodeContext(
+                    node.getParentCode(), isProduct(node) ? "PRODUCT" : "CATEGORY"));
+        }
+    }
+
     private boolean isProduct(TaxonomyNode node) {
         return node != null && isProductCode(node.getCode());
     }
@@ -924,6 +954,8 @@ public class LlmService {
     private Map<String, Integer> callLlm(String businessText, List<TaxonomyNode> nodes, int parentScore) {
         try {
             return callLlmPropagating(businessText, nodes, parentScore);
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception e) {
             log.error("Error calling LLM API", e);
             return responseParser.zeroScores(nodes);
@@ -985,11 +1017,15 @@ public class LlmService {
                 ScoreParseResult result = responseParser.parseScoreParseResult(rawText, nodes, parentScore);
                 recordSuccess();
                 return result;
-            } catch (Exception e) {
+            } catch (AnalysisStoppedException stopped) {
+            throw stopped;
+        } catch (Exception e) {
                 log.error("Failed to parse LLM response in callLlmResult", e);
                 recordFailure(e.getMessage());
                 return ScoreParseResult.empty(nodes);
             }
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception e) {
             log.error("Error calling LLM API", e);
             return ScoreParseResult.empty(nodes);
@@ -1045,6 +1081,8 @@ public class LlmService {
         if (rawText == null) return responseParser.zeroScores(nodes);
         try {
             return responseParser.parseScoreParseResult(rawText, nodes, parentScore).scores();
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception e) {
             log.error("Failed to parse LLM response in callLlmPropagating", e);
             return responseParser.zeroScores(nodes);
@@ -1055,7 +1093,7 @@ public class LlmService {
      * Like {@link #callLlmPropagating} but also captures timing, the prompt, and the
      * raw LLM text response, returning them in a {@link com.taxonomy.dto.LlmCallDetail}.
      */
-    private LlmCallDetail callLlmPropagatingDetailed(
+    private LlmCallDetail performLlmPropagatingDetailed(
             String businessText, List<TaxonomyNode> nodes, int parentScore) {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setProvider(getActiveProviderName());
@@ -1160,7 +1198,9 @@ public class LlmService {
                 detail.setReasons(parsed.reasons());
                 detail.setDiscrepancy(parsed.discrepancy());
                 recordSuccess();
-            } catch (Exception e) {
+            } catch (AnalysisStoppedException stopped) {
+            throw stopped;
+        } catch (Exception e) {
                 log.error("Failed to parse scores in detailed LLM call", e);
                 detail.setScores(responseParser.zeroScores(nodes));
                 String errorMsg = "Failed to parse LLM response: " + e.getMessage();
@@ -1402,6 +1442,8 @@ public class LlmService {
             }
             recordSuccess();
             return rawText.trim();
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception e) {
             log.error("Failed to generate leaf justification for {}", leafCode, e);
             recordFailure(e.getMessage());
@@ -1447,6 +1489,8 @@ public class LlmService {
             log.warn("LLM API call timed out: {}", e.getMessage());
             recordFailure(e.getMessage());
             throw e;
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception e) {
             log.error("Failed to call LLM raw", e);
             recordFailure(e.getMessage());

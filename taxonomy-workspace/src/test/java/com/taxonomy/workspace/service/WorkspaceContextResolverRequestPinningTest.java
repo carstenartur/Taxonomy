@@ -100,6 +100,32 @@ class WorkspaceContextResolverRequestPinningTest {
         verify(systemRepositoryService, never()).getRepository("repo-b");
     }
 
+    @Test
+    void explicitEmptyQueryKeepsTheCentralRepositoryAfterWorkspaceActivation() {
+        assertCentralPin(false);
+    }
+
+    @Test
+    void explicitEmptyHeaderKeepsTheCentralRepositoryAfterWorkspaceActivation() {
+        assertCentralPin(true);
+    }
+
+    private void assertCentralPin(boolean header) {
+        org.mockito.Mockito.lenient().when(workspaceManager.findActiveWorkspace("alice"))
+                .thenReturn(workspace("alice", "workspace-b", "feature/b", "repo-b"));
+        org.mockito.Mockito.lenient().when(systemRepositoryService.getRepository("repo-b"))
+                .thenReturn(repository("repo-b", "main"));
+        org.mockito.Mockito.lenient().when(systemRepositoryService.getPrimaryRepository())
+                .thenReturn(repository("central-repo", "main"));
+        if (header) requestWithWorkspaceHeader("");
+        else requestWithWorkspaceQuery("");
+        RepositoryContext context = resolver().resolveRepositoryContextForUser("alice");
+        assertThat(context.workspaceId()).isNull();
+        assertThat(context.repositoryId()).isEqualTo("central-repo");
+        assertThat(context.branch()).isEqualTo("main");
+        verify(workspaceManager, never()).findActiveWorkspace("alice");
+    }
+
     private WorkspaceContextResolver resolver() {
         return new WorkspaceContextResolver(
                 workspaceManager, systemRepositoryService, workspaceRepository);
