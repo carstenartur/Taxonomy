@@ -1,0 +1,308 @@
+name: Workspace Git compare-and-set verification
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-git-cas.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 54fadbb1bbe757be10fdc211c945273ee9048370
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Add deterministic races using actual in-memory JGit refs
+        shell: python
+        run: |
+          from pathlib import Path
+          Path('/tmp/git-cas').mkdir()
+          p=Path('taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceGitCasBoundaryTest.java');assert not p.exists()
+          p.write_text('''package com.taxonomy.workspace.service;
+
+          import com.taxonomy.dsl.merge.TaxDslMergeResult;
+          import com.taxonomy.versioning.service.SemanticGitMergeService;
+          import com.taxonomy.workspace.model.*;
+          import com.taxonomy.workspace.repository.*;
+          import com.taxonomy.workspace.storage.*;
+          import org.junit.jupiter.api.Test;
+          import org.junit.jupiter.params.ParameterizedTest;
+          import org.junit.jupiter.params.provider.ValueSource;
+          import java.io.IOException;
+          import java.util.List;
+          import java.util.Optional;
+          import static org.junit.jupiter.api.Assertions.*;
+          import static org.mockito.Mockito.*;
+
+          class WorkspaceGitCasBoundaryTest {
+              static final String BASE = "requirement R0 { text: \\\"base\\\"; }";
+              static final String MERGED = "requirement R0 { text: \\\"merged\\\"; }";
+              static final String CONCURRENT = "requirement OTHER { text: \\\"concurrent owner\\\"; }";
+              static final WorkspaceArchitectureVersionPort DIRECT = new WorkspaceArchitectureVersionPort() {
+                  public <T> T version(RepositoryContext context, String rationale, GitAction<T> action) throws IOException {
+                      return action.run();
+                  }
+              };
+              /** Inject an independent commit after the service read but immediately before its write. */
+              static final class RacingRepository extends DslGitRepository {
+                  String armedBranch;
+                  boolean fired;
+                  private void race(String branch) throws IOException {
+                      if (branch.equals(armedBranch) && !fired) {
+                          fired = true;
+                          super.commitDsl(branch, CONCURRENT, "other", "Independent concurrent update");
+                      }
+                  }
+                  @Override public String commitDsl(String b, String d, String a, String m) throws IOException {
+                      race(b); return super.commitDsl(b,d,a,m);
+                  }
+                  @Override public String commitDslIfHeadMatches(String b, String h, String d, String a, String m) throws IOException {
+                      race(b); return super.commitDslIfHeadMatches(b,h,d,a,m);
+                  }
+              }
+              static final class Fixture implements AutoCloseable {
+                  final DslGitRepository source = new DslGitRepository();
+                  final RacingRepository destination = new RacingRepository();
+                  final UserWorkspaceRepository rows = mock(UserWorkspaceRepository.class);
+                  final SyncStateRepository states = mock(SyncStateRepository.class);
+                  final SystemRepositoryService catalog = mock(SystemRepositoryService.class);
+                  final DslGitRepositoryFactory repositories = mock(DslGitRepositoryFactory.class);
+                  final SemanticGitMergeService merger = mock(SemanticGitMergeService.class);
+                  final WorkspacePortfolioGitPort portfolio = mock(WorkspacePortfolioGitPort.class);
+                  final WorkspaceContextResolver resolver = mock(WorkspaceContextResolver.class);
+                  final UserWorkspace workspace = new UserWorkspace();
+                  final GitNativeSyncIntegrationService service;
+                  Fixture() throws IOException {
+                      var repo = new SystemRepository(); repo.setRepositoryId("source"); repo.setSlug("source");
+                      repo.setDefaultBranch("draft"); repo.setLifecycleState(RepositoryLifecycleState.ACTIVE);
+                      repo.setTopologyMode(RepositoryTopologyMode.INTERNAL_SHARED);
+                      String base = source.commitDsl("draft", BASE, "source", "Source checkpoint");
+                      workspace.setWorkspaceId("workspace"); workspace.setUsername("alice");
+                      workspace.setSourceRepositoryId("source"); workspace.setSourceBranch("draft");
+                      workspace.setSyncTargetBranch("draft"); workspace.setCurrentBranch("main");
+                      workspace.setBaseCommit(base); workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+                      when(rows.findByWorkspaceId("workspace")).thenReturn(Optional.of(workspace));
+                      when(rows.findByUsernameAndSharedFalse("alice")).thenReturn(Optional.of(workspace));
+                      when(rows.claimProvisioning(eq("workspace"),eq("alice"),any(),any())).thenReturn(1);
+                      when(rows.save(any())).thenAnswer(c -> c.getArgument(0));
+                      when(catalog.getRepository("source")).thenReturn(repo); when(catalog.getPrimaryRepository()).thenReturn(repo);
+                      when(repositories.getSystemRepository()).thenReturn(source);
+                      when(repositories.getCentralRepository("source")).thenReturn(source);
+                      when(repositories.openWorkspaceRepository("workspace")).thenReturn(destination);
+                      when(resolver.resolveRepositoryContextForUser("alice"))
+                          .thenReturn(RepositoryContext.workspace("source","workspace","main","alice"));
+                      when(merger.mergeContent(anyString(),anyString(),anyString()))
+                          .thenReturn(new TaxDslMergeResult(MERGED,List.of()));
+                      service = new GitNativeSyncIntegrationService(states,rows,catalog,repositories,merger,portfolio,resolver,DIRECT);
+                  }
+                  void initialized() throws IOException {
+                      destination.commitDsl("main",BASE,"alice","Working branch");
+                      destination.commitDsl("sync-base",BASE,"alice","Tracking checkpoint");
+                  }
+                  public void close() { destination.close(); source.close(); }
+              }
+              @ParameterizedTest @ValueSource(strings={"main","sync-base"})
+              void initializationCannotReplaceAConcurrentCreator(String branch) throws Exception {
+                  try (var f = new Fixture()) {
+                      f.destination.armedBranch = branch;
+                      assertThrows(Exception.class, () -> f.service.syncFromShared("alice","main"));
+                      assertTrue(f.destination.fired);
+                      assertEquals(CONCURRENT,f.destination.getDslAtHead(branch));
+                      verify(f.portfolio,never()).materializePortfolio(anyString(),anyString(),any());
+                  }
+              }
+              @Test void trackingWriteCannotOverwriteAConcurrentSynchronization() throws Exception {
+                  try (var f = new Fixture()) {
+                      f.initialized(); f.destination.armedBranch = "sync-base";
+                      assertThrows(Exception.class, () -> f.service.syncFromShared("alice","main"));
+                      assertTrue(f.destination.fired);
+                      assertEquals(CONCURRENT,f.destination.getDslAtHead("sync-base"));
+                      verify(f.portfolio,never()).materializePortfolio(anyString(),anyString(),any());
+                  }
+              }
+              @ParameterizedTest @ValueSource(booleans={false,true})
+              void trackingSnapshotMustStayCurrentWhileTheMergeIsComputed(boolean unchanged) throws Exception {
+                  try (var f = new Fixture()) {
+                      f.initialized(); String oldMain = f.destination.getHeadCommit("main");
+                      when(f.merger.mergeContent(anyString(),anyString(),anyString())).thenAnswer(call -> {
+                          f.destination.commitDsl("sync-base",CONCURRENT,"other","New tracking checkpoint");
+                          return new TaxDslMergeResult(unchanged ? BASE : MERGED,List.of());
+                      });
+                      assertThrows(Exception.class, () -> f.service.syncFromShared("alice","main"));
+                      assertEquals(CONCURRENT,f.destination.getDslAtHead("sync-base"));
+                      assertEquals(oldMain,f.destination.getHeadCommit("main"));
+                      verify(f.portfolio,never()).materializePortfolio(anyString(),anyString(),any());
+                  }
+              }
+              @Test void provisioningCannotOverwriteAConcurrentAllocation() throws Exception {
+                  try (var f = new Fixture()) {
+                      f.destination.armedBranch="main";
+                      var manager = new WorkspaceManager(f.rows,50,f.catalog,f.repositories);
+                      assertThrows(RuntimeException.class, () -> manager.provisionWorkspaceRepository("alice","workspace"));
+                      assertTrue(f.destination.fired);
+                      assertEquals(CONCURRENT,f.destination.getDslAtHead("main"));
+                      assertNotEquals(WorkspaceProvisioningStatus.READY,f.workspace.getProvisioningStatus());
+                  }
+              }
+              @Test void uncontendedInitializationStillCompletes() throws Exception {
+                  try (var f = new Fixture()) {
+                      assertNotNull(f.service.syncFromShared("alice","main"));
+                      assertEquals(MERGED,f.destination.getDslAtHead("main"));
+                      assertEquals(MERGED,f.destination.getDslAtHead("sync-base"));
+                  }
+              }
+              @Test void unchangedTrackingBaseDoesNotCreateAnExtraCommit() throws Exception {
+                  try (var f = new Fixture()) {
+                      f.initialized(); String old = f.destination.getHeadCommit("sync-base");
+                      when(f.merger.mergeContent(anyString(),anyString(),anyString())).thenReturn(new TaxDslMergeResult(BASE,List.of()));
+                      assertNotNull(f.service.syncFromShared("alice","main"));
+                      assertEquals(old,f.destination.getHeadCommit("sync-base"));
+                  }
+              }
+              @Test void uncontendedProvisioningStillCompletes() throws Exception {
+                  try (var f = new Fixture()) {
+                      var manager = new WorkspaceManager(f.rows,50,f.catalog,f.repositories);
+                      assertEquals(WorkspaceProvisioningStatus.READY,manager.provisionWorkspaceRepository("alice","workspace").getProvisioningStatus());
+                      assertEquals(BASE,f.destination.getDslAtHead("main"));
+                  }
+              }
+          }
+          ''')
+      - name: Require six actual race failures and three healthy controls
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-workspace -am test -Dtest=WorkspaceGitCasBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/git-cas/red.log 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          p=Path('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceGitCasBoundaryTest.xml')
+          s=ET.parse(p).getroot();assert int(s.get('tests'))==9 and int(s.get('failures'))==6 and int(s.get('errors'))==0,s.attrib
+          Path('/tmp/git-cas/red.xml').write_bytes(p.read_bytes());print(s.attrib)
+          PY
+      - name: Carry expected heads through initialization, merging and provisioning
+        shell: python
+        run: |
+          from pathlib import Path
+          def replace(text,old,new,count=1):
+              assert text.count(old)==count,(old,text.count(old)); return text.replace(old,new)
+          p=Path('taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java');t=p.read_text()
+          t=replace(t,'WorkspaceMergeState state = takeSource ? null : initialiseWorkspaceMergeBase(', 'WorkspaceMergeState state = takeSource ? trackingState(workspaceGit) : initialiseWorkspaceMergeBase(')
+          t=replace(t,'WorkspaceMergeState state = keepWorkspace ? null : initialiseWorkspaceMergeBase(', 'WorkspaceMergeState state = keepWorkspace ? trackingState(workspaceGit) : initialiseWorkspaceMergeBase(')
+          t=replace(t,'        requireSuccess("Pull from source", merge);','        requireSuccess("Pull from source", merge);\n        workspaceGit.verifyExpectedHead(TRACKING_BRANCH, state.baseHead());')
+          t=replace(t,'        requireSuccess("Publish to source", merge);','        requireSuccess("Publish to source", merge);\n        workspaceGit.verifyExpectedHead(TRACKING_BRANCH, state.baseHead());')
+          t=replace(t,'trackBase(workspaceGit, merge.mergedText(), username);','trackBase(workspaceGit, state, merge.mergedText(), username);',2)
+          t=replace(t,'''        String existingBase = valueOrEmpty(
+                          workspaceGit.getDslAtHead(TRACKING_BRANCH));''','''        WorkspaceMergeState tracking = trackingState(workspaceGit);
+                  String existingBase = tracking.baseDsl();
+                  String userHead = workspaceGit.getHeadCommit(userBranch);''')
+          t=replace(t,'''        if (!existingBase.isBlank() && !existingUserBranch.isBlank()) {
+                      return new WorkspaceMergeState(existingBase);
+                  }''','''        workspaceGit.verifyExpectedHead(userBranch, userHead);
+                  if (!existingBase.isBlank() && !existingUserBranch.isBlank()) {
+                      return tracking;
+                  }''')
+          t=replace(t,'''            workspaceGit.commitDsl(
+                              userBranch,
+                              commonBase,''','''            workspaceGit.commitDslIfHeadMatches(
+                              userBranch,
+                              null,
+                              commonBase,''')
+          t=replace(t,'''        if (existingBase.isBlank()) {
+                      workspaceGit.commitDsl(
+                              TRACKING_BRANCH,
+                              commonBase,''','''        String trackingHead = tracking.baseHead();
+                  if (existingBase.isBlank()) {
+                      trackingHead = workspaceGit.commitDslIfHeadMatches(
+                              TRACKING_BRANCH,
+                              null,
+                              commonBase,''')
+          t=replace(t,'return new WorkspaceMergeState(commonBase);','return new WorkspaceMergeState(commonBase, trackingHead);')
+          start=t.index('    private void trackBase(');end=t.index('    private void updateAfterSync(',start)
+          t=t[:start]+'''    /** Capture the ref before its content and reject an inconsistent observation. */
+              private WorkspaceMergeState trackingState(DslGitRepository repository) throws IOException {
+                  String head = repository.getHeadCommit(TRACKING_BRANCH);
+                  String dsl = valueOrEmpty(repository.getDslAtHead(TRACKING_BRANCH));
+                  repository.verifyExpectedHead(TRACKING_BRANCH, head);
+                  return new WorkspaceMergeState(dsl, head);
+              }
+
+              private void trackBase(DslGitRepository workspaceRepository,
+                                     WorkspaceMergeState expected,
+                                     String mergedDsl,
+                                     String username) throws IOException {
+                  commitIfChanged(workspaceRepository, TRACKING_BRANCH, mergedDsl,
+                          expected.baseDsl(), expected.baseHead(), username,
+                          "Update semantic synchronization base");
+              }
+
+          '''+t[end:]
+          t=replace(t,'private record WorkspaceMergeState(String baseDsl)', 'private record WorkspaceMergeState(String baseDsl, String baseHead)')
+          p.write_text(t)
+          p=Path('taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java');t=p.read_text()
+          t=replace(t,'''allocatedCommit = workspaceGit.commitDsl(
+                                      targetBranch, systemDsl, username,''','''allocatedCommit = workspaceGit.commitDslIfHeadMatches(
+                                      targetBranch, null, systemDsl, username,''')
+          p.write_text(t)
+      - name: Rerun all race cases plus workspace module tests
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-workspace -am test -Dtaxonomy.ui.skip=true > /tmp/git-cas/module.log 2>&1
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          p='taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceGitCasBoundaryTest.xml'
+          s=ET.parse(p).getroot();assert int(s.get('tests'))==9 and all(int(s.get(k,0))==0 for k in ['failures','errors','skipped']),s.attrib
+          print(s.attrib)
+          PY
+      - name: Consumer integration verification
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am verify -DskipITs=false '-Dtest=*Workspace*Test,*Sync*Test,*Provision*Test' '-Dit.test=*Workspace*IT,*Sync*IT' -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/git-cas/consumers.log 2>&1
+          git diff --check
+      - name: Publish only a tested isolated candidate with evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git add taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceGitCasBoundaryTest.java
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(workspace): preserve expected Git heads through initialization and tracking writes'
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push origin HEAD:refs/heads/verify/628-git-cas-${{ github.run_id }}
+          python3 - <<'PY'
+          import json,os,subprocess,urllib.request,base64
+          from pathlib import Path
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          d={'commit':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}'),'base':'54fadbb1bbe757be10fdc211c945273ee9048370','run':os.environ['GITHUB_RUN_ID'],'sixRaceFailuresReproduced':True,'moduleAndConsumerTestsPassed':True}
+          text=json.dumps(d,indent=2)+'\n';Path('/tmp/git-cas/summary.json').write_text(text)
+          payload={'message':'checked Git ref race evidence','content':base64.b64encode(text.encode()).decode(),'branch':'verify/628-boundary-regressions-20260916'}
+          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/contents/evidence/git-cas-'+os.environ['GITHUB_RUN_ID']+'.json',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Content-Type':'application/json'},method='PUT')
+          with urllib.request.urlopen(req) as r: assert r.status==201
+          PY
+      - name: Preserve diagnostic summary even if a phase fails
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import json,os,re,urllib.request,base64
+          from pathlib import Path
+          snippets={p.name:'\n'.join([l for l in p.read_text(errors='replace').splitlines() if '[ERROR]' in l or 'Tests run:' in l or 'BUILD ' in l][-75:]) for p in Path('/tmp/git-cas').glob('*.log')}
+          text=json.dumps(snippets,indent=2)
+          payload={'message':'Git CAS verification diagnostic log summary','content':base64.b64encode(text.encode()).decode(),'branch':'verify/628-boundary-regressions-20260916'}
+          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/contents/evidence/git-cas-diagnostics-'+os.environ['GITHUB_RUN_ID']+'.json',data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Content-Type':'application/json'},method='PUT')
+          with urllib.request.urlopen(req) as r: assert r.status==201
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-git-cas-evidence
+          path: |
+            /tmp/git-cas
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
