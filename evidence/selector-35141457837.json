@@ -1,0 +1,25 @@
+{
+  "commit": "a4fe39bee3845e2b58956ce0d7e59993ed5d641b",
+  "tree": "f61d76468f45299e59a5969f2074d70f5ae17a50",
+  "base": "0002ce29ed840e9e10df4125e8d4de9cdaeb6a31",
+  "changedFiles": [
+    "taxonomy-app/pom.xml"
+  ],
+  "run": "35141457837",
+  "tests": {
+    "surefire": {
+      "tests": 4510,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "failsafe": {
+      "tests": 228,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 80
+    }
+  },
+  "bypassReproduced": true,
+  "sameBypassRejectedAfterFix": true
+}
