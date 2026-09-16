@@ -1,4 +1,4 @@
-name: Verify remaining analysis correction (temporary)
+name: Verify analysis result ownership (temporary)
 on:
   push:
     branches: [fix/analysis-runtime-observability]
@@ -11,54 +11,71 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 6f009d7ab6ba95e28ced41b58224a822ff6ccd3c
+          ref: 6799743988e0b174e9e952f304a2991ec5e59fee
           persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: { java-version: '21', distribution: temurin, cache: maven }
-      - name: Assemble exact six-file correction without overwriting published work
+      - name: Decode immutable patch and install counterexamples only
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
           import base64,gzip,hashlib,json,os,subprocess,urllib.request
           from pathlib import Path
-          out=Path('/tmp/analysis-current');out.mkdir()
-          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
-          base='6f009d7ab6ba95e28ced41b58224a822ff6ccd3c'
-          assert git('rev-parse','HEAD')==base
+          out=Path('/tmp/analysis-ownership');out.mkdir()
+          blob='dfbc4c39455d8eccbcffe69f20f342675c91ae72'
           headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
-          for blob,digest in [('669b7861563da2a5e9a2c295d22980707021c638','27d4dc72cfaf826e6037b5f53d534c876151181c2508ce6e9ac804fa7a3c6bba'),('b413ac8357d992485802cb28ad80e893e31604ef','1c2033042132841fb5c5f4d593106be5f47c45d0e40908f9c3f9aa0a94ccfa05')]:
-              with urllib.request.urlopen(urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+blob,headers=headers)) as response:
-                  data=base64.b64decode(json.load(response)['content'])
-              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==blob
-              patch=gzip.decompress(data);assert hashlib.sha256(patch).hexdigest()==digest
-              path=out/(blob+'.patch');path.write_bytes(patch)
-              subprocess.run(['git','apply','--index',str(path)],check=True)
+          with urllib.request.urlopen(urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+blob,headers=headers)) as response:
+              data=base64.b64decode(json.load(response)['content'])
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==blob
+          patch=gzip.decompress(data);assert hashlib.sha256(patch).hexdigest()=='d581ae977aadbe59d31a551f0b044f361787e41975e55bb2cca5f45c2d2170f0'
+          (out/'candidate.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--index','--include=.github/scripts/*.mjs',str(out/'candidate.patch')],check=True)
+      - name: Execute old production behavior against the counterexamples
+        run: |
+          set +e
+          node --test .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-live-progress.test.mjs > /tmp/analysis-ownership/red.log 2>&1
+          result=$?
+          cat /tmp/analysis-ownership/red.log
+          test "$result" -eq 1
+          grep -q '# pass 84' /tmp/analysis-ownership/red.log
+          grep -q '# fail 13' /tmp/analysis-ownership/red.log
+      - name: Apply minimal two-file production correction and bind the source
+        shell: python
+        run: |
+          import json,subprocess
+          from pathlib import Path
+          out=Path('/tmp/analysis-ownership')
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          subprocess.run(['git','apply','--index','--include=taxonomy-app/src/main/resources/static/js/core/*.js',str(out/'candidate.patch')],check=True)
           subprocess.run(['git','diff','--cached','--check'],check=True)
-          paths=git('diff','--cached','--name-only').splitlines();assert len(paths)==6,paths
-          assert not any('/src/main/java/' in p for p in paths),paths
-          tree=git('write-tree');assert tree=='235a144fe002e51c6ca8332b84c72d4beb53e98c',tree
-          doc={'base':base,'tree':tree,'files':{p:git('hash-object',p) for p in paths},'verificationRun':os.environ['GITHUB_RUN_ID']}
-          (out/'candidate.patch').write_bytes(subprocess.check_output(['git','diff','--cached','--binary','--full-index']))
-          subprocess.run(['git','-c','user.name=Analysis verification','-c','user.email=verification@invalid.example','commit','-m','Verify remaining analysis correction locally'],check=True)
+          paths=git('diff','--cached','--name-only').splitlines();assert len(paths)==4,paths
+          tree=git('write-tree');assert tree=='5bba5e2eb933b307f0fb7867230c0c3cbe5040a8',tree
+          doc={'base':'6799743988e0b174e9e952f304a2991ec5e59fee','tree':tree,'files':{p:git('hash-object',p) for p in paths},'verificationRun':os.environ['GITHUB_RUN_ID']} if False else {'base':'6799743988e0b174e9e952f304a2991ec5e59fee','tree':tree,'files':{p:git('hash-object',p) for p in paths}}
+          subprocess.run(['git','-c','user.name=Analysis verification','-c','user.email=verification@invalid.example','commit','-m','Verify exact result-ownership correction locally'],check=True)
           assert git('status','--porcelain')==''
           (out/'manifest.json').write_text(json.dumps(doc,indent=2)+'\n')
-      - name: HTTP terminal boundaries and actual Selenium diagnostic completion
+      - name: Execute affected client cases
+        run: |
+          set -o pipefail
+          node --test .github/scripts/analysis-readiness.test.mjs .github/scripts/analysis-live-progress.test.mjs .github/scripts/product-score-streaming.test.mjs 2>&1 | tee /tmp/analysis-ownership/green.log
+      - name: Verify existing file persistence and JSON roundtrip plus actual browser
         run: |
           set -o pipefail
           docker info
-          ./mvnw -B -ntp -pl taxonomy-app -am verify -DskipITs=false -Dtest=AnalysisCompletionContractTest,AnalysisLiveProgressFixtureTest -Dit.test=AnalysisLiveProgressUiIT -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false -DexcludedGroups=real-llm 2>&1 | tee /tmp/analysis-current/maven-focused.log
-      - name: Require all five actual browser cases and the twenty HTTP cases
+          ./mvnw -B -ntp -pl taxonomy-app -am verify -DskipITs=false -Dtest=AnalysisCompletionContractTest,AnalysisLiveProgressFixtureTest,LlmServiceBranchCoverageTest,HsqldbFileProfileTest -Dit.test=AnalysisLiveProgressUiIT -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false -DexcludedGroups=real-llm 2>&1 | tee /tmp/analysis-ownership/maven.log
+      - name: Assert actual execution rather than skipped goals
         shell: python
         run: |
-          import xml.etree.ElementTree as ET
           from pathlib import Path
-          cases={
+          import xml.etree.ElementTree as ET
+          for file,count in {
               'failsafe-reports/TEST-com.taxonomy.AnalysisLiveProgressUiIT.xml':5,
               'surefire-reports/TEST-com.taxonomy.analysis.controller.AnalysisCompletionContractTest.xml':20,
-              'surefire-reports/TEST-com.taxonomy.AnalysisLiveProgressFixtureTest.xml':12}
-          for file,count in cases.items():
+              'surefire-reports/TEST-com.taxonomy.AnalysisLiveProgressFixtureTest.xml':12,
+              'surefire-reports/TEST-com.taxonomy.analysis.service.LlmServiceBranchCoverageTest.xml':21,
+              'surefire-reports/TEST-com.taxonomy.analysis.runtime.HsqldbFileProfileTest.xml':3}.items():
               suite=ET.parse(Path('taxonomy-app/target')/file).getroot()
               assert int(suite.get('tests','0'))==count,(file,suite.attrib)
               for key in ('failures','errors','skipped'): assert int(suite.get(key,'0'))==0,(file,suite.attrib)
@@ -66,16 +83,16 @@ jobs:
       - name: Complete Maven-owned frontend contracts and strict bootstrap
         run: |
           set -o pipefail
-          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee /tmp/analysis-current/frontend.log
-          .cache/ui-frontend/node/node .github/scripts/test-taxonomy-base-path.mjs | tee /tmp/analysis-current/base-path.log
-      - name: Publish exact checked source blobs only
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee /tmp/analysis-ownership/frontend.log
+          .cache/ui-frontend/node/node .github/scripts/test-taxonomy-base-path.mjs | tee /tmp/analysis-ownership/base-path.log
+      - name: Publish only tested blobs
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
           import base64,hashlib,json,os,subprocess,urllib.request,zipfile
           from pathlib import Path
-          out=Path('/tmp/analysis-current');doc=json.loads((out/'manifest.json').read_text())
+          out=Path('/tmp/analysis-ownership');doc=json.loads((out/'manifest.json').read_text())
           def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
           assert git('rev-parse','HEAD^{tree}')==doc['tree']
           assert git('diff','--name-only')==''
@@ -87,15 +104,16 @@ jobs:
                       data=json.dumps({'content':base64.b64encode(data).decode(),'encoding':'base64'}).encode(),method='POST')
                   with urllib.request.urlopen(request) as response: assert json.load(response)['sha']==sha
                   archive.writestr(path,data)
-          doc['verification']='32 focused unit cases, 5 actual Selenium cases, complete frontend and bootstrap contracts passed; full canonical PR CI remains required'
+          doc['verificationRun']=os.environ['GITHUB_RUN_ID']
+          doc['verification']='56 unit, 5 actual Selenium, 123 affected client cases, complete frontend and bootstrap contracts passed; canonical PR CI remains separate'
           (out/'manifest.json').write_text(json.dumps(doc,indent=2)+'\n')
           print(json.dumps(doc,indent=2))
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: analysis-current-${{ github.sha }}
+          name: analysis-ownership-${{ github.sha }}
           path: |
-            /tmp/analysis-current
+            /tmp/analysis-ownership
             **/target/surefire-reports/TEST-*.xml
             **/target/failsafe-reports/TEST-*.xml
             **/target/analysis-ui-evidence/**
