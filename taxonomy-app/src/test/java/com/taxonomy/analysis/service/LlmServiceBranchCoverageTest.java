@@ -28,6 +28,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.lenient;
@@ -50,6 +51,133 @@ class LlmServiceBranchCoverageTest {
     @Mock private AnalysisEventCallback callback;
 
     private LlmService service;
+
+    @Test
+    void cancellationBetweenRootsRetainsCompletedScoresWithoutAllocatingAnotherTree() {
+        var registry = new AnalysisProgressRegistry(new org.springframework.core.env.StandardEnvironment());
+        var scope = new com.taxonomy.workspace.service.WorkspaceContext("alice", "work-a", "draft", "repo-a");
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(
+                node("BP", null, "BP"), node("CP", null, "CP"))));
+        when(taxonomyService.getChildrenOf("BP")).thenReturn(List.of());
+        when(gateway.extractResponseText("first-body"))
+                .thenReturn("{\"BP\":{\"score\":80,\"reason\":\"completed evidence\"}}");
+        try (var run = registry.open(null, "alice", scope, null)) {
+            when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenAnswer(invocation -> {
+                registry.cancel(run.id(), "alice", scope);
+                return "first-body";
+            });
+            AnalysisResult result = service.analyzeWithBudget("requirement");
+            assertThat(result.getStatus()).isEqualTo("PARTIAL");
+            assertThat(result.getErrorMessage()).startsWith("CANCELLED:");
+            // A single category receives its full parent budget after existing normalization.
+            assertThat(result.getScores()).containsEntry("BP", 100).doesNotContainKey("CP");
+            assertThat(result.getReasons()).containsEntry("BP", "completed evidence");
+            assertThat(result.getTree()).isEmpty();
+            verify(taxonomyService, never()).getFullTree();
+            verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest(anyString(), anyString());
+            run.finish(result.getStatus());
+            assertThat(registry.snapshot(run.id(), "alice", scope).status()).isEqualTo("CANCELLED");
+        }
+        assertThat(AnalysisRunControl.active()).isFalse();
+    }
+
+    @Test
+    void cancellationBetweenProductBatchesKeepsEarlierCategoryAndProductEvidence() {
+        var registry = new AnalysisProgressRegistry(new org.springframework.core.env.StandardEnvironment());
+        var scope = new com.taxonomy.workspace.service.WorkspaceContext("alice", "work-a", "draft", "repo-a");
+        TaxonomyNode category = node("IP-C", "IP-F", "IP");
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        ReflectionTestUtils.setField(service, "productBatchSize", 1);
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("category-body");
+        when(gateway.extractResponseText("category-body")).thenReturn("{\"IP-C\":80}");
+        when(gateway.extractResponseText("product-body"))
+                .thenReturn("{\"IP-P1\":{\"score\":75,\"reason\":\"completed product\"}}");
+        try (var run = registry.open(null, "alice", scope, null)) {
+            when(gateway.sendHttpRequest("product prompt", "test-key")).thenAnswer(invocation -> {
+                registry.cancel(run.id(), "alice", scope);
+                return "product-body";
+            });
+            var stopped = org.assertj.core.api.Assertions.catchThrowableOfType(
+                    () -> service.analyzeSingleBatchDetailed("requirement", List.of(category, first, second), 100),
+                    AnalysisStoppedException.class);
+            assertThat(stopped).isNotNull();
+            assertThat(stopped.partialScores()).containsKeys("IP-C", "IP-P1").doesNotContainKey("IP-P2");
+            assertThat(stopped.partialScores()).containsEntry("IP-P1", 75);
+            assertThat(stopped.partialReasons()).containsEntry("IP-P1", "completed product");
+            verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest("product prompt", "test-key");
+        }
+    }
+
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(AnalysisStoppedException.Reason.class)
+    void stoppedProductResultKeepsFamilyWeightedSemanticsWithoutLoadingAResponseTree(
+            AnalysisStoppedException.Reason reason) throws Exception {
+        // Real catalogue identities and role: nato-taxonomy.json classifies IP-1011 under IP-1065.
+        TaxonomyNode root = node("IP", null, "IP");
+        TaxonomyNode family = node("IP-1065", "IP", "IP");
+        TaxonomyNode otherFamily = node("IP-1069", "IP", "IP");
+        TaxonomyNode product = node("IP-1011", "IP-1065", "IP");
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family, otherFamily));
+        when(taxonomyService.getChildrenOf("IP-1065")).thenReturn(List.of(product));
+        when(catalogueOverlayService.isProduct("IP-1011")).thenReturn(true);
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("root", "families");
+        when(gateway.extractResponseText("root")).thenReturn("{\"IP\":100}");
+        when(gateway.extractResponseText("families")).thenReturn("{\"IP-1065\":40,\"IP-1069\":60}");
+        var retained = new LlmCallDetail();
+        retained.setScores(Map.of("IP-1011", 75));
+        retained.setReasons(Map.of("IP-1011", "completed product rationale"));
+        when(gateway.sendHttpRequest("product prompt", "test-key"))
+                .thenThrow(new AnalysisStoppedException(reason).withPartial(retained));
+
+        AnalysisResult result = service.analyzeWithBudget("target information products");
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getErrorMessage()).startsWith(reason.name() + ":");
+        assertThat(result.getTree()).isEmpty();
+        verify(taxonomyService, never()).getFullTree();
+        verify(taxonomyService, never()).getFingerprintTree();
+        verify(taxonomyService, never()).getNodeByCode(anyString());
+        assertProductSemantics(result);
+        result.refreshScoreSemantics();
+        assertProductSemantics(result);
+        var json = new ObjectMapper();
+        String serialized = json.writeValueAsString(result);
+        assertProductSemantics(json.readValue(serialized, AnalysisResult.class));
+        assertThat(serialized).doesNotContain("nameEn", "descriptionEn", "semanticEmbedding");
+        result.getRawScores().put("IP-1065", 20);
+        assertThat(result.getScores()).containsEntry("IP-1011", 15);
+    }
+
+    private static void assertProductSemantics(AnalysisResult result) {
+        assertThat(result.getRawScores()).containsEntry("IP-1011", 75);
+        assertThat(result.getProductSuitabilityScores()).containsEntry("IP-1011", 75);
+        assertThat(result.getScores()).containsEntry("IP-1011", 30);
+        var detail = result.getScoreDetails().get("IP-1011");
+        assertThat(detail.isProductSuitability()).isTrue();
+        assertThat(detail.parentCode()).isEqualTo("IP-1065");
+        assertThat(detail.parentScore()).isEqualTo(40);
+        assertThat(result.getReasons()).containsEntry("IP-1011", "completed product rationale");
+    }
+
+    @Test
+    void ordinaryStreamingFailureRetainsReasonsFromCompletedRoots() {
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(
+                node("BP", null, "BP"), node("CP", null, "CP"))));
+        when(taxonomyService.getChildrenOf("BP")).thenReturn(List.of());
+        when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                .thenReturn("completed-root").thenThrow(new IllegalStateException("provider unavailable"));
+        when(gateway.extractResponseText("completed-root"))
+                .thenReturn("{\"BP\":{\"score\":80,\"reason\":\"retained evidence\"}}");
+        service.analyzeStreaming("requirement", callback);
+        verify(callback).onError(eq("PARTIAL"), anyString(),
+                argThat(scores -> scores.containsKey("BP")),
+                argThat(reasons -> "retained evidence".equals(reasons.get("BP"))),
+                anyList(), anyList(), anyList());
+    }
 
     @BeforeEach
     void setUp() {
@@ -243,7 +371,7 @@ class LlmServiceBranchCoverageTest {
         when(gateway.sendHttpRequest(anyString(), anyString())).thenThrow(new IllegalStateException("stream failed"));
         service.analyzeStreaming("requirement", callback);
         verify(callback).onError(
-                anyString(), anyString(), any(), anyList(), anyList(), anyList());
+                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList());
     }
 
     @Test

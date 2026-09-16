@@ -68,6 +68,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
 
     @Override
     public String sendHttpRequest(String prompt, String apiKey) {
+        AnalysisRunControl.checkpoint();
         if (recordReplayService != null && recordReplayService.isReplayMode()) {
             Optional<String> recorded = recordReplayService.replay(prompt);
             if (recorded.isPresent()) return recorded.get();
@@ -105,6 +106,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
             while (true) {
                 ResponseEntity<String> response;
                 try {
+                    AnalysisRunControl.phase("LLM_REQUEST", null);
                     response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
                 } catch (HttpClientErrorException exception) {
                     int status = exception.getStatusCode().value();
@@ -133,11 +135,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                         long backoffMs = 1000L * (1L << (attempt - 1));
                         log.warn("{} API server error {} — retry {}/{} after {}ms",
                                 provider, exception.getStatusCode(), attempt, maxRetries, backoffMs);
-                        try {
-                            Thread.sleep(backoffMs);
-                        } catch (InterruptedException interrupted) {
-                            Thread.currentThread().interrupt();
-                        }
+                        AnalysisRunControl.pause("RETRY_WAIT", backoffMs);
                         continue;
                     }
                     throw new LlmProviderException(
@@ -154,11 +152,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                             long backoffMs = 1000L * (1L << (attempt - 1));
                             log.warn("{} API read timeout after {}s — retry {}/{} after {}ms",
                                     provider, timeoutSeconds, attempt, maxRetries, backoffMs);
-                            try {
-                                Thread.sleep(backoffMs);
-                            } catch (InterruptedException interrupted) {
-                                Thread.currentThread().interrupt();
-                            }
+                            AnalysisRunControl.pause("RETRY_WAIT", backoffMs);
                             continue;
                         }
                         throw new LlmTimeoutException(
@@ -189,6 +183,8 @@ public class OpenAiCompatibleGateway implements LlmGateway {
             }
         } catch (LlmRateLimitException | LlmTimeoutException | LlmProviderException exception) {
             throw exception;
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception exception) {
             log.error("Error calling {} API", provider, exception);
             return null;
@@ -205,32 +201,29 @@ public class OpenAiCompatibleGateway implements LlmGateway {
         }
     }
 
-    synchronized void throttle() {
+    void throttle() {
         if (preferencesService == null) return;
-        String prefKey = "llm.rpm." + provider.name().toLowerCase();
-        int rpm = preferencesService.getInt(prefKey, defaultRpm);
-        if (rpm <= 0) return;
-
-        long now = System.currentTimeMillis();
-        long windowStart = now - 60_000L;
-        while (!callTimestamps.isEmpty() && callTimestamps.peekFirst() < windowStart) {
-            callTimestamps.pollFirst();
-        }
-
-        if (callTimestamps.size() >= rpm) {
-            long oldest = callTimestamps.peekFirst();
-            long sleepMs = oldest + 60_000L - System.currentTimeMillis() + THROTTLE_BUFFER_MS;
-            if (sleepMs > 0) {
-                log.debug("{} RPM throttle: sleeping {}ms (rpm={}, calls in window={})",
-                        provider, sleepMs, rpm, callTimestamps.size());
-                try {
-                    Thread.sleep(sleepMs);
-                } catch (InterruptedException exception) {
-                    Thread.currentThread().interrupt();
+        while (true) {
+            AnalysisRunControl.checkpoint();
+            int rpm = preferencesService.getInt("llm.rpm." + provider.name().toLowerCase(Locale.ROOT), defaultRpm);
+            if (rpm <= 0) return;
+            long sleepMs;
+            synchronized (callTimestamps) {
+                long now = System.currentTimeMillis();
+                long windowStart = now - 60_000L;
+                while (!callTimestamps.isEmpty() && callTimestamps.peekFirst() < windowStart) {
+                    callTimestamps.pollFirst();
                 }
+                if (callTimestamps.size() < rpm) {
+                    callTimestamps.addLast(now);
+                    return;
+                }
+                sleepMs = Math.max(1L, callTimestamps.peekFirst() + 60_000L - now + THROTTLE_BUFFER_MS);
             }
+            // Never hold the window lock while waiting: every analysis must remain cancellable.
+            // Recheck capacity after waking instead of reserving cancelled calls or allowing a burst.
+            AnalysisRunControl.pause("WAITING_RATE_LIMIT", sleepMs);
         }
-        callTimestamps.addLast(System.currentTimeMillis());
     }
 
     private void applyCurrentTimeout() {

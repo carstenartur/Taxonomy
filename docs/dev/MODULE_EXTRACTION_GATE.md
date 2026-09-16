@@ -140,11 +140,12 @@ composition classes, and app adapters under DSL/export roots are not excluded.
 Unmapped classes, invalid or duplicate physical owners, overlapping package
 assignments, missing reactor POMs, and source files missing from imported bytecode
 fail even before extraction. Before importing bytecode, the running JDK compiler
-compiles the current production sources once into an in-memory inventory of
-binary names, source modules, and exact originating source-file names. That
-verified identity is carried into graph ownership. Class bytes are discarded
-and no source or build output is written. The inventory must match the actual
-compiled classes;
+compiles the current production sources once, retaining binary names, source
+modules, exact source-file names and fresh class bytes in a temporary directory.
+ArchUnit derives dependencies from these fresh bytes, not from possibly stale
+same-named classes in `target/classes`. The temporary output is removed on both
+success and failure; reactor source and build outputs are not modified. The
+binary-name inventory must still match the existing compiled classes;
 an obsolete nested or additional top-level class fails even when its original
 source file still exists or timestamps match. The compiler also accounts for
 legitimate local, anonymous, and synthetic classes without guessing their names.
@@ -174,3 +175,19 @@ layouts, annotation-generated classes, or new compiler options require explicit
 adapter support. Compilation errors fail the gate. The pass validates binary
 declarations; normal reactor compilation remains responsible for compiling the
 current method bodies that ArchUnit inspects.
+
+Selector inputs (`pom.xml` and `.mvn/verification-suites.json`) must resolve
+inside the checkout before XML or JSON is read, including linked ancestor
+directories. The exact ordered selector, owner paths and Java declarations are
+also checked by the independent ordinary `ArchitectureModuleGraphTest` owner
+contract, not just by the synchronization test's own selected execution.
+
+
+The architecture profile also binds the pre-existing ledger guard through the
+fixed `architecture-selector-anchor` Surefire execution in `taxonomy-app`.
+It requires the three module-gate entries independently of the mutable selector
+lists, and checks each corresponding source path and top-level Java declaration.
+Thus deleting all downstream gate classes cannot turn the profile into a silent
+success. These source files must physically remain inside the checkout before
+parsing; contained aliases remain valid. The complete ordered selector and all
+other selected guards remain the downstream synchronization check's responsibility.

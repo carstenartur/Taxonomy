@@ -33,4 +33,12 @@ public interface AnalysisEventCallback {
                  Map<String, Integer> partialScores, List<String> warnings,
                  List<TaxonomyDiscrepancy> discrepancies,
                  List<ProductCoverageGap> productCoverageGaps);
+
+    /** Evidence-complete stop; legacy callback implementations retain their error contract. */
+    default void onError(String status, String errorMessage,
+                         Map<String, Integer> partialScores, Map<String, String> partialReasons,
+                         List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                         List<ProductCoverageGap> productCoverageGaps) {
+        onError(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps);
+    }
 }

@@ -34,13 +34,15 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
     long countByUsernameAndArchivedFalse(String username);
 
     /**
-     * Count disclosure-authorized rows without materializing workspace metadata.
-     * Missing and unauthorized identifiers intentionally both return zero.
+     * Count active, disclosure-authorized rows without materializing metadata.
+     * Archived, missing and unauthorized identifiers intentionally return zero.
+     * Archiving retains the row and Git history; it does not grant metadata access.
      */
     @Query("""
             select count(workspace)
             from UserWorkspace workspace
             where workspace.workspaceId = :workspaceId
+              and workspace.archived = false
               and (workspace.username = :username or workspace.shared = true)
             """)
     long countVisibleWorkspaceMetadata(

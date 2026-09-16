@@ -145,6 +145,9 @@ public class WorkspaceContextResolver {
             return findWorkspace(username);
         }
 
+        // Absence follows the active workspace; a present empty pin explicitly
+        // addresses the read-only central repository, including after a tab switch.
+        if (requestedWorkspaceId.isEmpty()) return null;
         UserWorkspace workspace = workspaceManager.getWorkspaceById(requestedWorkspaceId);
         if (workspace == null
                 || !hasText(workspace.getUsername())
@@ -186,12 +189,12 @@ public class WorkspaceContextResolver {
             return null;
         }
         String header = servletAttributes.getRequest().getHeader(WORKSPACE_HEADER);
-        if (hasText(header)) {
+        if (header != null) {
             return header.strip();
         }
         String parameter = servletAttributes.getRequest()
                 .getParameter(WORKSPACE_QUERY_PARAMETER);
-        return hasText(parameter) ? parameter.strip() : null;
+        return parameter == null ? null : parameter.strip();
     }
 
     private static String requireRepositoryId(SystemRepository repository) {

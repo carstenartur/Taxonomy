@@ -186,6 +186,31 @@ class ArchitectureSelectorSynchronizationTest {
         assertThatCode(() -> assertSelectors(fixture)).doesNotThrowAnyException();
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"pom.xml", ".mvn/verification-suites.json", ".mvn"})
+    void selectorPolicyCannotEscapeThroughAFileOrAncestorAlias(String relative) throws Exception {
+        writeSelectors(EXPECTED, EXPECTED);
+        Path original = fixture.resolve(relative);
+        Path outside = externalFixture.resolve(original.getFileName());
+        Files.move(original, outside);
+        Files.createSymbolicLink(original, outside);
+
+        assertThatThrownBy(() -> assertSelectors(fixture))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("inside the checkout");
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"pom.xml", ".mvn/verification-suites.json", ".mvn"})
+    void selectorPolicyAcceptsAliasesWhollyInsideTheCheckout(String relative) throws Exception {
+        writeSelectors(EXPECTED, EXPECTED);
+        Path original = fixture.resolve(relative);
+        Path inside = fixture.resolve("policy-alias-target");
+        Files.move(original, inside);
+        Files.createSymbolicLink(original, inside);
+
+        assertThatCode(() -> assertSelectors(fixture)).doesNotThrowAnyException();
+    }
+
     private static Stream<String> selectedGuards() {
         return EXPECTED.stream();
     }
@@ -225,12 +250,15 @@ class ArchitectureSelectorSynchronizationTest {
     }
 
     static void assertSelectors(Path root) throws Exception {
+        Path checkout = root.toRealPath();
+        Path pomInput = checkedSelectorInput(root.resolve("pom.xml"), checkout);
+        Path catalogInput = checkedSelectorInput(root.resolve(".mvn/verification-suites.json"), checkout);
         var factory = DocumentBuilderFactory.newInstance();
         factory.setNamespaceAware(true);
         factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
         factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-        var document = factory.newDocumentBuilder().parse(root.resolve("pom.xml").toFile());
+        var document = factory.newDocumentBuilder().parse(pomInput.toFile());
         String query = "/*[local-name()='project']/*[local-name()='profiles']"
                 + "/*[local-name()='profile'][*[local-name()='id']='architecture-tests']"
                 + "/*[local-name()='properties']/*[local-name()='test']";
@@ -238,13 +266,12 @@ class ArchitectureSelectorSynchronizationTest {
                 .evaluate(query, document, XPathConstants.NODESET);
         assertThat(nodes.getLength()).as("one architecture-tests selector in pom.xml").isEqualTo(1);
         String pom = nodes.item(0).getTextContent();
-        var catalog = new ObjectMapper().readTree(Files.readString(root.resolve(".mvn/verification-suites.json")));
+        var catalog = new ObjectMapper().readTree(Files.readString(catalogInput));
         String json = catalog.path("profiles").path("architecture-tests").path("test").asString();
         assertThat(selectors(pom)).as("pom.xml architecture-tests selector")
                 .containsExactlyElementsOf(EXPECTED);
         assertThat(selectors(json)).as("verification catalogue architecture-tests selector")
                 .containsExactlyElementsOf(EXPECTED);
-        Path checkout = root.toRealPath();
         for (String guard : EXPECTED) {
             Path source = sourcePath(root, guard);
             assertThat(source).as("selected architecture guard %s in its owning module", guard)
@@ -254,6 +281,14 @@ class ArchitectureSelectorSynchronizationTest {
                     .isTrue();
             assertGuardDeclaration(source, guard);
         }
+    }
+
+    private static Path checkedSelectorInput(Path input, Path checkout) throws Exception {
+        assertThat(input).as("selector policy input %s", input).isRegularFile();
+        Path real = input.toRealPath();
+        assertThat(real.startsWith(checkout))
+                .as("selector policy input %s must remain inside the checkout", input).isTrue();
+        return real;
     }
 
     private static void assertGuardDeclaration(Path source, String guard) throws Exception {

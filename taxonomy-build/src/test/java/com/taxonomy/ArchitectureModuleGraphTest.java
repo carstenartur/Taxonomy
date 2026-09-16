@@ -829,7 +829,7 @@ class ArchitectureModuleGraphTest {
             assertThat(root.resolve("taxonomy-app/src/test/java/com/taxonomy").resolve(source)).doesNotExist();
             assertThat(root.resolve("taxonomy-build/src/test/java/com/taxonomy").resolve(source)).isRegularFile();
         }
-        assertModuleGateOwnerDependencies(root.resolve("taxonomy-build/pom.xml"));
+        assertModuleGateOwnerDependencies(root, root.resolve("taxonomy-build/pom.xml"));
         ArchitectureSelectorSynchronizationTest.assertSelectors(root);
 
         String pomSelector = profileProperty(root.resolve("pom.xml"), "architecture-tests", "test");
@@ -852,7 +852,7 @@ class ArchitectureModuleGraphTest {
                 </dependencies>
                 """);
 
-        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository.resolve("taxonomy-build/pom.xml")))
+        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository, temporaryRepository.resolve("taxonomy-build/pom.xml")))
                 .isInstanceOf(AssertionError.class);
     }
 
@@ -880,14 +880,14 @@ class ArchitectureModuleGraphTest {
     void unclassifiedOwnerDependenciesRemainValidAlongsideClassifiedDependencies() throws Exception {
         pom("taxonomy-build", "taxonomy-build", moduleGateOwnerDependencies("classified-extras"));
 
-        assertThatCode(() -> assertModuleGateOwnerDependencies(temporaryRepository.resolve("taxonomy-build/pom.xml")))
+        assertThatCode(() -> assertModuleGateOwnerDependencies(temporaryRepository, temporaryRepository.resolve("taxonomy-build/pom.xml")))
                 .doesNotThrowAnyException();
     }
 
     private void assertClassifiedDependencyCannotSatisfyOwnerContract(String classifiedArtifact) throws Exception {
         pom("taxonomy-build", "taxonomy-build", moduleGateOwnerDependencies(classifiedArtifact));
 
-        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository.resolve("taxonomy-build/pom.xml")))
+        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository, temporaryRepository.resolve("taxonomy-build/pom.xml")))
                 .isInstanceOf(AssertionError.class);
     }
 
@@ -917,12 +917,51 @@ class ArchitectureModuleGraphTest {
                 + (scope == null ? "" : "<scope>" + scope + "</scope>") + "</dependency>";
     }
 
-    private static void assertModuleGateOwnerDependencies(Path pom) throws Exception {
-        Map<String, String> dependencies = directProjectDependencies(pom);
+    private static void assertModuleGateOwnerDependencies(Path checkout, Path pom) throws Exception {
+        Path physicalPom = pom.toRealPath();
+        if (!physicalPom.startsWith(checkout.toRealPath()) || !Files.isRegularFile(physicalPom)) {
+            throw new IllegalStateException("Owner POM outside checkout: " + pom);
+        }
+        Map<String, String> dependencies = directProjectDependencies(physicalPom);
         assertThat(dependencies).containsEntry("com.taxonomy:taxonomy-app:jar:", "compile")
                 .containsEntry("com.taxonomy:taxonomy-coverage:pom:", "compile")
                 .containsEntry("com.taxonomy:taxonomy-tooling:jar:", "test")
                 .containsEntry("com.tngtech.archunit:archunit-junit5:jar:", "test");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "public class Service { com.taxonomy.composition.Wiring dependency; }",
+            "public class Service extends com.taxonomy.composition.Wiring {}",
+            "public class Service { Object make() { return new com.taxonomy.composition.Wiring(); } }"})
+    void sameNamedStaleOutputCannotHideANewSourceDependency(String changedDeclaration) throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(APP, "com.taxonomy.composition.Wiring", "public class Wiring {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        Path binary = output.resolve("com/taxonomy/a/Service.class");
+        byte[] original = Files.readAllBytes(binary);
+        Path source = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a/Service.java");
+        Files.writeString(source, "package com.taxonomy.a; " + changedDeclaration);
+        Files.setLastModifiedTime(source, Files.getLastModifiedTime(binary));
+
+        Evaluation result = ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository);
+
+        assertThat(result.violations()).anySatisfy(message -> assertThat(message)
+                .contains("taxonomy-a -> taxonomy-app", "composition"));
+        assertThat(Files.readAllBytes(binary)).as("gate must not mutate reactor output").isEqualTo(original);
+    }
+
+    @Test
+    void staleOutputCannotInventADependencyRemovedFromCurrentSource() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path app = compile(APP, "com.taxonomy.composition.Wiring", "public class Wiring {}", List.of());
+        compile(A, A_CLASS, "public class Service { com.taxonomy.composition.Wiring dependency; }", List.of(app));
+        Path source = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a/Service.java");
+        Files.writeString(source, "package com.taxonomy.a; public class Service {}");
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
     }
 
     @Test
@@ -2012,4 +2051,114 @@ class ArchitectureModuleGraphTest {
     private static ClassDependency edge(String from, String to) {
         return new ClassDependency(from, to);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"copy", "file-alias", "directory-alias"})
+    void compiledBytesRejectWrongInternalIdentity(String placement) throws Exception {
+        bytecodeRepository();
+        Path app = compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        Path destination = output.resolve("com/taxonomy/a/Service.class");
+        Path alias = temporaryRepository.resolve("fixture-binary-alias/Service.class");
+        Files.createDirectories(alias.getParent());
+        Files.copy(app.resolve("com/taxonomy/AppConfig.class"), alias);
+        if (placement.equals("copy")) {
+            Files.copy(alias, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } else if (placement.equals("file-alias")) {
+            Files.delete(destination);
+            Files.createSymbolicLink(destination, alias);
+        } else {
+            Files.delete(destination);
+            Files.delete(destination.getParent());
+            Files.createSymbolicLink(destination.getParent(), alias.getParent());
+        }
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("compiled class")
+                .hasMessageContaining("com.taxonomy.a.Service");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void compiledBytesRejectTruncatedOutput(boolean alias) throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        Path destination = output.resolve("com/taxonomy/a/Service.class");
+        byte[] truncated = java.util.Arrays.copyOf(Files.readAllBytes(destination), 12);
+        if (alias) {
+            Path target = temporaryRepository.resolve("fixture-truncated.class");
+            Files.write(target, truncated);
+            Files.delete(destination);
+            Files.createSymbolicLink(destination, target);
+        } else {
+            Files.write(destination, truncated);
+        }
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("compiled class");
+    }
+
+    @Test
+    void compiledBytesRejectContradictorySourceFileMetadata() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        rewriteCompiledSourceAttribute(output.resolve("com/taxonomy/a/Service.class"), "WrongOwner.java");
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("SourceFile")
+                .hasMessageContaining("WrongOwner.java").hasMessageContaining("Service.java");
+    }
+
+    @Test
+    void compiledBytesAllowAnOmittedOptionalSourceFileAttribute() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        rewriteCompiledSourceAttribute(output.resolve("com/taxonomy/a/Service.class"), null);
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    private static void rewriteCompiledSourceAttribute(Path file, String source) throws Exception {
+        var reader = new org.springframework.asm.ClassReader(Files.readAllBytes(file));
+        var writer = new org.springframework.asm.ClassWriter(0);
+        reader.accept(new org.springframework.asm.ClassVisitor(org.springframework.asm.Opcodes.ASM9, writer) {
+            @Override public void visitSource(String ignored, String debug) {
+                if (source != null) super.visitSource(source, debug);
+            }
+        }, 0);
+        Files.write(file, writer.toByteArray());
+    }
+
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"file", "directory"})
+    void ownerPomCannotParseOutsideCheckout(String linkKind) throws Exception {
+        Path outside = externalFixture("outside-owner-pom");
+        Files.writeString(outside.resolve("pom.xml"), "EXTERNAL_CONTENT_MUST_NOT_BE_PARSED");
+        Path build = temporaryRepository.resolve("taxonomy-build");
+        if (linkKind.equals("file")) {
+            Files.createDirectories(build);
+            Files.createSymbolicLink(build.resolve("pom.xml"), outside.resolve("pom.xml"));
+        } else {
+            Files.createSymbolicLink(build, outside);
+        }
+        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository, build.resolve("pom.xml")))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Owner POM outside checkout");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"file", "directory"})
+    void ownerPomAcceptsContainedAliases(String linkKind) throws Exception {
+        pom("owner-alias-target", "taxonomy-build", moduleGateOwnerDependencies("classified-extras"));
+        Path target = temporaryRepository.resolve("owner-alias-target");
+        Path build = temporaryRepository.resolve("taxonomy-build");
+        if (linkKind.equals("file")) {
+            Files.createDirectories(build);
+            Files.createSymbolicLink(build.resolve("pom.xml"), target.resolve("pom.xml"));
+        } else {
+            Files.createSymbolicLink(build, target);
+        }
+        assertThatCode(() -> assertModuleGateOwnerDependencies(temporaryRepository, build.resolve("pom.xml")))
+                .doesNotThrowAnyException();
+    }
+
 }

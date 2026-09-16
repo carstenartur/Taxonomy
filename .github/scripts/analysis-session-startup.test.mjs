@@ -177,7 +177,7 @@ function createStartupHarness(workspaceResponse) {
     encodeURIComponent
   }, { filename: 'taxonomy-analysis-session-projects.js' });
 
-  return { runtime, pendingStates };
+  return { runtime, pendingStates, session: window.TaxonomyAnalysisSession };
 }
 
 test('remembered-workspace probe failure keeps the restoration barrier active', async () => {
@@ -214,4 +214,40 @@ test('workspace discovery is guarded before analysis or initial autosave can sta
   assert.equal(harness.runtime.draftDecisionPending, false);
   assert.equal(harness.pendingStates.at(0), true);
   assert.equal(harness.pendingStates.at(-1), false);
+});
+
+
+test('analysis readiness waits for workspace discovery, including an explicitly central result', async () => {
+  const pending = deferred();
+  const h = createStartupHarness(pending.promise);
+  assert.equal(h.session.state().ready, false);
+  pending.resolve(null);
+  await pending.promise;
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.state().ready, true);
+  assert.equal(h.session.state().workspaceId, null);
+});
+
+test('failed workspace discovery is not confused with a ready central context', async () => {
+  const pending = deferred();
+  const h = createStartupHarness(pending.promise);
+  pending.reject(new Error('workspace service unavailable'));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.session.state().ready, false);
+});
+
+
+test('workspace readiness closes again for every unresolved mutation or conflict barrier', async () => {
+  const workspace = deferred();
+  const harness = createStartupHarness(workspace.promise);
+  workspace.resolve(null);
+  await workspace.promise;
+  await Promise.resolve();
+  assert.equal(harness.session.state().ready, true);
+  for (const barrier of ['restoring', 'invalidating', 'resetting', 'conflict']) {
+    harness.runtime[barrier] = true;
+    assert.equal(harness.session.state().ready, false, barrier);
+    harness.runtime[barrier] = false;
+    assert.equal(harness.session.state().ready, true, barrier);
+  }
 });
