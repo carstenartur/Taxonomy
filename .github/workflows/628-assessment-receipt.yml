@@ -1,0 +1,44 @@
+name: Finish verified assessment receipt (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-assessment-receipt.yml]
+permissions:
+  contents: write
+  actions: read
+  pull-requests: read
+jobs:
+  receipt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: f8bb39fc7f76672d7cd5754d1e5476180458ed05, persist-credentials: false}
+      - name: Run the exact receipt generator with its explicit runtime imports
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,json,os,subprocess,textwrap
+          ref='d5e0663015bcf359e2df9ea6fb2fb40626373ebe'
+          data=json.loads(subprocess.check_output(['gh','api',f'repos/carstenartur/Taxonomy/contents/.github/workflows/628-finalize-assessment.yml?ref={ref}']))
+          workflow=base64.b64decode(data['content']).decode()
+          source=textwrap.dedent(workflow.split('        run: |\n',1)[1])
+          assert source.startswith('from pathlib import Path\n')
+          exec(compile(source,'/tmp/verified-assessment-receipt.py','exec'),{'__name__':'__main__','os':os})
+      - name: Read complete exact-head review and verification blockers
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import json,subprocess
+          def get(path): return json.loads(subprocess.check_output(['gh','api','repos/carstenartur/Taxonomy/'+path]))
+          for n in [1054,1061,1062,1063,1064]:
+              p=get(f'pulls/{n}');sha=p['head']['sha'];print('PR',n,p['state'],sha,p.get('mergeable_state'))
+              checks=get(f'commits/{sha}/check-runs?per_page=100')['check_runs']
+              print('CHECK_SUMMARY',json.dumps([{'name':c['name'],'status':c['status'],'conclusion':c['conclusion']} for c in checks]))
+              for r in get(f'pulls/{n}/reviews?per_page=100'):
+                  if r.get('commit_id')==sha and r.get('body'):
+                      print('HEAD_REVIEW',n,r['id'],r['body'])
+                      for c in get(f'pulls/{n}/reviews/{r["id"]}/comments?per_page=100'):print('FINDING',c['id'],c['path'],c['body'])
