@@ -1,0 +1,38 @@
+name: Reproduce assessment snapshot (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-assessment-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  historical:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: bd430ff41788289567de65d78d7d8b8f4adc02a8
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Reproduce only the declared historical graph, not current-head acceptance
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/assessment-snapshot
+          git rev-parse HEAD HEAD^{tree} > /tmp/assessment-snapshot/identity.txt
+          sha256sum .github/architecture-contexts.json .github/architecture-dependency-baseline.json > /tmp/assessment-snapshot/policy-hashes.txt
+          ./mvnw -B -ntp test -Dtest=ArchitectureModuleExtractionTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee /tmp/assessment-snapshot/maven.log
+          find . -path '*/target/architecture-module-graph.txt' -print -exec cp '{}' /tmp/assessment-snapshot/architecture-module-graph.txt \;
+          test -s /tmp/assessment-snapshot/architecture-module-graph.txt
+          test -z "$(git status --porcelain --untracked-files=no)"
+          sha256sum /tmp/assessment-snapshot/architecture-module-graph.txt
+          cat /tmp/assessment-snapshot/architecture-module-graph.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: assessment-snapshot-bd430ff4
+          path: |
+            /tmp/assessment-snapshot
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
