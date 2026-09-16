@@ -1,0 +1,91 @@
+name: Reproduce remaining module completion gaps (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-completion-contract-red.yml]
+permissions:
+  contents: read
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: 4c5bfcd2d5d7324d30ed9070e2ec066454d85947, persist-credentials: false}
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Add completion assertions to the existing mandatory graph test
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleExtractionTest.java')
+          s=p.read_text();marker='    static void writeReport(Path root, String contents) throws IOException {'
+          assert s.count(marker)==1
+          addition='''    @org.junit.jupiter.params.ParameterizedTest
+              @org.junit.jupiter.params.provider.ValueSource(strings = {
+                      "workspace", "templates", "interop", "knowledge", "architecture", "analysis", "portfolio"})
+              void allRequiredFeatureModulesArePhysicallyPresent(String context) throws Exception {
+                  Path module = findRepositoryRoot().resolve("taxonomy-" + context);
+                  assertThat(module.resolve("pom.xml")).as("required runtime module %s", context).isRegularFile();
+                  try (var sources = Files.walk(module.resolve("src/main/java"))) {
+                      assertThat(sources.anyMatch(path -> path.toString().endsWith(".java")))
+                              .as("runtime module %s must own real implementation", context).isTrue();
+                  }
+              }
+
+              @Test
+              void compositionRootNoLongerOwnsFeatureImplementation() throws Exception {
+                  Path root = findRepositoryRoot().resolve("taxonomy-app/src/main/java/com/taxonomy");
+                  for (String context : List.of("catalog", "relations", "search", "architecture", "analysis", "portfolio")) {
+                      Path path = root.resolve(context);
+                      if (Files.isDirectory(path)) {
+                          try (var sources = Files.walk(path)) {
+                              assertThat(sources.filter(Files::isRegularFile)
+                                      .filter(source -> source.toString().endsWith(".java")).toList())
+                                      .as("composition root still owns %s implementation", context).isEmpty();
+                          }
+                      }
+                  }
+              }
+
+          '''
+          p.write_text(s.replace(marker,addition+marker))
+          Path('/tmp/completion-red').mkdir()
+          Path('/tmp/completion-red/ArchitectureModuleExtractionTest.java').write_text(p.read_text())
+      - name: Execute completion tests against unchanged productive sources
+        run: |
+          set +e
+          ./mvnw -B -ntp test -Dtest=ArchitectureModuleExtractionTest -Dsurefire.failIfNoSpecifiedTests=false > /tmp/completion-red/maven.log 2>&1
+          result=$?
+          set -e
+          tail -n 65 /tmp/completion-red/maven.log
+          test "$result" -ne 0
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          p=Path('taxonomy-build/target/surefire-reports/TEST-com.taxonomy.ArchitectureModuleExtractionTest.xml')
+          r=ET.parse(p).getroot();print('ACTUAL_COMPLETION_RED',r.attrib)
+          assert int(r.get('tests','0'))==9 and int(r.get('failures','0'))==5,r.attrib
+          assert int(r.get('errors','0'))==0 and int(r.get('skipped','0'))==0,r.attrib
+          Path('/tmp/completion-red/red.xml').write_bytes(p.read_bytes())
+          PY
+      - name: Print relevant build and dependency contracts for the implementation
+        if: always()
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          for name in ['taxonomy-workspace/pom.xml','taxonomy-templates/pom.xml','taxonomy-coverage/pom.xml','taxonomy-build/pom.xml','Dockerfile','.github/architecture-contexts.json']:
+              print('FILE',name,'\n'+Path(name).read_text())
+          text=Path('taxonomy-app/pom.xml').read_text()
+          print('APP_DEPENDENCIES',text[text.index('<dependencies>'):text.index('</dependencies>')+15])
+          for p in Path('taxonomy-app/src/main/java').rglob('*.java'):
+              if 'LocalEmbeddingService' in p.read_text() or 'DslMaterializeService' in p.read_text():print('CONSUMER',p)
+          for p in Path('taxonomy-app/src/test/java').rglob('*.java'):
+              if any(t in p.read_text() for t in ['LocalEmbeddingService','FloatArrayConverter','AppInitializationStateService','PromptTemplateService']):print('TEST_CONSUMER',p)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: completion-contract-red
+          path: /tmp/completion-red
+          retention-days: 7
