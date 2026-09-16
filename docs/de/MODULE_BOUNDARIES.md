@@ -285,8 +285,15 @@ Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
 
 Das Profil enthält alle sechs Ownership-Guards für Entscheidungsberichte,
 Commit-Historie, DSL-Dokument-Komposition, Workspace-Autorität, Anwendungsschema-Komposition und Workspace Storage sowohl in `pom.xml` als auch in
-`.mvn/verification-suites.json`. Die zwölf ausgewählten Testklassen sind zwischen
-POM und Katalog synchronisiert. Die vollständige CI-Verifikation bleibt `./mvnw -B verify -Pci`.
+`.mvn/verification-suites.json`. Die 15 ausgewählten Testklassen sind zwischen
+POM und Katalog synchronisiert. Zusätzlich zu den elf bestehenden Guards prüfen
+`ArchitectureModuleGraphTest`, `ArchitectureModuleExtractionTest` und
+`ArchitectureSelectorSynchronizationTest` den Modulgraphen, die Extraktionsreife
+und die exakte Synchronisierung der Selektoren. Für jeden ausgewählten Guard muss
+die Quelldatei im zuständigen Reactor-Modul innerhalb des Checkouts vorhanden sein.
+Der Build-Owner-Vertrag ruft die Synchronisierungsprüfung ebenfalls auf, damit
+sie nicht durch das Löschen ihrer Testklasse unbemerkt entfällt. Auch die Modul-Guards (`ArchitectureWorkspaceModuleTest`) sind enthalten.
+Die vollständige CI-Verifikation bleibt `./mvnw -B verify -Pci`.
 
 Der Ratchet durchläuft `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb dieser Wurzeln muss in `.github/architecture-contexts.json` klassifiziert sein. Nur `taxonomy-app` darf Java-Dateien im Root-Package enthalten; seine Composition-Dateien müssen exakt der expliziten Allowlist entsprechen. Ausgelagerte Fachmodule weisen jede Java-Datei im Root-Package zurück, auch kopierte Composition-Klassennamen oder `package-info.java`.
 

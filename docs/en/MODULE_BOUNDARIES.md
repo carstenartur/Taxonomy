@@ -275,8 +275,14 @@ reactor so every module's production output is current:
 
 The profile includes all six ownership guards for decision reports, commit
 history, DSL document composition, workspace authority, application schema composition and workspace storage in both `pom.xml` and
-`.mvn/verification-suites.json`. Its twelve selected test classes are synchronized
-between the POM and catalog. Full CI verification remains
+`.mvn/verification-suites.json`. Its 15 selected test classes are synchronized
+between the POM and catalog. In addition to the eleven existing guards,
+`ArchitectureModuleGraphTest`, `ArchitectureModuleExtractionTest` and
+`ArchitectureSelectorSynchronizationTest` enforce the module graph, extraction
+readiness and exact selector synchronization. Every selected guard must retain
+its source file in its owning reactor module inside the checkout. The build-owner
+contract also invokes the synchronization check, so deleting that check cannot
+silently disable it. The extracted-module guards (`ArchitectureWorkspaceModuleTest`) are also included. Full CI verification remains
 `./mvnw -B verify -Pci`.
 
 The ratchet walks `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`: every production Java package below these roots must be classified in `.github/architecture-contexts.json`. Only `taxonomy-app` may contain root-package Java files, and its composition files must exactly match the explicit allow-list. Extracted feature modules reject every root-package Java file, including a copied composition-class name or `package-info.java`.
