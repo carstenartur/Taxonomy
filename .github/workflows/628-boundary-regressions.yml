@@ -4,6 +4,9 @@ on:
     branches: [verify/628-boundary-regressions-20260916]
 permissions:
   contents: read
+concurrency:
+  group: boundary-counterexamples
+  cancel-in-progress: true
 jobs:
   reproduce:
     runs-on: ubuntu-latest
@@ -24,14 +27,23 @@ jobs:
           python harness/.github/scripts/boundary-review-regressions.py candidate
           git -C candidate diff --check
           mkdir -p /tmp/628-boundary-red
-      - name: Run actual counterexamples
+      - name: Run actual binary-identity counterexamples
         working-directory: candidate
         shell: bash
         run: |
           set +e
-          ./mvnw -B -ntp test '-Dtest=ArchitectureModuleGraphTest#compiledBytes*,WorkspaceCentralReadBoundaryTest' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-boundary-red/maven.log 2>&1
+          ./mvnw -B -ntp -pl taxonomy-build -am test '-Dtest=ArchitectureModuleGraphTest#compiledBytes*' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-boundary-red/graph.log 2>&1
           result=$?
-          tail -150 /tmp/628-boundary-red/maven.log
+          tail -100 /tmp/628-boundary-red/graph.log
+          test "$result" -eq 1
+      - name: Run actual workspace counterexamples independently of the failing gate
+        working-directory: candidate
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-workspace -am test -Dtest=WorkspaceCentralReadBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-boundary-red/workspace.log 2>&1
+          result=$?
+          tail -100 /tmp/628-boundary-red/workspace.log
           test "$result" -eq 1
       - name: Require intended assertion failures and passing controls, not compile errors
         if: always()
@@ -44,7 +56,8 @@ jobs:
               suite=ET.parse(path).getroot()
               cases=[{'name':case.get('name'),'failure':case.find('failure').get('message') if case.find('failure') is not None else None,'error':case.find('error').get('message') if case.find('error') is not None else None} for case in suite.findall('testcase')]
               result.append({'suite':suite.get('name'),'counts':{k:int(suite.get(k,'0')) for k in ('tests','failures','errors','skipped')},'cases':cases})
-          Path('/tmp/628-boundary-red/cases.json').write_text(json.dumps(result,indent=2)+'\n')
+          out=Path('/tmp/628-boundary-red');out.mkdir(exist_ok=True)
+          (out/'cases.json').write_text(json.dumps(result,indent=2)+'\n')
           print(json.dumps(result,indent=2))
           assert len(result)==2,result
           totals={k:sum(s['counts'][k] for s in result) for k in ('tests','failures','errors','skipped')}
