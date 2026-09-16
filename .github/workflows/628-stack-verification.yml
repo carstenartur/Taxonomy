@@ -1,0 +1,66 @@
+name: Inspect remaining module PR stack (temporary)
+on:
+  push:
+    branches: [verify/628-stack-20260916]
+    paths: [.github/workflows/628-stack-verification.yml]
+permissions:
+  contents: read
+  pull-requests: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 118a03441d0d72b280acdbf7ad9c37ab55eae964
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export immutable selected history and complete PR metadata
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import json, subprocess, hashlib, os
+          from pathlib import Path
+          out=Path('/tmp/stack-inspection');out.mkdir()
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          def api(path): return json.loads(subprocess.check_output(['gh','api',path],text=True))
+          heads={'main':'118a03441d0d72b280acdbf7ad9c37ab55eae964'}
+          for number in (1054,1061,1062,1063,1064):
+              pr=api('repos/carstenartur/Taxonomy/pulls/'+str(number))
+              heads[str(number)]=pr['head']['sha']
+              (out/('pr-'+str(number)+'.json')).write_text(json.dumps(pr,indent=2))
+              for kind,path in [('reviews','pulls/'+str(number)+'/reviews'),('threads','pulls/'+str(number)+'/comments'),('comments','issues/'+str(number)+'/comments')]:
+                  items=[];page=1
+                  while True:
+                      chunk=api('repos/carstenartur/Taxonomy/'+path+'?per_page=100&page='+str(page));items.extend(chunk)
+                      if len(chunk)<100:break
+                      page+=1
+                  (out/(str(number)+'-'+kind+'.json')).write_text(json.dumps(items,indent=2))
+              runs=api('repos/carstenartur/Taxonomy/actions/runs?head_sha='+pr['head']['sha']+'&per_page=100')
+              (out/(str(number)+'-runs.json')).write_text(json.dumps(runs,indent=2))
+              for run in runs['workflow_runs']:
+                  if run['name']=='CI / CD':
+                      jobs=api('repos/carstenartur/Taxonomy/actions/runs/'+str(run['id'])+'/jobs?per_page=100')
+                      (out/(str(number)+'-ci-jobs.json')).write_text(json.dumps(jobs,indent=2));break
+          recovery=api('repos/carstenartur/Taxonomy/git/ref/heads/fix/628-recovery-strategies')['object']['sha']
+          heads['recovery']=recovery
+          for label,sha in heads.items():
+              subprocess.run(['git','fetch','--no-tags','origin',sha],check=True)
+              subprocess.run(['git','update-ref','refs/heads/export/'+label,sha],check=True)
+          subprocess.run(['git','bundle','create',str(out/'selected-history.bundle'),*[ 'refs/heads/export/'+label for label in heads ]],check=True)
+          data=(out/'selected-history.bundle').read_bytes()
+          (out/'identity.json').write_text(json.dumps({'heads':heads,'bundleSha256':hashlib.sha256(data).hexdigest()},indent=2))
+          for label in ('1054','1062','1063','1064'):
+              result=subprocess.run(['git','merge-tree','--write-tree',heads[label],heads['main']],capture_output=True,text=True)
+              (out/(label+'-main-merge.txt')).write_text(result.stdout+'\n'+result.stderr)
+          print(json.dumps(heads,indent=2));print('Bundle bytes:',len(data))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: remaining-module-stack-inspection
+          path: /tmp/stack-inspection
+          retention-days: 7
+          if-no-files-found: error
