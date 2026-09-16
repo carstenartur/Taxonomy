@@ -1,0 +1,24 @@
+name: Prepare pinned architecture test dependency (temporary)
+on:
+  push:
+    branches: [verify/628-stack-20260916]
+    paths: [.github/workflows/628-test-dependency.yml]
+permissions:
+  contents: read
+jobs:
+  dependency:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the pinned public dependency
+        run: |
+          mkdir -p /tmp/archunit
+          curl --fail --silent --show-error --location https://repo.maven.apache.org/maven2/com/tngtech/archunit/archunit/1.5.0/archunit-1.5.0.jar -o /tmp/archunit/archunit-1.5.0.jar
+          cd /tmp/archunit
+          sha256sum *.jar > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pinned-archunit-test-dependency
+          path: /tmp/archunit
+          retention-days: 7
+          if-no-files-found: error
