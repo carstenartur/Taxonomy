@@ -59,7 +59,9 @@ if mode == 'tests':
                     .andExpect(status().is(expectedStatus)));
         }
         verifyNoInteractions(manager);
-        verify(resolver, never()).resolveCurrentWorkspaceMetadata();
+        // Only provisioning-status legitimately resolves absent, read-only metadata.
+        // The interceptor must not add a lookup based on the overridden query pin.
+        verify(resolver).resolveCurrentWorkspaceMetadata();
         verify(resolver, never()).resolveCurrentRepositoryContext();
     }
 
