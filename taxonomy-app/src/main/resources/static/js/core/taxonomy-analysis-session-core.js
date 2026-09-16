@@ -20,6 +20,7 @@
         resetting: false,
         conflict: false,
         initialized: false,
+        workspaceResolved: false,
         saveTimer: null,
         staleTimer: null,
         lastSavedComparable: null,

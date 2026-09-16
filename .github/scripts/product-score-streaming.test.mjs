@@ -53,6 +53,8 @@ function harness(locale = 'en') {
   const input = element(); input.value = 'A requirement';
   const controls = { businessText: input, analyzeBtn: element() };
   const handlers = new Map();
+  let transport;
+  const statuses = [];
   const state = { taxonomyData: [], currentScores: {}, currentReasons: {} };
   const document = {
     documentElement: { lang: locale },
@@ -65,7 +67,7 @@ function harness(locale = 'en') {
   };
   const window = { TaxonomyState: state, TaxonomyI18n: { getLocale: () => locale },
     TaxonomyBrowse: {
-      renderView() {}, ensureNodeRendered() {}, showStatus() {}, clearStatus() {},
+      renderView() {}, ensureNodeRendered() {}, showStatus(...args) { statuses.push(args); }, clearStatus() {},
       updateExportGroupVisibility() {}
     }
   };
@@ -74,6 +76,7 @@ function harness(locale = 'en') {
     TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml: value => String(value) },
     CSS: { escape: value => value },
     EventSource: class {
+      constructor() { transport = this; }
       addEventListener(name, listener) { handlers.set(name, listener); }
       close() {}
     }
@@ -82,8 +85,17 @@ function harness(locale = 'en') {
   vm.runInContext(viewsSource, context);
   window.TaxonomyScoring.runStreamingAnalysis();
   return {
-    state, nodes, api: window.TaxonomyScoring, views: window.TaxonomyViews,
-    send(type, data) { handlers.get(type)({ data: JSON.stringify(data) }); },
+    state, nodes, statuses, api: window.TaxonomyScoring, views: window.TaxonomyViews,
+    send(type, data) {
+      const event = { data: JSON.stringify(data) };
+      handlers.get(type)(event);
+      if (type === 'error' && transport.onerror) transport.onerror(event);
+    },
+    malformedError() {
+      const event = { data: 'not-json' };
+      handlers.get('error')(event);
+      if (transport.onerror) transport.onerror(event);
+    },
     score(scores, details = {}) { this.send('scores', { scores, rawScores: scores, scoreDetails: details }); },
     badge(code = product) { return nodes.get(code).header.querySelector('.tax-pct'); },
     aria(code = product) { return nodes.get(code).getAttribute('aria-label'); }
@@ -233,3 +245,63 @@ test('both Maven-owned entry points execute the streaming regression suite', asy
     assert.ok(pkg.scripts[name].split(' && ').includes('npm run test:product-score-streaming'));
   }
 });
+
+for (const locale of ['en', 'de']) {
+  test(`${locale}: raw-only terminal fallback retains locally derived product semantics and reasons`, () => {
+    const h = harness(locale);
+    h.state.taxonomyData = [{ code: 'IP', analysisRole: 'CATEGORY', children: [{ code: family,
+      analysisRole: 'PRODUCT_FAMILY', parentCode: 'IP', children: [
+        { code: product, analysisRole: 'PRODUCT', parentCode: family, children: [] }
+      ] }] }];
+    h.score({ [family]: 40, [product]: 80 }, { [product]: hint });
+    h.state.currentReasons[product] = 'Earlier product explanation';
+    h.send('error', { status: 'PARTIAL', errorMessage: 'CANCELLED; terminal metadata unavailable',
+      rawScores: { IP: 100, [family]: 50, [product]: 80 },
+      reasons: { [family]: 'Final family explanation' }, scoreSemanticsUnavailable: true });
+    assert.equal(h.state.currentRawScores[product], 80);
+    assert.equal(h.state.currentScores[product], 40);
+    assert.equal(h.state.currentProductSuitabilityScores[product], 80);
+    assert.equal(h.state.currentReasons[product], 'Earlier product explanation');
+    assert.equal(h.state.currentReasons[family], 'Final family explanation');
+    assert.match(h.badge().textContent, /80%.*40\/100/);
+    assert.equal(h.state.lastAnalysisStatus, 'PARTIAL');
+  });
+}
+test('application SSE errors are not overwritten by the native transport error callback', () => {
+  const h = harness();
+  h.send('error', { status: 'PARTIAL', errorMessage: 'Intentional stop', rawScores: {}, effectiveScores: {} });
+  assert.equal(h.state.lastAnalysisStatus, 'PARTIAL');
+});
+
+test('a cancelled complete event reports a partial outcome rather than UI success', () => {
+  const h = harness();
+  h.send('complete', { status: 'PARTIAL', totalScores: { BP: 50 }, rawScores: { BP: 50 },
+    effectiveScores: { BP: 50 }, warnings: ['CANCELLED'] });
+  assert.equal(h.state.lastAnalysisStatus, 'PARTIAL');
+  assert.equal(h.statuses.at(-1)[0], 'warning');
+});
+
+test('malformed application error payload still terminates as a transport error', () => {
+  const h = harness(); h.malformedError();
+  assert.equal(h.state.lastAnalysisStatus, 'ERROR');
+  assert.equal(h.statuses.at(-1)[0], 'danger');
+});
+
+
+for (const rawScores of [{}, null, { [family]: 50 }]) {
+  test(`raw-only fallback retains collected evidence for ${JSON.stringify(rawScores)}`, () => {
+    const h = harness();
+    h.state.taxonomyData = [{ code: family, analysisRole: 'PRODUCT_FAMILY', children: [
+      { code: product, analysisRole: 'PRODUCT', parentCode: family, children: [] }
+    ] }];
+    h.score({ [family]: 40, [product]: 80 }, { [product]: hint });
+    h.state.currentReasons[product] = 'Retained product reason';
+    h.send('error', { status: 'ERROR', rawScores, scoreSemanticsUnavailable: true,
+      errorMessage: 'Projection unavailable' });
+    assert.equal(h.state.currentRawScores[product], 80);
+    assert.equal(h.state.currentProductSuitabilityScores[product], 80);
+    assert.equal(h.state.currentScores[product], rawScores?.[family] === 50 ? 40 : 32);
+    assert.equal(h.state.currentReasons[product], 'Retained product reason');
+    assert.equal(h.state.lastAnalysisStatus, 'ERROR');
+  });
+}
