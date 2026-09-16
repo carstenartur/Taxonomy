@@ -317,10 +317,12 @@ class GitNativeSyncIntegrationServiceTest {
     }
 
     @Test
-    void centralSynchronizationUsesExactRepositoryInsteadOfLegacyPrimarySentinel()
+    void writableCentralSynchronizationUsesExactRepositoryInsteadOfLegacyPrimarySentinel()
             throws Exception {
+        // A synchronization mutates this central repository; CENTRAL_READ is covered
+        // by the rejection cases in WorkspaceCentralReadBoundaryTest instead.
         when(contextResolver.resolveRepositoryContextForUser("alice"))
-                .thenReturn(RepositoryContext.centralRead(
+                .thenReturn(RepositoryContext.centralWrite(
                         "repo-a", "draft", "alice"));
         when(systemRepositoryService.getSharedBranch()).thenReturn("draft");
         when(semanticMergeService.mergeBranches(
