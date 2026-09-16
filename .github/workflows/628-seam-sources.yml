@@ -1,0 +1,40 @@
+name: Read remaining architecture seams (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-seam-sources.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 4c5bfcd2d5d7324d30ed9070e2ec066454d85947
+          persist-credentials: false
+      - name: Read exact sources and verified report identities
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import json,subprocess,hashlib,zipfile,io
+          from pathlib import Path
+          for run,name in [(35156020933,'architecture-candidate-interop'),(35156105650,'assessment-snapshot-bd430ff4')]:
+              data=json.loads(subprocess.check_output(['gh','api',f'repos/carstenartur/Taxonomy/actions/runs/{run}/artifacts']))
+              a=next(a for a in data['artifacts'] if a['name']==name)
+              content=subprocess.check_output(['gh','api',f'repos/carstenartur/Taxonomy/actions/artifacts/{a["id"]}/zip'])
+              assert 'sha256:'+hashlib.sha256(content).hexdigest()==a['digest']
+              print('VERIFIED_ARTIFACT',run,a['id'],a['digest'])
+              with zipfile.ZipFile(io.BytesIO(content)) as z:
+                  for p in z.namelist():
+                      if p.endswith(('architecture-module-graph.txt','identity.txt','policy-hashes.txt','counts.json')):
+                          body=z.read(p);print('REPORT',run,p,'sha256',hashlib.sha256(body).hexdigest());print(body.decode())
+          names=['PromptTemplateService.java','LocalEmbeddingService.java','AppInitializationStateService.java','SpringContextHolder.java','FloatArrayConverter.java','ExportConfig.java','TaxonomyExtension.java','ExtensionKind.java','DslMaterializeService.java','CanonicalDiagramExportService.java']
+          for name in names:
+              for p in Path('.').glob('taxonomy-*/src/main/java/**/'+name):
+                  print('SOURCE',str(p));print(p.read_text());print('END_SOURCE',str(p))
+          for p in Path('taxonomy-app/src/main/java/com/taxonomy/preferences').rglob('*.java'):
+              print('SOURCE',str(p));print(p.read_text());print('END_SOURCE',str(p))
