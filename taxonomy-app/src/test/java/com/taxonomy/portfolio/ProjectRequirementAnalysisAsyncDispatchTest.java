@@ -140,6 +140,68 @@ class ProjectRequirementAnalysisAsyncDispatchTest {
         verifyNoInteractions(analyzeRequirementUseCase, claimPersistenceService);
     }
 
+    @Test
+    void claimedPortfolioItemWaitsForTelemetryCapacityAndPersistsWithoutFailure() throws Exception {
+        var registry = new com.taxonomy.analysis.service.AnalysisProgressRegistry(
+                new org.springframework.core.env.StandardEnvironment());
+        var architecture = org.mockito.Mockito.mock(
+                com.taxonomy.architecture.service.RequirementArchitectureViewService.class);
+        var relations = org.mockito.Mockito.mock(com.taxonomy.analysis.service.AnalysisRelationGenerator.class);
+        var repositoryState = org.mockito.Mockito.mock(com.taxonomy.versioning.service.RepositoryStateService.class);
+        var preferences = org.mockito.Mockito.mock(com.taxonomy.preferences.PreferencesService.class);
+        var useCase = new AnalyzeRequirementUseCase(llmService,
+                org.mockito.Mockito.mock(com.taxonomy.analysis.service.AiPromptBudgetPolicy.class),
+                architecture, relations, org.mockito.Mockito.mock(com.taxonomy.relations.service.HypothesisService.class),
+                repositoryState, preferences);
+        org.springframework.test.util.ReflectionTestUtils.setField(useCase, "analysisProgressRegistry", registry);
+        service = new ProjectRequirementAnalysisService(projectService, persistenceService,
+                claimPersistenceService, workQueue, recoveryService, useCase, gapService,
+                patternService, recommendationService, fingerprintService, llmService,
+                analysisExecutor, 100, 100, 900);
+        var result = new com.taxonomy.dto.AnalysisResult();
+        result.setStatus("SUCCESS");
+        result.setScores(java.util.Map.of("CP", 80));
+        when(llmService.analyzeWithBudget(anyString())).thenReturn(result);
+        when(relations.generate(any())).thenReturn(List.of());
+        when(architecture.build(any(), anyString(), anyInt(), any()))
+                .thenReturn(new com.taxonomy.dto.RequirementArchitectureView());
+        when(preferences.getString("diagram.policy", "defaultImpact")).thenReturn("trace");
+        when(persistenceService.getJob("job-1", 41L, context.username(), context))
+                .thenReturn(job(AnalysisStatus.PENDING));
+        when(persistenceService.completeJob(anyString(), anyLong(), anyString()))
+                .thenReturn(job(AnalysisStatus.SUCCESS));
+        var item = new PortfolioAnalysisWorkQueue.WorkItem(1L, "job-1", 41L, "tenant-scope",
+                7L, "REQ-001", 8L, 1, "Resilient communications");
+        var claimed = new java.util.concurrent.CountDownLatch(1);
+        when(workQueue.pending(anyString(), anyLong(), anyString())).thenAnswer(invocation -> {
+            claimed.countDown();
+            return List.of(item);
+        });
+        var reservations = new java.util.ArrayList<com.taxonomy.analysis.service.AnalysisProgressRegistry.Reservation>();
+        try (var worker = java.util.concurrent.Executors.newSingleThreadExecutor()) {
+            try {
+                for (int i = 0; i < 4; i++) reservations.add(registry.reserve(null, context.username(), context, null));
+                var running = worker.submit(() -> service.analyzeProject(41L,
+                        new AnalyzeProjectRequest(List.of(7L), false, "MOCK", 25, "client-key"),
+                        context.username(), context));
+                org.junit.jupiter.api.Assertions.assertTrue(claimed.await(5, java.util.concurrent.TimeUnit.SECONDS));
+                org.junit.jupiter.api.Assertions.assertThrows(java.util.concurrent.TimeoutException.class,
+                        () -> running.get(100, java.util.concurrent.TimeUnit.MILLISECONDS));
+                verifyNoInteractions(llmService, claimPersistenceService);
+                reservations.removeFirst().close();
+                assertThat(running.get(5, java.util.concurrent.TimeUnit.SECONDS).status()).isEqualTo(AnalysisStatus.SUCCESS);
+                verify(claimPersistenceService, org.mockito.Mockito.never()).failItem(any(), any());
+                verify(claimPersistenceService).persistSnapshot(org.mockito.ArgumentMatchers.eq(item),
+                        anyString(), anyString(), org.mockito.ArgumentMatchers.same(result), any(), any(), any(),
+                        org.mockito.ArgumentMatchers.eq("MOCK"), org.mockito.ArgumentMatchers.isNull(), any(), any(),
+                        org.mockito.ArgumentMatchers.eq(context.username()), org.mockito.ArgumentMatchers.eq(context), anyLong());
+            } finally {
+                reservations.forEach(com.taxonomy.analysis.service.AnalysisProgressRegistry.Reservation::close);
+                worker.shutdownNow();
+            }
+        }
+    }
+
     private AnalysisJobView job(AnalysisStatus status) {
         return new AnalysisJobView(
                 "job-1",

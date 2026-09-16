@@ -70,6 +70,15 @@ public class StreamRequirementAnalysisUseCase {
                             status, errorMessage, partialScores, warnings, discrepancies,
                             productCoverageGaps));
                 }
+                @Override
+                public void onError(String status, String errorMessage,
+                                    Map<String, Integer> partialScores, Map<String, String> partialReasons,
+                                    List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                                    List<ProductCoverageGap> productCoverageGaps) {
+                    handler.handle(new AnalysisStreamEvent.Error(
+                            status, errorMessage, partialScores, warnings, discrepancies,
+                            productCoverageGaps, partialReasons));
+                }
             });
         } finally {
             try {

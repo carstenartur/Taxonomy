@@ -441,6 +441,7 @@
     }
 
     function beginDraftResolution() {
+        runtime.workspaceResolved = false;
         runtime.restoring = true;
         setDraftDecisionPending(true);
     }
@@ -459,6 +460,7 @@
         if (remembered) {
             runtime.workspaceId = remembered;
             return loadDraft({ probe: true }).then(function (view) {
+                runtime.workspaceResolved = true;
                 rememberWorkspaceId(remembered);
                 return view;
             }).catch(function (error) {
@@ -478,7 +480,9 @@
         beginDraftResolution();
         return jsonRequest('/api/workspace/current', { method: 'GET' })
             .then(function (workspace) {
+                runtime.workspaceResolved = true;
                 if (!workspace || !workspace.workspaceId) {
+                    runtime.workspaceId = null;
                     finishDraftResolution();
                     return null;
                 }
@@ -487,6 +491,7 @@
                 return loadDraft();
             })
             .catch(function (error) {
+                runtime.workspaceResolved = false;
                 finishDraftResolution();
                 if (window.console) window.console.warn('[Taxonomy] Workspace draft unavailable', error);
                 return null;
@@ -572,6 +577,8 @@
         state: function () {
             return Object.freeze({
                 workspaceId: runtime.workspaceId,
+                ready: runtime.initialized && runtime.workspaceResolved
+                    && !runtime.restoring && !runtime.invalidating && !runtime.resetting && !runtime.conflict,
                 version: runtime.version,
                 conflict: runtime.conflict,
                 restoring: runtime.restoring

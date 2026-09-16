@@ -6,7 +6,9 @@ import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
 import org.springframework.web.servlet.HandlerInterceptor;
 
 import java.util.Objects;
@@ -57,7 +59,20 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
             throw new IllegalStateException(
                     "Workspace context resolver returned null for a workspace-scoped operation");
         }
-        if (WorkspaceContext.SHARED.equals(workspaceContext)) {
+        // RepositoryContext permits a workspace ID only for WORKSPACE scope.
+        // Central contexts now carry real repository/user identities and no
+        // longer equal the legacy SHARED sentinel, so validate isolation itself.
+        if (repositoryContext.workspaceId() == null
+                || workspaceContext.workspaceId() == null
+                || workspaceContext.workspaceId().isBlank()) {
+            // An explicit central selection is valid for read APIs, not for these
+            // isolated-workspace endpoints. Reject the caller without relaxing isolation.
+            String requestedWorkspace = request.getHeader("X-Taxonomy-Workspace-Id");
+            if (requestedWorkspace == null) requestedWorkspace = request.getParameter("workspaceId");
+            if (requestedWorkspace != null && requestedWorkspace.isBlank()) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN,
+                        "Select an isolated workspace before starting this operation");
+            }
             throw new IllegalStateException(
                     "Authenticated workspace-scoped operation did not resolve an isolated workspace");
         }
