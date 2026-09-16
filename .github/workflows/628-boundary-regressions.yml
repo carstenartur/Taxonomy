@@ -1,16 +1,20 @@
-name: Reproduce module boundary review findings (temporary)
+name: Verify complete module boundary corrections (temporary)
 on:
   push:
     branches: [verify/628-boundary-regressions-20260916]
+    paths:
+      - .github/workflows/628-boundary-regressions.yml
+      - .github/scripts/boundary-review-*.py
 permissions:
   contents: read
-concurrency:
-  group: boundary-counterexamples
-  cancel-in-progress: true
 jobs:
-  reproduce:
+  prepare:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    permissions:
+      contents: write
+    outputs:
+      matrix: ${{ steps.candidates.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: {path: harness, persist-credentials: false}
@@ -19,55 +23,134 @@ jobs:
           ref: 70d13cb1b5a549ef6f4847a2752359a7225db938
           path: candidate
           persist-credentials: false
+          fetch-depth: 0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Install tests against unchanged integrated production
+      - name: Apply reproduced tests and minimal corrections
         run: |
-          test "$(git -C candidate rev-parse HEAD)" = 70d13cb1b5a549ef6f4847a2752359a7225db938
+          mkdir -p /tmp/628-boundary-green
           python harness/.github/scripts/boundary-review-regressions.py candidate
+          python harness/.github/scripts/boundary-review-corrections.py patch candidate
           git -C candidate diff --check
-          mkdir -p /tmp/628-boundary-red
-      - name: Run actual binary-identity counterexamples
+      - name: All affected graph, selector and workspace tests
         working-directory: candidate
-        shell: bash
         run: |
-          set +e
-          ./mvnw -B -ntp -pl taxonomy-build -am test '-Dtest=ArchitectureModuleGraphTest#compiledBytes*' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-boundary-red/graph.log 2>&1
-          result=$?
-          tail -100 /tmp/628-boundary-red/graph.log
-          test "$result" -eq 1
-      - name: Run actual workspace counterexamples independently of the failing gate
-        working-directory: candidate
-        shell: bash
-        run: |
-          set +e
-          ./mvnw -B -ntp -pl taxonomy-workspace -am test -Dtest=WorkspaceCentralReadBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-boundary-red/workspace.log 2>&1
-          result=$?
-          tail -100 /tmp/628-boundary-red/workspace.log
-          test "$result" -eq 1
-      - name: Require intended assertion failures and passing controls, not compile errors
-        if: always()
+          set -o pipefail
+          ./mvnw -B -ntp test '-Dtest=ArchitectureModuleExtractionTest,ArchitectureModuleGraphTest,ArchitectureSelectorSynchronizationTest,WorkspaceCentralReadBoundaryTest,WorkspaceDivergedStrategyScopeTest,WorkspaceFactoryRetryRecoveryTest,WorkspaceContextResolverRequestPinningTest' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-boundary-green/focused.log 2>&1 || { tail -160 /tmp/628-boundary-green/focused.log; exit 1; }
+          tail -35 /tmp/628-boundary-green/focused.log
+      - name: Require actual counterexample and control execution
         shell: python
         run: |
           from pathlib import Path
           import json,xml.etree.ElementTree as ET
-          result=[]
+          suites={}
           for path in Path('candidate').glob('**/target/surefire-reports/TEST-*.xml'):
               suite=ET.parse(path).getroot()
-              cases=[{'name':case.get('name'),'failure':case.find('failure').get('message') if case.find('failure') is not None else None,'error':case.find('error').get('message') if case.find('error') is not None else None} for case in suite.findall('testcase')]
-              result.append({'suite':suite.get('name'),'counts':{k:int(suite.get(k,'0')) for k in ('tests','failures','errors','skipped')},'cases':cases})
-          out=Path('/tmp/628-boundary-red');out.mkdir(exist_ok=True)
-          (out/'cases.json').write_text(json.dumps(result,indent=2)+'\n')
-          print(json.dumps(result,indent=2))
-          assert len(result)==2,result
-          totals={k:sum(s['counts'][k] for s in result) for k in ('tests','failures','errors','skipped')}
-          assert totals=={'tests':31,'failures':24,'errors':0,'skipped':0},totals
+              counts={k:int(suite.get(k,'0')) for k in ('tests','failures','errors','skipped')}
+              assert counts['failures']==counts['errors']==counts['skipped']==0,(path,counts)
+              suites[suite.get('name')]={'counts':counts,'cases':[c.get('name') for c in suite.findall('testcase')]}
+          assert len(suites)==7,suites.keys()
+          assert suites['com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest']['counts']['tests']==24
+          assert len([c for c in suites['com.taxonomy.ArchitectureModuleGraphTest']['cases'] if c.startswith('compiledBytes')])==7
+          assert suites['com.taxonomy.workspace.service.WorkspaceDivergedStrategyScopeTest']['counts']['tests']==4
+          Path('/tmp/628-boundary-green/focused-cases.json').write_text(json.dumps(suites,indent=2)+'\n')
+          print({name:entry['counts'] for name,entry in suites.items()})
+      - name: Create immutable native candidate commits without changing PR refs
+        id: candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python harness/.github/scripts/boundary-review-corrections.py prepare candidate /tmp/628-boundary-green
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: boundary-regressions-red
+          name: boundary-candidates-and-focused-evidence
           path: |
-            /tmp/628-boundary-red
+            /tmp/628-boundary-green
             candidate/**/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
+  complete:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Verify exact clean product identity
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+          EXPECTED_TREE: ${{ matrix.tree }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain)"
+          test ! -e .github/scripts/boundary-review-corrections.py
+          test ! -e .github/workflows/628-boundary-regressions.yml
+          mkdir -p /tmp/628-boundary-complete
+          git rev-parse HEAD HEAD^{tree} > /tmp/628-boundary-complete/source-identity.txt
+          docker info
+      - name: Restore canonical pinned embedding model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Complete clean canonical reactor with integration tests
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          FRONTEND_API_BASE_REF: 118a03441d0d72b280acdbf7ad9c37ab55eae964
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true > /tmp/628-boundary-complete/reactor.log 2>&1 || { tail -180 /tmp/628-boundary-complete/reactor.log; exit 1; }
+          tail -45 /tmp/628-boundary-complete/reactor.log
+      - name: Complete Maven-owned frontend contracts
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts > /tmp/628-boundary-complete/frontend.log 2>&1 || { tail -180 /tmp/628-boundary-complete/frontend.log; exit 1; }
+          tail -25 /tmp/628-boundary-complete/frontend.log
+      - name: Inspect real reports, module graph and unchanged source
+        env:
+          STAGE: ${{ matrix.stage }}
+        shell: python
+        run: |
+          from pathlib import Path
+          import json,os,subprocess,xml.etree.ElementTree as ET
+          counts={}
+          for kind in ('surefire','failsafe'):
+              reports=list(Path('.').glob('**/target/'+kind+'-reports/TEST-*.xml'))
+              assert reports,kind+' did not execute'
+              total={k:0 for k in ('tests','failures','errors','skipped')}
+              for path in reports:
+                  suite=ET.parse(path).getroot()
+                  for key in total: total[key]+=int(suite.get(key,'0'))
+              assert total['failures']==total['errors']==0,(kind,total)
+              assert total['tests']>total['skipped'],(kind,total)
+              counts[kind]={'suites':len(reports),**total}
+          graph=Path('taxonomy-build/target/architecture-module-graph.txt')
+          assert graph.is_file()
+          out=Path('/tmp/628-boundary-complete')
+          (out/'architecture-module-graph.txt').write_bytes(graph.read_bytes())
+          (out/'counts.json').write_text(json.dumps(counts,indent=2)+'\n')
+          assert subprocess.check_output(['git','diff','--name-only'],text=True).strip()==''
+          if os.environ['STAGE']!='gate':
+              suite=ET.parse('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest.xml').getroot()
+              assert int(suite.get('tests','0'))==24 and int(suite.get('skipped','0'))==0,suite.attrib
+          print(json.dumps(counts,indent=2))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: boundary-complete-${{ matrix.stage }}
+          path: |
+            /tmp/628-boundary-complete
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: error
