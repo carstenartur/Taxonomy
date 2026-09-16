@@ -1,0 +1,142 @@
+name: Verify independent architecture selector anchor (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-selector-anchor-verification.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stage: gate
+            sha: c65883786eecdc5e6f3b66f99a6bc82d705cf586
+            tree: 5aac3cea549ce70094a4edadbe2b34d7eed542a4
+          - stage: workspace
+            sha: 54fadbb1bbe757be10fdc211c945273ee9048370
+            tree: 4d9a822b8ffc3f68144308c616b8650a941917ae
+          - stage: templates
+            sha: 30301d834a8c849d9a2906cd99fb9fab0bba0d75
+            tree: 8430420509fb2f1ef763e9958cba4c9e308d87be
+          - stage: interop
+            sha: a690921d849fc8da58b509b105d4c31ec20647bd
+            tree: 6eeae541f2f17536494ef6c40fe21cf614fbe454
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Verify immutable source and absence of runner helpers
+        env:
+          EXPECTED_SHA: ${{ matrix.sha }}
+          EXPECTED_TREE: ${{ matrix.tree }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain)"
+          test ! -e .github/workflows/628-selector-anchor-verification.yml
+          test ! -e .github/scripts/boundary-final-review.py
+          mkdir -p /tmp/628-anchor
+          git rev-parse HEAD HEAD^{tree} > /tmp/628-anchor/source-identity.txt
+      - name: Execute only the legacy guard and its temporary-policy counterexamples
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=ArchitectureExceptionLedgerTest -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-anchor/legacy-guard.log 2>&1 || { tail -120 /tmp/628-anchor/legacy-guard.log; exit 1; }
+          cp taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureExceptionLedgerTest.xml /tmp/628-anchor/legacy-guard.xml
+      - name: Execute disconnected ownership against the real unmodified graph
+        shell: bash
+        run: |
+          mkdir -p /tmp/628-anchor/graph-classes
+          cat > /tmp/628-anchor/DisconnectedProof.java <<'JAVA'
+          package com.taxonomy;
+          import java.util.List;
+          import java.util.Set;
+          public class DisconnectedProof {
+            public static void main(String[] args) {
+              var policy = new ArchitectureModuleGraph.Policy("taxonomy-app", Set.of("AppConfig.java"), List.of(
+                  new ArchitectureModuleGraph.Context("a", "taxonomy-a", List.of("com.taxonomy.a..")),
+                  new ArchitectureModuleGraph.Context("composition", "taxonomy-app", List.of("com.taxonomy.composition.."))));
+              var result = ArchitectureModuleGraph.evaluate(policy, Set.of(), Set.of("taxonomy-app", "taxonomy-a"), List.of(
+                  new ArchitectureModuleGraph.ClassOwner("com.taxonomy.a.Service", "taxonomy-a", "Service.java"),
+                  new ArchitectureModuleGraph.ClassOwner("com.taxonomy.a.Disconnected", "taxonomy-app", "Disconnected.java")), List.of());
+              if (result.violations().stream().noneMatch(v -> v.contains("com.taxonomy.a.Disconnected")
+                  && v.contains("still physically owned by taxonomy-app"))) {
+                throw new AssertionError(result.report());
+              }
+              System.out.println("Disconnected app-owned class rejected with no dependency edges.");
+              System.out.println(result.report());
+            }
+          }
+          JAVA
+          javac -d /tmp/628-anchor/graph-classes taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java /tmp/628-anchor/DisconnectedProof.java
+          java -cp /tmp/628-anchor/graph-classes com.taxonomy.DisconnectedProof > /tmp/628-anchor/disconnected-proof.log
+          cat /tmp/628-anchor/disconnected-proof.log
+      - name: Restore canonical pinned embedding model
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Complete clean canonical reactor with integration tests
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          FRONTEND_API_BASE_REF: 118a03441d0d72b280acdbf7ad9c37ab55eae964
+        run: |
+          set -o pipefail
+          docker info
+          ./mvnw -B -ntp clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true > /tmp/628-anchor/reactor.log 2>&1 || { tail -180 /tmp/628-anchor/reactor.log; exit 1; }
+          tail -35 /tmp/628-anchor/reactor.log
+      - name: Complete Maven-owned frontend contracts
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts > /tmp/628-anchor/frontend.log 2>&1 || { tail -150 /tmp/628-anchor/frontend.log; exit 1; }
+          tail -25 /tmp/628-anchor/frontend.log
+      - name: Require real guard and full-suite reports with unchanged source
+        env:
+          STAGE: ${{ matrix.stage }}
+        shell: python
+        run: |
+          from pathlib import Path
+          import json,os,subprocess,xml.etree.ElementTree as ET
+          out=Path('/tmp/628-anchor')
+          for path in [out/'legacy-guard.xml',Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureExceptionLedgerTest.xml')]:
+              suite=ET.parse(path).getroot()
+              assert int(suite.get('tests','0'))==6,suite.attrib
+              assert all(int(suite.get(k,'0'))==0 for k in ('failures','errors','skipped')),suite.attrib
+          totals={}
+          for kind in ('surefire','failsafe'):
+              files=list(Path('.').glob('**/target/'+kind+'-reports/TEST-*.xml'));assert files,kind
+              counts={k:0 for k in ('tests','failures','errors','skipped')}
+              for path in files:
+                  root=ET.parse(path).getroot()
+                  for key in counts: counts[key]+=int(root.get(key,'0'))
+              assert counts['failures']==counts['errors']==0 and counts['tests']>counts['skipped'],counts
+              totals[kind]={'suites':len(files),**counts}
+          if os.environ['STAGE']!='gate':
+              for path,count in {
+                  'taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest.xml':28,
+                  'taxonomy-app/target/surefire-reports/TEST-com.taxonomy.security.AdminAuthorizationRegressionTest.xml':16,
+                  'taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT.xml':10}.items():
+                  suite=ET.parse(path).getroot()
+                  assert int(suite.get('tests','0'))==count and int(suite.get('skipped','0'))==0,(path,suite.attrib)
+          (out/'counts.json').write_text(json.dumps(totals,indent=2)+'\n')
+          (out/'architecture-module-graph.txt').write_bytes(Path('taxonomy-build/target/architecture-module-graph.txt').read_bytes())
+          assert subprocess.check_output(['git','diff','--name-only'],text=True).strip()==''
+          print(json.dumps(totals,indent=2))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: selector-anchor-${{ matrix.stage }}
+          path: |
+            /tmp/628-anchor
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
