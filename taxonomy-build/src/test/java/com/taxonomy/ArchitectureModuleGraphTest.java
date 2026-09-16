@@ -925,6 +925,41 @@ class ArchitectureModuleGraphTest {
                 .containsEntry("com.tngtech.archunit:archunit-junit5:jar:", "test");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "public class Service { com.taxonomy.composition.Wiring dependency; }",
+            "public class Service extends com.taxonomy.composition.Wiring {}",
+            "public class Service { Object make() { return new com.taxonomy.composition.Wiring(); } }"})
+    void sameNamedStaleOutputCannotHideANewSourceDependency(String changedDeclaration) throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        compile(APP, "com.taxonomy.composition.Wiring", "public class Wiring {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        Path binary = output.resolve("com/taxonomy/a/Service.class");
+        byte[] original = Files.readAllBytes(binary);
+        Path source = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a/Service.java");
+        Files.writeString(source, "package com.taxonomy.a; " + changedDeclaration);
+        Files.setLastModifiedTime(source, Files.getLastModifiedTime(binary));
+
+        Evaluation result = ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository);
+
+        assertThat(result.violations()).anySatisfy(message -> assertThat(message)
+                .contains("taxonomy-a -> taxonomy-app", "composition"));
+        assertThat(Files.readAllBytes(binary)).as("gate must not mutate reactor output").isEqualTo(original);
+    }
+
+    @Test
+    void staleOutputCannotInventADependencyRemovedFromCurrentSource() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path app = compile(APP, "com.taxonomy.composition.Wiring", "public class Wiring {}", List.of());
+        compile(A, A_CLASS, "public class Service { com.taxonomy.composition.Wiring dependency; }", List.of(app));
+        Path source = temporaryRepository.resolve(A + "/src/main/java/com/taxonomy/a/Service.java");
+        Files.writeString(source, "package com.taxonomy.a; public class Service {}");
+
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
     @Test
     void aRemovedNestedClassCannotHideBehindItsExistingSourceFile() throws Exception {
         staleDeclaration("public class Service { static class Old {} }", "Service$Old.class");

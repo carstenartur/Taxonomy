@@ -36,8 +36,13 @@ public final class AnalysisScoreSemantics {
     public static Derived derive(
             Map<String, Integer> rawScores,
             List<TaxonomyNodeDto> taxonomyTree) {
+        return deriveWithContexts(rawScores, index(taxonomyTree));
+    }
+
+    /** Derive from bounded scalar metadata retained while visiting scored nodes. */
+    public static Derived deriveWithContexts(Map<String, Integer> rawScores, Map<String, NodeContext> contexts) {
         Map<String, Integer> normalizedScores = normalizeScores(rawScores);
-        Map<String, NodeContext> contexts = index(taxonomyTree);
+        if (contexts == null) contexts = Map.of();
         Map<String, AnalysisScoreDetail> details = new LinkedHashMap<>();
         Map<String, Integer> effectiveScores = new LinkedHashMap<>();
         Map<String, Integer> productSuitabilityScores = new LinkedHashMap<>();
@@ -178,7 +183,12 @@ public final class AnalysisScoreSemantics {
         return second == null || second.isBlank() ? null : second.strip();
     }
 
-    private record NodeContext(String parentCode, String analysisRole) {
+    /** Compact, immutable score metadata: no entities, descriptions, relations or embeddings. */
+    public record NodeContext(String parentCode, String analysisRole) {
+        public NodeContext {
+            parentCode = parentCode == null || parentCode.isBlank() ? null : parentCode.strip();
+            analysisRole = analysisRole == null ? "CATEGORY" : analysisRole.strip().toUpperCase(Locale.ROOT);
+        }
     }
 
     public record Derived(

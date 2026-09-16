@@ -82,7 +82,6 @@ class ArchitectureModuleExtractionTest {
         Set<String> sources = new TreeSet<>();
         Map<Path, String> sourceOwners = new TreeMap<>();
         List<Path> outputs = new ArrayList<>();
-        List<Path> outputClasses = new ArrayList<>();
         for (var module : modules.entrySet()) {
             Path sourceRoot = repositoryPath(module.getValue().resolve("src/main/java"), checkout,
                     "Production source");
@@ -108,9 +107,6 @@ class ArchitectureModuleExtractionTest {
             outputs.add(output);
             for (Path file : repositoryFiles(output, checkout, "Production output")) {
                 String relative = portable(output.relativize(file));
-                if (relative.endsWith(".class")) {
-                    outputClasses.add(file);
-                }
                 if (relative.startsWith("com/taxonomy/") && relative.endsWith(".class")
                         && !relative.endsWith("/package-info.class")) {
                     String className = relative.substring(0, relative.length() - ".class".length())
@@ -122,8 +118,11 @@ class ArchitectureModuleExtractionTest {
         if (sources.stream().noneMatch(source -> source.startsWith(policy.compositionModule() + ":"))) {
             throw new IllegalStateException("No application production sources found; module graph would be vacuous");
         }
-        Map<String, String> compiledSourceFiles = verifyCompiledBinaryInventory(sourceOwners, outputs, classOwners);
-        JavaClasses imported = new ClassFileImporter().importPaths(outputClasses);
+        CompiledInventory compiled = verifyCompiledBinaryInventory(sourceOwners, outputs, classOwners);
+        Map<String, String> compiledSourceFiles = compiled.sourceFiles();
+        // Names alone cannot prove freshness: a same-named class may have acquired
+        // new dependencies. Build the graph from this invocation's compiler output.
+        JavaClasses imported = compiled.classes();
         Set<String> importedSources = new TreeSet<>();
         List<ClassDependency> dependencies = new ArrayList<>();
         for (JavaClass javaClass : imported) {
@@ -160,63 +159,81 @@ class ArchitectureModuleExtractionTest {
                 readProductionModuleDependencies(root, modules, policy));
     }
 
-    private static Map<String, String> verifyCompiledBinaryInventory(Map<Path, String> sources, List<Path> outputs,
+    private record CompiledInventory(Map<String, String> sourceFiles, JavaClasses classes) {}
+
+    private static CompiledInventory verifyCompiledBinaryInventory(Map<Path, String> sources, List<Path> outputs,
                                                                      Map<String, SortedSet<String>> classOwners) throws IOException {
         var compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             throw new IllegalStateException("A JDK compiler is required to verify the production binary inventory");
         }
-        SortedMap<String, String> expected = new TreeMap<>();
-        DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
-        try (StandardJavaFileManager standard = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8);
-             var inventory = new ForwardingJavaFileManager<StandardJavaFileManager>(standard) {
-                 @Override
-                 public JavaFileObject getJavaFileForOutput(Location location, String className,
-                                                            JavaFileObject.Kind kind, FileObject sibling) {
-                     // javac supplies the originating source for named, local,
-                     // anonymous and synthetic classes alike. Do not guess $ names.
-                     Path source = sibling == null ? null : Path.of(sibling.toUri()).toAbsolutePath().normalize();
-                     String owner = source == null ? null : sources.get(source);
-                     if (kind != JavaFileObject.Kind.CLASS || owner == null) {
-                         throw new IllegalStateException("Unmapped compiler output while verifying inventory: " + className);
-                     }
-                     expected.put(owner + ":" + className, source.getFileName().toString());
-                     return new SimpleJavaFileObject(URI.create("memory:///" + className.replace('.', '/') + kind.extension), kind) {
-                         @Override
-                         public OutputStream openOutputStream() {
-                             return OutputStream.nullOutputStream();
+        // Only generated compiler output goes here. Never modify target/classes,
+        // or import a stale class merely because its binary name is still present.
+        Path freshOutput = Files.createTempDirectory("taxonomy-module-inventory-");
+        try {
+            SortedMap<String, String> expected = new TreeMap<>();
+            DiagnosticCollector<JavaFileObject> diagnostics = new DiagnosticCollector<>();
+            try (StandardJavaFileManager standard = compiler.getStandardFileManager(diagnostics, Locale.ROOT, StandardCharsets.UTF_8);
+                 var inventory = new ForwardingJavaFileManager<StandardJavaFileManager>(standard) {
+                     @Override
+                     public JavaFileObject getJavaFileForOutput(Location location, String className,
+                                                                JavaFileObject.Kind kind, FileObject sibling) {
+                         // javac supplies the originating source for named, local,
+                         // anonymous and synthetic classes alike. Do not guess $ names.
+                         Path source = sibling == null ? null : Path.of(sibling.toUri()).toAbsolutePath().normalize();
+                         String owner = source == null ? null : sources.get(source);
+                         if (kind != JavaFileObject.Kind.CLASS || owner == null) {
+                             throw new IllegalStateException("Unmapped compiler output while verifying inventory: " + className);
                          }
-                     };
-                 }
-             }) {
-            // Surefire may put only its booter JAR on java.class.path. Its test
-            // classpath property contains the actual reactor/library classpath.
-            String testClasspath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
-            String classpath = String.join(File.pathSeparator, outputs.stream().map(Path::toString).toList())
-                    + File.pathSeparator + testClasspath;
-            List<String> options = List.of("--release", "21", "-proc:none", "-implicit:none", "-classpath", classpath);
-            boolean compiled = compiler.getTask(new StringWriter(), inventory, diagnostics, options, null,
-                    standard.getJavaFileObjectsFromPaths(sources.keySet())).call();
-            if (!compiled) {
-                List<String> errors = diagnostics.getDiagnostics().stream()
-                        .filter(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR)
-                        .map(diagnostic -> (diagnostic.getSource() == null ? "javac" : diagnostic.getSource().getName())
-                                + ":" + diagnostic.getLineNumber()
-                                + ": " + diagnostic.getMessage(Locale.ROOT)).sorted().toList();
-                throw new IllegalStateException("Cannot verify production binary inventory from current sources: " + errors);
+                         expected.put(owner + ":" + className, source.getFileName().toString());
+                         return new SimpleJavaFileObject(URI.create("memory:///" + className.replace('.', '/') + kind.extension), kind) {
+                             @Override
+                             public OutputStream openOutputStream() throws IOException {
+                                 Path file = freshOutput.resolve(className.replace('.', '/') + kind.extension);
+                                 Files.createDirectories(file.getParent());
+                                 return Files.newOutputStream(file);
+                             }
+                         };
+                     }
+                 }) {
+                // Surefire may put only its booter JAR on java.class.path. Its test
+                // classpath property contains the actual reactor/library classpath.
+                String testClasspath = System.getProperty("surefire.test.class.path", System.getProperty("java.class.path"));
+                String classpath = String.join(File.pathSeparator, outputs.stream().map(Path::toString).toList())
+                        + File.pathSeparator + testClasspath;
+                List<String> options = List.of("--release", "21", "-proc:none", "-implicit:none", "-classpath", classpath);
+                boolean compiled = compiler.getTask(new StringWriter(), inventory, diagnostics, options, null,
+                        standard.getJavaFileObjectsFromPaths(sources.keySet())).call();
+                if (!compiled) {
+                    List<String> errors = diagnostics.getDiagnostics().stream()
+                            .filter(diagnostic -> diagnostic.getKind() == Diagnostic.Kind.ERROR)
+                            .map(diagnostic -> (diagnostic.getSource() == null ? "javac" : diagnostic.getSource().getName())
+                                    + ":" + diagnostic.getLineNumber()
+                                    + ": " + diagnostic.getMessage(Locale.ROOT)).sorted().toList();
+                    throw new IllegalStateException("Cannot verify production binary inventory from current sources: " + errors);
+                }
+            }
+            Set<String> actual = new TreeSet<>();
+            classOwners.forEach((name, physical) -> physical.forEach(module -> actual.add(module + ":" + name)));
+            Set<String> obsolete = new TreeSet<>(actual);
+            obsolete.removeAll(expected.keySet());
+            Set<String> missing = new TreeSet<>(expected.keySet());
+            missing.removeAll(actual);
+            if (!obsolete.isEmpty() || !missing.isEmpty()) {
+                throw new IllegalStateException("Compiled binary inventory differs from current source declarations; obsolete="
+                        + obsolete + ", missing=" + missing + "; run a clean reactor build");
+            }
+            // ArchUnit imports every freshly generated class before temporary output
+            // is removed, so dependency discovery and SourceFile ownership agree.
+            JavaClasses classes = new ClassFileImporter().importPath(freshOutput);
+            return new CompiledInventory(java.util.Collections.unmodifiableSortedMap(expected), classes);
+        } finally {
+            try (var files = Files.walk(freshOutput)) {
+                for (Path file : files.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                    Files.delete(file);
+                }
             }
         }
-        Set<String> actual = new TreeSet<>();
-        classOwners.forEach((name, physical) -> physical.forEach(module -> actual.add(module + ":" + name)));
-        Set<String> obsolete = new TreeSet<>(actual);
-        obsolete.removeAll(expected.keySet());
-        Set<String> missing = new TreeSet<>(expected.keySet());
-        missing.removeAll(actual);
-        if (!obsolete.isEmpty() || !missing.isEmpty()) {
-            throw new IllegalStateException("Compiled binary inventory differs from current source declarations; obsolete="
-                    + obsolete + ", missing=" + missing + "; run a clean reactor build");
-        }
-        return java.util.Collections.unmodifiableSortedMap(expected);
     }
 
     static Map<String, Path> discoverModules(Path repositoryRoot, Policy policy) throws Exception {
