@@ -84,7 +84,12 @@ public class WorkspaceController {
     @WorkspaceMetadataOperation
     public ResponseEntity<WorkspaceInfo> getCurrentWorkspace() {
         String user = workspaceResolver.resolveCurrentUsername();
-        if (WorkspaceContextResolver.requestedWorkspaceId() != null) {
+        String pinned = WorkspaceContextResolver.requestedWorkspaceId();
+        if (pinned != null && pinned.isEmpty()) {
+            // Explicit central read has no selected workspace and must not choose one implicitly.
+            return ResponseEntity.noContent().build();
+        }
+        if (pinned != null) {
             return ResponseEntity.ok(workspaceManager.getWorkspaceMetadataInfo(
                     workspaceResolver.resolveCurrentWorkspaceMetadata()));
         }
@@ -506,6 +511,10 @@ public class WorkspaceController {
         String user = workspaceResolver.resolveCurrentUsername();
         try {
             String pinned = WorkspaceContextResolver.requestedWorkspaceId();
+            if (pinned != null && pinned.isEmpty()) {
+                throw new ResponseStatusException(org.springframework.http.HttpStatus.FORBIDDEN,
+                        "Select a workspace before provisioning its repository");
+            }
             UserWorkspace ws = pinned == null
                     ? workspaceManager.provisionWorkspaceRepository(user)
                     : workspaceManager.provisionWorkspaceRepository(user,

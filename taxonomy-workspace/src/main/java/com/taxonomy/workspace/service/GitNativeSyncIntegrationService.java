@@ -378,6 +378,12 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     private WorkspaceContext resolveWorkspaceContext(String username, String requestedBranch) {
         RepositoryContext persistent =
                 contextResolver.resolveRepositoryContextForUser(username);
+        // Preserve the explicit operation scope before adapting to legacy WorkspaceContext.
+        // This shared entry covers pull, publish and every conflict-resolution strategy.
+        if (persistent.scope() == RepositoryScope.CENTRAL_READ) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Synchronization requires a writable repository context");
+        }
         if (persistent.workspaceId() == null) {
             return new WorkspaceContext(
                     persistent.username(),

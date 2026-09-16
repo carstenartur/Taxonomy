@@ -79,6 +79,7 @@ class ArchitectureModuleExtractionTest {
                 "Architecture policy"));
         Map<String, Path> modules = discoverModules(root, policy);
         SortedMap<String, SortedSet<String>> classOwners = new TreeMap<>();
+        Map<String, String> existingSourceFiles = new TreeMap<>();
         Set<String> sources = new TreeSet<>();
         Map<Path, String> sourceOwners = new TreeMap<>();
         List<Path> outputs = new ArrayList<>();
@@ -111,6 +112,9 @@ class ArchitectureModuleExtractionTest {
                         && !relative.endsWith("/package-info.class")) {
                     String className = relative.substring(0, relative.length() - ".class".length())
                             .replace('/', '.');
+                    // Containment was checked by repositoryFiles before opening these bytes.
+                    String sourceFile = readCompiledSourceFile(file, className);
+                    if (sourceFile != null) existingSourceFiles.put(module.getKey() + ":" + className, sourceFile);
                     classOwners.computeIfAbsent(className, ignored -> new TreeSet<>()).add(module.getKey());
                 }
             }
@@ -118,7 +122,7 @@ class ArchitectureModuleExtractionTest {
         if (sources.stream().noneMatch(source -> source.startsWith(policy.compositionModule() + ":"))) {
             throw new IllegalStateException("No application production sources found; module graph would be vacuous");
         }
-        CompiledInventory compiled = verifyCompiledBinaryInventory(sourceOwners, outputs, classOwners);
+        CompiledInventory compiled = verifyCompiledBinaryInventory(sourceOwners, outputs, classOwners, existingSourceFiles);
         Map<String, String> compiledSourceFiles = compiled.sourceFiles();
         // Names alone cannot prove freshness: a same-named class may have acquired
         // new dependencies. Build the graph from this invocation's compiler output.
@@ -159,10 +163,34 @@ class ArchitectureModuleExtractionTest {
                 readProductionModuleDependencies(root, modules, policy));
     }
 
+    /** Audit physical output identity without using stale output for dependency analysis. */
+    private static String readCompiledSourceFile(Path file, String expectedName) {
+        try (var input = Files.newInputStream(file)) {
+            var reader = new org.springframework.asm.ClassReader(input);
+            if (reader.readInt(0) != 0xCAFEBABE) {
+                throw new IllegalArgumentException("Invalid class-file magic");
+            }
+            String actualName = reader.getClassName().replace('/', '.');
+            if (!expectedName.equals(actualName)) {
+                throw new IllegalArgumentException("Internal binary name is " + actualName);
+            }
+            String[] source = new String[1];
+            reader.accept(new org.springframework.asm.ClassVisitor(org.springframework.asm.Opcodes.ASM9) {
+                @Override public void visitSource(String name, String debug) { source[0] = name; }
+            }, org.springframework.asm.ClassReader.SKIP_CODE | org.springframework.asm.ClassReader.SKIP_FRAMES);
+            // SourceFile is optional (for example with -g:none). When present, it must match.
+            return source[0];
+        } catch (IOException | RuntimeException failure) {
+            throw new IllegalStateException("Invalid compiled class " + expectedName + " at " + file
+                    + ": " + failure.getMessage(), failure);
+        }
+    }
+
     private record CompiledInventory(Map<String, String> sourceFiles, JavaClasses classes) {}
 
     private static CompiledInventory verifyCompiledBinaryInventory(Map<Path, String> sources, List<Path> outputs,
-                                                                     Map<String, SortedSet<String>> classOwners) throws IOException {
+                                                                     Map<String, SortedSet<String>> classOwners,
+                                                                     Map<String, String> existingSourceFiles) throws IOException {
         var compiler = ToolProvider.getSystemJavaCompiler();
         if (compiler == null) {
             throw new IllegalStateException("A JDK compiler is required to verify the production binary inventory");
@@ -222,6 +250,13 @@ class ArchitectureModuleExtractionTest {
             if (!obsolete.isEmpty() || !missing.isEmpty()) {
                 throw new IllegalStateException("Compiled binary inventory differs from current source declarations; obsolete="
                         + obsolete + ", missing=" + missing + "; run a clean reactor build");
+            }
+            for (var entry : existingSourceFiles.entrySet()) {
+                String sourceFile = expected.get(entry.getKey());
+                if (!entry.getValue().equals(sourceFile)) {
+                    throw new IllegalStateException("Compiled class SourceFile differs from current source: "
+                            + entry.getKey() + "; found=" + entry.getValue() + ", expected=" + sourceFile);
+                }
             }
             // ArchUnit imports every freshly generated class before temporary output
             // is removed, so dependency discovery and SourceFile ownership agree.
