@@ -829,7 +829,7 @@ class ArchitectureModuleGraphTest {
             assertThat(root.resolve("taxonomy-app/src/test/java/com/taxonomy").resolve(source)).doesNotExist();
             assertThat(root.resolve("taxonomy-build/src/test/java/com/taxonomy").resolve(source)).isRegularFile();
         }
-        assertModuleGateOwnerDependencies(root.resolve("taxonomy-build/pom.xml"));
+        assertModuleGateOwnerDependencies(root, root.resolve("taxonomy-build/pom.xml"));
         ArchitectureSelectorSynchronizationTest.assertSelectors(root);
 
         String pomSelector = profileProperty(root.resolve("pom.xml"), "architecture-tests", "test");
@@ -852,7 +852,7 @@ class ArchitectureModuleGraphTest {
                 </dependencies>
                 """);
 
-        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository.resolve("taxonomy-build/pom.xml")))
+        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository, temporaryRepository.resolve("taxonomy-build/pom.xml")))
                 .isInstanceOf(AssertionError.class);
     }
 
@@ -880,14 +880,14 @@ class ArchitectureModuleGraphTest {
     void unclassifiedOwnerDependenciesRemainValidAlongsideClassifiedDependencies() throws Exception {
         pom("taxonomy-build", "taxonomy-build", moduleGateOwnerDependencies("classified-extras"));
 
-        assertThatCode(() -> assertModuleGateOwnerDependencies(temporaryRepository.resolve("taxonomy-build/pom.xml")))
+        assertThatCode(() -> assertModuleGateOwnerDependencies(temporaryRepository, temporaryRepository.resolve("taxonomy-build/pom.xml")))
                 .doesNotThrowAnyException();
     }
 
     private void assertClassifiedDependencyCannotSatisfyOwnerContract(String classifiedArtifact) throws Exception {
         pom("taxonomy-build", "taxonomy-build", moduleGateOwnerDependencies(classifiedArtifact));
 
-        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository.resolve("taxonomy-build/pom.xml")))
+        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository, temporaryRepository.resolve("taxonomy-build/pom.xml")))
                 .isInstanceOf(AssertionError.class);
     }
 
@@ -917,8 +917,12 @@ class ArchitectureModuleGraphTest {
                 + (scope == null ? "" : "<scope>" + scope + "</scope>") + "</dependency>";
     }
 
-    private static void assertModuleGateOwnerDependencies(Path pom) throws Exception {
-        Map<String, String> dependencies = directProjectDependencies(pom);
+    private static void assertModuleGateOwnerDependencies(Path checkout, Path pom) throws Exception {
+        Path physicalPom = pom.toRealPath();
+        if (!physicalPom.startsWith(checkout.toRealPath()) || !Files.isRegularFile(physicalPom)) {
+            throw new IllegalStateException("Owner POM outside checkout: " + pom);
+        }
+        Map<String, String> dependencies = directProjectDependencies(physicalPom);
         assertThat(dependencies).containsEntry("com.taxonomy:taxonomy-app:jar:", "compile")
                 .containsEntry("com.taxonomy:taxonomy-coverage:pom:", "compile")
                 .containsEntry("com.taxonomy:taxonomy-tooling:jar:", "test")
@@ -2122,6 +2126,39 @@ class ArchitectureModuleGraphTest {
             }
         }, 0);
         Files.write(file, writer.toByteArray());
+    }
+
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"file", "directory"})
+    void ownerPomCannotParseOutsideCheckout(String linkKind) throws Exception {
+        Path outside = externalFixture("outside-owner-pom");
+        Files.writeString(outside.resolve("pom.xml"), "EXTERNAL_CONTENT_MUST_NOT_BE_PARSED");
+        Path build = temporaryRepository.resolve("taxonomy-build");
+        if (linkKind.equals("file")) {
+            Files.createDirectories(build);
+            Files.createSymbolicLink(build.resolve("pom.xml"), outside.resolve("pom.xml"));
+        } else {
+            Files.createSymbolicLink(build, outside);
+        }
+        assertThatThrownBy(() -> assertModuleGateOwnerDependencies(temporaryRepository, build.resolve("pom.xml")))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("Owner POM outside checkout");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"file", "directory"})
+    void ownerPomAcceptsContainedAliases(String linkKind) throws Exception {
+        pom("owner-alias-target", "taxonomy-build", moduleGateOwnerDependencies("classified-extras"));
+        Path target = temporaryRepository.resolve("owner-alias-target");
+        Path build = temporaryRepository.resolve("taxonomy-build");
+        if (linkKind.equals("file")) {
+            Files.createDirectories(build);
+            Files.createSymbolicLink(build.resolve("pom.xml"), target.resolve("pom.xml"));
+        } else {
+            Files.createSymbolicLink(build, target);
+        }
+        assertThatCode(() -> assertModuleGateOwnerDependencies(temporaryRepository, build.resolve("pom.xml")))
+                .doesNotThrowAnyException();
     }
 
 }
