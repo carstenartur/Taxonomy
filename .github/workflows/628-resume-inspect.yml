@@ -1,0 +1,60 @@
+name: Inspect architecture continuation (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-resume-inspect.yml]
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: a690921d849fc8da58b509b105d4c31ec20647bd
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Inspect immutable sources and current complete review dispositions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os,json,urllib.request,gzip,base64,hashlib,subprocess
+          from pathlib import Path
+          root='https://api.github.com/repos/carstenartur/Taxonomy/'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          def get(path):
+              with urllib.request.urlopen(urllib.request.Request(root+path,headers=headers),timeout=60) as r: return json.load(r)
+          out=Path('/tmp/architecture-resume');out.mkdir()
+          for path in ['AGENTS.md','.github/copilot-instructions.md','.github/skills/code-review/SKILL.md']:
+              if Path(path).exists(): print('INSTRUCTIONS',path,'\n',Path(path).read_text())
+          for n in [1054,1061,1062,1063,1064,1067]:
+              p=get(f'pulls/{n}');sha=p['head']['sha']
+              print('PR',n,p['state'],'merged',p['merged'],'draft',p['draft'],'head',sha,'base',p['base']['ref'],p.get('mergeable_state'))
+              (out/f'pr-{n}.json').write_text(json.dumps(p,indent=2))
+              if p['state']=='closed': continue
+              checks=get(f'commits/{sha}/check-runs?per_page=100')['check_runs']
+              print('CHECKS',json.dumps([{'name':c['name'],'status':c['status'],'conclusion':c['conclusion'],'url':c['html_url']} for c in checks]))
+              reviews=get(f'pulls/{n}/reviews?per_page=100'); own=[r for r in reviews if r.get('commit_id')==sha and r.get('body')]
+              for r in own[-2:]:
+                  print('REVIEW',n,r['id'],r['body'])
+                  comments=get(f'pulls/{n}/reviews/{r["id"]}/comments?per_page=100')
+                  for c in comments: print('COMMENT',c['id'],c['path'],c['body'])
+          b=get('git/blobs/6dd0dfbdd55f24ec5b4d969d9e442688db0323b6');raw=base64.b64decode(b['content'])
+          assert hashlib.sha1(b'blob '+str(len(raw)).encode()+b'\0'+raw).hexdigest()==b['sha']
+          try:
+              patch=gzip.decompress(raw)
+              print('RECOVERED_PATCH',len(patch),hashlib.sha256(patch).hexdigest())
+              (out/'recovered.patch').write_bytes(patch)
+              print(patch.decode())
+              print('APPLICABILITY',subprocess.run(['git','apply','--check',str(out/'recovered.patch')],capture_output=True,text=True).__dict__.get('stderr',''))
+          except Exception as e: print('PATCH_RECOVERY_ERROR',type(e).__name__,str(e))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: architecture-resume-inspection
+          path: /tmp/architecture-resume
+          retention-days: 3
