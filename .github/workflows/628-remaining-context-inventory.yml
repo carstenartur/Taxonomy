@@ -1,0 +1,61 @@
+name: Inspect remaining context boundaries (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-remaining-context-inventory.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 29a6834e7167fb55c330d10fa918543bdcee827b
+          persist-credentials: false
+      - name: Locate source responsibilities behind the remaining module blockers
+        shell: python
+        run: |
+          import json,re,collections
+          from pathlib import Path
+          out=Path('/tmp/remaining-contexts');out.mkdir()
+          policy=json.loads(Path('.github/architecture-contexts.json').read_text())
+          print('POLICY_KEYS',list(policy))
+          contexts=policy['contexts']
+          if isinstance(contexts,dict): contexts=[dict(id=k,**v) for k,v in contexts.items()]
+          print('CONTEXTS',json.dumps(contexts))
+          # Source imports are navigation evidence only; the compiled fitness graph is authoritative.
+          def owner(package):
+              for context in contexts:
+                  for pattern in context.get('packages',context.get('packagePatterns',[])):
+                      prefix=pattern.removesuffix('..')
+                      if package==prefix or package.startswith(prefix+'.'):return context.get('id',context.get('name'))
+              return 'foundation' if not package.startswith('com.taxonomy.') else 'unmapped'
+          sources={};locations={}
+          for p in Path('.').glob('taxonomy-*/src/main/java/**/*.java'):
+              s=p.read_text();m=re.search(r'^package\s+([\w.]+);',s,re.M)
+              if not m:continue
+              name=m[1]+'.'+p.stem;sources[name]=(p,s,owner(m[1]));locations[str(p)]=sources[name][2]
+          groups=collections.Counter(o for p,s,o in sources.values())
+          print('SOURCE_COUNTS',json.dumps(groups,sort_keys=True))
+          edges=collections.defaultdict(list)
+          for name,(p,s,origin) in sources.items():
+              for target in re.findall(r'^import\s+(?:static\s+)?(com\.taxonomy\.[\w.*]+);',s,re.M):
+                  parts=target.split('.')
+                  while '.'.join(parts) not in sources and len(parts)>2:parts.pop()
+                  entry=sources.get('.'.join(parts))
+                  if entry and entry[2]!=origin:edges[(origin,entry[2])].append((str(p),target))
+          for (origin,target),pairs in sorted(edges.items()):
+              print('IMPORT_EDGE',origin,target,len(pairs))
+              if origin in ('analysis','architecture','knowledge','portfolio') and target in ('app-composition','analysis','architecture','knowledge','portfolio','legacy-export-adapters','dsl-adapters','unmapped'):
+                  for p,t in pairs:print('BOUNDARY',origin,'->',target,p,t)
+          (out/'import-navigation.json').write_text(json.dumps({'counts':dict(groups),'edges':[{'from':a,'to':b,'imports':v} for (a,b),v in sorted(edges.items())]},indent=2)+'\n')
+          for name in ['pom.xml','taxonomy-workspace/pom.xml','taxonomy-interop/pom.xml','taxonomy-templates/pom.xml']:
+              print('POM',name,'\n',Path(name).read_text())
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: remaining-context-navigation
+          path: /tmp/remaining-contexts
+          retention-days: 3
