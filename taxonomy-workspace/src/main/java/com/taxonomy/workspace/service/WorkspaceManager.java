@@ -529,8 +529,8 @@ public class WorkspaceManager {
                 String existingHead = workspaceGit.getHeadCommit(targetBranch);
                 String allocatedCommit;
                 if (existingHead == null) {
-                    allocatedCommit = workspaceGit.commitDsl(
-                            targetBranch, systemDsl, username, "Fork from shared/" + baseBranch);
+                    allocatedCommit = workspaceGit.commitDslIfHeadMatches(
+                            targetBranch, null, systemDsl, username, "Fork from shared/" + baseBranch);
                 } else if (recordedBase != null
                         && existingHead.equals(workspace.getCurrentCommit())
                         && systemDsl.equals(workspaceGit.getDslAtCommit(existingHead))) {
