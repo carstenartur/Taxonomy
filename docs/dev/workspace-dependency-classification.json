@@ -1400,5 +1400,16 @@
     "owner-api": 95,
     "composition-orchestration": 15,
     "residual-violation": 7
+  },
+  "snapshotVerification": {
+    "kind": "historical-snapshot-reproduction",
+    "sourceCommit": "bd430ff41788289567de65d78d7d8b8f4adc02a8",
+    "sourceTree": "0e06b235176a4bb70abe7610784ae7874f42b3a5",
+    "moduleGraphSha256": "54218255ab78eb0fc9a65dcdcf9d0e8e0415589690f66a89331ba03d43e39352",
+    "runId": 35156105650,
+    "artifactId": 10471290670,
+    "artifactSha256": "c015f265cfab95bae8bc2d9efc6513aced7c0ff59d03bc23c252a86161093643",
+    "executedGraphTests": 1,
+    "scope": "The declared historical module graph was regenerated; this is not current-head or full-suite acceptance."
   }
 }

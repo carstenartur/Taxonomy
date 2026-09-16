@@ -23,3 +23,7 @@ The document must distinguish workspace readiness from whole-proposal acyclicity
 - Current-head external review and main-targeted canonical CI, database, JGit consumer, UI, security, product and recovery gates remain required. No agent may post a human review attestation.
 
 Only the assessment and its data will be proposed for review. Existing source, tests and mandatory architecture rules remain the authority for runtime behavior and enforcement.
+
+## Provenance clarification — 16 September 2026
+
+This document describes the immutable `bd430ff41788289567de65d78d7d8b8f4adc02a8` assessment, not current extraction status. Run 35156105650 regenerated that exact source graph with one executed graph test; report and policy hashes match the assessment. All 117 classifications are preserved. Current-head CI and review are independent requirements.

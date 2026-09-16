@@ -1,4 +1,4 @@
-# Workspace dependency assessment
+# Workspace dependency assessment — historical snapshot
 
 This is the documentary Slice E assessment for [#1043](https://github.com/carstenartur/Taxonomy/issues/1043), within [#628](https://github.com/carstenartur/Taxonomy/issues/628), at production snapshot `bd430ff41788289567de65d78d7d8b8f4adc02a8`. It classifies existing boundaries; it changes no runtime behavior, ownership map, baseline or enforcement rule.
 
@@ -6,17 +6,17 @@ The measured workspace context has **zero outgoing dependencies on other managed
 
 ## Graph and provenance
 
-The canonical package measurement has 140 managed package edges and 472 managed class pairs. The native source/compiler/import inventory covers 828 production Java source files and 1,408 production classes. Historical native architecture evidence for the assessment snapshot records 137 passing tests, with no failures, errors or skips. The root regenerated the canonical baseline byte-identically from that compiled inventory. The assessment independently checked the supplied hashes and current source against the immutable snapshot; it did not rerun Maven or alter the baseline.
+The canonical package measurement has 140 managed package edges and 472 managed class pairs. The native source/compiler/import inventory covers 828 production Java source files and 1,408 production classes. The package baseline and the proposed-module graph are different measurements: their counts must not be combined. On 16 September 2026 the declared immutable snapshot was checked out and its module graph was regenerated in [run 35156105650](https://github.com/carstenartur/Taxonomy/actions/runs/35156105650). That reproduction executed **one graph test**, not 137 architecture tests and not the current branch full suite. Its graph hash matches the value below exactly. The two policy files were independently read from the same commit and their hashes and 140/472 baseline counts were verified. No claim of a new full-suite run is made for this documentary change.
 
 | Evidence input | SHA-256 |
 | --- | --- |
-| [Dependency baseline](../../.github/architecture-dependency-baseline.json) | `5ff8756fa9b743c3b92853a961fb40320f128ee84c86d9f5c5fb99dea2df8c82` |
-| [Context ownership map](../../.github/architecture-contexts.json) | `f0a2e0f093c313300b5b615ea4a55234955c6324bef2d7124a806e5132fdb348` |
+| [Snapshot dependency baseline](https://github.com/carstenartur/Taxonomy/blob/bd430ff41788289567de65d78d7d8b8f4adc02a8/.github/architecture-dependency-baseline.json) | `5ff8756fa9b743c3b92853a961fb40320f128ee84c86d9f5c5fb99dea2df8c82` |
+| [Snapshot context ownership map](https://github.com/carstenartur/Taxonomy/blob/bd430ff41788289567de65d78d7d8b8f4adc02a8/.github/architecture-contexts.json) | `f0a2e0f093c313300b5b615ea4a55234955c6324bef2d7124a806e5132fdb348` |
 | Native `architecture-module-graph.txt` report | `54218255ab78eb0fc9a65dcdcf9d0e8e0415589690f66a89331ba03d43e39352` |
 
 The [module extraction gate](MODULE_EXTRACTION_GATE.md) reports `taxonomy-workspace: ready`: the current candidate reaches no extraction blocker. Its outgoing planned-module edges are to the existing `taxonomy-domain`, `taxonomy-dsl` and `taxonomy-export` support modules; zero managed-context outgoing edges does not mean zero dependencies.
 
-The **complete proposal remains cyclic**. Its reported cyclic group comprises `taxonomy-analysis`, `taxonomy-app`, `taxonomy-architecture` and `taxonomy-knowledge`, with witness `taxonomy-analysis -> taxonomy-app -> taxonomy-analysis`. No physical feature module exists. Workspace readiness therefore establishes neither complete-DAG acyclicity nor permission to extract a Maven module.
+At this **historical snapshot**, the complete proposal was cyclic. Its reported cyclic group comprises `taxonomy-analysis`, `taxonomy-app`, `taxonomy-architecture` and `taxonomy-knowledge`, with witness `taxonomy-analysis -> taxonomy-app -> taxonomy-analysis`. No physical feature module existed at this snapshot. This is not a statement about the current extraction branches. Workspace readiness therefore establishes neither complete-DAG acyclicity nor permission to extract a Maven module.
 
 ## Classification decisions
 
@@ -43,7 +43,7 @@ Ten pairs differ from the provisional classification: `SystemRepositoryService.g
 
 The primary-identity cases differ from opaque HTTP authorization handoff: knowledge itself reads `SystemRepository` fields to bind persisted seeds, synthesize compatibility contexts, or admit a legacy read source. That persistence representation leaks into knowledge policy even though the required identity is legitimate.
 
-`WorkspaceContext.SHARED` contains actor `system`, no workspace, the `legacy-primary` sentinel and literal branch **`draft`**. It is not the configured primary/default-branch identity. `WorkspaceRepositoryContextPort` resolves an already supplied selection; its [legacy resolver](../../taxonomy-app/src/main/java/com/taxonomy/workspace/service/LegacyWorkspaceRepositoryContextResolver.java) preserves a supplied branch. Substituting `resolve(SHARED)` for primary catalog reads would therefore change behavior when the configured default branch differs. Future work must explicitly verify that case, retain `TaxonomyRelationService.primaryContext` actor/workspace normalization, and preserve `RelationProjectionReadService` fallback checks for primary repository **and** configured default branch, central scope, `NOT_BUILT` and no pending recovery.
+`WorkspaceContext.SHARED` contains actor `system`, no workspace, the `legacy-primary` sentinel and literal branch **`draft`**. It is not the configured primary/default-branch identity. `WorkspaceRepositoryContextPort` resolves an already supplied selection; its [snapshot legacy resolver](https://github.com/carstenartur/Taxonomy/blob/bd430ff41788289567de65d78d7d8b8f4adc02a8/taxonomy-app/src/main/java/com/taxonomy/workspace/service/LegacyWorkspaceRepositoryContextResolver.java) preserves a supplied branch. Substituting `resolve(SHARED)` for primary catalog reads would therefore change behavior when the configured default branch differs. Future work must explicitly verify that case, retain `TaxonomyRelationService.primaryContext` actor/workspace normalization, and preserve `RelationProjectionReadService` fallback checks for primary repository **and** configured default branch, central scope, `NOT_BUILT` and no pending recovery.
 
 The seed listener resolves the service through its `ObjectProvider` lazily at `PrePersist`, after JPA bootstrap. Any replacement must retain that timing, accept only the existing unbound built-in Excel/CSV seeds, retain already supplied repository IDs, and fail closed for other unbound writes or unavailable authority. Eager constructor resolution would reintroduce the bootstrap problem.
 
@@ -52,3 +52,7 @@ Legacy request paths still need explicit attention: ArchiMate import uses `Works
 ## Extraction and merge limits
 
 This assessment does not move source, extract a feature module, approve a merge, or complete #1043/#628. Physical Maven extraction remains deferred until the complete proposed module DAG is acyclic. The real current-head external review and main-targeted canonical CI, database, JGit consumer, UI, security, product and recovery gates remain required, alongside genuine human review. A documentary classification or agent report cannot attest that human review occurred.
+
+## Reproduction receipt
+
+Source tree: `0e06b235176a4bb70abe7610784ae7874f42b3a5`. [Original report, source identity, logs and graph-test XML](https://github.com/carstenartur/Taxonomy/actions/runs/35156105650/artifacts/10471290670); archive SHA-256 `c015f265cfab95bae8bc2d9efc6513aced7c0ff59d03bc23c252a86161093643`. The 117 classified pairs above remain unchanged. The checked-out current implementation and module gates, not this historical assessment, determine present extraction and merge readiness.
