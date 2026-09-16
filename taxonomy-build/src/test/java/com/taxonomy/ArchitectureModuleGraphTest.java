@@ -2047,4 +2047,81 @@ class ArchitectureModuleGraphTest {
     private static ClassDependency edge(String from, String to) {
         return new ClassDependency(from, to);
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"copy", "file-alias", "directory-alias"})
+    void compiledBytesRejectWrongInternalIdentity(String placement) throws Exception {
+        bytecodeRepository();
+        Path app = compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        Path destination = output.resolve("com/taxonomy/a/Service.class");
+        Path alias = temporaryRepository.resolve("fixture-binary-alias/Service.class");
+        Files.createDirectories(alias.getParent());
+        Files.copy(app.resolve("com/taxonomy/AppConfig.class"), alias);
+        if (placement.equals("copy")) {
+            Files.copy(alias, destination, java.nio.file.StandardCopyOption.REPLACE_EXISTING);
+        } else if (placement.equals("file-alias")) {
+            Files.delete(destination);
+            Files.createSymbolicLink(destination, alias);
+        } else {
+            Files.delete(destination);
+            Files.delete(destination.getParent());
+            Files.createSymbolicLink(destination.getParent(), alias.getParent());
+        }
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("compiled class")
+                .hasMessageContaining("com.taxonomy.a.Service");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void compiledBytesRejectTruncatedOutput(boolean alias) throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        Path destination = output.resolve("com/taxonomy/a/Service.class");
+        byte[] truncated = java.util.Arrays.copyOf(Files.readAllBytes(destination), 12);
+        if (alias) {
+            Path target = temporaryRepository.resolve("fixture-truncated.class");
+            Files.write(target, truncated);
+            Files.delete(destination);
+            Files.createSymbolicLink(destination, target);
+        } else {
+            Files.write(destination, truncated);
+        }
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("compiled class");
+    }
+
+    @Test
+    void compiledBytesRejectContradictorySourceFileMetadata() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        rewriteCompiledSourceAttribute(output.resolve("com/taxonomy/a/Service.class"), "WrongOwner.java");
+        assertThatThrownBy(() -> ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository))
+                .isInstanceOf(IllegalStateException.class).hasMessageContaining("SourceFile")
+                .hasMessageContaining("WrongOwner.java").hasMessageContaining("Service.java");
+    }
+
+    @Test
+    void compiledBytesAllowAnOmittedOptionalSourceFileAttribute() throws Exception {
+        bytecodeRepository();
+        compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+        Path output = compile(A, A_CLASS, "public class Service {}", List.of());
+        rewriteCompiledSourceAttribute(output.resolve("com/taxonomy/a/Service.class"), null);
+        assertThat(ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository).violations()).isEmpty();
+    }
+
+    private static void rewriteCompiledSourceAttribute(Path file, String source) throws Exception {
+        var reader = new org.springframework.asm.ClassReader(Files.readAllBytes(file));
+        var writer = new org.springframework.asm.ClassWriter(0);
+        reader.accept(new org.springframework.asm.ClassVisitor(org.springframework.asm.Opcodes.ASM9, writer) {
+            @Override public void visitSource(String ignored, String debug) {
+                if (source != null) super.visitSource(source, debug);
+            }
+        }, 0);
+        Files.write(file, writer.toByteArray());
+    }
+
 }
