@@ -1,0 +1,144 @@
+name: Validate native architecture stack (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-finalize-candidate-stack.yml]
+permissions:
+  contents: write
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.stack.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: a4fe39bee3845e2b58956ce0d7e59993ed5d641b
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Apply the reproduced tests and minimal declaration check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,hashlib,json,os,urllib.request,subprocess
+          from pathlib import Path
+          Path('/tmp/stack-final').mkdir()
+          for name,sha in [('tests','35133ae21bfdaa0f936c16f57010fa60ff4e9d77'),('fix','7ac418b6b4efdfd7b28c43019fa5d80c94c4228b')]:
+              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=60) as r: data=base64.b64decode(json.load(r)['content'])
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+              script=Path('/tmp')/('anchor-'+name+'.py');script.write_bytes(data)
+              subprocess.run(['python',str(script)],check=True)
+          subprocess.run(['git','diff','--check'],check=True)
+      - name: Execute all nineteen anchor regression cases
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=ArchitectureExceptionLedgerTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee /tmp/stack-final/anchor-green.log
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          p=Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureExceptionLedgerTest.xml')
+          r=ET.parse(p).getroot();print(r.attrib)
+          assert int(r.get('tests','0'))==19,r.attrib
+          assert all(int(r.get(k,'0'))==0 for k in ('failures','errors','skipped')),r.attrib
+          Path('/tmp/stack-final/anchor-green.xml').write_bytes(p.read_bytes())
+          PY
+      - name: Preserve native histories and publish isolated candidates only
+        id: stack
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import json,os,subprocess
+          from pathlib import Path
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          def run(*args):subprocess.run(['git',*args],check=True)
+          bases=[('gate',1054,'a4fe39bee3845e2b58956ce0d7e59993ed5d641b'),('workspace',1062,'341f61e1e61f662bde954ed46f0a8423ac7c9d59'),('templates',1063,'a7cde03ab11a8486a7d58f3928359066b01076c9'),('interop',1064,'29a6834e7167fb55c330d10fa918543bdcee827b')]
+          run('fetch','--quiet','--unshallow','--no-tags','origin',*[sha for _,_,sha in bases])
+          run('config','user.name','github-actions[bot]')
+          run('config','user.email','41898282+github-actions[bot]@users.noreply.github.com')
+          changed=git('diff','--name-only').splitlines()
+          assert sorted(changed)==sorted(['taxonomy-app/src/test/java/com/taxonomy/ArchitectureExceptionLedgerTest.java','docs/dev/MODULE_EXTRACTION_GATE.md']),changed
+          run('add','--',*changed)
+          run('commit','-m','fix(build): verify module guard declarations in the independent selector anchor')
+          gate=git('rev-parse','HEAD');previous=gate;matrix=[]
+          for name,pr,base in bases:
+              if name!='gate':
+                  run('checkout','--quiet','--detach',base)
+                  run('merge','--no-ff','-m',f'fix({name}): inherit the checked independent module guard',previous)
+              sha=git('rev-parse','HEAD');tree=git('rev-parse','HEAD^{tree}')
+              run('merge-base','--is-ancestor',base,sha)
+              run('merge-base','--is-ancestor',gate,sha)
+              assert git('status','--porcelain','--untracked-files=no')==''
+              ref=f'verify/628-candidate-{os.environ["GITHUB_RUN_ID"]}-{name}'
+              matrix.append({'name':name,'pr':pr,'base':base,'sha':sha,'tree':tree,'ref':ref})
+              previous=sha
+          subprocess.run(['gh','auth','setup-git'],check=True)
+          for item in matrix:run('push','origin',item['sha']+':refs/heads/'+item['ref'])
+          doc={'include':matrix}
+          Path('/tmp/stack-final/candidates.json').write_text(json.dumps(doc,indent=2)+'\n')
+          with open(os.environ['GITHUB_OUTPUT'],'a') as f:f.write('matrix='+json.dumps(doc,separators=(',',':'))+'\n')
+          print('CANDIDATES',json.dumps(doc))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: architecture-stack-assembly
+          path: /tmp/stack-final
+          retention-days: 7
+  architecture:
+    needs: assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.assemble.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Full architecture profile on the exact candidate
+        env:
+          EXPECTED_TREE: ${{ matrix.tree }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          mkdir -p /tmp/architecture-candidate
+          ./mvnw -B -ntp test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee /tmp/architecture-candidate/maven-architecture.log
+          cp taxonomy-build/target/architecture-module-graph.txt /tmp/architecture-candidate/
+          git rev-parse HEAD HEAD^{tree} > /tmp/architecture-candidate/identity.txt
+          test -z "$(git status --porcelain --untracked-files=no)"
+          cat /tmp/architecture-candidate/architecture-module-graph.txt
+      - name: Require real anchor and module-graph execution
+        shell: python
+        run: |
+          from pathlib import Path
+          import xml.etree.ElementTree as ET,json
+          reports=list(Path('.').glob('**/target/surefire-reports/TEST-*.xml'))
+          required={'ArchitectureModuleGraphTest','ArchitectureModuleExtractionTest','ArchitectureSelectorSynchronizationTest'}
+          observed=set();totals={k:0 for k in ('tests','failures','errors','skipped')}
+          anchor=False
+          for p in reports:
+              r=ET.parse(p).getroot()
+              observed.add(r.get('name','').split('.')[-1])
+              if 'selector-anchor' in p.name:
+                  anchor=True;assert int(r.get('tests','0'))==1,r.attrib
+              for k in totals:totals[k]+=int(r.get(k,'0'))
+          assert required<=observed,(required,observed)
+          assert anchor,'fixed anchor did not execute'
+          assert all(totals[k]==0 for k in ('failures','errors','skipped')),totals
+          Path('/tmp/architecture-candidate/counts.json').write_text(json.dumps(totals,indent=2)+'\n')
+          print('EXECUTED_ARCHITECTURE',json.dumps(totals))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: architecture-candidate-${{ matrix.name }}
+          path: |
+            /tmp/architecture-candidate
+            **/target/surefire-reports/TEST-*.xml
+          retention-days: 7
