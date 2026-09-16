@@ -104,19 +104,36 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
             String commit = syncFromShared(username, userBranch);
             return "Semantically merged source into your branch: " + abbreviate(commit);
         }
-        return super.resolveDiverged(username, userBranch, strategy);
+        WorkspaceContext context = resolveWorkspaceContext(username, userBranch);
+        boolean keepMine = strategy == DivergedStrategy.KEEP_MINE;
+        String commit = context.workspaceId() == null
+                ? chooseWithinRepository(username, context, context.currentBranch(), keepMine)
+                : keepMine ? publishAcrossRepositories(username, context, context.currentBranch(), true)
+                : pullAcrossRepositories(username, context, context.currentBranch(), true);
+        return (keepMine ? "Published your version to the selected source: "
+                : "Adopted the selected source version: ") + abbreviate(commit);
     }
 
     private String pullAcrossRepositories(String username,
-                                          WorkspaceContext context,
-                                          String userBranch) throws IOException {
-        RepositoryContext selected = RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), userBranch, username);
-        return editorVersions.version(selected, "Integrate architecture versions from source", () -> pullAcrossRepositoriesVersion(username, context, userBranch));
+                                            WorkspaceContext context,
+                                            String userBranch) throws IOException {
+        return pullAcrossRepositories(username, context, userBranch, false);
+    }
+
+    private String pullAcrossRepositories(String username,
+                                            WorkspaceContext context,
+                                            String userBranch,
+                                            boolean takeSource) throws IOException {
+        RepositoryContext selected = RepositoryContext.workspace(
+                context.repositoryId(), context.workspaceId(), userBranch, username);
+        return editorVersions.version(selected, "Integrate architecture versions from source",
+                () -> pullAcrossRepositoriesVersion(username, context, userBranch, takeSource));
     }
 
     private String pullAcrossRepositoriesVersion(String username,
                                           WorkspaceContext context,
-                                          String userBranch) throws IOException {
+                                          String userBranch,
+                                          boolean takeSource) throws IOException {
         UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());
         SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);
         requireMatchingRepository(context, sourceMetadata);
@@ -126,7 +143,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         DslGitRepository workspaceGit =
                 repositoryFactory.openWorkspaceRepository(context.workspaceId());
         BranchSnapshot sourceSnapshot = snapshot(sourceRepository, sourceBranch);
-        WorkspaceMergeState state = initialiseWorkspaceMergeBase(
+        WorkspaceMergeState state = takeSource ? null : initialiseWorkspaceMergeBase(
                 workspaceGit, sourceRepository, sourceSnapshot.dsl(), username, userBranch,
                 workspaceMetadata.getBaseCommit());
 
@@ -137,8 +154,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         String ours = requiredSnapshot(localSnapshot, "Workspace branch has no content: " + userBranch);
         String theirs = requiredSnapshot(sourceSnapshot, "Source branch has no content: " + sourceBranch);
 
-        TaxDslMergeResult merge = semanticMergeService.mergeContent(
-                state.baseDsl(), ours, theirs);
+        TaxDslMergeResult merge = takeSource
+                ? new TaxDslMergeResult(theirs, java.util.List.of())
+                : semanticMergeService.mergeContent(state.baseDsl(), ours, theirs);
         requireSuccess("Pull from source", merge);
         sourceRepository.verifyExpectedHead(sourceBranch, sourceSnapshot.head());
         String localCommit = commitIfChanged(
@@ -164,15 +182,25 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
     }
 
     private String publishAcrossRepositories(String username,
-                                             WorkspaceContext context,
-                                             String userBranch) throws IOException {
-        RepositoryContext selected = RepositoryContext.workspace(context.repositoryId(), context.workspaceId(), userBranch, username);
-        return editorVersions.version(selected, "Publish architecture workspace", () -> publishAcrossRepositoriesVersion(username, context, userBranch));
+                                            WorkspaceContext context,
+                                            String userBranch) throws IOException {
+        return publishAcrossRepositories(username, context, userBranch, false);
+    }
+
+    private String publishAcrossRepositories(String username,
+                                            WorkspaceContext context,
+                                            String userBranch,
+                                            boolean keepWorkspace) throws IOException {
+        RepositoryContext selected = RepositoryContext.workspace(
+                context.repositoryId(), context.workspaceId(), userBranch, username);
+        return editorVersions.version(selected, "Publish architecture workspace",
+                () -> publishAcrossRepositoriesVersion(username, context, userBranch, keepWorkspace));
     }
 
     private String publishAcrossRepositoriesVersion(String username,
                                              WorkspaceContext context,
-                                             String userBranch) throws IOException {
+                                             String userBranch,
+                                          boolean keepWorkspace) throws IOException {
         UserWorkspace workspaceMetadata = requireWorkspace(context.workspaceId());
         SystemRepository sourceMetadata = requireSourceRepository(workspaceMetadata);
         requireMatchingRepository(context, sourceMetadata);
@@ -182,7 +210,7 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         DslGitRepository workspaceGit =
                 repositoryFactory.openWorkspaceRepository(context.workspaceId());
         BranchSnapshot sourceSnapshot = snapshot(sourceRepository, sourceBranch);
-        WorkspaceMergeState state = initialiseWorkspaceMergeBase(
+        WorkspaceMergeState state = keepWorkspace ? null : initialiseWorkspaceMergeBase(
                 workspaceGit, sourceRepository, sourceSnapshot.dsl(), username, userBranch,
                 workspaceMetadata.getBaseCommit());
 
@@ -193,8 +221,9 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         BranchSnapshot localSnapshot = snapshot(workspaceGit, userBranch);
         String workspaceDsl = requiredSnapshot(localSnapshot, "Workspace branch has no content: " + userBranch);
 
-        TaxDslMergeResult merge = semanticMergeService.mergeContent(
-                state.baseDsl(), sourceDsl, workspaceDsl);
+        TaxDslMergeResult merge = keepWorkspace
+                ? new TaxDslMergeResult(workspaceDsl, java.util.List.of())
+                : semanticMergeService.mergeContent(state.baseDsl(), sourceDsl, workspaceDsl);
         requireSuccess("Publish to source", merge);
         // Detect a changed local input before updating the central repository.
         workspaceGit.verifyExpectedHead(userBranch, localSnapshot.head());
@@ -236,6 +265,36 @@ public class GitNativeSyncIntegrationService extends SyncIntegrationService {
         systemRepositoryService.save(sourceMetadata);
         updateAfterPublish(username, sourceCommit);
         return sourceCommit;
+    }
+
+    /** Explicit conflict choices retain the selected central repository and checked snapshots. */
+    private String chooseWithinRepository(String username, WorkspaceContext context,
+                                          String userBranch, boolean keepMine) throws IOException {
+        SystemRepository metadata = systemRepositoryService.getRepository(context.repositoryId());
+        requireMatchingRepository(context, metadata);
+        String centralBranch = metadata.getDefaultBranch();
+        if (centralBranch == null || centralBranch.isBlank()) {
+            throw new IllegalStateException("Selected repository has no default branch");
+        }
+        DslGitRepository repository = repositoryFactory.getCentralRepository(context.repositoryId());
+        portfolioGitPort.commitPortfolio(userBranch,
+                "Project requirements before explicit conflict choice", username, context);
+        String from = keepMine ? userBranch : centralBranch;
+        String into = keepMine ? centralBranch : userBranch;
+        BranchSnapshot chosen = snapshot(repository, from);
+        BranchSnapshot destination = snapshot(repository, into);
+        String content = requiredSnapshot(chosen, "Selected conflict side has no content: " + from);
+        repository.verifyExpectedHead(from, chosen.head());
+        String commit = commitIfChanged(repository, into, content, destination.dsl(),
+                destination.head(), username, "Resolve conflict using " + from);
+        WorkspaceContext target = new WorkspaceContext(username, null, into, context.repositoryId());
+        portfolioGitPort.materializePortfolio(content, username, target);
+        if (keepMine) {
+            updateAfterPublish(username, commit);
+        } else {
+            updateAfterSync(username, chosen.head());
+        }
+        return commit;
     }
 
     private String mergeWithinRepository(String username,

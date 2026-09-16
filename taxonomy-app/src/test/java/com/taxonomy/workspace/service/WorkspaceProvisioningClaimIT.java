@@ -60,13 +60,14 @@ class WorkspaceProvisioningClaimIT {
             when(factory.getSystemRepository()).thenReturn(source);
             var destination = mock(DslGitRepository.class);
             when(destination.commitDsl(anyString(), anyString(), anyString(), anyString())).thenReturn(base);
-            when(destination.getHeadCommit("main")).thenReturn(base);
+            when(destination.getHeadCommit("main")).thenReturn(null);
             when(factory.openWorkspaceRepository(id)).thenReturn(destination);
             var system = mock(SystemRepositoryService.class);
             when(system.getPrimaryRepository()).thenReturn(central);
             var first = new WorkspaceManager(selected, 50, system, factory);
             var second = new WorkspaceManager(selected, 50, system, factory);
-            try (var executor = Executors.newFixedThreadPool(2)) {
+            var executor = Executors.newFixedThreadPool(2, Thread.ofPlatform().daemon().factory());
+            try {
                 Callable<Integer> a = () -> provisionStatus(first, id);
                 Callable<Integer> b = () -> provisionStatus(second, id);
                 var results = executor.invokeAll(List.of(a, b), 20, TimeUnit.SECONDS);
@@ -75,6 +76,10 @@ class WorkspaceProvisioningClaimIT {
                     catch (Exception failure) { throw new AssertionError(failure); }
                 }).sorted().toList();
                 assertEquals(List.of(200, 409), statuses);
+            } finally {
+                executor.shutdownNow();
+                assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS),
+                        "Provisioning test workers did not terminate");
             }
             verify(destination, times(1)).commitDsl(anyString(), anyString(), anyString(), anyString());
             var retained = repository.findByWorkspaceId(id).orElseThrow();
