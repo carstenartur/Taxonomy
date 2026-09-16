@@ -1,16 +1,16 @@
-name: Verify complete module boundary corrections (temporary)
+name: Verify final module boundary stack (temporary)
 on:
   push:
     branches: [verify/628-boundary-regressions-20260916]
     paths:
       - .github/workflows/628-boundary-regressions.yml
-      - .github/scripts/boundary-review-*.py
+      - .github/scripts/boundary-final-review.py
 permissions:
   contents: read
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     permissions:
       contents: write
     outputs:
@@ -20,53 +20,92 @@ jobs:
         with: {path: harness, persist-credentials: false}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 70d13cb1b5a549ef6f4847a2752359a7225db938
+          ref: aff0f1c78f81598d9bce2c575ba1bf0584de4ee5
           path: candidate
           persist-credentials: false
           fetch-depth: 0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Apply reproduced tests and minimal corrections
+      - name: Add final counterexamples without altering production
         run: |
-          mkdir -p /tmp/628-boundary-green
-          python harness/.github/scripts/boundary-review-regressions.py candidate
-          python harness/.github/scripts/boundary-review-corrections.py patch candidate
+          mkdir -p /tmp/628-final/red
+          python harness/.github/scripts/boundary-final-review.py tests candidate
           git -C candidate diff --check
-      - name: All affected graph, selector and workspace tests
+      - name: Reproduce header precedence
+        working-directory: candidate
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-workspace -am test '-Dtest=WorkspaceCentralReadBoundaryTest#emptyHeader*' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-final/red/header.log 2>&1
+          result=$?
+          cp taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest.xml /tmp/628-final/red/
+          tail -35 /tmp/628-final/red/header.log
+          test "$result" -eq 1
+      - name: Reproduce actual security-chain metadata enumeration
+        working-directory: candidate
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-app -am test '-Dtest=AdminAuthorizationRegressionTest#workspaceActivity*' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-final/red/security.log 2>&1
+          result=$?
+          cp taxonomy-app/target/surefire-reports/TEST-com.taxonomy.security.AdminAuthorizationRegressionTest.xml /tmp/628-final/red/
+          tail -35 /tmp/628-final/red/security.log
+          test "$result" -eq 1
+      - name: Require all twelve counterexamples and controls to have executed
+        shell: python
+        run: |
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          files=list(Path('/tmp/628-final/red').glob('TEST-*.xml'));assert len(files)==2,files
+          total={k:0 for k in ('tests','failures','errors','skipped')}
+          for path in files:
+              suite=ET.parse(path).getroot()
+              for key in total: total[key]+=int(suite.get(key,'0'))
+          print(total)
+          assert total=={'tests':12,'failures':8,'errors':0,'skipped':0},total
+      - name: Correct confirmed defects and execute all affected contracts
         working-directory: candidate
         run: |
           set -o pipefail
-          ./mvnw -B -ntp test '-Dtest=ArchitectureModuleExtractionTest,ArchitectureModuleGraphTest,ArchitectureSelectorSynchronizationTest,WorkspaceCentralReadBoundaryTest,WorkspaceDivergedStrategyScopeTest,WorkspaceFactoryRetryRecoveryTest,WorkspaceContextResolverRequestPinningTest' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-boundary-green/focused.log 2>&1 || { tail -160 /tmp/628-boundary-green/focused.log; exit 1; }
-          tail -35 /tmp/628-boundary-green/focused.log
-      - name: Require actual counterexample and control execution
+          python ../harness/.github/scripts/boundary-final-review.py patch .
+          ./mvnw -B -ntp test '-Dtest=ArchitectureModuleExtractionTest,ArchitectureModuleGraphTest,ArchitectureSelectorSynchronizationTest,WorkspaceCentralReadBoundaryTest,WorkspaceDivergedStrategyScopeTest,WorkspaceFactoryRetryRecoveryTest,WorkspaceContextResolverRequestPinningTest,AdminAuthorizationRegressionTest' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-final/focused.log 2>&1 || { tail -150 /tmp/628-final/focused.log; exit 1; }
+          tail -35 /tmp/628-final/focused.log
+      - name: Verify scoped metadata reads through the full application interceptor chain
+        working-directory: candidate
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am verify -Dtest=AdminAuthorizationRegressionTest -DskipITs=false -Dit.test=WorkspaceAccessSecurityIT -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false > /tmp/628-final/access-integration.log 2>&1 || { tail -150 /tmp/628-final/access-integration.log; exit 1; }
+          tail -30 /tmp/628-final/access-integration.log
+      - name: Assert original and new positive and negative cases
         shell: python
         run: |
           from pathlib import Path
           import json,xml.etree.ElementTree as ET
           suites={}
-          for path in Path('candidate').glob('**/target/surefire-reports/TEST-*.xml'):
-              suite=ET.parse(path).getroot()
-              counts={k:int(suite.get(k,'0')) for k in ('tests','failures','errors','skipped')}
-              assert counts['failures']==counts['errors']==counts['skipped']==0,(path,counts)
-              suites[suite.get('name')]={'counts':counts,'cases':[c.get('name') for c in suite.findall('testcase')]}
-          assert len(suites)==7,suites.keys()
-          assert suites['com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest']['counts']['tests']==24
-          assert len([c for c in suites['com.taxonomy.ArchitectureModuleGraphTest']['cases'] if c.startswith('compiledBytes')])==7
-          assert suites['com.taxonomy.workspace.service.WorkspaceDivergedStrategyScopeTest']['counts']['tests']==4
-          Path('/tmp/628-boundary-green/focused-cases.json').write_text(json.dumps(suites,indent=2)+'\n')
-          print({name:entry['counts'] for name,entry in suites.items()})
-      - name: Create immutable native candidate commits without changing PR refs
+          for kind in ('surefire','failsafe'):
+              for path in Path('candidate').glob('**/target/'+kind+'-reports/TEST-*.xml'):
+                  suite=ET.parse(path).getroot()
+                  counts={k:int(suite.get(k,'0')) for k in ('tests','failures','errors','skipped')}
+                  assert counts['failures']==counts['errors']==counts['skipped']==0,(path,counts)
+                  suites[suite.get('name')]=counts
+          assert suites['com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest']['tests']==28,suites
+          assert suites['com.taxonomy.security.AdminAuthorizationRegressionTest']['tests']==16,suites
+          assert suites['com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT']['tests']==10,suites
+          Path('/tmp/628-final/focused-counts.json').write_text(json.dumps(suites,indent=2)+'\n')
+          print(suites)
+      - name: Prepare immutable final commits while preserving the already verified gate
         id: candidates
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python harness/.github/scripts/boundary-review-corrections.py prepare candidate /tmp/628-boundary-green
+        run: python harness/.github/scripts/boundary-final-review.py prepare candidate /tmp/628-final
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: boundary-candidates-and-focused-evidence
+          name: final-boundary-candidates
           path: |
-            /tmp/628-boundary-green
+            /tmp/628-final
             candidate/**/target/surefire-reports/TEST-*.xml
+            candidate/**/target/failsafe-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: error
   complete:
@@ -92,10 +131,10 @@ jobs:
           test "$(git rev-parse HEAD)" = "$EXPECTED_SHA"
           test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
           test -z "$(git status --porcelain)"
-          test ! -e .github/scripts/boundary-review-corrections.py
+          test ! -e .github/scripts/boundary-final-review.py
           test ! -e .github/workflows/628-boundary-regressions.yml
-          mkdir -p /tmp/628-boundary-complete
-          git rev-parse HEAD HEAD^{tree} > /tmp/628-boundary-complete/source-identity.txt
+          mkdir -p /tmp/628-final-complete
+          git rev-parse HEAD HEAD^{tree} > /tmp/628-final-complete/source-identity.txt
           docker info
       - name: Restore canonical pinned embedding model
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
@@ -109,47 +148,45 @@ jobs:
           FRONTEND_API_BASE_REF: 118a03441d0d72b280acdbf7ad9c37ab55eae964
         run: |
           set -o pipefail
-          ./mvnw -B -ntp clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true > /tmp/628-boundary-complete/reactor.log 2>&1 || { tail -180 /tmp/628-boundary-complete/reactor.log; exit 1; }
-          tail -45 /tmp/628-boundary-complete/reactor.log
+          ./mvnw -B -ntp clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true > /tmp/628-final-complete/reactor.log 2>&1 || { tail -180 /tmp/628-final-complete/reactor.log; exit 1; }
+          tail -45 /tmp/628-final-complete/reactor.log
       - name: Complete Maven-owned frontend contracts
         run: |
           set -o pipefail
-          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts > /tmp/628-boundary-complete/frontend.log 2>&1 || { tail -180 /tmp/628-boundary-complete/frontend.log; exit 1; }
-          tail -25 /tmp/628-boundary-complete/frontend.log
-      - name: Inspect real reports, module graph and unchanged source
-        env:
-          STAGE: ${{ matrix.stage }}
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts > /tmp/628-final-complete/frontend.log 2>&1 || { tail -180 /tmp/628-final-complete/frontend.log; exit 1; }
+          tail -25 /tmp/628-final-complete/frontend.log
+      - name: Inspect actual reports and unchanged source
         shell: python
         run: |
           from pathlib import Path
-          import json,os,subprocess,xml.etree.ElementTree as ET
+          import json,subprocess,xml.etree.ElementTree as ET
           counts={}
           for kind in ('surefire','failsafe'):
-              reports=list(Path('.').glob('**/target/'+kind+'-reports/TEST-*.xml'))
-              assert reports,kind+' did not execute'
+              reports=list(Path('.').glob('**/target/'+kind+'-reports/TEST-*.xml'));assert reports,kind
               total={k:0 for k in ('tests','failures','errors','skipped')}
               for path in reports:
                   suite=ET.parse(path).getroot()
                   for key in total: total[key]+=int(suite.get(key,'0'))
-              assert total['failures']==total['errors']==0,(kind,total)
-              assert total['tests']>total['skipped'],(kind,total)
+              assert total['failures']==total['errors']==0 and total['tests']>total['skipped'],(kind,total)
               counts[kind]={'suites':len(reports),**total}
-          graph=Path('taxonomy-build/target/architecture-module-graph.txt')
-          assert graph.is_file()
-          out=Path('/tmp/628-boundary-complete')
+          graph=Path('taxonomy-build/target/architecture-module-graph.txt');assert graph.is_file()
+          out=Path('/tmp/628-final-complete')
           (out/'architecture-module-graph.txt').write_bytes(graph.read_bytes())
           (out/'counts.json').write_text(json.dumps(counts,indent=2)+'\n')
           assert subprocess.check_output(['git','diff','--name-only'],text=True).strip()==''
-          if os.environ['STAGE']!='gate':
-              suite=ET.parse('taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest.xml').getroot()
-              assert int(suite.get('tests','0'))==24 and int(suite.get('skipped','0'))==0,suite.attrib
+          for file,expected in {
+              'taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest.xml':28,
+              'taxonomy-app/target/surefire-reports/TEST-com.taxonomy.security.AdminAuthorizationRegressionTest.xml':16,
+              'taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT.xml':10}.items():
+              suite=ET.parse(file).getroot()
+              assert int(suite.get('tests','0'))==expected and int(suite.get('skipped','0'))==0,(file,suite.attrib)
           print(json.dumps(counts,indent=2))
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: boundary-complete-${{ matrix.stage }}
+          name: final-boundary-complete-${{ matrix.stage }}
           path: |
-            /tmp/628-boundary-complete
+            /tmp/628-final-complete
             **/target/surefire-reports/TEST-*.xml
             **/target/failsafe-reports/TEST-*.xml
           retention-days: 7
