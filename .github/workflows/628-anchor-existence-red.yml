@@ -1,0 +1,63 @@
+name: Reproduce missing architecture guards (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-anchor-existence-red.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: a4fe39bee3845e2b58956ce0d7e59993ed5d641b
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Add counterexamples to unchanged validation logic
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,hashlib,json,os,urllib.request,subprocess
+          from pathlib import Path
+          sha='35133ae21bfdaa0f936c16f57010fa60ff4e9d77'
+          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(req,timeout=60) as r: data=base64.b64decode(json.load(r)['content'])
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+          Path('/tmp/anchor-counterexamples.py').write_bytes(data)
+          subprocess.run(['python','/tmp/anchor-counterexamples.py'],check=True)
+          subprocess.run(['git','diff','--check'],check=True)
+      - name: Execute actual Jupiter cases and require intended failures
+        shell: bash
+        run: |
+          mkdir -p /tmp/anchor-red
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=ArchitectureExceptionLedgerTest -Dsurefire.failIfNoSpecifiedTests=false > /tmp/anchor-red/maven.log 2>&1
+          result=$?
+          set -e
+          tail -n 100 /tmp/anchor-red/maven.log
+          test "$result" -ne 0
+          python - <<'PY'
+          import xml.etree.ElementTree as ET,json
+          from pathlib import Path
+          p=Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureExceptionLedgerTest.xml')
+          root=ET.parse(p).getroot()
+          print('ACTUAL_RED_COUNTS',json.dumps(root.attrib))
+          assert int(root.get('failures','0'))==11,root.attrib
+          assert int(root.get('errors','0'))==0,root.attrib
+          assert int(root.get('skipped','0'))==0,root.attrib
+          for case in root.findall('testcase'):
+              if case.find('failure') is not None:
+                  assert case.get('name').startswith('moduleAnchorRejects'),case.attrib
+                  print('REPRODUCED',case.get('name'))
+          Path('/tmp/anchor-red/red.xml').write_bytes(p.read_bytes())
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: architecture-anchor-red
+          path: /tmp/anchor-red
+          retention-days: 7
