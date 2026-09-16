@@ -1,0 +1,60 @@
+name: Reproduce module boundary review findings (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {path: harness, persist-credentials: false}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 70d13cb1b5a549ef6f4847a2752359a7225db938
+          path: candidate
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Install tests against unchanged integrated production
+        run: |
+          test "$(git -C candidate rev-parse HEAD)" = 70d13cb1b5a549ef6f4847a2752359a7225db938
+          python harness/.github/scripts/boundary-review-regressions.py candidate
+          git -C candidate diff --check
+          mkdir -p /tmp/628-boundary-red
+      - name: Run actual counterexamples
+        working-directory: candidate
+        shell: bash
+        run: |
+          set +e
+          ./mvnw -B -ntp test '-Dtest=ArchitectureModuleGraphTest#compiledBytes*,WorkspaceCentralReadBoundaryTest' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-boundary-red/maven.log 2>&1
+          result=$?
+          tail -150 /tmp/628-boundary-red/maven.log
+          test "$result" -eq 1
+      - name: Require intended assertion failures and passing controls, not compile errors
+        if: always()
+        shell: python
+        run: |
+          from pathlib import Path
+          import json,xml.etree.ElementTree as ET
+          result=[]
+          for path in Path('candidate').glob('**/target/surefire-reports/TEST-*.xml'):
+              suite=ET.parse(path).getroot()
+              cases=[{'name':case.get('name'),'failure':case.find('failure').get('message') if case.find('failure') is not None else None,'error':case.find('error').get('message') if case.find('error') is not None else None} for case in suite.findall('testcase')]
+              result.append({'suite':suite.get('name'),'counts':{k:int(suite.get(k,'0')) for k in ('tests','failures','errors','skipped')},'cases':cases})
+          Path('/tmp/628-boundary-red/cases.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result,indent=2))
+          assert len(result)==2,result
+          totals={k:sum(s['counts'][k] for s in result) for k in ('tests','failures','errors','skipped')}
+          assert totals=={'tests':31,'failures':24,'errors':0,'skipped':0},totals
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: boundary-regressions-red
+          path: |
+            /tmp/628-boundary-red
+            candidate/**/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
