@@ -1,0 +1,77 @@
+{
+  "run": "35144084635",
+  "state": "assembled; verification pending",
+  "candidates": [
+    {
+      "name": "workspace",
+      "pr": 1062,
+      "base": "54fadbb1bbe757be10fdc211c945273ee9048370",
+      "commit": "341f61e1e61f662bde954ed46f0a8423ac7c9d59",
+      "tree": "b593163e8c0afa38ead5894700d4dbfafe3e043b",
+      "changedFiles": [
+        "taxonomy-app/pom.xml",
+        "taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java",
+        "taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRestartSelectionIT.java",
+        "taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java",
+        "taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java",
+        "taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java",
+        "taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java",
+        "taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceGitCasBoundaryTest.java"
+      ],
+      "prerequisites": [
+        "a4fe39bee3845e2b58956ce0d7e59993ed5d641b",
+        "be51d07cc3967211f21c9eb9f3546cbcb76277fd",
+        "fe90ea1a1c3e8b5c461817a53437beaf87b1414f"
+      ]
+    },
+    {
+      "name": "templates",
+      "pr": 1063,
+      "base": "30301d834a8c849d9a2906cd99fb9fab0bba0d75",
+      "commit": "a7cde03ab11a8486a7d58f3928359066b01076c9",
+      "tree": "51723ea0fcd893ae03c39bee6e3382948642f648",
+      "changedFiles": [
+        "taxonomy-app/pom.xml",
+        "taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java",
+        "taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRestartSelectionIT.java",
+        "taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java",
+        "taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java",
+        "taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java",
+        "taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java",
+        "taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceGitCasBoundaryTest.java"
+      ],
+      "prerequisites": [
+        "a4fe39bee3845e2b58956ce0d7e59993ed5d641b",
+        "be51d07cc3967211f21c9eb9f3546cbcb76277fd",
+        "fe90ea1a1c3e8b5c461817a53437beaf87b1414f"
+      ]
+    },
+    {
+      "name": "interop",
+      "pr": 1064,
+      "base": "a690921d849fc8da58b509b105d4c31ec20647bd",
+      "commit": "29a6834e7167fb55c330d10fa918543bdcee827b",
+      "tree": "88087d38d867b2e307f48d0ec4ef38dbdba2ff2a",
+      "changedFiles": [
+        "taxonomy-app/pom.xml",
+        "taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java",
+        "taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRestartSelectionIT.java",
+        "taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java",
+        "taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java",
+        "taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java",
+        "taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java",
+        "taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceGitCasBoundaryTest.java"
+      ],
+      "prerequisites": [
+        "a4fe39bee3845e2b58956ce0d7e59993ed5d641b",
+        "be51d07cc3967211f21c9eb9f3546cbcb76277fd",
+        "fe90ea1a1c3e8b5c461817a53437beaf87b1414f"
+      ]
+    }
+  ],
+  "prerequisiteRuns": [
+    35141457837,
+    35141604407,
+    35143647883
+  ]
+}
