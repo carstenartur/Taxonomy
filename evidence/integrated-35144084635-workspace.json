@@ -1,0 +1,29 @@
+{
+  "run": "35144084635",
+  "state": "focused integration passed; full canonical PR CI still required",
+  "candidate": {
+    "name": "workspace",
+    "pr": 1062,
+    "base": "54fadbb1bbe757be10fdc211c945273ee9048370",
+    "commit": "341f61e1e61f662bde954ed46f0a8423ac7c9d59",
+    "tree": "b593163e8c0afa38ead5894700d4dbfafe3e043b",
+    "changedFiles": [
+      "taxonomy-app/pom.xml",
+      "taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java",
+      "taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRestartSelectionIT.java",
+      "taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java",
+      "taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java",
+      "taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java",
+      "taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java",
+      "taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceGitCasBoundaryTest.java"
+    ],
+    "prerequisites": [
+      "a4fe39bee3845e2b58956ce0d7e59993ed5d641b",
+      "be51d07cc3967211f21c9eb9f3546cbcb76277fd",
+      "fe90ea1a1c3e8b5c461817a53437beaf87b1414f"
+    ]
+  },
+  "architecture": true,
+  "frontend": true,
+  "realJpaAndGitRegressions": true
+}
