@@ -1,0 +1,70 @@
+name: Verify historical assessment provenance (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-finalize-assessment.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: f8bb39fc7f76672d7cd5754d1e5476180458ed05, persist-credentials: false}
+      - name: Verify and label the historical source, not the current extraction state
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess,json,hashlib,zipfile,io,collections
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          def run(*args):subprocess.run(['git',*args],check=True)
+          snapshot='bd430ff41788289567de65d78d7d8b8f4adc02a8'
+          run('fetch','--quiet','--unshallow','--no-tags','origin','76a72ebc9f66d82bd5da28d5b2dee350b99e9373',snapshot)
+          run('config','user.name','github-actions[bot]');run('config','user.email','41898282+github-actions[bot]@users.noreply.github.com')
+          run('merge','--quiet','--no-ff','-m','docs: retain current checked architecture gate in the assessment branch','76a72ebc9f66d82bd5da28d5b2dee350b99e9373')
+          base=git('rev-parse','HEAD')
+          body=subprocess.check_output(['gh','api','repos/carstenartur/Taxonomy/actions/artifacts/10471290670/zip'])
+          digest=hashlib.sha256(body).hexdigest();assert digest=='c015f265cfab95bae8bc2d9efc6513aced7c0ff59d03bc23c252a86161093643'
+          with zipfile.ZipFile(io.BytesIO(body)) as z:
+              report=z.read(next(n for n in z.namelist() if n.endswith('architecture-module-graph.txt')))
+              identity=z.read(next(n for n in z.namelist() if n.endswith('identity.txt'))).decode().splitlines()
+          assert identity[0]==snapshot
+          reportHash=hashlib.sha256(report).hexdigest();assert reportHash=='54218255ab78eb0fc9a65dcdcf9d0e8e0415589690f66a89331ba03d43e39352'
+          hashes={}
+          for name,expected in [('.github/architecture-contexts.json','f0a2e0f093c313300b5b615ea4a55234955c6324bef2d7124a806e5132fdb348'),('.github/architecture-dependency-baseline.json','5ff8756fa9b743c3b92853a961fb40320f128ee84c86d9f5c5fb99dea2df8c82')]:
+              data=subprocess.check_output(['git','show',snapshot+':'+name]);assert hashlib.sha256(data).hexdigest()==expected
+              hashes[name]=expected
+              if 'baseline' in name:baseline=json.loads(data)
+          assert len(baseline['edges'])==140 and sum(e['classDependencyCount'] for e in baseline['edges'])==472
+          p=Path('docs/dev/workspace-dependency-classification.json');doc=json.loads(p.read_text());original=doc['knowledgeToWorkspace']
+          assert doc['sourceCommit']==snapshot and len(original)==117
+          assert len({(e['origin'],e['target']) for e in original})==117
+          counts=collections.Counter(e['classification'] for e in original)
+          assert counts=={'owner-api':95,'composition-orchestration':15,'residual-violation':7},counts
+          assert doc['workspaceOutgoing']==[]
+          doc['snapshotVerification']={'kind':'historical-snapshot-reproduction','sourceCommit':snapshot,'sourceTree':identity[1],'moduleGraphSha256':reportHash,'runId':35156105650,'artifactId':10471290670,'artifactSha256':digest,'executedGraphTests':1,'scope':'The declared historical module graph was regenerated; this is not current-head or full-suite acceptance.'}
+          p.write_text(json.dumps(doc,indent=2,ensure_ascii=False)+'\n')
+          assert json.loads(p.read_text())['knowledgeToWorkspace']==original
+          p=Path('docs/dev/WORKSPACE_DEPENDENCY_ASSESSMENT.md');s=p.read_text()
+          s=s.replace('# Workspace dependency assessment','# Workspace dependency assessment — historical snapshot')
+          s=s.replace('Historical native architecture evidence for the assessment snapshot records 137 passing tests, with no failures, errors or skips. The root regenerated the canonical baseline byte-identically from that compiled inventory. The assessment independently checked the supplied hashes and current source against the immutable snapshot; it did not rerun Maven or alter the baseline.', 'The package baseline and the proposed-module graph are different measurements: their counts must not be combined. On 16 September 2026 the declared immutable snapshot was checked out and its module graph was regenerated in [run 35156105650](https://github.com/carstenartur/Taxonomy/actions/runs/35156105650). That reproduction executed **one graph test**, not 137 architecture tests and not the current branch full suite. Its graph hash matches the value below exactly. The two policy files were independently read from the same commit and their hashes and 140/472 baseline counts were verified. No claim of a new full-suite run is made for this documentary change.')
+          s=s.replace('The **complete proposal remains cyclic**.', 'At this **historical snapshot**, the complete proposal was cyclic.')
+          s=s.replace('No physical feature module exists.', 'No physical feature module existed at this snapshot. This is not a statement about the current extraction branches.')
+          s=s.replace('[Dependency baseline](../../.github/architecture-dependency-baseline.json)',f'[Snapshot dependency baseline](https://github.com/carstenartur/Taxonomy/blob/{snapshot}/.github/architecture-dependency-baseline.json)')
+          s=s.replace('[Context ownership map](../../.github/architecture-contexts.json)',f'[Snapshot context ownership map](https://github.com/carstenartur/Taxonomy/blob/{snapshot}/.github/architecture-contexts.json)')
+          s=s.replace('[legacy resolver](../../taxonomy-app/src/main/java/com/taxonomy/workspace/service/LegacyWorkspaceRepositoryContextResolver.java)',f'[snapshot legacy resolver](https://github.com/carstenartur/Taxonomy/blob/{snapshot}/taxonomy-app/src/main/java/com/taxonomy/workspace/service/LegacyWorkspaceRepositoryContextResolver.java)')
+          s+='\n## Reproduction receipt\n\nSource tree: `'+identity[1]+'`. [Original report, source identity, logs and graph-test XML](https://github.com/carstenartur/Taxonomy/actions/runs/35156105650/artifacts/10471290670); archive SHA-256 `'+digest+'`. The 117 classified pairs above remain unchanged. The checked-out current implementation and module gates, not this historical assessment, determine present extraction and merge readiness.\n'
+          p.write_text(s)
+          p=Path('docs/superpowers/plans/2026-09-13-workspace-graph-assessment.md');s=p.read_text().replace('root has fresh native architecture evidence and exact regenerated-baseline comparison.', 'the original assessment used recorded snapshot evidence. The later reproduction in run 35156105650 executes the single graph test on the declared historical source and verifies its report hash; it is not current-head or full-suite acceptance.')
+          p.write_text(s)
+          p=Path('docs/superpowers/specs/2026-09-13-workspace-graph-assessment-design.md');s=p.read_text();s+='\n## Provenance clarification — 16 September 2026\n\nThis document describes the immutable `'+snapshot+'` assessment, not current extraction status. Run 35156105650 regenerated that exact source graph with one executed graph test; report and policy hashes match the assessment. All 117 classifications are preserved. Current-head CI and review are independent requirements.\n';p.write_text(s)
+          run('diff','--check')
+          changed=git('diff','--name-only').splitlines();assert len(changed)==4 and all(p.startswith('docs/') for p in changed),changed
+          run('add','--',*changed);run('commit','-m','docs(architecture): bind the historical workspace assessment to a reproduced snapshot')
+          ref='verify/628-assessment-verified-'+os.environ['GITHUB_RUN_ID']
+          subprocess.run(['gh','auth','setup-git'],check=True);run('push','origin','HEAD:refs/heads/'+ref)
+          print('VERIFIED_ASSESSMENT',json.dumps({'sha':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}'),'ref':ref,'pairCounts':counts,'historicalGraphHash':reportHash}))
