@@ -60,7 +60,7 @@ class WorkspaceProvisioningClaimIT {
             when(factory.getSystemRepository()).thenReturn(source);
             var destination = mock(DslGitRepository.class);
             when(destination.commitDsl(anyString(), anyString(), anyString(), anyString())).thenReturn(base);
-            when(destination.getHeadCommit("main")).thenReturn(base);
+            when(destination.getHeadCommit("main")).thenReturn(null);
             when(factory.openWorkspaceRepository(id)).thenReturn(destination);
             var system = mock(SystemRepositoryService.class);
             when(system.getPrimaryRepository()).thenReturn(central);
@@ -79,7 +79,7 @@ class WorkspaceProvisioningClaimIT {
             } finally {
                 executor.shutdownNow();
                 assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS),
-              "Provisioning test workers did not terminate");
+                        "Provisioning test workers did not terminate");
             }
             verify(destination, times(1)).commitDsl(anyString(), anyString(), anyString(), anyString());
             var retained = repository.findByWorkspaceId(id).orElseThrow();

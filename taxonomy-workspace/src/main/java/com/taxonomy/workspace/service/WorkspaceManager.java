@@ -445,8 +445,10 @@ public class WorkspaceManager {
     private UserWorkspace provisionWorkspaceRepository(String username, UserWorkspace workspace) {
         // Repository-specific working copies persist their destination branch before
         // allocation. Retrying them must not redirect an existing tab to "main".
-        String targetBranch = workspace != null && workspace.getSourceBranch() != null
-                && !workspace.getSourceBranch().isBlank() ? workspace.getCurrentBranch() : "main";
+        boolean allocated = workspace != null && workspace.getCurrentCommit() != null;
+        String targetBranch = workspace != null && (allocated
+                || (workspace.getSourceBranch() != null && !workspace.getSourceBranch().isBlank()))
+                ? workspace.getCurrentBranch() : "main";
         return provisionWorkspaceRepository(username, workspace, targetBranch);
     }
 
@@ -514,7 +516,7 @@ public class WorkspaceManager {
             String existingLegacyHead = repositoryFactory == null
                     ? gitRepository.getHeadCommit(legacyBranch) : null;
             String recordedBase = workspace.getBaseCommit();
-            String baseCommit = existingLegacyHead != null && recordedBase != null
+            String baseCommit = recordedBase != null && !recordedBase.isBlank()
                     ? recordedBase : systemGit.getHeadCommit(baseBranch);
             String systemDsl = baseCommit == null ? null : systemGit.getDslAtCommit(baseCommit);
             if (baseCommit == null || systemDsl == null || systemDsl.isBlank()) {
@@ -524,11 +526,22 @@ public class WorkspaceManager {
             if (repositoryFactory != null) {
                 DslGitRepository workspaceGit =
                         repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
-                workspaceGit.commitDsl(
-                        targetBranch,
-                        systemDsl,
-                        username,
-                        "Fork from shared/" + baseBranch);
+                String existingHead = workspaceGit.getHeadCommit(targetBranch);
+                String allocatedCommit;
+                if (existingHead == null) {
+                    allocatedCommit = workspaceGit.commitDsl(
+                            targetBranch, systemDsl, username, "Fork from shared/" + baseBranch);
+                } else if (recordedBase != null
+                        && existingHead.equals(workspace.getCurrentCommit())
+                        && systemDsl.equals(workspaceGit.getDslAtCommit(existingHead))) {
+                    // A failed READY save may leave the original Git seed intact.
+                    // Adopt only that recorded head AND payload; never reseed user edits.
+                    workspaceGit.verifyExpectedHead(targetBranch, existingHead);
+                    allocatedCommit = existingHead;
+                } else {
+                    throw new IllegalStateException(
+                            "Existing workspace content does not match its recorded allocation");
+                }
 
                 workspace.setProvisioningStatus(WorkspaceProvisioningStatus.READY);
                 workspace.setSourceRepositoryId(systemRepository.getRepositoryId());
@@ -536,7 +549,7 @@ public class WorkspaceManager {
                 workspace.setBaseBranch(baseBranch);
                 workspace.setBaseCommit(baseCommit);
                 workspace.setCurrentBranch(targetBranch);
-                workspace.setCurrentCommit(workspaceGit.getHeadCommit(targetBranch));
+                workspace.setCurrentCommit(allocatedCommit);
                 workspace.setSyncTargetBranch(baseBranch);
                 workspace.setProvisionedAt(Instant.now());
                 workspace.setProvisioningError(null);

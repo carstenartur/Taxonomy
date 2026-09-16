@@ -561,6 +561,12 @@ export async function runRoleStateFlow({
   await page.waitForFunction(() =>
     document.querySelector('#taskStageAnalyze[data-state="error"]')
       && !document.getElementById('taskNextAction')?.disabled);
+  await page.waitForFunction(() => {
+    const panel = document.getElementById('analysisLiveProgress');
+    return panel?.querySelector('button')?.disabled
+      && /Analysis finished|Analyse beendet/.test(panel.textContent || '');
+  });
+  passed('rejected analysis finalizes live progress and disables cancellation');
   passed('analysis provider error retains hierarchy and retry action');
   await runAxe('analysis-error');
   await saveState('analysis-error');
