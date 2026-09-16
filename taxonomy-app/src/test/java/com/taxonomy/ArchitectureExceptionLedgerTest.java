@@ -86,8 +86,39 @@ class ArchitectureExceptionLedgerTest {
                     .contains("ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest",
                             "ArchitectureSelectorSynchronizationTest").doesNotHaveDuplicates();
         }
-        // Once reachable, the downstream synchronization guard verifies the full ordered list
-        // and every selected class declaration. No dependency on taxonomy-build is needed here.
+        // This fixed execution must also detect deletion of all downstream gate classes.
+        // Parse their declarations without depending on taxonomy-build test bytecode.
+        for (String guard : MODULE_GUARDS) assertModuleGuardDeclaration(checkout, guard);
+    }
+
+    private static void assertModuleGuardDeclaration(Path checkout, String guard) throws Exception {
+        Path source = moduleGuardSource(checkout, guard);
+        assertThat(source).as("selected architecture guard %s in its owning module", guard).isRegularFile();
+        assertThat(source.toRealPath().startsWith(checkout))
+                .as("selected architecture guard %s must remain inside the checkout", guard).isTrue();
+        var compiler = javax.tools.ToolProvider.getSystemJavaCompiler();
+        assertThat(compiler).as("JDK compiler for selected architecture guard declarations").isNotNull();
+        var diagnostics = new javax.tools.DiagnosticCollector<javax.tools.JavaFileObject>();
+        java.util.List<String> declared = new java.util.ArrayList<>();
+        try (var files = compiler.getStandardFileManager(diagnostics, null, java.nio.charset.StandardCharsets.UTF_8)) {
+            var task = (com.sun.source.util.JavacTask) compiler.getTask(new java.io.StringWriter(), files,
+                    diagnostics, java.util.List.of("--release", "21", "-proc:none"), null,
+                    files.getJavaFileObjectsFromPaths(java.util.List.of(source)));
+            for (var unit : task.parse()) {
+                if (unit.getPackageName() == null || !unit.getPackageName().toString().equals("com.taxonomy")) continue;
+                for (var declaration : unit.getTypeDecls()) {
+                    if (declaration instanceof com.sun.source.tree.ClassTree type
+                            && type.getKind() == com.sun.source.tree.Tree.Kind.CLASS) {
+                        declared.add(type.getSimpleName().toString());
+                    }
+                }
+            }
+        }
+        assertThat(diagnostics.getDiagnostics().stream()
+                .filter(diagnostic -> diagnostic.getKind() == javax.tools.Diagnostic.Kind.ERROR).toList())
+                .as("selected architecture guard %s must parse as Java", guard).isEmpty();
+        assertThat(declared).as("selected architecture guard %s must be declared in its owning source", guard)
+                .contains(guard);
     }
 
     private static Path selectorFile(Path checkout, String relative) throws Exception {
@@ -122,12 +153,93 @@ class ArchitectureExceptionLedgerTest {
     }
 
     private static void writeSelectorFixture(Path root, String pom, String catalogue) throws Exception {
+        for (String guard : MODULE_GUARDS) {
+            Path source = moduleGuardSource(root, guard);
+            Files.createDirectories(source.getParent());
+            Files.writeString(source, "package com.taxonomy; class " + guard + " {}\n");
+        }
         Files.createDirectories(root.resolve(".mvn"));
         Files.writeString(root.resolve("pom.xml"), "<project xmlns='http://maven.apache.org/POM/4.0.0'>"
                 + "<profiles><profile><id>architecture-tests</id><properties><test>" + pom
                 + "</test></properties></profile></profiles></project>");
         Files.writeString(root.resolve(".mvn/verification-suites.json"), new ObjectMapper().writeValueAsString(
                 java.util.Map.of("profiles", java.util.Map.of("architecture-tests", java.util.Map.of("test", catalogue)))));
+    }
+
+
+    private static final java.util.List<String> MODULE_GUARDS = java.util.List.of(
+            "ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest",
+            "ArchitectureSelectorSynchronizationTest");
+
+    private static Path moduleGuardSource(Path root, String guard) {
+        return root.resolve("taxonomy-build/src/test/java/com/taxonomy/" + guard + ".java");
+    }
+
+    private static void completeModuleGuardFixture(Path root) throws Exception {
+        String selector = "ArchitectureExceptionLedgerTest," + String.join(",", MODULE_GUARDS);
+        writeSelectorFixture(root, selector, selector);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest",
+            "ArchitectureSelectorSynchronizationTest", "all"})
+    void moduleAnchorRejectsMissingGuardSources(String missing,
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        completeModuleGuardFixture(root);
+        for (String guard : MODULE_GUARDS) {
+            if (missing.equals("all") || missing.equals(guard)) Files.delete(moduleGuardSource(root, guard));
+        }
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> assertModuleChecksSelected(root))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("selected architecture guard");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "renamed", "wrong-package", "comment-only", "nested-only", "invalid"})
+    void moduleAnchorRejectsMissingGuardDeclarations(String kind,
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        completeModuleGuardFixture(root);
+        String guard = "ArchitectureSelectorSynchronizationTest";
+        String text = switch (kind) {
+            case "renamed" -> "package com.taxonomy; class Renamed {}";
+            case "wrong-package" -> "package wrong; class " + guard + " {}";
+            case "comment-only" -> "package com.taxonomy; /* class " + guard + " {} */";
+            case "nested-only" -> "package com.taxonomy; class Outer { class " + guard + " {} }";
+            default -> "package com.taxonomy; class " + guard + " {";
+        };
+        Files.writeString(moduleGuardSource(root, guard), text);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> assertModuleChecksSelected(root))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("selected architecture guard");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"file", "directory"})
+    void moduleAnchorRejectsExternalGuardAliases(String kind,
+            @org.junit.jupiter.api.io.TempDir Path root,
+            @org.junit.jupiter.api.io.TempDir Path outside) throws Exception {
+        completeModuleGuardFixture(root);
+        Path source = moduleGuardSource(root, MODULE_GUARDS.getFirst());
+        Path original = kind.equals("file") ? source : source.getParent();
+        Path target = outside.resolve(original.getFileName());
+        Files.move(original, target);
+        if (kind.equals("file")) Files.writeString(target, "EXTERNAL_CONTENT_MUST_NOT_BE_PARSED");
+        Files.createSymbolicLink(original, target);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> assertModuleChecksSelected(root))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("inside the checkout");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"file", "directory"})
+    void moduleAnchorAcceptsContainedGuardAliases(String kind,
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        completeModuleGuardFixture(root);
+        Path source = moduleGuardSource(root, MODULE_GUARDS.getFirst());
+        Path original = kind.equals("file") ? source : source.getParent();
+        Path target = root.resolve("contained-alias");
+        Files.move(original, target);
+        Files.createSymbolicLink(original, target);
+        assertModuleChecksSelected(root);
     }
 
     private static String requiredText(JsonNode entry, String field) {

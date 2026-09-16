@@ -181,3 +181,13 @@ inside the checkout before XML or JSON is read, including linked ancestor
 directories. The exact ordered selector, owner paths and Java declarations are
 also checked by the independent ordinary `ArchitectureModuleGraphTest` owner
 contract, not just by the synchronization test's own selected execution.
+
+
+The architecture profile also binds the pre-existing ledger guard through the
+fixed `architecture-selector-anchor` Surefire execution in `taxonomy-app`.
+It requires the three module-gate entries independently of the mutable selector
+lists, and checks each corresponding source path and top-level Java declaration.
+Thus deleting all downstream gate classes cannot turn the profile into a silent
+success. These source files must physically remain inside the checkout before
+parsing; contained aliases remain valid. The complete ordered selector and all
+other selected guards remain the downstream synchronization check's responsibility.
