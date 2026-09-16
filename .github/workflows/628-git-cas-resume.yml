@@ -14,12 +14,12 @@ jobs:
         with: {ref: 54fadbb1bbe757be10fdc211c945273ee9048370, fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Execute the frozen reproduction, correction and consumer regressions
+      - name: Execute frozen reproduction, correction, consumer tests and publication
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
-          import os,subprocess,urllib.request,yaml
+          import os,subprocess,urllib.request,yaml,json,zipfile
           from pathlib import Path
           url='https://raw.githubusercontent.com/carstenartur/Taxonomy/2637628b3a0a67ac5c2c9f8ed581554f9a0d6671/.github/workflows/628-git-cas.yml'
           template=yaml.safe_load(urllib.request.urlopen(url).read())
@@ -40,8 +40,9 @@ jobs:
                   assert text.count(old)==1;text=text.replace(old,new);p.write_text(text)
                   subprocess.run(['git','add',str(p)],check=True)
               print('::group::'+step['name'],flush=True)
-              cmd=['python3','-'] if step.get('shell')=='python' else ['bash','-eo','pipefail','-c',step['run']]
-              result=subprocess.run(cmd,input=step['run'] if step.get('shell')=='python' else None,text=True)
+              script=step['run'].replace('$'+'{{ github.run_id }}',os.environ['GITHUB_RUN_ID'])
+              cmd=['python3','-'] if step.get('shell')=='python' else ['bash','-eo','pipefail','-c',script]
+              result=subprocess.run(cmd,input=script if step.get('shell')=='python' else None,text=True)
               print('::endgroup::',flush=True)
               if result.returncode: failed=True
               if step['name']=='Add deterministic races using actual in-memory JGit refs' and not failed:
@@ -50,6 +51,14 @@ jobs:
                   assert text.count(anchor)==1
                   text=text.replace(anchor,anchor+'\n            when(states.findByUsername("alice")).thenReturn(Optional.of(new SyncState()));\n            when(states.save(any())).thenAnswer(c -> c.getArgument(0));')
                   p.write_text(text)
+          if not failed:
+              def git(*a): return subprocess.check_output(['git',*a],text=True).strip()
+              paths=git('diff','--name-only','54fadbb1bbe757be10fdc211c945273ee9048370','HEAD').splitlines()
+              assert len(paths)==4,paths
+              manifest={'commit':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}'),'files':{p:git('hash-object',p) for p in paths}}
+              Path('/tmp/git-cas/source-manifest.json').write_text(json.dumps(manifest,indent=2)+'\n')
+              with zipfile.ZipFile('/tmp/git-cas/tested-sources.zip','w',zipfile.ZIP_DEFLATED) as z:
+                  for path in paths:z.write(path,path)
           raise SystemExit(1 if failed else 0)
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
