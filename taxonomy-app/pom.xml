@@ -521,6 +521,25 @@
     </build>
 
     <profiles>
+        <!-- This fixed execution cannot disappear by editing the mutable test selectors. -->
+        <profile>
+            <id>architecture-tests</id>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions><execution>
+                    <id>architecture-selector-anchor</id>
+                    <phase>test</phase>
+                    <goals><goal>test</goal></goals>
+                    <configuration>
+                        <test>ArchitectureExceptionLedgerTest#moduleChecksRemainReachableFromTheArchitectureProfile</test>
+                        <failIfNoTests>true</failIfNoTests>
+                        <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                        <reportNameSuffix>selector-anchor</reportNameSuffix>
+                    </configuration>
+                </execution></executions>
+            </plugin></plugins></build>
+        </profile>
         <!--
             Use a pre-downloaded ONNX model instead of downloading at test time.
             Activate with: -Plocal-onnx-model
