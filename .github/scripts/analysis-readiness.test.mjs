@@ -7,7 +7,8 @@ import { webcrypto } from 'node:crypto';
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js', import.meta.url), 'utf8');
 function fixture(options = {}) {
     const statuses = [], calls = [], observations = [], renders = [], order = [], progressActions = [];
-    let rejectRequest;
+    let rejectRequest, activeMonitor;
+    const requests = [];
     const sessionState = { ready: true, workspaceId: 'workspace-a' };
     const state = { currentDiscrepancies: ['old discrepancy'], currentProductCoverageGaps: ['old gap'],
         currentArchView: { title: 'old architecture' }, evaluatedNodes: new Set(['CP']),
@@ -22,18 +23,23 @@ function fixture(options = {}) {
     const document = { querySelector: () => null, getElementById: id => id === 'businessText' ? textField
         : id === 'includeArchitectureView' ? { checked: true } : null };
     const sandbox = { window, document, CSS: { escape: value => value }, console: { log() {}, error() {} },
-        TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml: text => text },
+        TaxonomyI18n: { t: (key, ...values) => [key, ...values].join(': ') }, TaxonomyUtils: { escapeHtml: text => text },
         crypto: { randomUUID: () => 'cb2a3d71-e849-4a50-9855-1f9cb8f81402' },
-        fetch: (...args) => { calls.push(args); order.push('post'); return new Promise((resolve, reject) => { rejectRequest = reject; }); }
+        fetch: (...args) => { calls.push(args); order.push('post'); return new Promise((resolve, reject) => { rejectRequest = reject; requests.push({ resolve, reject }); }); }
     };
     if (Object.hasOwn(options, 'crypto')) sandbox.crypto = options.crypto;
     vm.runInNewContext(source, sandbox);
     function progress() { window.TaxonomyAnalysisProgress = { start: (...args) => {
-        observations.push(args); order.push('monitor'); return { finish() { progressActions.push('finish'); }, stop() { progressActions.push('stop'); },
+        observations.push(args); order.push('monitor');
+        const workspace = sessionState.workspaceId;
+        const monitor = { acceptsResult: () => activeMonitor === monitor && sessionState.workspaceId === workspace,
+            finish() { progressActions.push('finish'); }, stop() { progressActions.push('stop'); },
             cancel() { progressActions.push('cancel'); }, transportFailed() { progressActions.push('transportFailed'); } };
+        activeMonitor = monitor;
+        return monitor;
     } }; }
     return { window, state, sessionState, statuses, calls, observations, progress, renders, order,
-        progressActions, rejectRequest: error => rejectRequest(error) };
+        requests, progressActions, rejectRequest: error => rejectRequest(error) };
 }
 
 for (const phase of ['no lifecycle', 'progress loaded before lifecycle', 'loader still running']) {
@@ -249,4 +255,107 @@ test('rejected HTTP admission finishes normally without a cleanup cancellation',
     f.rejectRequest(Object.assign(new Error('HTTP 503'), { httpStatus: 503 }));
     await new Promise(resolve => setImmediate(resolve));
     assert.deepEqual(f.progressActions, ['finish']);
+});
+
+
+function readyFixture() {
+    const f = fixture(); f.progress();
+    f.window.TaxonomyAnalysisSession = { state: () => f.sessionState };
+    return f;
+}
+const flushResults = () => new Promise(resolve => setImmediate(resolve));
+const completedResult = (scores = {}) => ({ status: 'SUCCESS', scores, reasons: {}, warnings: [] });
+
+for (const ending of ['success', 'network failure', 'HTTP rejection']) {
+    test(`superseded full-analysis ${ending} cannot overwrite a newer run`, async () => {
+        const f = readyFixture();
+        f.window.TaxonomyScoring.runAnalysis();
+        f.window.TaxonomyScoring.runAnalysis();
+        const count = f.renders.length;
+        if (ending === 'success') f.requests[0].resolve({ ok: true, json: async () => completedResult({ CP: 90 }) });
+        else f.requests[0].reject(Object.assign(new Error('obsolete failure'),
+            ending === 'HTTP rejection' ? { httpStatus: 503 } : {}));
+        await flushResults();
+        assert.equal(f.state.lastAnalysisStatus, 'IN_PROGRESS');
+        assert.equal(f.state.currentRawScores.CP, undefined);
+        assert.equal(f.renders.length, count);
+        assert.equal(f.statuses.length, 0);
+        assert.equal(f.progressActions.length, 0);
+        f.requests[1].resolve({ ok: true, json: async () => completedResult({ CP: 40 }) });
+        await flushResults();
+        assert.equal(f.state.currentRawScores.CP, 40);
+        assert.equal(f.state.lastAnalysisStatus, 'SUCCESS');
+    });
+}
+
+for (const ending of ['success', 'failure']) {
+    test(`full-analysis ${ending} after workspace invalidation does not change the new context`, async () => {
+        const f = readyFixture(); f.window.TaxonomyScoring.runAnalysis();
+        f.sessionState.workspaceId = 'workspace-b';
+        const count = f.renders.length;
+        if (ending === 'success') f.requests[0].resolve({ ok: true, json: async () => completedResult({ CP: 90 }) });
+        else f.requests[0].reject(new Error('obsolete error'));
+        await flushResults();
+        assert.equal(f.renders.length, count);
+        assert.equal(f.state.currentRawScores.CP, undefined);
+        assert.equal(f.statuses.length, 0);
+        assert.equal(f.progressActions.length, 0);
+    });
+}
+
+for (const [status, body, expected] of [
+    [400, { error: 'Unknown provider: unavailable' }, 'Unknown provider: unavailable'],
+    [403, { detail: 'Full analysis requires an isolated workspace' }, 'Full analysis requires an isolated workspace'],
+    [503, { message: 'Taxonomy data is still loading' }, 'Taxonomy data is still loading'],
+    [503, { detail: '', error: 'Analysis capacity exhausted' }, 'Analysis capacity exhausted'],
+    [503, { detail: 'x'.repeat(5000) }, 'x'.repeat(1024)]
+]) {
+    test(`full-analysis HTTP ${status} retains bounded server diagnostic ${JSON.stringify(body).slice(0, 70)}`, async () => {
+        const f = readyFixture(); f.window.TaxonomyScoring.runAnalysis();
+        f.requests[0].resolve({ ok: false, status, json: async () => body });
+        await flushResults();
+        assert.equal(f.state.lastAnalysisStatus, 'ERROR');
+        assert.equal(f.statuses.at(-1)[1], 'scoring.analysis.error: ' + expected);
+        assert.deepEqual(f.progressActions, ['finish']);
+    });
+}
+
+for (const body of [null, {}, { detail: { internal: 'not a user-facing string' } }, 'invalid-json']) {
+    test(`HTTP failure keeps numeric fallback for absent or malformed diagnostics ${JSON.stringify(body)}`, async () => {
+        const f = readyFixture(); f.window.TaxonomyScoring.runAnalysis();
+        f.requests[0].resolve({ ok: false, status: 502, json: async () => {
+            if (body === 'invalid-json') throw new SyntaxError('invalid JSON');
+            return body;
+        } });
+        await flushResults();
+        assert.equal(f.statuses.at(-1)[1], 'scoring.analysis.error: HTTP 502');
+        assert.deepEqual(f.progressActions, ['finish']);
+    });
+}
+
+for (const replace of [false, true]) {
+    test(`valid manual score edits remain possible after unresolved provider evidence (replace=${replace})`, () => {
+        const f = fixture(); f.state.taxonomyData = [liveFamily, liveProduct];
+        const api = f.window.TaxonomyScoring;
+        api.applyLocalRawScores({ [liveFamily.code]: 40, [liveProduct.code]: 80, [unresolvedProviderKey]: 90 }, true, true);
+        assert.doesNotThrow(() => api.applyLocalRawScores({ [liveFamily.code]: 50 }, replace));
+        assert.equal(f.state.currentRawScores[liveFamily.code], 50);
+        if (!replace) {
+            assert.equal(f.state.currentRawScores[unresolvedProviderKey], 90);
+            assert.equal(f.state.currentProductSuitabilityScores[liveProduct.code], 80);
+            assert.equal(f.state.currentScores[liveProduct.code], 40);
+            assert.ok(f.state.currentScoreSemanticsWarnings.some(w => w.includes(unresolvedProviderKey)));
+        } else assert.equal(f.state.currentRawScores[unresolvedProviderKey], undefined);
+    });
+}
+
+test('retained provider evidence does not authorize newly entered unknown keys', () => {
+    const f = fixture(); f.state.taxonomyData = [liveFamily, liveProduct];
+    const api = f.window.TaxonomyScoring;
+    api.applyLocalRawScores({ [liveFamily.code]: 40, [unresolvedProviderKey]: 90 }, true, true);
+    for (const key of [unresolvedProviderKey, '__new_unknown_key__']) {
+        assert.throws(() => api.applyLocalRawScores({ [key]: 10 }, false), /Cannot resolve taxonomy score/);
+        assert.equal(f.state.currentRawScores[unresolvedProviderKey], 90);
+        assert.equal(f.state.currentRawScores.__new_unknown_key__, undefined);
+    }
 });

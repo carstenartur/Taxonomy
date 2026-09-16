@@ -363,6 +363,9 @@
             },
             onUnavailable: view.unavailable, onCancelling: view.cancelling
         });
+        // Result ownership outlives polling: a terminal snapshot may arrive before the
+        // complete HTTP envelope, but a replacement operation must never accept it.
+        monitor.acceptsResult = function () { return active === monitor && monitor.isInScope(); };
         monitor.transportFailed = function () {
             monitor.cancelAndStop();
             view.unavailable('CONNECTION_LOST', true);

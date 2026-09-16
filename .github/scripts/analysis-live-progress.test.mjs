@@ -72,7 +72,7 @@ function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
         await entry[1].fn();
         await new Promise(resolve => setImmediate(resolve));
     }
-    return { scope, timers, calls, snapshots, unavailable, authFailures, elements, api: window.TaxonomyAnalysisSessionApi, monitor, step };
+    return { window, scope, timers, calls, snapshots, unavailable, authFailures, elements, api: window.TaxonomyAnalysisSessionApi, monitor, step };
 }
 function response(data, status = 200) {
     return new Response(status === 202 ? null : JSON.stringify(data), { status });
@@ -525,4 +525,23 @@ test('rejected HTTP admission finalizes without looking up an unaccepted operati
     f.monitor.finish('ERROR', false); await flush();
     assert.equal(f.calls.length, 0);
     assert.equal(f.timers.size, 0);
+});
+
+
+test('an observed terminal monitor still owns its forthcoming full HTTP result', async () => {
+    const f = fixture(async () => response(finalSnapshot()), 'workspace-a', true);
+    await f.step(0);
+    assert.equal(f.monitor.isCurrent(), false, 'Polling stopped on the terminal observation');
+    assert.equal(f.monitor.acceptsResult(), true, 'The full result must not be discarded with polling');
+});
+
+test('only the latest in-scope monitor may apply a full HTTP result', () => {
+    const f = fixture(async () => response(snapshot()), 'workspace-a', true);
+    assert.equal(f.monitor.acceptsResult(), true);
+    const next = f.window.TaxonomyAnalysisProgress.start('11111111-1111-4111-8111-111111111111');
+    assert.equal(f.monitor.acceptsResult(), false);
+    assert.equal(next.acceptsResult(), true);
+    f.scope.analysisGeneration++;
+    assert.equal(next.acceptsResult(), false);
+    next.stop();
 });

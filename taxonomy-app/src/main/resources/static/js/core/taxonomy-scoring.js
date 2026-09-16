@@ -169,7 +169,11 @@
         Object.entries(raw).forEach(function ([code, value]) {
             var context = contexts.get(code);
             if (!context) {
-                if (!allowUnresolvedProviderKeys) throw new Error('Cannot resolve taxonomy score ' + code + '.');
+                if (!allowUnresolvedProviderKeys && Object.prototype.hasOwnProperty.call(scores || {}, code)) {
+                    throw new Error('Cannot resolve taxonomy score ' + code + '.');
+                }
+                // Retained unresolved provider evidence must not prevent a valid local edit.
+                // Only newly entered keys are subject to the strict expert-input boundary.
                 // Match AnalysisScoreSemantics at the provider boundary without inventing a catalogue node.
                 // Expert-entered local scores retain the strict identity check above.
                 effective[code] = value;
@@ -446,15 +450,26 @@
                 'X-Taxonomy-Workspace-Id': workspacePin },
             body: JSON.stringify(requestBody)
         })
-            .then(r => {
+            .then(async r => {
                 if (!r.ok) {
                     const error = new Error('HTTP ' + r.status);
                     error.httpStatus = r.status;
+                    try {
+                        const body = await r.json();
+                        const message = body && [body.detail, body.message, body.error]
+                            .find(value => typeof value === 'string' && value.trim());
+                        if (message) error.message = message.trim().slice(0, 1024);
+                    } catch (invalidBody) {
+                        // Empty/non-JSON proxy responses retain the numeric HTTP diagnostic.
+                    }
                     throw error;
                 }
                 return r.json();
             })
             .then(result => {
+                // Polling may have stopped after observing completion, but only the latest
+                // in-scope operation owns this full response and may update the application.
+                if (progress && !progress.acceptsResult()) return;
                 if (progress) progress.finish(result.status);
                 setAnalyzing(false);
                 if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
@@ -562,6 +577,7 @@
                 }
             })
             .catch(err => {
+                if (progress && !progress.acceptsResult()) return;
                 if (progress) {
                     // A rejected HTTP request is not an active job. A lost connection may be.
                     if (!err.httpStatus) progress.transportFailed();
