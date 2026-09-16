@@ -1,0 +1,155 @@
+name: Verify consolidated extraction stack
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-integrate-verified-stack.yml]
+permissions:
+  contents: write
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    outputs:
+      matrix: ${{ steps.integrate.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: 54fadbb1bbe757be10fdc211c945273ee9048370, fetch-depth: 0, persist-credentials: false}
+      - name: Require completed preflights and preserve all parent histories
+        id: integrate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,json,os,subprocess,time,urllib.request
+          from pathlib import Path
+          api='https://api.github.com/repos/carstenartur/Taxonomy'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          branch='verify/628-boundary-regressions-20260916'
+          def get(path):
+              with urllib.request.urlopen(urllib.request.Request(api+path,headers=headers)) as response:return json.load(response)
+          checks=[(35141457837,'selector-35141457837.json'),(35141604407,'workspace-selection-35141604407.json'),(35143647883,'git-cas-35143647883.json')]
+          for attempt in range(120):
+              states=[get('/actions/runs/'+str(run)) for run,_ in checks]
+              for state in states:
+                  if state['status']=='completed' and state['conclusion']!='success':
+                      raise RuntimeError('Prerequisite failed: '+str(state['id'])+' '+str(state['conclusion']))
+              if all(s['status']=='completed' for s in states):break
+              if attempt%6==0:print('Waiting for prerequisite completion:',[(s['id'],s['status']) for s in states],flush=True)
+              time.sleep(10)
+          else:raise RuntimeError('Prerequisite verification did not finish within the bounded wait')
+          docs=[]
+          for run,name in checks:
+              obj=get('/contents/evidence/'+name+'?ref='+branch)
+              doc=json.loads(base64.b64decode(obj['content']));assert int(doc['run'])==run,doc
+              docs.append(doc)
+          gate,selection,cas=docs
+          assert gate['base']=='0002ce29ed840e9e10df4125e8d4de9cdaeb6a31'
+          assert selection['base']==cas['base']=='54fadbb1bbe757be10fdc211c945273ee9048370'
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          def run(*args):subprocess.run(['git',*args],check=True)
+          run('config','user.name','github-actions[bot]')
+          run('config','user.email','41898282+github-actions[bot]@users.noreply.github.com')
+          for doc in docs:
+              run('fetch','--no-tags','origin',doc['commit'])
+              assert git('rev-parse',doc['commit']+'^{tree}')==doc['tree'],doc
+          allowed={
+              'taxonomy-app/pom.xml',
+              'taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java',
+              'taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java',
+              'taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRestartSelectionIT.java',
+              'taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java',
+              'taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java',
+              'taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceGitCasBoundaryTest.java',
+              'taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java'}
+          bases=[('workspace',1062,'54fadbb1bbe757be10fdc211c945273ee9048370'),('templates',1063,'30301d834a8c849d9a2906cd99fb9fab0bba0d75'),('interop',1064,'a690921d849fc8da58b509b105d4c31ec20647bd')]
+          results=[];upstream=None
+          auth='AUTHORIZATION: basic '+base64.b64encode(('x-access-token:'+os.environ['GH_TOKEN']).encode()).decode()
+          for name,pr,base in bases:
+              run('checkout','--detach',base)
+              assert get('/pulls/'+str(pr))['head']['sha']==base,'Public source changed; refusing an obsolete integration'
+              if upstream is None:
+                  run('merge','--ff-only',selection['commit'])
+                  run('merge','--no-ff',cas['commit'],'-m','fix(workspace): integrate checked selection and Git reference race corrections')
+                  run('merge','--no-ff',gate['commit'],'-m','fix(workspace): inherit the independent architecture gate and POM boundary')
+              else:run('merge','--no-ff',upstream,'-m','fix('+name+'): inherit the verified workspace and architecture corrections')
+              run('diff','--check',base,'HEAD')
+              changed=set(git('diff','--name-only',base,'HEAD').splitlines());assert changed==allowed,(name,changed)
+              for parent in [base,gate['commit'],selection['commit'],cas['commit']]:run('merge-base','--is-ancestor',parent,'HEAD')
+              sha=git('rev-parse','HEAD');tree=git('rev-parse','HEAD^{tree}')
+              assert not git('status','--porcelain'),git('status','--porcelain')
+              target='refs/heads/verify/628-integrated-'+os.environ['GITHUB_RUN_ID']+'-'+name
+              run('-c','http.https://github.com/.extraheader='+auth,'push','origin',sha+':'+target)
+              results.append({'name':name,'pr':pr,'base':base,'commit':sha,'tree':tree,'changedFiles':sorted(changed),'prerequisites':[d['commit'] for d in docs]})
+              upstream=sha
+          matrix=json.dumps({'include':results},separators=(',',':'))
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('matrix='+matrix+'\n')
+          evidence={'run':os.environ['GITHUB_RUN_ID'],'state':'assembled; verification pending','candidates':results,'prerequisiteRuns':[run for run,_ in checks]}
+          text=json.dumps(evidence,indent=2)+'\n';print(text)
+          payload={'message':'record exact native-merge candidates for verification','content':base64.b64encode(text.encode()).decode(),'branch':branch}
+          req=urllib.request.Request(api+'/contents/evidence/integrated-'+os.environ['GITHUB_RUN_ID']+'.json',headers={**headers,'Content-Type':'application/json'},data=json.dumps(payload).encode(),method='PUT')
+          with urllib.request.urlopen(req) as response:assert response.status==201
+  verify:
+    needs: assemble
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.assemble.outputs.matrix) }}
+    name: Verify integrated ${{ matrix.name }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: '${{ matrix.commit }}', fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Verify source identity and complete architecture selection
+        env:
+          EXPECTED_COMMIT: ${{ matrix.commit }}
+          EXPECTED_TREE: ${{ matrix.tree }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          mkdir -p /tmp/stack-evidence
+          ./mvnw -B -ntp test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/stack-evidence/architecture.log 2>&1
+          grep -q 'architecture-selector-anchor' /tmp/stack-evidence/architecture.log
+      - name: Workspace unit and actual consumer persistence/security contracts
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am verify -DskipITs=false '-Dtest=*Workspace*Test,*Sync*Test,*Provision*Test' '-Dit.test=WorkspaceRestartSelectionIT,WorkspaceProvisioningClaimIT,WorkspaceAccessSecurityIT,WorkspaceProvisioningBoundaryIT,ExternalGitSyncServiceIT' -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/stack-evidence/consumers.log 2>&1
+      - name: Verify complete frontend contracts
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts > /tmp/stack-evidence/frontend.log 2>&1
+      - name: Assert executed regressions and publish a precise verification receipt
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CANDIDATE: ${{ toJSON(matrix) }}
+        shell: python
+        run: |
+          import base64,json,os,subprocess,urllib.request,xml.etree.ElementTree as ET
+          from pathlib import Path
+          for filename,count in {
+              'taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceGitCasBoundaryTest.xml':9,
+              'taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.service.WorkspaceRestartSelectionIT.xml':7,
+              'taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.service.WorkspaceProvisioningClaimIT.xml':2,
+              'taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT.xml':10}.items():
+              suite=ET.parse(filename).getroot();assert int(suite.get('tests',0))==count,(filename,suite.attrib)
+              assert all(int(suite.get(key,0))==0 for key in ('failures','errors','skipped')),(filename,suite.attrib)
+          candidate=json.loads(os.environ['CANDIDATE'])
+          assert subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()==candidate['tree']
+          assert not subprocess.check_output(['git','diff','--name-only'],text=True).strip()
+          doc={'run':os.environ['GITHUB_RUN_ID'],'state':'focused integration passed; full canonical PR CI still required','candidate':candidate,'architecture':True,'frontend':True,'realJpaAndGitRegressions':True}
+          text=json.dumps(doc,indent=2)+'\n';Path('/tmp/stack-evidence/summary.json').write_text(text);print(text)
+          payload={'message':'record checked '+candidate['name']+' integration','content':base64.b64encode(text.encode()).decode(),'branch':'verify/628-boundary-regressions-20260916'}
+          url='https://api.github.com/repos/carstenartur/Taxonomy/contents/evidence/integrated-'+os.environ['GITHUB_RUN_ID']+'-'+candidate['name']+'.json'
+          req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Content-Type':'application/json'},method='PUT')
+          with urllib.request.urlopen(req) as response:assert response.status==201
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: integrated-${{ matrix.name }}-evidence
+          path: |
+            /tmp/stack-evidence
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
