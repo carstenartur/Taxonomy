@@ -1,0 +1,59 @@
+name: Inspect prepared architecture candidates (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-prepared-candidates-inspect.yml]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 29a6834e7167fb55c330d10fa918543bdcee827b
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Verify receipts, ancestry and remaining graph
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          from pathlib import Path
+          import hashlib,subprocess,zipfile,xml.etree.ElementTree as ET,json
+          def git(*args):return subprocess.check_output(['git',*args],text=True).strip()
+          out=Path('/tmp/prepared-candidates');out.mkdir()
+          items=[('workspace','54fadbb1bbe757be10fdc211c945273ee9048370','341f61e1e61f662bde954ed46f0a8423ac7c9d59',10467501243,'c45641df303d66b4a128900a6a85ad2b9abd1f682f5e006851d3419dcf881b46'),('templates','30301d834a8c849d9a2906cd99fb9fab0bba0d75','a7cde03ab11a8486a7d58f3928359066b01076c9',10466892799,'3e0cf82b33e0b392bf281037e5e5769301accebc9f4dd399cf595f133be40fd2'),('interop','a690921d849fc8da58b509b105d4c31ec20647bd','29a6834e7167fb55c330d10fa918543bdcee827b',10467256908,'28b25188b1bb2c0ce63b15545e43b7954769549ebb8e2bce625e676801d2a1b3')]
+          for name,old,sha,artifact,digest in items:
+              subprocess.run(['git','merge-base','--is-ancestor',old,sha],check=True)
+              subprocess.run(['git','merge-base','--is-ancestor','a4fe39bee3845e2b58956ce0d7e59993ed5d641b',sha],check=True)
+              print('CANDIDATE',name,sha,'TREE',git('rev-parse',sha+'^{tree}'))
+              print('DIFF',git('diff','--stat',old,sha))
+              print('COMMITS',git('log','--oneline',old+'..'+sha))
+              archive=out/(name+'.zip')
+              with archive.open('wb') as f: subprocess.run(['gh','api',f'repos/carstenartur/Taxonomy/actions/artifacts/{artifact}/zip'],stdout=f,check=True)
+              assert hashlib.sha256(archive.read_bytes()).hexdigest()==digest
+              with zipfile.ZipFile(archive) as z:
+                  for file in z.namelist():
+                      if file.endswith(('.json','identity.txt','architecture-module-graph.txt')):
+                          data=z.read(file).decode()
+                          if len(data)<70000: print('EVIDENCE',name,file,'\n'+data)
+                  totals={}
+                  for kind in ('surefire','failsafe'):
+                      counts={k:0 for k in ('tests','failures','errors','skipped')}
+                      for file in z.namelist():
+                          if kind+'-reports/TEST-' in file and file.endswith('.xml'):
+                              r=ET.fromstring(z.read(file))
+                              for k in counts:counts[k]+=int(r.get(k,'0'))
+                      totals[kind]=counts
+                  print('EXECUTED',name,json.dumps(totals))
+          for file in ['taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java','taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/WorkspaceManager.java','taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationService.java']:
+              print('PRODUCT_CHANGE',file,'\n'+git('diff',items[2][1],items[2][2],'--',file))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: prepared-candidate-receipts
+          path: /tmp/prepared-candidates
+          retention-days: 3
