@@ -48,15 +48,15 @@ if mode == 'tests':
 
     @ParameterizedTest
     @ValueSource(strings = {"", "  "})
-    void emptyHeaderOverridesAStaleQueryAcrossMetadataEndpoints(String header) throws Exception {
+    void emptyHeaderOverridesAStaleQueryAcrossMetadataEndpoints(String header) {
         MockMvc mvc = mvc();
         for (String endpoint : new String[] {"current", "provisioning-status", "provision"}) {
             var request = endpoint.equals("provision")
                     ? post("/api/workspace/" + endpoint) : get("/api/workspace/" + endpoint);
             int expectedStatus = endpoint.equals("current") ? 204 : endpoint.equals("provision") ? 403 : 200;
-            mvc.perform(request.header(WorkspaceContextResolver.WORKSPACE_HEADER, header)
+            assertDoesNotThrow(() -> mvc.perform(request.header(WorkspaceContextResolver.WORKSPACE_HEADER, header)
                     .param(WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER, "inaccessible-stale-query"))
-                    .andExpect(status().is(expectedStatus));
+                    .andExpect(status().is(expectedStatus)));
         }
         verifyNoInteractions(manager);
         verify(resolver, never()).resolveCurrentWorkspaceMetadata();
