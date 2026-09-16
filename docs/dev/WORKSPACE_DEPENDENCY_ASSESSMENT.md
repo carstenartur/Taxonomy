@@ -1,6 +1,6 @@
 # Workspace dependency assessment
 
-This is the documentary Slice E assessment for [#1043](https://github.com/carstenartur/Taxonomy/issues/1043), within [#628](https://github.com/carstenartur/Taxonomy/issues/628), at production snapshot `bd430ff41788289567de65d78d7d8b8f4adc02a8`. It classifies existing boundaries; it changes no runtime behavior, ownership map, baseline or enforcement rule.
+This is the documentary Slice E assessment for [#1043](https://github.com/carstenartur/Taxonomy/issues/1043), within [#628](https://github.com/carstenartur/Taxonomy/issues/628), at production snapshot `bd430ff41788289567de65d78d7d8b8f4adc02a8`. It classifies boundaries at that historical snapshot; it changes no runtime behavior, ownership map, baseline or enforcement rule. Its counts and readiness statements are not a current inventory or an approval of later extraction branches.
 
 The measured workspace context has **zero outgoing dependencies on other managed contexts**, including knowledge, architecture and portfolio. The reverse knowledge-to-workspace inventory contains **117 distinct class pairs**. The [exhaustive structured inventory](workspace-dependency-classification.json) records each pair once, with source paths, a classification, rationale and measured member/location evidence. These are class-pair counts, not counts of individual bytecode dependency occurrences; nested classes remain distinct origins or targets.
 
@@ -10,8 +10,8 @@ The canonical package measurement has 140 managed package edges and 472 managed 
 
 | Evidence input | SHA-256 |
 | --- | --- |
-| [Dependency baseline](../../.github/architecture-dependency-baseline.json) | `5ff8756fa9b743c3b92853a961fb40320f128ee84c86d9f5c5fb99dea2df8c82` |
-| [Context ownership map](../../.github/architecture-contexts.json) | `f0a2e0f093c313300b5b615ea4a55234955c6324bef2d7124a806e5132fdb348` |
+| [Snapshot dependency baseline](https://github.com/carstenartur/Taxonomy/blob/bd430ff41788289567de65d78d7d8b8f4adc02a8/.github/architecture-dependency-baseline.json) | `5ff8756fa9b743c3b92853a961fb40320f128ee84c86d9f5c5fb99dea2df8c82` |
+| [Snapshot context ownership map](https://github.com/carstenartur/Taxonomy/blob/bd430ff41788289567de65d78d7d8b8f4adc02a8/.github/architecture-contexts.json) | `f0a2e0f093c313300b5b615ea4a55234955c6324bef2d7124a806e5132fdb348` |
 | Native `architecture-module-graph.txt` report | `54218255ab78eb0fc9a65dcdcf9d0e8e0415589690f66a89331ba03d43e39352` |
 
 The [module extraction gate](MODULE_EXTRACTION_GATE.md) reports `taxonomy-workspace: ready`: the current candidate reaches no extraction blocker. Its outgoing planned-module edges are to the existing `taxonomy-domain`, `taxonomy-dsl` and `taxonomy-export` support modules; zero managed-context outgoing edges does not mean zero dependencies.
