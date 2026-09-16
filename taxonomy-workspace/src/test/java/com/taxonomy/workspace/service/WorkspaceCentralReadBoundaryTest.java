@@ -36,7 +36,8 @@ class WorkspaceCentralReadBoundaryTest {
     private MockMvc mvc() {
         when(resolver.resolveCurrentUsername()).thenReturn("alice");
         return MockMvcBuilders.standaloneSetup(new WorkspaceController(
-                manager, resolver, null, null, null, null, null, null)).build();
+                manager, resolver, null, null, null, null, null, null))
+                .addInterceptors(new ExplicitWorkspacePinValidationInterceptor(resolver)).build();
     }
 
     private MockHttpServletRequestBuilder centralPin(MockHttpServletRequestBuilder request, String transport) {
@@ -141,4 +142,36 @@ class WorkspaceCentralReadBoundaryTest {
         verifyNoInteractions(factory, semantic, portfolio, editor, rows, syncRows);
         if (explicitEmptyPin) verifyNoInteractions(manager);
     }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "  "})
+    void emptyHeaderOverridesAStaleQueryAcrossMetadataEndpoints(String header) {
+        MockMvc mvc = mvc();
+        for (String endpoint : new String[] {"current", "provisioning-status", "provision"}) {
+            var request = endpoint.equals("provision")
+                    ? post("/api/workspace/" + endpoint) : get("/api/workspace/" + endpoint);
+            int expectedStatus = endpoint.equals("current") ? 204 : endpoint.equals("provision") ? 403 : 200;
+            assertDoesNotThrow(() -> mvc.perform(request.header(WorkspaceContextResolver.WORKSPACE_HEADER, header)
+                    .param(WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER, "inaccessible-stale-query"))
+                    .andExpect(status().is(expectedStatus)));
+        }
+        verifyNoInteractions(manager);
+        // Only provisioning-status legitimately resolves absent, read-only metadata.
+        // The interceptor must not add a lookup based on the overridden query pin.
+        verify(resolver).resolveCurrentWorkspaceMetadata();
+        verify(resolver, never()).resolveCurrentRepositoryContext();
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"", "  "})
+    void emptyHeaderOverridesAStaleQueryForNonMetadataHandlers(String header) {
+        var request = new MockHttpServletRequest();
+        request.addHeader(WorkspaceContextResolver.WORKSPACE_HEADER, header);
+        request.addParameter(WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER, "foreign-query");
+        var interceptor = new ExplicitWorkspacePinValidationInterceptor(resolver);
+        assertDoesNotThrow(() -> assertTrue(interceptor.preHandle(request,
+                new org.springframework.mock.web.MockHttpServletResponse(), new Object())));
+        verifyNoInteractions(resolver);
+    }
+
 }
