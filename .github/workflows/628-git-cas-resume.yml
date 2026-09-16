@@ -14,7 +14,7 @@ jobs:
         with: {ref: 54fadbb1bbe757be10fdc211c945273ee9048370, fetch-depth: 0, persist-credentials: false}
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Execute the frozen reproduction and correction with the fixed test arrangement
+      - name: Execute the frozen reproduction, correction and consumer regressions
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
@@ -29,6 +29,16 @@ jobs:
               if 'run' not in step: continue
               always=step.get('if')=='always()'
               if failed and not always: continue
+              if step['name']=='Consumer integration verification':
+                  p=Path('taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceProvisioningClaimIT.java')
+                  text=p.read_text()
+                  old='when(destination.commitDsl(anyString(), anyString(), anyString(), anyString())).thenReturn(base);'
+                  new='when(destination.commitDslIfHeadMatches(anyString(), isNull(), anyString(), anyString(), anyString())).thenReturn(base);'
+                  assert text.count(old)==1;text=text.replace(old,new)
+                  old='verify(destination, times(1)).commitDsl(anyString(), anyString(), anyString(), anyString());'
+                  new='verify(destination, times(1)).commitDslIfHeadMatches(anyString(), isNull(), anyString(), anyString(), anyString());\n            verify(destination, never()).commitDsl(anyString(), anyString(), anyString(), anyString());'
+                  assert text.count(old)==1;text=text.replace(old,new);p.write_text(text)
+                  subprocess.run(['git','add',str(p)],check=True)
               print('::group::'+step['name'],flush=True)
               cmd=['python3','-'] if step.get('shell')=='python' else ['bash','-eo','pipefail','-c',step['run']]
               result=subprocess.run(cmd,input=step['run'] if step.get('shell')=='python' else None,text=True)
