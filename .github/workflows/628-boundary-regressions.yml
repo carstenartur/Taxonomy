@@ -7,6 +7,9 @@ on:
       - .github/scripts/boundary-final-review.py
 permissions:
   contents: read
+concurrency:
+  group: final-module-boundary-preflight
+  cancel-in-progress: true
 jobs:
   prepare:
     runs-on: ubuntu-latest
@@ -26,57 +29,25 @@ jobs:
           fetch-depth: 0
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Add final counterexamples without altering production
+      - name: Apply all reproduced corrections and preserve positive write-scope controls
         run: |
-          mkdir -p /tmp/628-final/red
+          mkdir -p /tmp/628-final
           python harness/.github/scripts/boundary-final-review.py tests candidate
+          python harness/.github/scripts/boundary-final-review.py patch candidate
           git -C candidate diff --check
-      - name: Reproduce header precedence
-        working-directory: candidate
-        shell: bash
-        run: |
-          set +e
-          ./mvnw -B -ntp -pl taxonomy-workspace -am test '-Dtest=WorkspaceCentralReadBoundaryTest#emptyHeader*' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-final/red/header.log 2>&1
-          result=$?
-          cp taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest.xml /tmp/628-final/red/
-          tail -35 /tmp/628-final/red/header.log
-          test "$result" -eq 1
-      - name: Reproduce actual security-chain metadata enumeration
-        working-directory: candidate
-        shell: bash
-        run: |
-          set +e
-          ./mvnw -B -ntp -pl taxonomy-app -am test '-Dtest=AdminAuthorizationRegressionTest#workspaceActivity*' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-final/red/security.log 2>&1
-          result=$?
-          cp taxonomy-app/target/surefire-reports/TEST-com.taxonomy.security.AdminAuthorizationRegressionTest.xml /tmp/628-final/red/
-          tail -35 /tmp/628-final/red/security.log
-          test "$result" -eq 1
-      - name: Require all twelve counterexamples and controls to have executed
-        shell: python
-        run: |
-          from pathlib import Path
-          import xml.etree.ElementTree as ET
-          files=list(Path('/tmp/628-final/red').glob('TEST-*.xml'));assert len(files)==2,files
-          total={k:0 for k in ('tests','failures','errors','skipped')}
-          for path in files:
-              suite=ET.parse(path).getroot()
-              for key in total: total[key]+=int(suite.get(key,'0'))
-          print(total)
-          assert total=={'tests':12,'failures':8,'errors':0,'skipped':0},total
-      - name: Correct confirmed defects and execute all affected contracts
+      - name: Complete affected graph, scope, recovery and security suites
         working-directory: candidate
         run: |
           set -o pipefail
-          python ../harness/.github/scripts/boundary-final-review.py patch .
-          ./mvnw -B -ntp test '-Dtest=ArchitectureModuleExtractionTest,ArchitectureModuleGraphTest,ArchitectureSelectorSynchronizationTest,WorkspaceCentralReadBoundaryTest,WorkspaceDivergedStrategyScopeTest,WorkspaceFactoryRetryRecoveryTest,WorkspaceContextResolverRequestPinningTest,AdminAuthorizationRegressionTest' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-final/focused.log 2>&1 || { tail -150 /tmp/628-final/focused.log; exit 1; }
+          ./mvnw -B -ntp test '-Dtest=ArchitectureModuleExtractionTest,ArchitectureModuleGraphTest,ArchitectureSelectorSynchronizationTest,WorkspaceCentralReadBoundaryTest,WorkspaceDivergedStrategyScopeTest,WorkspaceFactoryRetryRecoveryTest,WorkspaceContextResolverRequestPinningTest,AdminAuthorizationRegressionTest,GitNativeSyncIntegrationServiceTest' -Dsurefire.failIfNoSpecifiedTests=false > /tmp/628-final/focused.log 2>&1 || { tail -150 /tmp/628-final/focused.log; exit 1; }
           tail -35 /tmp/628-final/focused.log
-      - name: Verify scoped metadata reads through the full application interceptor chain
+      - name: Verify the full application interceptor chain
         working-directory: candidate
         run: |
           set -o pipefail
           ./mvnw -B -ntp -pl taxonomy-app -am verify -Dtest=AdminAuthorizationRegressionTest -DskipITs=false -Dit.test=WorkspaceAccessSecurityIT -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false > /tmp/628-final/access-integration.log 2>&1 || { tail -150 /tmp/628-final/access-integration.log; exit 1; }
           tail -30 /tmp/628-final/access-integration.log
-      - name: Assert original and new positive and negative cases
+      - name: Require actual positive and negative execution
         shell: python
         run: |
           from pathlib import Path
@@ -88,12 +59,15 @@ jobs:
                   counts={k:int(suite.get(k,'0')) for k in ('tests','failures','errors','skipped')}
                   assert counts['failures']==counts['errors']==counts['skipped']==0,(path,counts)
                   suites[suite.get('name')]=counts
-          assert suites['com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest']['tests']==28,suites
-          assert suites['com.taxonomy.security.AdminAuthorizationRegressionTest']['tests']==16,suites
-          assert suites['com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT']['tests']==10,suites
+          for name,count in {
+              'com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest':28,
+              'com.taxonomy.security.AdminAuthorizationRegressionTest':16,
+              'com.taxonomy.workspace.service.GitNativeSyncIntegrationServiceTest':8,
+              'com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT':10}.items():
+              assert suites[name]['tests']==count,(name,suites)
           Path('/tmp/628-final/focused-counts.json').write_text(json.dumps(suites,indent=2)+'\n')
           print(suites)
-      - name: Prepare immutable final commits while preserving the already verified gate
+      - name: Prepare exact native candidates without changing public PR heads
         id: candidates
         env:
           GH_TOKEN: ${{ github.token }}
@@ -177,6 +151,7 @@ jobs:
           for file,expected in {
               'taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest.xml':28,
               'taxonomy-app/target/surefire-reports/TEST-com.taxonomy.security.AdminAuthorizationRegressionTest.xml':16,
+              'taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.service.GitNativeSyncIntegrationServiceTest.xml':8,
               'taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.controller.WorkspaceAccessSecurityIT.xml':10}.items():
               suite=ET.parse(file).getroot()
               assert int(suite.get('tests','0'))==expected and int(suite.get('skipped','0'))==0,(file,suite.attrib)

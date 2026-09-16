@@ -1,4 +1,4 @@
-"""Temporary runner for the two final reproduced review boundaries. Never shipped."""
+"""Isolated boundary preflight. No helper, token or workflow enters a product tree."""
 from pathlib import Path
 import base64
 import hashlib
@@ -8,14 +8,14 @@ import subprocess
 import sys
 import urllib.request
 
-mode = sys.argv[1]
-root = Path(sys.argv[2]).resolve()
+mode, root = sys.argv[1], Path(sys.argv[2]).resolve()
 BASE = 'aff0f1c78f81598d9bce2c575ba1bf0584de4ee5'
 INTERCEPTOR = 'taxonomy-workspace/src/main/java/com/taxonomy/workspace/service/ExplicitWorkspacePinValidationInterceptor.java'
 AUTH = 'taxonomy-app/src/main/java/com/taxonomy/security/config/AuthorizationRulesConfigurer.java'
 WS_TEST = 'taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceCentralReadBoundaryTest.java'
 ADMIN_TEST = 'taxonomy-app/src/test/java/com/taxonomy/security/AdminAuthorizationRegressionTest.java'
-PRODUCT = [INTERCEPTOR, AUTH, WS_TEST, ADMIN_TEST]
+GIT_TEST = 'taxonomy-app/src/test/java/com/taxonomy/workspace/service/GitNativeSyncIntegrationServiceTest.java'
+PRODUCT = [INTERCEPTOR, AUTH, WS_TEST, ADMIN_TEST, GIT_TEST]
 
 
 def git(*args, text=True):
@@ -108,7 +108,6 @@ if mode == 'tests':
                 .andExpect(status().isUnauthorized());
     }
 ''')
-    print('Installed real SecurityFilterChain and actual interceptor counterexamples only.')
 elif mode == 'patch':
     replace(INTERCEPTOR,
             '        if (hasText(header)) {\n            return header.strip();\n        }',
@@ -123,8 +122,18 @@ elif mode == 'patch':
         auth.requestMatchers(HttpMethod.GET, "/api/workspace/active").hasRole("ADMIN");
         auth.requestMatchers(HttpMethod.HEAD, "/api/workspace/active").hasRole("ADMIN");
         auth.requestMatchers(HttpMethod.GET, "/api/workspace/**").authenticated();''')
+    replace(GIT_TEST,
+            '''    void centralSynchronizationUsesExactRepositoryInsteadOfLegacyPrimarySentinel()
+            throws Exception {
+        when(contextResolver.resolveRepositoryContextForUser("alice"))
+                .thenReturn(RepositoryContext.centralRead(''',
+            '''    void writableCentralSynchronizationUsesExactRepositoryInsteadOfLegacyPrimarySentinel()
+            throws Exception {
+        // A synchronization mutates this central repository; CENTRAL_READ is covered
+        // by the rejection cases in WorkspaceCentralReadBoundaryTest instead.
+        when(contextResolver.resolveRepositoryContextForUser("alice"))
+                .thenReturn(RepositoryContext.centralWrite(''')
     subprocess.run(['git', '-C', str(root), 'diff', '--check'], check=True)
-    print('Applied header-presence precedence and the exact GET/HEAD admin rules.')
 elif mode == 'prepare':
     out = Path(sys.argv[3]).resolve()
     out.mkdir(parents=True, exist_ok=True)
@@ -160,17 +169,18 @@ elif mode == 'prepare':
         tree = api('git/trees', {'base_tree': original['tree']['sha'], 'tree': entries})['sha']
         parents = [base] if stage == 'workspace' else [base, previous]
         commit = api('git/commits', {
-            'message': 'fix: preserve empty-header precedence and restrict global workspace metadata (' + stage + ')\n\n'
-                       'Include all reproduced class-output, central-read and metadata boundaries.\n'
-                       'Retain the native history and dependency order. Exact-source complete\n'
-                       'verification is required before updating the public pull-request head.',
+            'message': 'fix: complete read-only and metadata boundaries (' + stage + ')\n\n'
+                       'Preserve header precedence, restrict the global activity listing, and\n'
+                       'exercise writable central synchronization with its explicit write scope.\n'
+                       'Keep all repository-identity assertions and central-read denial cases.\n'
+                       'No helper, safeguard waiver or baseline change is shipped.',
             'tree': tree, 'parents': parents})['sha']
         api('git/refs', {'ref': 'refs/heads/verify/628-final-' + os.environ['GITHUB_RUN_ID'] + '-' + stage, 'sha': commit})
         candidates.append({'stage': stage, 'pr': pr, 'sha': commit, 'tree': tree, 'base': base,
                            'priorPrHead': prior_pr, 'parents': parents, 'files': files})
         previous = commit
     matrix = {'include': [{k: entry[k] for k in ('stage', 'pr', 'sha', 'tree', 'base')} for entry in candidates]}
-    manifest = {'initialRedRun': 35057338219, 'gateVerificationRun': 35058014829,
+    manifest = {'initialRedRun': 35057338219, 'finalRedRun': 35058777486, 'gateVerificationRun': 35058014829,
                 'gate': {'sha': 'deaf46d6d8623a4404b88cbe1067acdcef10fcfc', 'tree': '1583bacdddc84b6f9a474cae950a5533d82ec2d9'},
                 'finalPreflightRun': os.environ['GITHUB_RUN_ID'], 'candidates': candidates}
     (out / 'candidates.json').write_text(json.dumps(manifest, indent=2) + '\n')
