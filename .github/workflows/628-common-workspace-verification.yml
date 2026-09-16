@@ -1,0 +1,125 @@
+name: Verify common workspace correction (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-common-workspace-verification.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 100
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [workspace, templates, interop]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 54fadbb1bbe757be10fdc211c945273ee9048370
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Reconstruct exact native-history candidates before testing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE: ${{ matrix.lane }}
+        shell: python
+        run: |
+          import base64,gzip,hashlib,json,os,subprocess,urllib.request
+          from pathlib import Path
+          out=Path('/tmp/common-evidence');out.mkdir()
+          def git(*args,input=None):
+              return subprocess.check_output(['git',*args],input=input).decode().strip()
+          git('config','user.name','ChatGPT');git('config','user.email','noreply@openai.com')
+          parts=['468a98a51d8161d327b4e4d7d5bc9dcdf1483f1f','5b7616a25ae98a375110d83dce924d2208d1dd91','01cfb34cb32fb6c3e19d438c38e9ce6465a65823','a13cb1f3395094b244c9982aab2b93ea08e3ff9c','e77d4529b0643fa8ae8fea7ac7b727f5c807a7dd','9b72055b1c5c5f1d8dc801636f64449fb63135e7']
+          compressed=b''
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'}
+          for sha in parts:
+              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers=headers)
+              with urllib.request.urlopen(req) as response: data=base64.b64decode(json.load(response)['content'])
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+              compressed+=data
+          patch=gzip.decompress(compressed)
+          assert hashlib.sha256(patch).hexdigest()=='20645801799b1154b4be362852db757e79ef7ab335dd2de04931e7bef35d833a'
+          (out/'workspace.patch').write_bytes(patch)
+          def commit(tree,parents,message,sha,authorTime=1789594288):
+              assert git('write-tree')==tree
+              raw='tree '+tree+'\n'+''.join('parent '+p+'\n' for p in parents)
+              raw+=f'author ChatGPT <noreply@openai.com> {authorTime} +0000\ncommitter ChatGPT <noreply@openai.com> 1789594288 +0000\n\n{message}\n'
+              assert git('hash-object','-w','-t','commit','--stdin',input=raw.encode())==sha
+              git('reset','--hard',sha)
+          gate='a4fe39bee3845e2b58956ce0d7e59993ed5d641b'
+          git('fetch','--no-tags','origin',gate)
+          git('merge','--no-ff','--no-commit',gate)
+          commit('68131cb0d2bc004d0b4f9417966624c00a956fe8',['54fadbb1bbe757be10fdc211c945273ee9048370',gate],'Merge verified architecture gate without rewriting extraction history','4298c1052b8c4dfcdbb62630c975aab3c0b47494')
+          git('apply','--index',str(out/'workspace.patch'))
+          git('diff','--cached','--check')
+          workspace='da4c7fbbae429c3e78735f765ebd4671ee89552f'
+          commit('031cf6f3adc6134485fb65ecb6c11947de0efdc5',['4298c1052b8c4dfcdbb62630c975aab3c0b47494'],'fix(workspace): preserve concurrent Git writers and deterministic restart selection',workspace,1789594287)
+          git('checkout','--detach','30301d834a8c849d9a2906cd99fb9fab0bba0d75')
+          git('merge','--no-ff','--no-commit',workspace)
+          templates='2e1ce90d5737cfd166d17c138fc1d200b38ccfb8'
+          commit('9dabd21c0fa57f1b7e85b6380c9326d0766c0ebd',['30301d834a8c849d9a2906cd99fb9fab0bba0d75',workspace],'Merge common workspace selection and concurrency corrections',templates)
+          git('checkout','--detach','a690921d849fc8da58b509b105d4c31ec20647bd')
+          git('merge','--no-ff','--no-commit',templates)
+          interop='3216a9a8b273042f14ce6237f967626275fb2a3c'
+          commit('34826112c12d76c6f4fef55de1c72b5696559b35',['a690921d849fc8da58b509b105d4c31ec20647bd',templates],'Merge tested-owner workspace and template integration history',interop)
+          selected={'workspace':workspace,'templates':templates,'interop':interop}[os.environ['LANE']]
+          git('checkout','--detach',selected)
+          assert git('status','--porcelain')==''
+          (out/'identity.json').write_text(json.dumps({'commit':selected,'tree':git('rev-parse','HEAD^{tree}'),'lane':os.environ['LANE'],'run':os.environ['GITHUB_RUN_ID']},indent=2))
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Complete canonical clean reactor including integration tests
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          FRONTEND_API_BASE_REF: 118a03441d0d72b280acdbf7ad9c37ab55eae964
+        run: |
+          set -o pipefail
+          docker info
+          ./mvnw -B -ntp clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true 2>&1 | tee /tmp/common-evidence/reactor.log
+      - name: Complete frontend verification and inspect actual XML
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee /tmp/common-evidence/frontend.log
+          python - <<'PY'
+          import json,xml.etree.ElementTree as ET
+          from pathlib import Path
+          counts={}
+          for kind in ('surefire','failsafe'):
+              files=list(Path('.').glob('**/target/'+kind+'-reports/TEST-*.xml'));assert files
+              c={k:0 for k in ('tests','failures','errors','skipped')}
+              for path in files:
+                  xml=ET.parse(path).getroot()
+                  for k in c:c[k]+=int(xml.get(k,0))
+              assert c['failures']==0 and c['errors']==0,c
+              counts[kind]=dict(suites=len(files),**c)
+          restart=ET.parse('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.WorkspaceRestartSelectionTest.xml').getroot()
+          assert int(restart.get('tests',0))==9 and int(restart.get('skipped',0))==0
+          Path('/tmp/common-evidence/counts.json').write_text(json.dumps(counts,indent=2))
+          print(counts)
+          PY
+      - name: Publish checked candidate refs only; never change PR refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          LANE: ${{ matrix.lane }}
+        run: |
+          set -euo pipefail
+          test -z "$(git status --porcelain --untracked-files=no)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push origin "HEAD:refs/heads/verify/628-common-$LANE-20260916"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: common-workspace-${{ matrix.lane }}
+          path: |
+            /tmp/common-evidence
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+            **/target/analysis-ui-evidence/**
+          retention-days: 7
+          if-no-files-found: error
