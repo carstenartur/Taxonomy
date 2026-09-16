@@ -1,0 +1,209 @@
+name: Workspace restart selection verification
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-workspace-selection.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 54fadbb1bbe757be10fdc211c945273ee9048370
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Install actual persistence counterexamples before changing the query
+        shell: python
+        run: |
+          from pathlib import Path
+          Path('/tmp/workspace-selection').mkdir()
+          p=Path('taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRestartSelectionIT.java')
+          assert not p.exists()
+          p.write_text('''package com.taxonomy.workspace.service;
+
+          import com.taxonomy.workspace.model.UserWorkspace;
+          import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+          import com.taxonomy.workspace.repository.UserWorkspaceRepository;
+          import com.taxonomy.workspace.storage.DslGitRepository;
+          import org.junit.jupiter.api.AfterEach;
+          import org.junit.jupiter.api.Test;
+          import org.springframework.beans.factory.annotation.Autowired;
+          import org.springframework.boot.test.context.SpringBootTest;
+          import org.springframework.test.context.TestPropertySource;
+          import java.time.Instant;
+          import java.util.ArrayList;
+          import java.util.List;
+          import java.util.UUID;
+          import static org.junit.jupiter.api.Assertions.*;
+          import static org.mockito.Mockito.mock;
+
+          /** Real queries; fresh managers represent loss of process-local selection after restart. */
+          @SpringBootTest
+          @TestPropertySource(properties = {"gemini.api.key=", "openai.api.key=", "deepseek.api.key=",
+                  "qwen.api.key=", "llama.api.key=", "mistral.api.key="})
+          class WorkspaceRestartSelectionIT {
+              @Autowired UserWorkspaceRepository repository;
+              private final String owner = "restart-" + UUID.randomUUID();
+              private final List<UserWorkspace> rows = new ArrayList<>();
+
+              @AfterEach void cleanup() { repository.deleteAll(rows); }
+
+              private UserWorkspace row(String id, boolean primary, boolean archived, boolean shared, int access) {
+                  var w = new UserWorkspace();
+                  w.setWorkspaceId(owner + "-" + id); w.setUsername(owner); w.setDisplayName(id);
+                  w.setDefault(primary); w.setArchived(archived); w.setShared(shared);
+                  w.setCurrentBranch("draft"); w.setBaseBranch("draft");
+                  w.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+                  w.setCreatedAt(Instant.parse("2026-01-01T00:00:00Z"));
+                  w.setLastAccessedAt(Instant.parse("2026-01-01T00:00:00Z").plusSeconds(access));
+                  w = repository.saveAndFlush(w); rows.add(w); return w;
+              }
+              private WorkspaceManager restarted() {
+                  return new WorkspaceManager(repository, 50, mock(SystemRepositoryService.class), mock(DslGitRepository.class));
+              }
+              @Test void restartPrefersDefaultWithSeveralPrivateRows() {
+                  var expected = row("default", true, false, false, 1);
+                  row("recent", false, false, false, 20);
+                  assertEquals(expected.getWorkspaceId(), restarted().findUserWorkspace(owner).getWorkspaceId());
+              }
+              @Test void newestActivePrivateWorkspaceIsFallbackWithoutDefault() {
+                  row("older", false, false, false, 1);
+                  var expected = row("newest", false, false, false, 20);
+                  assertEquals(expected.getWorkspaceId(), restarted().findUserWorkspace(owner).getWorkspaceId());
+              }
+              @Test void fallbackOrderingIsStableWhenAccessTimesTie() {
+                  row("b", false, false, false, 1);
+                  var expected = row("a", false, false, false, 1);
+                  for (int i=0; i<3; i++) {
+                      assertEquals(expected.getWorkspaceId(), repository.findByUsernameAndSharedFalse(owner).orElseThrow().getWorkspaceId());
+                  }
+              }
+              @Test void archivedDefaultAndSharedWorkspaceCannotBeSelected() {
+                  row("archived", true, true, false, 100);
+                  row("shared", false, false, true, 200);
+                  var expected = row("private", false, false, false, 1);
+                  assertEquals(expected.getWorkspaceId(), restarted().findUserWorkspace(owner).getWorkspaceId());
+              }
+              @Test void archivedOnlyUserHasNoImplicitWorkspace() {
+                  row("archived", true, true, false, 1);
+                  assertTrue(repository.findByUsernameAndSharedFalse(owner).isEmpty());
+                  assertNull(restarted().findUserWorkspace(owner));
+              }
+              @Test void activeSelectionStillTakesPrecedenceOverDefault() {
+                  row("default", true, false, false, 100);
+                  var selected = row("selected", false, false, false, 1);
+                  var manager = restarted(); manager.getOrCreateWorkspace(owner, selected.getWorkspaceId());
+                  assertEquals(selected.getWorkspaceId(), manager.findUserWorkspace(owner).getWorkspaceId());
+              }
+              @Test void absentOwnerHasNoSelection() {
+                  assertTrue(repository.findByUsernameAndSharedFalse(owner).isEmpty());
+                  assertNull(restarted().findUserWorkspace(owner));
+              }
+          }
+          ''')
+      - name: Reproduce the defect with real Hibernate queries
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-app -am verify -DskipITs=false -Dtest=WorkspaceManagerTest -Dit.test=WorkspaceRestartSelectionIT -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/workspace-selection/red.log 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          p=Path('taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.service.WorkspaceRestartSelectionIT.xml')
+          s=ET.parse(p).getroot();assert int(s.get('tests'))==7,s.attrib
+          assert int(s.get('failures'))+int(s.get('errors'))>=5,s.attrib
+          text=p.read_text();assert 'NonUniqueResultException' in text or 'IncorrectResultSizeDataAccessException' in text
+          Path('/tmp/workspace-selection/red.xml').write_text(text)
+          print(s.attrib)
+          PY
+      - name: Limit and order the existing implicit-selection repository API
+        shell: python
+        run: |
+          from pathlib import Path
+          p=Path('taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java')
+          text=p.read_text();old='    Optional<UserWorkspace> findByUsernameAndSharedFalse(String username);'
+          assert text.count(old)==1
+          text=text.replace(old,'''    /**
+               * Compatibility entry point for implicit private-workspace selection.
+               * Multiple workspaces are valid: prefer a non-archived default, then the
+               * most recently accessed active private workspace, with an ID tie-breaker.
+               * Explicit request pins and process-local active selection remain caller-owned.
+               */
+              default Optional<UserWorkspace> findByUsernameAndSharedFalse(String username) {
+                  return findFirstByUsernameAndSharedFalseAndArchivedFalseOrderByIsDefaultDescLastAccessedAtDescWorkspaceIdAsc(username);
+              }
+
+              Optional<UserWorkspace> findFirstByUsernameAndSharedFalseAndArchivedFalseOrderByIsDefaultDescLastAccessedAtDescWorkspaceIdAsc(
+                      String username);''')
+          p.write_text(text)
+      - name: Verify all workspace unit tests and the seven persistence cases
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am verify -DskipITs=false '-Dtest=*Workspace*Test,*Sync*Test,*Provision*Test' -Dit.test=WorkspaceRestartSelectionIT -Dsurefire.failIfNoSpecifiedTests=false -Dfailsafe.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/workspace-selection/green.log 2>&1
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          s=ET.parse('taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.service.WorkspaceRestartSelectionIT.xml').getroot()
+          assert int(s.get('tests'))==7 and all(int(s.get(k,0))==0 for k in ['failures','errors','skipped']),s.attrib
+          print(s.attrib)
+          PY
+          git diff --check
+          git add taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRestartSelectionIT.java
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(workspace): select one deterministic active private workspace after restart'
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Complete clean reactor and frontend verification
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          FRONTEND_API_BASE_REF: 118a03441d0d72b280acdbf7ad9c37ab55eae964
+        run: |
+          set -euo pipefail
+          docker info
+          ./mvnw -B -ntp clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true > /tmp/workspace-selection/full.log 2>&1
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts > /tmp/workspace-selection/frontend.log 2>&1
+      - name: Publish isolated tested candidate and compact evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -z "$(git diff --name-only)"
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push origin HEAD:refs/heads/verify/628-workspace-selection-${{ github.run_id }}
+          python3 - <<'PY'
+          import json,os,subprocess,xml.etree.ElementTree as ET,urllib.request,base64
+          from pathlib import Path
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          counts={}
+          for kind in ['surefire','failsafe']:
+              paths=list(Path('.').glob('**/target/'+kind+'-reports/TEST-*.xml'));assert paths,kind
+              totals={k:0 for k in ['tests','failures','errors','skipped']}
+              for p in paths:
+                  s=ET.parse(p).getroot()
+                  for k in totals: totals[k]+=int(s.get(k,0))
+              assert totals['failures']==totals['errors']==0,totals
+              counts[kind]=totals
+          d={'commit':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}'),'base':'54fadbb1bbe757be10fdc211c945273ee9048370','changedFiles':git('diff','--name-only','54fadbb1bbe757be10fdc211c945273ee9048370','HEAD').splitlines(),'run':os.environ['GITHUB_RUN_ID'],'tests':counts}
+          assert len(d['changedFiles'])==2,d
+          text=json.dumps(d,indent=2)+'\n';Path('/tmp/workspace-selection/summary.json').write_text(text);print(text)
+          payload={'message':'verified workspace restart selection evidence','content':base64.b64encode(text.encode()).decode(),'branch':'verify/628-boundary-regressions-20260916'}
+          url='https://api.github.com/repos/carstenartur/Taxonomy/contents/evidence/workspace-selection-'+os.environ['GITHUB_RUN_ID']+'.json'
+          req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Content-Type':'application/json'},method='PUT')
+          with urllib.request.urlopen(req) as r: assert r.status==201
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-selection-evidence
+          path: |
+            /tmp/workspace-selection
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
