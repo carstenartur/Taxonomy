@@ -1,66 +1,165 @@
-name: Inspect remaining module PR stack (temporary)
+name: Verify integrated module candidates (temporary)
 on:
   push:
     branches: [verify/628-stack-20260916]
     paths: [.github/workflows/628-stack-verification.yml]
 permissions:
   contents: read
-  pull-requests: read
-  actions: read
 jobs:
-  inspect:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      matrix: ${{ steps.publish.outputs.matrix }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          ref: 4ac9f8bf5d1ebe8ddb9a3d54608f1e68a58c7153
+          path: inputs
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
           ref: 118a03441d0d72b280acdbf7ad9c37ab55eae964
+          path: source
           fetch-depth: 0
           persist-credentials: false
-      - name: Export immutable selected history and complete PR metadata
+      - name: Reconstruct and check the exact locally inspected trees
+        working-directory: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python ../inputs/.github/scripts/assemble-module-stack.py
+      - name: Retain native candidates on isolated verification refs only
+        id: publish
+        working-directory: source
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
-          import json, subprocess, hashlib, os
+          import json,os,subprocess
           from pathlib import Path
-          out=Path('/tmp/stack-inspection');out.mkdir()
-          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
-          def api(path): return json.loads(subprocess.check_output(['gh','api',path],text=True))
-          heads={'main':'118a03441d0d72b280acdbf7ad9c37ab55eae964'}
-          for number in (1054,1061,1062,1063,1064):
-              pr=api('repos/carstenartur/Taxonomy/pulls/'+str(number))
-              heads[str(number)]=pr['head']['sha']
-              (out/('pr-'+str(number)+'.json')).write_text(json.dumps(pr,indent=2))
-              for kind,path in [('reviews','pulls/'+str(number)+'/reviews'),('threads','pulls/'+str(number)+'/comments'),('comments','issues/'+str(number)+'/comments')]:
-                  items=[];page=1
-                  while True:
-                      chunk=api('repos/carstenartur/Taxonomy/'+path+'?per_page=100&page='+str(page));items.extend(chunk)
-                      if len(chunk)<100:break
-                      page+=1
-                  (out/(str(number)+'-'+kind+'.json')).write_text(json.dumps(items,indent=2))
-              runs=api('repos/carstenartur/Taxonomy/actions/runs?head_sha='+pr['head']['sha']+'&per_page=100')
-              (out/(str(number)+'-runs.json')).write_text(json.dumps(runs,indent=2))
-              for run in runs['workflow_runs']:
-                  if run['name']=='CI / CD':
-                      jobs=api('repos/carstenartur/Taxonomy/actions/runs/'+str(run['id'])+'/jobs?per_page=100')
-                      (out/(str(number)+'-ci-jobs.json')).write_text(json.dumps(jobs,indent=2));break
-          recovery=api('repos/carstenartur/Taxonomy/git/ref/heads/fix/628-recovery-strategies')['object']['sha']
-          heads['recovery']=recovery
-          for label,sha in heads.items():
-              subprocess.run(['git','fetch','--no-tags','origin',sha],check=True)
-              subprocess.run(['git','update-ref','refs/heads/export/'+label,sha],check=True)
-          subprocess.run(['git','bundle','create',str(out/'selected-history.bundle'),*[ 'refs/heads/export/'+label for label in heads ]],check=True)
-          data=(out/'selected-history.bundle').read_bytes()
-          (out/'identity.json').write_text(json.dumps({'heads':heads,'bundleSha256':hashlib.sha256(data).hexdigest()},indent=2))
-          for label in ('1054','1062','1063','1064'):
-              result=subprocess.run(['git','merge-tree','--write-tree',heads[label],heads['main']],capture_output=True,text=True)
-              (out/(label+'-main-merge.txt')).write_text(result.stdout+'\n'+result.stderr)
-          print(json.dumps(heads,indent=2));print('Bundle bytes:',len(data))
+          doc=json.loads(Path('/tmp/stack-candidates/manifest.json').read_text())
+          refs=['refs/heads/stack-prepared/'+label+':refs/heads/verify/628-candidate-'+label for label in doc['heads']]
+          subprocess.run(['git','-c','credential.helper=!gh auth git-credential','push','origin',*refs],check=True)
+          matrix={'include':[{'label':label,'sha':doc['heads'][label],'tree':doc['trees'][label]} for label in ('gate','workspace','templates','interop')]}
+          with open(os.environ['GITHUB_OUTPUT'],'a') as out:out.write('matrix='+json.dumps(matrix)+'\n')
+          print(json.dumps(doc,indent=2))
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: remaining-module-stack-inspection
-          path: /tmp/stack-inspection
+          name: integrated-candidate-identities
+          path: /tmp/stack-candidates
+          retention-days: 7
+          if-no-files-found: error
+  verify:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ matrix.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Confirm candidate identity and untouched source
+        env:
+          EXPECTED_COMMIT: ${{ matrix.sha }}
+          EXPECTED_TREE: ${{ matrix.tree }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$EXPECTED_COMMIT"
+          test "$(git rev-parse HEAD^{tree})" = "$EXPECTED_TREE"
+          test -z "$(git status --porcelain)"
+          test ! -f .github/scripts/assemble-module-stack.py
+          mkdir -p /tmp/stack-verified
+          git rev-parse HEAD HEAD^{tree} > /tmp/stack-verified/identity.txt
+          docker info
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Complete canonical Maven reactor with integration and ownership gates
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          FRONTEND_API_BASE_REF: 118a03441d0d72b280acdbf7ad9c37ab55eae964
+          VERSION_STATE_MODE: development
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true 2>&1 | tee /tmp/stack-verified/maven.log
+      - name: Complete Maven-owned frontend contract profile
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee /tmp/stack-verified/frontend.log
+      - name: Inspect actual reports and preserve measured module graph
+        if: always()
+        env:
+          EXPECTED_TREE: ${{ matrix.tree }}
+        shell: python
+        run: |
+          import hashlib,json,os,shutil,subprocess,xml.etree.ElementTree as ET
+          from pathlib import Path
+          out=Path('/tmp/stack-verified');out.mkdir(exist_ok=True)
+          totals={}
+          for kind in ('surefire','failsafe'):
+              files=list(Path('.').glob('**/target/'+kind+'-reports/TEST-*.xml'))
+              counts={key:0 for key in ('tests','failures','errors','skipped')}
+              for path in files:
+                  suite=ET.parse(path).getroot()
+                  for key in counts:counts[key]+=int(suite.get(key,'0'))
+              totals[kind]={'suites':len(files),**counts}
+          (out/'counts.json').write_text(json.dumps(totals,indent=2)+'\n')
+          for path in Path('.').glob('**/target/architecture-module-graph.txt'):
+              shutil.copy2(path,out/'architecture-module-graph.txt')
+              (out/'graph.sha256').write_text(hashlib.sha256(path.read_bytes()).hexdigest()+'\n')
+          assert subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()==os.environ['EXPECTED_TREE']
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          print(json.dumps(totals,indent=2))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: integrated-${{ matrix.label }}-verification
+          path: |
+            /tmp/stack-verified
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+            **/target/analysis-ui-evidence/**
+          retention-days: 7
+          if-no-files-found: error
+  historical-assessment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: bd430ff41788289567de65d78d7d8b8f4adc02a8
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {distribution: temurin, java-version: '21', cache: maven}
+      - name: Regenerate the report from its original documented snapshot
+        run: |
+          set -o pipefail
+          mkdir -p /tmp/assessment-provenance
+          ./mvnw -B -ntp clean verify -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee /tmp/assessment-provenance/architecture.log
+          find . -path '*/target/architecture-module-graph.txt' -exec cp {} /tmp/assessment-provenance/architecture-module-graph.txt \;
+          test -s /tmp/assessment-provenance/architecture-module-graph.txt
+          sha256sum /tmp/assessment-provenance/architecture-module-graph.txt
+          git rev-parse HEAD HEAD^{tree} > /tmp/assessment-provenance/identity.txt
+          git diff --exit-code
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: historical-assessment-provenance
+          path: |
+            /tmp/assessment-provenance
+            **/target/surefire-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: error
