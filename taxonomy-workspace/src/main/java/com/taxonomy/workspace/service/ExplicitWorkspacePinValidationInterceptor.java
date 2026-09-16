@@ -55,8 +55,10 @@ public class ExplicitWorkspacePinValidationInterceptor implements HandlerInterce
 
     private static String explicitWorkspaceId(HttpServletRequest request) {
         String header = request.getHeader(WorkspaceContextResolver.WORKSPACE_HEADER);
-        if (hasText(header)) {
-            return header.strip();
+        if (header != null) {
+            // A present empty header explicitly selects central read. Do not validate
+            // an unrelated stale query pin that the canonical resolver will ignore.
+            return hasText(header) ? header.strip() : null;
         }
         String parameter = request.getParameter(
                 WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER);
