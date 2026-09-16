@@ -143,7 +143,7 @@
     // Explicit compatibility boundary for interactive provider batches and expert-entered raw
     // scores. All browser consumers receive comparable relevance, including report requests and
     // saved drafts. Resolve the role/parent once from the loaded catalogue, never from percentages.
-    function applyLocalRawScores(scores, replace) {
+    function applyLocalRawScores(scores, replace, allowUnresolvedProviderKeys) {
         var raw = replace ? {} : Object.assign({}, S.currentRawScores || {});
         Object.entries(scores || {}).forEach(function ([code, value]) {
             raw[code] = clampScore(value);
@@ -168,7 +168,18 @@
         var effective = {}, details = {}, suitability = {}, warnings = [];
         Object.entries(raw).forEach(function ([code, value]) {
             var context = contexts.get(code);
-            if (!context) throw new Error('Cannot resolve taxonomy score ' + code + '.');
+            if (!context) {
+                if (!allowUnresolvedProviderKeys) throw new Error('Cannot resolve taxonomy score ' + code + '.');
+                // Match AnalysisScoreSemantics at the provider boundary without inventing a catalogue node.
+                // Expert-entered local scores retain the strict identity check above.
+                effective[code] = value;
+                details[code] = { nodeCode: code, kind: 'HIERARCHICAL_RELEVANCE',
+                    rawScore: value, effectiveRelevance: value, parentCode: null, parentScore: null };
+                if (warnings.length < 100) warnings.push('Score semantics could not resolve taxonomy node ' + code
+                    + '; treating its value as hierarchical relevance.');
+                else if (warnings.length === 100) warnings.push('Additional score-semantics warnings were suppressed.');
+                return;
+            }
             var parentScore = context.parentCode && Number.isFinite(raw[context.parentCode])
                 ? raw[context.parentCode] : null;
             var product = context.role === 'PRODUCT';
@@ -341,8 +352,76 @@
             return;
         }
 
+        // Dynamic lifecycle modules install observation, routing and workspace guards together.
+        // A premature click must not clear prior results or silently start an unobservable analysis.
+        const session = window.TaxonomyAnalysisSession;
+        const sessionState = session && typeof session.state === 'function' ? session.state() : null;
+        if (!sessionState || sessionState.ready !== true || window.__taxonomyAnalysisSessionLoading
+                || !window.TaxonomyAnalysisProgress
+                || typeof window.TaxonomyAnalysisProgress.start !== 'function') {
+            B().showStatus('warning', t('scoring.lifecycle.not.ready'));
+            return;
+        }
+
+        // Analysis produces workspace-scoped evidence. Central read-only context may be
+        // observed, but cannot enter the isolated-workspace analysis endpoints.
+        if (typeof sessionState.workspaceId !== 'string' || !sessionState.workspaceId.trim()) {
+            B().showStatus('warning', t('guard.blocked.readonly'));
+            return;
+        }
+
         console.log('[Taxonomy] Starting analysis with text:', text.substring(0, 100) + '...');
         const analysisStart = new Date();
+        var operationId;
+        try {
+            if (typeof crypto !== 'undefined' && crypto && typeof crypto.randomUUID === 'function') {
+                operationId = crypto.randomUUID();
+            } else if (typeof crypto !== 'undefined' && crypto && typeof crypto.getRandomValues === 'function') {
+                operationId = '10000000-1000-4000-8000-100000000000'.replace(/[018]/g, function (c) {
+                    return (Number(c) ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> Number(c) / 4).toString(16);
+                });
+            } else {
+                B().showStatus('danger', t('scoring.secure.id.unavailable'));
+                return;
+            }
+        } catch (error) {
+            // Disabled browser cryptography must not erase existing results or start untracked work.
+            B().showStatus('danger', t('scoring.secure.id.unavailable'));
+            return;
+        }
+        S.currentReasons = {};
+        S.currentDiscrepancies = [];
+        S.currentProductCoverageGaps = [];
+        S.currentArchView = null;
+        S.evaluatedNodes = new Set();
+        S.storedBusinessText = null;
+        S.lastAnalyzedText = null;
+        S.pendingProposalNodeCode = null;
+        S.lastAnalysisProvider = null;
+        window._currentProvisionalRelations = [];
+        S.lastAnalysisStatus = 'IN_PROGRESS';
+        applyLocalRawScores({}, true);
+        var lifecycle = window.__TaxonomyAnalysisSessionContext;
+        if (lifecycle && typeof lifecycle.clearDerivedUi === 'function') lifecycle.clearDerivedUi();
+        B().renderView(S.taxonomyData, S.currentScores);
+        var progress = window.TaxonomyAnalysisProgress.start(operationId, function (snapshot) {
+                var previous = S.currentEffectiveScores || {};
+                var previousRaw = S.currentRawScores || {};
+                applyLocalRawScores(snapshot.rawScores || {}, true, true);
+                var changed = Object.keys(S.currentScores || {}).filter(function (code) {
+                    return previous[code] !== S.currentScores[code] || previousRaw[code] !== S.currentRawScores[code];
+                });
+                if (!changed.length) return;
+                if (S.currentView === 'list' || S.currentView === 'tabs') {
+                    changed.forEach(function (code) {
+                        applyScoreToNode(code, S.currentScores[code], null,
+                            S.currentScoreDetails[code], S.currentRawScores[code]);
+                    });
+                } else {
+                    B().renderView(S.taxonomyData, S.currentScores);
+                }
+            });
+
 
         setAnalyzing(true);
         B().clearStatus();
@@ -360,18 +439,25 @@
             requestBody.provider = provider;
         }
 
+        const workspacePin = sessionState.workspaceId == null ? '' : sessionState.workspaceId;
         fetch('/api/analyze', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-Analysis-Operation-Id': operationId,
+                'X-Taxonomy-Workspace-Id': workspacePin },
             body: JSON.stringify(requestBody)
         })
             .then(r => {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
+                if (!r.ok) {
+                    const error = new Error('HTTP ' + r.status);
+                    error.httpStatus = r.status;
+                    throw error;
+                }
                 return r.json();
             })
             .then(result => {
+                if (progress) progress.finish(result.status);
                 setAnalyzing(false);
-                S.taxonomyData = result.tree;
+                if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
                 applyScoreEnvelope(result);
                 S.currentReasons = result.reasons || {};
                 S.currentDiscrepancies = result.discrepancies || [];
@@ -476,6 +562,11 @@
                 }
             })
             .catch(err => {
+                if (progress) {
+                    // A rejected HTTP request is not an active job. A lost connection may be.
+                    if (!err.httpStatus) progress.transportFailed();
+                    else progress.finish('ERROR', false);
+                }
                 setAnalyzing(false);
                 S.lastAnalysisStatus = 'ERROR';
                 B().showStatus('danger', t('scoring.analysis.error', err.message));
@@ -641,7 +732,10 @@
             S.storedBusinessText = text;
             S.lastAnalyzedText = text;
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
-            let statusMsg = t('analyze.complete', matchedCount);
+            const partial = data.status === 'PARTIAL' || data.status === 'CANCELLED';
+            let statusMsg = partial
+                ? t('analyze.partial', (data.warnings || []).join(' ') || t('analyze.incomplete'), matchedCount)
+                : t('analyze.complete', matchedCount);
             if (S.currentDiscrepancies.length > 0) {
                 statusMsg += ' ' + t('analyze.discrepancies', S.currentDiscrepancies.length);
                 console.log('[Taxonomy] Discrepancies:', S.currentDiscrepancies);
@@ -651,7 +745,7 @@
                     'analyze.product.coverage.gaps', S.currentProductCoverageGaps.length);
                 console.log('[Taxonomy] Product coverage gaps:', S.currentProductCoverageGaps);
             }
-            B().showStatus('success', statusMsg);
+            B().showStatus(partial ? 'warning' : data.status === 'ERROR' ? 'danger' : 'success', statusMsg);
             B().updateExportGroupVisibility();
         });
 
@@ -662,7 +756,13 @@
                     eventSource.close();
                     setAnalyzing(false);
                     S.lastAnalysisStatus = data.status || 'PARTIAL';
-                    applyScoreEnvelope({
+                    if (data.reasons) Object.assign(S.currentReasons, data.reasons);
+                    if (data.scoreSemanticsUnavailable) {
+                        // A failed server-side projection supplies raw evidence only. Rebuild
+                        // comparable relevance from the already loaded catalogue, not raw suitability.
+                        applyLocalRawScores(Object.assign(Object.create(null),
+                            S.currentRawScores || {}, data.rawScores || {}), true, true);
+                    } else applyScoreEnvelope({
                         scores: data.partialScores,
                         rawScores: data.rawScores,
                         effectiveScores: data.effectiveScores || data.partialScores,
@@ -681,7 +781,10 @@
             }
         });
 
-        eventSource.onerror = function () {
+        eventSource.onerror = function (event) {
+            // A valid named "error" event already finalized the result in its handler.
+            // Malformed payloads and bodyless transport failures still need the error path.
+            if (event && event.data && S.lastAnalysisStatus !== 'IN_PROGRESS') return;
             eventSource.close();
             setAnalyzing(false);
             S.lastAnalysisStatus = 'ERROR';

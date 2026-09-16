@@ -237,3 +237,43 @@ TAXONOMY_AI_AUTOPILOT_PROVIDER=CUSTOM_OPENAI
 ```
 
 Docker Compose reicht `.env` an den Anwendungscontainer weiter. Bei Helm gehören Nicht-Geheimnisse nach `config`, Zugangsdaten ins referenzierte Secret und zusätzliche Werte nach `extraEnv`.
+
+## Dateibasierte lokale Analyse (`hsqldb-file`)
+
+Mit `SPRING_PROFILES_ACTIVE=hsqldb-file` statt `hsqldb` verwenden sowohl HSQLDB
+als auch Lucene Dateien. Anwendungs-DDL verwendet standardmäßig `update`; die
+veröffentlichten JGit-Migrationen bleiben Eigentum der Bibliothek. Nicht mehrere
+Datenbankprofile kombinieren.
+
+| Umgebungsvariable | Standard | Bedeutung |
+|---|---|---|
+| `TAXONOMY_HSQLDB_FILE_PATH` | `./data/taxonomydb` | Beschreibbares Datenbank-Dateipräfix; in Containern ein dauerhaftes Volume verwenden. |
+| `TAXONOMY_HSQLDB_CACHE_SIZE_KB` | `4096` | Cachebudget serialisierter Tabellendaten in KiB; keine Gesamtgrenze des JVM-Speichers. |
+| `TAXONOMY_HSQLDB_CACHE_ROWS` | `10000` | Höchstzahl zwischengespeicherter Tabellenzeilen. |
+
+`TAXONOMY_DATASOURCE_URL` kann weiterhin die ganze URL überschreiben. Standardmäßig
+werden `CACHED`-Tabellen ohne verzögerte Log-Synchronisierung verwendet. Bestehende
+`MEMORY`-Tabellen werden nicht automatisch konvertiert. Benötigte In-Memory-Daten
+**vor dem Herunterfahren exportieren**; der Profilwechsel migriert sie nicht.
+Vor Schema- oder Tabellentypänderungen persistente Daten sichern. Für aufzubewahrende
+Daten niemals `TAXONOMY_DDL_AUTO=create` verwenden.
+
+`TAXONOMY_SEARCH_DIRECTORY_TYPE` ist in diesem Profil standardmäßig `local-filesystem`,
+`TAXONOMY_SEARCH_DIRECTORY_ROOT` ist `./data/lucene-index`. Dateispeicherung reduziert
+die Heap-Belegung, garantiert aber nicht, dass jeder Speichermangel verhindert wird.
+
+## Live analysis runtime / Laufzeit der Live-Analyse
+
+| Environment variable | Spring property | Default |
+|---|---|---|
+| `TAXONOMY_ANALYSIS_RUNTIME_WARNING_PERCENT` | `taxonomy.analysis.runtime.warning-percent` | `80` |
+| `TAXONOMY_ANALYSIS_RUNTIME_STOP_PERCENT` | `taxonomy.analysis.runtime.stop-percent` | `92` |
+| `TAXONOMY_ANALYSIS_RUNTIME_MINIMUM_HEADROOM_MB` | `taxonomy.analysis.runtime.minimum-headroom-mb` | `16` |
+| `TAXONOMY_ANALYSIS_RUNTIME_PRESSURE_SECONDS` | `taxonomy.analysis.runtime.pressure-seconds` | `5` |
+| `TAXONOMY_ANALYSIS_RUNTIME_MAXIMUM_DURATION_SECONDS` | `taxonomy.analysis.runtime.maximum-duration-seconds` | `1800` |
+
+Die Warnschwelle muss unter der Stoppschwelle liegen; diese darf höchstens 98 Prozent betragen. Mindestens 1 MiB Reserve, eine nichtnegative Drucktoleranz und eine positive Laufzeitgrenze sind erforderlich. Die Grenzen werden vor Aufrufen und während Ratenlimit- oder Wiederholungswartezeiten geprüft. Laufende HTTP-Aufrufe behalten ihr konfiguriertes Timeout. Eine Heap-Stichprobe garantiert weder Sicherheit für nativen Speicher noch für einzelne große Allokationen. Bereits abgeschlossene Bewertungen bleiben beim Stopp des nächsten Schritts erhalten. Die Live-Diagnose ist prozesslokal und strikt nach Benutzer, Workspace, Repository und Branch getrennt. Sie ist auf vier aktive und 16 vorgehaltene Läufe begrenzt; abgeschlossene Läufe bleiben höchstens zehn Minuten verfügbar. Höchstens 32 Aufrufvorschauen und 8192 Bewertungseinträge werden gehalten. Prompt- und Antwortvorschauen sind jeweils auf 8192 Zeichen begrenzt und werden separat nachgeladen; ausgelassene Einträge werden gezählt. Dauerhafte Portfolio-Jobs und die semantische Historie bleiben davon getrennt und unverändert.
+
+### Laufzeit der Streaming-Verbindung
+
+Die bisherige SSE-Verbindung hat kein separates Servlet-Zeitlimit. Die konfigurierte Analyselaufzeit beginnt mit der Reservierung und schließt die Wartezeit in der Executor-Warteschlange ein; der Worker sendet das Endergebnis und schließt die Verbindung. Ein Verbindungsabbruch bricht weiterhin den Worker ab, und die HTTP-Zeitlimits der Provider bleiben unverändert. So verwirft kein festes Transportlimit eine zulässige lange Analyse oder deren Teilergebnis. Vorgeschaltete Proxys können die Verbindung weiterhin beenden; dann den gespeicherten Operationsstatus abfragen statt die Analyse neu zu starten.

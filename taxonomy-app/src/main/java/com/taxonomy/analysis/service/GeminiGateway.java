@@ -74,6 +74,7 @@ public class GeminiGateway implements LlmGateway {
 
     @Override
     public String sendHttpRequest(String prompt, String apiKey) {
+        AnalysisRunControl.checkpoint();
         // REPLAY: return a previously recorded response — skips throttle and real API call.
         if (recordReplayService != null && recordReplayService.isReplayMode()) {
             Optional<String> recorded = recordReplayService.replay(prompt);
@@ -107,6 +108,7 @@ public class GeminiGateway implements LlmGateway {
             while (true) {
                 ResponseEntity<String> response;
                 try {
+                    AnalysisRunControl.phase("LLM_REQUEST", null);
                     response = restTemplate.exchange(
                             providerConfig.getGeminiUrl() + apiKey, HttpMethod.POST, entity, String.class);
                 } catch (HttpClientErrorException e) {
@@ -122,11 +124,7 @@ public class GeminiGateway implements LlmGateway {
                         long backoffMs = 1000L * (1L << (attempt - 1));
                         log.warn("Gemini API server error {} — retry {}/{} after {}ms",
                                 e.getStatusCode(), attempt, maxRetries, backoffMs);
-                        try {
-                            Thread.sleep(backoffMs);
-                        } catch (InterruptedException ie) {
-                            Thread.currentThread().interrupt();
-                        }
+                        AnalysisRunControl.pause("RETRY_WAIT", backoffMs);
                         continue;
                     }
                     throw new RuntimeException("Gemini API server error " + e.getStatusCode() + ": " +
@@ -140,11 +138,7 @@ public class GeminiGateway implements LlmGateway {
                             long backoffMs = 1000L * (1L << (attempt - 1));
                             log.warn("Gemini API read timeout after {}s — retry {}/{} after {}ms",
                                     timeoutSeconds, attempt, maxRetries, backoffMs);
-                            try {
-                                Thread.sleep(backoffMs);
-                            } catch (InterruptedException ie) {
-                                Thread.currentThread().interrupt();
-                            }
+                            AnalysisRunControl.pause("RETRY_WAIT", backoffMs);
                             continue;
                         }
                         throw new LlmTimeoutException(
@@ -180,6 +174,8 @@ public class GeminiGateway implements LlmGateway {
             }
         } catch (LlmRateLimitException | LlmTimeoutException e) {
             throw e;
+        } catch (AnalysisStoppedException stopped) {
+            throw stopped;
         } catch (Exception e) {
             log.error("Error calling Gemini API", e);
             return null;
@@ -192,33 +188,29 @@ public class GeminiGateway implements LlmGateway {
      * Paces outgoing calls using a sliding-window approach with the configured
      * {@code llm.rpm} preference (default {@value DEFAULT_RPM} for Gemini free tier).
      */
-    synchronized void throttle() {
+    void throttle() {
         if (preferencesService == null) return;
-        int rpm = preferencesService.getInt("llm.rpm", DEFAULT_RPM);
-        if (rpm <= 0) return;
-
-        long now = System.currentTimeMillis();
-        long windowStart = now - 60_000L;
-
-        while (!callTimestamps.isEmpty() && callTimestamps.peekFirst() < windowStart) {
-            callTimestamps.pollFirst();
-        }
-
-        if (callTimestamps.size() >= rpm) {
-            long oldest = callTimestamps.peekFirst();
-            long sleepMs = oldest + 60_000L - System.currentTimeMillis() + THROTTLE_BUFFER_MS;
-            if (sleepMs > 0) {
-                log.debug("Gemini RPM throttle: sleeping {}ms (rpm={}, calls in window={})",
-                        sleepMs, rpm, callTimestamps.size());
-                try {
-                    Thread.sleep(sleepMs);
-                } catch (InterruptedException e) {
-                    Thread.currentThread().interrupt();
+        while (true) {
+            AnalysisRunControl.checkpoint();
+            int rpm = preferencesService.getInt("llm.rpm", DEFAULT_RPM);
+            if (rpm <= 0) return;
+            long sleepMs;
+            synchronized (callTimestamps) {
+                long now = System.currentTimeMillis();
+                long windowStart = now - 60_000L;
+                while (!callTimestamps.isEmpty() && callTimestamps.peekFirst() < windowStart) {
+                    callTimestamps.pollFirst();
                 }
+                if (callTimestamps.size() < rpm) {
+                    callTimestamps.addLast(now);
+                    return;
+                }
+                sleepMs = Math.max(1L, callTimestamps.peekFirst() + 60_000L - now + THROTTLE_BUFFER_MS);
             }
+            // Never hold the window lock while waiting: every analysis must remain cancellable.
+            // Recheck capacity after waking instead of reserving cancelled calls or allowing a burst.
+            AnalysisRunControl.pause("WAITING_RATE_LIMIT", sleepMs);
         }
-
-        callTimestamps.addLast(System.currentTimeMillis());
     }
 
     private void applyCurrentTimeout() {
