@@ -1,0 +1,24 @@
+{
+  "commit": "be51d07cc3967211f21c9eb9f3546cbcb76277fd",
+  "tree": "c696ce8f1651bd42973eca1470c67009f81b3e5e",
+  "base": "54fadbb1bbe757be10fdc211c945273ee9048370",
+  "changedFiles": [
+    "taxonomy-app/src/test/java/com/taxonomy/workspace/service/WorkspaceRestartSelectionIT.java",
+    "taxonomy-workspace/src/main/java/com/taxonomy/workspace/repository/UserWorkspaceRepository.java"
+  ],
+  "run": "35141604407",
+  "tests": {
+    "surefire": {
+      "tests": 4695,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "failsafe": {
+      "tests": 252,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 80
+    }
+  }
+}
