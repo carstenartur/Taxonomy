@@ -1,0 +1,52 @@
+name: Workspace Git CAS complete regression
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-git-cas-resume.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: 54fadbb1bbe757be10fdc211c945273ee9048370, fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Execute the frozen reproduction and correction with the fixed test arrangement
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import os,subprocess,urllib.request,yaml
+          from pathlib import Path
+          url='https://raw.githubusercontent.com/carstenartur/Taxonomy/2637628b3a0a67ac5c2c9f8ed581554f9a0d6671/.github/workflows/628-git-cas.yml'
+          template=yaml.safe_load(urllib.request.urlopen(url).read())
+          steps=template['jobs']['verify']['steps']
+          failed=False
+          for step in steps:
+              if 'run' not in step: continue
+              always=step.get('if')=='always()'
+              if failed and not always: continue
+              print('::group::'+step['name'],flush=True)
+              cmd=['python3','-'] if step.get('shell')=='python' else ['bash','-eo','pipefail','-c',step['run']]
+              result=subprocess.run(cmd,input=step['run'] if step.get('shell')=='python' else None,text=True)
+              print('::endgroup::',flush=True)
+              if result.returncode: failed=True
+              if step['name']=='Add deterministic races using actual in-memory JGit refs' and not failed:
+                  p=Path('taxonomy-workspace/src/test/java/com/taxonomy/workspace/service/WorkspaceGitCasBoundaryTest.java')
+                  text=p.read_text();anchor='            when(rows.save(any())).thenAnswer(c -> c.getArgument(0));'
+                  assert text.count(anchor)==1
+                  text=text.replace(anchor,anchor+'\n            when(states.findByUsername("alice")).thenReturn(Optional.of(new SyncState()));\n            when(states.save(any())).thenAnswer(c -> c.getArgument(0));')
+                  p.write_text(text)
+          raise SystemExit(1 if failed else 0)
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: workspace-git-cas-evidence
+          path: |
+            /tmp/git-cas
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
