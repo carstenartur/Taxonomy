@@ -1,0 +1,134 @@
+name: Independent architecture selector verification
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-independent-selector.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 70
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 0002ce29ed840e9e10df4125e8d4de9cdaeb6a31
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Remove all four entries from both selectors and expose the bypass
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/selector-evidence
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          names=['ArchitectureExceptionLedgerTest','ArchitectureModuleGraphTest','ArchitectureModuleExtractionTest','ArchitectureSelectorSynchronizationTest']
+          for filename in ['pom.xml','.mvn/verification-suites.json']:
+              p=Path(filename);text=p.read_text()
+              for name in names:
+                  assert name in text,(filename,name)
+                  text=re.sub(r',?'+name+r',?',lambda m: ',' if m[0].startswith(',') and m[0].endswith(',') else '',text)
+              p.write_text(text)
+          PY
+          ./mvnw -B -ntp test -Parchitecture-tests -pl taxonomy-app -am -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/selector-evidence/bypass-before.log 2>&1
+          test -z "$(find taxonomy-app/target/surefire-reports -name '*ArchitectureExceptionLedgerTest*' -print -quit)"
+          echo 'REPRODUCED: reduced architecture selection passes without the legacy anchor or module guards.'
+      - name: Bind the existing guard independently and reject the same selector edit
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          p=Path('taxonomy-app/pom.xml');text=p.read_text();assert text.count('<profiles>')==1
+          profile='''<profiles>
+                  <!-- This fixed execution cannot disappear by editing the mutable test selectors. -->
+                  <profile>
+                      <id>architecture-tests</id>
+                      <build><plugins><plugin>
+                          <groupId>org.apache.maven.plugins</groupId>
+                          <artifactId>maven-surefire-plugin</artifactId>
+                          <executions><execution>
+                              <id>architecture-selector-anchor</id>
+                              <phase>test</phase>
+                              <goals><goal>test</goal></goals>
+                              <configuration>
+                                  <test>ArchitectureExceptionLedgerTest#moduleChecksRemainReachableFromTheArchitectureProfile</test>
+                                  <failIfNoTests>true</failIfNoTests>
+                                  <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                                  <reportNameSuffix>selector-anchor</reportNameSuffix>
+                              </configuration>
+                          </execution></executions>
+                      </plugin></plugins></build>
+                  </profile>'''
+          assert '<id>architecture-tests</id>' not in text
+          p.write_text(text.replace('<profiles>',profile,1))
+          PY
+          set +e
+          ./mvnw -B -ntp test -Parchitecture-tests -pl taxonomy-app -am -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/selector-evidence/rejected-after.log 2>&1
+          result=$?
+          set -e
+          test "$result" -ne 0
+          grep -q 'module checks must remain reachable' /tmp/selector-evidence/rejected-after.log
+          grep -q 'architecture-selector-anchor' /tmp/selector-evidence/rejected-after.log
+          git restore -- pom.xml .mvn/verification-suites.json
+          git diff --check
+      - name: Verify the complete original architecture selection and bind the candidate
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/selector-evidence/architecture.log 2>&1
+          test "$(git diff --name-only)" = taxonomy-app/pom.xml
+          git add taxonomy-app/pom.xml
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(build): bind the architecture selector guard independently of mutable lists'
+          git rev-parse HEAD HEAD^{tree} > /tmp/selector-evidence/identity.txt
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Complete canonical clean reactor and frontend verification
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+          FRONTEND_API_BASE_REF: 118a03441d0d72b280acdbf7ad9c37ab55eae964
+        run: |
+          set -euo pipefail
+          docker info
+          ./mvnw -B -ntp clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true > /tmp/selector-evidence/full-reactor.log 2>&1
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts > /tmp/selector-evidence/frontend.log 2>&1
+      - name: Publish only the verified one-file commit to an isolated candidate ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -z "$(git diff --name-only)"
+          test "$(git diff --name-only 0002ce29ed840e9e10df4125e8d4de9cdaeb6a31 HEAD)" = taxonomy-app/pom.xml
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push origin HEAD:refs/heads/verify/628-independent-selector-${{ github.run_id }}
+          python3 - <<'PY'
+          import json,os,subprocess,xml.etree.ElementTree as ET,urllib.request,base64
+          from pathlib import Path
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          counts={}
+          for kind in ['surefire','failsafe']:
+              paths=list(Path('.').glob('**/target/'+kind+'-reports/TEST-*.xml'));assert paths,kind
+              totals={k:0 for k in ['tests','failures','errors','skipped']}
+              for p in paths:
+                  s=ET.parse(p).getroot()
+                  for key in totals: totals[key]+=int(s.get(key,0))
+              assert totals['failures']==totals['errors']==0,totals
+              counts[kind]=totals
+          d={'commit':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}'),'base':'0002ce29ed840e9e10df4125e8d4de9cdaeb6a31','changedFiles':['taxonomy-app/pom.xml'],'run':os.environ['GITHUB_RUN_ID'],'tests':counts,'bypassReproduced':True,'sameBypassRejectedAfterFix':True}
+          text=json.dumps(d,indent=2)+'\n';Path('/tmp/selector-evidence/summary.json').write_text(text);print(text)
+          url='https://api.github.com/repos/carstenartur/Taxonomy/contents/evidence/selector-'+os.environ['GITHUB_RUN_ID']+'.json'
+          payload={'message':'verification evidence for independent selector guard','content':base64.b64encode(text.encode()).decode(),'branch':'verify/628-boundary-regressions-20260916'}
+          req=urllib.request.Request(url,data=json.dumps(payload).encode(),headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Content-Type':'application/json'},method='PUT')
+          with urllib.request.urlopen(req) as r: assert r.status==201
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: independent-selector-evidence
+          path: |
+            /tmp/selector-evidence
+            **/target/surefire-reports/TEST-*.xml
+            **/target/failsafe-reports/TEST-*.xml
+          retention-days: 7
