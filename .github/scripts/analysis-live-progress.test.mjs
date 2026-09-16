@@ -8,15 +8,34 @@ const clientSource = readFileSync(new URL('../../taxonomy-app/src/main/resources
 const apiSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/api/analysis-session-api.js', import.meta.url), 'utf8');
 const routingSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-api-routing.js', import.meta.url), 'utf8');
 const id = 'cb2a3d71-e849-4a50-9855-1f9cb8f81402';
-function fixture(fetcher, workspaceId = 'workspace-a') {
-    const scope = { workspaceId, generation: 1, invalidating: false };
+function fixture(fetcher, workspaceId = 'workspace-a', withView = false) {
+    const scope = { workspaceId, generation: 1, analysisGeneration: 1, invalidating: false };
     const timers = new Map(), calls = [], snapshots = [], unavailable = [];
     let serial = 0;
     const authFailures = [];
     const schedule = (fn, delay) => { const key = ++serial; timers.set(key, { fn, delay }); return key; };
     const unschedule = key => timers.delete(key);
+    const elements = new Map();
+    class Element {
+        constructor(tag) { this.tag = tag; this.children = []; this.value = ''; this.isConnected = true; }
+        set id(value) { this.identifier = value; elements.set(value, this); }
+        get id() { return this.identifier; }
+        set textContent(value) { this.value = String(value); this.children = []; }
+        get textContent() { return this.value + this.children.map(child => child.textContent).join(' '); }
+        append(...children) { this.children.push(...children); }
+        setAttribute() {}
+        addEventListener() {}
+        insertAdjacentElement() {}
+        replaceChildren(...children) { this.children = children; }
+        remove() { this.isConnected = false; elements.delete(this.id); }
+    }
+    if (withView) for (const name of ['statusArea', 'llmCommLogContent']) {
+        const node = new Element('div'); node.id = name;
+    }
     const document = {
-        addEventListener() {}, getElementById() { return null; },
+        documentElement: { lang: 'en' },
+        createElement: tag => new Element(tag),
+        addEventListener() {}, getElementById(id) { return elements.get(id) || null; },
         querySelector(selector) {
             return selector === 'meta[name="_csrf"]' ? { content: 'test-token' }
                 : selector === 'meta[name="_csrf_header"]' ? { content: 'X-CSRF-TOKEN' } : null;
@@ -24,6 +43,7 @@ function fixture(fetcher, workspaceId = 'workspace-a') {
         dispatchEvent(event) { authFailures.push(event.detail); }
     };
     const window = {
+        setTimeout: schedule, clearTimeout: unschedule,
         location: { href: 'https://taxonomy.example/', origin: 'https://taxonomy.example' },
         TaxonomyRoleSurface: {}, TaxonomyUiSemantics: {},
         __TaxonomyAnalysisSessionContext: { runtime: scope },
@@ -38,7 +58,8 @@ function fixture(fetcher, workspaceId = 'workspace-a') {
     vm.runInContext(apiSource, sandbox);
     vm.runInContext(routingSource, sandbox);
     vm.runInContext(source, sandbox);
-    const monitor = window.TaxonomyAnalysisProgress.createMonitor({
+    const monitor = withView ? window.TaxonomyAnalysisProgress.start(id, value => snapshots.push({ value }))
+        : window.TaxonomyAnalysisProgress.createMonitor({
         id, context: () => ({ ...scope }), api: window.TaxonomyAnalysisSessionApi,
         setTimeout: schedule, clearTimeout: unschedule,
         onSnapshot: (value, changed) => snapshots.push({ value, changed }),
@@ -51,7 +72,7 @@ function fixture(fetcher, workspaceId = 'workspace-a') {
         await entry[1].fn();
         await new Promise(resolve => setImmediate(resolve));
     }
-    return { scope, timers, calls, snapshots, unavailable, authFailures, api: window.TaxonomyAnalysisSessionApi, monitor, step };
+    return { scope, timers, calls, snapshots, unavailable, authFailures, elements, api: window.TaxonomyAnalysisSessionApi, monitor, step };
 }
 function response(data, status = 200) {
     return new Response(status === 202 ? null : JSON.stringify(data), { status });
@@ -427,5 +448,81 @@ test('cleanup cannot repeat an earlier user cancel whose response was lost', asy
     f.monitor.cancelAndStop(); await f.step(0);
     assert.equal(f.calls.length, 1);
     assert.equal(f.calls[0].options.method, 'POST');
+    assert.equal(f.timers.size, 0);
+});
+
+
+function finalSnapshot() {
+    return { ...snapshot(2, 'COMPLETED'), calls: [{ id: 1, status: 'COMPLETED' }] };
+}
+const flush = () => new Promise(resolve => setImmediate(resolve));
+
+test('final HTTP result closes the panel immediately and refreshes the last LLM log without applying preview scores', async () => {
+    let final = false;
+    const f = fixture(async () => response(final ? finalSnapshot() : snapshot()), 'workspace-a', true);
+    await f.step(0);
+    assert.match(f.elements.get('llmCommLogContent').textContent, /STARTED/);
+    final = true;
+    f.monitor.finish('SUCCESS');
+    assert.match(f.elements.get('analysisLiveProgress').textContent, /Complete result received/);
+    assert.equal(f.elements.get('analysisLiveProgress').children.at(-1).disabled, true);
+    await flush();
+    assert.match(f.elements.get('llmCommLogContent').textContent, /COMPLETED/);
+    assert.equal(f.snapshots.length, 1, 'final preview must never replace the complete HTTP score envelope');
+    assert.equal(f.calls.length, 2);
+    assert.ok(f.calls.every(call => call.options.method === 'GET'));
+    assert.equal(f.timers.size, 0);
+});
+
+test('HTTP completion before the first poll still retrieves diagnostic metadata exactly once', async () => {
+    const f = fixture(async () => response(finalSnapshot()), 'workspace-a', true);
+    f.monitor.finish('SUCCESS'); f.monitor.finish('SUCCESS');
+    await flush();
+    assert.equal(f.calls.length, 1);
+    assert.match(f.elements.get('llmCommLogContent').textContent, /COMPLETED/);
+    assert.equal(f.snapshots.length, 0);
+    assert.equal(f.timers.size, 0);
+});
+
+test('an already observed terminal snapshot needs no redundant final request', async () => {
+    const f = fixture(async () => response(finalSnapshot()), 'workspace-a', true);
+    await f.step(0); f.monitor.finish('SUCCESS'); await flush();
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.timers.size, 0);
+});
+
+for (const change of ['workspace', 'generation', 'invalidation']) {
+test(`final diagnostic response cannot touch changed ${change} context`, async () => {
+    let release;
+    const f = fixture(() => new Promise(resolve => { release = resolve; }), 'workspace-a', true);
+    f.monitor.finish('SUCCESS');
+    assert.equal(f.calls.length, 1);
+    if (change === 'workspace') f.scope.workspaceId = 'workspace-b';
+    if (change === 'generation') f.scope.analysisGeneration++;
+    if (change === 'invalidation') f.scope.invalidating = true;
+    release(response(finalSnapshot())); await flush();
+    assert.doesNotMatch(f.elements.get('llmCommLogContent').textContent, /COMPLETED/);
+    assert.equal(f.timers.size, 0);
+});
+
+}
+
+test('a stalled final diagnostic read is bounded without changing the successful analysis outcome', async () => {
+    const f = fixture((url, options) => new Promise((resolve, reject) => {
+        options.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')), { once: true });
+    }), 'workspace-a', true);
+    f.monitor.finish('SUCCESS');
+    await f.step(5000); await flush();
+    assert.equal(f.calls.length, 1);
+    assert.equal(f.calls[0].options.signal.aborted, true);
+    assert.match(f.elements.get('analysisLiveProgress').textContent, /Complete result received/);
+    assert.match(f.elements.get('llmCommLogContent').textContent, /Final diagnostic status unavailable/);
+    assert.equal(f.timers.size, 0);
+});
+
+test('rejected HTTP admission finalizes without looking up an unaccepted operation', async () => {
+    const f = fixture(async () => response({}, 404), 'workspace-a', true);
+    f.monitor.finish('ERROR', false); await flush();
+    assert.equal(f.calls.length, 0);
     assert.equal(f.timers.size, 0);
 });

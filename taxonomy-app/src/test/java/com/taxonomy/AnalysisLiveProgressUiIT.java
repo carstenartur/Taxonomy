@@ -123,6 +123,27 @@ class AnalysisLiveProgressUiIT {
         assertThat(CANCEL_REQUESTS.get()).isZero();
     }
 
+    @Test void finalHttpResponseRefreshesTheLastPendingLogWithoutReplacingFinalScores() {
+        driver.findElement(By.cssSelector("#llmCommLogContent summary")).click();
+        wait.until(browser -> Boolean.TRUE.equals(driver.executeScript(
+                "return document.querySelector('#llmCommLogContent details').open")));
+        assertThat(DETAIL_REQUESTS.get()).isZero();
+        // Freeze periodic observation: only the authoritative HTTP completion may fetch next.
+        driver.executeScript("window.monitor.stop()");
+        String previousScores = driver.findElement(By.id("partialScores")).getText();
+        STATUS.set("COMPLETED"); SEQUENCE.set(2);
+        driver.executeScript("window.monitor.finish('SUCCESS')");
+        assertThat(driver.findElement(By.cssSelector("#analysisLiveProgress button")).isEnabled()).isFalse();
+        wait.until(browser -> browser.findElement(By.id("llmCommLogContent")).getText()
+                .contains("diagnostic-response"));
+        assertThat(driver.findElement(By.id("llmCommLogContent")).getText()).contains("COMPLETED");
+        assertThat(driver.findElement(By.id("partialScores")).getText()).isEqualTo(previousScores);
+        assertThat(driver.findElement(By.id("analysisLiveProgress")).getText())
+                .contains("Vollständiges Ergebnis empfangen.");
+        assertThat(DETAIL_REQUESTS.get()).isEqualTo(1);
+        assertThat(CANCEL_REQUESTS.get()).isZero();
+    }
+
     @Test void explicitCancellationIsPinnedAndNeverStartsAnotherAnalysis() {
         driver.findElement(By.cssSelector("#analysisLiveProgress button")).click();
         wait.until(browser -> CANCEL_REQUESTS.get() == 1);

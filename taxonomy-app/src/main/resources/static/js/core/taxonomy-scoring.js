@@ -565,7 +565,7 @@
                 if (progress) {
                     // A rejected HTTP request is not an active job. A lost connection may be.
                     if (!err.httpStatus) progress.transportFailed();
-                    else progress.finish('ERROR');
+                    else progress.finish('ERROR', false);
                 }
                 setAnalyzing(false);
                 S.lastAnalysisStatus = 'ERROR';
@@ -760,7 +760,8 @@
                     if (data.scoreSemanticsUnavailable) {
                         // A failed server-side projection supplies raw evidence only. Rebuild
                         // comparable relevance from the already loaded catalogue, not raw suitability.
-                        applyLocalRawScores(data.rawScores || S.currentRawScores, true, true);
+                        applyLocalRawScores(Object.assign(Object.create(null),
+                            S.currentRawScores || {}, data.rawScores || {}), true, true);
                     } else applyScoreEnvelope({
                         scores: data.partialScores,
                         rawScores: data.rawScores,

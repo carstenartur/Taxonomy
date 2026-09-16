@@ -225,6 +225,49 @@ class AnalysisCompletionContractTest {
         assertThat(com.taxonomy.analysis.service.AnalysisRunControl.active()).isFalse();
     }
 
+    @ParameterizedTest @ValueSource(ints = {1, 2})
+    void nonTerminalMapperFailureClosesThroughTheRealStreamingUseCase(int failAt) throws Exception {
+        var provider = mock(com.taxonomy.analysis.service.LlmProviderConfig.class);
+        when(provider.isMockMode()).thenReturn(true);
+        when(provider.getActiveProviderName()).thenReturn("Mock");
+        var llm = new com.taxonomy.analysis.service.LlmService(provider,
+                mock(com.taxonomy.analysis.service.LlmGatewayRegistry.class), new ObjectMapper(), taxonomy,
+                mock(com.taxonomy.shared.service.PromptTemplateService.class),
+                mock(com.taxonomy.shared.service.LocalEmbeddingService.class),
+                mock(com.taxonomy.analysis.service.SavedAnalysisService.class));
+        var first = new com.taxonomy.catalog.model.TaxonomyNode();
+        first.setCode("CP"); first.setNameEn("Capabilities"); first.setTaxonomyRoot("CP");
+        var second = new com.taxonomy.catalog.model.TaxonomyNode();
+        second.setCode("BP"); second.setNameEn("Processes"); second.setTaxonomyRoot("BP");
+        when(taxonomy.getRootNodes()).thenReturn(List.of(first, second));
+        when(taxonomy.getChildrenOf(any())).thenReturn(List.of());
+        var lookups = new java.util.concurrent.atomic.AtomicInteger();
+        when(taxonomy.getFingerprintTree()).thenAnswer(invocation -> {
+            if (lookups.incrementAndGet() >= failAt) throw new IllegalStateException("catalogue failed");
+            return List.of();
+        });
+        var realStream = new StreamRequirementAnalysisUseCase(llm,
+                mock(com.taxonomy.analysis.service.AiPromptBudgetPolicy.class));
+        var realMapper = new AnalysisSseEventMapper(taxonomy, System::nanoTime, 0);
+        var controller = new AnalysisApiController(taxonomy, executor, new ObjectMapper(), analyze, realStream,
+                mock(AnalyzeNodeChildrenUseCase.class), mock(JustifyLeafUseCase.class), realMapper,
+                mock(RepositoryStateService.class), resolver, mock(MessageSource.class));
+        ReflectionTestUtils.setField(controller, "analysisProgressRegistry", registry);
+        mvc = MockMvcBuilders.standaloneSetup(controller).build();
+        String body = executeStream();
+        assertThat(body.split("event:error", -1)).hasSize(2);
+        assertThat(body).contains("\"status\":\"ERROR\"", "scoreSemanticsUnavailable", "\"CP\":")
+                .doesNotContain("event:complete");
+        String finalData = body.lines().filter(line -> line.startsWith("data:")).reduce((a, b) -> b).orElseThrow();
+        var payload = new ObjectMapper().readTree(finalData.substring(5));
+        assertThat(payload.get("rawScores").has("CP")).isTrue();
+        assertThat(payload.get("reasons").get("CP").asText()).isNotBlank();
+        if (failAt == 2) assertThat(payload.get("rawScores").has("BP")).isTrue();
+        assertThat(lookups.get()).isEqualTo(failAt + 1);
+        assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("ERROR");
+        assertThat(com.taxonomy.analysis.service.AnalysisRunControl.active()).isFalse();
+    }
+
     private String executeStream() throws Exception {
         MvcResult pending = mvc.perform(get("/api/analyze-stream").param("businessText", "resilient communications")
                         .header(AnalysisApiController.ANALYSIS_OPERATION_ID_HEADER, id))

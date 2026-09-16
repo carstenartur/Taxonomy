@@ -7,18 +7,20 @@
         var initial = options.context();
         var stopped = false, timer = null, request = null, sequence = 0, cancelling = false;
         var seen = false, cancelPending = false, cancelInFlight = false, cancelAcknowledged = false, cancelUncertain = false;
-        var cleanupStarted = false;
+        var cleanupStarted = false, observedTerminal = false, finalRead = null, finalRequest = null;
         var id = options.id;
-        function current() {
+        function sameContext() {
             var now = options.context();
-            return !stopped && now.workspaceId === initial.workspaceId
+            return now.workspaceId === initial.workspaceId
                 && now.generation === initial.generation && !now.invalidating;
         }
+        function current() { return !stopped && sameContext(); }
         function stop() {
             stopped = true;
             if (timer !== null) options.clearTimeout(timer);
             timer = null;
             if (request) request.abort();
+            if (finalRequest) finalRequest.abort();
             request = null;
         }
         async function cancel() {
@@ -130,8 +132,9 @@
                 var changed = data.sequence > sequence;
                 sequence = data.sequence;
                 seen = true;
+                observedTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) >= 0;
                 options.onSnapshot(data, changed);
-                if (['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) >= 0) {
+                if (observedTerminal) {
                     cancelPending = false;
                     stop();
                 } else if (cancelPending && data.status === 'RUNNING') {
@@ -154,6 +157,37 @@
                 if (current()) timer = options.setTimeout(poll, 1000);
             }
         }
+        // The authoritative HTTP result stops score polling immediately. Retrieve the
+        // final diagnostic metadata once, without feeding bounded preview scores back
+        // into the already complete analysis envelope or restarting observation/work.
+        function finalSnapshot() {
+            if (finalRead) return finalRead;
+            stop();
+            if (observedTerminal || !sameContext()) return Promise.resolve(null);
+            var controller = new AbortController();
+            finalRequest = controller;
+            var deadline = options.setTimeout(function () { controller.abort(); }, 5000);
+            finalRead = (async function () {
+                try {
+                    var response = await options.api.getRunStatus(id, {
+                        workspaceId: initial.workspaceId, signal: controller.signal
+                    });
+                    var data = await response.json();
+                    if (!sameContext()) return null;
+                    if (data.operationId !== id || !Number.isSafeInteger(data.sequence)
+                            || data.sequence < sequence
+                            || ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(data.status) < 0) {
+                        throw new Error('FINAL_STATUS_UNAVAILABLE');
+                    }
+                    observedTerminal = true;
+                    return data;
+                } finally {
+                    options.clearTimeout(deadline);
+                    if (finalRequest === controller) finalRequest = null;
+                }
+            }());
+            return finalRead;
+        }
         async function detail(callId) {
             if (!current() && !stopped) throw new Error('STALE_ANALYSIS');
             var now = options.context();
@@ -169,7 +203,7 @@
             return data;
         }
         timer = options.setTimeout(poll, 0);
-        return { stop: stop, cancel: cancel, cancelAndStop: cancelAndStop, detail: detail, isCurrent: current };
+        return { stop: stop, cancel: cancel, cancelAndStop: cancelAndStop, detail: detail, isCurrent: current, finalSnapshot: finalSnapshot, isInScope: sameContext };
     }
 
     function context() {
@@ -240,6 +274,10 @@
         };
         return {
             button: button,
+            finalDiagnosticsUnavailable: function () {
+                omitted.textContent += text(' Abschlussprotokoll nicht verfügbar; angezeigt bleibt der zuletzt beobachtete Stand.',
+                    ' Final diagnostic status unavailable; showing the last observed state.');
+            },
             finished: function (status) {
                 title.textContent = text('Analyse beendet', 'Analysis finished');
                 state.textContent = status === 'SUCCESS'
@@ -329,9 +367,20 @@
             monitor.cancelAndStop();
             view.unavailable('CONNECTION_LOST', true);
         };
-        monitor.finish = function (status) {
+        var finished = false;
+        monitor.finish = function (status, refreshDiagnostics) {
+            if (finished || active !== monitor) return;
+            finished = true;
             monitor.stop();
             view.finished(status);
+            if (refreshDiagnostics === false) return;
+            monitor.finalSnapshot().then(function (snapshot) {
+                if (!snapshot || active !== monitor || !monitor.isInScope()) return;
+                view.render(snapshot, monitor);
+                view.finished(status);
+            }).catch(function () {
+                if (active === monitor && monitor.isInScope()) view.finalDiagnosticsUnavailable();
+            });
         };
         view.button.addEventListener('click', monitor.cancel);
         active = monitor;

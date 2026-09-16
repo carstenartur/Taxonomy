@@ -286,3 +286,22 @@ test('malformed application error payload still terminates as a transport error'
   assert.equal(h.state.lastAnalysisStatus, 'ERROR');
   assert.equal(h.statuses.at(-1)[0], 'danger');
 });
+
+
+for (const rawScores of [{}, null, { [family]: 50 }]) {
+  test(`raw-only fallback retains collected evidence for ${JSON.stringify(rawScores)}`, () => {
+    const h = harness();
+    h.state.taxonomyData = [{ code: family, analysisRole: 'PRODUCT_FAMILY', children: [
+      { code: product, analysisRole: 'PRODUCT', parentCode: family, children: [] }
+    ] }];
+    h.score({ [family]: 40, [product]: 80 }, { [product]: hint });
+    h.state.currentReasons[product] = 'Retained product reason';
+    h.send('error', { status: 'ERROR', rawScores, scoreSemanticsUnavailable: true,
+      errorMessage: 'Projection unavailable' });
+    assert.equal(h.state.currentRawScores[product], 80);
+    assert.equal(h.state.currentProductSuitabilityScores[product], 80);
+    assert.equal(h.state.currentScores[product], rawScores?.[family] === 50 ? 40 : 32);
+    assert.equal(h.state.currentReasons[product], 'Retained product reason');
+    assert.equal(h.state.lastAnalysisStatus, 'ERROR');
+  });
+}
