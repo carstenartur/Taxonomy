@@ -23,7 +23,18 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
 
     Optional<UserWorkspace> findByWorkspaceId(String workspaceId);
 
-    Optional<UserWorkspace> findByUsernameAndSharedFalse(String username);
+    /**
+     * Compatibility entry point for implicit private-workspace selection.
+     * Multiple workspaces are valid: prefer a non-archived default, then the
+     * most recently accessed active private workspace, with an ID tie-breaker.
+     * Explicit request pins and process-local active selection remain caller-owned.
+     */
+    default Optional<UserWorkspace> findByUsernameAndSharedFalse(String username) {
+        return findFirstByUsernameAndSharedFalseAndArchivedFalseOrderByIsDefaultDescLastAccessedAtDescWorkspaceIdAsc(username);
+    }
+
+    Optional<UserWorkspace> findFirstByUsernameAndSharedFalseAndArchivedFalseOrderByIsDefaultDescLastAccessedAtDescWorkspaceIdAsc(
+            String username);
 
     Optional<UserWorkspace> findBySharedTrue();
 

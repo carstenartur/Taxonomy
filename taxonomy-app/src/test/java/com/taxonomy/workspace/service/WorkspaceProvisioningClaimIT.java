@@ -59,7 +59,7 @@ class WorkspaceProvisioningClaimIT {
             String base = source.commitDsl(central.getDefaultBranch(), "meta { language: \"taxdsl\"; }", "system", "Initial source");
             when(factory.getSystemRepository()).thenReturn(source);
             var destination = mock(DslGitRepository.class);
-            when(destination.commitDsl(anyString(), anyString(), anyString(), anyString())).thenReturn(base);
+            when(destination.commitDslIfHeadMatches(anyString(), isNull(), anyString(), anyString(), anyString())).thenReturn(base);
             when(destination.getHeadCommit("main")).thenReturn(null);
             when(factory.openWorkspaceRepository(id)).thenReturn(destination);
             var system = mock(SystemRepositoryService.class);
@@ -81,7 +81,8 @@ class WorkspaceProvisioningClaimIT {
                 assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS),
                         "Provisioning test workers did not terminate");
             }
-            verify(destination, times(1)).commitDsl(anyString(), anyString(), anyString(), anyString());
+            verify(destination, times(1)).commitDslIfHeadMatches(anyString(), isNull(), anyString(), anyString(), anyString());
+            verify(destination, never()).commitDsl(anyString(), anyString(), anyString(), anyString());
             var retained = repository.findByWorkspaceId(id).orElseThrow();
             assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
             assertEquals(base, retained.getCurrentCommit());
