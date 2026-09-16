@@ -1,0 +1,50 @@
+name: Capture architecture stack (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-current-inventory.yml]
+permissions:
+  contents: read
+  actions: read
+  pull-requests: read
+jobs:
+  inventory:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Export exact PR state, review evidence and native Git history
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          out=/tmp/taxonomy-stack
+          mkdir -p "$out"
+          gh api repos/carstenartur/Taxonomy/pulls --paginate > "$out/open-prs.json"
+          gh api repos/carstenartur/Taxonomy/issues/628 > "$out/issue-628.json"
+          git branch --force captured-main HEAD
+          for n in 1054 1061 1062 1063 1064; do
+            gh api "repos/carstenartur/Taxonomy/pulls/$n" > "$out/pr-$n.json"
+            gh api --paginate "repos/carstenartur/Taxonomy/pulls/$n/reviews?per_page=100" > "$out/reviews-$n.json"
+            gh api --paginate "repos/carstenartur/Taxonomy/pulls/$n/comments?per_page=100" > "$out/comments-$n.json"
+            gh api --paginate "repos/carstenartur/Taxonomy/issues/$n/comments?per_page=100" > "$out/discussion-$n.json"
+            sha=$(jq -r .head.sha "$out/pr-$n.json")
+            gh api "repos/carstenartur/Taxonomy/commits/$sha/check-runs?per_page=100" > "$out/checks-$n.json"
+            git fetch --no-tags origin "refs/pull/$n/head:refs/heads/captured-pr-$n"
+            test "$(git rev-parse captured-pr-$n)" = "$sha"
+          done
+          git bundle create "$out/history.bundle" captured-main captured-pr-1054 captured-pr-1061 captured-pr-1062 captured-pr-1063 captured-pr-1064
+          git bundle verify "$out/history.bundle"
+          cd "$out"
+          sha256sum *.json history.bundle > SHA256SUMS
+          ls -lh history.bundle
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: taxonomy-architecture-stack
+          path: /tmp/taxonomy-stack
+          retention-days: 3
+          if-no-files-found: error
