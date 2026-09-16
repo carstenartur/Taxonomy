@@ -240,3 +240,41 @@ TAXONOMY_AI_AUTOPILOT_PROVIDER=CUSTOM_OPENAI
 ```
 
 For Docker Compose, copy `.env.example` to `.env`; the production Compose service forwards that file into the application container. For Helm, put non-secret values under `config`, credentials in the referenced Secret, and use `extraEnv` only for settings not promoted into the chart's default values.
+
+## Disk-backed local analysis (`hsqldb-file`)
+
+Select `SPRING_PROFILES_ACTIVE=hsqldb-file` instead of `hsqldb`. Both HSQLDB and
+Lucene then use files; application DDL defaults to `update`, while the JGit library
+keeps ownership of its released migrations. Do not combine two database profiles.
+
+| Environment variable | Default | Purpose |
+|---|---|---|
+| `TAXONOMY_HSQLDB_FILE_PATH` | `./data/taxonomydb` | Writable database file prefix; use a persistent volume in containers. |
+| `TAXONOMY_HSQLDB_CACHE_SIZE_KB` | `4096` | Cached-table serialized-data cache budget in KiB; not a total JVM memory limit. |
+| `TAXONOMY_HSQLDB_CACHE_ROWS` | `10000` | Maximum cached table rows. |
+
+`TAXONOMY_DATASOURCE_URL` can still override the full URL. The defaults select
+`CACHED` tables and disable delayed log synchronization. Existing `MEMORY` tables
+are not converted automatically. Export needed in-memory data **before shutdown**;
+switching profiles does not migrate it. Back up persistent data before schema or
+table-type migration. Never use `TAXONOMY_DDL_AUTO=create` against retained data.
+
+`TAXONOMY_SEARCH_DIRECTORY_TYPE` defaults to `local-filesystem` in this profile;
+`TAXONOMY_SEARCH_DIRECTORY_ROOT` defaults to `./data/lucene-index`. Filesystem
+backing reduces heap residency but is not a guarantee against out-of-memory errors.
+
+## Live analysis runtime / Laufzeit der Live-Analyse
+
+| Environment variable | Spring property | Default |
+|---|---|---|
+| `TAXONOMY_ANALYSIS_RUNTIME_WARNING_PERCENT` | `taxonomy.analysis.runtime.warning-percent` | `80` |
+| `TAXONOMY_ANALYSIS_RUNTIME_STOP_PERCENT` | `taxonomy.analysis.runtime.stop-percent` | `92` |
+| `TAXONOMY_ANALYSIS_RUNTIME_MINIMUM_HEADROOM_MB` | `taxonomy.analysis.runtime.minimum-headroom-mb` | `16` |
+| `TAXONOMY_ANALYSIS_RUNTIME_PRESSURE_SECONDS` | `taxonomy.analysis.runtime.pressure-seconds` | `5` |
+| `TAXONOMY_ANALYSIS_RUNTIME_MAXIMUM_DURATION_SECONDS` | `taxonomy.analysis.runtime.maximum-duration-seconds` | `1800` |
+
+Warning < stop <= 98 percent; at least 1 MiB reserve; nonnegative pressure grace; positive deadline. Limits are checked cooperatively before calls and during rate-limit/retry waits. In-flight HTTP calls retain their configured timeout. Neither native memory nor one large allocation can be guaranteed safe by a heap sample. Completed scores are retained when the next step is stopped. Live telemetry is process-local, owner/workspace/repository/branch-scoped, limited to 4 active and 16 retained runs (10-minute terminal retention), 32 call previews and 8192 score entries. Preview text is limited to 8192 characters per prompt/response and loaded separately; omitted entries are counted. Durable portfolio jobs and semantic history remain separate and unchanged.
+
+### Streaming transport lifetime
+
+The legacy SSE connection has no independent servlet timeout. The configured analysis deadline starts when the operation is reserved and includes executor-queue time; the worker emits the terminal result and closes the connection. Client disconnects still cancel the worker, and provider HTTP timeouts remain unchanged. This avoids a fixed transport timeout discarding an otherwise valid long analysis or its partial result. Intermediary/proxy timeouts can still disconnect the transport; observe the retained operation status rather than restarting it.

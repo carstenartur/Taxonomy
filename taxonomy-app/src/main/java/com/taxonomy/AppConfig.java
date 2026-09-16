@@ -9,7 +9,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import com.taxonomy.analysis.service.LlmService;
 
 @Configuration
@@ -41,7 +43,8 @@ public class AppConfig {
         // Scale to available CPUs; cap at 4 to avoid over-threading on constrained hosts
         // (e.g. Render Free Tier has 1 CPU — uses 2 threads, which is still useful for I/O waits)
         int poolSize = Math.min(Runtime.getRuntime().availableProcessors() + 1, 4);
-        return Executors.newFixedThreadPool(poolSize);
+        return new ThreadPoolExecutor(poolSize, poolSize, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(16), new ThreadPoolExecutor.AbortPolicy());
     }
 
     @Bean

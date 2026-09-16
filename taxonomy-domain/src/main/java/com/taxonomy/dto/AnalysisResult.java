@@ -27,6 +27,9 @@ public class AnalysisResult {
     /** Taxonomy-tree instance used to derive the currently cached score semantics. */
     private transient List<TaxonomyNodeDto> scoreSemanticsTree;
 
+    /** Scalar metadata for a tree-less partial result; retained across serialization and recalculation. */
+    private Map<String, AnalysisScoreSemantics.NodeContext> scoreSemanticsContext = Map.of();
+
     /** Version of the explicit score-semantics envelope. */
     private int scoreSemanticsVersion;
 
@@ -180,10 +183,21 @@ public class AnalysisResult {
                 ? new ArrayList<>(scoreSemanticsWarnings) : new ArrayList<>();
     }
 
-    /** Rebuilds all derived score views from the original scores and frozen taxonomy tree. */
+    public Map<String, AnalysisScoreSemantics.NodeContext> getScoreSemanticsContext() {
+        return scoreSemanticsContext;
+    }
+
+    public void setScoreSemanticsContext(Map<String, AnalysisScoreSemantics.NodeContext> context) {
+        scoreSemanticsContext = context == null ? Map.of() : Map.copyOf(context);
+        scoreSemanticsVersion = 0;
+    }
+
+    /** Rebuilds derived score views from the response tree or its compact partial-result context. */
     public final void refreshScoreSemantics() {
         rawScores = normalizeRawScores(rawScores);
-        AnalysisScoreSemantics.Derived derived = AnalysisScoreSemantics.derive(rawScores, tree);
+        AnalysisScoreSemantics.Derived derived = (tree == null || tree.isEmpty()) && !scoreSemanticsContext.isEmpty()
+                ? AnalysisScoreSemantics.deriveWithContexts(rawScores, scoreSemanticsContext)
+                : AnalysisScoreSemantics.derive(rawScores, tree);
         scoreSemanticsVersion = AnalysisScoreSemantics.CURRENT_VERSION;
         scoreDetails = new LinkedHashMap<>(derived.scoreDetails());
         effectiveScores = new LinkedHashMap<>(derived.effectiveScores());

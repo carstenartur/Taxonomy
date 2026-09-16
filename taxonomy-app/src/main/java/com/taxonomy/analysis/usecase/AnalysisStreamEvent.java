@@ -38,6 +38,12 @@ public sealed interface AnalysisStreamEvent
                  Map<String, Integer> partialScores,
                  List<String> warnings,
                  List<TaxonomyDiscrepancy> discrepancies,
-                 List<ProductCoverageGap> productCoverageGaps) implements AnalysisStreamEvent {
+                 List<ProductCoverageGap> productCoverageGaps,
+                 Map<String, String> partialReasons) implements AnalysisStreamEvent {
+        public Error(String status, String errorMessage, Map<String, Integer> partialScores,
+                     List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
+                     List<ProductCoverageGap> productCoverageGaps) {
+            this(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps, Map.of());
+        }
     }
 }

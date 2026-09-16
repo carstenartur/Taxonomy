@@ -20,7 +20,7 @@
       "fromPackage": "com.taxonomy.analysis.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",
@@ -63,6 +63,13 @@
       "toContext": "preferences",
       "toPackage": "com.taxonomy.preferences",
       "classDependencyCount": 3
+    },
+    {
+      "fromContext": "analysis",
+      "fromPackage": "com.taxonomy.analysis.service",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "analysis",
