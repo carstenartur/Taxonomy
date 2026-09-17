@@ -26,6 +26,7 @@ test('only request-correlated successful draft reconciliation removes a 409 from
 
 test('reconciled failures remain explicit report evidence', () => {
   assert.match(source, /draftReconciliations, reconciledHttpFailures, consoleErrors/);
+  assert.match(source, /reconciledConsoleErrors/);
   assert.match(source, /httpFailures,/);
 });
 
@@ -44,7 +45,7 @@ test('webkit locale-navigation cancellation is reconciled narrowly and remains r
   assert.match(source, /browserName !== 'webkit'/);
   assert.match(source, /\\\/api\\\/ai-status due to access control checks/);
   assert.match(source, /webkit-locale-navigation-ai-status-cancelled/);
-  assert.match(source, /reconciledConsoleErrors, consoleErrors/);
   assert.match(systemInformationSource, /browse\.ai\.badge\.unknown/);
   assert.match(systemInformationSource, /AI status bootstrap must settle after locale navigation/);
+  assert.match(systemInformationSource, /aiStatusSettled: true/);
 });
