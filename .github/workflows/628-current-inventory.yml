@@ -17,7 +17,7 @@ jobs:
           ref: main
           fetch-depth: 0
           persist-credentials: false
-      - name: Export exact PR state, review evidence and native Git history
+      - name: Export current heads and complete review metadata without modifying product refs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -26,7 +26,7 @@ jobs:
           mkdir -p "$out"
           gh api repos/carstenartur/Taxonomy/pulls --paginate > "$out/open-prs.json"
           gh api repos/carstenartur/Taxonomy/issues/628 > "$out/issue-628.json"
-          git branch --force captured-main HEAD
+          git branch captured-main HEAD
           for n in 1054 1061 1062 1063 1064; do
             gh api "repos/carstenartur/Taxonomy/pulls/$n" > "$out/pr-$n.json"
             gh api --paginate "repos/carstenartur/Taxonomy/pulls/$n/reviews?per_page=100" > "$out/reviews-$n.json"
@@ -37,14 +37,16 @@ jobs:
             git fetch --no-tags origin "refs/pull/$n/head:refs/heads/captured-pr-$n"
             test "$(git rev-parse captured-pr-$n)" = "$sha"
           done
-          git bundle create "$out/history.bundle" captured-main captured-pr-1054 captured-pr-1061 captured-pr-1062 captured-pr-1063 captured-pr-1064
+          git bundle create "$out/history.bundle" captured-main captured-pr-1054 captured-pr-1061 captured-pr-1062 captured-pr-1063 captured-pr-1064 \
+            ^118a03441d0d72b280acdbf7ad9c37ab55eae964 ^0002ce29ed840e9e10df4125e8d4de9cdaeb6a31 \
+            ^f8bb39fc7f76672d7cd5754d1e5476180458ed05 ^54fadbb1bbe757be10fdc211c945273ee9048370 \
+            ^30301d834a8c849d9a2906cd99fb9fab0bba0d75 ^a690921d849fc8da58b509b105d4c31ec20647bd
           git bundle verify "$out/history.bundle"
           cd "$out"
           sha256sum *.json history.bundle > SHA256SUMS
-          ls -lh history.bundle
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: taxonomy-architecture-stack
+          name: taxonomy-architecture-stack-incremental
           path: /tmp/taxonomy-stack
           retention-days: 3
           if-no-files-found: error
