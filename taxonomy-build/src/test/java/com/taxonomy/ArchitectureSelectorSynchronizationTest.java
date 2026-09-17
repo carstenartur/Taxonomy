@@ -63,42 +63,12 @@ class ArchitectureSelectorSynchronizationTest {
 
     @Test
     void bothRepositorySelectorsContainEveryGuardExactlyOnceInOrder() throws Exception {
-        assertSelectors(repositoryRoot());
-    }
-
-    @Test
-    void moduleGateOwnerDependenciesUseTheCurrentReactorVersion() throws Exception {
-        Path root = repositoryRoot();
-        assertBuildOwnerReactorVersions(root.resolve("pom.xml"), root.resolve("taxonomy-build/pom.xml"));
-    }
-
-    @Test
-    void staleBuildOwnerReactorVersionIsRejected() throws Exception {
-        Path rootPom = fixture.resolve("pom.xml");
-        Files.writeString(rootPom, """
-                <project xmlns="http://maven.apache.org/POM/4.0.0">
-                  <modelVersion>4.0.0</modelVersion><groupId>com.taxonomy</groupId>
-                  <artifactId>taxonomy</artifactId><version>1.4.0-SNAPSHOT</version>
-                </project>
-                """);
-        Path buildPom = fixture.resolve("taxonomy-build/pom.xml");
-        Files.createDirectories(buildPom.getParent());
-        Files.writeString(buildPom, """
-                <project xmlns="http://maven.apache.org/POM/4.0.0">
-                  <modelVersion>4.0.0</modelVersion><dependencies>
-                    <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>
-                      <version>1.3.9</version></dependency>
-                    <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-coverage</artifactId>
-                      <version>${project.version}</version><type>pom</type></dependency>
-                    <dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-tooling</artifactId>
-                      <version>${project.version}</version><scope>test</scope></dependency>
-                  </dependencies>
-                </project>
-                """);
-
-        assertThatThrownBy(() -> assertBuildOwnerReactorVersions(rootPom, buildPom))
-                .isInstanceOf(AssertionError.class).hasMessageContaining("taxonomy-app")
-                .hasMessageContaining("current reactor version");
+        Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
+        while (root != null && !Files.isRegularFile(root.resolve(".mvn/verification-suites.json"))) {
+            root = root.getParent();
+        }
+        assertThat(root).as("repository containing the verification catalogue").isNotNull();
+        assertSelectors(root);
     }
 
     @Test
@@ -301,17 +271,6 @@ class ArchitectureSelectorSynchronizationTest {
         return EXPECTED.stream();
     }
 
-    private static Path repositoryRoot() {
-        Path root = Path.of(System.getProperty("user.dir")).toAbsolutePath();
-        while (root != null && !Files.isRegularFile(root.resolve(".mvn/verification-suites.json"))) {
-            root = root.getParent();
-        }
-        if (root == null) {
-            throw new IllegalStateException("Cannot locate repository containing the verification catalogue");
-        }
-        return root;
-    }
-
     private static Path sourcePath(Path root, String guard) {
         String module = switch (guard) {
             case "ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest",
@@ -319,36 +278,6 @@ class ArchitectureSelectorSynchronizationTest {
             default -> "taxonomy-app";
         };
         return root.resolve(module + "/src/test/java/com/taxonomy/" + guard + ".java");
-    }
-
-    private static void assertBuildOwnerReactorVersions(Path rootPom, Path ownerPom) throws Exception {
-        String reactorVersion = singleXmlValue(rootPom,
-                "/*[local-name()='project']/*[local-name()='version']", "root reactor version");
-        assertThat(reactorVersion).as("root reactor version").isNotBlank();
-        for (String artifact : List.of("taxonomy-app", "taxonomy-coverage", "taxonomy-tooling")) {
-            String declaredVersion = singleXmlValue(ownerPom,
-                    "/*[local-name()='project']/*[local-name()='dependencies']/*[local-name()='dependency']"
-                            + "[*[local-name()='groupId']='com.taxonomy' and *[local-name()='artifactId']='" + artifact + "']"
-                            + "/*[local-name()='version']",
-                    "direct owner dependency com.taxonomy:" + artifact + " version");
-            String effectiveVersion = "${project.version}".equals(declaredVersion) ? reactorVersion : declaredVersion;
-            assertThat(effectiveVersion)
-                    .as("direct owner dependency com.taxonomy:%s must use the current reactor version", artifact)
-                    .isEqualTo(reactorVersion);
-        }
-    }
-
-    private static String singleXmlValue(Path input, String query, String description) throws Exception {
-        var factory = DocumentBuilderFactory.newInstance();
-        factory.setNamespaceAware(true);
-        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
-        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_DTD, "");
-        factory.setAttribute(XMLConstants.ACCESS_EXTERNAL_SCHEMA, "");
-        var document = factory.newDocumentBuilder().parse(input.toFile());
-        NodeList nodes = (NodeList) XPathFactory.newInstance().newXPath()
-                .evaluate(query, document, XPathConstants.NODESET);
-        assertThat(nodes.getLength()).as("exactly one %s", description).isEqualTo(1);
-        return nodes.item(0).getTextContent().strip();
     }
 
     private void assertRejected(String target, List<String> changed) throws Exception {

@@ -109,6 +109,7 @@ class ArchitectureExceptionLedgerTest {
         var packaging = xmlValues(owner, project + "/*[local-name()='packaging']");
         assertThat(packaging.isEmpty() || packaging.equals(java.util.List.of("jar")))
                 .as("build owner must have the executable jar lifecycle").isTrue();
+        assertBuildOwnerReactorVersions(reactor, owner, project);
         String executions = project + "/*[local-name()='build']/*[local-name()='plugins']/*[local-name()='plugin']"
                 + "[*[local-name()='groupId']='org.apache.maven.plugins']"
                 + "[*[local-name()='artifactId']='maven-surefire-plugin']"
@@ -127,6 +128,29 @@ class ArchitectureExceptionLedgerTest {
                         .containsExactly(requirement.getValue());
             }
         }
+    }
+
+    private static void assertBuildOwnerReactorVersions(org.w3c.dom.Document reactor,
+            org.w3c.dom.Document owner, String project) throws Exception {
+        String reactorVersion = onlyValue(xmlValues(reactor, project + "/*[local-name()='version']"),
+                "root reactor version");
+        String dependencies = project + "/*[local-name()='dependencies']/*[local-name()='dependency']";
+        for (String artifact : java.util.List.of("taxonomy-app", "taxonomy-coverage", "taxonomy-tooling")) {
+            String dependency = dependencies + "[*[local-name()='groupId']='com.taxonomy']"
+                    + "[*[local-name()='artifactId']='" + artifact + "']";
+            String declaredVersion = onlyValue(xmlValues(owner, dependency + "/*[local-name()='version']"),
+                    "direct build-owner dependency com.taxonomy:" + artifact + " version");
+            String effectiveVersion = "${project.version}".equals(declaredVersion)
+                    ? reactorVersion : declaredVersion;
+            assertThat(effectiveVersion)
+                    .as("direct build-owner dependency com.taxonomy:%s must use the current reactor version", artifact)
+                    .isEqualTo(reactorVersion);
+        }
+    }
+
+    private static String onlyValue(java.util.List<String> values, String description) {
+        assertThat(values).as("exactly one %s", description).hasSize(1);
+        return values.getFirst();
     }
 
     private static java.util.List<String> xmlValues(org.w3c.dom.Node root, String expression) throws Exception {
@@ -198,6 +222,17 @@ class ArchitectureExceptionLedgerTest {
         assertModuleChecksSelected(checkout);
     }
 
+    @Test
+    void independentAnchorRejectsStaleBuildOwnerReactorVersion(
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        completeModuleGuardFixture(root);
+        Path owner = root.resolve("taxonomy-build/pom.xml");
+        Files.writeString(owner, Files.readString(owner).replaceFirst(
+                "<version>\\$\\{project.version}</version>", "<version>1.3.9</version>"));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> assertModuleChecksSelected(root))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("current reactor version");
+    }
+
     private static void writeSelectorFixture(Path root, String pom, String catalogue) throws Exception {
         for (String guard : MODULE_GUARDS) {
             Path source = moduleGuardSource(root, guard);
@@ -206,6 +241,8 @@ class ArchitectureExceptionLedgerTest {
         }
         Files.createDirectories(root.resolve(".mvn"));
         Files.writeString(root.resolve("pom.xml"), "<project xmlns='http://maven.apache.org/POM/4.0.0'>"
+                + "<modelVersion>4.0.0</modelVersion><groupId>com.taxonomy</groupId>"
+                + "<artifactId>taxonomy</artifactId><version>1.4.0-SNAPSHOT</version>"
                 + "<modules><module>taxonomy-build</module></modules>"
                 + "<profiles><profile><id>architecture-tests</id><properties><test>" + pom
                 + "</test></properties></profile></profiles></project>");
@@ -293,6 +330,14 @@ class ArchitectureExceptionLedgerTest {
 
     private static String ownerExecutionFixture() {
         var xml = new StringBuilder("<project><artifactId>taxonomy-build</artifactId><packaging>jar</packaging>"
+                + "<dependencies>"
+                + "<dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-app</artifactId>"
+                + "<version>${project.version}</version></dependency>"
+                + "<dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-coverage</artifactId>"
+                + "<version>${project.version}</version><type>pom</type></dependency>"
+                + "<dependency><groupId>com.taxonomy</groupId><artifactId>taxonomy-tooling</artifactId>"
+                + "<version>${project.version}</version><scope>test</scope></dependency>"
+                + "</dependencies>"
                 + "<build><plugins><plugin><groupId>org.apache.maven.plugins</groupId>"
                 + "<artifactId>maven-surefire-plugin</artifactId><executions>");
         for (String guard : MODULE_GUARDS) {
