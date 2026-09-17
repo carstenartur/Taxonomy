@@ -1,14 +1,15 @@
-name: PR 1054 support ownership regressions
+name: PR 1054 corrected support ownership
 on:
   push:
     branches: [verify/1054-support-class-ownership-20260917]
     paths: [.github/workflows/1054-support-ownership.yml]
 permissions:
-  contents: read
+  contents: write
+  actions: read
 jobs:
-  reproduce:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -17,105 +18,139 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Add counterexamples to the existing graph suite only
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: support-ownership-red
+          run-id: 35185423463
+          github-token: ${{ github.token }}
+          path: /tmp/support-red
+      - name: Apply the reproduced tests and minimal ownership correction
         shell: python
         run: |
           from pathlib import Path
-          import subprocess
-          out=Path('/tmp/support-ownership');out.mkdir()
-          path=Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java')
-          text=path.read_text(); anchor='    @Test\n    void exactPhysicalOwnershipRecognizesExistingModulesDespiteOverlappingAppPackages()'
-          assert text.count(anchor)==1
-          tests='''    @org.junit.jupiter.params.ParameterizedTest
-              @org.junit.jupiter.params.provider.CsvSource({
-                      "taxonomy-domain,true", "taxonomy-domain,false",
-                      "taxonomy-dsl,true", "taxonomy-dsl,false",
-                      "taxonomy-export,true", "taxonomy-export,false",
-                      "taxonomy-extension-api,true", "taxonomy-extension-api,false",
-                      "taxonomy-tooling,true", "taxonomy-tooling,false"})
-              void supportModulesCannotShelterExplicitFeatureClasses(String support, boolean extracted) {
-                  String displaced = "com.taxonomy.a.Other";
-                  Set<String> present = extracted ? Set.of(APP, A, support) : Set.of(APP, support);
-                  Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(support), present,
-                          List.of(owner(A_CLASS, extracted ? A : APP), owner(displaced, support)), List.of());
-
-                  assertThat(result.violations()).anySatisfy(message -> assertThat(message)
-                          .contains(displaced, "invalid physical owner " + support, "planned owner is " + A));
-              }
-
-              @org.junit.jupiter.params.ParameterizedTest
-              @org.junit.jupiter.params.provider.ValueSource(strings = {
-                      "taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api", "taxonomy-tooling"})
-              void supportModulesRetainSharedAndUnresolvedPackageOwnership(String support) {
-                  for (String name : List.of("com.taxonomy.shared.Contract", "com.taxonomy.unassigned.Metadata",
-                          "com.taxonomy.dto.Envelope")) {
-                      Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(support), Set.of(APP, A, support),
-                              List.of(owner(A_CLASS, A), owner(name, support)), List.of(edge(A_CLASS, name)));
-                      assertThat(result.violations()).as("retained support ownership for %s", name).isEmpty();
-                      assertThat(result.blockers().get(A)).isEmpty();
-                      assertThat(result.report()).contains(A + " -> " + support);
+          import json,subprocess
+          out=Path('/tmp/support-green');out.mkdir()
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD')=='f62679f9127f25479f1a09f8464a04dfc1be096f'
+          patches=list(Path('/tmp/support-red').rglob('tests.patch'))
+          summaries=list(Path('/tmp/support-red').rglob('summary.json'))
+          assert len(patches)==len(summaries)==1
+          red=json.loads(summaries[0].read_text())
+          assert red['source']==git('rev-parse','HEAD')
+          assert red['suite']['failures']=='11' and red['suite']['errors']=='0'
+          subprocess.run(['git','apply','--index',str(patches[0])],check=True)
+          def replace(path,old,new):
+              file=Path(path);text=file.read_text();assert text.count(old)==1,(path,old)
+              file.write_text(text.replace(old,new))
+          graph='taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java'
+          tests='taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java'
+          docs='docs/dev/MODULE_EXTRACTION_GATE.md'
+          replace(graph,
+              '        if (supportModules.contains(physical)) {\n            return new Ownership(physical, physical, "existing support module");\n        }\n', '')
+          replace(graph,'        String planned;\n        String reason;',
+              '''        // Shared/foundation packages keep their existing physical owner, but an
+                  // explicit feature assignment cannot be hidden in a support module.
+                  boolean featureContext = context != null && context.targetModule() != null
+                          && !context.targetModule().equals(policy.compositionModule());
+                  if (supportModules.contains(physical) && !featureContext) {
+                      return new Ownership(physical, physical, "existing support module");
                   }
-              }
-
-              @org.junit.jupiter.params.ParameterizedTest
-              @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
-              void realBytecodeDistinguishesDisplacedFeatureAndNeutralSupportClasses(boolean displaced) throws Exception {
-                  bytecodeRepository();
-                  pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module>"
-                          + "<module>taxonomy-domain</module></modules>");
-                  pom(DOMAIN, DOMAIN, "");
-                  compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
-                  compile(A, A_CLASS, "public class Service {}", List.of());
-                  String name = displaced ? "com.taxonomy.a.Other" : "com.taxonomy.dto.Other";
-                  compile(DOMAIN, name, "public class Other {}", List.of());
-
-                  Evaluation result = ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository);
-                  if (displaced) {
-                      assertThat(result.violations()).anySatisfy(message -> assertThat(message)
-                              .contains(name, "invalid physical owner " + DOMAIN, "planned owner is " + A));
-                  } else {
-                      assertThat(result.violations()).isEmpty();
-                  }
-              }
-
-          '''
-          # Normalize the enclosing text-block indentation to this suite's style.
-          lines=tests.splitlines()
-          tests='\n'.join(line[10:] if line.startswith('          ') else line for line in lines)+'\n'
-          path.write_text(text.replace(anchor, tests+anchor))
-          subprocess.run(['git','diff','--check'],check=True)
-          (out/'tests.patch').write_bytes(subprocess.check_output(['git','diff','--full-index']))
-          assert subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()==[str(path)]
-      - name: Execute real JUnit regressions against the unchanged evaluator
+                  String planned;
+                  String reason;'''.replace('\n          ', '\n'))
+          replace(graph,
+              '                        && owner.physicalModule().equals(policy.compositionModule())) {',
+              '                        && !owner.physicalModule().equals(owner.module())) {')
+          replace(graph,
+              '                            + ": still physically owned by " + policy.compositionModule());',
+              '                            + ": still physically owned by " + owner.physicalModule());')
+          # Keep each displaced class visible in the per-feature explanation as well.
+          text=Path(tests).read_text()
+          start=text.index('    @org.junit.jupiter.params.ParameterizedTest\n',text.index('void rootCompositionClassAndItsNestedClassesCannotEvadeTheGraph'))
+          end=text.index('    @Test\n    void exactPhysicalOwnershipRecognizesExistingModulesDespiteOverlappingAppPackages()',start)
+          added=text[start:end]
+          old='        .contains(displaced, "invalid physical owner " + support, "planned owner is " + A));'
+          assert added.count(old)==1
+          added=added.replace(old,old+'\n        if (extracted) assertThat(result.blockers().get(A)).anySatisfy(message -> assertThat(message)\n                .contains(displaced, "still physically owned by " + support));')
+          Path(tests).write_text(text[:start]+added+text[end:])
+          replace(docs,
+              'Their real dependencies remain in the graph. In particular,',
+              'An explicit feature-context mapping is checked even for classes physically\n'
+              'stored in a support library; such classes cannot evade their planned owner\n'
+              'before or after extraction. Shared, unmapped and unresolved-target support\n'
+              'packages retain their existing physical ownership. Displaced feature classes\n'
+              'also appear in the affected feature assessment, including disconnected classes.\n'
+              'Their real dependencies remain in the graph. In particular,')
+          subprocess.run(['git','add','--',graph,tests,docs],check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          paths=git('diff','--cached','--name-only').splitlines()
+          assert set(paths)=={graph,tests,docs},paths
+          doc={'base':git('rev-parse','HEAD'),'tree':git('write-tree'),
+               'files':{p:git('hash-object',p) for p in paths},'redRun':35185423463}
+          (out/'manifest.json').write_text(json.dumps(doc,indent=2)+'\n')
+          (out/'candidate.patch').write_bytes(subprocess.check_output(['git','diff','--cached','--full-index','--binary']))
+          subprocess.run(['git','-c','user.name=Architecture verification','-c','user.email=verification@invalid.example','commit','-m','Verify support ownership candidate locally on runner'],check=True)
+          assert git('status','--porcelain')==''
+          print(json.dumps(doc,indent=2))
+      - name: Execute the complete architecture profile on this exact tree
         run: |
-          set +e
-          ./mvnw -B -ntp -pl taxonomy-build -am test -Dtest=ArchitectureModuleGraphTest -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/support-ownership/red.log 2>&1
-          result=$?
-          tail -n 65 /tmp/support-ownership/red.log
-          echo "$result" > /tmp/support-ownership/exit.txt
-          test "$result" -eq 1
-      - name: Require precisely the expected failures and passing controls
+          set -o pipefail
+          ./mvnw -B -ntp test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true 2>&1 | tee /tmp/support-green/architecture.log
+      - name: Require actual successful guard execution and all counterexamples
         shell: python
         run: |
           from pathlib import Path
           import json,xml.etree.ElementTree as ET
-          path=Path('taxonomy-build/target/surefire-reports/TEST-com.taxonomy.ArchitectureModuleGraphTest.xml')
-          root=ET.parse(path).getroot()
-          failed=[case.get('name') for case in root.findall('testcase') if case.find('failure') is not None]
-          assert int(root.get('errors','0'))==0,root.attrib
-          assert int(root.get('skipped','0'))==0,root.attrib
-          assert len(failed)==11,(root.attrib,failed)
-          assert all(name.startswith(('supportModulesCannotShelterExplicitFeatureClasses(',
-              'realBytecodeDistinguishesDisplacedFeatureAndNeutralSupportClasses(')) for name in failed),failed
-          result={'source':'f62679f9127f25479f1a09f8464a04dfc1be096f','suite':root.attrib,'failingCases':failed}
-          Path('/tmp/support-ownership/summary.json').write_text(json.dumps(result,indent=2)+'\n')
-          print(json.dumps(result,indent=2))
+          out=Path('/tmp/support-green');report={}
+          for name in ('ArchitectureModuleGraphTest','ArchitectureModuleExtractionTest','ArchitectureSelectorSynchronizationTest'):
+              path=Path('taxonomy-build/target/surefire-reports')/('TEST-com.taxonomy.'+name+'.xml')
+              root=ET.parse(path).getroot()
+              assert int(root.get('tests','0'))>0,root.attrib
+              for key in ('failures','errors','skipped'): assert int(root.get(key,'0'))==0,root.attrib
+              if name=='ArchitectureModuleGraphTest': assert int(root.get('tests'))==155,root.attrib
+              report[name]=root.attrib
+          anchors=list(Path('taxonomy-app/target/surefire-reports').glob('TEST-*selector-anchor*.xml'))
+          assert len(anchors)==1,anchors
+          root=ET.parse(anchors[0]).getroot()
+          assert int(root.get('tests','0'))>0,root.attrib
+          for key in ('failures','errors','skipped'): assert int(root.get(key,'0'))==0,root.attrib
+          report['independent-anchor']=root.attrib
+          (out/'test-counts.json').write_text(json.dumps(report,indent=2)+'\n')
+          print(json.dumps(report,indent=2))
+      - name: Complete frontend and delivery contracts
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee /tmp/support-green/frontend.log
+      - name: Publish exact tested blobs only, never move product refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,hashlib,json,os,subprocess,urllib.request,zipfile
+          from pathlib import Path
+          out=Path('/tmp/support-green');doc=json.loads((out/'manifest.json').read_text())
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse','HEAD^{tree}')==doc['tree']
+          assert git('diff','--name-only')==''
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
+          with zipfile.ZipFile(out/'tested-sources.zip','w',zipfile.ZIP_DEFLATED) as archive:
+              for path,sha in doc['files'].items():
+                  data=Path(path).read_bytes();assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha,path
+                  req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs',headers=headers,
+                      data=json.dumps({'content':base64.b64encode(data).decode(),'encoding':'base64'}).encode(),method='POST')
+                  with urllib.request.urlopen(req) as response: assert json.load(response)['sha']==sha
+                  archive.writestr(path,data)
+          doc['verificationRun']=os.environ['GITHUB_RUN_ID']
+          doc['verification']='Complete architecture profile and frontend contracts passed; full canonical PR CI remains separate'
+          (out/'manifest.json').write_text(json.dumps(doc,indent=2)+'\n')
+          print(json.dumps(doc,indent=2))
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: support-ownership-red
+          name: support-ownership-green
           path: |
-            /tmp/support-ownership
+            /tmp/support-green
             taxonomy-build/target/surefire-reports/TEST-*.xml
+            taxonomy-build/target/architecture-module-graph.txt
+            taxonomy-app/target/surefire-reports/*selector-anchor*.xml
           retention-days: 7
           if-no-files-found: error
