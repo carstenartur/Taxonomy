@@ -41,6 +41,7 @@ class ArchitectureSelectorSynchronizationTest {
             "ArchitectureWorkspaceStorageOwnershipTest",
             "ArchitectureModuleGraphTest",
             "ArchitectureModuleExtractionTest",
+            "ArchitectureSupportOwnershipRegressionTest",
             "ArchitectureSelectorSynchronizationTest");
 
     @TempDir
@@ -218,7 +219,7 @@ class ArchitectureSelectorSynchronizationTest {
     private static Path sourcePath(Path root, String guard) {
         String module = switch (guard) {
             case "ArchitectureModuleGraphTest", "ArchitectureModuleExtractionTest",
-                    "ArchitectureSelectorSynchronizationTest" -> "taxonomy-build";
+                    "ArchitectureSupportOwnershipRegressionTest", "ArchitectureSelectorSynchronizationTest" -> "taxonomy-build";
             default -> "taxonomy-app";
         };
         return root.resolve(module + "/src/test/java/com/taxonomy/" + guard + ".java");
