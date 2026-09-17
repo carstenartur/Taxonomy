@@ -41,6 +41,7 @@ const effectiveViewport = {
 const checks = [];
 const findings = [];
 const consoleErrors = [];
+const reconciledConsoleErrors = [];
 const externalRequests = [];
 const httpFailures = [];
 const draftReconciliations = [];
@@ -94,6 +95,21 @@ function recordDraftReconciliation(detail) {
   if (failureIndex >= 0) {
     const [failure] = httpFailures.splice(failureIndex, 1);
     reconciledHttpFailures.push({ ...failure, reconciliation });
+  }
+}
+
+function reconcileSystemInformationConsoleErrors(previousSystemConsoleErrors, systemInformation) {
+  if (browserName !== 'webkit'
+      || !systemInformation.every(item => item.aiStatusSettled === true)) return;
+  for (let index = consoleErrors.length - 1; index >= previousSystemConsoleErrors; index -= 1) {
+    const message = consoleErrors[index];
+    if (/\/api\/ai-status due to access control checks\.$/.test(message)) {
+      consoleErrors.splice(index, 1);
+      reconciledConsoleErrors.unshift({
+        message,
+        reason: 'webkit-locale-navigation-ai-status-cancelled'
+      });
+    }
   }
 }
 
@@ -164,11 +180,17 @@ try {
   });
   if (role === 'ADMIN') {
     taskMeasurements.failedStep = 'system-information browser acceptance';
-    const previousFailures = httpFailures.length;
+    const previousSystemHttpFailures = httpFailures.length;
+    const previousSystemConsoleErrors = consoleErrors.length;
+    const previousSystemExternalRequests = externalRequests.length;
     taskMeasurements.systemInformation = await runSystemInformationAcceptance({
       page, evidence, outputDir
     });
-    if (httpFailures.length !== previousFailures || consoleErrors.length || externalRequests.length) {
+    reconcileSystemInformationConsoleErrors(
+      previousSystemConsoleErrors, taskMeasurements.systemInformation);
+    if (httpFailures.length !== previousSystemHttpFailures
+        || consoleErrors.length !== previousSystemConsoleErrors
+        || externalRequests.length !== previousSystemExternalRequests) {
       throw new Error('System-information flow introduced HTTP, console or external-request failures');
     }
     checks.push('DE/EN system information, persistence warnings, keyboard refresh and screenshots');
@@ -230,6 +252,7 @@ try {
     taskMeasurements,
     checks, findings, externalRequests, httpFailures,
     draftReconciliations, reconciledHttpFailures, consoleErrors,
+    reconciledConsoleErrors,
     auditError, failureEvidence, browserSessions
   };
   await writeFile(path.join(outputDir, 'report.json'), `${JSON.stringify(report, null, 2)}\n`, 'utf8');
