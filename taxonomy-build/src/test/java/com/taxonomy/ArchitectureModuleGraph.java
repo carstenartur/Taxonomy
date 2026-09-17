@@ -189,9 +189,6 @@ final class ArchitectureModuleGraph {
         if (!physical.equals(policy.compositionModule()) && !presentModules.contains(physical)) {
             violations.add(className + " has physical owner absent from the reactor: " + physical);
         }
-        if (supportModules.contains(physical)) {
-            return new Ownership(physical, physical, "existing support module");
-        }
         String packageName = className.substring(0, Math.max(0, className.lastIndexOf('.')));
         Context context = null;
         for (Context candidate : policy.contexts()) {
@@ -200,6 +197,11 @@ final class ArchitectureModuleGraph {
                 break;
             }
         }
+        boolean plannedFeatureContext = context != null && context.targetModule() != null
+        && !context.targetModule().equals(policy.compositionModule());
+if (supportModules.contains(physical) && !plannedFeatureContext) {
+    return new Ownership(physical, physical, "existing support module");
+}
         String planned;
         String reason;
         if (packageName.equals("com.taxonomy") && policy.rootCompositionClasses().contains(source.sourceFile())) {
