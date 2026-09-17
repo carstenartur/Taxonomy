@@ -42,10 +42,12 @@ const checks = [];
 const findings = [];
 const consoleErrors = [];
 const reconciledConsoleErrors = [];
+const navigationConsoleCandidates = [];
 const externalRequests = [];
 const httpFailures = [];
 const draftReconciliations = [];
 const reconciledHttpFailures = [];
+let systemInformationNavigationLocale = null;
 let auditError = null;
 let browser;
 let context;
@@ -98,18 +100,22 @@ function recordDraftReconciliation(detail) {
   }
 }
 
-function reconcileSystemInformationConsoleErrors(previousSystemConsoleErrors, systemInformation) {
-  if (browserName !== 'webkit'
-      || !systemInformation.every(item => item.aiStatusSettled === true)) return;
-  for (let index = consoleErrors.length - 1; index >= previousSystemConsoleErrors; index -= 1) {
-    const message = consoleErrors[index];
-    if (/\/api\/ai-status due to access control checks\.$/.test(message)) {
-      consoleErrors.splice(index, 1);
-      reconciledConsoleErrors.unshift({
-        message,
-        reason: 'webkit-locale-navigation-ai-status-cancelled'
-      });
-    }
+function reconcileSystemInformationConsoleErrors(systemInformation) {
+  if (browserName !== 'webkit') return;
+  const settledLocales = new Set(systemInformation
+    .filter(item => item.aiStatusSettled === true)
+    .map(item => item.locale));
+  const candidates = navigationConsoleCandidates
+    .filter(candidate => settledLocales.has(candidate.locale))
+    .sort((left, right) => right.index - left.index);
+  for (const candidate of candidates) {
+    if (consoleErrors[candidate.index] !== candidate.message) continue;
+    consoleErrors.splice(candidate.index, 1);
+    reconciledConsoleErrors.unshift({
+      message: candidate.message,
+      locale: candidate.locale,
+      reason: 'webkit-locale-navigation-ai-status-cancelled'
+    });
   }
 }
 
@@ -163,7 +169,16 @@ try {
   });
   page.on('console', message => {
     if (message.type() === 'error' && !message.text().includes('Failed to load resource')) {
-      consoleErrors.push(message.text());
+      const text = message.text();
+      const index = consoleErrors.push(text) - 1;
+      if (browserName === 'webkit' && systemInformationNavigationLocale
+          && /\/api\/ai-status due to access control checks\.$/.test(text)) {
+        navigationConsoleCandidates.push({
+          index,
+          locale: systemInformationNavigationLocale,
+          message: text
+        });
+      }
     }
   });
   page.on('pageerror', error => consoleErrors.push(error.message));
@@ -183,11 +198,22 @@ try {
     const previousSystemHttpFailures = httpFailures.length;
     const previousSystemConsoleErrors = consoleErrors.length;
     const previousSystemExternalRequests = externalRequests.length;
-    taskMeasurements.systemInformation = await runSystemInformationAcceptance({
-      page, evidence, outputDir
-    });
-    reconcileSystemInformationConsoleErrors(
-      previousSystemConsoleErrors, taskMeasurements.systemInformation);
+    try {
+      taskMeasurements.systemInformation = await runSystemInformationAcceptance({
+        page, evidence, outputDir,
+        onLocaleNavigationStart: locale => {
+          systemInformationNavigationLocale = locale;
+        },
+        onLocaleNavigationEnd: locale => {
+          if (systemInformationNavigationLocale === locale) {
+            systemInformationNavigationLocale = null;
+          }
+        }
+      });
+    } finally {
+      systemInformationNavigationLocale = null;
+    }
+    reconcileSystemInformationConsoleErrors(taskMeasurements.systemInformation);
     if (httpFailures.length !== previousSystemHttpFailures
         || consoleErrors.length !== previousSystemConsoleErrors
         || externalRequests.length !== previousSystemExternalRequests) {
