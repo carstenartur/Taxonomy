@@ -36,6 +36,21 @@ class ArchitectureSupportOwnershipRegressionTest {
     }
 
     @Test
+    void rejectsRootCompositionClassLeftInSupportModule() {
+        var result = ArchitectureModuleGraph.evaluate(
+                POLICY,
+                Set.of(SUPPORT),
+                Set.of(FEATURE, SUPPORT),
+                List.of(
+                        new ArchitectureModuleGraph.ClassOwner("com.taxonomy.a.Service", FEATURE, "Service.java"),
+                        new ArchitectureModuleGraph.ClassOwner("com.taxonomy.AppConfig", SUPPORT, "AppConfig.java")),
+                List.of());
+
+        assertThat(result.violations()).anySatisfy(message -> assertThat(message)
+                .contains("com.taxonomy.AppConfig", SUPPORT, "planned owner is " + APP));
+    }
+
+    @Test
     void stillAllowsSharedPackageClassInSupportModule() {
         var result = ArchitectureModuleGraph.evaluate(
                 POLICY,
