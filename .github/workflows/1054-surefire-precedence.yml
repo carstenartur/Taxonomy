@@ -1,0 +1,85 @@
+name: Verify PR 1054 Surefire property precedence
+on:
+  push:
+    branches: [verify/1054-surefire-property-precedence-20260917]
+    paths: [.github/workflows/1054-surefire-precedence.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 1c9ea25cdba9f76cd18598d9c3babc8cbcf369e7
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Execute unchanged literal selectors against conflicting CLI properties
+        shell: python
+        run: |
+          import copy,json,os,shutil,subprocess,tempfile,xml.etree.ElementTree as ET
+          from pathlib import Path
+          root=Path.cwd(); out=Path('/tmp/surefire-precedence');out.mkdir()
+          ns={'m':'http://maven.apache.org/POM/4.0.0'}
+          ET.register_namespace('',ns['m'])
+          q=lambda name:'{'+ns['m']+'}'+name
+          parent=ET.parse(root/'pom.xml').getroot()
+          build=ET.parse(root/'taxonomy-build/pom.xml').getroot()
+          app=ET.parse(root/'taxonomy-app/pom.xml').getroot()
+          plugin=next(p for p in build.findall('m:build/m:plugins/m:plugin',ns) if p.findtext('m:artifactId',namespaces=ns)=='maven-surefire-plugin')
+          anchor=next(p for p in app.findall('m:profiles/m:profile',ns) if p.findtext('m:id',namespaces=ns)=='architecture-tests')
+          names=['ArchitectureModuleGraphTest','ArchitectureModuleExtractionTest','ArchitectureSelectorSynchronizationTest']
+          scenarios=[('guards-healthy',None,'guards'),*[(f'guards-empty-{n}',n,'guards') for n in names],('anchor-healthy',None,'anchor'),('anchor-empty','ArchitectureExceptionLedgerTest','anchor')]
+          results=[]
+          for scenario,empty,kind in scenarios:
+              folder=out/scenario;folder.mkdir()
+              project=ET.Element(q('project'));ET.SubElement(project,q('modelVersion')).text='4.0.0'
+              project.append(copy.deepcopy(parent.find('m:parent',ns)))
+              ET.SubElement(project,q('groupId')).text='com.taxonomy.fixture'
+              ET.SubElement(project,q('artifactId')).text=scenario
+              ET.SubElement(project,q('version')).text='1'
+              props=copy.deepcopy(parent.find('m:properties',ns));project.append(props)
+              deps=ET.SubElement(project,q('dependencies'));dep=ET.SubElement(deps,q('dependency'))
+              for k,v in [('groupId','org.junit.jupiter'),('artifactId','junit-jupiter'),('scope','test')]:ET.SubElement(dep,q(k)).text=v
+              if kind=='guards':
+                  plugins=ET.SubElement(ET.SubElement(project,q('build')),q('plugins'));plugins.append(copy.deepcopy(plugin))
+                  required=names
+              else:
+                  profiles=ET.SubElement(project,q('profiles'));profiles.append(copy.deepcopy(anchor));required=['ArchitectureExceptionLedgerTest']
+              ET.ElementTree(project).write(folder/'pom.xml',encoding='utf-8',xml_declaration=True)
+              src=folder/'src/test/java/com/taxonomy';src.mkdir(parents=True)
+              for name in [*required,'UnrelatedTest']:
+                  method='moduleChecksRemainReachableFromTheArchitectureProfile' if name=='ArchitectureExceptionLedgerTest' else 'runs'
+                  body='' if name==empty else '@org.junit.jupiter.api.Test void '+method+'() { org.junit.jupiter.api.Assertions.assertTrue(true); }'
+                  (src/(name+'.java')).write_text('package com.taxonomy; class '+name+' { '+body+' }\n')
+              command=[str(root/'mvnw'),'-B','-ntp','-f',str(folder/'pom.xml'),'test','-Dtest=UnrelatedTest','-Dsurefire.failIfNoSpecifiedTests=false','-Dsurefire.failIfNoTests=false']
+              if kind=='anchor':command.append('-Parchitecture-tests')
+              with (folder/'maven.log').open('w') as log:
+                  completed=subprocess.run(command,stdout=log,stderr=subprocess.STDOUT,timeout=240)
+              suites=[ET.parse(p).getroot() for p in (folder/'target/surefire-reports').glob('TEST-*.xml')]
+              executed=[s.get('name') for s in suites if int(s.get('tests',0))>0]
+              result={'scenario':scenario,'command':command,'exit':completed.returncode,'executed':executed}
+              if empty is None:
+                  result['expected']=completed.returncode==0 and all(any(name in entry for entry in executed) for name in required)
+              else:
+                  text=(folder/'maven.log').read_text()
+                  result['expected']=completed.returncode!=0 and ('No tests' in text or 'No tests were executed' in text)
+              results.append(result);print(json.dumps(result),flush=True)
+          (out/'summary.json').write_text(json.dumps(results,indent=2)+'\n')
+          print('All expectations matched:',all(r['expected'] for r in results),flush=True)
+          assert all(r['expected'] for r in results),results
+          assert subprocess.check_output(['git','rev-parse','HEAD'],text=True).strip()=='1c9ea25cdba9f76cd18598d9c3babc8cbcf369e7'
+          assert subprocess.check_output(['git','status','--porcelain','--untracked-files=no'],text=True).strip()==''
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: pr1054-surefire-precedence
+          path: |
+            /tmp/surefire-precedence/summary.json
+            /tmp/surefire-precedence/*/pom.xml
+            /tmp/surefire-precedence/*/maven.log
+            /tmp/surefire-precedence/*/target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
