@@ -49,7 +49,7 @@ class WorkspaceAccessWebMvcConfiguration implements WebMvcConfigurer {
                 HttpServletResponse response,
                 Object handler) throws IOException {
             if (!(handler instanceof HandlerMethod handlerMethod)
-                    || handlerMethod.getBeanType() != WorkspaceController.class
+                    || !WorkspaceController.class.isAssignableFrom(handlerMethod.getBeanType())
                     || !"getWorkspaceInfo".equals(handlerMethod.getMethod().getName())) {
                 return true;
             }

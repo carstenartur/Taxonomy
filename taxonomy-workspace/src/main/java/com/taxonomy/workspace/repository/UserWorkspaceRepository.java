@@ -2,6 +2,8 @@ package com.taxonomy.workspace.repository;
 
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.jpa.repository.Modifying;
@@ -30,11 +32,18 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
      * Explicit request pins and process-local active selection remain caller-owned.
      */
     default Optional<UserWorkspace> findByUsernameAndSharedFalse(String username) {
-        return findFirstByUsernameAndSharedFalseAndArchivedFalseOrderByIsDefaultDescLastAccessedAtDescWorkspaceIdAsc(username);
+        return findImplicitPrivateWorkspaces(username, PageRequest.of(0, 1)).stream().findFirst();
     }
 
-    Optional<UserWorkspace> findFirstByUsernameAndSharedFalseAndArchivedFalseOrderByIsDefaultDescLastAccessedAtDescWorkspaceIdAsc(
-            String username);
+    /** Limit in the database and order NULL timestamps consistently across supported engines. */
+    @Query("""
+            select workspace from UserWorkspace workspace
+            where workspace.username = :username and workspace.shared = false and workspace.archived = false
+            order by workspace.isDefault desc,
+              case when workspace.lastAccessedAt is null then 1 else 0 end asc,
+              workspace.lastAccessedAt desc, workspace.workspaceId asc
+            """)
+    List<UserWorkspace> findImplicitPrivateWorkspaces(@Param("username") String username, Pageable pageable);
 
     Optional<UserWorkspace> findBySharedTrue();
 
