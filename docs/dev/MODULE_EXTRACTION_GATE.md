@@ -10,7 +10,9 @@ does not read the dependency ratchet baseline or the exception ledger.
 
 Run the normal test suite with `./mvnw test`. The focused architecture command is
 `./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false`; its
-Maven-owned selection includes both gate test classes. The canonical CI command
+Maven-owned selection includes all three module-gate classes:
+`ArchitectureModuleGraphTest`, `ArchitectureModuleExtractionTest`, and
+`ArchitectureSelectorSynchronizationTest`. The canonical CI command
 is `./mvnw -B verify -Pci`. Core CI adds `-DrunOnnxTests=true -Dtaxonomy.ui.skip=true`
 and runs UI verification in separate lanes. Plain local `verify` skips integration
 and post-reactor gates and is not equivalent to CI. The generated report is
@@ -206,3 +208,14 @@ Explicit focused Maven test selectors may also select them in the default
 execution, but cannot remove the required executions or their fail-on-empty
 settings. The existing source-declaration and checkout-containment checks remain.
 No feature module or application production code depends on build-test classes.
+
+The required executions and app anchor use literal `<test>` and fail-on-empty
+values, not `${test}` or `${surefire.failIfNoSpecifiedTests}` expressions.
+Maven CLI user properties therefore do not replace these execution values; see
+[Apache Maven MNG-4979](https://issues.apache.org/jira/browse/MNG-4979).
+An executed [six-case Maven experiment](https://github.com/carstenartur/Taxonomy/actions/runs/35184566936)
+copies the unchanged owner configuration and passes `-Dtest=UnrelatedTest`,
+`-Dsurefire.failIfNoSpecifiedTests=false`, and `-Dsurefire.failIfNoTests=false`.
+Both healthy fixtures still run the required guards or app anchor; making each
+of the three guard classes or the anchor empty makes Maven fail. This experiment
+checks configuration precedence and execution, not just the effective XML.
