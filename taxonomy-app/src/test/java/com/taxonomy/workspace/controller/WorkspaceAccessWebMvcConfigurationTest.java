@@ -111,4 +111,45 @@ class WorkspaceAccessWebMvcConfigurationTest {
                 request, response, workspaceInfoHandler)).isFalse();
         verify(response).sendError(HttpStatus.NOT_FOUND.value());
     }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"subclass", "proxied-subclass", "proxied-controller"})
+    void inheritedAndProxiedHandlersCannotBypassOwnership(String kind) throws Exception {
+        Object target = kind.equals("proxied-controller")
+                ? new WorkspaceController(null, null, null, null, null, null, null, null)
+                : new InheritedWorkspaceController();
+        if (kind.startsWith("proxied")) {
+            var factory = new org.springframework.aop.framework.ProxyFactory(target);
+            factory.setProxyTargetClass(true);
+            target = factory.getProxy();
+        }
+        var handler = new HandlerMethod(target,
+                WorkspaceController.class.getMethod("getWorkspaceInfo", String.class));
+        when(request.getUserPrincipal()).thenReturn(() -> "alice");
+        when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
+                .thenReturn(Map.of("id", "workspace-bob"));
+
+        assertThat(interceptor.preHandle(request, response, handler)).isFalse();
+        verify(workspaceAccessService).canReadWorkspaceMetadata("workspace-bob", "alice");
+        verify(response).sendError(HttpStatus.NOT_FOUND.value());
+    }
+
+    @Test
+    void ownedWorkspaceRemainsVisibleThroughInheritedHandler() throws Exception {
+        var handler = new HandlerMethod(new InheritedWorkspaceController(),
+                WorkspaceController.class.getMethod("getWorkspaceInfo", String.class));
+        when(request.getUserPrincipal()).thenReturn(() -> "alice");
+        when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
+                .thenReturn(Map.of("id", "workspace-alice"));
+        when(workspaceAccessService.canReadWorkspaceMetadata("workspace-alice", "alice")).thenReturn(true);
+        assertThat(interceptor.preHandle(request, response, handler)).isTrue();
+        verify(workspaceAccessService).canReadWorkspaceMetadata("workspace-alice", "alice");
+        verify(response, never()).sendError(HttpStatus.NOT_FOUND.value());
+    }
+
+    static class InheritedWorkspaceController extends WorkspaceController {
+        InheritedWorkspaceController() {
+            super(null, null, null, null, null, null, null, null);
+        }
+    }
 }
