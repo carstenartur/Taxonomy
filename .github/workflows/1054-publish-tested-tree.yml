@@ -11,12 +11,21 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 3
     steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: support-ownership-green
+          run-id: 35186036669
+          github-token: ${{ github.token }}
+          repository: carstenartur/Taxonomy
+          path: /tmp/tested-support
+          digest-mismatch: error
       - name: Validate completed evidence and publish source objects only
         env:
           GH_TOKEN: ${{ github.token }}
         shell: python
         run: |
           import base64,hashlib,io,json,os,re,urllib.request,zipfile
+          from pathlib import Path
           base='https://api.github.com/repos/carstenartur/Taxonomy'
           headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
           def request(path,payload=None):
@@ -26,42 +35,36 @@ jobs:
           assert run['status']=='completed' and run['conclusion']=='success'
           artifact=request('/actions/artifacts/10482795521')
           assert artifact['workflow_run']['id']==35186036669 and artifact['name']=='support-ownership-green'
-          req=urllib.request.Request(base+'/actions/artifacts/10482795521/zip',headers=headers)
-          with urllib.request.urlopen(req,timeout=45) as response: content=response.read()
-          digest=hashlib.sha256(content).hexdigest()
-          assert digest=='96aebfc7e97c2d1e8bae2c3ffa5b35f3d312f22d7a89ac7d0725ac5462110b86',digest
-          assert artifact['digest']=='sha256:'+digest
-          with zipfile.ZipFile(io.BytesIO(content)) as archive:
-              def unique(suffix):
-                  names=[n for n in archive.namelist() if n.endswith('/'+suffix) or n==suffix]
-                  assert len(names)==1,(suffix,names)
-                  return archive.read(names[0])
-              manifest=json.loads(unique('manifest.json'))
-              counts=json.loads(unique('test-counts.json'))
-              print('VERIFIED MANIFEST',json.dumps(manifest,indent=2),flush=True)
-              print('VERIFIED XML COUNTS',json.dumps(counts,indent=2),flush=True)
-              assert manifest['base']=='f62679f9127f25479f1a09f8464a04dfc1be096f'
-              assert re.fullmatch('[0-9a-f]{40}',manifest['tree'])
-              allowed={'docs/dev/MODULE_EXTRACTION_GATE.md','taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java','taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java'}
-              assert set(manifest['files'])==allowed
-              for name,count in [('ArchitectureModuleGraphTest',155),('ArchitectureModuleExtractionTest',1),('ArchitectureSelectorSynchronizationTest',18),('independent-anchor',1)]:
-                  assert int(counts[name]['tests'])==count,(name,counts[name])
-                  assert all(int(counts[name][key])==0 for key in ('failures','errors','skipped'))
-              frontend=unique('frontend.log').decode()
-              assert 'BUILD SUCCESS' in frontend and 'BUILD FAILURE' not in frontend
-              print('FRONTEND EVIDENCE', '\n'.join(line for line in frontend.splitlines() if 'test files' in line.lower() or '# tests' in line or 'BUILD SUCCESS' in line)[-3000:],flush=True)
-              entries=[]
-              with zipfile.ZipFile(io.BytesIO(unique('tested-sources.zip'))) as source:
-                  assert set(source.namelist())==allowed
-                  for path,sha in manifest['files'].items():
-                      data=source.read(path)
-                      assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
-                      blob=request('/git/blobs',{'encoding':'base64','content':base64.b64encode(data).decode()})
-                      assert blob['sha']==sha
-                      entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+          assert artifact['digest']=='sha256:96aebfc7e97c2d1e8bae2c3ffa5b35f3d312f22d7a89ac7d0725ac5462110b86'
+          def unique(name):
+              paths=list(Path('/tmp/tested-support').rglob(name));assert len(paths)==1,(name,paths)
+              return paths[0].read_bytes()
+          manifest=json.loads(unique('manifest.json'))
+          counts=json.loads(unique('test-counts.json'))
+          print('VERIFIED MANIFEST',json.dumps(manifest,indent=2),flush=True)
+          print('VERIFIED XML COUNTS',json.dumps(counts,indent=2),flush=True)
+          assert manifest['base']=='f62679f9127f25479f1a09f8464a04dfc1be096f'
+          assert re.fullmatch('[0-9a-f]{40}',manifest['tree'])
+          allowed={'docs/dev/MODULE_EXTRACTION_GATE.md','taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java','taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java'}
+          assert set(manifest['files'])==allowed
+          for name,count in [('ArchitectureModuleGraphTest',155),('ArchitectureModuleExtractionTest',1),('ArchitectureSelectorSynchronizationTest',18),('independent-anchor',1)]:
+              assert int(counts[name]['tests'])==count,(name,counts[name])
+              assert all(int(counts[name][key])==0 for key in ('failures','errors','skipped'))
+          frontend=unique('frontend.log').decode()
+          assert 'BUILD SUCCESS' in frontend and 'BUILD FAILURE' not in frontend
+          print('FRONTEND EVIDENCE', '\n'.join(line for line in frontend.splitlines() if 'test files' in line.lower() or '# tests' in line or 'BUILD SUCCESS' in line)[-3000:],flush=True)
+          entries=[]
+          with zipfile.ZipFile(io.BytesIO(unique('tested-sources.zip'))) as source:
+              assert set(source.namelist())==allowed
+              for path,sha in manifest['files'].items():
+                  data=source.read(path)
+                  assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+                  blob=request('/git/blobs',{'encoding':'base64','content':base64.b64encode(data).decode()})
+                  assert blob['sha']==sha
+                  entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
           parent=request('/git/commits/'+manifest['base'])
           tree=request('/git/trees',{'base_tree':parent['tree']['sha'],'tree':entries})
           assert tree['sha']==manifest['tree'],tree
           message='fix(architecture): enforce feature ownership in foundation modules\n\nResolve explicit feature context assignments before accepting support-library\nownership. Preserve shared and unresolved foundation contracts and report\ndisplaced disconnected classes in their feature assessments.\n\nRED reproduced 11 failures with 144 passing controls. Exact-source preflight\n35186036669 passes the complete architecture profile (155 graph cases) and\ncomplete frontend contracts. No runtime Java, POM, policy, workflow or coverage\nchanges. Full canonical PR CI and fresh review remain required.'
           commit=request('/git/commits',{'message':message,'tree':tree['sha'],'parents':[manifest['base']]})
-          print('PUBLISHED COMMIT',json.dumps({'verifiedRun':35186036669,'artifactSha256':digest,'commit':commit['sha'],'tree':tree['sha'],'files':manifest['files'],'refsChanged':False},indent=2),flush=True)
+          print('PUBLISHED COMMIT',json.dumps({'verifiedRun':35186036669,'artifactDigest':artifact['digest'],'commit':commit['sha'],'tree':tree['sha'],'files':manifest['files'],'refsChanged':False},indent=2),flush=True)
