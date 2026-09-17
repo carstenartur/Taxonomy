@@ -23,7 +23,8 @@ class UserWorkspaceRepositorySelectionTest {
         when(repository.findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc("alice"))
                 .thenReturn(List.of(neverAccessed, older, recent));
 
-        assertThat(repository.findByUsernameAndSharedFalse("alice")).containsSame(recent);
+        assertThat(repository.findByUsernameAndSharedFalse("alice"))
+                .hasValueSatisfying(actual -> assertThat(actual).isSameAs(recent));
     }
 
     @Test
@@ -34,7 +35,8 @@ class UserWorkspaceRepositorySelectionTest {
         when(repository.findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc("alice"))
                 .thenReturn(List.of(recent, defaultWorkspace));
 
-        assertThat(repository.findByUsernameAndSharedFalse("alice")).containsSame(defaultWorkspace);
+        assertThat(repository.findByUsernameAndSharedFalse("alice"))
+                .hasValueSatisfying(actual -> assertThat(actual).isSameAs(defaultWorkspace));
     }
 
     @Test
@@ -47,7 +49,8 @@ class UserWorkspaceRepositorySelectionTest {
         when(repository.findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc("alice"))
                 .thenReturn(List.of(shared, laterId, expected));
 
-        assertThat(repository.findByUsernameAndSharedFalse("alice")).containsSame(expected);
+        assertThat(repository.findByUsernameAndSharedFalse("alice"))
+                .hasValueSatisfying(actual -> assertThat(actual).isSameAs(expected));
     }
 
     private static UserWorkspace workspace(String id, boolean isDefault, boolean shared, Instant lastAccessedAt) {
