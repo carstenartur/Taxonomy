@@ -1,0 +1,71 @@
+name: PR1054 support ownership formatting
+on:
+  push:
+    branches: [verify/pr1054-support-ownership]
+    paths: [.github/workflows/pr1054-support-format.yml]
+permissions:
+  contents: write
+jobs:
+  format-and-probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+      - name: Normalize indentation only
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java')
+          text = path.read_text()
+          old = ("        boolean plannedFeatureContext = context != null && context.targetModule() != null\n"
+                 "        && !context.targetModule().equals(policy.compositionModule());\n"
+                 "if (supportModules.contains(physical) && !plannedFeatureContext) {\n"
+                 "    return new Ownership(physical, physical, \"existing support module\");\n"
+                 "}\n")
+          new = ("        boolean plannedFeatureContext = context != null && context.targetModule() != null\n"
+                 "                && !context.targetModule().equals(policy.compositionModule());\n"
+                 "        if (supportModules.contains(physical) && !plannedFeatureContext) {\n"
+                 "            return new Ownership(physical, physical, \"existing support module\");\n"
+                 "        }\n")
+          if text.count(old) != 1:
+              raise SystemExit(f'expected exactly one tested block, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+      - name: Compile graph and run focused probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/probe/com/taxonomy /tmp/classes
+          cat > /tmp/probe/com/taxonomy/Probe.java <<'JAVA'
+          package com.taxonomy;
+          import java.util.List;
+          import java.util.Set;
+          public final class Probe {
+            public static void main(String[] args) {
+              var p = new ArchitectureModuleGraph.Policy("taxonomy-app", Set.of("AppConfig.java"), List.of(
+                  new ArchitectureModuleGraph.Context("a", "taxonomy-a", List.of("com.taxonomy.a..")),
+                  new ArchitectureModuleGraph.Context("composition", "taxonomy-app", List.of("com.taxonomy.shared.."))));
+              var bad = ArchitectureModuleGraph.evaluate(p, Set.of("taxonomy-domain"), Set.of("taxonomy-a", "taxonomy-domain"),
+                  List.of(new ArchitectureModuleGraph.ClassOwner("com.taxonomy.a.Service", "taxonomy-a", "Service.java"),
+                          new ArchitectureModuleGraph.ClassOwner("com.taxonomy.a.Other", "taxonomy-domain", "Other.java")), List.of());
+              if (bad.violations().stream().noneMatch(v -> v.contains("planned owner is taxonomy-a"))) throw new AssertionError(bad.violations());
+              var good = ArchitectureModuleGraph.evaluate(p, Set.of("taxonomy-domain"), Set.of("taxonomy-a", "taxonomy-domain"),
+                  List.of(new ArchitectureModuleGraph.ClassOwner("com.taxonomy.a.Service", "taxonomy-a", "Service.java"),
+                          new ArchitectureModuleGraph.ClassOwner("com.taxonomy.shared.Contract", "taxonomy-domain", "Contract.java")), List.of());
+              if (!good.violations().isEmpty()) throw new AssertionError(good.violations());
+            }
+          }
+          JAVA
+          javac -d /tmp/classes taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java /tmp/probe/com/taxonomy/Probe.java
+          java -cp /tmp/classes com.taxonomy.Probe
+          git diff --check
+      - name: Commit formatting-only normalization
+        run: |
+          git add taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java
+          git -c user.name='Architecture verification' -c user.email='verification@invalid.example' commit -m 'style(architecture): normalize support ownership check'
+          git push origin HEAD:verify/pr1054-support-ownership
