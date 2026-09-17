@@ -38,6 +38,7 @@ jobs:
           red=json.loads(summaries[0].read_text())
           assert red['source']==git('rev-parse','HEAD')
           assert red['suite']['failures']=='11' and red['suite']['errors']=='0'
+          (out/'red-summary.json').write_text(json.dumps(red,indent=2)+'\n')
           subprocess.run(['git','apply','--index',str(patches[0])],check=True)
           def replace(path,old,new):
               file=Path(path);text=file.read_text();assert text.count(old)==1,(path,old)
@@ -48,27 +49,25 @@ jobs:
           replace(graph,
               '        if (supportModules.contains(physical)) {\n            return new Ownership(physical, physical, "existing support module");\n        }\n', '')
           replace(graph,'        String planned;\n        String reason;',
-              '''        // Shared/foundation packages keep their existing physical owner, but an
-                  // explicit feature assignment cannot be hidden in a support module.
-                  boolean featureContext = context != null && context.targetModule() != null
-                          && !context.targetModule().equals(policy.compositionModule());
-                  if (supportModules.contains(physical) && !featureContext) {
-                      return new Ownership(physical, physical, "existing support module");
-                  }
-                  String planned;
-                  String reason;'''.replace('\n          ', '\n'))
+              '        // Shared/foundation packages keep their existing physical owner, but an\n'
+              '        // explicit feature assignment cannot be hidden in a support module.\n'
+              '        boolean featureContext = context != null && context.targetModule() != null\n'
+              '                && !context.targetModule().equals(policy.compositionModule());\n'
+              '        if (supportModules.contains(physical) && !featureContext) {\n'
+              '            return new Ownership(physical, physical, "existing support module");\n'
+              '        }\n'
+              '        String planned;\n        String reason;')
           replace(graph,
               '                        && owner.physicalModule().equals(policy.compositionModule())) {',
               '                        && !owner.physicalModule().equals(owner.module())) {')
           replace(graph,
               '                            + ": still physically owned by " + policy.compositionModule());',
               '                            + ": still physically owned by " + owner.physicalModule());')
-          # Keep each displaced class visible in the per-feature explanation as well.
           text=Path(tests).read_text()
           start=text.index('    @org.junit.jupiter.params.ParameterizedTest\n',text.index('void rootCompositionClassAndItsNestedClassesCannotEvadeTheGraph'))
           end=text.index('    @Test\n    void exactPhysicalOwnershipRecognizesExistingModulesDespiteOverlappingAppPackages()',start)
           added=text[start:end]
-          old='        .contains(displaced, "invalid physical owner " + support, "planned owner is " + A));'
+          old='.contains(displaced, "invalid physical owner " + support, "planned owner is " + A));'
           assert added.count(old)==1
           added=added.replace(old,old+'\n        if (extracted) assertThat(result.blockers().get(A)).anySatisfy(message -> assertThat(message)\n                .contains(displaced, "still physically owned by " + support));')
           Path(tests).write_text(text[:start]+added+text[end:])
