@@ -1,0 +1,27 @@
+name: Validated architecture ancestry (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-completion-history.yml]
+permissions:
+  contents: read
+jobs:
+  ancestry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: c42c8fcc89aa7700d4dc61cb002717c2a035c6e5, fetch-depth: 0, persist-credentials: false}
+      - name: Export exact validated ancestors without altering product branches
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/architecture-ancestry
+          test "$(git rev-parse HEAD^{tree})" = 7b845fcb2e9391f14af9bf3eb62fe75a08d016f7
+          git branch validated-stack HEAD
+          git bundle create /tmp/architecture-ancestry/validated.bundle validated-stack ^4c5bfcd2d5d7324d30ed9070e2ec066454d85947
+          git bundle verify /tmp/architecture-ancestry/validated.bundle
+          git log --format=fuller --stat 4c5bfcd2d5d7324d30ed9070e2ec066454d85947..HEAD > /tmp/architecture-ancestry/commits.txt
+          cd /tmp/architecture-ancestry
+          sha256sum validated.bundle commits.txt > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with: {name: validated-architecture-ancestry, path: /tmp/architecture-ancestry, retention-days: 3, if-no-files-found: error}
