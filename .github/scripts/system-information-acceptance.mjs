@@ -35,7 +35,9 @@ export function validateSystemSnapshot(snapshot) {
 }
 
 /** Continue in the existing authenticated browser/app; no extra service or LLM calls. */
-export async function runSystemInformationAcceptance({ page, evidence, outputDir }) {
+export async function runSystemInformationAcceptance({
+  page, evidence, outputDir, onLocaleNavigationStart, onLocaleNavigationEnd
+}) {
   const { navigateToPage } = await import('./ui-role-fixtures.mjs');
   const cases = [];
   for (const locale of ['en', 'de']) {
@@ -46,8 +48,27 @@ export async function runSystemInformationAcceptance({ page, evidence, outputDir
     try {
       const url = new URL(page.url());
       url.searchParams.set('lang', locale);
-      await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });
+      onLocaleNavigationStart?.(locale);
+      try {
+        await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });
+      } finally {
+        onLocaleNavigationEnd?.(locale);
+      }
+      await page.evaluate(() => window.TaxonomyI18n?.ready?.());
       await navigateToPage(page, 'admin');
+      try {
+        await page.waitForFunction(() => {
+          const badge = document.getElementById('aiStatusBadge');
+          const value = badge?.textContent?.trim() || '';
+          const unknown = window.TaxonomyI18n?.t?.('browse.ai.badge.unknown') || '';
+          return Boolean(value
+            && value !== 'browse.ai.badge.unknown'
+            && unknown
+            && value !== unknown);
+        }, null, { timeout: 20_000 });
+      } catch (cause) {
+        throw new Error('AI status bootstrap must settle after locale navigation', { cause });
+      }
       const panel = page.locator('#systemInformation');
       await panel.waitFor({ state: 'attached' });
       assert.equal(await panel.evaluate(element => element.open), false);
@@ -114,7 +135,8 @@ export async function runSystemInformationAcceptance({ page, evidence, outputDir
       await panel.screenshot({ path: path.join(outputDir, screenshot), animations: 'disabled' });
       cases.push({ locale, screenshot, dimensions, requests,
         databaseVersionSource: next.database.versionSource, storage: next.database.storage,
-        warnings: next.database.warnings, refreshed: true, keyboardOperated: true });
+        warnings: next.database.warnings, refreshed: true, keyboardOperated: true,
+        aiStatusSettled: true });
     } finally {
       page.off('request', observe);
     }
