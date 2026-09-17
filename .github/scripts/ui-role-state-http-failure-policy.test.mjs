@@ -40,12 +40,22 @@ test('system-information audit attributes only errors introduced by that flow', 
     /httpFailures\.length !== previousFailures \|\| consoleErrors\.length \|\| externalRequests\.length/);
 });
 
-test('webkit locale-navigation cancellation is reconciled narrowly and remains report evidence', () => {
-  assert.match(source, /const reconciledConsoleErrors = \[\];/);
-  assert.match(source, /browserName !== 'webkit'/);
-  assert.match(source, /\\\/api\\\/ai-status due to access control checks/);
+test('webkit reconciliation is bound to each locale navigation window', () => {
+  assert.match(source, /let systemInformationNavigationLocale = null;/);
+  assert.match(source, /const navigationConsoleCandidates = \[\];/);
+  assert.match(source, /locale: systemInformationNavigationLocale/);
+  assert.match(source, /onLocaleNavigationStart: locale => \{/);
+  assert.match(source, /onLocaleNavigationEnd: locale => \{/);
   assert.match(source, /webkit-locale-navigation-ai-status-cancelled/);
+  assert.doesNotMatch(source,
+    /for \(let index = consoleErrors\.length - 1; index >= previousSystemConsoleErrors; index -= 1\)/);
+});
+
+test('AI bootstrap never treats the untranslated unknown key as settled', () => {
   assert.match(systemInformationSource, /browse\.ai\.badge\.unknown/);
+  assert.match(systemInformationSource, /value !== 'browse\.ai\.badge\.unknown'/);
   assert.match(systemInformationSource, /AI status bootstrap must settle after locale navigation/);
+  assert.match(systemInformationSource, /onLocaleNavigationStart\?\.\(locale\)/);
+  assert.match(systemInformationSource, /onLocaleNavigationEnd\?\.\(locale\)/);
   assert.match(systemInformationSource, /aiStatusSettled: true/);
 });
