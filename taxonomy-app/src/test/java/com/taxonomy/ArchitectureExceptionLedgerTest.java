@@ -68,12 +68,14 @@ class ArchitectureExceptionLedgerTest {
         factory.setXIncludeAware(false);
         factory.setExpandEntityReferences(false);
         String selected;
+        org.w3c.dom.Document reactor;
         try (var input = Files.newInputStream(pom)) {
+            reactor = factory.newDocumentBuilder().parse(input);
             var nodes = (org.w3c.dom.NodeList) javax.xml.xpath.XPathFactory.newInstance().newXPath().evaluate(
                     "/*[local-name()='project']/*[local-name()='profiles']"
                             + "/*[local-name()='profile'][*[local-name()='id']='architecture-tests']"
                             + "/*[local-name()='properties']/*[local-name()='test']",
-                    factory.newDocumentBuilder().parse(input), javax.xml.xpath.XPathConstants.NODESET);
+                    reactor, javax.xml.xpath.XPathConstants.NODESET);
             assertThat(nodes.getLength()).as("one architecture-tests Maven selector").isEqualTo(1);
             selected = nodes.item(0).getTextContent();
         }
@@ -89,6 +91,50 @@ class ArchitectureExceptionLedgerTest {
         // This fixed execution must also detect deletion of all downstream gate classes.
         // Parse their declarations without depending on taxonomy-build test bytecode.
         for (String guard : MODULE_GUARDS) assertModuleGuardDeclaration(checkout, guard);
+        assertBuildOwnerExecution(checkout, reactor, factory);
+    }
+
+    private static void assertBuildOwnerExecution(Path checkout, org.w3c.dom.Document reactor,
+            javax.xml.parsers.DocumentBuilderFactory factory) throws Exception {
+        assertThat(xmlValues(reactor, "/*[local-name()='project']/*[local-name()='modules']/*[local-name()='module']"))
+                .as("build owner reactor membership must be unconditional and unique")
+                .containsOnlyOnce("taxonomy-build");
+        org.w3c.dom.Document owner;
+        try (var input = Files.newInputStream(selectorFile(checkout, "taxonomy-build/pom.xml"))) {
+            owner = factory.newDocumentBuilder().parse(input);
+        }
+        String project = "/*[local-name()='project']";
+        assertThat(xmlValues(owner, project + "/*[local-name()='artifactId']"))
+                .as("build owner artifact identity").containsExactly("taxonomy-build");
+        var packaging = xmlValues(owner, project + "/*[local-name()='packaging']");
+        assertThat(packaging.isEmpty() || packaging.equals(java.util.List.of("jar")))
+                .as("build owner must have the executable jar lifecycle").isTrue();
+        String executions = project + "/*[local-name()='build']/*[local-name()='plugins']/*[local-name()='plugin']"
+                + "[*[local-name()='groupId']='org.apache.maven.plugins']"
+                + "[*[local-name()='artifactId']='maven-surefire-plugin']"
+                + "/*[local-name()='executions']/*[local-name()='execution']";
+        for (String guard : MODULE_GUARDS) {
+            String execution = executions + "[*[local-name()='id']='required-" + guard + "']";
+            assertThat(xmlValues(owner, execution + "/*[local-name()='phase']"))
+                    .as("required architecture execution for %s must run at test", guard).containsExactly("test");
+            assertThat(xmlValues(owner, execution + "/*[local-name()='goals']/*[local-name()='goal']"))
+                    .as("required architecture execution for %s must invoke Surefire", guard).containsExactly("test");
+            String configuration = execution + "/*[local-name()='configuration']";
+            for (var requirement : java.util.Map.of("test", guard, "failIfNoTests", "true",
+                    "failIfNoSpecifiedTests", "true").entrySet()) {
+                assertThat(xmlValues(owner, configuration + "/*[local-name()='" + requirement.getKey() + "']"))
+                        .as("required architecture execution for %s: %s", guard, requirement.getKey())
+                        .containsExactly(requirement.getValue());
+            }
+        }
+    }
+
+    private static java.util.List<String> xmlValues(org.w3c.dom.Node root, String expression) throws Exception {
+        var nodes = (org.w3c.dom.NodeList) javax.xml.xpath.XPathFactory.newInstance().newXPath()
+                .evaluate(expression, root, javax.xml.xpath.XPathConstants.NODESET);
+        java.util.List<String> values = new java.util.ArrayList<>();
+        for (int i = 0; i < nodes.getLength(); i++) values.add(nodes.item(i).getTextContent().strip());
+        return values;
     }
 
     private static void assertModuleGuardDeclaration(Path checkout, String guard) throws Exception {
@@ -160,8 +206,10 @@ class ArchitectureExceptionLedgerTest {
         }
         Files.createDirectories(root.resolve(".mvn"));
         Files.writeString(root.resolve("pom.xml"), "<project xmlns='http://maven.apache.org/POM/4.0.0'>"
+                + "<modules><module>taxonomy-build</module></modules>"
                 + "<profiles><profile><id>architecture-tests</id><properties><test>" + pom
                 + "</test></properties></profile></profiles></project>");
+        Files.writeString(root.resolve("taxonomy-build/pom.xml"), ownerExecutionFixture());
         Files.writeString(root.resolve(".mvn/verification-suites.json"), new ObjectMapper().writeValueAsString(
                 java.util.Map.of("profiles", java.util.Map.of("architecture-tests", java.util.Map.of("test", catalogue)))));
     }
@@ -239,6 +287,81 @@ class ArchitectureExceptionLedgerTest {
         Path target = root.resolve("contained-alias");
         Files.move(original, target);
         Files.createSymbolicLink(original, target);
+        assertModuleChecksSelected(root);
+    }
+
+
+    private static String ownerExecutionFixture() {
+        var xml = new StringBuilder("<project><artifactId>taxonomy-build</artifactId><packaging>jar</packaging>"
+                + "<build><plugins><plugin><groupId>org.apache.maven.plugins</groupId>"
+                + "<artifactId>maven-surefire-plugin</artifactId><executions>");
+        for (String guard : MODULE_GUARDS) {
+            xml.append("<execution><id>required-").append(guard).append("</id><phase>test</phase>")
+                    .append("<goals><goal>test</goal></goals><configuration><test>").append(guard)
+                    .append("</test><failIfNoTests>true</failIfNoTests>")
+                    .append("<failIfNoSpecifiedTests>true</failIfNoSpecifiedTests></configuration></execution>");
+        }
+        return xml.append("</executions></plugin></plugins></build></project>").toString();
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"missing", "profile-only", "duplicate"})
+    void independentAnchorRequiresTheBuildOwnerInTheDefaultReactor(String kind,
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        completeModuleGuardFixture(root);
+        Path pom = root.resolve("pom.xml");
+        String declaration = "<modules><module>taxonomy-build</module></modules>";
+        String replacement = switch (kind) {
+            case "profile-only" -> "<profiles><profile><id>not-active</id>" + declaration + "</profile></profiles>";
+            case "duplicate" -> "<modules><module>taxonomy-build</module><module>taxonomy-build</module></modules>";
+            default -> "";
+        };
+        Files.writeString(pom, Files.readString(pom).replace(declaration, replacement));
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> assertModuleChecksSelected(root))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("build owner reactor membership");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"pom", "war", "different-artifact"})
+    void independentAnchorRequiresExecutableBuildOwnerPackaging(String kind,
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        completeModuleGuardFixture(root);
+        Path pom = root.resolve("taxonomy-build/pom.xml");
+        String text = Files.readString(pom);
+        text = kind.equals("different-artifact")
+                ? text.replace("<artifactId>taxonomy-build</artifactId>", "<artifactId>not-the-build-owner</artifactId>")
+                : text.replace("<packaging>jar</packaging>", "<packaging>" + kind + "</packaging>");
+        Files.writeString(pom, text);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> assertModuleChecksSelected(root))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("build owner");
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "missing-execution", "wrong-class", "wrong-phase", "wrong-goal", "tolerate-no-tests", "tolerate-no-match"})
+    void everyGuardHasItsOwnFailClosedTestExecution(String kind,
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        completeModuleGuardFixture(root);
+        Path pom = root.resolve("taxonomy-build/pom.xml");
+        String text = Files.readString(pom);
+        String replacement = switch (kind) {
+            case "missing-execution" -> text.replaceFirst("<execution>.*?</execution>", "");
+            case "wrong-class" -> text.replaceFirst("<test>ArchitectureModuleGraphTest</test>", "<test>OtherTest</test>");
+            case "wrong-phase" -> text.replaceFirst("<phase>test</phase>", "<phase>none</phase>");
+            case "wrong-goal" -> text.replaceFirst("<goal>test</goal>", "<goal>help</goal>");
+            case "tolerate-no-tests" -> text.replaceFirst("<failIfNoTests>true</failIfNoTests>", "<failIfNoTests>false</failIfNoTests>");
+            default -> text.replaceFirst("<failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>", "<failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>");
+        };
+        Files.writeString(pom, replacement);
+        org.assertj.core.api.Assertions.assertThatThrownBy(() -> assertModuleChecksSelected(root))
+                .isInstanceOf(AssertionError.class).hasMessageContaining("required architecture execution");
+    }
+
+    @Test
+    void implicitJarPackagingRemainsAValidBuildOwner(@org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        completeModuleGuardFixture(root);
+        Path pom = root.resolve("taxonomy-build/pom.xml");
+        Files.writeString(pom, Files.readString(pom).replace("<packaging>jar</packaging>", ""));
         assertModuleChecksSelected(root);
     }
 
