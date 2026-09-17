@@ -10,6 +10,7 @@ import org.springframework.stereotype.Repository;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
 
@@ -28,9 +29,23 @@ public interface UserWorkspaceRepository extends JpaRepository<UserWorkspace, Lo
      * Multiple workspaces are valid: prefer a non-archived default, then the
      * most recently accessed active private workspace, with an ID tie-breaker.
      * Explicit request pins and process-local active selection remain caller-owned.
+     *
+     * <p>The final ordering is deliberately performed in Java. Supported databases
+     * disagree about where {@code NULL} appears for descending timestamp ordering;
+     * a never-accessed row must never outrank a recently accessed row merely because
+     * of database-specific NULL placement.</p>
      */
     default Optional<UserWorkspace> findByUsernameAndSharedFalse(String username) {
-        return findFirstByUsernameAndSharedFalseAndArchivedFalseOrderByIsDefaultDescLastAccessedAtDescWorkspaceIdAsc(username);
+        Comparator<UserWorkspace> selectionOrder = Comparator
+                .comparing(UserWorkspace::isDefault).reversed()
+                .thenComparing(UserWorkspace::getLastAccessedAt,
+                        Comparator.nullsLast(Comparator.reverseOrder()))
+                .thenComparing(UserWorkspace::getWorkspaceId,
+                        Comparator.nullsLast(Comparator.naturalOrder()));
+        return findByUsernameAndArchivedFalseOrderByLastAccessedAtDesc(username).stream()
+                .filter(workspace -> !workspace.isShared())
+                .sorted(selectionOrder)
+                .findFirst();
     }
 
     Optional<UserWorkspace> findFirstByUsernameAndSharedFalseAndArchivedFalseOrderByIsDefaultDescLastAccessedAtDescWorkspaceIdAsc(
