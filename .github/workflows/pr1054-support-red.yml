@@ -1,0 +1,21 @@
+name: PR1054 support ownership regression
+on:
+  push:
+    branches: [verify/pr1054-support-ownership]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Run focused regression
+        run: ./mvnw -B -ntp -pl taxonomy-build -Dtest=ArchitectureSupportOwnershipRegressionTest test
