@@ -1,0 +1,126 @@
+name: PR 1054 final review fix (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/1054-final-review-fix.yml]
+permissions:
+  contents: write
+jobs:
+  verify-and-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 1d206b5e44daa13ed58c876dadc447f6bff140b6
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Reproduce root-composition ownership and selector omissions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java')
+          s=p.read_text()
+          marker='    @Test\n    void rootCompositionClassAndItsNestedClassesCannotEvadeTheGraph() {'
+          test='''    @Test\n    void rejectsRootCompositionClassLeftInSupportModule() {\n        Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(DOMAIN), Set.of(A, DOMAIN),\n                List.of(owner(A_CLASS, A), owner("com.taxonomy.AppConfig", DOMAIN, "AppConfig.java")), List.of());\n\n        assertThat(result.violations()).anySatisfy(message -> assertThat(message)\n                .contains("com.taxonomy.AppConfig", DOMAIN, "planned owner is " + APP));\n    }\n\n'''
+          assert marker in s
+          p.write_text(s.replace(marker,test+marker,1))
+          PY
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-build -am test \
+            -Dtest=ArchitectureModuleGraphTest#rejectsRootCompositionClassLeftInSupportModule \
+            -Dsurefire.failIfNoSpecifiedTests=false > /tmp/1054-red-root.log 2>&1
+          rc=$?
+          set -e
+          cat /tmp/1054-red-root.log
+          test "$rc" -ne 0
+          grep -q 'rejectsRootCompositionClassLeftInSupportModule' /tmp/1054-red-root.log
+
+          git reset --hard 1d206b5e44daa13ed58c876dadc447f6bff140b6
+          python - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          ns={'m':'http://maven.apache.org/POM/4.0.0'}
+          root=ET.parse('taxonomy-app/pom.xml').getroot()
+          ids=[]
+          for exe in root.findall('./m:build/m:plugins/m:plugin/m:executions/m:execution',ns):
+              node=exe.find('m:id',ns)
+              if node is not None: ids.append((node.text or '').strip())
+          assert 'architecture-selector-anchor' not in ids, ids
+          print('RED reproduced: selector anchor is not active in the default taxonomy-app build')
+          PY
+
+          ./mvnw -B -ntp test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false >/tmp/1054-red-profile.log 2>&1
+          report=taxonomy-build/target/surefire-reports/TEST-com.taxonomy.ArchitectureModuleGraphTest.xml
+          test -f "$report"
+          ! grep -q 'rejectsFeatureContextClassLeftInSupportModule' "$report"
+          ! grep -q 'stillAllowsSharedPackageClassInSupportModule' "$report"
+          echo 'RED reproduced: support-ownership regression is outside the selected graph suite'
+      - name: Apply minimal three-finding correction
+        shell: python
+        run: |
+          from pathlib import Path
+
+          graph=Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java')
+          s=graph.read_text()
+          old='''        boolean plannedFeatureContext = context != null && context.targetModule() != null\n                && !context.targetModule().equals(policy.compositionModule());\n        if (supportModules.contains(physical) && !plannedFeatureContext) {\n            return new Ownership(physical, physical, "existing support module");\n        }\n        String planned;\n        String reason;\n        if (packageName.equals("com.taxonomy") && policy.rootCompositionClasses().contains(source.sourceFile())) {\n'''
+          new='''        boolean plannedFeatureContext = context != null && context.targetModule() != null\n                && !context.targetModule().equals(policy.compositionModule());\n        boolean rootCompositionSource = packageName.equals("com.taxonomy")\n                && policy.rootCompositionClasses().contains(source.sourceFile());\n        if (supportModules.contains(physical) && !plannedFeatureContext && !rootCompositionSource) {\n            return new Ownership(physical, physical, "existing support module");\n        }\n        String planned;\n        String reason;\n        if (rootCompositionSource) {\n'''
+          assert s.count(old)==1, s.count(old)
+          graph.write_text(s.replace(old,new,1))
+
+          tests=Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java')
+          s=tests.read_text()
+          marker='    @Test\n    void rootCompositionClassAndItsNestedClassesCannotEvadeTheGraph() {'
+          inserted='''    @Test\n    void rejectsFeatureContextClassLeftInSupportModule() {\n        Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(DOMAIN), Set.of(A, DOMAIN),\n                List.of(owner(A_CLASS, A), owner("com.taxonomy.a.Other", DOMAIN, "Other.java")), List.of());\n\n        assertThat(result.violations()).anySatisfy(message -> assertThat(message)\n                .contains("com.taxonomy.a.Other", DOMAIN, "planned owner is " + A));\n    }\n\n    @Test\n    void stillAllowsSharedPackageClassInSupportModule() {\n        Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(DOMAIN), Set.of(A, DOMAIN),\n                List.of(owner(A_CLASS, A), owner("com.taxonomy.shared.Contract", DOMAIN, "Contract.java")), List.of());\n\n        assertThat(result.violations()).isEmpty();\n    }\n\n    @Test\n    void rejectsRootCompositionClassLeftInSupportModule() {\n        Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(DOMAIN), Set.of(A, DOMAIN),\n                List.of(owner(A_CLASS, A), owner("com.taxonomy.AppConfig", DOMAIN, "AppConfig.java")), List.of());\n\n        assertThat(result.violations()).anySatisfy(message -> assertThat(message)\n                .contains("com.taxonomy.AppConfig", DOMAIN, "planned owner is " + APP));\n    }\n\n'''
+          assert s.count(marker)==1
+          tests.write_text(s.replace(marker,inserted+marker,1))
+
+          Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureSupportOwnershipRegressionTest.java').unlink()
+
+          pom=Path('taxonomy-app/pom.xml')
+          s=pom.read_text()
+          surefire='''            <plugin>\n                <groupId>org.apache.maven.plugins</groupId>\n                <artifactId>maven-surefire-plugin</artifactId>\n                <configuration>\n                    <excludedGroups>${excludedGroups}</excludedGroups>\n                    <systemPropertyVariables>\n                        <!--\n                            Different Spring test contexts rebuild the same in-memory\n                            HSQLDB schema. Retaining only the current context prevents\n                            a stale JGit repository from being reused afterwards.\n                        -->\n                        <spring.test.context.cache.maxSize>1</spring.test.context.cache.maxSize>\n                    </systemPropertyVariables>\n                </configuration>\n            </plugin>\n'''
+          always='''            <plugin>\n                <groupId>org.apache.maven.plugins</groupId>\n                <artifactId>maven-surefire-plugin</artifactId>\n                <configuration>\n                    <excludedGroups>${excludedGroups}</excludedGroups>\n                    <systemPropertyVariables>\n                        <!--\n                            Different Spring test contexts rebuild the same in-memory\n                            HSQLDB schema. Retaining only the current context prevents\n                            a stale JGit repository from being reused afterwards.\n                        -->\n                        <spring.test.context.cache.maxSize>1</spring.test.context.cache.maxSize>\n                    </systemPropertyVariables>\n                </configuration>\n                <executions>\n                    <!-- Always active: removing taxonomy-build from the root reactor must fail normal CI too. -->\n                    <execution>\n                        <id>architecture-selector-anchor</id>\n                        <phase>test</phase>\n                        <goals><goal>test</goal></goals>\n                        <configuration>\n                            <test>ArchitectureExceptionLedgerTest#moduleChecksRemainReachableFromTheArchitectureProfile</test>\n                            <failIfNoTests>true</failIfNoTests>\n                            <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>\n                            <reportNameSuffix>selector-anchor</reportNameSuffix>\n                        </configuration>\n                    </execution>\n                </executions>\n            </plugin>\n'''
+          profile='''        <!-- This fixed execution cannot disappear by editing the mutable test selectors. -->\n        <profile>\n            <id>architecture-tests</id>\n            <build><plugins><plugin>\n                <groupId>org.apache.maven.plugins</groupId>\n                <artifactId>maven-surefire-plugin</artifactId>\n                <executions><execution>\n                    <id>architecture-selector-anchor</id>\n                    <phase>test</phase>\n                    <goals><goal>test</goal></goals>\n                    <configuration>\n                        <test>ArchitectureExceptionLedgerTest#moduleChecksRemainReachableFromTheArchitectureProfile</test>\n                        <failIfNoTests>true</failIfNoTests>\n                        <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>\n                        <reportNameSuffix>selector-anchor</reportNameSuffix>\n                    </configuration>\n                </execution></executions>\n            </plugin></plugins></build>\n        </profile>\n'''
+          assert s.count(surefire)==1, s.count(surefire)
+          assert s.count(profile)==1, s.count(profile)
+          s=s.replace(surefire,always,1).replace(profile,'',1)
+          pom.write_text(s)
+      - name: Verify focused architecture suite and always-on anchor
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          ./mvnw -B -ntp test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
+          report=taxonomy-build/target/surefire-reports/TEST-com.taxonomy.ArchitectureModuleGraphTest.xml
+          grep -q 'rejectsFeatureContextClassLeftInSupportModule' "$report"
+          grep -q 'stillAllowsSharedPackageClassInSupportModule' "$report"
+          grep -q 'rejectsRootCompositionClassLeftInSupportModule' "$report"
+          find taxonomy-app/target/surefire-reports -name '*selector-anchor*.xml' -print -quit | grep -q .
+      - name: Verify canonical reactor before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp verify -Pci -Dtaxonomy.ui.skip=true
+          find taxonomy-app/target/surefire-reports -name '*selector-anchor*.xml' -print -quit | grep -q .
+          git diff --check
+      - name: Commit and publish only after green verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          base=1d206b5e44daa13ed58c876dadc447f6bff140b6
+          remote=$(git ls-remote origin refs/heads/refactor/628-module-extraction-gate | cut -f1)
+          test "$remote" = "$base"
+          git status --short
+          git add taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java \
+                  taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java \
+                  taxonomy-build/src/test/java/com/taxonomy/ArchitectureSupportOwnershipRegressionTest.java \
+                  taxonomy-app/pom.xml
+          git diff --cached --check
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
+              commit -m 'fix(build): close final architecture gate ownership gaps'
+          git push origin HEAD:refs/heads/refactor/628-module-extraction-gate
