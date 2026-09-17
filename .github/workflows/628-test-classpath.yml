@@ -1,0 +1,30 @@
+name: Application test classpath (temporary)
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-test-classpath.yml]
+permissions:
+  contents: read
+jobs:
+  dependencies:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: 4c5bfcd2d5d7324d30ed9070e2ec066454d85947, persist-credentials: false}
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Resolve unchanged test classpath without executing tests
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/test-classpath
+          ./mvnw -B -ntp -pl taxonomy-app -am install -DskipTests -DskipITs -Dtaxonomy.ui.skip=true
+          ./mvnw -B -ntp -pl taxonomy-app org.apache.maven.plugins:maven-dependency-plugin:3.8.1:copy-dependencies -DincludeScope=test -DoutputDirectory=/tmp/test-classpath
+          cd /tmp/test-classpath
+          sha256sum *.jar > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: exact-application-test-classpath
+          path: /tmp/test-classpath
+          retention-days: 3
+          if-no-files-found: error
