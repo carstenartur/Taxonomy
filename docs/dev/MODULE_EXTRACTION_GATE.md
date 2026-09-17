@@ -191,3 +191,18 @@ Thus deleting all downstream gate classes cannot turn the profile into a silent
 success. These source files must physically remain inside the checkout before
 parsing; contained aliases remain valid. The complete ordered selector and all
 other selected guards remain the downstream synchronization check's responsibility.
+
+
+## Required guard execution
+
+The upstream selector anchor checks that `taxonomy-build` is an unconditional,
+unique root reactor member with the `jar` lifecycle. It validates three fixed
+Surefire executions in that owner POM, one per module guard, each failing when
+its selected class produces no tests. This is an execution contract rather than
+an assertion that a correctly named source file is necessarily a runnable test.
+The ordinary build-module test scan excludes these three classes to avoid
+running them twice in normal CI; additional build tests remain in that scan.
+Explicit focused Maven test selectors may also select them in the default
+execution, but cannot remove the required executions or their fail-on-empty
+settings. The existing source-declaration and checkout-containment checks remain.
+No feature module or application production code depends on build-test classes.
