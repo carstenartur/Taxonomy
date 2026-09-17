@@ -1,0 +1,154 @@
+name: Architecture stack review preflight
+on:
+  push:
+    branches: [verify/628-boundary-regressions-20260916]
+    paths: [.github/workflows/628-review-completion.yml]
+permissions:
+  contents: write
+jobs:
+  assemble:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.candidates.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: 4c5bfcd2d5d7324d30ed9070e2ec066454d85947, fetch-depth: 0, persist-credentials: false}
+      - name: Assemble immutable candidates, preserving every published ancestor
+        id: candidates
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,gzip,hashlib,json,os,subprocess,urllib.request
+          from pathlib import Path
+          out=Path('/tmp/review-preflight');out.mkdir()
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          def run(*args): subprocess.run(['git',*args],check=True)
+          blob='ea7dc7e5f1476abee27016ed8640740109647038'
+          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+blob,
+              headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(request) as response: encoded=''.join(json.load(response)['content'].split())
+          # Correct the independently identified two-character transport-copy error.
+          # The original compressed payload and each resulting tree are hash-bound below.
+          assert encoded.count('VikS7IxCayX')==1
+          data=base64.b64decode(encoded.replace('VikS7IxCayX','VikS7bFCayX'))
+          assert hashlib.sha256(data).hexdigest()=='bfb03fec2a1f4c01b094223dda32bd5b5cdd511bdbc273a6b983d38a2eda0e96'
+          patches=json.loads(gzip.decompress(data))
+          run('config','user.name','github-actions[bot]')
+          run('config','user.email','41898282+github-actions[bot]@users.noreply.github.com')
+          candidates={}
+          for lane in ('gate','workspace'):
+              item=patches[lane]
+              run('checkout','--detach',item['base'])
+              patch=out/(lane+'.patch');patch.write_text(item['patch'])
+              run('apply','--index',str(patch));run('diff','--cached','--check')
+              assert git('write-tree')==item['tree']
+              message={'gate':'fix(build): require executable architecture guards in their reactor owner',
+                       'workspace':'fix(workspace): make null ordering portable and authorize controller subclasses'}[lane]
+              run('commit','-m',message)
+              if lane=='workspace': run('merge','--no-ff','--no-edit',candidates['gate']['sha'])
+              candidates[lane]={'base':item['base'],'sha':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}')}
+          for lane,base,parent in [('templates','f7f53be0473cb17306e9f3a3fa8b6cbf1f656791','workspace'),
+                                   ('interop','4c5bfcd2d5d7324d30ed9070e2ec066454d85947','templates')]:
+              run('checkout','--detach',base);run('merge','--no-ff','--no-edit',candidates[parent]['sha'])
+              candidates[lane]={'base':base,'sha':git('rev-parse','HEAD'),'tree':git('rev-parse','HEAD^{tree}')}
+          assert git('status','--porcelain')==''
+          prefix='verify/628-completion-'+os.environ['GITHUB_RUN_ID']+'-'
+          auth=base64.b64encode(('x-access-token:'+os.environ['GH_TOKEN']).encode()).decode()
+          refs=[]
+          for lane,item in candidates.items():
+              item['ref']=prefix+lane
+              refs.append(item['sha']+':refs/heads/'+item['ref'])
+          subprocess.run(['git','-c','http.https://github.com/.extraheader=AUTHORIZATION: basic '+auth,'push','origin',*refs],check=True)
+          (out/'candidates.json').write_text(json.dumps(candidates,indent=2)+'\n')
+          matrix={'include':[{'lane':lane,**candidates[lane]} for lane in ('gate','interop')]}
+          with open(os.environ['GITHUB_OUTPUT'],'a') as output: output.write('matrix='+json.dumps(matrix)+'\n')
+          print(json.dumps(candidates,indent=2))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with: {name: architecture-review-candidates, path: /tmp/review-preflight, retention-days: 7}
+  verify:
+    needs: assemble
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.assemble.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {ref: '${{ matrix.sha }}', fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: models/bge-small-en-v1.5
+          key: ${{ runner.os }}-taxonomy-bge-small-en-v1.5-${{ hashFiles('.github/scripts/download-embedding-model.sh') }}
+      - name: Full reactor unit tests on exact candidate source
+        env:
+          TAXONOMY_EMBEDDING_MODEL_DIR: ${{ github.workspace }}/models/bge-small-en-v1.5
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+        run: |
+          set -o pipefail
+          test "$(git rev-parse HEAD^{tree})" = '${{ matrix.tree }}'
+          mkdir -p /tmp/review-evidence
+          git rev-parse HEAD HEAD^{tree} > /tmp/review-evidence/identity.txt
+          ./mvnw -B -ntp test -DexcludedGroups=real-llm -DrunOnnxTests=true 2>&1 | tee /tmp/review-evidence/reactor-unit.log
+      - name: Prove each actual Surefire execution rejects a class with no runnable tests
+        if: matrix.lane == 'gate'
+        shell: python
+        run: |
+          import copy,re,subprocess,xml.etree.ElementTree as ET
+          from pathlib import Path
+          out=Path('/tmp/review-evidence');fixture=out/'maven-fixture';fixture.mkdir()
+          ns={'m':'http://maven.apache.org/POM/4.0.0'}
+          owner=ET.parse('taxonomy-build/pom.xml').getroot()
+          plugin=next(p for p in owner.findall('m:build/m:plugins/m:plugin',ns) if p.findtext('m:artifactId',namespaces=ns)=='maven-surefire-plugin')
+          plugin=copy.deepcopy(plugin)
+          for element in plugin.iter(): element.tag=element.tag.split('}')[-1]
+          log=(out/'reactor-unit.log').read_text()
+          version=re.search(r'--- surefire:([^: ]+):test',log).group(1)
+          compilerVersion=re.search(r'--- compiler:([^: ]+):',log).group(1)
+          ET.SubElement(plugin,'version').text=version
+          pom=ET.Element('project');ET.SubElement(pom,'modelVersion').text='4.0.0'
+          for key,value in [('groupId','com.taxonomy.fixture'),('artifactId','required-guard-proof'),('version','1')]: ET.SubElement(pom,key).text=value
+          props=ET.SubElement(pom,'properties');ET.SubElement(props,'maven.compiler.release').text='21'
+          deps=ET.SubElement(pom,'dependencies');dep=ET.SubElement(deps,'dependency')
+          for key,value in [('groupId','org.junit.jupiter'),('artifactId','junit-jupiter'),('version','6.0.3'),('scope','test')]: ET.SubElement(dep,key).text=value
+          build=ET.SubElement(pom,'build');plugins=ET.SubElement(build,'plugins');plugins.append(plugin)
+          compiler=ET.SubElement(plugins,'plugin')
+          for key,value in [('groupId','org.apache.maven.plugins'),('artifactId','maven-compiler-plugin'),('version',compilerVersion)]: ET.SubElement(compiler,key).text=value
+          ET.ElementTree(pom).write(fixture/'pom.xml',encoding='unicode')
+          sources=fixture/'src/test/java/com/taxonomy';sources.mkdir(parents=True)
+          guards=['ArchitectureModuleGraphTest','ArchitectureModuleExtractionTest','ArchitectureSelectorSynchronizationTest']
+          command=[str(Path('mvnw').resolve()),'-B','-ntp','-f',str(fixture/'pom.xml'),'clean','test','-Dsurefire.failIfNoSpecifiedTests=false']
+          for absent in [None,*guards]:
+              for guard in guards:
+                  body='' if guard==absent else '@org.junit.jupiter.api.Test void actuallyRuns() {}'
+                  (sources/(guard+'.java')).write_text('package com.taxonomy; class '+guard+' {'+body+'}\n')
+              result=subprocess.run(command,stdout=subprocess.PIPE,stderr=subprocess.STDOUT,text=True)
+              (out/('empty-'+str(absent)+'.log')).write_text(result.stdout)
+              if absent is None:
+                  assert result.returncode==0,result.stdout[-8000:]
+                  for guard in guards:
+                      report=ET.parse(fixture/'target/surefire-reports'/('TEST-com.taxonomy.'+guard+'.xml')).getroot()
+                      assert int(report.get('tests'))==1 and int(report.get('skipped','0'))==0,report.attrib
+              else:
+                  assert result.returncode!=0,result.stdout[-8000:]
+                  assert 'required-'+absent in result.stdout
+                  assert 'No tests were executed' in result.stdout or 'No tests matching pattern' in result.stdout,result.stdout[-8000:]
+              print('Verified empty guard rejection' if absent else 'Verified all three healthy executions',absent)
+      - name: Complete frontend contracts
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee /tmp/review-evidence/frontend.log
+          test -z "$(git status --porcelain --untracked-files=no)"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: architecture-review-${{ matrix.lane }}
+          path: |
+            /tmp/review-evidence
+            **/target/surefire-reports/TEST-*.xml
+            taxonomy-build/target/architecture-module-graph.txt
+          retention-days: 7
+          if-no-files-found: error
