@@ -25,39 +25,17 @@ jobs:
           from pathlib import Path
           path = Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java')
           text = path.read_text()
-          old = '''        if (supportModules.contains(physical)) {
-              return new Ownership(physical, physical, "existing support module");
-          }
-          String packageName = className.substring(0, Math.max(0, className.lastIndexOf('.')));
-          Context context = null;
-          for (Context candidate : policy.contexts()) {
-              if (candidate.packages().stream().anyMatch(pattern -> matches(pattern, packageName))) {
-                  context = candidate;
-                  break;
-              }
-          }
-          String planned;
-          String reason;
-          '''
-          new = '''        String packageName = className.substring(0, Math.max(0, className.lastIndexOf('.')));
-          Context context = null;
-          for (Context candidate : policy.contexts()) {
-              if (candidate.packages().stream().anyMatch(pattern -> matches(pattern, packageName))) {
-                  context = candidate;
-                  break;
-              }
-          }
-          boolean plannedFeatureContext = context != null && context.targetModule() != null
+          support_start = text.index('        if (supportModules.contains(physical)) {')
+          package_start = text.index('        String packageName = ', support_start)
+          planned_start = text.index('        String planned;', package_start)
+          context_block = text[package_start:planned_start]
+          replacement = context_block + '''        boolean plannedFeatureContext = context != null && context.targetModule() != null
                   && !context.targetModule().equals(policy.compositionModule());
           if (supportModules.contains(physical) && !plannedFeatureContext) {
               return new Ownership(physical, physical, "existing support module");
           }
-          String planned;
-          String reason;
           '''
-          if text.count(old) != 1:
-              raise SystemExit(f'expected one ownership block, found {text.count(old)}')
-          path.write_text(text.replace(old, new))
+          path.write_text(text[:support_start] + replacement + text[planned_start:])
       - name: Run direct counterexample and shared-support control
         shell: bash
         run: |
