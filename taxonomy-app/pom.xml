@@ -521,6 +521,25 @@
     </build>
 
     <profiles>
+        <!-- Canonical CI must execute this check independently of mutable test selectors. -->
+        <profile>
+            <id>ci</id>
+            <build><plugins><plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions><execution>
+                    <id>architecture-module-gate-ci-anchor</id>
+                    <phase>test</phase>
+                    <goals><goal>test</goal></goals>
+                    <configuration>
+                        <test>ArchitectureExceptionLedgerTest#moduleChecksRemainReachableFromTheArchitectureProfile</test>
+                        <failIfNoTests>true</failIfNoTests>
+                        <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                        <reportNameSuffix>module-gate-ci-anchor</reportNameSuffix>
+                    </configuration>
+                </execution></executions>
+            </plugin></plugins></build>
+        </profile>
         <!-- This fixed execution cannot disappear by editing the mutable test selectors. -->
         <profile>
             <id>architecture-tests</id>
