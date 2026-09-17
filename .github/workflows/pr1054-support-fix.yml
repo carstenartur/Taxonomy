@@ -1,0 +1,103 @@
+name: PR1054 support ownership fix verification
+on:
+  push:
+    branches: [verify/pr1054-support-ownership]
+    paths: [.github/workflows/pr1054-support-fix.yml]
+permissions:
+  contents: write
+jobs:
+  verify-and-publish-temp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Apply the minimal ownership correction
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java')
+          text = path.read_text()
+          old = '''        if (supportModules.contains(physical)) {
+              return new Ownership(physical, physical, "existing support module");
+          }
+          String packageName = className.substring(0, Math.max(0, className.lastIndexOf('.')));
+          Context context = null;
+          for (Context candidate : policy.contexts()) {
+              if (candidate.packages().stream().anyMatch(pattern -> matches(pattern, packageName))) {
+                  context = candidate;
+                  break;
+              }
+          }
+          String planned;
+          String reason;
+          '''
+          new = '''        String packageName = className.substring(0, Math.max(0, className.lastIndexOf('.')));
+          Context context = null;
+          for (Context candidate : policy.contexts()) {
+              if (candidate.packages().stream().anyMatch(pattern -> matches(pattern, packageName))) {
+                  context = candidate;
+                  break;
+              }
+          }
+          boolean plannedFeatureContext = context != null && context.targetModule() != null
+                  && !context.targetModule().equals(policy.compositionModule());
+          if (supportModules.contains(physical) && !plannedFeatureContext) {
+              return new Ownership(physical, physical, "existing support module");
+          }
+          String planned;
+          String reason;
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one ownership block, found {text.count(old)}')
+          path.write_text(text.replace(old, new))
+      - name: Run direct counterexample and shared-support control
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/pr1054-probe/com/taxonomy /tmp/pr1054-classes
+          cat > /tmp/pr1054-probe/com/taxonomy/SupportOwnershipProbe.java <<'JAVA'
+          package com.taxonomy;
+          import java.util.List;
+          import java.util.Set;
+          public final class SupportOwnershipProbe {
+            private static final String APP = "taxonomy-app";
+            private static final String FEATURE = "taxonomy-a";
+            private static final String SUPPORT = "taxonomy-domain";
+            private static final ArchitectureModuleGraph.Policy POLICY = new ArchitectureModuleGraph.Policy(
+                APP, Set.of("AppConfig.java"), List.of(
+                  new ArchitectureModuleGraph.Context("a", FEATURE, List.of("com.taxonomy.a..")),
+                  new ArchitectureModuleGraph.Context("composition", APP, List.of("com.taxonomy.composition..", "com.taxonomy.shared.."))));
+            public static void main(String[] args) {
+              var misplaced = ArchitectureModuleGraph.evaluate(POLICY, Set.of(SUPPORT), Set.of(FEATURE, SUPPORT),
+                  List.of(new ArchitectureModuleGraph.ClassOwner("com.taxonomy.a.Service", FEATURE, "Service.java"),
+                          new ArchitectureModuleGraph.ClassOwner("com.taxonomy.a.Other", SUPPORT, "Other.java")), List.of());
+              boolean rejected = misplaced.violations().stream().anyMatch(v -> v.contains("com.taxonomy.a.Other")
+                  && v.contains(SUPPORT) && v.contains("planned owner is " + FEATURE));
+              if (!rejected) throw new AssertionError("feature-context class in support module was accepted: " + misplaced.violations());
+              var shared = ArchitectureModuleGraph.evaluate(POLICY, Set.of(SUPPORT), Set.of(FEATURE, SUPPORT),
+                  List.of(new ArchitectureModuleGraph.ClassOwner("com.taxonomy.a.Service", FEATURE, "Service.java"),
+                          new ArchitectureModuleGraph.ClassOwner("com.taxonomy.shared.Contract", SUPPORT, "Contract.java")), List.of());
+              if (!shared.violations().isEmpty()) throw new AssertionError("shared support class must remain allowed: " + shared.violations());
+            }
+          }
+          JAVA
+          javac -d /tmp/pr1054-classes taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java /tmp/pr1054-probe/com/taxonomy/SupportOwnershipProbe.java
+          java -cp /tmp/pr1054-classes com.taxonomy.SupportOwnershipProbe
+      - name: Run focused JUnit regression through the real reactor
+        run: ./mvnw -B -ntp -pl taxonomy-build -am -Dtest=ArchitectureSupportOwnershipRegressionTest -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Commit only the verified graph correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git add taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java
+          git -c user.name='Architecture verification' -c user.email='verification@invalid.example' commit -m 'fix(architecture): validate planned ownership inside support modules'
+          git push origin HEAD:verify/pr1054-support-ownership
