@@ -1,0 +1,121 @@
+name: PR 1054 support ownership regressions
+on:
+  push:
+    branches: [verify/1054-support-class-ownership-20260917]
+    paths: [.github/workflows/1054-support-ownership.yml]
+permissions:
+  contents: read
+jobs:
+  reproduce:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: f62679f9127f25479f1a09f8464a04dfc1be096f
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-java@dd06d9cba3e5552c54d9f8ea23572deb30010f7c
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Add counterexamples to the existing graph suite only
+        shell: python
+        run: |
+          from pathlib import Path
+          import subprocess
+          out=Path('/tmp/support-ownership');out.mkdir()
+          path=Path('taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java')
+          text=path.read_text(); anchor='    @Test\n    void exactPhysicalOwnershipRecognizesExistingModulesDespiteOverlappingAppPackages()'
+          assert text.count(anchor)==1
+          tests='''    @org.junit.jupiter.params.ParameterizedTest
+              @org.junit.jupiter.params.provider.CsvSource({
+                      "taxonomy-domain,true", "taxonomy-domain,false",
+                      "taxonomy-dsl,true", "taxonomy-dsl,false",
+                      "taxonomy-export,true", "taxonomy-export,false",
+                      "taxonomy-extension-api,true", "taxonomy-extension-api,false",
+                      "taxonomy-tooling,true", "taxonomy-tooling,false"})
+              void supportModulesCannotShelterExplicitFeatureClasses(String support, boolean extracted) {
+                  String displaced = "com.taxonomy.a.Other";
+                  Set<String> present = extracted ? Set.of(APP, A, support) : Set.of(APP, support);
+                  Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(support), present,
+                          List.of(owner(A_CLASS, extracted ? A : APP), owner(displaced, support)), List.of());
+
+                  assertThat(result.violations()).anySatisfy(message -> assertThat(message)
+                          .contains(displaced, "invalid physical owner " + support, "planned owner is " + A));
+              }
+
+              @org.junit.jupiter.params.ParameterizedTest
+              @org.junit.jupiter.params.provider.ValueSource(strings = {
+                      "taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api", "taxonomy-tooling"})
+              void supportModulesRetainSharedAndUnresolvedPackageOwnership(String support) {
+                  for (String name : List.of("com.taxonomy.shared.Contract", "com.taxonomy.unassigned.Metadata",
+                          "com.taxonomy.dto.Envelope")) {
+                      Evaluation result = ArchitectureModuleGraph.evaluate(POLICY, Set.of(support), Set.of(APP, A, support),
+                              List.of(owner(A_CLASS, A), owner(name, support)), List.of(edge(A_CLASS, name)));
+                      assertThat(result.violations()).as("retained support ownership for %s", name).isEmpty();
+                      assertThat(result.blockers().get(A)).isEmpty();
+                      assertThat(result.report()).contains(A + " -> " + support);
+                  }
+              }
+
+              @org.junit.jupiter.params.ParameterizedTest
+              @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+              void realBytecodeDistinguishesDisplacedFeatureAndNeutralSupportClasses(boolean displaced) throws Exception {
+                  bytecodeRepository();
+                  pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module>"
+                          + "<module>taxonomy-domain</module></modules>");
+                  pom(DOMAIN, DOMAIN, "");
+                  compile(APP, "com.taxonomy.AppConfig", "public class AppConfig {}", List.of());
+                  compile(A, A_CLASS, "public class Service {}", List.of());
+                  String name = displaced ? "com.taxonomy.a.Other" : "com.taxonomy.dto.Other";
+                  compile(DOMAIN, name, "public class Other {}", List.of());
+
+                  Evaluation result = ArchitectureModuleExtractionTest.evaluateRepository(temporaryRepository);
+                  if (displaced) {
+                      assertThat(result.violations()).anySatisfy(message -> assertThat(message)
+                              .contains(name, "invalid physical owner " + DOMAIN, "planned owner is " + A));
+                  } else {
+                      assertThat(result.violations()).isEmpty();
+                  }
+              }
+
+          '''
+          # Normalize the enclosing text-block indentation to this suite's style.
+          lines=tests.splitlines()
+          tests='\n'.join(line[10:] if line.startswith('          ') else line for line in lines)+'\n'
+          path.write_text(text.replace(anchor, tests+anchor))
+          subprocess.run(['git','diff','--check'],check=True)
+          (out/'tests.patch').write_bytes(subprocess.check_output(['git','diff','--full-index']))
+          assert subprocess.check_output(['git','diff','--name-only'],text=True).splitlines()==[str(path)]
+      - name: Execute real JUnit regressions against the unchanged evaluator
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-build -am test -Dtest=ArchitectureModuleGraphTest -Dsurefire.failIfNoSpecifiedTests=false -Dtaxonomy.ui.skip=true > /tmp/support-ownership/red.log 2>&1
+          result=$?
+          tail -n 65 /tmp/support-ownership/red.log
+          echo "$result" > /tmp/support-ownership/exit.txt
+          test "$result" -eq 1
+      - name: Require precisely the expected failures and passing controls
+        shell: python
+        run: |
+          from pathlib import Path
+          import json,xml.etree.ElementTree as ET
+          path=Path('taxonomy-build/target/surefire-reports/TEST-com.taxonomy.ArchitectureModuleGraphTest.xml')
+          root=ET.parse(path).getroot()
+          failed=[case.get('name') for case in root.findall('testcase') if case.find('failure') is not None]
+          assert int(root.get('errors','0'))==0,root.attrib
+          assert int(root.get('skipped','0'))==0,root.attrib
+          assert len(failed)==11,(root.attrib,failed)
+          assert all(name.startswith(('supportModulesCannotShelterExplicitFeatureClasses(',
+              'realBytecodeDistinguishesDisplacedFeatureAndNeutralSupportClasses(')) for name in failed),failed
+          result={'source':'f62679f9127f25479f1a09f8464a04dfc1be096f','suite':root.attrib,'failingCases':failed}
+          Path('/tmp/support-ownership/summary.json').write_text(json.dumps(result,indent=2)+'\n')
+          print(json.dumps(result,indent=2))
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: support-ownership-red
+          path: |
+            /tmp/support-ownership
+            taxonomy-build/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
