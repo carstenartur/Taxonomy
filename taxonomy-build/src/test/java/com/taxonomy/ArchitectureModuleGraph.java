@@ -198,10 +198,10 @@ final class ArchitectureModuleGraph {
             }
         }
         boolean plannedFeatureContext = context != null && context.targetModule() != null
-        && !context.targetModule().equals(policy.compositionModule());
-if (supportModules.contains(physical) && !plannedFeatureContext) {
-    return new Ownership(physical, physical, "existing support module");
-}
+                && !context.targetModule().equals(policy.compositionModule());
+        if (supportModules.contains(physical) && !plannedFeatureContext) {
+            return new Ownership(physical, physical, "existing support module");
+        }
         String planned;
         String reason;
         if (packageName.equals("com.taxonomy") && policy.rootCompositionClasses().contains(source.sourceFile())) {
