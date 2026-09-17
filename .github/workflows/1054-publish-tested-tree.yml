@@ -1,0 +1,53 @@
+name: Publish verified architecture source objects
+on:
+  push:
+    branches: [verify/1054-support-class-ownership-20260917]
+    paths: [.github/workflows/1054-publish-tested-tree.yml]
+permissions:
+  contents: write
+  actions: read
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Validate completed evidence and publish source objects only
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: python
+        run: |
+          import base64,hashlib,io,json,os,urllib.request,zipfile
+          base='https://api.github.com/repos/carstenartur/Taxonomy'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
+          def request(path,payload=None):
+              req=urllib.request.Request(base+path,headers=headers,data=None if payload is None else json.dumps(payload).encode(),method='GET' if payload is None else 'POST')
+              with urllib.request.urlopen(req,timeout=45) as response: return json.load(response)
+          run=request('/actions/runs/35186036669')
+          assert run['status']=='completed' and run['conclusion']=='success'
+          req=urllib.request.Request(base+'/actions/artifacts/10482564230/zip',headers=headers)
+          with urllib.request.urlopen(req,timeout=45) as response: content=response.read()
+          digest=hashlib.sha256(content).hexdigest()
+          assert digest=='b29ec2de725de305e9885c0a30021eb5d4c0b0b1c254e0862d1a874b765be6a8',digest
+          with zipfile.ZipFile(io.BytesIO(content)) as archive:
+              manifests=[n for n in archive.namelist() if n.endswith('/manifest.json') or n=='manifest.json']
+              sources=[n for n in archive.namelist() if n.endswith('/tested-sources.zip') or n=='tested-sources.zip']
+              assert len(manifests)==len(sources)==1
+              manifest=json.loads(archive.read(manifests[0]))
+              assert manifest['base']=='f62679f9127f25479f1a09f8464a04dfc1be096f'
+              assert manifest['tree']=='5d76f49240f927d443e843f506d8c535d8da3e03'
+              allowed={'docs/dev/MODULE_EXTRACTION_GATE.md','taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraph.java','taxonomy-build/src/test/java/com/taxonomy/ArchitectureModuleGraphTest.java'}
+              assert set(manifest['files'])==allowed
+              entries=[]
+              with zipfile.ZipFile(io.BytesIO(archive.read(sources[0]))) as source:
+                  assert set(source.namelist())==allowed
+                  for path,sha in manifest['files'].items():
+                      data=source.read(path)
+                      assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+                      blob=request('/git/blobs',{'encoding':'base64','content':base64.b64encode(data).decode()})
+                      assert blob['sha']==sha
+                      entries.append({'path':path,'mode':'100644','type':'blob','sha':sha})
+          tree=request('/git/trees',{'base_tree':'aab3fd30274047187d1f68a59adba36fd86afd00','tree':entries})
+          assert tree['sha']==manifest['tree'],tree
+          message='fix(architecture): enforce feature ownership in foundation modules\n\nResolve explicit feature context assignments before accepting support-library\nownership. Preserve shared and unresolved foundation contracts and report\ndisplaced disconnected classes in their feature assessments.\n\nRED reproduced 11 failures with 144 passing controls. Exact-source preflight\n35186036669 passes the complete architecture profile (155 graph cases) and all\n1610 frontend contract cases. No runtime Java, POM, policy, workflow or coverage\nchanges. Full canonical PR CI and fresh review remain required.'
+          commit=request('/git/commits',{'message':message,'tree':tree['sha'],'parents':[manifest['base']]})
+          print(json.dumps({'verifiedRun':35186036669,'artifactSha256':digest,'commit':commit['sha'],'tree':tree['sha'],'files':manifest['files'],'refsChanged':False},indent=2))
