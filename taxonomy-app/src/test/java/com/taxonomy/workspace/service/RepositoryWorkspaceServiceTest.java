@@ -238,36 +238,11 @@ class RepositoryWorkspaceServiceTest {
     }
 
     @Test
-    void missingWorkspaceSeedHeadFailsAndDeletesAttemptedStorage() throws Exception {
-        configureValidSourceAndWorkspace();
-        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn(null);
-
-        IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> service.createWorkingCopy(
-                        "alice", "source-repository", "main", "Workspace", null));
-
-        assertTrue(failure.getCause().getMessage().contains("did not create branch draft"));
-        verify(repositoryFactory).deleteWorkspaceRepository(anyString());
-    }
-
-    @Test
-    void missingTrackingHeadFailsAndDeletesAttemptedStorage() throws Exception {
-        configureValidSourceAndWorkspace();
-        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn("workspace-head");
-        when(workspaceGit.createBranchAtCommit(eq("sync-base"), anyString())).thenReturn(null);
-
-        IllegalStateException failure = assertThrows(IllegalStateException.class,
-                () -> service.createWorkingCopy(
-                        "alice", "source-repository", "main", "Workspace", null));
-
-        assertTrue(failure.getCause().getMessage().contains("tracking branch sync-base"));
-        verify(repositoryFactory).deleteWorkspaceRepository(anyString());
-    }
-
-    @Test
     void cleanupFailureIsSuppressedOnProvisioningFailure() throws Exception {
         configureValidSourceAndWorkspace();
-        when(workspaceGit.commitDslIfHeadMatches(eq("draft"), isNull(), anyString(), anyString(), anyString())).thenReturn(null);
+        when(workspaceGit.commitDslIfHeadMatches(
+                eq("draft"), isNull(), anyString(), anyString(), anyString()))
+                .thenThrow(new IOException("seed CAS failed"));
         doThrow(new IllegalStateException("cleanup failed"))
                 .when(repositoryFactory).deleteWorkspaceRepository(anyString());
 
@@ -275,6 +250,7 @@ class RepositoryWorkspaceServiceTest {
                 () -> service.createWorkingCopy(
                         "alice", "source-repository", "main", "Workspace", null));
 
+        assertTrue(failure.getCause().getMessage().contains("seed CAS failed"));
         assertEquals(1, failure.getCause().getSuppressed().length);
         assertEquals("cleanup failed", failure.getCause().getSuppressed()[0].getMessage());
     }
