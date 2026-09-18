@@ -60,6 +60,24 @@ class WorkspaceAccessWebMvcConfigurationTest {
     }
 
     @Test
+    void controllerSubclassCannotBypassWorkspaceOwnershipLookup() throws Exception {
+        Principal principal = () -> "alice";
+        when(request.getUserPrincipal()).thenReturn(principal);
+        when(request.getAttribute(HandlerMapping.URI_TEMPLATE_VARIABLES_ATTRIBUTE))
+                .thenReturn(Map.of("id", "workspace-bob"));
+        when(workspaceAccessService.canReadWorkspaceMetadata(
+                "workspace-bob", "alice")).thenReturn(false);
+        Method method = WorkspaceController.class.getMethod(
+                "getWorkspaceInfo", String.class);
+        HandlerMethod proxiedHandler = new HandlerMethod(new WorkspaceControllerSubclass(), method);
+
+        assertThat(interceptor.preHandle(request, response, proxiedHandler)).isFalse();
+
+        verify(workspaceAccessService).canReadWorkspaceMetadata("workspace-bob", "alice");
+        verify(response).sendError(HttpStatus.NOT_FOUND.value());
+    }
+
+    @Test
     void securityFilterChainRetainsOwnershipOfAnonymousResponse() throws Exception {
         when(request.getUserPrincipal()).thenReturn(null);
 
@@ -96,6 +114,12 @@ class WorkspaceAccessWebMvcConfigurationTest {
 
         assertThat(interceptor.preHandle(
                 request, response, workspaceInfoHandler)).isTrue();
+    }
+
+    private static final class WorkspaceControllerSubclass extends WorkspaceController {
+        private WorkspaceControllerSubclass() {
+            super(null, null, null, null, null, null, null, null);
+        }
     }
 
     @Test

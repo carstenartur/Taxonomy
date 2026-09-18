@@ -20,6 +20,7 @@ import com.taxonomy.versioning.service.RepositoryStateService;
  */
 class RepositoryStateGuardTest {
 
+    private DslGitRepositoryFactory factory;
     private DslGitRepository gitRepo;
     private RepositoryStateService stateService;
     private RepositoryStateGuard guard;
@@ -40,7 +41,7 @@ class RepositoryStateGuardTest {
 
     @BeforeEach
     void setUp() {
-        var factory = new DslGitRepositoryFactory(null);
+        factory = new DslGitRepositoryFactory(null);
         gitRepo = factory.getSystemRepository();
         UserWorkspaceRepository wsRepo = mock(UserWorkspaceRepository.class);
         WorkspaceManager workspaceManager = new WorkspaceManager(wsRepo, 50,
@@ -62,6 +63,21 @@ class RepositoryStateGuardTest {
         var check = guard.checkWriteOperation(USER, "nonexistent", "materialize");
         assertFalse(check.allowed(), "Materialize on nonexistent branch should be blocked");
         assertFalse(check.blocks().isEmpty());
+    }
+
+    @Test
+    void explicitWorkspaceContextDoesNotInspectSystemRepository() throws IOException {
+        gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "central");
+
+        WorkspaceContext selected =
+                new WorkspaceContext(USER, "workspace-context", "draft", "repository-1");
+        factory.openWorkspaceRepository("workspace-context");
+
+        var check = guard.checkWriteOperation(USER, "draft", "materialize", selected);
+
+        assertFalse(check.allowed(),
+                "An empty selected workspace must not inherit branch state from the system repository");
+        assertTrue(check.blocks().stream().anyMatch(block -> block.contains("does not exist")));
     }
 
     @Test
