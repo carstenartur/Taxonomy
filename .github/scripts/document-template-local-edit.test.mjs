@@ -72,6 +72,22 @@ test('upload uses browser credentials, CSRF and exact original revision behind a
     assert.equal(app.node('localTemplateFields').disabled, true);
 });
 
+test('mixed-case immutable revisions remain valid optimistic preconditions', async () => {
+    const upperRevision = revision.toUpperCase();
+    const upperNext = next.toUpperCase();
+    let request;
+    const app = boot(async (url, init) => {
+        request = { url, init };
+        return response(201, { templateId: id, headCommit: upperNext });
+    }, { revision: upperRevision });
+
+    await app.submit();
+
+    assert.equal(request.init.headers.get('If-Match'), '"' + upperRevision + '"');
+    assert.equal(app.node('localTemplateMessage').textContent, 'saved');
+    assert.equal(app.node('localTemplateSavedRevision').textContent, upperNext);
+});
+
 test('double submit while busy and after success never sends another upload', async () => {
     let finish;
     let calls = 0;

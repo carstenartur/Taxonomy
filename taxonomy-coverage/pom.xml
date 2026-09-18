@@ -18,6 +18,11 @@
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-templates</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-workspace</artifactId>
             <version>${project.version}</version>
         </dependency>

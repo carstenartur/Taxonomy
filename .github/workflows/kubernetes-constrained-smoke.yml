@@ -13,6 +13,7 @@ on:
       - 'taxonomy-extension-api/**'
       - 'taxonomy-app/**'
       - 'taxonomy-workspace/**'
+      - 'taxonomy-templates/**'
       - 'deploy/helm/taxonomy/**'
       - '.github/workflows/kubernetes-constrained-smoke.yml'
   push:
@@ -27,6 +28,7 @@ on:
       - 'taxonomy-extension-api/**'
       - 'taxonomy-app/**'
       - 'taxonomy-workspace/**'
+      - 'taxonomy-templates/**'
       - 'deploy/helm/taxonomy/**'
       - '.github/workflows/kubernetes-constrained-smoke.yml'
   workflow_dispatch:

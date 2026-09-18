@@ -14,6 +14,11 @@
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-templates</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-workspace</artifactId>
             <version>${project.version}</version>
         </dependency>
@@ -389,8 +394,7 @@
                         <id>report</id>
                         <phase>verify</phase>
                         <goals>
-                            <goal>report</goal>
-                        </goals>
+                            <goal>report</goal></goals>
                     </execution>
                 </executions>
             </plugin>

@@ -161,6 +161,29 @@ class DocumentTemplateDetailControllerTest {
     }
 
     @Test
+    void mixedCaseImmutableRevisionsAreAcceptedAndCanonicalized() throws Exception {
+        String upperOld = OLD.toUpperCase(java.util.Locale.ROOT);
+        String upperCurrent = CURRENT.toUpperCase(java.util.Locale.ROOT);
+        when(templates.download(ID, OLD)).thenReturn(file(OLD));
+
+        var localModel = new ConcurrentModel();
+        assertThat(controller().localEdit(ID, upperOld, localModel))
+                .isEqualTo("document-template-local-edit");
+        verify(templates).download(ID, OLD);
+
+        when(templates.describe(ID, OLD)).thenReturn(metadata(OLD));
+        when(templates.describeCurrent(ID)).thenReturn(metadata(CURRENT));
+        var restoreModel = new ConcurrentModel();
+        assertThat(controller().confirmRestore(ID, upperOld, upperCurrent, restoreModel))
+                .isEqualTo("document-template-restore");
+        assertThat(restoreModel.getAttribute("restoreRevision")).isEqualTo(OLD);
+        assertThat(restoreModel.getAttribute("restoreExpectedHead")).isEqualTo(CURRENT);
+        assertThat(restoreModel.getAttribute("restoreConflict")).isEqualTo(false);
+        verify(templates).describe(ID, OLD);
+        verify(templates).describeCurrent(ID);
+    }
+
+    @Test
     void missingHistoricalVersionIs404AndDoesNotFallBackToCurrent() throws Exception {
         var missing = new TemplateNotFoundException("internal-storage-marker", OLD);
         when(templates.describe(ID, OLD)).thenThrow(missing);

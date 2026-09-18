@@ -30,7 +30,7 @@
         form.setAttribute('aria-busy', String(value));
         spinner.classList.toggle('d-none', !value);
     }
-    if (!api || !/^[0-9a-f]{40}$/.test(revision || '')
+    if (!api || !/^[0-9a-f]{40}$/i.test(revision || '')
             || !Number.isSafeInteger(maxBytes) || maxBytes <= 0) {
         notify(labels.failed, true);
         return;
@@ -64,7 +64,7 @@
         try {
             const response = await api.upload(uploadUrl.href, file, headers, labels.failed);
             if (!response || response.templateId !== workspace.dataset.templateId
-                    || !/^[0-9a-f]{40}$/.test(response.headCommit || '')) {
+                    || !/^[0-9a-f]{40}$/i.test(response.headCommit || '')) {
                 throw new Error(labels.uncertain);
             }
             // Prevent a second submit, including when updating the result UI fails.

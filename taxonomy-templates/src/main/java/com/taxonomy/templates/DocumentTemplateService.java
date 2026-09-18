@@ -128,7 +128,6 @@ public class DocumentTemplateService {
     private TemplateDescriptor describeSnapshot(TemplateSnapshot snapshot) throws IOException {
         // Retain canonical OOXML and domain/privacy validation without ZIP creation.
         // Download/archive-size validation remains on the unchanged download path.
-        codec.validatePackage(snapshot.parts());
         validateSnapshot(snapshot);
         return descriptor(snapshot);
     }
@@ -312,7 +311,10 @@ public class DocumentTemplateService {
         materializations.validateOnce(
                 snapshot.manifest().templateId(),
                 snapshot.commitId(),
-                () -> validatePackage(snapshot.manifest().templateId(), snapshot.parts()));
+                () -> {
+                    codec.validatePackage(snapshot.parts());
+                    validatePackage(snapshot.manifest().templateId(), snapshot.parts());
+                });
     }
 
     private void validatePackage(String templateId, Map<String, byte[]> packageParts) {
