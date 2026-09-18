@@ -11,6 +11,9 @@ const DEFAULT_REVIEWERS = [
     'Copilot'
 ];
 const API_VERSION = '2022-11-28';
+// Policy upgrades are intentionally evaluated by the gate from the PR base SHA.
+// Version 3 therefore cannot authorize the pull request that introduces it; that
+// rollout must satisfy the previously trusted policy before this version reaches main.
 export const HUMAN_CONFIRMATION_POLICY_VERSION = 3;
 
 export function normalizeLogin(login) {
@@ -174,7 +177,8 @@ export async function loadHumanEvidence(client, input) {
 
 export function humanReviewDecision({
     pullRequest, review, reviews = [], comments = [], humanPermissions = new Map(),
-    reviewerLogins, asOf = Infinity, requireCompleteCoverage = false
+    reviewerLogins, asOf = Infinity, requireCompleteCoverage = false,
+    requireIssueComment = false
 }) {
     const headSha = pullRequest?.head?.sha;
     const changedFiles = Number(pullRequest?.changed_files);
@@ -198,7 +202,7 @@ export function humanReviewDecision({
     const nativeApproval = [...latestOpinions.values()].find(item =>
         item.state === 'APPROVED' && Date.parse(reviewSubmittedAt(item)) > reviewedAt
         && normalizeLogin(item.user.login) !== normalizeLogin(pullRequest?.user?.login));
-    if (nativeApproval) {
+    if (!requireIssueComment && nativeApproval) {
         return { confirmation: {
             source: 'pull_request_review', id: nativeApproval.id,
             login: nativeApproval.user.login, url: nativeApproval.html_url,
@@ -261,7 +265,8 @@ export function evaluateExactHeadReview({
         .filter(review => String(review?.state ?? '').toUpperCase() !== 'DISMISSED')
         .filter(review => reviewSubmittedAt(review))
         .toSorted((left, right) =>
-            reviewSubmittedAt(left).localeCompare(reviewSubmittedAt(right)));
+            reviewSubmittedAt(left).localeCompare(reviewSubmittedAt(right))
+            || Number(left.id) - Number(right.id));
     const review = trustedReviews.at(-1);
     if (!review) {
         return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
@@ -337,7 +342,8 @@ export function evaluateExactHeadReview({
     const completeCoverage = coverage.reviewed === coverage.total;
     const decision = humanReviewDecision({
         pullRequest, review, reviews, comments, humanPermissions, reviewerLogins: trusted,
-        requireCompleteCoverage: !exactReviewBinding || !completeCoverage
+        requireCompleteCoverage: !exactReviewBinding || !completeCoverage,
+        requireIssueComment: !exactReviewBinding
     });
     if (decision.objection) {
         return result('blocked', 'HUMAN_CHANGES_REQUESTED',

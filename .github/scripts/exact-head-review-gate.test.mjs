@@ -635,6 +635,25 @@ test('native approval cannot substitute for the explicit metadata-mismatch bindi
     assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
 });
 
+test('native approval does not mask a valid explicit metadata-binding comment', () => {
+    const approval = review('Reviewed all current files.', {
+        id: 202, user: HUMAN, state: 'APPROVED',
+        commit_id: HEAD, submitted_at: '2026-09-01T10:02:00Z'
+    });
+    const result = humanGate({
+        pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) }), approval],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`,
+            created_at: '2026-09-01T10:03:00Z',
+            updated_at: '2026-09-01T10:03:00Z'
+        })]
+    });
+    assert.equal(result.status, 'passed');
+    assert.equal(result.humanConfirmation.source, 'issue_comment');
+    assert.equal(result.humanConfirmation.reviewId, '101');
+});
+
 test('metadata-mismatch binding is persisted in review-gate evidence', () => {
     const result = humanGate({
         reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],
@@ -740,6 +759,25 @@ test('newest trusted review with invalid commit metadata cannot fall back to an 
     });
     assert.equal(result.status, 'pending');
     assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+});
+
+test('review id breaks submitted-at ties so the newest trusted review wins deterministically', () => {
+    const sameTime = '2026-09-01T10:01:00Z';
+    const result = humanGate({
+        reviews: [
+            review(APPROVAL, { id: 100, submitted_at: sameTime }),
+            review(CHANGES, {
+                id: 101, commit_id: 'b'.repeat(40), submitted_at: sameTime
+            })
+        ],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`,
+            created_at: '2026-09-01T10:02:00Z',
+            updated_at: '2026-09-01T10:02:00Z'
+        })]
+    });
+    assert.equal(result.code, 'CHANGES_RECOMMENDED');
+    assert.equal(result.review.id, 101);
 });
 
 test('blocks changes recommended and closer-look outcomes', () => {

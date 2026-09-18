@@ -87,7 +87,8 @@ gate from the run's original trusted **base SHA**.
 For the version-3 metadata-mismatch recovery this means the rollout PR itself
 must remain stable and satisfy version 2 normally: all technical gates must pass
 and Copilot must submit a clean review that version 2 recognizes as bound to the
-rollout PR's exact head. Do not force-push or amend that reviewed rollout head.
+rollout PR's exact head. The rollout PR does **not** rely on the version-3
+fallback it introduces. Do not force-push or amend that reviewed rollout head.
 The version-3 `all-files` metadata-binding fallback is available only **after**
 that rollout PR has merged into `main`.
 
