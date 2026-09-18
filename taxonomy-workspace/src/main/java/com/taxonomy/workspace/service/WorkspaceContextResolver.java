@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.context.request.RequestAttributes;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+import jakarta.servlet.http.HttpServletRequest;
 
 /**
  * Resolves the current workspace and repository contexts from the authenticated
@@ -216,18 +217,26 @@ public class WorkspaceContextResolver {
         return primary;
     }
 
-    /** Exact tab selection, with header precedence over the query transport. */
+    /** Exact tab selection from the current request, with header precedence over query transport. */
     public static String requestedWorkspaceId() {
         RequestAttributes attributes = RequestContextHolder.getRequestAttributes();
         if (!(attributes instanceof ServletRequestAttributes servletAttributes)) {
             return null;
         }
-        String header = servletAttributes.getRequest().getHeader(WORKSPACE_HEADER);
+        return requestedWorkspaceId(servletAttributes.getRequest());
+    }
+
+    /**
+     * Canonical parser for explicit workspace-pin transport semantics.
+     * A present blank header is an explicit central selection and therefore
+     * overrides a stale query parameter with the empty string.
+     */
+    static String requestedWorkspaceId(HttpServletRequest request) {
+        String header = request.getHeader(WORKSPACE_HEADER);
         if (header != null) {
             return header.strip();
         }
-        String parameter = servletAttributes.getRequest()
-                .getParameter(WORKSPACE_QUERY_PARAMETER);
+        String parameter = request.getParameter(WORKSPACE_QUERY_PARAMETER);
         return parameter == null ? null : parameter.strip();
     }
 
