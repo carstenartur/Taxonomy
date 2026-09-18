@@ -69,7 +69,7 @@ final class ArchitectureModuleGraph {
     static Evaluation evaluate(Policy policy, Set<String> supportModules, Set<String> presentModules,
                                List<ClassOwner> classes, List<ClassDependency> dependencies,
                                List<ModuleDependency> declaredDependencies) {
-        validatePolicy(policy);
+        validatePolicy(policy, supportModules);
         SortedSet<String> featureModules = new TreeSet<>();
         for (Context context : policy.contexts()) {
             if (context.targetModule() != null && !context.targetModule().equals(policy.compositionModule())) {
@@ -355,7 +355,7 @@ final class ArchitectureModuleGraph {
         return packageName.equals(prefix) || packageName.startsWith(prefix + ".");
     }
 
-    private static void validatePolicy(Policy policy) {
+    private static void validatePolicy(Policy policy, Set<String> supportModules) {
         if (!"taxonomy-app".equals(policy.compositionModule()) || policy.rootCompositionClasses().isEmpty()) {
             throw new IllegalArgumentException("Policy must identify taxonomy-app and its root composition classes");
         }
@@ -371,9 +371,17 @@ final class ArchitectureModuleGraph {
             if (context.id() == null || context.id().isBlank() || !ids.add(context.id())) {
                 throw new IllegalArgumentException("Invalid or duplicate context id: " + context.id());
             }
-            if (context.targetModule() != null && (!context.targetModule().matches("taxonomy-[a-z0-9-]+")
-                    || !targets.add(context.targetModule()))) {
-                throw new IllegalArgumentException("Invalid or duplicate targetModule: " + context.targetModule());
+            if (context.targetModule() != null) {
+                if (!context.targetModule().matches("taxonomy-[a-z0-9-]+")
+                        || !targets.add(context.targetModule())) {
+                    throw new IllegalArgumentException(
+                            "Invalid or duplicate targetModule: " + context.targetModule());
+                }
+                if (supportModules.contains(context.targetModule())) {
+                    throw new IllegalArgumentException(
+                            "Support module cannot be a planned context target: "
+                                    + context.targetModule());
+                }
             }
             if (context.packages().isEmpty()) {
                 throw new IllegalArgumentException("No packages for context: " + context.id());
