@@ -127,6 +127,20 @@ class ExpectedHeadDslCommitterTest {
     }
 
     @Test
+    void verifiesExistingHeadThroughNoChangeRefUpdate() throws Exception {
+        try (DslGitRepository repository = new DslGitRepository()) {
+            String head = committer.commit(repository, new CommitRequest(
+                    "draft", null, "meta {\n}\n", "alice", "Initial"))
+                    .commitId();
+
+            assertThat(committer.verifyExpectedHead(repository, "draft", head))
+                    .isEqualTo(head);
+            assertThat(repository.getHeadCommit("draft")).isEqualTo(head);
+            assertThat(repository.getCommitCount("draft")).isEqualTo(1);
+        }
+    }
+
+    @Test
     void validatesBranchExpectedCommitAndRequiredContent() {
         assertThatIllegalArgumentException()
                 .isThrownBy(() -> new CommitRequest(
