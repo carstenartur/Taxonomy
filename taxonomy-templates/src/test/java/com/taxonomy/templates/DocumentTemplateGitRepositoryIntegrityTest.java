@@ -123,7 +123,7 @@ class DocumentTemplateGitRepositoryIntegrityTest {
                 "Invalid beta"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("OOXML")
-                .hasMessageContaining("part");
+                .hasMessageContaining("path");
         assertThat(repository.list())
                 .extracting(DocumentTemplateGitRepository.TemplateDescriptor::templateId)
                 .containsExactly("alpha");
