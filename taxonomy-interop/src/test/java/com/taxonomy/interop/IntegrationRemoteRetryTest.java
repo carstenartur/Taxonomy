@@ -286,4 +286,55 @@ class IntegrationRemoteRetryTest {
     }
 
 
+    @Test
+    void remotePreviewRejectsInvalidExpectedVersionBeforePersistingFetchState() {
+        IntegrationStore store = mock(IntegrationStore.class);
+        ExchangeConnectorRegistry connectors = mock(ExchangeConnectorRegistry.class);
+        IntegrationDomainAdapter domain = mock(IntegrationDomainAdapter.class);
+        WorkspaceArchitectureIntegrationPort editor = mock(WorkspaceArchitectureIntegrationPort.class);
+        IntegrationDiff diff = mock(IntegrationDiff.class);
+        IntegrationJson json = new IntegrationJson(JsonMapper.builder().build());
+        SystemRepositoryService repositories = mock(SystemRepositoryService.class);
+        RepositoryMembershipService memberships = mock(RepositoryMembershipService.class);
+        OslcTransport remote = mock(OslcTransport.class);
+        WorkspaceAccessService workspaceAccess = mock(WorkspaceAccessService.class);
+        IntegrationService service = new IntegrationService(store, connectors, domain, editor, diff, json,
+                repositories, memberships, remote, workspaceAccess);
+
+        RepositoryContext context = RepositoryContext.workspace("repo", "workspace", "draft", "alice");
+        UUID connectionId = UUID.randomUUID();
+        InternalState state = new InternalState(
+                "repo", WorkspaceOverlayScope.keyFor(context.workspaceId()), "draft",
+                "0123456789012345678901234567890123456789", 7, 7L, "project-state");
+        Connection connection = new Connection(
+                connectionId, "USER:alice", "Reference", OslcRequirementsCodec.PROFILE, "1",
+                AuthorityMode.BIDIRECTIONAL,
+                new ExternalScope("Reference", "https://example.invalid/rm/", null),
+                7L, "reference", 0, null, null, "alice");
+        SystemRepository repository = mock(SystemRepository.class);
+        LifecycleIntegrationConnector connector = mock(LifecycleIntegrationConnector.class);
+
+        when(workspaceAccess.canUsePrivateWorkspace(context)).thenReturn(true);
+        when(repositories.getRepository(context.repositoryId())).thenReturn(repository);
+        when(memberships.canContribute(repository, context.username())).thenReturn(true);
+        when(store.read(context, connectionId)).thenReturn(connection);
+        when(connectors.require(OslcRequirementsCodec.PROFILE)).thenReturn(connector);
+        when(connector.descriptor()).thenReturn(new IntegrationDescriptor(
+                OslcRequirementsCodec.PROFILE, "1", "OSLC", Set.of(), Set.of()));
+
+        for (String invalid : List.of("bad\rversion", "x".repeat(2049))) {
+            IllegalArgumentException failure = assertThrows(
+                    IllegalArgumentException.class,
+                    () -> service.previewRemote(
+                            context, connectionId,
+                            new IntegrationService.RemoteRequest(
+                                    UUID.randomUUID(), state, "requirement-1", invalid)));
+            assertEquals("Invalid external version", failure.getMessage());
+        }
+
+        verify(remote, never()).validate(any(), any(), any());
+        verify(store, never()).locked(any(), any(), any());
+    }
+
+
 }

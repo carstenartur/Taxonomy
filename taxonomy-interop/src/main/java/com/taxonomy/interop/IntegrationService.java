@@ -237,14 +237,16 @@ public class IntegrationService {
         Connection connection = store.read(context, connectionId); requireProfile(connection);
         if (!connection.connectorId().equals(OslcRequirementsCodec.PROFILE) || connection.authority() == AuthorityMode.PUBLISH_TARGET)
             throw new IntegrationProblem("AUTHORITY_MODE", 409, "Connection has no remote read capability");
+        String expectedExternalVersion =
+                OslcTransport.validateExpectedVersion(request.expectedExternalVersion());
         String resource = remote.validate(context, connection, request.resource()).toString();
         RemoteRequest frozenRequest = new RemoteRequest(
-                request.operationId(), request.expected(), resource, request.expectedExternalVersion());
+                request.operationId(), request.expected(), resource, expectedExternalVersion);
         String fingerprint = json.fingerprint(Arrays.asList(connectionId, context.username(), frozenRequest));
         Operation pending = store.locked(context, connectionId, session -> {
             Operation prior = session.find(request.operationId()); if (prior != null) return replay(prior, fingerprint);
             expect(request.expected(), domain.snapshot(context, connection, session.identities(), read(context)).state());
-            var template = new ExchangeDocument(OslcRequirementsCodec.PROFILE, connection.profileVersion(), request.expectedExternalVersion(), false, "",
+            var template = new ExchangeDocument(OslcRequirementsCodec.PROFILE, connection.profileVersion(), expectedExternalVersion, false, "",
                     List.of(), List.of(), List.of(), Map.of("resource", resource, "remoteRequest", json.write(frozenRequest)), List.of());
             session.preview(request.operationId(), authority(context, connection, request.expected()), "INBOUND", fingerprint, template, List.of());
             session.fetching(request.operationId()); return session.operation(request.operationId());

@@ -54,9 +54,9 @@ public class OslcTransport {
         try (var client = HttpClients.custom().setConnectionManager(manager).disableRedirectHandling().disableAutomaticRetries().disableCookieManagement()
                 .disableContentCompression().setDefaultRequestConfig(RequestConfig.custom().setConnectionRequestTimeout(Timeout.ofSeconds(2)).setResponseTimeout(Timeout.ofSeconds(5)).build()).build()) {
             HttpGet request = new HttpGet(target); request.setHeader("Accept", "application/rdf+xml"); request.setHeader("OSLC-Core-Version", "3.0");
-            if (expectedVersion != null) {
-                if (expectedVersion.length() > 2048 || expectedVersion.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException("Invalid external version");
-                request.setHeader("If-Match", expectedVersion);
+            String validatedExpectedVersion = validateExpectedVersion(expectedVersion);
+            if (validatedExpectedVersion != null) {
+                request.setHeader("If-Match", validatedExpectedVersion);
             }
             String configuration = connection.externalScope().configuration();
             if (configuration != null) {
@@ -93,6 +93,17 @@ public class OslcTransport {
         } catch (SocketTimeoutException failure) { throw new IntegrationProblem("REMOTE_TIMEOUT", 504, "Remote request timed out"); }
         catch (IOException failure) { throw new IntegrationProblem("REMOTE_UNAVAILABLE", 502, "Remote resource is unavailable under the configured network policy"); }
     }
+    public static String validateExpectedVersion(String expectedVersion) {
+        if (expectedVersion == null) {
+            return null;
+        }
+        if (expectedVersion.length() > 2048
+                || expectedVersion.chars().anyMatch(Character::isISOControl)) {
+            throw new IllegalArgumentException("Invalid external version");
+        }
+        return expectedVersion;
+    }
+
     private OslcRemoteProfiles.RemoteProfile profile(RepositoryContext context, Connection connection) {
         var value = connection.remoteProfile() == null ? null : profiles.getRemotes().get(connection.remoteProfile());
         var repository = repositories.getRepository(context.repositoryId());
