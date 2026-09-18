@@ -23,7 +23,7 @@ public class ExternalGitCredentials {
             @Value("${TAXONOMY_EXTERNAL_GIT_TOKEN:}") String token) {
         String normalizedUsername = username == null ? "" : username.strip();
         this.username = normalizedUsername.isEmpty() ? "oauth2" : normalizedUsername;
-        this.token = token == null ? "" : token.strip();
+        this.token = token == null ? "" : token;
     }
 
     static ExternalGitCredentials none() {
