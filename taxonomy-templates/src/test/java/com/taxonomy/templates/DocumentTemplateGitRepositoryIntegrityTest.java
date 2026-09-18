@@ -111,6 +111,25 @@ class DocumentTemplateGitRepositoryIntegrityTest {
     }
 
     @Test
+    void repositoryCommitRejectsUnsafePackagePartPathsBeforeWritingGitObjects() {
+        Map<String, byte[]> invalidParts = new TreeMap<>(parts);
+        invalidParts.put("../outside.xml", "<outside/>".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+
+        assertThatThrownBy(() -> repository.commit(
+                manifest("beta", "Beta"),
+                invalidParts,
+                null,
+                "creator",
+                "Invalid beta"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("OOXML")
+                .hasMessageContaining("part");
+        assertThat(repository.list())
+                .extracting(DocumentTemplateGitRepository.TemplateDescriptor::templateId)
+                .containsExactly("alpha");
+    }
+
+    @Test
     void repositoryCommitRejectsManifestStatisticsThatDoNotMatchThePackage() {
         TemplateManifest invalid = new TemplateManifest(
                 1,

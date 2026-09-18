@@ -99,6 +99,9 @@ public class DocumentTemplateGitRepository implements AutoCloseable {
 
         Objects.requireNonNull(manifest, "manifest");
         Objects.requireNonNull(packageParts, "packageParts");
+        for (String path : packageParts.keySet()) {
+            OoxmlTemplatePackageCodec.validatePartPath(path);
+        }
         validateStoredManifest(manifest.templateId(), manifest, packageParts);
         String prefix = templatePrefix(manifest.templateId());
         String normalizedExpected = normalizeExpectedVersion(expectedTemplateVersion);
