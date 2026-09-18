@@ -66,8 +66,12 @@ public class RepositoryStateGuard {
     public OperationCheck checkWriteOperation(
             WorkspaceContext workspaceContext,
             String operationType) {
-        String username = workspaceContext.username();
-        String branch = workspaceContext.currentBranch();
+        if (workspaceContext == null) {
+            throw new IllegalArgumentException("workspaceContext must not be null");
+        }
+        String username = requireText(workspaceContext.username(), "workspaceContext.username");
+        String branch = requireText(workspaceContext.currentBranch(), "workspaceContext.currentBranch");
+        operationType = requireText(operationType, "operationType");
         List<String> warnings = new ArrayList<>();
         List<String> blocks = new ArrayList<>();
 
@@ -103,5 +107,12 @@ public class RepositoryStateGuard {
 
         boolean allowed = blocks.isEmpty();
         return new OperationCheck(allowed, warnings, blocks);
+    }
+
+    private static String requireText(String value, String field) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(field + " must not be blank");
+        }
+        return value.strip();
     }
 }
