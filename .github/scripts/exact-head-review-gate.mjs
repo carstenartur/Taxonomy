@@ -378,7 +378,7 @@ export function evaluateExactHeadReview({
         || !completeCoverage || classification === 'needs-closer-look';
     return result('passed', 'EXACT_HEAD_REVIEW_COMPLETE',
         !exactReviewBinding
-            ? `Exact head ${expectedHeadSha} has full-change human confirmation by ${decision.confirmation.login} for clean trusted review ${review.id}; GitHub recorded that review against ${reviewCommitSha}.`
+            ? `Exact head ${expectedHeadSha} has full-change human confirmation by ${confirmation.login} for clean trusted review ${review.id}; GitHub recorded that review against ${reviewCommitSha}.`
             : !completeCoverage
             ? `Exact head ${expectedHeadSha} has ${coverage.reviewed}/${coverage.total} Copilot coverage and full-change human confirmation by ${confirmation.login}.`
             : needsHuman
