@@ -72,6 +72,28 @@ class ArchitectureSelectorSynchronizationTest {
     }
 
     @Test
+    void supportModuleCannotBeConfiguredAsPlannedFeatureTarget() {
+        var invalid = new ArchitectureModuleGraph.Policy(
+                APP,
+                Set.of("AppConfig.java"),
+                List.of(
+                        new ArchitectureModuleGraph.Context(
+                                "a", SUPPORT, List.of("com.taxonomy.a..")),
+                        new ArchitectureModuleGraph.Context(
+                                "composition", APP, List.of("com.taxonomy.composition.."))));
+
+        assertThatThrownBy(() -> ArchitectureModuleGraph.evaluate(
+                invalid,
+                Set.of(SUPPORT),
+                Set.of(SUPPORT),
+                List.of(new ArchitectureModuleGraph.ClassOwner(
+                        "com.taxonomy.a.Service", SUPPORT, "Service.java")),
+                List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Support module", SUPPORT);
+    }
+
+    @Test
     void supportModuleCannotHideFeatureContextOwnership() {
         var result = ArchitectureModuleGraph.evaluate(
                 OWNERSHIP_POLICY,
