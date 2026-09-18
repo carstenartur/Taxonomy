@@ -63,6 +63,10 @@ public record RepositoryContext(
      * interoperability journals and is exposed as the opaque OSLC scope.</p>
      */
     public String repositoryWorkspaceScopeKey() {
+        if (scope != RepositoryScope.WORKSPACE) {
+            throw new IllegalStateException(
+                    "Repository/workspace scope key requires WORKSPACE scope");
+        }
         return StableIdentityHash.sha256(repositoryId + "\u0000" + workspaceId + "\u0000" + branch);
     }
 
