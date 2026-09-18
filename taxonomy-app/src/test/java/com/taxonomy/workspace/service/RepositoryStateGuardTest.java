@@ -73,11 +73,24 @@ class RepositoryStateGuardTest {
                 new WorkspaceContext(USER, "workspace-context", "draft", "repository-1");
         factory.openWorkspaceRepository("workspace-context");
 
-        var check = guard.checkWriteOperation(USER, "draft", "materialize", selected);
+        var check = guard.checkWriteOperation(selected, "materialize");
 
         assertFalse(check.allowed(),
                 "An empty selected workspace must not inherit branch state from the system repository");
         assertTrue(check.blocks().stream().anyMatch(block -> block.contains("does not exist")));
+    }
+
+    @Test
+    void exactContextOwnsTheBranchUsedByTheGuard() throws IOException {
+        WorkspaceContext selected =
+                new WorkspaceContext(USER, "workspace-context", "feature", "repository-1");
+        DslGitRepository workspace = factory.openWorkspaceRepository("workspace-context");
+        workspace.commitDsl("feature", SAMPLE_DSL, USER, "feature");
+
+        var check = guard.checkWriteOperation(selected, "materialize");
+
+        assertTrue(check.allowed(), "The exact context branch should drive state inspection");
+        assertTrue(check.blocks().isEmpty());
     }
 
     @Test
