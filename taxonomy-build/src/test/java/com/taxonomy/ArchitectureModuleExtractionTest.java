@@ -57,7 +57,7 @@ class ArchitectureModuleExtractionTest {
     private static final Set<String> SUPPORT_MODULES = Set.of(
             "taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api", "taxonomy-tooling");
     private static final Set<String> NON_PRODUCTION_REACTOR_MODULES = Set.of(
-            "taxonomy-coverage", "taxonomy-build");
+            "taxonomy", "taxonomy-coverage", "taxonomy-build");
 
     @Test
     void physicalFeatureModulesHaveNoExtractionBlockers() throws Exception {
