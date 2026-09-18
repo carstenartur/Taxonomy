@@ -85,6 +85,9 @@ public class AuthorizationRulesConfigurer {
         auth.requestMatchers(HttpMethod.GET, "/api/context/**").authenticated();
         auth.requestMatchers(HttpMethod.POST, "/api/context/**").hasAnyRole("ARCHITECT", "ADMIN");
 
+        // Global activity includes other users' workspace metadata, unlike scoped reads.
+        auth.requestMatchers(HttpMethod.GET, "/api/workspace/active").hasRole("ADMIN");
+        auth.requestMatchers(HttpMethod.HEAD, "/api/workspace/active").hasRole("ADMIN");
         auth.requestMatchers(HttpMethod.GET, "/api/workspace/**").authenticated();
         // Provisioning creates only the authenticated user's isolated working
         // copy. It must remain available to every product role and is ordered
