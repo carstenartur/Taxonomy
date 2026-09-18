@@ -56,8 +56,8 @@ class ArchitectureModuleExtractionTest {
     // no entire package (notably shared/export/dsl) is excluded from the graph.
     private static final Set<String> SUPPORT_MODULES = Set.of(
             "taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api", "taxonomy-tooling");
-    private static final Set<String> NON_PRODUCTION_REACTOR_MODULES = Set.of(
-            "taxonomy-coverage", "taxonomy-build");
+    private static final Set<String> NON_PRODUCTION_REACTOR_MODULES =
+            NON_FEATURE_TARGET_MODULES;
 
     @Test
     void physicalFeatureModulesHaveNoExtractionBlockers() throws Exception {
