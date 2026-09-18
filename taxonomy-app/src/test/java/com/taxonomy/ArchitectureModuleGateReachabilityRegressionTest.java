@@ -11,6 +11,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Keeps the module-gate owner/selector contract active in the ordinary application
@@ -26,8 +27,30 @@ class ArchitectureModuleGateReachabilityRegressionTest {
 
     @Test
     void canonicalCiProfileCannotDropItsSelectorIndependentAnchor() throws Exception {
-        Path root = findRepositoryRoot();
-        Document pom = parse(root.resolve("taxonomy-app/pom.xml"));
+        assertCanonicalCiAnchor(findRepositoryRoot());
+    }
+
+    @Test
+    void canonicalCiAnchorPomCannotEscapeTheCheckoutThroughASymlink(
+            @org.junit.jupiter.api.io.TempDir Path fixture) throws Exception {
+        Path checkout = fixture.resolve("checkout");
+        Path outside = fixture.resolve("outside");
+        Files.createDirectories(checkout.resolve("taxonomy-app"));
+        Files.createDirectories(outside);
+        Path externalPom = outside.resolve("pom.xml");
+        Files.writeString(externalPom, "<project/>");
+        Files.createSymbolicLink(
+                checkout.resolve("taxonomy-app/pom.xml"),
+                externalPom);
+
+        assertThatThrownBy(() -> assertCanonicalCiAnchor(checkout))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("outside checkout");
+    }
+
+    private static void assertCanonicalCiAnchor(Path root) throws Exception {
+        Path checkout = root.toRealPath();
+        Document pom = parse(checkedFile(checkout, "taxonomy-app/pom.xml"));
         String execution = "/*[local-name()='project']/*[local-name()='profiles']"
                 + "/*[local-name()='profile'][*[local-name()='id']='ci']"
                 + "/*[local-name()='build']/*[local-name()='plugins']/*[local-name()='plugin']"
@@ -48,6 +71,15 @@ class ArchitectureModuleGateReachabilityRegressionTest {
         assertThat(values(pom, execution
                 + "/*[local-name()='configuration']/*[local-name()='failIfNoSpecifiedTests']"))
                 .containsExactly("true");
+    }
+
+    private static Path checkedFile(Path checkout, String relative) throws Exception {
+        Path file = checkout.resolve(relative).toRealPath();
+        if (!file.startsWith(checkout) || !Files.isRegularFile(file)) {
+            throw new IllegalStateException(
+                    "Architecture CI anchor outside checkout: " + relative);
+        }
+        return file;
     }
 
     private static Document parse(Path pom) throws Exception {
