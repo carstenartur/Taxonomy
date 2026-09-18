@@ -10,7 +10,9 @@ import org.springframework.stereotype.Component;
  * canonical Git repository.
  *
  * <p>The token is read from the process environment/property sources and is
- * never stored in JPA entities, returned by APIs, or written to logs.</p>
+ * never stored in JPA entities, returned by APIs, or written to logs. Usernames
+ * are normalized for deployment convenience; any nonblank token is preserved
+ * exactly as configured before it is passed to JGit.</p>
  */
 @Component
 public class ExternalGitCredentials {
@@ -23,7 +25,7 @@ public class ExternalGitCredentials {
             @Value("${TAXONOMY_EXTERNAL_GIT_TOKEN:}") String token) {
         String normalizedUsername = username == null ? "" : username.strip();
         this.username = normalizedUsername.isEmpty() ? "oauth2" : normalizedUsername;
-        this.token = token == null ? "" : token.strip();
+        this.token = token == null ? "" : token;
     }
 
     static ExternalGitCredentials none() {
