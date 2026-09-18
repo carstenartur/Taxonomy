@@ -301,6 +301,25 @@ test('human changes requested block even Copilot approval and maintainer confirm
     }] }).status, 'passed');
 });
 
+test('human approvals and objections use case-insensitive current-head SHA matching', () => {
+    const approval = review('Approved current head.', {
+        id: 202, user: HUMAN, state: 'APPROVED',
+        commit_id: HEAD.toUpperCase(), submitted_at: '2026-09-01T10:02:00Z'
+    });
+    const approved = humanGate({
+        pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+        reviews: [review(CLEAN_CLOSER), approval], comments: []
+    });
+    assert.equal(approved.status, 'passed');
+    assert.equal(approved.humanConfirmation.source, 'pull_request_review');
+
+    const objection = { ...approval, id: 203, state: 'CHANGES_REQUESTED',
+        submitted_at: '2026-09-01T10:03:00Z' };
+    assert.equal(humanGate({
+        reviews: [review(APPROVAL), objection]
+    }).code, 'HUMAN_CHANGES_REQUESTED');
+});
+
 test('a dismissed human approval cannot resurrect an earlier approval', () => {
     const approval = review('Approved.', { id: 202, user: HUMAN, state: 'APPROVED', submitted_at: '2026-09-01T10:02:00Z' });
     const dismissed = { ...approval, id: 203, state: 'DISMISSED', submitted_at: '2026-09-01T10:03:00Z' };
@@ -315,8 +334,12 @@ test('permission lookup uses API permissions, deduplicates principals and ignore
     const client = { repository: 'owner/repo', request: async path => {
         paths.push(path); return { permission: 'write' };
     } };
+    const uppercaseApproval = review('Approved.', {
+        id: 202, user: HUMAN, state: 'APPROVED',
+        commit_id: HEAD.toUpperCase(), submitted_at: '2026-09-01T10:02:00Z'
+    });
     const permissions = await loadHumanPermissions(client, {
-        reviews: [], headSha: HEAD,
+        reviews: [uppercaseApproval], headSha: HEAD,
         comments: [confirmation(), confirmation(), confirmation({ body: 'hello', user: { login: 'other', type: 'User' } })]
     });
     assert.deepEqual(paths, ['/repos/owner/repo/collaborators/maintainer/permission']);
@@ -617,6 +640,18 @@ test('uppercase representation of the current review commit remains exact-head e
     });
     assert.equal(result.status, 'passed');
     assert.equal(result.reviewBinding, 'exact-head');
+});
+
+test('uppercase pull-request head is the same commit as the expected head', () => {
+    const result = evaluateExactHeadReview({
+        pullRequest: pullRequest({ head: { sha: HEAD.toUpperCase() } }),
+        reviews: [review(APPROVAL)],
+        threads: [],
+        expectedHeadSha: HEAD,
+        reviewerLogins: REVIEWERS
+    });
+    assert.equal(result.status, 'passed');
+    assert.notEqual(result.code, 'STALE_REVIEW_GATE_RUN');
 });
 
 test('full-change human confirmation can bind clean trusted review metadata to the current head', () => {

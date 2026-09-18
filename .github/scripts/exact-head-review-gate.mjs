@@ -82,6 +82,17 @@ function reviewSubmittedAt(review) {
     return String(review?.submitted_at ?? review?.submittedAt ?? '');
 }
 
+function normalizeCommitSha(value) {
+    const sha = String(value ?? '').trim();
+    return /^[a-fA-F0-9]{40}$/u.test(sha) ? sha.toLowerCase() : '';
+}
+
+function sameCommitSha(left, right) {
+    const normalizedLeft = normalizeCommitSha(left);
+    return Boolean(normalizedLeft)
+        && normalizedLeft === normalizeCommitSha(right);
+}
+
 function unresolvedCurrentThreads(threads) {
     return (threads ?? []).filter(thread => {
         const resolved = Boolean(thread?.isResolved ?? thread?.is_resolved);
@@ -119,10 +130,10 @@ function canConfirm(user, permissions, reviewerLogins) {
 // Permission is read from GitHub's collaborator API, never author_association.
 export async function loadHumanPermissions(client, { reviews, comments, headSha, reviewerLogins }) {
     const candidates = [
-        ...reviews.filter(review => reviewCommit(review) === headSha
+        ...reviews.filter(review => sameCommitSha(reviewCommit(review), headSha)
             && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)),
         ...comments.filter(comment =>
-            parseReviewConfirmation(comment.body)?.headSha === headSha)
+            sameCommitSha(parseReviewConfirmation(comment.body)?.headSha, headSha))
     ].filter(item => isHuman(item.user, reviewerLogins) && !item.performed_via_github_app);
     const logins = [...new Set(candidates.map(item => normalizeLogin(item.user.login)))];
     if (logins.length > 50) {
@@ -145,7 +156,7 @@ export async function loadHumanPermissions(client, { reviews, comments, headSha,
 export async function loadHumanEvidence(client, input) {
     const humanPermissions = await loadHumanPermissions(client, input);
     const candidates = input.comments.filter(item =>
-        parseReviewConfirmation(item.body)?.headSha === input.headSha
+        sameCommitSha(parseReviewConfirmation(item.body)?.headSha, input.headSha)
         && canConfirm(item.user, humanPermissions, input.reviewerLogins) && !item.performed_via_github_app);
     const editTimes = new Map();
     // REST timestamps only have second precision. lastEditedAt distinguishes
@@ -186,7 +197,7 @@ export function humanReviewDecision({
     const reviewId = String(review?.id ?? '');
     const latestOpinions = new Map();
     for (const candidate of reviews
-        .filter(item => reviewCommit(item) === headSha
+        .filter(item => sameCommitSha(reviewCommit(item), headSha)
             && canConfirm(item.user, humanPermissions, reviewerLogins) && !item.performed_via_github_app
             && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(item.state)
             && Date.parse(reviewSubmittedAt(item)) <= asOf)
@@ -214,7 +225,7 @@ export function humanReviewDecision({
     for (const item of comments) {
         const command = parseReviewConfirmation(item.body);
         const createdAt = Date.parse(item.created_at);
-        if (command?.headSha === headSha && command.reviewId === reviewId
+        if (sameCommitSha(command?.headSha, headSha) && command.reviewId === reviewId
             && (command.changedFiles === undefined ? !requireCompleteCoverage
                 : command.changedFiles === changedFiles)
             && Number.isSafeInteger(item.id) && item.id > 0
@@ -245,7 +256,7 @@ export function evaluateExactHeadReview({
     humanPermissions = new Map()
 }) {
     const currentHead = String(pullRequest?.head?.sha ?? '');
-    if (currentHead !== expectedHeadSha) {
+    if (!sameCommitSha(currentHead, expectedHeadSha)) {
         return result('blocked', 'STALE_REVIEW_GATE_RUN',
             `Current head ${currentHead || 'unknown'} differs from ${expectedHeadSha}.`);
     }
@@ -273,12 +284,12 @@ export function evaluateExactHeadReview({
             `No completed trusted review exists for exact head ${expectedHeadSha}.`);
     }
     const reviewCommitSha = reviewCommit(review);
-    const normalizedReviewCommitSha = /^[a-fA-F0-9]{40}$/u.test(reviewCommitSha)
-        ? reviewCommitSha.toLowerCase() : '';
-    const normalizedExpectedHeadSha = expectedHeadSha.toLowerCase();
-    const exactReviewBinding = normalizedReviewCommitSha === normalizedExpectedHeadSha;
+    const normalizedReviewCommitSha = normalizeCommitSha(reviewCommitSha);
+    const normalizedExpectedHeadSha = normalizeCommitSha(expectedHeadSha);
+    const exactReviewBinding = sameCommitSha(reviewCommitSha, expectedHeadSha);
     const validMismatchedReviewCommit = !exactReviewBinding
         && Boolean(normalizedReviewCommitSha)
+        && Boolean(normalizedExpectedHeadSha)
         && normalizedReviewCommitSha !== normalizedExpectedHeadSha;
     if (!exactReviewBinding && !validMismatchedReviewCommit) {
         return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
