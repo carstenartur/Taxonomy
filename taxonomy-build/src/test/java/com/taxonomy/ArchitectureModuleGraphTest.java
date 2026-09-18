@@ -475,6 +475,35 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void rootAggregatorRemainsDiscoverableButIsNotAProductionGraphOrigin() throws Exception {
+        pom("", "taxonomy", """
+                <modules>
+                  <module>taxonomy-app</module>
+                  <module>taxonomy-a</module>
+                </modules>
+                """);
+        pom("taxonomy-app", APP, "");
+        pom("taxonomy-a", A, """
+                <dependencies>
+                  <dependency>
+                    <groupId>com.taxonomy</groupId>
+                    <artifactId>taxonomy-app</artifactId>
+                  </dependency>
+                </dependencies>
+                """);
+
+        var modules = ArchitectureModuleExtractionTest.discoverModules(
+                temporaryRepository, POLICY);
+
+        assertThat(modules).containsKey("taxonomy")
+                .containsEntry(APP, temporaryRepository.resolve("taxonomy-app"))
+                .containsEntry(A, temporaryRepository.resolve("taxonomy-a"));
+        assertThat(ArchitectureModuleExtractionTest.readProductionModuleDependencies(
+                temporaryRepository, modules, POLICY))
+                .containsExactly(new ModuleDependency(A, APP));
+    }
+
+    @Test
     void unclassifiedReactorModuleCannotEvadeTheProductionPomGraph() throws Exception {
         pom("", "taxonomy", """
                 <modules>
