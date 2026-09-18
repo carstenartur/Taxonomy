@@ -11,7 +11,10 @@ const DEFAULT_REVIEWERS = [
     'Copilot'
 ];
 const API_VERSION = '2022-11-28';
-export const HUMAN_CONFIRMATION_POLICY_VERSION = 2;
+// Policy upgrades are intentionally evaluated by the gate from the PR base SHA.
+// Version 3 therefore cannot authorize the pull request that introduces it; that
+// rollout must satisfy the previously trusted policy before this version reaches main.
+export const HUMAN_CONFIRMATION_POLICY_VERSION = 3;
 
 export function normalizeLogin(login) {
     return String(login ?? '')
@@ -79,6 +82,17 @@ function reviewSubmittedAt(review) {
     return String(review?.submitted_at ?? review?.submittedAt ?? '');
 }
 
+function normalizeCommitSha(value) {
+    const sha = String(value ?? '').trim();
+    return /^[a-fA-F0-9]{40}$/u.test(sha) ? sha.toLowerCase() : '';
+}
+
+export function sameCommitSha(left, right) {
+    const normalizedLeft = normalizeCommitSha(left);
+    return Boolean(normalizedLeft)
+        && normalizedLeft === normalizeCommitSha(right);
+}
+
 function unresolvedCurrentThreads(threads) {
     return (threads ?? []).filter(thread => {
         const resolved = Boolean(thread?.isResolved ?? thread?.is_resolved);
@@ -116,10 +130,10 @@ function canConfirm(user, permissions, reviewerLogins) {
 // Permission is read from GitHub's collaborator API, never author_association.
 export async function loadHumanPermissions(client, { reviews, comments, headSha, reviewerLogins }) {
     const candidates = [
-        ...reviews.filter(review => reviewCommit(review) === headSha
+        ...reviews.filter(review => sameCommitSha(reviewCommit(review), headSha)
             && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(review.state)),
         ...comments.filter(comment =>
-            parseReviewConfirmation(comment.body)?.headSha === headSha)
+            sameCommitSha(parseReviewConfirmation(comment.body)?.headSha, headSha))
     ].filter(item => isHuman(item.user, reviewerLogins) && !item.performed_via_github_app);
     const logins = [...new Set(candidates.map(item => normalizeLogin(item.user.login)))];
     if (logins.length > 50) {
@@ -142,7 +156,7 @@ export async function loadHumanPermissions(client, { reviews, comments, headSha,
 export async function loadHumanEvidence(client, input) {
     const humanPermissions = await loadHumanPermissions(client, input);
     const candidates = input.comments.filter(item =>
-        parseReviewConfirmation(item.body)?.headSha === input.headSha
+        sameCommitSha(parseReviewConfirmation(item.body)?.headSha, input.headSha)
         && canConfirm(item.user, humanPermissions, input.reviewerLogins) && !item.performed_via_github_app);
     const editTimes = new Map();
     // REST timestamps only have second precision. lastEditedAt distinguishes
@@ -174,7 +188,8 @@ export async function loadHumanEvidence(client, input) {
 
 export function humanReviewDecision({
     pullRequest, review, reviews = [], comments = [], humanPermissions = new Map(),
-    reviewerLogins, asOf = Infinity, requireCompleteCoverage = false
+    reviewerLogins, asOf = Infinity, requireCompleteCoverage = false,
+    requireIssueComment = false
 }) {
     const headSha = pullRequest?.head?.sha;
     const changedFiles = Number(pullRequest?.changed_files);
@@ -182,7 +197,7 @@ export function humanReviewDecision({
     const reviewId = String(review?.id ?? '');
     const latestOpinions = new Map();
     for (const candidate of reviews
-        .filter(item => reviewCommit(item) === headSha
+        .filter(item => sameCommitSha(reviewCommit(item), headSha)
             && canConfirm(item.user, humanPermissions, reviewerLogins) && !item.performed_via_github_app
             && ['APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'].includes(item.state)
             && Date.parse(reviewSubmittedAt(item)) <= asOf)
@@ -198,7 +213,7 @@ export function humanReviewDecision({
     const nativeApproval = [...latestOpinions.values()].find(item =>
         item.state === 'APPROVED' && Date.parse(reviewSubmittedAt(item)) > reviewedAt
         && normalizeLogin(item.user.login) !== normalizeLogin(pullRequest?.user?.login));
-    if (nativeApproval) {
+    if (!requireIssueComment && nativeApproval) {
         return { confirmation: {
             source: 'pull_request_review', id: nativeApproval.id,
             login: nativeApproval.user.login, url: nativeApproval.html_url,
@@ -210,7 +225,7 @@ export function humanReviewDecision({
     for (const item of comments) {
         const command = parseReviewConfirmation(item.body);
         const createdAt = Date.parse(item.created_at);
-        if (command?.headSha === headSha && command.reviewId === reviewId
+        if (sameCommitSha(command?.headSha, headSha) && command.reviewId === reviewId
             && (command.changedFiles === undefined ? !requireCompleteCoverage
                 : command.changedFiles === changedFiles)
             && Number.isSafeInteger(item.id) && item.id > 0
@@ -241,7 +256,7 @@ export function evaluateExactHeadReview({
     humanPermissions = new Map()
 }) {
     const currentHead = String(pullRequest?.head?.sha ?? '');
-    if (currentHead !== expectedHeadSha) {
+    if (!sameCommitSha(currentHead, expectedHeadSha)) {
         return result('blocked', 'STALE_REVIEW_GATE_RUN',
             `Current head ${currentHead || 'unknown'} differs from ${expectedHeadSha}.`);
     }
@@ -256,27 +271,41 @@ export function evaluateExactHeadReview({
 
     const trusted = reviewerLogins instanceof Set
         ? reviewerLogins : parseReviewerLogins(reviewerLogins);
-    const exactReviews = (reviews ?? [])
+    const trustedReviews = (reviews ?? [])
         .filter(review => trusted.has(reviewLogin(review)))
         .filter(review => String(review?.state ?? '').toUpperCase() !== 'DISMISSED')
-        .filter(review => reviewCommit(review) === expectedHeadSha)
         .filter(review => reviewSubmittedAt(review))
         .toSorted((left, right) =>
-            reviewSubmittedAt(left).localeCompare(reviewSubmittedAt(right)));
-    if (!exactReviews.length) {
+            reviewSubmittedAt(left).localeCompare(reviewSubmittedAt(right))
+            || Number(left.id) - Number(right.id));
+    const review = trustedReviews.at(-1);
+    if (!review) {
         return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
             `No completed trusted review exists for exact head ${expectedHeadSha}.`);
     }
-
-    const review = exactReviews.at(-1);
+    const reviewCommitSha = reviewCommit(review);
+    const normalizedReviewCommitSha = normalizeCommitSha(reviewCommitSha);
+    const normalizedExpectedHeadSha = normalizeCommitSha(expectedHeadSha);
+    const exactReviewBinding = sameCommitSha(reviewCommitSha, expectedHeadSha);
+    const validMismatchedReviewCommit = !exactReviewBinding
+        && Boolean(normalizedReviewCommitSha)
+        && Boolean(normalizedExpectedHeadSha)
+        && normalizedReviewCommitSha !== normalizedExpectedHeadSha;
+    if (!exactReviewBinding && !validMismatchedReviewCommit) {
+        return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
+            `No completed trusted review exists for exact head ${expectedHeadSha}.`);
+    }
+    const bindingDescription = exactReviewBinding
+        ? 'latest exact-head review'
+        : 'latest trusted review with mismatched commit metadata';
     const classification = classifyReview(review);
     if (classification === 'changes-recommended') {
         return result('blocked', 'CHANGES_RECOMMENDED',
-            'The latest exact-head review recommends changes.', { review });
+            `The ${bindingDescription} recommends changes.`, { review });
     }
     if (!['approval-recommended', 'needs-closer-look'].includes(classification)) {
         return result('blocked', 'REVIEW_OUTCOME_UNCLASSIFIED',
-            'The latest exact-head review has no explicit approval outcome.', { review });
+            `The ${bindingDescription} has no explicit approval outcome.`, { review });
     }
 
     const coverage = parseReviewCoverage(review.body);
@@ -304,7 +333,7 @@ export function evaluateExactHeadReview({
     }
     if (reviewCommentCount !== 0) {
         return result('blocked', 'REVIEW_FOLLOW_UP_REQUIRED',
-            `The latest exact-head review generated ${reviewCommentCount} comment(s); a fresh comment-free review is required after disposition.`, {
+            `The ${bindingDescription} generated ${reviewCommentCount} comment(s); a fresh comment-free review is required after disposition.`, {
                 review,
                 coverage,
                 changedFiles,
@@ -327,13 +356,28 @@ export function evaluateExactHeadReview({
     const completeCoverage = coverage.reviewed === coverage.total;
     const decision = humanReviewDecision({
         pullRequest, review, reviews, comments, humanPermissions, reviewerLogins: trusted,
-        requireCompleteCoverage: !completeCoverage
+        requireCompleteCoverage: !exactReviewBinding || !completeCoverage,
+        requireIssueComment: !exactReviewBinding
     });
     if (decision.objection) {
         return result('blocked', 'HUMAN_CHANGES_REQUESTED',
             'A repository writer has requested changes on the current head.', { review });
     }
-    if (!completeCoverage && !decision.confirmation) {
+    const confirmation = !exactReviewBinding
+        ? decision.confirmation?.source === 'issue_comment'
+            && decision.confirmation.scope === 'all-changed-files'
+            ? decision.confirmation : null
+        : decision.confirmation;
+    if (!exactReviewBinding && !confirmation) {
+        return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
+            `Trusted review ${review.id} is recorded against ${reviewCommitSha}, not exact head ${expectedHeadSha}. `
+            + 'After reviewing every changed file and the linked review/CI evidence, '
+            + 'a repository writer can bind that clean review evidence to the current head with this exact PR conversation comment: '
+            + `/confirm-review ${expectedHeadSha} ${review.id} all-files=${changedFiles}`, {
+                review, coverage, changedFiles, reviewCommentCount, unresolvedThreads: []
+            });
+    }
+    if (!completeCoverage && !confirmation) {
         return result('blocked', 'REVIEW_COVERAGE_CONFIRMATION_REQUIRED',
             `Copilot reviewed ${coverage.reviewed}/${coverage.total} changed files. `
             + 'After reviewing every changed file, the linked review and CI evidence, '
@@ -342,7 +386,7 @@ export function evaluateExactHeadReview({
                 review, coverage, changedFiles, reviewCommentCount, unresolvedThreads: []
             });
     }
-    if (classification === 'needs-closer-look' && !decision.confirmation) {
+    if (classification === 'needs-closer-look' && !confirmation) {
         return result('blocked', 'CLOSER_REVIEW_REQUIRED',
             'The complete, comment-free Copilot review requires human confirmation. '
             + 'After reviewing this head and the linked review, a repository writer '
@@ -350,19 +394,23 @@ export function evaluateExactHeadReview({
                 review, coverage, changedFiles, reviewCommentCount, unresolvedThreads: []
             });
     }
-    const needsHuman = !completeCoverage || classification === 'needs-closer-look';
+    const needsHuman = !exactReviewBinding
+        || !completeCoverage || classification === 'needs-closer-look';
     return result('passed', 'EXACT_HEAD_REVIEW_COMPLETE',
-        !completeCoverage
-            ? `Exact head ${expectedHeadSha} has ${coverage.reviewed}/${coverage.total} Copilot coverage and full-change human confirmation by ${decision.confirmation.login}.`
+        !exactReviewBinding
+            ? `Exact head ${expectedHeadSha} has full-change human confirmation by ${confirmation.login} for clean trusted review ${review.id}; GitHub recorded that review against ${reviewCommitSha}.`
+            : !completeCoverage
+            ? `Exact head ${expectedHeadSha} has ${coverage.reviewed}/${coverage.total} Copilot coverage and full-change human confirmation by ${confirmation.login}.`
             : needsHuman
-            ? `Exact head ${expectedHeadSha} has a complete Copilot review confirmed by ${decision.confirmation.login}.`
+            ? `Exact head ${expectedHeadSha} has a complete Copilot review confirmed by ${confirmation.login}.`
             : `Exact head ${expectedHeadSha} has a complete approval-recommended review.`, {
             review,
             coverage,
             changedFiles,
             reviewCommentCount,
             unresolvedThreads: [],
-            humanConfirmation: needsHuman ? decision.confirmation : null
+            reviewBinding: exactReviewBinding ? 'exact-head' : 'human-confirmed-metadata-mismatch',
+            humanConfirmation: needsHuman ? confirmation : null
         });
 }
 
@@ -516,7 +564,7 @@ function sleep(milliseconds) {
     return new Promise(resolve => setTimeout(resolve, milliseconds));
 }
 
-function evidence(resultValue, number, headSha) {
+export function reviewGateEvidence(resultValue, number, headSha) {
     return {
         schemaVersion: 1,
         humanConfirmationPolicyVersion: HUMAN_CONFIRMATION_POLICY_VERSION,
@@ -529,6 +577,7 @@ function evidence(resultValue, number, headSha) {
         reviewCommit: reviewCommit(resultValue.review),
         reviewSubmittedAt: reviewSubmittedAt(resultValue.review),
         reviewId: resultValue.review?.id ?? null,
+        reviewBinding: resultValue.reviewBinding ?? null,
         humanConfirmation: resultValue.humanConfirmation ?? null,
         filesReviewed: resultValue.coverage?.reviewed ?? null,
         changedFilesReportedByReview: resultValue.coverage?.total ?? null,
@@ -590,20 +639,20 @@ async function run() {
     while (true) {
         const gate = await evaluateLiveReview(client, number, expectedHeadSha, reviewerLogins);
         if (gate.status === 'passed') {
-            await writeEvidence(evidence(gate, number, expectedHeadSha));
+            await writeEvidence(reviewGateEvidence(gate, number, expectedHeadSha));
             await writeSummary(gate, number, expectedHeadSha);
             console.log(gate.message);
             return;
         }
         if (gate.status === 'blocked') {
-            await writeEvidence(evidence(gate, number, expectedHeadSha));
+            await writeEvidence(reviewGateEvidence(gate, number, expectedHeadSha));
             await writeSummary(gate, number, expectedHeadSha);
             throw new Error(`${gate.code}: ${gate.message}`);
         }
         if (Date.now() >= deadline) {
             const timeout = result('blocked', 'EXACT_HEAD_REVIEW_TIMEOUT',
                 `${gate.message} The ${waitSeconds}-second review window expired.`);
-            await writeEvidence(evidence(timeout, number, expectedHeadSha));
+            await writeEvidence(reviewGateEvidence(timeout, number, expectedHeadSha));
             await writeSummary(timeout, number, expectedHeadSha);
             throw new Error(`${timeout.code}: ${timeout.message}`);
         }

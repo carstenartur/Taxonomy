@@ -4,7 +4,9 @@ import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { humanReviewDecision, isValidReviewCoverage, loadHumanEvidence } from './exact-head-review-gate.mjs';
+import {
+    humanReviewDecision, isValidReviewCoverage, loadHumanEvidence, sameCommitSha
+} from './exact-head-review-gate.mjs';
 
 const API_VERSION = '2022-11-28';
 const DEFAULT_REVIEWERS = [
@@ -86,6 +88,10 @@ function reviewSubmittedAt(review) {
     return String(review?.submitted_at ?? review?.submittedAt ?? '');
 }
 
+function isCommitSha(value) {
+    return /^[a-fA-F0-9]{40}$/u.test(String(value ?? '').trim());
+}
+
 function trustedReviews(reviews, reviewerLogins) {
     const trusted = reviewerLogins instanceof Set
         ? reviewerLogins : parseReviewerLogins(reviewerLogins);
@@ -94,7 +100,8 @@ function trustedReviews(reviews, reviewerLogins) {
         .filter(review => String(review?.state ?? '').toUpperCase() !== 'DISMISSED')
         .filter(review => reviewSubmittedAt(review))
         .toSorted((left, right) =>
-            reviewSubmittedAt(left).localeCompare(reviewSubmittedAt(right)));
+            reviewSubmittedAt(left).localeCompare(reviewSubmittedAt(right))
+            || Number(left.id ?? 0) - Number(right.id ?? 0));
 }
 
 function unresolvedCurrentThreads(threads) {
@@ -116,7 +123,7 @@ function reviewEvidence(review, changedFiles, headSha) {
         validCoverage: isValidReviewCoverage(coverage, changedFiles),
         completeCoverage: isValidReviewCoverage(coverage, changedFiles)
             && coverage.reviewed === coverage.total,
-        exactHead: commit === headSha,
+        exactHead: sameCommitSha(commit, headSha),
         submittedAt: reviewSubmittedAt(review),
         commit,
         reviewer: reviewLogin(review)
@@ -149,8 +156,9 @@ export function auditMergedPullRequest({
     const changedFiles = Number(pullRequest?.changed_files);
     const findings = [];
     let humanConfirmation = null;
+    let reviewBinding = null;
 
-    if (!number || !mergedAt || !headSha
+    if (!number || !mergedAt || !isCommitSha(headSha)
             || !Number.isSafeInteger(changedFiles) || changedFiles < 1) {
         findings.push(finding('high', 'MERGED_PR_METADATA_INCOMPLETE',
             'Merged pull-request number, merge time, head SHA, or changed-file count is missing.'));
@@ -159,37 +167,68 @@ export function auditMergedPullRequest({
     }
 
     const trusted = trustedReviews(reviews, reviewerLogins);
-    const exactHeadReviews = trusted.filter(review => reviewCommit(review) === headSha);
-    const exactBeforeMerge = exactHeadReviews.filter(review =>
+    const exactHeadReviews = trusted.filter(review =>
+        reviewEvidence(review, changedFiles, headSha).exactHead);
+    const preMergeReviews = trusted.filter(review =>
         reviewSubmittedAt(review) <= mergedAt);
     const lateReviews = trusted.filter(review =>
         reviewSubmittedAt(review) > mergedAt);
-    const latestBeforeMerge = exactBeforeMerge.at(-1);
+    const latestBeforeMerge = preMergeReviews.at(-1);
 
     if (!latestBeforeMerge) {
         findings.push(finding('medium', 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE',
             `No trusted review of exact head ${headSha} completed before merge.`));
     } else {
         const evidence = reviewEvidence(latestBeforeMerge, changedFiles, headSha);
+        const validMismatchCommit = !evidence.exactHead
+            && isCommitSha(evidence.commit) && isCommitSha(headSha);
+        const invalidReviewCommit = !evidence.exactHead && !validMismatchCommit;
         const decision = humanReviewDecision({
             pullRequest, review: latestBeforeMerge, reviews, comments, humanPermissions, reviewerLogins,
-            asOf: Date.parse(mergedAt), requireCompleteCoverage: !evidence.completeCoverage
+            asOf: Date.parse(mergedAt),
+            requireCompleteCoverage: !evidence.exactHead || !evidence.completeCoverage,
+            requireIssueComment: !evidence.exactHead
         });
+        const confirmation = evidence.exactHead
+            ? decision.confirmation
+            : validMismatchCommit
+            ? decision.confirmation?.source === 'issue_comment'
+                && decision.confirmation.scope === 'all-changed-files'
+                ? decision.confirmation : null
+            : null;
         const humanConfirmed = ['approval-recommended', 'needs-closer-look'].includes(evidence.classification)
             && evidence.validCoverage && evidence.commentCount === 0
-            && Boolean(decision.confirmation) && !decision.objection;
-        if (humanConfirmed && (!evidence.completeCoverage || evidence.classification === 'needs-closer-look')) {
-            humanConfirmation = decision.confirmation;
+            && Boolean(confirmation) && !decision.objection;
+        const bindingSatisfied = evidence.exactHead
+            || validMismatchCommit && Boolean(confirmation);
+        if (bindingSatisfied) {
+            reviewBinding = evidence.exactHead
+                ? 'exact-head'
+                : 'human-confirmed-metadata-mismatch';
         }
+
         if (decision.objection) {
             findings.push(finding('high', 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE',
                 'A repository writer requested changes on the merged head.'));
         }
-        // This is already the latest exact-head review before merge. A later
-        // approval may report remediation, but cannot change the merge-time facts.
+        if (invalidReviewCommit) {
+            findings.push(finding('high', 'INVALID_TRUSTED_REVIEW_COMMIT_METADATA',
+                'The latest trusted pre-merge review has missing or malformed commit metadata and cannot be bound to the merged head.',
+                evidence));
+        }
+        if (!bindingSatisfied) {
+            findings.push(finding('medium', 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE',
+                `No trusted exact-head review or valid human-confirmed metadata binding for head ${headSha} completed before merge.`,
+                evidence));
+        }
+        if (humanConfirmed && bindingSatisfied && (validMismatchCommit
+                || !evidence.completeCoverage
+                || evidence.classification === 'needs-closer-look')) {
+            humanConfirmation = confirmation;
+        }
         if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
             findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
-                `The latest exact-head pre-merge review outcome was ${evidence.classification}.`,
+                `The latest pre-merge review outcome was ${evidence.classification}.`,
                 evidence));
         }
         if (!evidence.completeCoverage && !humanConfirmed) {
@@ -205,7 +244,7 @@ export function auditMergedPullRequest({
                 evidence));
         } else if (evidence.commentCount > 0) {
             findings.push(finding('high', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED',
-                `The latest exact-head review before merge generated ${evidence.commentCount} comment(s); no fresh comment-free review completed before merge.`,
+                `The latest pre-merge review generated ${evidence.commentCount} comment(s); no fresh comment-free review completed before merge.`,
                 evidence));
         }
     }
@@ -248,7 +287,8 @@ export function auditMergedPullRequest({
     }
 
     return auditResult(
-        pullRequest, number, headSha, baseRef, mergedAt, changedFiles, findings, humanConfirmation);
+        pullRequest, number, headSha, baseRef, mergedAt, changedFiles,
+        findings, humanConfirmation, reviewBinding);
 }
 
 function auditResult(
@@ -259,7 +299,8 @@ function auditResult(
     mergedAt,
     changedFiles,
     findings,
-    humanConfirmation = null
+    humanConfirmation = null,
+    reviewBinding = null
 ) {
     return {
         number,
@@ -269,6 +310,7 @@ function auditResult(
         baseRef,
         mergedAt,
         changedFiles,
+        reviewBinding,
         humanConfirmation,
         findings
     };
