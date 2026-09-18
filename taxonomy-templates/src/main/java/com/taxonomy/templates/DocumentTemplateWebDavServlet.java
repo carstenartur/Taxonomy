@@ -380,7 +380,7 @@ public final class DocumentTemplateWebDavServlet extends HttpServlet {
         }
         for (String candidate : header.split(",")) {
             String value = DocumentTemplateService.stripEtag(candidate);
-            if ("*".equals(value) || commitId.equals(value)) {
+            if ("*".equals(value) || commitId.equalsIgnoreCase(value)) {
                 return true;
             }
         }
