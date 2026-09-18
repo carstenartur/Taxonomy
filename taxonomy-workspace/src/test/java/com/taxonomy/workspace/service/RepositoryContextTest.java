@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatIllegalArgumentException;
+import static org.assertj.core.api.Assertions.assertThatIllegalStateException;
 
 class RepositoryContextTest {
 
@@ -31,6 +32,19 @@ class RepositoryContextTest {
                 .isEqualTo("e292cc8d7644151fe4311a598f1a90c5fb243486f79ab6e9dbc9969e775b0177")
                 .isEqualTo(bob.repositoryWorkspaceScopeKey())
                 .isNotEqualTo(anotherBranch.repositoryWorkspaceScopeKey());
+    }
+
+    @Test
+    void repositoryWorkspaceScopeKeyRejectsEveryCentralScope() {
+        assertThatIllegalStateException().isThrownBy(() ->
+                RepositoryContext.centralRead("repo-a", "main", "alice")
+                        .repositoryWorkspaceScopeKey());
+        assertThatIllegalStateException().isThrownBy(() ->
+                RepositoryContext.centralWrite("repo-a", "main", "alice")
+                        .repositoryWorkspaceScopeKey());
+        assertThatIllegalStateException().isThrownBy(() -> new RepositoryContext(
+                "repo-a", null, "main", "alice", RepositoryScope.FORK)
+                        .repositoryWorkspaceScopeKey());
     }
 
     @Test
