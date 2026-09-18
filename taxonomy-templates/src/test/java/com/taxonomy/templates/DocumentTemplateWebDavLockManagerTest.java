@@ -11,6 +11,7 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class DocumentTemplateWebDavLockManagerTest {
 
@@ -45,6 +46,36 @@ class DocumentTemplateWebDavLockManagerTest {
         assertThat(refreshed.currentCommit()).isEqualTo("version-b");
         assertThat(refreshed.expiresAt())
                 .isEqualTo(Instant.parse("2026-08-22T12:45:00Z"));
+    }
+
+    @Test
+    void acquireRejectsMissingOrBlankResourceBeforePersistingLockState() {
+        DocumentTemplateWebDavLockManager manager =
+                new DocumentTemplateWebDavLockManager();
+
+        for (String resource : java.util.Arrays.asList(null, "", " ", "\t")) {
+            assertThatThrownBy(() -> manager.acquire(
+                    resource, "admin", "version-a", Duration.ofMinutes(5), null))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("resource");
+        }
+
+        assertThat(manager.find("decision-report")).isNull();
+    }
+
+    @Test
+    void acquireRejectsMissingOrBlankOwnerBeforePersistingLockState() {
+        DocumentTemplateWebDavLockManager manager =
+                new DocumentTemplateWebDavLockManager();
+
+        for (String owner : java.util.Arrays.asList(null, "", " ", "\t")) {
+            assertThatThrownBy(() -> manager.acquire(
+                    "decision-report", owner, "version-a", Duration.ofMinutes(5), null))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("owner");
+        }
+
+        assertThat(manager.find("decision-report")).isNull();
     }
 
     private static final class MutableClock extends Clock {
