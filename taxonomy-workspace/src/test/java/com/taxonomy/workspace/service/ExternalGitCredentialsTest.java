@@ -44,6 +44,26 @@ class ExternalGitCredentialsTest {
     }
 
     @Test
+    void deploymentWhitespaceIsRemovedBeforeCredentialsReachJGit() throws Exception {
+        Transport transport = mock(Transport.class);
+        ExternalGitCredentials credentials =
+                new ExternalGitCredentials("  alice \n", "  fixture-token-not-a-secret\r\n");
+
+        assertTrue(credentials.isConfigured());
+        credentials.configure(transport);
+
+        ArgumentCaptor<CredentialsProvider> provider =
+                ArgumentCaptor.forClass(CredentialsProvider.class);
+        verify(transport).setCredentialsProvider(provider.capture());
+        CredentialItem.Username user = new CredentialItem.Username();
+        CredentialItem.Password password = new CredentialItem.Password();
+        assertTrue(provider.getValue().get(
+                new URIish("https://example.invalid/repo.git"), user, password));
+        assertEquals("alice", user.getValue());
+        assertArrayEquals("fixture-token-not-a-secret".toCharArray(), password.getValue());
+    }
+
+    @Test
     void noneNeverReplacesExistingTransportAuthentication() {
         Transport transport = mock(Transport.class);
         assertFalse(ExternalGitCredentials.none().isConfigured());
