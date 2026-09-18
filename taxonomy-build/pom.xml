@@ -33,6 +33,18 @@
             <type>pom</type>
         </dependency>
         <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-tooling</artifactId>
+            <version>${project.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.tngtech.archunit</groupId>
+            <artifactId>archunit-junit5</artifactId>
+            <version>${archunit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
@@ -51,6 +63,55 @@
 
     <build>
         <plugins>
+            <!-- Each required guard owns a fail-on-empty execution. A successful sibling
+                 must not hide an empty/missing selected guard, even in focused runs. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>default-test</id>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/ArchitectureModuleGraphTest.java</exclude>
+                                <exclude>**/ArchitectureModuleExtractionTest.java</exclude>
+                                <exclude>**/ArchitectureSelectorSynchronizationTest.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>required-ArchitectureModuleGraphTest</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <test>ArchitectureModuleGraphTest</test>
+                            <failIfNoTests>true</failIfNoTests>
+                            <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>required-ArchitectureModuleExtractionTest</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <test>ArchitectureModuleExtractionTest</test>
+                            <failIfNoTests>true</failIfNoTests>
+                            <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                        </configuration>
+                    </execution>
+                    <execution>
+                        <id>required-ArchitectureSelectorSynchronizationTest</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <test>ArchitectureSelectorSynchronizationTest</test>
+                            <failIfNoTests>true</failIfNoTests>
+                            <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>

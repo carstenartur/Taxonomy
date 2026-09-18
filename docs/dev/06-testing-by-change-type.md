@@ -14,7 +14,7 @@ publication are documented separately in
 | DSL parser/serializer | `./mvnw test -pl taxonomy-dsl` | App/editor tests when materialization changes |
 | Export model/serializer | `./mvnw test -pl taxonomy-export` | App endpoint tests when adapters change |
 | Spring service/controller | `./mvnw test -pl taxonomy-app` | `./mvnw verify` |
-| Architecture boundary | `./mvnw test -Parchitecture-tests -pl taxonomy-app` | `./mvnw -B verify -Pci` |
+| Architecture boundary | `./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false` | `./mvnw -B verify -Pci` |
 | Document import | `./mvnw test -Pdocument-import-tests -pl taxonomy-app` | `./mvnw -B verify -Pci` |
 | ArchiMate import | `./mvnw test -Parchimate-import-tests -pl taxonomy-app` | `./mvnw -B verify -Pci` |
 | Persistence/core containers | `./mvnw -B verify -Pcore-integration` | `./mvnw -B verify -Pci` |
@@ -36,6 +36,14 @@ three external database tags plus real LLM tests are excluded.
 activates core/PostgreSQL integration, quality gates and browser/accessibility
 verification. SQL Server and Oracle remain scheduled/manual because their
 container cost is materially higher. Real LLM tests always remain opt-in.
+
+The module-extraction gate lives in `taxonomy-build`, downstream of
+`taxonomy-app`, `taxonomy-coverage`, and `taxonomy-tooling`. The root-level
+architecture command and ordinary full-reactor `verify` therefore compile every
+inventory producer before the gate runs. App-only selections, including the
+Keycloak-only command, remain supported and do not claim to enforce the
+whole-repository graph. The generated graph report is
+`taxonomy-build/target/architecture-module-graph.txt`.
 
 ## Browser and accessibility reproduction
 

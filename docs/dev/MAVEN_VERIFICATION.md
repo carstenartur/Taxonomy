@@ -69,12 +69,25 @@ Test selection is stored in POM profiles or cataloged Maven commands, never in
 workflow YAML:
 
 ```bash
-./mvnw test -Parchitecture-tests -pl taxonomy-app
+./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
 ./mvnw test -Pdocument-import-tests -pl taxonomy-app
 ./mvnw test -Parchimate-import-tests -pl taxonomy-app
 ./mvnw -B verify -pl taxonomy-app -am \
   -DskipITs=false -Dit.test=KeycloakSecurityContainerIT
 ```
+
+The architecture suite needs the complete reactor's production outputs for its
+module-extraction inventory. `ArchitectureModuleExtractionTest` is owned by
+`taxonomy-build`, downstream of the application, coverage aggregator, and
+tooling modules. Run the suite from the repository root; modules without
+matching test classes use `surefire.failIfNoSpecifiedTests=false` while their
+production code is compiled. The report is written to
+`taxonomy-build/target/architecture-module-graph.txt`.
+
+App-only selections do not execute this whole-repository gate. In particular,
+the Keycloak-only command above ends at `taxonomy-app` and remains a supported
+focused integration lane; ordinary full-reactor verification and the complete
+architecture profile own module-graph enforcement.
 
 Browser failures can be reproduced without editing a workflow:
 
