@@ -475,6 +475,35 @@ class ArchitectureModuleGraphTest {
     }
 
     @Test
+    void unclassifiedReactorModuleCannotEvadeTheProductionPomGraph() throws Exception {
+        pom("", "taxonomy", """
+                <modules>
+                  <module>taxonomy-app</module>
+                  <module>taxonomy-a</module>
+                  <module>taxonomy-catchall</module>
+                </modules>
+                """);
+        pom("taxonomy-app", APP, "");
+        pom("taxonomy-a", A, "");
+        pom("taxonomy-catchall", "taxonomy-catchall", """
+                <dependencies>
+                  <dependency>
+                    <groupId>com.taxonomy</groupId>
+                    <artifactId>taxonomy-app</artifactId>
+                  </dependency>
+                </dependencies>
+                """);
+        var modules = ArchitectureModuleExtractionTest.discoverModules(
+                temporaryRepository, POLICY);
+
+        assertThatThrownBy(() ->
+                ArchitectureModuleExtractionTest.readProductionModuleDependencies(
+                        temporaryRepository, modules, POLICY))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("Unclassified reactor module", "taxonomy-catchall");
+    }
+
+    @Test
     void productionPomGraphIncludesRuntimeAndProfileDependenciesButNotTestsOrDependencyManagement() throws Exception {
         pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-a</module></modules>");
         pom("taxonomy-app", APP, "");
