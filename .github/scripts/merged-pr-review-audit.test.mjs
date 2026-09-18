@@ -237,6 +237,49 @@ test('reports no exact-head pre-merge review without making it high severity', (
     assert.equal(findingsAtOrAbove(result.findings, 'high').length, 0);
 });
 
+test('audit recognizes version-3 metadata mismatch only with pre-merge all-files writer binding', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const mismatched = review(APPROVAL, {
+        id: 101, commit_id: 'b'.repeat(40),
+        submitted_at: '2026-09-01T10:00:00Z'
+    });
+    const comment = {
+        id: 201, user, last_edited_at: null,
+        body: `/confirm-review ${HEAD} 101 all-files=2`,
+        created_at: '2026-09-01T10:30:00Z',
+        updated_at: '2026-09-01T10:30:00Z'
+    };
+    const input = {
+        pullRequest: pullRequest({ user }),
+        reviews: [mismatched], threads: [], reviewerLogins: REVIEWERS,
+        comments: [comment], humanPermissions: new Map([['maintainer', 'admin']])
+    };
+    const result = auditMergedPullRequest(input);
+    assert.deepEqual(result.findings, []);
+    assert.equal(result.humanConfirmation.source, 'issue_comment');
+    assert.equal(result.humanConfirmation.scope, 'all-changed-files');
+
+    const nativeApproval = review('Reviewed current head.', {
+        id: 202, user, state: 'APPROVED',
+        commit_id: HEAD, submitted_at: '2026-09-01T10:30:00Z'
+    });
+    const withoutComment = auditMergedPullRequest({
+        ...input, comments: [], reviews: [mismatched, nativeApproval]
+    });
+    assert.ok(withoutComment.findings.some(item =>
+        item.code === 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE'));
+});
+
+test('audit treats uppercase representation of merged head SHA as exact', () => {
+    const result = auditMergedPullRequest({
+        pullRequest: pullRequest(),
+        reviews: [review(APPROVAL, { commit_id: HEAD.toUpperCase() })],
+        threads: [],
+        reviewerLogins: REVIEWERS
+    });
+    assert.deepEqual(result.findings, []);
+});
+
 test('reports a changes-recommended exact-head review submitted after merge as high', () => {
     const result = auditMergedPullRequest({
         pullRequest: pullRequest({ merged_at: '2026-09-01T09:00:00Z' }),

@@ -94,7 +94,8 @@ function trustedReviews(reviews, reviewerLogins) {
         .filter(review => String(review?.state ?? '').toUpperCase() !== 'DISMISSED')
         .filter(review => reviewSubmittedAt(review))
         .toSorted((left, right) =>
-            reviewSubmittedAt(left).localeCompare(reviewSubmittedAt(right)));
+            reviewSubmittedAt(left).localeCompare(reviewSubmittedAt(right))
+            || Number(left.id ?? 0) - Number(right.id ?? 0));
 }
 
 function unresolvedCurrentThreads(threads) {
@@ -109,6 +110,9 @@ function reviewEvidence(review, changedFiles, headSha) {
     const coverage = parseReviewCoverage(review?.body);
     const commentCount = parseReviewCommentCount(review?.body);
     const commit = reviewCommit(review);
+    const normalizedCommit = /^[a-fA-F0-9]{40}$/u.test(commit)
+        ? commit.toLowerCase() : '';
+    const normalizedHead = String(headSha ?? '').toLowerCase();
     return {
         classification: classifyReview(review),
         coverage,
@@ -116,7 +120,7 @@ function reviewEvidence(review, changedFiles, headSha) {
         validCoverage: isValidReviewCoverage(coverage, changedFiles),
         completeCoverage: isValidReviewCoverage(coverage, changedFiles)
             && coverage.reviewed === coverage.total,
-        exactHead: commit === headSha,
+        exactHead: Boolean(normalizedCommit) && normalizedCommit === normalizedHead,
         submittedAt: reviewSubmittedAt(review),
         commit,
         reviewer: reviewLogin(review)
@@ -159,54 +163,72 @@ export function auditMergedPullRequest({
     }
 
     const trusted = trustedReviews(reviews, reviewerLogins);
-    const exactHeadReviews = trusted.filter(review => reviewCommit(review) === headSha);
-    const exactBeforeMerge = exactHeadReviews.filter(review =>
+    const exactHeadReviews = trusted.filter(review =>
+        reviewEvidence(review, changedFiles, headSha).exactHead);
+    const preMergeReviews = trusted.filter(review =>
         reviewSubmittedAt(review) <= mergedAt);
     const lateReviews = trusted.filter(review =>
         reviewSubmittedAt(review) > mergedAt);
-    const latestBeforeMerge = exactBeforeMerge.at(-1);
+    const latestBeforeMerge = preMergeReviews.at(-1);
 
     if (!latestBeforeMerge) {
         findings.push(finding('medium', 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE',
             `No trusted review of exact head ${headSha} completed before merge.`));
     } else {
         const evidence = reviewEvidence(latestBeforeMerge, changedFiles, headSha);
+        const validMismatchCommit = !evidence.exactHead
+            && /^[a-fA-F0-9]{40}$/u.test(evidence.commit);
         const decision = humanReviewDecision({
             pullRequest, review: latestBeforeMerge, reviews, comments, humanPermissions, reviewerLogins,
-            asOf: Date.parse(mergedAt), requireCompleteCoverage: !evidence.completeCoverage
+            asOf: Date.parse(mergedAt),
+            requireCompleteCoverage: validMismatchCommit || !evidence.completeCoverage,
+            requireIssueComment: validMismatchCommit
         });
+        const confirmation = validMismatchCommit
+            ? decision.confirmation?.source === 'issue_comment'
+                && decision.confirmation.scope === 'all-changed-files'
+                ? decision.confirmation : null
+            : decision.confirmation;
         const humanConfirmed = ['approval-recommended', 'needs-closer-look'].includes(evidence.classification)
             && evidence.validCoverage && evidence.commentCount === 0
-            && Boolean(decision.confirmation) && !decision.objection;
-        if (humanConfirmed && (!evidence.completeCoverage || evidence.classification === 'needs-closer-look')) {
-            humanConfirmation = decision.confirmation;
-        }
-        if (decision.objection) {
-            findings.push(finding('high', 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE',
-                'A repository writer requested changes on the merged head.'));
-        }
-        // This is already the latest exact-head review before merge. A later
-        // approval may report remediation, but cannot change the merge-time facts.
-        if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
-            findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
-                `The latest exact-head pre-merge review outcome was ${evidence.classification}.`,
+            && Boolean(confirmation) && !decision.objection;
+        const acceptedReviewBinding = evidence.exactHead || validMismatchCommit && humanConfirmed;
+
+        if (!acceptedReviewBinding) {
+            findings.push(finding('medium', 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE',
+                `No trusted exact-head review or valid human-confirmed metadata binding for head ${headSha} completed before merge.`,
                 evidence));
-        }
-        if (!evidence.completeCoverage && !humanConfirmed) {
-            findings.push(finding('high', 'INCOMPLETE_EXACT_HEAD_REVIEW',
-                evidence.coverage
-                    ? `The pre-merge review covered ${evidence.coverage.reviewed}/${evidence.coverage.total} files while the PR changed ${changedFiles}.`
-                    : 'The pre-merge review published no changed-file coverage count.',
-                evidence));
-        }
-        if (evidence.commentCount === null) {
-            findings.push(finding('medium', 'PRE_MERGE_REVIEW_COMMENT_COUNT_MISSING',
-                'The pre-merge review did not publish its generated-comment count.',
-                evidence));
-        } else if (evidence.commentCount > 0) {
-            findings.push(finding('high', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED',
-                `The latest exact-head review before merge generated ${evidence.commentCount} comment(s); no fresh comment-free review completed before merge.`,
-                evidence));
+        } else {
+            if (humanConfirmed && (validMismatchCommit
+                    || !evidence.completeCoverage
+                    || evidence.classification === 'needs-closer-look')) {
+                humanConfirmation = confirmation;
+            }
+            if (decision.objection) {
+                findings.push(finding('high', 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE',
+                    'A repository writer requested changes on the merged head.'));
+            }
+            if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
+                findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
+                    `The latest accepted pre-merge review outcome was ${evidence.classification}.`,
+                    evidence));
+            }
+            if (!evidence.completeCoverage && !humanConfirmed) {
+                findings.push(finding('high', 'INCOMPLETE_EXACT_HEAD_REVIEW',
+                    evidence.coverage
+                        ? `The pre-merge review covered ${evidence.coverage.reviewed}/${evidence.coverage.total} files while the PR changed ${changedFiles}.`
+                        : 'The pre-merge review published no changed-file coverage count.',
+                    evidence));
+            }
+            if (evidence.commentCount === null) {
+                findings.push(finding('medium', 'PRE_MERGE_REVIEW_COMMENT_COUNT_MISSING',
+                    'The pre-merge review did not publish its generated-comment count.',
+                    evidence));
+            } else if (evidence.commentCount > 0) {
+                findings.push(finding('high', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED',
+                    `The latest accepted review before merge generated ${evidence.commentCount} comment(s); no fresh comment-free review completed before merge.`,
+                    evidence));
+            }
         }
     }
 

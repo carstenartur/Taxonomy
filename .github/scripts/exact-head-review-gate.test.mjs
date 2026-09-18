@@ -607,6 +607,18 @@ test('keeps waiting when only a stale-head review exists', () => {
     assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
 });
 
+test('uppercase representation of the current review commit remains exact-head evidence', () => {
+    const result = evaluateExactHeadReview({
+        pullRequest: pullRequest(),
+        reviews: [review(APPROVAL, { commit_id: HEAD.toUpperCase() })],
+        threads: [],
+        expectedHeadSha: HEAD,
+        reviewerLogins: REVIEWERS
+    });
+    assert.equal(result.status, 'passed');
+    assert.equal(result.reviewBinding, 'exact-head');
+});
+
 test('full-change human confirmation can bind clean trusted review metadata to the current head', () => {
     const result = humanGate({
         reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],

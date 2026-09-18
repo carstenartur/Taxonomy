@@ -12,7 +12,10 @@ For human confirmation, inspect the complete current change, Copilot's risk area
 and the CI evidence. Then choose one of these paths:
 
 * A repository writer other than the PR author can submit GitHub's **Approve**
-  review on the current commit after the latest Copilot review.
+  review on the current commit after the latest Copilot review. This applies when
+  Copilot's review is bound to the exact current head; policy-v3 recovery from a
+  mismatched Copilot `commit_id` instead requires the unedited `all-files`
+  Conversation comment described below.
 * A repository writer, including the PR author, can add a new comment in the
   PR's **Conversation** tab. When Copilot reviewed all changed files and only
   closer review remains, use exactly:
@@ -84,11 +87,14 @@ still need their own fixes. It never executes PR code with its Actions write tok
 and never publishes a synthetic success status.
 
 The recorded quality evidence includes the confirmer, source comment/review,
-timestamp, exact head SHA, Copilot review ID and confirmation scope. Full-change
-confirmation also records the number of changed files. Copilot's original counts
-remain unchanged; human completion is separate evidence. The merged-PR audit recognizes
-only confirmations submitted before the merge. It conservatively rechecks current
-permissions and currently available, unedited evidence.
+timestamp, exact head SHA, Copilot review ID, review binding and confirmation
+scope. Full-change confirmation also records the number of changed files.
+Copilot's original counts remain unchanged; human completion is separate
+evidence. The merged-PR audit applies the same policy-v3 metadata-mismatch rule:
+it recognizes a non-head trusted review before merge only when the exact current
+head/review ID/file count were bound by the required unedited writer
+`all-files` comment before merge. It conservatively rechecks current permissions
+and currently available, unedited evidence.
 An automated approval submitted after merge cannot erase findings about missing,
 incomplete or non-approving evidence at merge time. Post-merge review and remediation
 are reported separately.

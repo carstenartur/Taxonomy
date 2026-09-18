@@ -273,10 +273,13 @@ export function evaluateExactHeadReview({
             `No completed trusted review exists for exact head ${expectedHeadSha}.`);
     }
     const reviewCommitSha = reviewCommit(review);
-    const exactReviewBinding = reviewCommitSha === expectedHeadSha;
+    const normalizedReviewCommitSha = /^[a-fA-F0-9]{40}$/u.test(reviewCommitSha)
+        ? reviewCommitSha.toLowerCase() : '';
+    const normalizedExpectedHeadSha = expectedHeadSha.toLowerCase();
+    const exactReviewBinding = normalizedReviewCommitSha === normalizedExpectedHeadSha;
     const validMismatchedReviewCommit = !exactReviewBinding
-        && /^[a-fA-F0-9]{40}$/u.test(reviewCommitSha)
-        && reviewCommitSha !== expectedHeadSha;
+        && Boolean(normalizedReviewCommitSha)
+        && normalizedReviewCommitSha !== normalizedExpectedHeadSha;
     if (!exactReviewBinding && !validMismatchedReviewCommit) {
         return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
             `No completed trusted review exists for exact head ${expectedHeadSha}.`);
