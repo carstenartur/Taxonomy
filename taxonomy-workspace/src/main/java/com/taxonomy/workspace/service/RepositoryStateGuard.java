@@ -45,32 +45,29 @@ public class RepositoryStateGuard {
     ) {}
 
     /**
-     * Check whether a write operation is safe for a specific user.
-     *
-     * @param username      the user attempting the operation
-     * @param branch        the target branch
-     * @param operationType the type of operation (e.g. "commit", "materialize", "cherry-pick", "merge")
-     * @return the operation check result
+     * Compatibility entry point for non-request callers that still identify only actor and branch.
+     * Productive repository-sensitive callers should use the exact-context overload.
      */
     public OperationCheck checkWriteOperation(String username, String branch, String operationType) {
-        return checkWriteOperation(username, branch, operationType, WorkspaceContext.SHARED);
+        return checkWriteOperation(
+                new WorkspaceContext(username, null, branch, WorkspaceContext.LEGACY_REPOSITORY_ID),
+                operationType);
     }
 
     /**
      * Check whether a write operation is safe in the exact repository/workspace context
-     * selected for the request.
+     * selected for the request. Actor, branch and repository routing all come from this
+     * single context; callers cannot supply contradictory parallel values.
      *
-     * @param username         the user attempting the operation
-     * @param branch           the target branch
-     * @param operationType    the type of operation
      * @param workspaceContext the exact repository/workspace context being mutated
+     * @param operationType    the type of operation
      * @return the operation check result
      */
     public OperationCheck checkWriteOperation(
-            String username,
-            String branch,
-            String operationType,
-            WorkspaceContext workspaceContext) {
+            WorkspaceContext workspaceContext,
+            String operationType) {
+        String username = workspaceContext.username();
+        String branch = workspaceContext.currentBranch();
         List<String> warnings = new ArrayList<>();
         List<String> blocks = new ArrayList<>();
 
