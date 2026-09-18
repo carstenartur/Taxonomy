@@ -61,6 +61,10 @@ final class ArchitectureModuleGraph {
     private static final Comparator<Evidence> EVIDENCE_ORDER = Comparator.comparing(Evidence::origin)
             .thenComparing(Evidence::target);
 
+    /** Reactor infrastructure that may exist physically but can never own a feature context. */
+    static final Set<String> NON_FEATURE_TARGET_MODULES = Set.of(
+            "taxonomy-coverage", "taxonomy-build");
+
     static Evaluation evaluate(Policy policy, Set<String> supportModules, Set<String> presentModules,
                                List<ClassOwner> classes, List<ClassDependency> dependencies) {
         return evaluate(policy, supportModules, presentModules, classes, dependencies, List.of());
@@ -380,6 +384,11 @@ final class ArchitectureModuleGraph {
                 if (supportModules.contains(context.targetModule())) {
                     throw new IllegalArgumentException(
                             "Support module cannot be a planned context target: "
+                                    + context.targetModule());
+                }
+                if (NON_FEATURE_TARGET_MODULES.contains(context.targetModule())) {
+                    throw new IllegalArgumentException(
+                            "Non-production module cannot be a planned context target: "
                                     + context.targetModule());
                 }
             }
