@@ -56,6 +56,8 @@ class ArchitectureModuleExtractionTest {
     // no entire package (notably shared/export/dsl) is excluded from the graph.
     private static final Set<String> SUPPORT_MODULES = Set.of(
             "taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api", "taxonomy-tooling");
+    private static final Set<String> NON_PRODUCTION_REACTOR_MODULES = Set.of(
+            "taxonomy-coverage", "taxonomy-build");
 
     @Test
     void physicalFeatureModulesHaveNoExtractionBlockers() throws Exception {
@@ -352,6 +354,14 @@ class ArchitectureModuleExtractionTest {
         Set<String> origins = new HashSet<>(SUPPORT_MODULES);
         origins.add(policy.compositionModule());
         policy.contexts().stream().map(Context::targetModule).filter(target -> target != null).forEach(origins::add);
+        Set<String> unclassified = new TreeSet<>(modules.keySet());
+        unclassified.removeAll(origins);
+        unclassified.removeAll(NON_PRODUCTION_REACTOR_MODULES);
+        if (!unclassified.isEmpty()) {
+            throw new IllegalStateException(
+                    "Unclassified reactor module(s) are not allowed in the production graph: "
+                            + unclassified);
+        }
         Map<Path, LocalPom> models = new TreeMap<>();
         Map<String, String> groups = new TreeMap<>();
         for (var module : modules.entrySet()) {
