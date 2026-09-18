@@ -111,7 +111,7 @@ class DocumentTemplateGitRepositoryIntegrityTest {
     }
 
     @Test
-    void repositoryCommitRejectsUnsafePackagePartPathsBeforeWritingGitObjects() {
+    void repositoryCommitRejectsUnsafePackagePartPathsBeforeWritingGitObjects() throws Exception {
         Map<String, byte[]> invalidParts = new TreeMap<>(parts);
         invalidParts.put("../outside.xml", "<outside/>".getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
