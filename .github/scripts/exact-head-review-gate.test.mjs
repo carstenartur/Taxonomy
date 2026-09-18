@@ -13,7 +13,8 @@ import {
     parseReviewCommentCount,
     parseReviewCoverage,
     parseReviewerLogins,
-    parseReviewConfirmation
+    parseReviewConfirmation,
+    reviewGateEvidence
 } from './exact-head-review-gate.mjs';
 import {
     eventPullRequests, latestPullRequestRun, refreshPullRequest, verificationJobToRefresh
@@ -618,6 +619,33 @@ test('full-change human confirmation can bind clean trusted review metadata to t
     assert.equal(result.reviewBinding, 'human-confirmed-metadata-mismatch');
     assert.equal(result.humanConfirmation.scope, 'all-changed-files');
     assert.equal(result.humanConfirmation.headSha, HEAD);
+});
+
+test('native approval cannot substitute for the explicit metadata-mismatch binding comment', () => {
+    const approval = review('Reviewed all current files.', {
+        id: 202, user: HUMAN, state: 'APPROVED',
+        commit_id: HEAD, submitted_at: '2026-09-01T10:02:00Z'
+    });
+    const result = humanGate({
+        pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) }), approval],
+        comments: []
+    });
+    assert.equal(result.status, 'pending');
+    assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+});
+
+test('metadata-mismatch binding is persisted in review-gate evidence', () => {
+    const result = humanGate({
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`
+        })]
+    });
+    const evidence = reviewGateEvidence(result, 933, HEAD);
+    assert.equal(evidence.reviewBinding, 'human-confirmed-metadata-mismatch');
+    assert.equal(evidence.humanConfirmation.scope, 'all-changed-files');
+    assert.equal(evidence.expectedHeadSha, HEAD);
 });
 
 test('metadata-mismatched trusted review still requires explicit all-files scope', () => {
