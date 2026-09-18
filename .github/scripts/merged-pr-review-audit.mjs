@@ -203,33 +203,32 @@ export function auditMergedPullRequest({
             findings.push(finding('medium', 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE',
                 `No trusted exact-head review or valid human-confirmed metadata binding for head ${headSha} completed before merge.`,
                 evidence));
-        } else {
-            if (humanConfirmed && (validMismatchCommit
-                    || !evidence.completeCoverage
-                    || evidence.classification === 'needs-closer-look')) {
-                humanConfirmation = confirmation;
-            }
-            if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
-                findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
-                    `The latest accepted pre-merge review outcome was ${evidence.classification}.`,
-                    evidence));
-            }
-            if (!evidence.completeCoverage && !humanConfirmed) {
-                findings.push(finding('high', 'INCOMPLETE_EXACT_HEAD_REVIEW',
-                    evidence.coverage
-                        ? `The pre-merge review covered ${evidence.coverage.reviewed}/${evidence.coverage.total} files while the PR changed ${changedFiles}.`
-                        : 'The pre-merge review published no changed-file coverage count.',
-                    evidence));
-            }
-            if (evidence.commentCount === null) {
-                findings.push(finding('medium', 'PRE_MERGE_REVIEW_COMMENT_COUNT_MISSING',
-                    'The pre-merge review did not publish its generated-comment count.',
-                    evidence));
-            } else if (evidence.commentCount > 0) {
-                findings.push(finding('high', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED',
-                    `The latest accepted review before merge generated ${evidence.commentCount} comment(s); no fresh comment-free review completed before merge.`,
-                    evidence));
-            }
+        }
+        if (humanConfirmed && bindingSatisfied && (validMismatchCommit
+                || !evidence.completeCoverage
+                || evidence.classification === 'needs-closer-look')) {
+            humanConfirmation = confirmation;
+        }
+        if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
+            findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',
+                `The latest pre-merge review outcome was ${evidence.classification}.`,
+                evidence));
+        }
+        if (!evidence.completeCoverage && !humanConfirmed) {
+            findings.push(finding('high', 'INCOMPLETE_EXACT_HEAD_REVIEW',
+                evidence.coverage
+                    ? `The pre-merge review covered ${evidence.coverage.reviewed}/${evidence.coverage.total} files while the PR changed ${changedFiles}.`
+                    : 'The pre-merge review published no changed-file coverage count.',
+                evidence));
+        }
+        if (evidence.commentCount === null) {
+            findings.push(finding('medium', 'PRE_MERGE_REVIEW_COMMENT_COUNT_MISSING',
+                'The pre-merge review did not publish its generated-comment count.',
+                evidence));
+        } else if (evidence.commentCount > 0) {
+            findings.push(finding('high', 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED',
+                `The latest pre-merge review generated ${evidence.commentCount} comment(s); no fresh comment-free review completed before merge.`,
+                evidence));
         }
     }
 

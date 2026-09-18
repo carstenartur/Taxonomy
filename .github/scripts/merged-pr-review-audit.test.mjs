@@ -270,6 +270,37 @@ test('audit recognizes version-3 metadata mismatch only with pre-merge all-files
         item.code === 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE'));
 });
 
+test('unbound metadata mismatch still reports high-severity review blockers', () => {
+    const changes = auditMergedPullRequest({
+        pullRequest: pullRequest(),
+        reviews: [review(CHANGES, { commit_id: 'b'.repeat(40) })],
+        threads: [],
+        reviewerLogins: REVIEWERS
+    });
+    assert.ok(changes.findings.some(item =>
+        item.code === 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE'
+            && item.severity === 'medium'));
+    assert.ok(changes.findings.some(item =>
+        item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'
+            && item.severity === 'high'));
+    assert.ok(changes.findings.some(item =>
+        item.code === 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED'
+            && item.severity === 'high'));
+
+    const partial = auditMergedPullRequest({
+        pullRequest: pullRequest(),
+        reviews: [review(APPROVAL.replace('2/2', '1/2'), {
+            commit_id: 'b'.repeat(40)
+        })],
+        threads: [],
+        reviewerLogins: REVIEWERS
+    });
+    assert.ok(partial.findings.some(item =>
+        item.code === 'INCOMPLETE_EXACT_HEAD_REVIEW'
+            && item.severity === 'high'));
+});
+
+
 test('audit treats uppercase representation of merged head SHA as exact', () => {
     const result = auditMergedPullRequest({
         pullRequest: pullRequest(),

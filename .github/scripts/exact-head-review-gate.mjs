@@ -87,7 +87,7 @@ function normalizeCommitSha(value) {
     return /^[a-fA-F0-9]{40}$/u.test(sha) ? sha.toLowerCase() : '';
 }
 
-function sameCommitSha(left, right) {
+export function sameCommitSha(left, right) {
     const normalizedLeft = normalizeCommitSha(left);
     return Boolean(normalizedLeft)
         && normalizedLeft === normalizeCommitSha(right);

@@ -391,6 +391,18 @@ test('refresh selects only the latest matching pull-request CI, including runnin
     assert.equal(latestPullRequestRun([CI_RUN, { ...CI_RUN, id: 302, status: 'in_progress' }], CI_PR).id, 302);
 });
 
+test('refresh run selection treats SHA casing as identity-equivalent', () => {
+    const upper = {
+        ...CI_RUN,
+        head_sha: HEAD.toUpperCase(),
+        pull_requests: [{
+            ...CI_RUN.pull_requests[0],
+            head: { sha: HEAD.toUpperCase() }
+        }]
+    };
+    assert.equal(latestPullRequestRun([upper], CI_PR).id, 301);
+});
+
 test('refresh only retries the final review failure with successful authoritative evidence', () => {
     assert.equal(verificationJobToRefresh(CI_RUN, [FINAL_JOB], { status: 'passed' }).id, 401);
     for (const job of [
@@ -464,7 +476,8 @@ test('refresh workflow executes default-branch code with narrowly scoped write p
 });
 
 function mockGitHub(t, {
-    editedAt = null, advanceHead = false, newRun = false, graphqlError = false,
+    editedAt = null, advanceHead = false, caseVariantHead = false,
+    newRun = false, graphqlError = false,
     reviewBody = CLEAN_CLOSER, confirmationBody = confirmation().body,
     policyVersion = HUMAN_CONFIRMATION_POLICY_VERSION, policySource
 } = {}) {
@@ -489,7 +502,10 @@ function mockGitHub(t, {
         } else if (path.endsWith('/pulls/933')) {
             prReads++;
             payload = advanceHead && prReads >= 3
-                ? { ...CI_PR, head: { sha: 'c'.repeat(40) } } : CI_PR;
+                ? { ...CI_PR, head: { sha: 'c'.repeat(40) } }
+                : caseVariantHead && prReads >= 2
+                ? { ...CI_PR, head: { sha: HEAD.toUpperCase() } }
+                : CI_PR;
         } else if (path.endsWith('/reviews')) {
             payload = [review(reviewBody)];
         } else if (path.endsWith('/comments')) {
@@ -522,6 +538,12 @@ function mockGitHub(t, {
 
 test('live REST and GraphQL evidence causes exactly one final-job rerun', async t => {
     const { client, writes } = mockGitHub(t);
+    assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
+    assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
+});
+
+test('live refresh tolerates a case-only head representation change during recheck', async t => {
+    const { client, writes } = mockGitHub(t, { caseVariantHead: true });
     assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
     assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
 });
