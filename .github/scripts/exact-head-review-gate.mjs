@@ -276,14 +276,17 @@ export function evaluateExactHeadReview({
         return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
             `No completed trusted review exists for exact head ${expectedHeadSha}.`);
     }
+    const bindingDescription = exactReviewBinding
+        ? 'latest exact-head review'
+        : 'latest trusted review with mismatched commit metadata';
     const classification = classifyReview(review);
     if (classification === 'changes-recommended') {
         return result('blocked', 'CHANGES_RECOMMENDED',
-            'The latest exact-head review recommends changes.', { review });
+            `The ${bindingDescription} recommends changes.`, { review });
     }
     if (!['approval-recommended', 'needs-closer-look'].includes(classification)) {
         return result('blocked', 'REVIEW_OUTCOME_UNCLASSIFIED',
-            'The latest exact-head review has no explicit approval outcome.', { review });
+            `The ${bindingDescription} has no explicit approval outcome.`, { review });
     }
 
     const coverage = parseReviewCoverage(review.body);
@@ -311,7 +314,7 @@ export function evaluateExactHeadReview({
     }
     if (reviewCommentCount !== 0) {
         return result('blocked', 'REVIEW_FOLLOW_UP_REQUIRED',
-            `The latest exact-head review generated ${reviewCommentCount} comment(s); a fresh comment-free review is required after disposition.`, {
+            `The ${bindingDescription} generated ${reviewCommentCount} comment(s); a fresh comment-free review is required after disposition.`, {
                 review,
                 coverage,
                 changedFiles,

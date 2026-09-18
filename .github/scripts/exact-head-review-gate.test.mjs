@@ -710,6 +710,19 @@ test('newest trusted review wins even when an older review has exact-head metada
     assert.equal(result.review.id, 101);
 });
 
+test('diagnostics distinguish exact-head and metadata-mismatched trusted reviews', () => {
+    const exact = humanGate({ reviews: [review(CHANGES)], comments: [] });
+    assert.match(exact.message, /latest exact-head review/u);
+
+    const mismatch = humanGate({
+        reviews: [review(CHANGES, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`
+        })]
+    });
+    assert.match(mismatch.message, /latest trusted review with mismatched commit metadata/u);
+});
+
 test('newest trusted review with invalid commit metadata cannot fall back to an older exact review', () => {
     const result = humanGate({
         reviews: [

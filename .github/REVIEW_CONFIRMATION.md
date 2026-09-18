@@ -77,19 +77,38 @@ An automated approval submitted after merge cannot erase findings about missing,
 incomplete or non-approving evidence at merge time. Post-merge review and remediation
 are reported separately.
 
-## Installing this policy
+## Installing or upgrading this policy
 
-The policy and refresh workflow must first reach the protected default branch
-through the existing review process. This change cannot approve itself: CI loads
-the gate from the run's original trusted **base SHA**. The new refresh workflow
-also refuses to rerun an old-base gate with a different confirmation policy
-version. Full-change coverage completion requires policy version 2; version 1
-supports only complete Copilot coverage with closer-review confirmation.
+A policy upgrade must first reach the protected default branch through the
+**previously trusted policy**. The pull request that introduces a new policy
+version cannot use that new version to approve itself: CI deliberately loads the
+gate from the run's original trusted **base SHA**.
 
-After installation, update each open PR from `main` and let its normal CI and
-Copilot review finish. Confirm the resulting new head and review as described
-above. Rerunning an old CI run does not adopt the new policy. Existing branch
-protection, required checks and native GitHub review requirements are unchanged.
+For the version-3 metadata-mismatch recovery this means the rollout PR itself
+must remain stable and satisfy version 2 normally: all technical gates must pass
+and Copilot must submit a clean review that version 2 recognizes as bound to the
+rollout PR's exact head. Do not force-push or amend that reviewed rollout head.
+The version-3 `all-files` metadata-binding fallback is available only **after**
+that rollout PR has merged into `main`.
+
+If the rollout PR itself does not obtain an exact-head review under the old
+policy, automation must not bypass branch protection, synthesize a success check,
+or execute the PR's replacement gate with an Actions-write token. Request a fresh
+review of the unchanged rollout head. If GitHub still cannot produce evidence
+accepted by the old protected policy, the rollout requires an explicit
+repository-governance decision outside this automation; the gate stays failed.
+
+After the policy upgrade merges, update each affected open PR from the new
+`main` so its CI run has a base SHA containing the new policy. Let normal CI and
+Copilot review finish, then use the exact confirmation command printed for that
+new head when human completion is required. Rerunning an old-base CI run does not
+adopt a new policy version.
+
+The refresh workflow intentionally refuses to rerun an old-base gate when its
+confirmation policy version differs from the current trusted source. Existing
+branch protection, required checks, writer-permission checks, native GitHub
+review requirements, edit-history validation and technical gates remain
+unchanged.
 
 References: [GitHub approval rules](https://docs.github.com/en/pull-requests/how-tos/review-pull-requests/approving-a-pull-request-with-required-reviews),
 [collaborator permissions](https://docs.github.com/en/rest/collaborators/collaborators#get-repository-permissions-for-a-user),
