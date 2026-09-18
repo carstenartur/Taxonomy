@@ -174,9 +174,11 @@ to `java.class.path` outside Surefire), plus reactor class directories. Annotati
 processing and implicit source compilation are disabled. The inventory uses the
 current `src/main/java` and `target/classes` module layout; generated source
 layouts, annotation-generated classes, or new compiler options require explicit
-adapter support. Compilation errors fail the gate. The pass validates binary
-declarations; normal reactor compilation remains responsible for compiling the
-current method bodies that ArchUnit inspects.
+adapter support. Compilation errors fail the gate. The pass recompiles the current production sources into a fresh temporary
+output and imports that fresh output with ArchUnit, so method bodies and direct
+dependencies are taken from the current source tree rather than stale reactor
+classes. Existing reactor class directories are classpath input for resolving
+cross-module symbols; they are not the bytecode inventory that ArchUnit analyzes.
 
 Selector inputs (`pom.xml` and `.mvn/verification-suites.json`) must resolve
 inside the checkout before XML or JSON is read, including linked ancestor
