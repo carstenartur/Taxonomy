@@ -500,6 +500,7 @@ class ArchitectureModuleGraphTest {
                 .containsEntry(A, temporaryRepository.resolve("taxonomy-a"));
         assertThat(ArchitectureModuleExtractionTest.readProductionModuleDependencies(
                 temporaryRepository, modules, POLICY))
+                .as("POM-only root aggregator is model metadata, not a production origin")
                 .containsExactly(new ModuleDependency(A, APP));
     }
 
@@ -1974,7 +1975,7 @@ class ArchitectureModuleGraphTest {
     private void inheritedPoms(String parentBody, String childBody) throws Exception {
         pom("", "taxonomy", "<modules><module>taxonomy-app</module><module>taxonomy-parent</module><module>taxonomy-a</module></modules>");
         pom("taxonomy-app", APP, "");
-        pom("taxonomy-parent", "taxonomy-parent", parentBody);
+        pom("taxonomy-parent", "taxonomy-parent", "<packaging>pom</packaging>" + parentBody);
         pom("taxonomy-a", A, """
                 <parent><groupId>com.taxonomy</groupId><artifactId>taxonomy-parent</artifactId><version>1</version>
                   <relativePath>../taxonomy-parent/pom.xml</relativePath></parent>
