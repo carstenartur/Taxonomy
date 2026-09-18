@@ -21,8 +21,9 @@ public class ExternalGitCredentials {
     public ExternalGitCredentials(
             @Value("${TAXONOMY_EXTERNAL_GIT_USERNAME:oauth2}") String username,
             @Value("${TAXONOMY_EXTERNAL_GIT_TOKEN:}") String token) {
-        this.username = username == null || username.isBlank() ? "oauth2" : username;
-        this.token = token == null ? "" : token;
+        String normalizedUsername = username == null ? "" : username.strip();
+        this.username = normalizedUsername.isEmpty() ? "oauth2" : normalizedUsername;
+        this.token = token == null ? "" : token.strip();
     }
 
     static ExternalGitCredentials none() {
