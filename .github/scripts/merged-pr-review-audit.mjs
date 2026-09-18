@@ -4,7 +4,9 @@ import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import process from 'node:process';
 import { pathToFileURL } from 'node:url';
-import { humanReviewDecision, isValidReviewCoverage, loadHumanEvidence } from './exact-head-review-gate.mjs';
+import {
+    humanReviewDecision, isValidReviewCoverage, loadHumanEvidence, sameCommitSha
+} from './exact-head-review-gate.mjs';
 
 const API_VERSION = '2022-11-28';
 const DEFAULT_REVIEWERS = [
@@ -86,6 +88,10 @@ function reviewSubmittedAt(review) {
     return String(review?.submitted_at ?? review?.submittedAt ?? '');
 }
 
+function isCommitSha(value) {
+    return /^[a-fA-F0-9]{40}$/u.test(String(value ?? '').trim());
+}
+
 function trustedReviews(reviews, reviewerLogins) {
     const trusted = reviewerLogins instanceof Set
         ? reviewerLogins : parseReviewerLogins(reviewerLogins);
@@ -110,9 +116,6 @@ function reviewEvidence(review, changedFiles, headSha) {
     const coverage = parseReviewCoverage(review?.body);
     const commentCount = parseReviewCommentCount(review?.body);
     const commit = reviewCommit(review);
-    const normalizedCommit = /^[a-fA-F0-9]{40}$/u.test(commit)
-        ? commit.toLowerCase() : '';
-    const normalizedHead = String(headSha ?? '').toLowerCase();
     return {
         classification: classifyReview(review),
         coverage,
@@ -120,7 +123,7 @@ function reviewEvidence(review, changedFiles, headSha) {
         validCoverage: isValidReviewCoverage(coverage, changedFiles),
         completeCoverage: isValidReviewCoverage(coverage, changedFiles)
             && coverage.reviewed === coverage.total,
-        exactHead: Boolean(normalizedCommit) && normalizedCommit === normalizedHead,
+        exactHead: sameCommitSha(commit, headSha),
         submittedAt: reviewSubmittedAt(review),
         commit,
         reviewer: reviewLogin(review)
@@ -155,7 +158,7 @@ export function auditMergedPullRequest({
     let humanConfirmation = null;
     let reviewBinding = null;
 
-    if (!number || !mergedAt || !headSha
+    if (!number || !mergedAt || !isCommitSha(headSha)
             || !Number.isSafeInteger(changedFiles) || changedFiles < 1) {
         findings.push(finding('high', 'MERGED_PR_METADATA_INCOMPLETE',
             'Merged pull-request number, merge time, head SHA, or changed-file count is missing.'));
@@ -178,7 +181,7 @@ export function auditMergedPullRequest({
     } else {
         const evidence = reviewEvidence(latestBeforeMerge, changedFiles, headSha);
         const validMismatchCommit = !evidence.exactHead
-            && /^[a-fA-F0-9]{40}$/u.test(evidence.commit);
+            && isCommitSha(evidence.commit) && isCommitSha(headSha);
         const invalidReviewCommit = !evidence.exactHead && !validMismatchCommit;
         const decision = humanReviewDecision({
             pullRequest, review: latestBeforeMerge, reviews, comments, humanPermissions, reviewerLogins,

@@ -87,6 +87,22 @@ test('audit accepts a valid human confirmation only when it predates the merge',
     }).findings.some(item => item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'));
 });
 
+test('audit rejects malformed merged-head commit metadata before review binding', () => {
+    for (const sha of ['', 'not-a-sha', 'a'.repeat(39), 'g'.repeat(40)]) {
+        const result = auditMergedPullRequest({
+            pullRequest: pullRequest({ head: { sha } }),
+            reviews: [review(APPROVAL, { commit_id: sha })],
+            threads: [],
+            reviewerLogins: REVIEWERS
+        });
+        assert.ok(result.findings.some(item =>
+            item.code === 'MERGED_PR_METADATA_INCOMPLETE'
+                && item.severity === 'high'));
+        assert.equal(result.reviewBinding, null);
+        assert.equal(result.humanConfirmation, null);
+    }
+});
+
 test('parses and classifies the review evidence contract', () => {
     assert.deepEqual(parseReviewCoverage(APPROVAL), { reviewed: 2, total: 2 });
     assert.equal(parseReviewCommentCount(APPROVAL), 0);
