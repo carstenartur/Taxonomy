@@ -231,7 +231,7 @@ public class WorkspaceContextResolver {
      * A present blank header is an explicit central selection and therefore
      * overrides a stale query parameter with the empty string.
      */
-    static String requestedWorkspaceId(HttpServletRequest request) {
+    public static String requestedWorkspaceId(HttpServletRequest request) {
         String header = request.getHeader(WORKSPACE_HEADER);
         if (header != null) {
             return header.strip();
