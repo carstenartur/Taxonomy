@@ -690,6 +690,45 @@ test('metadata mismatch fallback cannot override changes recommended or unresolv
     }).code, 'UNRESOLVED_REVIEW_THREADS');
 });
 
+test('newest trusted review wins even when an older review has exact-head metadata', () => {
+    const olderExact = review(APPROVAL, {
+        id: 100, submitted_at: '2026-09-01T10:00:00Z'
+    });
+    const newerMismatch = review(CHANGES, {
+        id: 101, commit_id: 'b'.repeat(40),
+        submitted_at: '2026-09-01T10:01:00Z'
+    });
+    const result = humanGate({
+        reviews: [olderExact, newerMismatch],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`,
+            created_at: '2026-09-01T10:02:00Z',
+            updated_at: '2026-09-01T10:02:00Z'
+        })]
+    });
+    assert.equal(result.code, 'CHANGES_RECOMMENDED');
+    assert.equal(result.review.id, 101);
+});
+
+test('newest trusted review with invalid commit metadata cannot fall back to an older exact review', () => {
+    const result = humanGate({
+        reviews: [
+            review(APPROVAL, { id: 100, submitted_at: '2026-09-01T10:00:00Z' }),
+            review(CLEAN_CLOSER, {
+                id: 101, commit_id: '',
+                submitted_at: '2026-09-01T10:01:00Z'
+            })
+        ],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`,
+            created_at: '2026-09-01T10:02:00Z',
+            updated_at: '2026-09-01T10:02:00Z'
+        })]
+    });
+    assert.equal(result.status, 'pending');
+    assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+});
+
 test('blocks changes recommended and closer-look outcomes', () => {
     for (const body of [CHANGES, CLOSER]) {
         const result = evaluateExactHeadReview({
