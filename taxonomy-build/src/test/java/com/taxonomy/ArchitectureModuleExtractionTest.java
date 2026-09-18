@@ -57,7 +57,7 @@ class ArchitectureModuleExtractionTest {
     private static final Set<String> SUPPORT_MODULES = Set.of(
             "taxonomy-domain", "taxonomy-dsl", "taxonomy-export", "taxonomy-extension-api", "taxonomy-tooling");
     private static final Set<String> NON_PRODUCTION_REACTOR_MODULES = Set.of(
-            "taxonomy", "taxonomy-coverage", "taxonomy-build");
+            "taxonomy-coverage", "taxonomy-build");
 
     @Test
     void physicalFeatureModulesHaveNoExtractionBlockers() throws Exception {
@@ -354,19 +354,32 @@ class ArchitectureModuleExtractionTest {
         Set<String> origins = new HashSet<>(SUPPORT_MODULES);
         origins.add(policy.compositionModule());
         policy.contexts().stream().map(Context::targetModule).filter(target -> target != null).forEach(origins::add);
+        Map<Path, LocalPom> models = new TreeMap<>();
+        Map<String, String> groups = new TreeMap<>();
+        for (var module : modules.entrySet()) {
+            LocalPom model = localPom(
+                    module.getValue().resolve("pom.xml"),
+                    root,
+                    modules,
+                    models,
+                    new HashSet<>());
+            groups.put(module.getKey(),
+                    resolved(model.group(), model.values(), "project groupId", module.getKey()));
+        }
+
         Set<String> unclassified = new TreeSet<>(modules.keySet());
         unclassified.removeAll(origins);
         unclassified.removeAll(NON_PRODUCTION_REACTOR_MODULES);
+        unclassified.removeIf(module -> {
+            LocalPom model = models.get(
+                    modules.get(module).resolve("pom.xml").toAbsolutePath().normalize());
+            return "pom".equals(resolved(
+                    model.packaging(), model.values(), "packaging", module));
+        });
         if (!unclassified.isEmpty()) {
             throw new IllegalStateException(
                     "Unclassified reactor module(s) are not allowed in the production graph: "
                             + unclassified);
-        }
-        Map<Path, LocalPom> models = new TreeMap<>();
-        Map<String, String> groups = new TreeMap<>();
-        for (var module : modules.entrySet()) {
-            LocalPom model = localPom(module.getValue().resolve("pom.xml"), root, modules, models, new HashSet<>());
-            groups.put(module.getKey(), resolved(model.group(), model.values(), "project groupId", module.getKey()));
         }
         Set<String> internalGroups = new HashSet<>(groups.values());
         internalGroups.add("com.taxonomy");
@@ -443,7 +456,8 @@ class ArchitectureModuleExtractionTest {
     }
 
     /** Raw expressions are retained until inheritance and child property overrides have been assembled. */
-    private record LocalPom(String group, String artifact, String version, Map<String, String> properties,
+    private record LocalPom(String group, String artifact, String version, String packaging,
+                            Map<String, String> properties,
                             String parentGroup, String parentArtifact, String parentVersion,
                             List<PomDependency> dependencies, List<PomDependency> managed) {
         Map<String, String> values() {
@@ -560,9 +574,18 @@ class ArchitectureModuleExtractionTest {
             List<PomDependency> managed = inheritedDependencies(inherited == null ? List.of() : inherited.managed(), project, true);
             String group = childText(project, "groupId");
             String version = childText(project, "version");
-            LocalPom model = new LocalPom(group.isBlank() ? parentGroup : group, childText(project, "artifactId"),
-                    version.isBlank() ? parentVersion : version, Map.copyOf(properties), parentGroup, parentArtifact, parentVersion,
-                    dependencies, managed);
+            String packaging = childText(project, "packaging");
+            LocalPom model = new LocalPom(
+                    group.isBlank() ? parentGroup : group,
+                    childText(project, "artifactId"),
+                    version.isBlank() ? parentVersion : version,
+                    packaging.isBlank() ? "jar" : packaging,
+                    Map.copyOf(properties),
+                    parentGroup,
+                    parentArtifact,
+                    parentVersion,
+                    dependencies,
+                    managed);
             cache.put(file, model);
             return model;
         } finally {
