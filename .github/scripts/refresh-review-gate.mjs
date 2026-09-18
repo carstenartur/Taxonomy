@@ -5,7 +5,7 @@ import process from 'node:process';
 import { pathToFileURL } from 'node:url';
 import {
     GitHubClient, HUMAN_CONFIRMATION_POLICY_VERSION, evaluateLiveReview,
-    parseReviewerLogins, parseReviewConfirmation
+    parseReviewerLogins, parseReviewConfirmation, sameCommitSha
 } from './exact-head-review-gate.mjs';
 
 const GATE_STEP = 'Require complete review of the exact pull-request head';
@@ -17,9 +17,9 @@ const TECHNICAL_STEPS = [
 export function latestPullRequestRun(runs, pullRequest) {
     return runs.filter(run => run.event === 'pull_request'
         && run.path === '.github/workflows/ci-cd.yml'
-        && run.head_sha === pullRequest.head.sha
+        && sameCommitSha(run.head_sha, pullRequest.head.sha)
         && run.pull_requests?.some(pr => pr.number === pullRequest.number
-            && pr.head.sha === pullRequest.head.sha
+            && sameCommitSha(pr.head.sha, pullRequest.head.sha)
             && pr.base.repo.id === pullRequest.base.repo.id
             && pr.base.ref === pullRequest.base.ref))
         .toSorted((a, b) => b.id - a.id)[0];
@@ -94,7 +94,7 @@ export async function refreshPullRequest(client, number, reviewerLogins) {
     if (!Array.isArray(latestRuns.workflow_runs) || latestRuns.total_count > 100) {
         throw new Error('Unable to recheck the latest CI run completely.');
     }
-    if (currentPr.state !== 'open' || currentPr.draft || currentPr.head.sha !== pr.head.sha
+    if (currentPr.state !== 'open' || currentPr.draft || !sameCommitSha(currentPr.head.sha, pr.head.sha)
         || currentRun.status !== 'completed' || currentRun.run_attempt !== run.run_attempt
         || latestPullRequestRun(latestRuns.workflow_runs, currentPr)?.id !== run.id) {
         return `#${number}: state changed; no refresh.`;

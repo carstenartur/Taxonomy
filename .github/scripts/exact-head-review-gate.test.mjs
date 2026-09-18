@@ -13,7 +13,8 @@ import {
     parseReviewCommentCount,
     parseReviewCoverage,
     parseReviewerLogins,
-    parseReviewConfirmation
+    parseReviewConfirmation,
+    reviewGateEvidence
 } from './exact-head-review-gate.mjs';
 import {
     eventPullRequests, latestPullRequestRun, refreshPullRequest, verificationJobToRefresh
@@ -300,6 +301,25 @@ test('human changes requested block even Copilot approval and maintainer confirm
     }] }).status, 'passed');
 });
 
+test('human approvals and objections use case-insensitive current-head SHA matching', () => {
+    const approval = review('Approved current head.', {
+        id: 202, user: HUMAN, state: 'APPROVED',
+        commit_id: HEAD.toUpperCase(), submitted_at: '2026-09-01T10:02:00Z'
+    });
+    const approved = humanGate({
+        pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+        reviews: [review(CLEAN_CLOSER), approval], comments: []
+    });
+    assert.equal(approved.status, 'passed');
+    assert.equal(approved.humanConfirmation.source, 'pull_request_review');
+
+    const objection = { ...approval, id: 203, state: 'CHANGES_REQUESTED',
+        submitted_at: '2026-09-01T10:03:00Z' };
+    assert.equal(humanGate({
+        reviews: [review(APPROVAL), objection]
+    }).code, 'HUMAN_CHANGES_REQUESTED');
+});
+
 test('a dismissed human approval cannot resurrect an earlier approval', () => {
     const approval = review('Approved.', { id: 202, user: HUMAN, state: 'APPROVED', submitted_at: '2026-09-01T10:02:00Z' });
     const dismissed = { ...approval, id: 203, state: 'DISMISSED', submitted_at: '2026-09-01T10:03:00Z' };
@@ -314,8 +334,12 @@ test('permission lookup uses API permissions, deduplicates principals and ignore
     const client = { repository: 'owner/repo', request: async path => {
         paths.push(path); return { permission: 'write' };
     } };
+    const uppercaseApproval = review('Approved.', {
+        id: 202, user: HUMAN, state: 'APPROVED',
+        commit_id: HEAD.toUpperCase(), submitted_at: '2026-09-01T10:02:00Z'
+    });
     const permissions = await loadHumanPermissions(client, {
-        reviews: [], headSha: HEAD,
+        reviews: [uppercaseApproval], headSha: HEAD,
         comments: [confirmation(), confirmation(), confirmation({ body: 'hello', user: { login: 'other', type: 'User' } })]
     });
     assert.deepEqual(paths, ['/repos/owner/repo/collaborators/maintainer/permission']);
@@ -365,6 +389,18 @@ test('refresh selects only the latest matching pull-request CI, including runnin
     ];
     assert.equal(latestPullRequestRun([...unrelated, CI_RUN], CI_PR).id, 301);
     assert.equal(latestPullRequestRun([CI_RUN, { ...CI_RUN, id: 302, status: 'in_progress' }], CI_PR).id, 302);
+});
+
+test('refresh run selection treats SHA casing as identity-equivalent', () => {
+    const upper = {
+        ...CI_RUN,
+        head_sha: HEAD.toUpperCase(),
+        pull_requests: [{
+            ...CI_RUN.pull_requests[0],
+            head: { sha: HEAD.toUpperCase() }
+        }]
+    };
+    assert.equal(latestPullRequestRun([upper], CI_PR).id, 301);
 });
 
 test('refresh only retries the final review failure with successful authoritative evidence', () => {
@@ -440,7 +476,8 @@ test('refresh workflow executes default-branch code with narrowly scoped write p
 });
 
 function mockGitHub(t, {
-    editedAt = null, advanceHead = false, newRun = false, graphqlError = false,
+    editedAt = null, advanceHead = false, caseVariantHead = false,
+    newRun = false, graphqlError = false,
     reviewBody = CLEAN_CLOSER, confirmationBody = confirmation().body,
     policyVersion = HUMAN_CONFIRMATION_POLICY_VERSION, policySource
 } = {}) {
@@ -465,7 +502,10 @@ function mockGitHub(t, {
         } else if (path.endsWith('/pulls/933')) {
             prReads++;
             payload = advanceHead && prReads >= 3
-                ? { ...CI_PR, head: { sha: 'c'.repeat(40) } } : CI_PR;
+                ? { ...CI_PR, head: { sha: 'c'.repeat(40) } }
+                : caseVariantHead && prReads >= 2
+                ? { ...CI_PR, head: { sha: HEAD.toUpperCase() } }
+                : CI_PR;
         } else if (path.endsWith('/reviews')) {
             payload = [review(reviewBody)];
         } else if (path.endsWith('/comments')) {
@@ -498,6 +538,12 @@ function mockGitHub(t, {
 
 test('live REST and GraphQL evidence causes exactly one final-job rerun', async t => {
     const { client, writes } = mockGitHub(t);
+    assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
+    assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
+});
+
+test('live refresh tolerates a case-only head representation change during recheck', async t => {
+    const { client, writes } = mockGitHub(t, { caseVariantHead: true });
     assert.match(await refreshPullRequest(client, 933), /rerunning Maven verification job 401/u);
     assert.deepEqual(writes, ['/repos/owner/repo/actions/jobs/401/rerun']);
 });
@@ -604,6 +650,203 @@ test('keeps waiting when only a stale-head review exists', () => {
     });
     assert.equal(result.status, 'pending');
     assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+});
+
+test('uppercase representation of the current review commit remains exact-head evidence', () => {
+    const result = evaluateExactHeadReview({
+        pullRequest: pullRequest(),
+        reviews: [review(APPROVAL, { commit_id: HEAD.toUpperCase() })],
+        threads: [],
+        expectedHeadSha: HEAD,
+        reviewerLogins: REVIEWERS
+    });
+    assert.equal(result.status, 'passed');
+    assert.equal(result.reviewBinding, 'exact-head');
+});
+
+test('uppercase pull-request head is the same commit as the expected head', () => {
+    const result = evaluateExactHeadReview({
+        pullRequest: pullRequest({ head: { sha: HEAD.toUpperCase() } }),
+        reviews: [review(APPROVAL)],
+        threads: [],
+        expectedHeadSha: HEAD,
+        reviewerLogins: REVIEWERS
+    });
+    assert.equal(result.status, 'passed');
+    assert.notEqual(result.code, 'STALE_REVIEW_GATE_RUN');
+});
+
+test('full-change human confirmation can bind clean trusted review metadata to the current head', () => {
+    const result = humanGate({
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`
+        })]
+    });
+    assert.equal(result.status, 'passed');
+    assert.equal(result.code, 'EXACT_HEAD_REVIEW_COMPLETE');
+    assert.equal(result.reviewBinding, 'human-confirmed-metadata-mismatch');
+    assert.equal(result.humanConfirmation.scope, 'all-changed-files');
+    assert.equal(result.humanConfirmation.headSha, HEAD);
+});
+
+test('native approval cannot substitute for the explicit metadata-mismatch binding comment', () => {
+    const approval = review('Reviewed all current files.', {
+        id: 202, user: HUMAN, state: 'APPROVED',
+        commit_id: HEAD, submitted_at: '2026-09-01T10:02:00Z'
+    });
+    const result = humanGate({
+        pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) }), approval],
+        comments: []
+    });
+    assert.equal(result.status, 'pending');
+    assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+});
+
+test('native approval does not mask a valid explicit metadata-binding comment', () => {
+    const approval = review('Reviewed all current files.', {
+        id: 202, user: HUMAN, state: 'APPROVED',
+        commit_id: HEAD, submitted_at: '2026-09-01T10:02:00Z'
+    });
+    const result = humanGate({
+        pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) }), approval],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`,
+            created_at: '2026-09-01T10:03:00Z',
+            updated_at: '2026-09-01T10:03:00Z'
+        })]
+    });
+    assert.equal(result.status, 'passed');
+    assert.equal(result.humanConfirmation.source, 'issue_comment');
+    assert.equal(result.humanConfirmation.reviewId, '101');
+});
+
+test('metadata-mismatch binding is persisted in review-gate evidence', () => {
+    const result = humanGate({
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`
+        })]
+    });
+    const evidence = reviewGateEvidence(result, 933, HEAD);
+    assert.equal(evidence.reviewBinding, 'human-confirmed-metadata-mismatch');
+    assert.equal(evidence.humanConfirmation.scope, 'all-changed-files');
+    assert.equal(evidence.expectedHeadSha, HEAD);
+});
+
+test('metadata-mismatched trusted review still requires explicit all-files scope', () => {
+    for (const body of [
+        `/confirm-review ${HEAD} 101`,
+        `/confirm-review ${HEAD} 101 all-files=1`
+    ]) {
+        const result = humanGate({
+            reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],
+            comments: [confirmation({ body })]
+        });
+        assert.equal(result.status, 'pending');
+        assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+    }
+});
+
+test('human confirmation cannot bind malformed or absent trusted review commit metadata', () => {
+    for (const commit_id of ['', 'not-a-sha']) {
+        const result = humanGate({
+            reviews: [review(CLEAN_CLOSER, { commit_id })],
+            comments: [confirmation({
+                body: `/confirm-review ${HEAD} 101 all-files=2`
+            })]
+        });
+        assert.equal(result.status, 'pending');
+        assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+    }
+});
+
+test('metadata mismatch fallback cannot override changes recommended or unresolved threads', () => {
+    const confirmationComment = confirmation({
+        body: `/confirm-review ${HEAD} 101 all-files=2`
+    });
+    assert.equal(humanGate({
+        reviews: [review(CHANGES, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmationComment]
+    }).code, 'CHANGES_RECOMMENDED');
+    assert.equal(humanGate({
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmationComment],
+        threads: [{ isResolved: false, isOutdated: false }]
+    }).code, 'UNRESOLVED_REVIEW_THREADS');
+});
+
+test('newest trusted review wins even when an older review has exact-head metadata', () => {
+    const olderExact = review(APPROVAL, {
+        id: 100, submitted_at: '2026-09-01T10:00:00Z'
+    });
+    const newerMismatch = review(CHANGES, {
+        id: 101, commit_id: 'b'.repeat(40),
+        submitted_at: '2026-09-01T10:01:00Z'
+    });
+    const result = humanGate({
+        reviews: [olderExact, newerMismatch],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`,
+            created_at: '2026-09-01T10:02:00Z',
+            updated_at: '2026-09-01T10:02:00Z'
+        })]
+    });
+    assert.equal(result.code, 'CHANGES_RECOMMENDED');
+    assert.equal(result.review.id, 101);
+});
+
+test('diagnostics distinguish exact-head and metadata-mismatched trusted reviews', () => {
+    const exact = humanGate({ reviews: [review(CHANGES)], comments: [] });
+    assert.match(exact.message, /latest exact-head review/u);
+
+    const mismatch = humanGate({
+        reviews: [review(CHANGES, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`
+        })]
+    });
+    assert.match(mismatch.message, /latest trusted review with mismatched commit metadata/u);
+});
+
+test('newest trusted review with invalid commit metadata cannot fall back to an older exact review', () => {
+    const result = humanGate({
+        reviews: [
+            review(APPROVAL, { id: 100, submitted_at: '2026-09-01T10:00:00Z' }),
+            review(CLEAN_CLOSER, {
+                id: 101, commit_id: '',
+                submitted_at: '2026-09-01T10:01:00Z'
+            })
+        ],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`,
+            created_at: '2026-09-01T10:02:00Z',
+            updated_at: '2026-09-01T10:02:00Z'
+        })]
+    });
+    assert.equal(result.status, 'pending');
+    assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+});
+
+test('review id breaks submitted-at ties so the newest trusted review wins deterministically', () => {
+    const sameTime = '2026-09-01T10:01:00Z';
+    const result = humanGate({
+        reviews: [
+            review(APPROVAL, { id: 100, submitted_at: sameTime }),
+            review(CHANGES, {
+                id: 101, commit_id: 'b'.repeat(40), submitted_at: sameTime
+            })
+        ],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`,
+            created_at: '2026-09-01T10:02:00Z',
+            updated_at: '2026-09-01T10:02:00Z'
+        })]
+    });
+    assert.equal(result.code, 'CHANGES_RECOMMENDED');
+    assert.equal(result.review.id, 101);
 });
 
 test('blocks changes recommended and closer-look outcomes', () => {

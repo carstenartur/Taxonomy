@@ -87,6 +87,22 @@ test('audit accepts a valid human confirmation only when it predates the merge',
     }).findings.some(item => item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'));
 });
 
+test('audit rejects malformed merged-head commit metadata before review binding', () => {
+    for (const sha of ['', 'not-a-sha', 'a'.repeat(39), 'g'.repeat(40)]) {
+        const result = auditMergedPullRequest({
+            pullRequest: pullRequest({ head: { sha } }),
+            reviews: [review(APPROVAL, { commit_id: sha })],
+            threads: [],
+            reviewerLogins: REVIEWERS
+        });
+        assert.ok(result.findings.some(item =>
+            item.code === 'MERGED_PR_METADATA_INCOMPLETE'
+                && item.severity === 'high'));
+        assert.equal(result.reviewBinding, null);
+        assert.equal(result.humanConfirmation, null);
+    }
+});
+
 test('parses and classifies the review evidence contract', () => {
     assert.deepEqual(parseReviewCoverage(APPROVAL), { reviewed: 2, total: 2 });
     assert.equal(parseReviewCommentCount(APPROVAL), 0);
@@ -222,6 +238,7 @@ test('accepts a clean complete exact-head review before merge', () => {
         reviewerLogins: REVIEWERS
     });
     assert.deepEqual(result.findings, []);
+    assert.equal(result.reviewBinding, 'exact-head');
 });
 
 test('reports no exact-head pre-merge review without making it high severity', () => {
@@ -235,6 +252,152 @@ test('reports no exact-head pre-merge review without making it high severity', (
         item.code === 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE'
             && item.severity === 'medium'));
     assert.equal(findingsAtOrAbove(result.findings, 'high').length, 0);
+});
+
+test('audit recognizes version-3 metadata mismatch only with pre-merge all-files writer binding', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const mismatched = review(APPROVAL, {
+        id: 101, commit_id: 'b'.repeat(40),
+        submitted_at: '2026-09-01T10:00:00Z'
+    });
+    const comment = {
+        id: 201, user, last_edited_at: null,
+        body: `/confirm-review ${HEAD} 101 all-files=2`,
+        created_at: '2026-09-01T10:30:00Z',
+        updated_at: '2026-09-01T10:30:00Z'
+    };
+    const input = {
+        pullRequest: pullRequest({ user }),
+        reviews: [mismatched], threads: [], reviewerLogins: REVIEWERS,
+        comments: [comment], humanPermissions: new Map([['maintainer', 'admin']])
+    };
+    const result = auditMergedPullRequest(input);
+    assert.deepEqual(result.findings, []);
+    assert.equal(result.reviewBinding, 'human-confirmed-metadata-mismatch');
+    assert.equal(result.humanConfirmation.source, 'issue_comment');
+    assert.equal(result.humanConfirmation.scope, 'all-changed-files');
+
+    const nativeApproval = review('Reviewed current head.', {
+        id: 202, user, state: 'APPROVED',
+        commit_id: HEAD, submitted_at: '2026-09-01T10:30:00Z'
+    });
+    const withoutComment = auditMergedPullRequest({
+        ...input, comments: [], reviews: [mismatched, nativeApproval]
+    });
+    assert.ok(withoutComment.findings.some(item =>
+        item.code === 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE'));
+});
+
+test('unbound metadata mismatch still reports high-severity review blockers', () => {
+    const changes = auditMergedPullRequest({
+        pullRequest: pullRequest(),
+        reviews: [review(CHANGES, { commit_id: 'b'.repeat(40) })],
+        threads: [],
+        reviewerLogins: REVIEWERS
+    });
+    assert.ok(changes.findings.some(item =>
+        item.code === 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE'
+            && item.severity === 'medium'));
+    assert.ok(changes.findings.some(item =>
+        item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'
+            && item.severity === 'high'));
+    assert.ok(changes.findings.some(item =>
+        item.code === 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED'
+            && item.severity === 'high'));
+
+    const partial = auditMergedPullRequest({
+        pullRequest: pullRequest(),
+        reviews: [review(APPROVAL.replace('2/2', '1/2'), {
+            commit_id: 'b'.repeat(40)
+        })],
+        threads: [],
+        reviewerLogins: REVIEWERS
+    });
+    assert.ok(partial.findings.some(item =>
+        item.code === 'INCOMPLETE_EXACT_HEAD_REVIEW'
+            && item.severity === 'high'));
+});
+
+
+test('malformed trusted review commit metadata remains a high-severity unbindable blocker', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const approval = review('Reviewed current head.', {
+        id: 202, user, state: 'APPROVED',
+        commit_id: HEAD, submitted_at: '2026-09-01T10:30:00Z'
+    });
+    for (const commit_id of ['', 'not-a-sha']) {
+        const result = auditMergedPullRequest({
+            pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+            reviews: [
+                review(APPROVAL, { id: 101, commit_id }),
+                approval
+            ],
+            threads: [],
+            reviewerLogins: REVIEWERS,
+            humanPermissions: new Map([['maintainer', 'admin']])
+        });
+        assert.ok(result.findings.some(item =>
+            item.code === 'INVALID_TRUSTED_REVIEW_COMMIT_METADATA'
+                && item.severity === 'high'));
+        assert.ok(result.findings.some(item =>
+            item.code === 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE'));
+        assert.equal(result.reviewBinding, null);
+        assert.equal(result.humanConfirmation, null);
+    }
+});
+
+test('audit treats uppercase representation of merged head SHA as exact', () => {
+    const result = auditMergedPullRequest({
+        pullRequest: pullRequest(),
+        reviews: [review(APPROVAL, { commit_id: HEAD.toUpperCase() })],
+        threads: [],
+        reviewerLogins: REVIEWERS
+    });
+    assert.deepEqual(result.findings, []);
+});
+
+test('metadata binding cannot hide review findings or a human objection in merged audit', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const comment = {
+        id: 201, user, last_edited_at: null,
+        body: `/confirm-review ${HEAD} 101 all-files=2`,
+        created_at: '2026-09-01T10:30:00Z',
+        updated_at: '2026-09-01T10:30:00Z'
+    };
+    const base = {
+        pullRequest: pullRequest({ user }),
+        threads: [], reviewerLogins: REVIEWERS, comments: [comment],
+        humanPermissions: new Map([['maintainer', 'admin']])
+    };
+
+    const changes = auditMergedPullRequest({
+        ...base,
+        reviews: [review(CHANGES, {
+            id: 101, commit_id: 'b'.repeat(40)
+        })]
+    });
+    assert.ok(changes.findings.some(item =>
+        item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'
+            && item.severity === 'high'));
+    assert.ok(changes.findings.some(item =>
+        item.code === 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED'
+            && item.severity === 'high'));
+
+    const objection = review('Please change this.', {
+        id: 202, user, state: 'CHANGES_REQUESTED',
+        submitted_at: '2026-09-01T10:40:00Z'
+    });
+    const objected = auditMergedPullRequest({
+        ...base,
+        comments: [],
+        reviews: [
+            review(APPROVAL, { id: 101, commit_id: 'b'.repeat(40) }),
+            objection
+        ]
+    });
+    assert.ok(objected.findings.some(item =>
+        item.code === 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE'
+            && item.severity === 'high'));
 });
 
 test('reports a changes-recommended exact-head review submitted after merge as high', () => {
