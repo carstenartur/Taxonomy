@@ -606,6 +606,62 @@ test('keeps waiting when only a stale-head review exists', () => {
     assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
 });
 
+test('full-change human confirmation can bind clean trusted review metadata to the current head', () => {
+    const result = humanGate({
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmation({
+            body: `/confirm-review ${HEAD} 101 all-files=2`
+        })]
+    });
+    assert.equal(result.status, 'passed');
+    assert.equal(result.code, 'EXACT_HEAD_REVIEW_COMPLETE');
+    assert.equal(result.reviewBinding, 'human-confirmed-metadata-mismatch');
+    assert.equal(result.humanConfirmation.scope, 'all-changed-files');
+    assert.equal(result.humanConfirmation.headSha, HEAD);
+});
+
+test('metadata-mismatched trusted review still requires explicit all-files scope', () => {
+    for (const body of [
+        `/confirm-review ${HEAD} 101`,
+        `/confirm-review ${HEAD} 101 all-files=1`
+    ]) {
+        const result = humanGate({
+            reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],
+            comments: [confirmation({ body })]
+        });
+        assert.equal(result.status, 'pending');
+        assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+    }
+});
+
+test('human confirmation cannot bind malformed or absent trusted review commit metadata', () => {
+    for (const commit_id of ['', 'not-a-sha']) {
+        const result = humanGate({
+            reviews: [review(CLEAN_CLOSER, { commit_id })],
+            comments: [confirmation({
+                body: `/confirm-review ${HEAD} 101 all-files=2`
+            })]
+        });
+        assert.equal(result.status, 'pending');
+        assert.equal(result.code, 'EXACT_HEAD_REVIEW_MISSING');
+    }
+});
+
+test('metadata mismatch fallback cannot override changes recommended or unresolved threads', () => {
+    const confirmationComment = confirmation({
+        body: `/confirm-review ${HEAD} 101 all-files=2`
+    });
+    assert.equal(humanGate({
+        reviews: [review(CHANGES, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmationComment]
+    }).code, 'CHANGES_RECOMMENDED');
+    assert.equal(humanGate({
+        reviews: [review(CLEAN_CLOSER, { commit_id: 'b'.repeat(40) })],
+        comments: [confirmationComment],
+        threads: [{ isResolved: false, isOutdated: false }]
+    }).code, 'UNRESOLVED_REVIEW_THREADS');
+});
+
 test('blocks changes recommended and closer-look outcomes', () => {
     for (const body of [CHANGES, CLOSER]) {
         const result = evaluateExactHeadReview({

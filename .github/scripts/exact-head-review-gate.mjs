@@ -11,7 +11,7 @@ const DEFAULT_REVIEWERS = [
     'Copilot'
 ];
 const API_VERSION = '2022-11-28';
-export const HUMAN_CONFIRMATION_POLICY_VERSION = 2;
+export const HUMAN_CONFIRMATION_POLICY_VERSION = 3;
 
 export function normalizeLogin(login) {
     return String(login ?? '')
@@ -256,19 +256,29 @@ export function evaluateExactHeadReview({
 
     const trusted = reviewerLogins instanceof Set
         ? reviewerLogins : parseReviewerLogins(reviewerLogins);
-    const exactReviews = (reviews ?? [])
+    const trustedReviews = (reviews ?? [])
         .filter(review => trusted.has(reviewLogin(review)))
         .filter(review => String(review?.state ?? '').toUpperCase() !== 'DISMISSED')
-        .filter(review => reviewCommit(review) === expectedHeadSha)
         .filter(review => reviewSubmittedAt(review))
         .toSorted((left, right) =>
             reviewSubmittedAt(left).localeCompare(reviewSubmittedAt(right)));
-    if (!exactReviews.length) {
+    const exactReviews = trustedReviews
+        .filter(review => reviewCommit(review) === expectedHeadSha);
+    const exactReview = exactReviews.at(-1);
+    const review = exactReview ?? trustedReviews.at(-1);
+    if (!review) {
         return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
             `No completed trusted review exists for exact head ${expectedHeadSha}.`);
     }
-
-    const review = exactReviews.at(-1);
+    const exactReviewBinding = Boolean(exactReview);
+    const reviewCommitSha = reviewCommit(review);
+    const validMismatchedReviewCommit = !exactReviewBinding
+        && /^[a-fA-F0-9]{40}$/u.test(reviewCommitSha)
+        && reviewCommitSha !== expectedHeadSha;
+    if (!exactReviewBinding && !validMismatchedReviewCommit) {
+        return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
+            `No completed trusted review exists for exact head ${expectedHeadSha}.`);
+    }
     const classification = classifyReview(review);
     if (classification === 'changes-recommended') {
         return result('blocked', 'CHANGES_RECOMMENDED',
@@ -327,11 +337,20 @@ export function evaluateExactHeadReview({
     const completeCoverage = coverage.reviewed === coverage.total;
     const decision = humanReviewDecision({
         pullRequest, review, reviews, comments, humanPermissions, reviewerLogins: trusted,
-        requireCompleteCoverage: !completeCoverage
+        requireCompleteCoverage: !exactReviewBinding || !completeCoverage
     });
     if (decision.objection) {
         return result('blocked', 'HUMAN_CHANGES_REQUESTED',
             'A repository writer has requested changes on the current head.', { review });
+    }
+    if (!exactReviewBinding && !decision.confirmation) {
+        return result('pending', 'EXACT_HEAD_REVIEW_MISSING',
+            `Trusted review ${review.id} is recorded against ${reviewCommitSha}, not exact head ${expectedHeadSha}. `
+            + 'After reviewing every changed file and the linked review/CI evidence, '
+            + 'a repository writer can bind that clean review evidence to the current head with this exact PR conversation comment: '
+            + `/confirm-review ${expectedHeadSha} ${review.id} all-files=${changedFiles}`, {
+                review, coverage, changedFiles, reviewCommentCount, unresolvedThreads: []
+            });
     }
     if (!completeCoverage && !decision.confirmation) {
         return result('blocked', 'REVIEW_COVERAGE_CONFIRMATION_REQUIRED',
@@ -350,9 +369,12 @@ export function evaluateExactHeadReview({
                 review, coverage, changedFiles, reviewCommentCount, unresolvedThreads: []
             });
     }
-    const needsHuman = !completeCoverage || classification === 'needs-closer-look';
+    const needsHuman = !exactReviewBinding
+        || !completeCoverage || classification === 'needs-closer-look';
     return result('passed', 'EXACT_HEAD_REVIEW_COMPLETE',
-        !completeCoverage
+        !exactReviewBinding
+            ? `Exact head ${expectedHeadSha} has full-change human confirmation by ${decision.confirmation.login} for clean trusted review ${review.id}; GitHub recorded that review against ${reviewCommitSha}.`
+            : !completeCoverage
             ? `Exact head ${expectedHeadSha} has ${coverage.reviewed}/${coverage.total} Copilot coverage and full-change human confirmation by ${decision.confirmation.login}.`
             : needsHuman
             ? `Exact head ${expectedHeadSha} has a complete Copilot review confirmed by ${decision.confirmation.login}.`
@@ -362,6 +384,7 @@ export function evaluateExactHeadReview({
             changedFiles,
             reviewCommentCount,
             unresolvedThreads: [],
+            reviewBinding: exactReviewBinding ? 'exact-head' : 'human-confirmed-metadata-mismatch',
             humanConfirmation: needsHuman ? decision.confirmation : null
         });
 }
