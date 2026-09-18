@@ -68,6 +68,63 @@ class ArchitectureModuleExtractionTest {
         assertThat(evaluation.violations()).withFailMessage(evaluation::report).isEmpty();
     }
 
+    @Test
+    void aliasedRegisteredParentWithMismatchedVersionFailsClosed(
+            @org.junit.jupiter.api.io.TempDir Path fixture) throws Exception {
+        writeFixturePom(fixture.resolve("pom.xml"), "com.taxonomy", "taxonomy", "1",
+                "<packaging>pom</packaging><modules>"
+                        + "<module>taxonomy-app</module>"
+                        + "<module>taxonomy-parent</module>"
+                        + "<module>taxonomy-a</module></modules>");
+        writeFixturePom(fixture.resolve("taxonomy-app/pom.xml"),
+                "com.taxonomy", "taxonomy-app", "1", "");
+        writeFixturePom(fixture.resolve("taxonomy-parent/pom.xml"),
+                "org.example.build", "taxonomy-parent", "1", "<packaging>pom</packaging>");
+        writeFixturePom(fixture.resolve("taxonomy-a/pom.xml"),
+                null, "taxonomy-a", null, """
+                        <parent>
+                          <groupId>org.example.build</groupId>
+                          <artifactId>taxonomy-parent</artifactId>
+                          <version>2</version>
+                          <relativePath>../parent-alias/pom.xml</relativePath>
+                        </parent>
+                        <groupId>com.taxonomy</groupId>
+                        <version>1</version>
+                        """);
+        Files.createSymbolicLink(
+                fixture.resolve("parent-alias"),
+                fixture.resolve("taxonomy-parent"));
+
+        Policy policy = new Policy(
+                "taxonomy-app",
+                Set.of("AppConfig.java"),
+                List.of(
+                        new Context("a", "taxonomy-a", List.of("com.taxonomy.a..")),
+                        new Context("composition", "taxonomy-app",
+                                List.of("com.taxonomy.composition.."))));
+        Map<String, Path> modules = discoverModules(fixture, policy);
+
+        org.assertj.core.api.Assertions.assertThatThrownBy(
+                () -> readProductionModuleDependencies(fixture, modules, policy))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining(
+                        "Cannot resolve local reactor parent org.example.build:taxonomy-parent:2");
+    }
+
+    private static void writeFixturePom(
+            Path file, String group, String artifact, String version, String body)
+            throws IOException {
+        Files.createDirectories(file.getParent());
+        Files.writeString(file,
+                "<project xmlns=\"http://maven.apache.org/POM/4.0.0\">"
+                        + "<modelVersion>4.0.0</modelVersion>"
+                        + (group == null ? "" : "<groupId>" + group + "</groupId>")
+                        + "<artifactId>" + artifact + "</artifactId>"
+                        + (version == null ? "" : "<version>" + version + "</version>")
+                        + body
+                        + "</project>");
+    }
+
     static void writeReport(Path root, String contents) throws IOException {
         Path report = repositoryPath(root.resolve("taxonomy-build/target/architecture-module-graph.txt"),
                 root.toAbsolutePath().normalize(), "Architecture report");
@@ -529,9 +586,18 @@ class ArchitectureModuleExtractionTest {
                     Element candidateProject = readPom(candidate, root);
                     boolean sameRawGroup = declaredGroup(candidateProject).equals(childText(parent, "groupId"));
                     boolean sameRawArtifact = childText(candidateProject, "artifactId").equals(childText(parent, "artifactId"));
-                    // Reactor registration already resolved artifact expressions;
-                    // a literal parent reference must retain that candidate too.
-                    boolean registeredReactorParent = candidate.equals(reactorParent);
+                    // Reactor registration already resolved artifact expressions.
+                    // Compare physical POM identity: a safe in-checkout relativePath alias
+                    // must still be recognized as the registered reactor parent.
+                    boolean registeredReactorParent =
+                            reactorParent != null && Files.isSameFile(candidate, reactorParent);
+                    boolean declaredReactorPom = false;
+                    for (Path declared : declaredPoms) {
+                        if (Files.isSameFile(candidate, repositoryPomPath(declared, root))) {
+                            declaredReactorPom = true;
+                            break;
+                        }
+                    }
                     if ((!registeredReactorParent && !sameRawArtifact && !couldHaveArtifact(candidateProject, parentArtifact))
                             || (!sameRawGroup && !couldHaveGroup(candidateProject, parentGroup))) {
                         continue;
@@ -548,7 +614,7 @@ class ArchitectureModuleExtractionTest {
                                 + ": parent resolves to " + candidateArtifact + ", child resolves to " + parentArtifact);
                     }
                     if (candidateGroup.equals(parentGroup) && candidateArtifact.equals(parentArtifact)) {
-                        matchingReactorParent |= registeredReactorParent || declaredPoms.contains(candidate);
+                        matchingReactorParent |= registeredReactorParent || declaredReactorPom;
                         if (parentVersion.startsWith("[") || parentVersion.startsWith("(")) {
                             throw new IllegalStateException("Unsupported local-parent version range " + parentVersion
                                     + " in " + file + "; matching local parent: " + candidate);
