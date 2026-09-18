@@ -89,6 +89,10 @@ class IntegrationRemoteRetryTest {
         when(repositories.getRepository(context.repositoryId())).thenReturn(repository);
         when(memberships.canContribute(repository, context.username())).thenReturn(true);
         when(store.read(context, connectionId)).thenReturn(connection);
+        LifecycleIntegrationConnector connector = mock(LifecycleIntegrationConnector.class);
+        when(connectors.require(OslcRequirementsCodec.PROFILE)).thenReturn(connector);
+        when(connector.descriptor()).thenReturn(new IntegrationDescriptor(
+                OslcRequirementsCodec.PROFILE, "1", "OSLC", Set.of(), Set.of()));
         when(remote.validate(context, connection, "requirement-1"))
                 .thenReturn(URI.create(frozenResource));
 
@@ -130,10 +134,6 @@ class IntegrationRemoteRetryTest {
                 "frozen-fingerprint", 0, persistedDocument.getValue(), List.of(), null, null,
                 null, null, null, null, null, "REMOTE_UNAVAILABLE", Instant.now());
         when(store.operation(context, connectionId, operationId)).thenReturn(failed);
-        LifecycleIntegrationConnector connector = mock(LifecycleIntegrationConnector.class);
-        when(connectors.require(OslcRequirementsCodec.PROFILE)).thenReturn(connector);
-        when(connector.descriptor()).thenReturn(new IntegrationDescriptor(
-                OslcRequirementsCodec.PROFILE, "1", "OSLC", Set.of(), Set.of()));
         when(remote.read(context, connection, frozenResource, "\"v1\""))
                 .thenThrow(new IntegrationProblem(
                         "REMOTE_UNAVAILABLE", 502, "fixture failure"));
