@@ -4,6 +4,7 @@ import com.taxonomy.versioning.service.RepositoryStateService;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
+import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.http.HttpStatus;
@@ -67,9 +68,9 @@ public class DslWorkspacePreResolutionInterceptor implements HandlerInterceptor 
                 || workspaceContext.workspaceId().isBlank()) {
             // An explicit central selection is valid for read APIs, not for these
             // isolated-workspace endpoints. Reject the caller without relaxing isolation.
-            String requestedWorkspace = request.getHeader("X-Taxonomy-Workspace-Id");
-            if (requestedWorkspace == null) requestedWorkspace = request.getParameter("workspaceId");
-            if (requestedWorkspace != null && requestedWorkspace.isBlank()) {
+            String requestedWorkspace =
+                    WorkspaceContextResolver.requestedWorkspaceId(request);
+            if (requestedWorkspace != null && requestedWorkspace.isEmpty()) {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN,
                         "Select an isolated workspace before starting this operation");
             }
