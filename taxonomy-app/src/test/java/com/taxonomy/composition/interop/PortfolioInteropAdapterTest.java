@@ -137,12 +137,42 @@ class PortfolioInteropAdapterTest {
     }
 
     @Test
-    void ordinaryPortfolioNotFoundIsNotReclassifiedAsVersionFailure() {
-        PortfolioException missing = PortfolioException.notFound("Requirement 7 was not found in project 3");
-        when(projects.getRequirement(3L, 7L, "alice", scope)).thenThrow(missing);
+    void ordinaryPortfolioNotFoundKeepsItsStatusWithoutBecomingAVersionFailure() {
+        when(projects.getRequirement(3L, 7L, "alice", scope))
+                .thenThrow(PortfolioException.notFound("Requirement 7 was not found in project 3"));
 
-        assertThatThrownBy(() -> port.getRequirement(3L, 7L, "alice", scope))
-                .isSameAs(missing);
+        IntegrationProblem failure = catchThrowableOfType(
+                () -> port.getRequirement(3L, 7L, "alice", scope),
+                IntegrationProblem.class);
+
+        assertThat(failure).isNotNull();
+        assertThat(failure.status()).isEqualTo(404);
+        assertThat(failure.code()).isEqualTo("PORTFOLIO_NOT_FOUND");
+        assertThat(failure.getMessage()).isEqualTo("Requirement 7 was not found in project 3");
+    }
+
+    @ParameterizedTest
+    @EnumSource(PortfolioException.Kind.class)
+    void portfolioFailuresPreserveStatusAndExplicitCode(PortfolioException.Kind kind) {
+        PortfolioException source = new PortfolioException(
+                kind, "PORTFOLIO_SOURCE_CODE", "Portfolio failure", null);
+        when(projects.getProject(3L, "alice", scope)).thenThrow(source);
+
+        IntegrationProblem failure = catchThrowableOfType(
+                () -> port.getProject(3L, "alice", scope),
+                IntegrationProblem.class);
+
+        assertThat(failure).isNotNull();
+        assertThat(failure.status()).isEqualTo(switch (kind) {
+            case NOT_FOUND -> 404;
+            case CONFLICT -> 409;
+            case VALIDATION -> 400;
+            case PAYLOAD_TOO_LARGE -> 413;
+            case ANALYSIS_FAILED -> 422;
+            case UNAVAILABLE -> 503;
+        });
+        assertThat(failure.code()).isEqualTo("PORTFOLIO_SOURCE_CODE");
+        assertThat(failure.getMessage()).isEqualTo("Portfolio failure");
     }
 
 

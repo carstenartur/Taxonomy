@@ -25,36 +25,36 @@ public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
 
     @Override
     public List<ProjectData> listProjects(String username, WorkspaceContext context) {
-        return projects.listProjects(username, context).stream()
+        return portfolio(() -> projects.listProjects(username, context)).stream()
                 .map(p -> new ProjectData(p.id(), p.title())).toList();
     }
 
     @Override
     public ProjectData getProject(Long projectId, String username, WorkspaceContext context) {
-        var project = projects.getProject(projectId, username, context);
+        var project = portfolio(() -> projects.getProject(projectId, username, context));
         return new ProjectData(project.id(), project.title());
     }
 
     @Override
     public void requireProject(Long projectId, String username, WorkspaceContext context) {
-        projects.requireProject(projectId, username, context);
+        portfolio(() -> { projects.requireProject(projectId, username, context); return null; });
     }
 
     @Override
     public void requireProjectForUpdate(Long projectId, String username, WorkspaceContext context) {
-        projects.requireProjectForUpdate(projectId, username, context);
+        portfolio(() -> { projects.requireProjectForUpdate(projectId, username, context); return null; });
     }
 
     @Override
     public List<RequirementData> listRequirements(Long projectId, String username, WorkspaceContext context) {
-        return readableVersion(() -> projects.listRequirements(projectId, username, context)).stream()
+        return portfolio(() -> projects.listRequirements(projectId, username, context)).stream()
                 .map(PortfolioInteropAdapter::requirement).toList();
     }
 
     @Override
     public RequirementsPage listApprovedRequirements(Long projectId, String username, WorkspaceContext context,
                                                      int page, int pageSize) {
-        var result = readableVersion(
+        var result = portfolio(
                 () -> projects.listApprovedRequirements(projectId, username, context, page, pageSize));
         return new RequirementsPage(result.requirements().stream()
                 .map(PortfolioInteropAdapter::requirement).toList(), result.hasNext());
@@ -62,23 +62,23 @@ public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
 
     @Override
     public RequirementData getRequirement(Long projectId, Long requirementId, String username, WorkspaceContext context) {
-        return requirement(readableVersion(
+        return requirement(portfolio(
                 () -> projects.getRequirement(projectId, requirementId, username, context)));
     }
 
     @Override
     public RequirementData createRequirement(Long projectId, ImportedRequirement request,
                                              String username, WorkspaceContext context) {
-        return requirement(projects.createRequirement(projectId,
+        return requirement(portfolio(() -> projects.createRequirement(projectId,
                 new CreateRequirementRequest(request.key(), request.title(), request.text(),
                         RequirementStatus.DRAFT, 50, Criticality.MEDIUM, RequirementType.FUNCTIONAL,
                         ReviewStatus.PROPOSED, username, request.rationale(), provenance(request.source())),
-                username, context));
+                username, context)));
     }
 
     @Override
     public void archiveRequirement(Long projectId, Long requirementId, String username, WorkspaceContext context) {
-        readableVersion(() -> projects.updateRequirement(projectId, requirementId,
+        portfolio(() -> projects.updateRequirement(projectId, requirementId,
                 new UpdateRequirementRequest(null, RequirementStatus.ARCHIVED, null, null, null, null, null),
                 username, context));
     }
@@ -86,7 +86,7 @@ public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
     @Override
     public void updateRequirement(Long projectId, Long requirementId, String title, boolean requiresReview,
                                   String username, WorkspaceContext context) {
-        readableVersion(() -> projects.updateRequirement(projectId, requirementId,
+        portfolio(() -> projects.updateRequirement(projectId, requirementId,
                 new UpdateRequirementRequest(title, requiresReview ? RequirementStatus.DRAFT : null,
                         null, null, null, requiresReview ? ReviewStatus.PROPOSED : null, null), username, context));
     }
@@ -94,16 +94,16 @@ public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
     @Override
     public void addRequirementVersion(Long projectId, Long requirementId, String text, String rationale,
                                       ImportProvenance source, String username, WorkspaceContext context) {
-        projects.addRequirementVersion(projectId, requirementId,
-                new CreateRequirementVersionRequest(text, rationale, provenance(source)), username, context);
+        portfolio(() -> projects.addRequirementVersion(projectId, requirementId,
+                new CreateRequirementVersionRequest(text, rationale, provenance(source)), username, context));
     }
 
     @Override
     public String contributeTo(String source, String username, WorkspaceContext context) {
-        return portfolio.contributeTo(source, username, context);
+        return portfolio(() -> portfolio.contributeTo(source, username, context));
     }
 
-    private static <T> T readableVersion(Supplier<T> action) {
+    private static <T> T portfolio(Supplier<T> action) {
         try {
             return action.get();
         } catch (PortfolioException failure) {
@@ -116,7 +116,18 @@ public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
                         "REQUIREMENT_VERSION_UNAVAILABLE", 409,
                         "Requirement has no readable current version; repair it before exchanging content");
             }
-            throw failure;
+            int status = switch (failure.getKind()) {
+                case NOT_FOUND -> 404;
+                case CONFLICT -> 409;
+                case VALIDATION -> 400;
+                case PAYLOAD_TOO_LARGE -> 413;
+                case ANALYSIS_FAILED -> 422;
+                case UNAVAILABLE -> 503;
+            };
+            String code = failure.getCode() == null
+                    ? "PORTFOLIO_" + failure.getKind().name()
+                    : failure.getCode();
+            throw new IntegrationProblem(code, status, message);
         }
     }
 
