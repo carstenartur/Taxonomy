@@ -109,13 +109,13 @@ class DocumentTemplateWebDavPreconditionTest {
     }
 
     @Test
-    void mixedCaseCommitIfNoneMatchAlsoPreventsReplacement() throws Exception {
+    void lowercaseWeakMixedCaseCommitIfNoneMatchPreventsReplacement() throws Exception {
         when(templates.downloadCurrent("decision-report"))
                 .thenReturn(templateFile(COMMIT_A));
 
         MockHttpServletRequest request = request("decision-report");
         request.addHeader("If-None-Match",
-                "\"" + COMMIT_A.toUpperCase(java.util.Locale.ROOT) + "\"");
+                "w/\"" + COMMIT_A.toUpperCase(java.util.Locale.ROOT) + "\"");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         servlet().service(request, response);

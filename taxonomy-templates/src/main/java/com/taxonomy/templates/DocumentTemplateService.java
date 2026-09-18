@@ -367,7 +367,7 @@ public class DocumentTemplateService {
             return null;
         }
         String stripped = value.strip();
-        if (stripped.startsWith("W/")) {
+        if (stripped.regionMatches(true, 0, "W/", 0, 2)) {
             stripped = stripped.substring(2).strip();
         }
         return stripQuotedEtag(stripped);
