@@ -2086,9 +2086,12 @@ class ArchitectureModuleGraphTest {
     private void pom(String directory, String group, String artifact, String body) throws Exception {
         Path path = temporaryRepository.resolve(directory).resolve("pom.xml");
         Files.createDirectories(path.getParent());
+        String effectiveBody = directory.isEmpty() && !body.contains("<packaging>")
+                ? "<packaging>pom</packaging>" + body
+                : body;
         Files.writeString(path, "<project xmlns=\"http://maven.apache.org/POM/4.0.0\"><modelVersion>4.0.0</modelVersion>"
-                + (body.contains("<parent>") ? "" : "<groupId>" + group + "</groupId><version>1</version>")
-                + "<artifactId>" + artifact + "</artifactId>" + body + "</project>");
+                + (effectiveBody.contains("<parent>") ? "" : "<groupId>" + group + "</groupId><version>1</version>")
+                + "<artifactId>" + artifact + "</artifactId>" + effectiveBody + "</project>");
     }
 
     private static Evaluation evaluate(Set<String> present, List<ClassOwner> owners, List<ClassDependency> edges) {
