@@ -94,6 +94,21 @@ class RepositoryStateGuardTest {
     }
 
     @Test
+    void exactGuardRejectsMissingOrBlankInputsBeforeStateLookup() {
+        assertThrows(IllegalArgumentException.class,
+                () -> guard.checkWriteOperation((WorkspaceContext) null, "commit"));
+        assertThrows(IllegalArgumentException.class,
+                () -> guard.checkWriteOperation(
+                        new WorkspaceContext(" ", null, "draft", "repository-1"), "commit"));
+        assertThrows(IllegalArgumentException.class,
+                () -> guard.checkWriteOperation(
+                        new WorkspaceContext(USER, null, " ", "repository-1"), "commit"));
+        assertThrows(IllegalArgumentException.class,
+                () -> guard.checkWriteOperation(
+                        new WorkspaceContext(USER, null, "draft", "repository-1"), " "));
+    }
+
+    @Test
     void operationBlockedWhenAnotherInProgress() throws IOException {
         gitRepo.commitDsl("draft", SAMPLE_DSL, "tester", "initial");
         stateService.beginOperation(USER, "merge");
