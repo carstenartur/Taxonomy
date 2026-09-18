@@ -244,8 +244,9 @@ public class DslOperationsFacade {
     public RepositoryStateGuard.OperationCheck checkWriteOperation(
             String branch, String operationType) {
         WorkspaceContext context = resolveContext();
-        return stateGuard.checkWriteOperation(
-                context.username(), branch, operationType, context);
+        WorkspaceContext selected = new WorkspaceContext(
+                context.username(), context.workspaceId(), branch, context.repositoryId());
+        return stateGuard.checkWriteOperation(selected, operationType);
     }
 
     public String resolveCurrentUsername() {
