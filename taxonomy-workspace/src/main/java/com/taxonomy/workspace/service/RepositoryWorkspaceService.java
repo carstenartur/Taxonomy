@@ -100,17 +100,9 @@ public class RepositoryWorkspaceService {
             workspaceStorageAttempted = true;
             DslGitRepository workspaceGit = repositoryFactory.openWorkspaceRepository(workspace.getWorkspaceId());
             String workspaceCommit = workspaceGit.commitDslIfHeadMatches(
-                    WORKSPACE_BRANCH, null, sourceDsl, user, "Fork from " + source.getRepositoryId() + "/" + sourceBranch);
-            if (workspaceCommit == null) {
-                throw new IllegalStateException(
-                        "Workspace seed did not create branch " + WORKSPACE_BRANCH);
-            }
-            String trackingCommit = workspaceGit.createBranchAtCommit(
-                    TRACKING_BRANCH, workspaceCommit);
-            if (trackingCommit == null) {
-                throw new IllegalStateException(
-                        "Workspace seed did not create tracking branch " + TRACKING_BRANCH);
-            }
+                    WORKSPACE_BRANCH, null, sourceDsl, user,
+                    "Fork from " + source.getRepositoryId() + "/" + sourceBranch);
+            workspaceGit.createBranchAtCommit(TRACKING_BRANCH, workspaceCommit);
 
             workspace.setBaseCommit(sourceCommit);
             workspace.setCurrentCommit(workspaceCommit);
