@@ -44,11 +44,10 @@ class ExternalGitCredentialsTest {
     }
 
     @Test
-    void usernameIsNormalizedButConfiguredSecretIsPreservedExactly() throws Exception {
+    void deploymentWhitespaceIsRemovedBeforeCredentialsReachJGit() throws Exception {
         Transport transport = mock(Transport.class);
-        String configuredSecret = "  fixture-token-not-a-secret\r\n";
         ExternalGitCredentials credentials =
-                new ExternalGitCredentials("  alice \n", configuredSecret);
+                new ExternalGitCredentials("  alice \n", "  fixture-token-not-a-secret\r\n");
 
         assertTrue(credentials.isConfigured());
         credentials.configure(transport);
@@ -61,7 +60,7 @@ class ExternalGitCredentialsTest {
         assertTrue(provider.getValue().get(
                 new URIish("https://example.invalid/repo.git"), user, password));
         assertEquals("alice", user.getValue());
-        assertArrayEquals(configuredSecret.toCharArray(), password.getValue());
+        assertArrayEquals("fixture-token-not-a-secret".toCharArray(), password.getValue());
     }
 
     @Test
