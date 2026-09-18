@@ -192,9 +192,14 @@ export function auditMergedPullRequest({
         const humanConfirmed = ['approval-recommended', 'needs-closer-look'].includes(evidence.classification)
             && evidence.validCoverage && evidence.commentCount === 0
             && Boolean(confirmation) && !decision.objection;
-        const acceptedReviewBinding = evidence.exactHead || validMismatchCommit && humanConfirmed;
+        const bindingSatisfied = evidence.exactHead
+            || validMismatchCommit && Boolean(confirmation);
 
-        if (!acceptedReviewBinding) {
+        if (decision.objection) {
+            findings.push(finding('high', 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE',
+                'A repository writer requested changes on the merged head.'));
+        }
+        if (!bindingSatisfied) {
             findings.push(finding('medium', 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE',
                 `No trusted exact-head review or valid human-confirmed metadata binding for head ${headSha} completed before merge.`,
                 evidence));
@@ -203,10 +208,6 @@ export function auditMergedPullRequest({
                     || !evidence.completeCoverage
                     || evidence.classification === 'needs-closer-look')) {
                 humanConfirmation = confirmation;
-            }
-            if (decision.objection) {
-                findings.push(finding('high', 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE',
-                    'A repository writer requested changes on the merged head.'));
             }
             if (evidence.classification !== 'approval-recommended' && !humanConfirmed) {
                 findings.push(finding('high', 'NON_APPROVING_EXACT_HEAD_REVIEW',

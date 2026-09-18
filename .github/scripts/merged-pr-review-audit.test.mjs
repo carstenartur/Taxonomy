@@ -280,6 +280,50 @@ test('audit treats uppercase representation of merged head SHA as exact', () => 
     assert.deepEqual(result.findings, []);
 });
 
+test('metadata binding cannot hide review findings or a human objection in merged audit', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const comment = {
+        id: 201, user, last_edited_at: null,
+        body: `/confirm-review ${HEAD} 101 all-files=2`,
+        created_at: '2026-09-01T10:30:00Z',
+        updated_at: '2026-09-01T10:30:00Z'
+    };
+    const base = {
+        pullRequest: pullRequest({ user }),
+        threads: [], reviewerLogins: REVIEWERS, comments: [comment],
+        humanPermissions: new Map([['maintainer', 'admin']])
+    };
+
+    const changes = auditMergedPullRequest({
+        ...base,
+        reviews: [review(CHANGES, {
+            id: 101, commit_id: 'b'.repeat(40)
+        })]
+    });
+    assert.ok(changes.findings.some(item =>
+        item.code === 'NON_APPROVING_EXACT_HEAD_REVIEW'
+            && item.severity === 'high'));
+    assert.ok(changes.findings.some(item =>
+        item.code === 'PRE_MERGE_REVIEW_FINDINGS_NOT_RECHECKED'
+            && item.severity === 'high'));
+
+    const objection = review('Please change this.', {
+        id: 202, user, state: 'CHANGES_REQUESTED',
+        submitted_at: '2026-09-01T10:40:00Z'
+    });
+    const objected = auditMergedPullRequest({
+        ...base,
+        comments: [],
+        reviews: [
+            review(APPROVAL, { id: 101, commit_id: 'b'.repeat(40) }),
+            objection
+        ]
+    });
+    assert.ok(objected.findings.some(item =>
+        item.code === 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE'
+            && item.severity === 'high'));
+});
+
 test('reports a changes-recommended exact-head review submitted after merge as high', () => {
     const result = auditMergedPullRequest({
         pullRequest: pullRequest({ merged_at: '2026-09-01T09:00:00Z' }),
