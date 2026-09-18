@@ -93,6 +93,29 @@ class ArchitectureSelectorSynchronizationTest {
                 .hasMessageContaining("Support module", SUPPORT);
     }
 
+    @ParameterizedTest
+    @ValueSource(strings = {"taxonomy-coverage", "taxonomy-build"})
+    void nonProductionModuleCannotBeConfiguredAsPlannedFeatureTarget(String targetModule) {
+        var invalid = new ArchitectureModuleGraph.Policy(
+                APP,
+                Set.of("AppConfig.java"),
+                List.of(
+                        new ArchitectureModuleGraph.Context(
+                                "a", targetModule, List.of("com.taxonomy.a..")),
+                        new ArchitectureModuleGraph.Context(
+                                "composition", APP, List.of("com.taxonomy.composition.."))));
+
+        assertThatThrownBy(() -> ArchitectureModuleGraph.evaluate(
+                invalid,
+                Set.of(SUPPORT),
+                Set.of(targetModule),
+                List.of(new ArchitectureModuleGraph.ClassOwner(
+                        "com.taxonomy.a.Service", targetModule, "Service.java")),
+                List.of()))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("Non-production module", targetModule);
+    }
+
     @Test
     void supportModuleCannotHideFeatureContextOwnership() {
         var result = ArchitectureModuleGraph.evaluate(
