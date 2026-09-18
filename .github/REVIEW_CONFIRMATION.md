@@ -30,8 +30,24 @@ and the CI evidence. Then choose one of these paths:
 
   This example supplements a review such as `113/121` only if the PR actually
   changes 121 files. The original command without `all-files` keeps its previous
-  closer-review meaning and cannot supplement missing coverage. A native peer
-  **Approve** review covers the complete current change and supports both cases.
+  closer-review meaning and cannot supplement missing coverage. When Copilot's
+  review is correctly bound to the exact current head, a native peer **Approve**
+  review covers the complete current change and supports both closer-review and
+  partial-coverage completion.
+
+  Policy version 3 adds one narrower recovery case for GitHub/Copilot metadata:
+  if the trusted Copilot review carries a different valid 40-character
+  `commit_id` than the unchanged current PR head, native approval is
+  deliberately **not** a substitute. Recovery requires a new, unedited PR
+  Conversation comment from a current repository writer with exactly:
+
+  ```text
+  /confirm-review FULL_40_CHARACTER_CURRENT_HEAD_SHA COPILOT_REVIEW_ID all-files=CURRENT_CHANGED_FILE_COUNT
+  ```
+
+  The gate verifies that exact head, exact review ID, exact current file count,
+  writer permission and comment edit history before recording the explicit
+  `human-confirmed-metadata-mismatch` audit binding.
 
 Missing or invalid Copilot coverage metadata, a reported total different from
 the PR's changed-file count, generated review comments and human **Changes
