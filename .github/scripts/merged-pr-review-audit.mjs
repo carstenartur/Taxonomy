@@ -153,6 +153,7 @@ export function auditMergedPullRequest({
     const changedFiles = Number(pullRequest?.changed_files);
     const findings = [];
     let humanConfirmation = null;
+    let reviewBinding = null;
 
     if (!number || !mergedAt || !headSha
             || !Number.isSafeInteger(changedFiles) || changedFiles < 1) {
@@ -178,26 +179,39 @@ export function auditMergedPullRequest({
         const evidence = reviewEvidence(latestBeforeMerge, changedFiles, headSha);
         const validMismatchCommit = !evidence.exactHead
             && /^[a-fA-F0-9]{40}$/u.test(evidence.commit);
+        const invalidReviewCommit = !evidence.exactHead && !validMismatchCommit;
         const decision = humanReviewDecision({
             pullRequest, review: latestBeforeMerge, reviews, comments, humanPermissions, reviewerLogins,
             asOf: Date.parse(mergedAt),
-            requireCompleteCoverage: validMismatchCommit || !evidence.completeCoverage,
-            requireIssueComment: validMismatchCommit
+            requireCompleteCoverage: !evidence.exactHead || !evidence.completeCoverage,
+            requireIssueComment: !evidence.exactHead
         });
-        const confirmation = validMismatchCommit
+        const confirmation = evidence.exactHead
+            ? decision.confirmation
+            : validMismatchCommit
             ? decision.confirmation?.source === 'issue_comment'
                 && decision.confirmation.scope === 'all-changed-files'
                 ? decision.confirmation : null
-            : decision.confirmation;
+            : null;
         const humanConfirmed = ['approval-recommended', 'needs-closer-look'].includes(evidence.classification)
             && evidence.validCoverage && evidence.commentCount === 0
             && Boolean(confirmation) && !decision.objection;
         const bindingSatisfied = evidence.exactHead
             || validMismatchCommit && Boolean(confirmation);
+        if (bindingSatisfied) {
+            reviewBinding = evidence.exactHead
+                ? 'exact-head'
+                : 'human-confirmed-metadata-mismatch';
+        }
 
         if (decision.objection) {
             findings.push(finding('high', 'HUMAN_CHANGES_REQUESTED_BEFORE_MERGE',
                 'A repository writer requested changes on the merged head.'));
+        }
+        if (invalidReviewCommit) {
+            findings.push(finding('high', 'INVALID_TRUSTED_REVIEW_COMMIT_METADATA',
+                'The latest trusted pre-merge review has missing or malformed commit metadata and cannot be bound to the merged head.',
+                evidence));
         }
         if (!bindingSatisfied) {
             findings.push(finding('medium', 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE',
@@ -270,7 +284,8 @@ export function auditMergedPullRequest({
     }
 
     return auditResult(
-        pullRequest, number, headSha, baseRef, mergedAt, changedFiles, findings, humanConfirmation);
+        pullRequest, number, headSha, baseRef, mergedAt, changedFiles,
+        findings, humanConfirmation, reviewBinding);
 }
 
 function auditResult(
@@ -281,7 +296,8 @@ function auditResult(
     mergedAt,
     changedFiles,
     findings,
-    humanConfirmation = null
+    humanConfirmation = null,
+    reviewBinding = null
 ) {
     return {
         number,
@@ -291,6 +307,7 @@ function auditResult(
         baseRef,
         mergedAt,
         changedFiles,
+        reviewBinding,
         humanConfirmation,
         findings
     };

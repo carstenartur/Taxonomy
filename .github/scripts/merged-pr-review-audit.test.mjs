@@ -222,6 +222,7 @@ test('accepts a clean complete exact-head review before merge', () => {
         reviewerLogins: REVIEWERS
     });
     assert.deepEqual(result.findings, []);
+    assert.equal(result.reviewBinding, 'exact-head');
 });
 
 test('reports no exact-head pre-merge review without making it high severity', () => {
@@ -256,6 +257,7 @@ test('audit recognizes version-3 metadata mismatch only with pre-merge all-files
     };
     const result = auditMergedPullRequest(input);
     assert.deepEqual(result.findings, []);
+    assert.equal(result.reviewBinding, 'human-confirmed-metadata-mismatch');
     assert.equal(result.humanConfirmation.source, 'issue_comment');
     assert.equal(result.humanConfirmation.scope, 'all-changed-files');
 
@@ -300,6 +302,33 @@ test('unbound metadata mismatch still reports high-severity review blockers', ()
             && item.severity === 'high'));
 });
 
+
+test('malformed trusted review commit metadata remains a high-severity unbindable blocker', () => {
+    const user = { login: 'maintainer', type: 'User' };
+    const approval = review('Reviewed current head.', {
+        id: 202, user, state: 'APPROVED',
+        commit_id: HEAD, submitted_at: '2026-09-01T10:30:00Z'
+    });
+    for (const commit_id of ['', 'not-a-sha']) {
+        const result = auditMergedPullRequest({
+            pullRequest: pullRequest({ user: { login: 'author', type: 'User' } }),
+            reviews: [
+                review(APPROVAL, { id: 101, commit_id }),
+                approval
+            ],
+            threads: [],
+            reviewerLogins: REVIEWERS,
+            humanPermissions: new Map([['maintainer', 'admin']])
+        });
+        assert.ok(result.findings.some(item =>
+            item.code === 'INVALID_TRUSTED_REVIEW_COMMIT_METADATA'
+                && item.severity === 'high'));
+        assert.ok(result.findings.some(item =>
+            item.code === 'NO_EXACT_HEAD_REVIEW_BEFORE_MERGE'));
+        assert.equal(result.reviewBinding, null);
+        assert.equal(result.humanConfirmation, null);
+    }
+});
 
 test('audit treats uppercase representation of merged head SHA as exact', () => {
     const result = auditMergedPullRequest({
