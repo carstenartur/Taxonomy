@@ -53,6 +53,24 @@ public class RepositoryStateGuard {
      * @return the operation check result
      */
     public OperationCheck checkWriteOperation(String username, String branch, String operationType) {
+        return checkWriteOperation(username, branch, operationType, WorkspaceContext.SHARED);
+    }
+
+    /**
+     * Check whether a write operation is safe in the exact repository/workspace context
+     * selected for the request.
+     *
+     * @param username         the user attempting the operation
+     * @param branch           the target branch
+     * @param operationType    the type of operation
+     * @param workspaceContext the exact repository/workspace context being mutated
+     * @return the operation check result
+     */
+    public OperationCheck checkWriteOperation(
+            String username,
+            String branch,
+            String operationType,
+            WorkspaceContext workspaceContext) {
         List<String> warnings = new ArrayList<>();
         List<String> blocks = new ArrayList<>();
 
@@ -61,7 +79,7 @@ public class RepositoryStateGuard {
             blocks.add("Current context is read-only. Switch to an editable context before making changes.");
         }
 
-        var state = stateService.getState(username, branch);
+        var state = stateService.getState(username, branch, workspaceContext);
 
         // Block if an operation is already in progress (per-user check)
         if (state.operationInProgress()) {
@@ -75,7 +93,7 @@ public class RepositoryStateGuard {
         }
 
         // Warn if projection is stale (per-user check)
-        ProjectionState ps = stateService.getProjectionState(username, branch);
+        ProjectionState ps = stateService.getProjectionState(username, branch, workspaceContext);
         if (ps.projectionStale()) {
             warnings.add("DB projection is stale — it was built from a different commit than HEAD. " +
                     "Consider re-materializing before this operation.");
