@@ -25,6 +25,12 @@ public class SystemRepositoryCatalogBootstrapOrder
     @Override
     public void postProcessBeanFactory(ConfigurableListableBeanFactory beanFactory)
             throws BeansException {
+        if (!beanFactory.containsBeanDefinition(TAXONOMY_SERVICE_BEAN)) {
+            // Partial/slice contexts may load workspace infrastructure without the
+            // application-owned taxonomy composition service. There is no ordering
+            // edge to install in that case.
+            return;
+        }
         BeanDefinition taxonomyService =
                 beanFactory.getBeanDefinition(TAXONOMY_SERVICE_BEAN);
         String[] currentDependencies = taxonomyService.getDependsOn();
