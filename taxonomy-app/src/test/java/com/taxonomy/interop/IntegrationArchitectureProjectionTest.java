@@ -17,7 +17,7 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class IntegrationArchitectureProjectionTest {
-    private final IntegrationDomainAdapter domain = new IntegrationDomainAdapter(null, null, new IntegrationJson(JsonMapper.builder().build()));
+    private final IntegrationDomainAdapter domain = new IntegrationDomainAdapter(null, new IntegrationJson(JsonMapper.builder().build()));
     private final ArchiMateExchangeCodec codec = new ArchiMateExchangeCodec();
     private final ArchitectureDslCommands commands = new ArchitectureDslCommands();
     private final RepositoryContext context = RepositoryContext.workspace("repository", "workspace", "draft", "alice");

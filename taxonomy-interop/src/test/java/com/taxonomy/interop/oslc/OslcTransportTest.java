@@ -68,6 +68,32 @@ class OslcTransportTest {
         assertTrue(OslcTransport.allowedAddress(InetAddress.getByName("8.8.8.8"), false));
         assertEquals(0, requests.get());
     }
+    @Test void actualConnectionResolverRejectsPrivateAddressBeforeAnyHttpRequest() {
+        var blockedProfiles = new OslcRemoteProfiles();
+        blockedProfiles.setRemotes(Map.of("reference", profile(base, false)));
+        var repositories = mock(SystemRepositoryService.class);
+        var repository = new SystemRepository();
+        repository.setOwnerType(RepositoryOwnerType.USER);
+        repository.setOwnerId("alice");
+        when(repositories.getRepository("repo")).thenReturn(repository);
+        var blocked = new OslcTransport(
+                blockedProfiles,
+                repositories,
+                new MockEnvironment().withProperty("OSLC_FIXTURE_TOKEN", "fixture-token"));
+        try {
+            IntegrationProblem failure = assertThrows(
+                    IntegrationProblem.class,
+                    () -> blocked.read(
+                            context, connection("USER:alice"), "requirement-1", null));
+
+            assertEquals("REMOTE_UNAVAILABLE", failure.code());
+            assertEquals(0, requests.get(),
+                    "Private-address policy must fail in DNS resolution before transport");
+        } finally {
+            blocked.close();
+        }
+    }
+
     @Test void stalledResponseTimesOutWithinTheBoundAndNeverReturnsPartialContent() {
         var release = new java.util.concurrent.CountDownLatch(1);
         server.createContext("/rm/stalled", exchange -> {

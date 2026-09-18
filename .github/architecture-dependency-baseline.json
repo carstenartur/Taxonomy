@@ -227,6 +227,41 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.interop",
+      "toContext": "interop",
+      "toPackage": "com.taxonomy.interop",
+      "classDependencyCount": 7
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.interop",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.dto",
+      "classDependencyCount": 7
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.interop",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.model",
+      "classDependencyCount": 4
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.interop",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.service",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.interop",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.decision",
@@ -557,27 +592,6 @@
     {
       "fromContext": "interop",
       "fromPackage": "com.taxonomy.interop",
-      "toContext": "portfolio",
-      "toPackage": "com.taxonomy.portfolio.dto",
-      "classDependencyCount": 7
-    },
-    {
-      "fromContext": "interop",
-      "fromPackage": "com.taxonomy.interop",
-      "toContext": "portfolio",
-      "toPackage": "com.taxonomy.portfolio.model",
-      "classDependencyCount": 4
-    },
-    {
-      "fromContext": "interop",
-      "fromPackage": "com.taxonomy.interop",
-      "toContext": "portfolio",
-      "toPackage": "com.taxonomy.portfolio.service",
-      "classDependencyCount": 2
-    },
-    {
-      "fromContext": "interop",
-      "fromPackage": "com.taxonomy.interop",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
       "classDependencyCount": 1
@@ -587,7 +601,7 @@
       "fromPackage": "com.taxonomy.interop",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 14
+      "classDependencyCount": 15
     },
     {
       "fromContext": "interop",
@@ -595,27 +609,6 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 5
-    },
-    {
-      "fromContext": "interop",
-      "fromPackage": "com.taxonomy.interop.oslc",
-      "toContext": "portfolio",
-      "toPackage": "com.taxonomy.portfolio.dto",
-      "classDependencyCount": 3
-    },
-    {
-      "fromContext": "interop",
-      "fromPackage": "com.taxonomy.interop.oslc",
-      "toContext": "portfolio",
-      "toPackage": "com.taxonomy.portfolio.model",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "interop",
-      "fromPackage": "com.taxonomy.interop.oslc",
-      "toContext": "portfolio",
-      "toPackage": "com.taxonomy.portfolio.service",
-      "classDependencyCount": 2
     },
     {
       "fromContext": "interop",

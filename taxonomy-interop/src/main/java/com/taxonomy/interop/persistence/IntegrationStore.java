@@ -94,7 +94,15 @@ public class IntegrationStore {
     public Checkpoint checkpoint(RepositoryContext context, UUID connectionId) {
         return locked(context, connectionId, session -> {
             if (session.connection.checkpointId == null) return null;
-            var value = em.find(IntegrationCheckpointEntity.class, session.connection.checkpointId);
+            var value = em.createQuery(
+                            "select c from IntegrationCheckpointEntity c "
+                                    + "where c.id=:id and c.scopeId=:scope and c.connectionId=:connection",
+                            IntegrationCheckpointEntity.class)
+                    .setParameter("id", session.connection.checkpointId)
+                    .setParameter("scope", session.connection.scopeId)
+                    .setParameter("connection", session.connection.id)
+                    .getResultList().stream().findFirst()
+                    .orElseThrow(IntegrationProblem::missing);
             return new Checkpoint(uuid(value.id), uuid(value.operationId), value.gitCommit, value.externalVersion, value.fingerprint,
                     json.read(value.contextJson, InternalState.class), Instant.parse(value.createdAt));
         });
