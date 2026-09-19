@@ -16,21 +16,25 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Apply exact locally verified tree without updating any branch
+      - name: Apply exact tree and transfer ordinary source objects only
         env:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
-          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
+          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request, urllib.error
           root = pathlib.Path.cwd()
           api = 'https://api.github.com/repos/carstenartur/Taxonomy'
           headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json'}
           def request(path, body=None):
               req = urllib.request.Request(api + path, data=None if body is None else json.dumps(body).encode(), headers=headers)
-              with urllib.request.urlopen(req, timeout=120) as response:
-                  return json.load(response)
+              try:
+                  with urllib.request.urlopen(req, timeout=120) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  print('GitHub API error:', error.code, error.read().decode())
+                  raise
           parts = ['2b06e070b7736e19734401c145a7313df57158d0', 'c722b1ebcd3ca9d92cc0e11dd7f95d0d1d0a3659', 'e9ef121d8d310df595be4b88f068d31c94c8f756', '14a5c75e2607220ec142b576fa82c6f035c7efa3']
           compressed = b''.join(base64.b64decode(request('/git/blobs/' + sha)['content']) for sha in parts)
           assert hashlib.sha256(compressed).hexdigest() == '5a088d7b38792b91c449e0743dd55870e42b44f3eb700f24d509cf5d60c7258d'
@@ -52,8 +56,15 @@ jobs:
                   current[path.decode()] = (mode, sha)
           known = {sha for mode, sha in old.values()}
           changes = []
+          workflow_blobs = {}
           for path in sorted(old.keys() | current.keys()):
               if old.get(path) == current.get(path):
+                  continue
+              if path.startswith('.github/workflows/'):
+                  mode, sha = current[path]
+                  blob = request('/git/blobs', {'content': (root / path).read_text(), 'encoding': 'utf-8'})
+                  assert blob['sha'] == sha
+                  workflow_blobs[path] = sha
                   continue
               if path not in current:
                   changes.append({'path': path, 'mode': old[path][0], 'type': 'blob', 'sha': None})
@@ -66,10 +77,12 @@ jobs:
                   entry['content'] = (root / path).read_bytes().decode('utf-8')
               changes.append(entry)
           tree = request('/git/trees', {'base_tree': 'c704e3e188c095f2cb06df8ac79f85ab188f539a', 'tree': changes})
-          assert tree['sha'] == expected, tree['sha']
+          assert tree['sha'] == '0eb80b620a43cc11b0e9b69dea2e49ed191f1158', tree['sha']
           pathlib.Path('target').mkdir(exist_ok=True)
-          pathlib.Path('target/knowledge-verified-tree.txt').write_text(expected + '\n')
-          print('Verified Git tree stored:', expected, '; no branch, commit or pull request changed by this job.')
+          report = {'tested_tree': expected, 'source_tree': tree['sha'], 'workflow_blobs_for_authorized_connector': workflow_blobs}
+          pathlib.Path('target/knowledge-verified-tree.json').write_text(json.dumps(report, indent=2) + '\n')
+          print(json.dumps(report, indent=2))
+          print('No branch, commit or PR is changed by this job. Workflow-path publication is reserved for the authorized connector.')
           PY
       - name: Verify executable application and knowledge packaging
         shell: bash
@@ -82,7 +95,7 @@ jobs:
         with:
           name: knowledge-packaging-evidence
           path: |
-            target/knowledge-verified-tree.txt
+            target/knowledge-verified-tree.json
             target/knowledge-package.log
             target/knowledge-packaging-tests.log
             **/target/surefire-reports/TEST-*.xml
