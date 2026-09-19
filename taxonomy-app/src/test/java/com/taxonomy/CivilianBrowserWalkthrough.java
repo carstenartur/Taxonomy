@@ -86,7 +86,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         wait.until(browser -> !browser.getCurrentUrl().contains("/login"));
         driver.get(origin + "/projects?lang=en");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("portfolioMain")));
-        String projectKey = "CIV-FLOOD-" + UUID.randomUUID().toString().substring(0, 8);
+        String projectKey = "CIV-FLOOD-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase(Locale.ROOT);
         click(By.cssSelector("[data-bs-target='#projectModal']"));
         var modal = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("projectModal")));
         fill(modal, "projectKey", projectKey);

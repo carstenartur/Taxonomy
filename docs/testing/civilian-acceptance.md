@@ -190,3 +190,10 @@ Für eine visuelle Freigabe sind die echten Browserbilder und die gerenderte PDF
 zu prüfen: lesbare Bezeichnungen, keine Überdeckungen, nachvollziehbare Verbindungen,
 kein abgeschnittener Text, verständliche Hinweise auf Hypothesen und Exportverluste.
 Ein erfolgreicher Parser-Test allein ist keine visuelle Freigabe.
+
+Die erste tatsächliche Word-Renderprüfung hat einen offenen Befund geliefert:
+Der Entscheidungsbericht umfasst 87 Seiten, darunter eine Seite ohne Inhalt
+zwischen Titelseite und Zusammenfassung. Wiederholte Begründungen in schmalen
+Tabellenspalten erschweren die kompakte Darstellung. Diese Datei ist daher trotz
+bestandener Strukturprüfung noch nicht visuell freigegeben. Aktueller Stand und
+Prüfgrenzen stehen im [Validierungsnachweis](../qa/civilian-acceptance-validation.md).

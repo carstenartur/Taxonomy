@@ -19,6 +19,12 @@ executed checks from pending visual/product acceptance.
   poster page to preserve natural-size labels, and places long type names on
   their own line. The overall graph still needs zoom or a large print format;
   taxonomy hypotheses are not an approved application design.
+- The actual decision DOCX was rendered through LibreOffice to 87 PDF/PNG pages.
+  Inspection of pages 1–4 and 50 found an empty body on page 2, repeated long
+  rationales in narrow table columns and substantial pagination. This is a
+  concrete open presentation finding, not a successful full-document visual
+  approval. The parser/provenance assertions remain valid; compact, readable
+  decision-report pagination needs separate corrective work.
 
 ## Environment limits and pending evidence
 
@@ -28,6 +34,13 @@ also unavailable. Browser clicks, responsive layout and the five documentation
 screenshots must therefore be established by the Maven-owned CI scenario; no
 screenshots are fabricated or marked as successful here.
 
-The full repository verification and independent branch review are pending.
+The independent review found two important browser-test gaps, now corrected:
+EXHAUSTIVE selects the required two passes, and actual downloaded bytes / exact
+focus neighbors are checked instead of accepting clicks alone. No critical issues
+were reported. The browser checks still require an executed CI run.
+
+The full repository verification is running with the pinned ONNX model. The exact
+browser profile command was executed locally and reached Testcontainers, which
+failed because `/var/run/docker.sock` is absent.
 Desktop import into Sparx EA / Microsoft Visio, independent Structurizr grammar
 validation, and a domain review of the flood information design are not claimed.
