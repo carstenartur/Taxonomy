@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "issue": 1075,
+  "adapterVersion": "1",
+  "mappingProfile": "sparx-xmi-2.1@1",
+  "fixture": "taxonomy-export/src/test/resources/interoperability/sparx/semantic-model.xmi",
+  "fixtureOrigin": "Synthetic, authored for the Taxonomy contract tests; not exported by EA",
+  "enterpriseArchitectVersion": null,
+  "proCloudServerVersion": null,
+  "realProductExecutions": [],
+  "realProductStatus": "NOT_EXECUTED",
+  "oslcStatus": "NOT_IMPLEMENTED_CONDITIONAL_WRITE_CONTRACT_UNVERIFIED",
+  "requiredEvidenceFields": ["sourceSha", "adapterVersion", "enterpriseArchitectVersion", "proCloudServerVersion", "transport", "mappingProfile", "direction", "modelIdentity", "result", "knownLosses", "executionDate"],
+  "knownLosses": ["Diagram presentation excluded", "Unmapped UML/MDG features and connector-end metadata retained only in source evidence", "Bidirectional native connectors require rejection", "Package authoring not exposed in native editor", "Native relationship endpoint constraints apply"],
+  "remainingAcceptance": ["Real EA semantic round-trip and diagram preservation", "OSLC AM authentication/discovery/Pull", "Atomic expected-version PCS publication", "Item-level partial-publication recovery", "Product-backed compatibility evidence"]
+}

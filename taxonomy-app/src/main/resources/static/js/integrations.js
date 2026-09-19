@@ -8,6 +8,7 @@
     function option(select, value, text) { var node = document.createElement('option'); node.value = value; node.textContent = text; select.append(node); }
     function connection() { return el('integrationConnection').value; }
     function prefix() { return '/' + encodeURIComponent(connection()); }
+    function selectedProfile() { return overview && profiles.find(function (profile) { return profile.id === overview.connection.connectorId; }); }
     function report(error) { var body = error.responseBody || {}; el('integrationError').textContent = (body.code ? body.code + ': ' : '') + (body.message || error.message); el('integrationError').hidden = false; }
     async function run(action) {
         if (busy) return; busy = true; el('integrationError').hidden = true; controls();
@@ -22,9 +23,11 @@
         el('integrationCancel').disabled = busy || !mayWrite || !operation || !['PREVIEWED', 'FETCH_PENDING', 'FETCH_FAILED'].includes(operation.status);
         el('integrationRetry').disabled = busy || !mayWrite || !operation || !['CHECKPOINT_PENDING', 'FETCH_PENDING', 'FETCH_FAILED'].includes(operation.status);
         el('integrationRationale').disabled = busy || !mayWrite;
-        el('integrationRemote').hidden = !overview || overview.connection.connectorId !== 'oslc-rm-2.1';
-        el('integrationImport').hidden = overview && overview.connection.connectorId === 'oslc-rm-2.1';
-        el('integrationExport').disabled = busy || !mayWrite || !overview;
+        var profile = selectedProfile(), capabilities = profile ? profile.capabilities : [];
+        el('integrationRemote').hidden = !capabilities.includes('READ_LINK');
+        el('integrationImport').hidden = overview && !capabilities.includes('FILE_IMPORT');
+        el('integrationExport').disabled = busy || !mayWrite || !capabilities.includes('FILE_EXPORT');
+        el('integrationSparxNotice').hidden = !overview || !overview.connection.connectorId.startsWith('sparx-');
         el('integrationPrevious').disabled = busy || page === 0;
         el('integrationNext').disabled = busy || (page + 1) * 40 >= filtered().length;
         el('integrationDownload').hidden = !(operation && operation.status === 'COMPLETED' && operation.direction === 'OUTBOUND');
@@ -56,7 +59,7 @@
                 var fields = artifact.kind === 'REQUIREMENT' && operation.context.profile === 'reqif-1.2' ? ['titleAttribute', 'textAttribute'] : ['ELEMENT', 'RELATION'].includes(artifact.kind) ? ['canonicalType'] : [];
                 fields.forEach(function (field) {
                     var label = document.createElement('label'), mapping = document.createElement('select'); label.textContent = t('mapping.' + field); option(mapping, '', t('profileDefault'));
-                    var values = field !== 'canonicalType' ? Object.keys(artifact.attributes) : artifact.kind === 'ELEMENT' ? ['Capability', 'Process', 'CoreService', 'COIService', 'CommunicationsService', 'UserApplication', 'InformationProduct', 'BusinessRole', 'System', 'Component'] : ['REALIZES', 'SUPPORTS', 'ASSIGNED_TO', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES'];
+                    var values = field !== 'canonicalType' ? Object.keys(artifact.attributes) : artifact.kind === 'ELEMENT' ? ['Capability', 'Process', 'CoreService', 'COIService', 'CommunicationsService', 'UserApplication', 'InformationProduct', 'BusinessRole', 'System', 'Component'] : ['REALIZES', 'SUPPORTS', 'ASSIGNED_TO', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES', 'DEPENDS_ON'];
                     values.forEach(function (key) { option(mapping, key, artifact.extensions['definition:' + key] || key); });
                     mapping.value = mappings[change.id] && mappings[change.id][field] || '';
                     mapping.addEventListener('change', function () { if (!mappings[change.id]) mappings[change.id] = {}; mappings[change.id][field] = mapping.value || null; });
@@ -140,7 +143,7 @@
     el('integrationFile').addEventListener('change', function () { pendingUpload = null; }); el('integrationComplete').addEventListener('change', function () { pendingUpload = null; });
     el('integrationImport').addEventListener('submit', function (event) { event.preventDefault(); run(async function () {
         if (!overview) throw new Error(t('choose')); var file = el('integrationFile').files[0]; if (!file) return;
-        if (!pendingUpload) pendingUpload = { operationId: crypto.randomUUID(), expected: overview.current, mediaType: overview.connection.connectorId === 'reqif-1.2' ? 'application/reqif+xml' : 'application/archimate+xml', completeScope: el('integrationComplete').checked };
+        if (!pendingUpload) pendingUpload = { operationId: crypto.randomUUID(), expected: overview.current, mediaType: selectedProfile().mediaTypes.includes('application/xml') ? 'application/xml' : selectedProfile().mediaTypes[0], completeScope: el('integrationComplete').checked };
         show(await api.upload(prefix() + '/previews', pendingUpload, file)); pendingUpload = null; await refresh(); el('integrationReview').focus();
     }); });
     el('integrationExport').addEventListener('click', function () { run(async function () {

@@ -328,6 +328,7 @@ See [Accessibility](docs/en/ACCESSIBILITY.md) for the evidence matrix, manual ch
 | [Database setup](docs/en/DATABASE_SETUP.md) | Supported database configurations |
 | [Repository topology](docs/en/REPOSITORY_TOPOLOGY.md) | Shared repository and workspace routing |
 | [Git integration](docs/en/GIT_INTEGRATION.md) | Versioning and external repository behavior |
+| [Sparx EA exchange](docs/features/sparx-integration.md) / [Deutsch](docs/features/sparx-integration-de.md) | Experimental reviewed XMI subset, mapping and explicit compatibility limits |
 | [Security](docs/en/SECURITY.md) | Authentication, authorization, and deployment controls |
 | [AI transparency](docs/en/AI_TRANSPARENCY.md) | AI usage, limitations, and operator responsibilities |
 | [Accessibility](docs/en/ACCESSIBILITY.md) | Accessibility scope and verification |

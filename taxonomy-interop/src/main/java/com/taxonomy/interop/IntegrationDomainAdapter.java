@@ -9,6 +9,8 @@ import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
 import com.taxonomy.exchange.ArchiMateExchangeCodec;
 import com.taxonomy.exchange.ReqifExchangeCodec;
 import com.taxonomy.exchange.OslcRdf;
+import com.taxonomy.exchange.sparx.SparxMappingProfile;
+import com.taxonomy.interop.sparx.SparxSnapshots;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore.Connection;
 import com.taxonomy.interop.persistence.IntegrationStore.Identity;
@@ -47,14 +49,15 @@ public class IntegrationDomainAdapter {
             for (RequirementData requirement : current.requirements()) {
                 String external = connection.connectorId().equals(OslcRdf.RM_PROFILE)
                         ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
-                        : "taxonomy-requirement-" + requirement.id();
+                        : requirementExternalId(connection, requirement.id());
                 result.put("REQUIREMENT:" + external, new AppliedRequirement(requirement.requirementKey(), requirement.id()));
             }
-        } else for (BlockAst block : ArchitectureSemanticPatch.index(document.dsl()).values()) {
+        }
+        if (connection.projectId() == null || SparxSnapshots.isSparx(connection.connectorId())) for (BlockAst block : ArchitectureSemanticPatch.index(document.dsl()).values()) {
             String kind = block.getKind();
             if (!Set.of("element", "view", "relation").contains(kind)) continue;
             String business = kind.equals("relation") ? String.join(" ", block.getHeaderTokens()) : block.getHeaderTokens().getFirst();
-            result.put(kind.toUpperCase(java.util.Locale.ROOT) + ":" + stableId(connection.id(), "export-" + kind + ":" + business), new AppliedRequirement(business, null));
+            result.put(kind.toUpperCase(java.util.Locale.ROOT) + ":" + externalId(connection, "export-" + kind + ":" + business), new AppliedRequirement(business, null));
         }
         for (var entry : selected.entrySet()) if (!Set.of(ArtifactKind.REQUIREMENT, ArtifactKind.ELEMENT, ArtifactKind.VIEW, ArtifactKind.RELATION).contains(entry.getValue().kind()))
             result.put(entry.getKey(), new AppliedRequirement(businessId(connection, null, entry.getValue()), null));
@@ -86,7 +89,7 @@ public class IntegrationDomainAdapter {
                 String type = baseline.type();
                 if (baseline.kind() == ArtifactKind.ELEMENT) {
                     String canonical = block.getHeaderTokens().get(2);
-                    if (!canonical.equals(baseline.extensions().get("canonicalType"))) type = archimateType(canonical);
+                    if (!canonical.equals(baseline.extensions().get("canonicalType"))) type = elementType(connection, canonical);
                     extensions.put("canonicalType", canonical);
                     if (extensions.containsKey("taxonomy:ElementType")) extensions.put("taxonomy:ElementType", canonical);
                     ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().filter(p -> !Set.of("title", "description").contains(p))
@@ -94,8 +97,12 @@ public class IntegrationDomainAdapter {
                     for (var property : block.getProperties()) if (ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(property.key())
                             && !Set.of("title", "description").contains(property.key())) extensions.put("taxonomy:" + property.key(), property.value());
                 }
-                current = new Artifact(baseline.id(), baseline.kind(), type, value(block.property("title")), value(block.property("description")), baseline.attributes(), extensions);
-            } else if (baseline.kind() == ArtifactKind.RELATION && connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE)) {
+                Map<String, String> attributes = new TreeMap<>(baseline.attributes());
+                if (SparxSnapshots.isSparx(connection.connectorId()) && baseline.kind() == ArtifactKind.ELEMENT
+                        && !Objects.equals(extensions.get("canonicalType"), baseline.extensions().get("canonicalType")))
+                    attributes.put("tag:taxonomy.elementType", block.getHeaderTokens().get(2));
+                current = new Artifact(baseline.id(), baseline.kind(), type, value(block.property("title")), value(block.property("description")), attributes, extensions);
+            } else if (baseline.kind() == ArtifactKind.RELATION && architectureProfile(connection)) {
                 BlockAst relation = blocks.get("relation:" + mapping.businessIdentity()); if (relation == null) continue;
                 Map<String, String> extensions = new LinkedHashMap<>(baseline.extensions());
                 if (extensions.containsKey("taxonomy:RelationType")) extensions.put("taxonomy:RelationType", relation.getHeaderTokens().get(1));
@@ -140,7 +147,8 @@ public class IntegrationDomainAdapter {
     public ExchangeDocument exportDocument(Connection connection, Snapshot current, WorkspaceDocument document,
                                            List<Identity> mappings, ExchangeDocument previous) {
         ExchangeDocument template = previous == null ? new ExchangeDocument(connection.connectorId(), connection.profileVersion(), null, true, "",
-                List.of(), List.of(), List.of(), Map.of("identifier", "taxonomy-" + connection.id(), "title", connection.displayName()), List.of()) : previous;
+                List.of(), List.of(), List.of(), Map.of("identifier", SparxSnapshots.isSparx(connection.connectorId())
+                        ? externalId(connection, "model") : "taxonomy-" + connection.id(), "title", connection.displayName()), List.of()) : previous;
         Map<String, Artifact> items = new TreeMap<>(current.items());
         List<MappingLoss> losses = new ArrayList<>(template.losses()); losses.addAll(current.losses());
         if (connection.projectId() != null) {
@@ -152,8 +160,8 @@ public class IntegrationDomainAdapter {
                 boolean oslc = connection.connectorId().equals(OslcRdf.RM_PROFILE);
                 String id = existing != null ? existing.externalId().substring("REQUIREMENT:".length())
                         : oslc ? "urn:uuid:" + UUID.nameUUIDFromBytes((connection.id() + ":requirement:" + requirement.id()).getBytes(StandardCharsets.UTF_8))
-                        : "taxonomy-requirement-" + requirement.id();
-                Artifact artifact = new Artifact(id, ArtifactKind.REQUIREMENT, oslc ? OslcRdf.RM + "Requirement" : "taxonomy-object", requirement.title(),
+                        : requirementExternalId(connection, requirement.id());
+                Artifact artifact = new Artifact(id, ArtifactKind.REQUIREMENT, oslc ? OslcRdf.RM + "Requirement" : SparxSnapshots.isSparx(connection.connectorId()) ? "Class" : "taxonomy-object", requirement.title(),
                         requirement.requireCurrentVersion().text(), Map.of(), Map.of()); items.put(ExchangeItems.key(artifact), artifact); added.add(artifact);
             }
             if (connection.connectorId().equals(ReqifExchangeCodec.PROFILE) && previous != null && !added.isEmpty()) {
@@ -167,18 +175,20 @@ public class IntegrationDomainAdapter {
                     items.put(ExchangeItems.key(placement), placement);
                 }
             }
-        } else {
+        }
+        if (connection.projectId() == null || SparxSnapshots.isSparx(connection.connectorId())) {
             Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(document.dsl());
             Map<String, String> ids = new TreeMap<>();
             mappings.stream().filter(m -> !m.removed()).forEach(m -> { if (m.internal() != null && m.internal().kind() == ArtifactKind.ELEMENT) ids.put(m.businessIdentity(), m.internal().id()); });
             for (BlockAst block : blocks.values()) if (block.getKind().equals("element")) {
                 String id = block.getHeaderTokens().getFirst(), canonical = block.getHeaderTokens().get(2);
                 if (ids.containsKey(id)) continue;
-                String external = stableId(connection.id(), "export-element:" + id); ids.put(id, external);
+                String external = externalId(connection, "export-element:" + id); ids.put(id, external);
                 Map<String, String> extensions = new TreeMap<>(); extensions.put("canonicalType", canonical);
                 for (var property : block.getProperties()) if (ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(property.key()) && !Set.of("title", "description").contains(property.key()))
                     extensions.put("taxonomy:" + property.key(), property.value());
-                Artifact artifact = new Artifact(external, ArtifactKind.ELEMENT, archimateType(canonical), value(block.property("title")), value(block.property("description")), Map.of(), extensions);
+                Map<String, String> attributes = SparxSnapshots.isSparx(connection.connectorId()) ? Map.of("tag:taxonomy.elementType", canonical) : Map.of();
+                Artifact artifact = new Artifact(external, ArtifactKind.ELEMENT, elementType(connection, canonical), value(block.property("title")), value(block.property("description")), attributes, extensions);
                 items.put(ExchangeItems.key(artifact), artifact);
             }
             Set<String> known = mappings.stream().filter(m -> !m.removed()).map(Identity::businessIdentity).collect(java.util.stream.Collectors.toSet());
@@ -188,13 +198,21 @@ public class IntegrationDomainAdapter {
                 if (source == null || target == null) throw new IntegrationProblem("RELATION_MAPPING_REQUIRED", 422, "Canonical relation has an unmapped endpoint");
                 Map<String, String> extension = new TreeMap<>(Map.of("source", source, "target", target, "canonicalType", type, "taxonomy:status", value(block.property("status"))));
                 if (type.equals("PRODUCES")) extension.put("accessType", "Write");
-                String mappedType = archimateRelation(type), externalId = stableId(connection.id(), "export-relation:" + key);
+                String mappedType = SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.eaRelation(type) : archimateRelation(type);
+                String externalId = externalId(connection, "export-relation:" + key);
+                if (SparxSnapshots.isSparx(connection.connectorId())) extension.put("direction", type.equals("RELATED_TO") ? "Unspecified" : "Source -> Destination");
                 if (mappedType == null) losses.add(new MappingLoss(externalId, "type", "UNSUPPORTED_RELATION_TYPE", LossDisposition.UNSUPPORTED,
-                        "Canonical " + type + " has no lossless declared ArchiMate mapping; reject this relation or explicitly select an export mapping"));
-                Artifact artifact = new Artifact(externalId, ArtifactKind.RELATION, mappedType == null ? type : mappedType, "", "", Map.of(), extension);
+                        "Canonical " + type + " has no declared exchange mapping; reject this relation or explicitly select an export mapping"));
+                Map<String, String> attributes = SparxSnapshots.isSparx(connection.connectorId()) ? Map.of("tag:taxonomy.relationType", type) : Map.of();
+                Artifact artifact = new Artifact(externalId, ArtifactKind.RELATION, mappedType == null ? type : mappedType, "", "", attributes, extension);
                 items.put(ExchangeItems.key(artifact), artifact);
             }
             for (BlockAst block : blocks.values()) if (block.getKind().equals("view") && !known.contains(block.getHeaderTokens().getFirst())) {
+                if (SparxSnapshots.isSparx(connection.connectorId())) {
+                    losses.add(new MappingLoss(block.getHeaderTokens().getFirst(), "view", "SPARX_LAYOUT_EXCLUDED", LossDisposition.UNSUPPORTED,
+                            "Taxonomy views are outside the Sparx semantic profile and are not exported"));
+                    continue;
+                }
                 String viewId = stableId(connection.id(), "export-view:" + block.getHeaderTokens().getFirst());
                 Artifact view = new Artifact(viewId, ArtifactKind.VIEW, "Diagram", value(block.property("title")), value(block.property("description")), Map.of(), Map.of());
                 items.put(ExchangeItems.key(view), view); int position = 0;
@@ -221,7 +239,8 @@ public class IntegrationDomainAdapter {
                 boolean omit = item.kind() == ArtifactKind.RELATION && (!present.contains(extension.get("source")) || !present.contains(extension.get("target")))
                         || item.kind() == ArtifactKind.PLACEMENT && (!value(extension.get("artifact")).isEmpty() && !present.contains(extension.get("artifact"))
                         || !value(extension.get("parent")).isEmpty() && !placements.contains(extension.get("parent"))
-                        || !"organizations".equals(extension.get("container")) && !present.contains(extension.get("container")));
+                        || !"organizations".equals(extension.get("container")) && !present.contains(extension.get("container"))
+                        && !(SparxSnapshots.isSparx(connection.connectorId()) && template.metadata().get("identifier").equals(extension.get("container"))));
                 if (omit) losses.add(new MappingLoss(item.id(), "dependency", "LOCAL_DEPENDENCY_REMOVED", LossDisposition.TRANSFORMED,
                         "Occurrence or relation is omitted because its canonical target was removed locally"));
                 return omit;
@@ -229,8 +248,20 @@ public class IntegrationDomainAdapter {
         } while (removed);
         pruneConnections(items, losses);
         ExchangeDocument result = ExchangeItems.expand(template, items);
-        return new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), result.completeScope(), result.source(), result.artifacts(),
+        if (SparxSnapshots.isSparx(connection.connectorId())) {
+            // A native addition has a stable root occurrence; imported parent/occurrence identity is retained.
+            List<Placement> occurrences = new ArrayList<>(result.placements());
+            Set<String> placed = occurrences.stream().map(Placement::artifactId).collect(java.util.stream.Collectors.toSet());
+            int position = occurrences.stream().filter(p -> p.parentId() == null).mapToInt(Placement::position).max().orElse(-1) + 1;
+            for (Artifact artifact : result.artifacts()) if (!placed.contains(artifact.id()))
+                occurrences.add(new Placement("placement:" + artifact.id(), template.metadata().get("identifier"), null, artifact.id(), position++, Map.of()));
+            result = new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), result.completeScope(), result.source(),
+                    result.artifacts(), result.relations(), occurrences, result.metadata(), result.losses());
+        }
+        result = new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), result.completeScope(), result.source(), result.artifacts(),
                 result.relations(), result.placements(), result.metadata(), losses);
+        // Freeze the identities even when unsupported features defer serialization until review.
+        return SparxSnapshots.isSparx(connection.connectorId()) ? SparxSnapshots.identify(result, connection.id()) : result;
     }
 
     private static void synchronizeViews(Connection connection, Map<String, BlockAst> blocks, Map<String, String> elements,
@@ -289,6 +320,8 @@ public class IntegrationDomainAdapter {
     }
 
     public AppliedRequirement applyRequirement(RepositoryContext context, Connection connection, Artifact value, Identity previous, String rationale) {
+        if (connection.projectId() == null)
+            throw new IntegrationProblem("REQUIREMENT_PROJECT_REQUIRED", 422, "Select a project for reviewed requirement changes or reject the requirements");
         if (value == null) {
             if (previous != null && previous.requirementId() != null) projects.archiveRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context));
             return new AppliedRequirement(previous.businessIdentity(), previous.requirementId());
@@ -394,10 +427,26 @@ public class IntegrationDomainAdapter {
         String source = elements.get(relation.extensions().get("source")), target = elements.get(relation.extensions().get("target"));
         String type = relation.extensions().get("canonicalType");
         if (source == null || target == null || type == null) throw new IntegrationProblem("RELATION_MAPPING_REQUIRED", 422, "Relation endpoints and type must belong to the accepted supported model");
+        String direction = relation.extensions().get("direction");
+        if ("Bi-Directional".equals(direction))
+            throw new IntegrationProblem("SPARX_DIRECTION_UNMAPPED", 422, "Reject the bidirectional connector; this profile cannot represent both directions as one native relation");
+        if ("Destination -> Source".equals(direction)) return new RelationKey(target, type, source);
         return new RelationKey(source, type, target);
     }
     private static RelationKey parseRelation(String value) { String[] tokens = value.split(" ", 3); return new RelationKey(tokens[0], tokens[1], tokens[2]); }
     public static String stableId(UUID connection, String id) { return "ext-" + UUID.nameUUIDFromBytes((connection + "\u0000" + id).getBytes(StandardCharsets.UTF_8)).toString(); }
+    private static String externalId(Connection connection, String identity) {
+        return SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.externalId(connection.id(), identity) : stableId(connection.id(), identity);
+    }
+    private static String requirementExternalId(Connection connection, Long identity) {
+        return SparxSnapshots.isSparx(connection.connectorId()) ? externalId(connection, "export-requirement:" + identity) : "taxonomy-requirement-" + identity;
+    }
+    private static String elementType(Connection connection, String canonical) {
+        return SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.umlType(canonical) : archimateType(canonical);
+    }
+    public static boolean architectureProfile(Connection connection) {
+        return connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE) || SparxSnapshots.isSparx(connection.connectorId());
+    }
     public static WorkspaceContext workspace(RepositoryContext context) { return new WorkspaceContext(context.username(), context.workspaceId(), context.branch(), context.repositoryId()); }
     private static String value(String value) { return value == null ? "" : value; }
     public static String archimateType(String canonical) {

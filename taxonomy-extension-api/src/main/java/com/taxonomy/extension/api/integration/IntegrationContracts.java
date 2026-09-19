@@ -12,7 +12,7 @@ public final class IntegrationContracts {
     private IntegrationContracts() {}
 
     public enum AuthorityMode { LINK_ONLY, IMPORT_COPY, MIRROR_READ, PUBLISH_TARGET, BIDIRECTIONAL }
-    public enum Capability { FILE_IMPORT, FILE_EXPORT, DISCOVERY, READ_LINK, CONDITIONAL_PUBLISH }
+    public enum Capability { FILE_IMPORT, FILE_EXPORT, DISCOVERY, READ_LINK, CONDITIONAL_PUBLISH, ARCHITECTURE_MODEL }
     public enum ArtifactKind { REQUIREMENT, ELEMENT, VIEW, SPECIFICATION, RELATION, PLACEMENT, METADATA }
     public enum ChangeKind { ADD, UPDATE, MOVE, REMOVE_CANDIDATE, RELATION, CONFLICT, UNCHANGED }
     public enum Decision { ACCEPT, REJECT, TAKE_EXTERNAL, KEEP_INTERNAL }

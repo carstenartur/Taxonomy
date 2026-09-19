@@ -33,7 +33,7 @@ public class ExchangeConnectorRegistry {
     }
     private static final class ArchiMate implements LifecycleIntegrationConnector {
         private final ArchiMateExchangeCodec codec = new ArchiMateExchangeCodec();
-        @Override public IntegrationDescriptor descriptor() { return new IntegrationDescriptor(ArchiMateExchangeCodec.PROFILE, ArchiMateExchangeCodec.VERSION, "ArchiMate Exchange 3.1", Set.of(Capability.FILE_IMPORT, Capability.FILE_EXPORT), Set.of("application/archimate+xml", "application/xml")); }
+        @Override public IntegrationDescriptor descriptor() { return new IntegrationDescriptor(ArchiMateExchangeCodec.PROFILE, ArchiMateExchangeCodec.VERSION, "ArchiMate Exchange 3.1", Set.of(Capability.FILE_IMPORT, Capability.FILE_EXPORT, Capability.ARCHITECTURE_MODEL), Set.of("application/archimate+xml", "application/xml")); }
         @Override public ExchangeDocument previewInbound(InboundRequest request) { return codec.read(request.content(), request.externalVersion(), request.completeScope()); }
         @Override public ExchangeFile previewOutbound(OutboundRequest request) { return new ExchangeFile("application/archimate+xml", "architecture.xml", codec.write(request.document()), request.document().losses()); }
     }

@@ -8,6 +8,8 @@ import com.taxonomy.exchange.ExchangeXml;
 import com.taxonomy.exchange.ReqifExchangeCodec;
 import com.taxonomy.exchange.OslcRequirementsCodec;
 import com.taxonomy.interop.oslc.OslcTransport;
+import com.taxonomy.interop.sparx.SparxSnapshots;
+import com.taxonomy.exchange.sparx.SparxMappingProfile;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore;
 import com.taxonomy.interop.persistence.IntegrationStore.*;
@@ -142,7 +144,7 @@ public class IntegrationService {
             // Validate the reviewed dependency closure and schema before mutating any canonical data.
             if (!linked && changed) connectors.require(connection.connectorId()).previewOutbound(new OutboundRequest(operation.context(), resultDocument, operation.document().externalVersion()));
             List<ArchitectureCommand> commands = new ArrayList<>();
-            if (!linked && changed && connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE)) {
+            if (!linked && changed && connectors.require(connection.connectorId()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL)) {
                 commands.addAll(domain.architectureCommands(connection, before.dsl(), current.items(), selected, mappings));
                 String preview = before.dsl();
                 for (ArchitectureCommand command : commands) preview = new ArchitectureDslCommands().apply(preview, command).dsl();
@@ -162,7 +164,7 @@ public class IntegrationService {
                 if (!linked && (value != null ? value.kind() == ArtifactKind.REQUIREMENT : previous != null && previous.internal().kind() == ArtifactKind.REQUIREMENT)) {
                     var applied = domain.applyRequirement(context, connection, value, previous, review.rationale());
                     business = applied.businessIdentity(); requirementId = applied.requirementId();
-                } else if (!linked && value != null && value.kind() == ArtifactKind.RELATION && connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE))
+                } else if (!linked && value != null && value.kind() == ArtifactKind.RELATION && connectors.require(connection.connectorId()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL))
                     business = domain.relationBusinessId(value, connection, selected, mappings);
                 session.mapping(operation.id(), change.externalId(), business, requirementId, operation.document().externalVersion(), change.after(), value, value == null);
             }
@@ -361,6 +363,7 @@ public class IntegrationService {
             Decision decision = review.decisions().get(change.id());
             if (decision == null && change.kind() != ChangeKind.UNCHANGED) throw new IllegalArgumentException("Every proposed change needs an explicit decision");
             if (decision == null || decision == Decision.REJECT || decision == Decision.KEEP_INTERNAL) continue;
+            if (change.conflicts().contains("INTERNAL_IDENTITY_REUSED")) throw IntegrationProblem.conflict("IDENTITY_REMAP_REQUIRED");
             if (change.kind() == ChangeKind.CONFLICT && decision != Decision.TAKE_EXTERNAL) throw IntegrationProblem.conflict("CONFLICT_REQUIRES_EXPLICIT_RESOLUTION");
             if (change.after() == null) selected.remove(change.externalId());
             else {
@@ -369,6 +372,14 @@ public class IntegrationService {
                 Artifact selectedValue = ExchangeItems.merge(baseline, current.get(change.externalId()), change.after());
                 MappingOverride mapping = review.mappings().get(change.id());
                 Artifact mapped = remap(selectedValue, mapping);
+                if (SparxSnapshots.isSparx(operation.context().profile()) && mapping != null && mapping.canonicalType() != null) {
+                    String type = mapped.kind() == ArtifactKind.ELEMENT ? SparxMappingProfile.umlType(mapping.canonicalType())
+                            : mapped.kind() == ArtifactKind.RELATION ? SparxMappingProfile.eaRelation(mapping.canonicalType()) : mapped.type();
+                    if (type == null) throw new IllegalArgumentException("Unsupported Sparx type mapping");
+                    Map<String, String> tags = new TreeMap<>(mapped.attributes());
+                    tags.put("tag:taxonomy." + (mapped.kind() == ArtifactKind.ELEMENT ? "elementType" : "relationType"), mapping.canonicalType());
+                    mapped = new Artifact(mapped.id(), mapped.kind(), type, mapped.title(), mapped.text(), tags, mapped.extensions());
+                }
                 if (operation.direction().equals("OUTBOUND") && operation.context().profile().equals(ArchiMateExchangeCodec.PROFILE)
                         && mapping != null && mapping.canonicalType() != null) {
                     String type = mapped.kind() == ArtifactKind.ELEMENT ? IntegrationDomainAdapter.archimateType(mapping.canonicalType())
@@ -388,7 +399,7 @@ public class IntegrationService {
         if (mapping.canonicalType() != null && !mapping.canonicalType().isBlank()) {
             Set<String> supported = artifact.kind() == ArtifactKind.ELEMENT
                     ? Set.of("Capability", "Process", "CoreService", "COIService", "CommunicationsService", "UserApplication", "InformationProduct", "BusinessRole", "System", "Component")
-                    : artifact.kind() == ArtifactKind.RELATION ? new HashSet<>(ArchiMateExchangeCodec.RELATION_TYPES.values()) : Set.of();
+                    : artifact.kind() == ArtifactKind.RELATION ? com.taxonomy.dsl.validation.DslValidator.relationTypes() : Set.of();
             if (!supported.contains(mapping.canonicalType())) throw new IllegalArgumentException("Unsupported canonical type mapping");
             extensions.put("canonicalType", mapping.canonicalType());
             extensions.put("taxonomy:" + (artifact.kind() == ArtifactKind.ELEMENT ? "ElementType" : "RelationType"), mapping.canonicalType());
