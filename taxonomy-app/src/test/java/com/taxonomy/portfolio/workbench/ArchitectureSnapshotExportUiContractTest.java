@@ -24,7 +24,7 @@ class ArchitectureSnapshotExportUiContractTest {
                 "taxonomy-app/src/main/resources/static/js/"
                         + "architecture-workbench-export.js"));
         String controller = Files.readString(repository.resolve(
-                "taxonomy-app/src/main/java/com/taxonomy/portfolio/workbench/"
+                "taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/workbench/"
                         + "ArchitectureWorkbenchController.java"));
 
         assertThat(template)

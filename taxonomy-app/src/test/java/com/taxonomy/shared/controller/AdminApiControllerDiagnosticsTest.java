@@ -6,7 +6,7 @@ import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.shared.service.HealthSummaryService;
 import com.taxonomy.shared.service.LogRingBufferService;
-import com.taxonomy.shared.service.PromptTemplateService;
+import com.taxonomy.analysis.service.PromptTemplateService;
 import jakarta.servlet.http.HttpServletRequest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

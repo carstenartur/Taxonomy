@@ -22,7 +22,7 @@
     "taxonomy-app/src/main/java/com/taxonomy/composition/dsl/controller/",
     "taxonomy-app/src/main/java/com/taxonomy/composition/dsl/service/",
     "taxonomy-workspace/src/main/java/com/taxonomy/workspace/",
-    "taxonomy-app/src/main/java/com/taxonomy/portfolio/",
+    "taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/",
     "taxonomy-app/src/main/java/com/taxonomy/composition/importer/"
   ],
   "criticalPackages": [
@@ -122,12 +122,12 @@
       "minimums": { "LINE": 0.82, "BRANCH": 0.58 }
     },
     {
-      "module": "taxonomy-app",
+      "module": "taxonomy-portfolio",
       "package": "com/taxonomy/portfolio/controller",
       "minimums": { "LINE": 0.45, "BRANCH": 0.52 }
     },
     {
-      "module": "taxonomy-app",
+      "module": "taxonomy-portfolio",
       "package": "com/taxonomy/portfolio/service",
       "minimums": { "LINE": 0.74, "BRANCH": 0.52 }
     }

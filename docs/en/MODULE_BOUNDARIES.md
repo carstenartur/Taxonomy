@@ -6,7 +6,7 @@ The machine-readable source of truth for the planned extraction contexts is `.gi
 
 ## Current Maven reactor
 
-The root reactor currently contains thirteen modules with different roles:
+The root reactor currently contains fifteen modules with different roles:
 
 | Module | Current role |
 |---|---|
@@ -20,7 +20,9 @@ The root reactor currently contains thirteen modules with different roles:
 | `taxonomy-interop` | Reviewed external-tool interoperability, mappings, checkpoints and OSLC; portfolio access through an explicit port |
 | `taxonomy-knowledge` | Catalogue and seed resources, relations, Hibernate Search mappings and local semantic embeddings |
 | `taxonomy-architecture` | Architecture derivation, scoring, recommendations, diagrams and reports; live report preferences through an application-owned adapter |
-| `taxonomy-app` | Executable Spring Boot application and, currently, most Spring-aware feature implementations |
+| `taxonomy-analysis` | Requirement/LLM analysis, prompts, provider policy and sessions |
+| `taxonomy-portfolio` | Project portfolio, analysis jobs, snapshots, reviews and recovery |
+| `taxonomy-app` | Single executable composition/deployment root, security and supporting application adapters |
 | `taxonomy-coverage` | Reactor-wide coverage aggregation |
 | `taxonomy-build` | Build policy and browser/verification contracts |
 
@@ -54,9 +56,13 @@ Owns architecture derivation, scoring, gaps, patterns, recommendations, architec
 
 ### `taxonomy-analysis`
 
+Physically extracted with owned tests and resources; cross-context acceptance remains in the application. See [completion criteria](../dev/MODULE_EXTRACTION_COMPLETION.md).
+
 Owns requirement and LLM analysis, provider/gateway selection, response parsing, prompt/policy logic, analysis sessions and local inference abstractions. Stateful repository or hypothesis access enters through explicit ports.
 
 ### `taxonomy-portfolio`
+
+Physically extracted with owned tests and resources; cross-context acceptance remains in the application. See [completion criteria](../dev/MODULE_EXTRACTION_COMPLETION.md).
 
 Owns project/portfolio state and orchestration: versioned requirements, persisted analysis work/results/review state, queues/recovery, workbench snapshots and project-level workflows. It coordinates analysis, architecture and workspace capabilities through their APIs rather than reaching into their repositories.
 

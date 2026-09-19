@@ -10,8 +10,18 @@
     </parent>
     <artifactId>taxonomy-app</artifactId>
     <name>Taxonomy Application</name>
-    <description>Spring Boot application: controllers, services, persistence, search, export, and configuration</description>
+    <description>Spring Boot composition and deployment root, security and supporting application adapters</description>
     <dependencies>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-analysis</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-portfolio</artifactId>
+            <version>${project.version}</version>
+        </dependency>
         <dependency>
             <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-architecture</artifactId>

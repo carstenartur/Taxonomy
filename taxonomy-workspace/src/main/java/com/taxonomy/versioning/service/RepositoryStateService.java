@@ -38,7 +38,7 @@ import com.taxonomy.workspace.service.WorkspaceManager;
  * for backward compatibility with tests and unauthenticated callers.
  */
 @Service
-public class RepositoryStateService {
+public class RepositoryStateService implements com.taxonomy.workspace.service.WorkspaceViewContextReadPort {
 
     private static final Logger log = LoggerFactory.getLogger(RepositoryStateService.class);
 

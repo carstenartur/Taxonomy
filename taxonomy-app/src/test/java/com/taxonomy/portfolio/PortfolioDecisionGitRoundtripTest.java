@@ -38,6 +38,10 @@ class PortfolioDecisionGitRoundtripTest {
     @Autowired private SolutionPortfolioService solutionService;
     @Autowired private ProductCatalogService productService;
     @Autowired private PortfolioGitService portfolioGitService;
+    @Autowired private com.taxonomy.portfolio.service.PortfolioReportService reports;
+    @Autowired private com.taxonomy.portfolio.repository.ProjectSolutionRepository projectSolutions;
+    @Autowired private com.taxonomy.portfolio.repository.RequirementSolutionLinkRepository requirementLinks;
+
 
     @Test
     void solutionProjectDecisionAndSelectedProductRoundTripAcrossWorkspaces() {
@@ -55,7 +59,7 @@ class PortfolioDecisionGitRoundtripTest {
                         "Portable solution and product decision",
                         null, null, null, null, null),
                 "alice", alice);
-        projectService.createRequirement(
+        var requirement = projectService.createRequirement(
                 project.id(),
                 new CreateRequirementRequest(
                         "REQ-001",
@@ -127,6 +131,17 @@ class PortfolioDecisionGitRoundtripTest {
                         ProductSelectionStatus.SELECTED),
                 "alice", alice);
 
+        var coverage = new com.taxonomy.portfolio.dto.PortfolioDtos.UpsertTaxonomyCoverageRequest(
+                "CP-1010", 80, "Reviewed taxonomy evidence", ReviewStatus.CONFIRMED);
+        solutionService.upsertTaxonomyCoverage(solution.id(), coverage, "alice", alice);
+        productService.upsertTaxonomyCoverage(product.id(), coverage, "alice", alice);
+        var decisionEntity = projectSolutions.findByIdAndProjectId(projectSolution.id(), project.id()).orElseThrow();
+        var requirementEntity = projectService.requireRequirement(project.id(), requirement.id(), "alice", alice);
+        requirementLinks.save(new com.taxonomy.portfolio.model.RequirementSolutionLink(
+                decisionEntity, requirementEntity, "source-snapshot-evidence", 80,
+                com.taxonomy.portfolio.model.PortfolioTypes.RequirementSolutionRole.USES,
+                ReviewStatus.CONFIRMED, "Reviewed source link", "alice", Instant.now()));
+
         String dsl = portfolioGitService.exportPortfolio("alice", alice);
 
         assertThat(dsl)
@@ -142,6 +157,33 @@ class PortfolioDecisionGitRoundtripTest {
                 portfolioGitService.materialize(dsl, "bob", bob);
 
         assertThat(result.warnings()).isEmpty();
+        var repeated = portfolioGitService.materialize(dsl, "bob", bob);
+        assertThat(repeated.warnings()).isEmpty();
+        assertThat(solutionService.listSolutions("bob", bob)).hasSize(1);
+        assertThat(productService.listProducts("bob", bob)).hasSize(1);
+        assertThat(solutionService.listSolutions("bob", bob).getFirst().taxonomyCoverage())
+                .singleElement().satisfies(item -> assertThat(item.coveragePercent()).isEqualTo(80));
+
+        for (var format : com.taxonomy.portfolio.service.PortfolioReportService.Format.values()) {
+            var rendered = reports.render(project.id(), null, format, "products", "alice", alice);
+            assertThat(rendered.bytes()).isNotEmpty();
+            assertThat(rendered.contentType()).isEqualTo(format.contentType());
+            if (format != com.taxonomy.portfolio.service.PortfolioReportService.Format.DOCX
+                    && format != com.taxonomy.portfolio.service.PortfolioReportService.Format.CSV) {
+                assertThat(new String(rendered.bytes(), java.nio.charset.StandardCharsets.UTF_8))
+                        .contains(solutionKey, productKey, "REQ-001");
+            }
+        }
+        var focused = reports.render(project.id(), requirement.id(),
+                com.taxonomy.portfolio.service.PortfolioReportService.Format.MARKDOWN,
+                "solutions", "alice", alice);
+        assertThat(new String(focused.bytes(), java.nio.charset.StandardCharsets.UTF_8)).contains(solutionKey, productKey);
+        for (String matrix : new String[]{"solution", "solutions", "requirement-solution", "product", "products", "solution-product"}) {
+            assertThat(new String(reports.render(project.id(), null,
+                    com.taxonomy.portfolio.service.PortfolioReportService.Format.CSV,
+                    matrix, "alice", alice).bytes(), java.nio.charset.StandardCharsets.UTF_8)).startsWith("row");
+        }
+
         var bobProjects = projectService.listProjects("bob", bob);
         assertThat(bobProjects).extracting("projectKey").contains(projectKey);
         var bobSolutions = solutionService.listSolutions("bob", bob);

@@ -63,6 +63,8 @@
         <module>taxonomy-interop</module>
         <module>taxonomy-knowledge</module>
         <module>taxonomy-architecture</module>
+        <module>taxonomy-analysis</module>
+        <module>taxonomy-portfolio</module>
         <module>taxonomy-app</module>
         <!-- Coverage consumes classes and execution data produced by all shipped modules above. -->
         <module>taxonomy-coverage</module>
@@ -399,7 +401,7 @@
         </profile>
         <profile>
             <id>architecture-tests</id>
-            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest</test></properties>
+            <properties><test>ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest,ArchitectureInteropModuleTest,ArchitectureKnowledgeModuleTest,ArchitectureDerivationModuleTest,ArchitectureCompletionTest</test></properties>
         </profile>
         <profile>
             <id>document-import-tests</id>

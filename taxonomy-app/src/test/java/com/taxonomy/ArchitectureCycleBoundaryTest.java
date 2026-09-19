@@ -30,7 +30,6 @@ class ArchitectureCycleBoundaryTest {
             "cycle-analysis-usecase-to-export-metadata",
             "cycle-catalog-model-to-search-binder",
             "cycle-search-binder-to-catalog-model",
-            "cycle-architecture-controller-to-versioning-state",
             "cycle-catalog-controller-to-versioning-state"
     );
 
@@ -80,9 +79,6 @@ class ArchitectureCycleBoundaryTest {
             .ignoreDependency(
                     resideInAnyPackage("com.taxonomy.search.."),
                     resideInAnyPackage("com.taxonomy.catalog.model.."))
-            .ignoreDependency(
-                    resideInAnyPackage("com.taxonomy.architecture.controller.."),
-                    resideInAnyPackage("com.taxonomy.versioning.service.."))
             .ignoreDependency(
                     resideInAnyPackage("com.taxonomy.catalog.controller.."),
                     resideInAnyPackage("com.taxonomy.versioning.service.."))

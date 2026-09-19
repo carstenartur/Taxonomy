@@ -203,17 +203,42 @@ The build generates:
 
 ## Architecture
 
-The Maven reactor separates domain logic, DSL processing, export formats, extension contracts, the Spring application, aggregate coverage, and build policy.
+Taxonomy is a **modular monolith with one deployable Spring Boot application**.
+The Maven reactor contains fifteen child modules: four framework-free foundations,
+seven runtime feature libraries, the application composition root, and three build/tooling modules.
 
 | Module | Responsibility |
 |---|---|
-| `taxonomy-domain` | Core architecture and analysis domain types |
-| `taxonomy-dsl` | DSL syntax, parsing, mapping, semantic diff, and model processing |
-| `taxonomy-export` | Export contracts and implementations |
-| `taxonomy-extension-api` | Stable extension interfaces |
-| `taxonomy-app` | Spring Boot application, persistence, security, UI, search, workspaces, and integrations |
+| `taxonomy-domain` | Framework-free shared architecture and analysis types |
+| `taxonomy-dsl` | Framework-free DSL syntax, parsing, mapping, semantic diff, and model processing |
+| `taxonomy-export` | Framework-free export contracts, codecs, and neutral rendering |
+| `taxonomy-extension-api` | Framework-free extension interfaces and metadata |
+| `taxonomy-workspace` | Repository/workspace identity, versioning, editor operation journal, undo/redo, Git checkpoints, and JGit storage |
+| `taxonomy-knowledge` | Catalogue and seeds, relations and hypotheses, search, indexes, and local embeddings |
+| `taxonomy-templates` | Versioned document templates, OOXML validation, materialization, WebDAV, and template administration |
+| `taxonomy-interop` | External-tool connectors, reviewed exchange, identity mappings, and synchronization checkpoints |
+| `taxonomy-architecture` | Architecture derivation, scoring, gaps, patterns, recommendations, diagrams, and reports |
+| `taxonomy-analysis` | Requirement/LLM analysis, provider gateways, prompts and policies, parsing, and analysis sessions |
+| `taxonomy-portfolio` | Projects, versioned requirements, analysis jobs/results, reviews, recovery, and workbench snapshots |
+| `taxonomy-app` | The only executable application: Spring wiring, cross-context HTTP/UI composition, security/observability, deployment configuration, and database migrations |
+| `taxonomy-tooling` | Build and release tooling; not a runtime feature library |
 | `taxonomy-coverage` | Reactor-wide coverage aggregation |
-| `taxonomy-build` | Authoritative quality gates and browser verification |
+| `taxonomy-build` | Authoritative quality gates, whole-reactor checks, and browser verification |
+
+Feature libraries do not depend back on `taxonomy-app`; the runtime module dependency
+graph is acyclic. The supporting preferences and provenance contexts deliberately remain
+in the application for now. This split does not introduce microservices or claim that every
+internal package cycle has been removed.
+
+Owned unit tests move with each feature library. Cross-context application, database,
+security, and recovery tests remain with the application. Maven/architecture checks enforce
+module ownership and dependency direction; packaging checks verify the feature libraries,
+unique runtime classes/resources, and application-owned migrations in the executable JAR.
+
+See the [module boundaries](docs/en/MODULE_BOUNDARIES.md)
+([Deutsch](docs/de/MODULE_BOUNDARIES.md)) and the
+[#628 completion scope](docs/dev/MODULE_EXTRACTION_COMPLETION.md) for the detailed ownership
+and verification contracts.
 
 Important implementation choices:
 

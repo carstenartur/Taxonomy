@@ -25,8 +25,8 @@
     {
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.service",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.service",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.api",
       "classDependencyCount": 1
     },
     {
@@ -35,13 +35,6 @@
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.model",
       "classDependencyCount": 4
-    },
-    {
-      "fromContext": "analysis",
-      "fromPackage": "com.taxonomy.analysis.service",
-      "toContext": "knowledge",
-      "toPackage": "com.taxonomy.catalog.repository",
-      "classDependencyCount": 1
     },
     {
       "fromContext": "analysis",
@@ -56,13 +49,6 @@
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
       "classDependencyCount": 1
-    },
-    {
-      "fromContext": "analysis",
-      "fromPackage": "com.taxonomy.analysis.service",
-      "toContext": "preferences",
-      "toPackage": "com.taxonomy.preferences",
-      "classDependencyCount": 3
     },
     {
       "fromContext": "analysis",
@@ -88,16 +74,9 @@
     {
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.usecase",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.config",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "analysis",
-      "fromPackage": "com.taxonomy.analysis.usecase",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.service",
-      "classDependencyCount": 1
+      "classDependencyCount": 2
     },
     {
       "fromContext": "analysis",
@@ -116,23 +95,9 @@
     {
       "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.usecase",
-      "toContext": "preferences",
-      "toPackage": "com.taxonomy.preferences",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "analysis",
-      "fromPackage": "com.taxonomy.analysis.usecase",
-      "toContext": "workspace",
-      "toPackage": "com.taxonomy.versioning.service",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "analysis",
-      "fromPackage": "com.taxonomy.analysis.usecase",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
@@ -370,7 +335,7 @@
       "fromPackage": "com.taxonomy.shared.controller",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 5
     },
     {
       "fromContext": "app-composition",
@@ -797,7 +762,7 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 6
     },
     {
       "fromContext": "portfolio",
@@ -805,13 +770,6 @@
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.usecase",
       "classDependencyCount": 3
-    },
-    {
-      "fromContext": "portfolio",
-      "fromPackage": "com.taxonomy.portfolio.service",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.service",
-      "classDependencyCount": 1
     },
     {
       "fromContext": "portfolio",
@@ -824,7 +782,7 @@
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "knowledge",
-      "toPackage": "com.taxonomy.catalog.repository",
+      "toPackage": "com.taxonomy.catalog.api",
       "classDependencyCount": 2
     },
     {
@@ -838,29 +796,15 @@
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "knowledge",
-      "toPackage": "com.taxonomy.relations.model",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "portfolio",
-      "fromPackage": "com.taxonomy.portfolio.service",
-      "toContext": "knowledge",
-      "toPackage": "com.taxonomy.relations.repository",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "portfolio",
-      "fromPackage": "com.taxonomy.portfolio.service",
-      "toContext": "knowledge",
       "toPackage": "com.taxonomy.relations.service",
-      "classDependencyCount": 1
+      "classDependencyCount": 2
     },
     {
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.versioning.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 1
     },
     {
       "fromContext": "portfolio",
@@ -874,20 +818,13 @@
       "fromPackage": "com.taxonomy.portfolio.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 25
-    },
-    {
-      "fromContext": "portfolio",
-      "fromPackage": "com.taxonomy.portfolio.service",
-      "toContext": "workspace",
-      "toPackage": "com.taxonomy.workspace.storage",
-      "classDependencyCount": 5
+      "classDependencyCount": 32
     },
     {
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.workbench",
-      "toContext": "legacy-export-adapters",
-      "toPackage": "com.taxonomy.export.service",
+      "toContext": "architecture",
+      "toPackage": "com.taxonomy.architecture.export",
       "classDependencyCount": 1
     },
     {
@@ -898,8 +835,8 @@
       "classDependencyCount": 4
     },
     {
-      "fromContext": "provenance",
-      "fromPackage": "com.taxonomy.provenance.service",
+      "fromContext": "preferences",
+      "fromPackage": "com.taxonomy.preferences",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
       "classDependencyCount": 1
@@ -907,9 +844,9 @@
     {
       "fromContext": "provenance",
       "fromPackage": "com.taxonomy.provenance.service",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.service",
-      "classDependencyCount": 1
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.service",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "provenance",

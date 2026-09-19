@@ -171,7 +171,7 @@ class ArchitectureExportDocumentationContractTest {
                 "taxonomy-app/src/main/resources/templates/"
                         + "architecture-workbench.html");
         String controller = read(repository,
-                "taxonomy-app/src/main/java/com/taxonomy/portfolio/workbench/"
+                "taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/workbench/"
                         + "ArchitectureWorkbenchController.java");
 
         assertThat(template)

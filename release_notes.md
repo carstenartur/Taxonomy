@@ -161,6 +161,25 @@ Repairable decision-report template unavailability has a stable, non-sensitive H
 
 All LLM quota, login-lockout, and WebDAV credential-failure counters are process-local. Multi-replica deployments multiply aggregate allowance and keep separate lockout tables unless an outer distributed control is supplied.
 
+## Modular runtime architecture (#628)
+
+Taxonomy remains one deployable Spring Boot application, with seven physical Maven feature
+libraries: `taxonomy-workspace`, `taxonomy-knowledge`, `taxonomy-templates`, `taxonomy-interop`,
+`taxonomy-architecture`, `taxonomy-analysis`, and `taxonomy-portfolio`. They own workspace/versioning/editor
+state, knowledge/search, document templates, interoperability, architecture derivation,
+requirement/LLM analysis, and the project portfolio respectively.
+
+The application is the composition/deployment root rather than the implementation container
+for those seven features. Enforced module boundaries prevent feature libraries from depending
+back on the application and verify an acyclic module graph. Domain, DSL, export, and extension-API
+foundations remain framework-free; database migrations and cross-context security/recovery tests
+stay application-owned. Preferences and provenance remain supporting application contexts.
+
+Unit tests and feature resources follow their owning modules. Executable-JAR checks verify
+unique class/resource ownership without changing the deployment model. See the
+[module boundaries](docs/en/MODULE_BOUNDARIES.md) and
+[completion scope](docs/dev/MODULE_EXTRACTION_COMPLETION.md).
+
 ## Release and reproducibility
 
 ### One exact release candidate

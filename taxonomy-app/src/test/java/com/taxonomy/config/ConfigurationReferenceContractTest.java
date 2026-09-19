@@ -20,6 +20,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 /** Prevents deployment-facing configuration from drifting away from the bilingual reference. */
 class ConfigurationReferenceContractTest {
 
+    private static final java.util.List<String> RUNTIME_MODULES = java.util.List.of(
+            "taxonomy-app", "taxonomy-workspace", "taxonomy-templates", "taxonomy-interop",
+            "taxonomy-knowledge", "taxonomy-architecture", "taxonomy-analysis", "taxonomy-portfolio");
+
     private static final Pattern ENV_PLACEHOLDER = Pattern.compile(
             "\\$\\{([A-Z][A-Z0-9_]+)(?::|})");
     private static final Pattern EXPLICIT_PROPERTY_ENV = Pattern.compile(
@@ -116,29 +120,53 @@ class ConfigurationReferenceContractTest {
                 .contains("serviceMonitor.enabled=false");
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {
+            "taxonomy-app", "taxonomy-workspace", "taxonomy-templates", "taxonomy-interop",
+            "taxonomy-knowledge", "taxonomy-architecture", "taxonomy-analysis", "taxonomy-portfolio"})
+    void discoversSettingsAndAliasesInEveryRuntimeModule(String owner,
+            @org.junit.jupiter.api.io.TempDir Path root) throws Exception {
+        for (String module : RUNTIME_MODULES) {
+            Files.createDirectories(root.resolve(module + "/src/main/java"));
+            Files.createDirectories(root.resolve(module + "/src/main/resources"));
+        }
+        Files.writeString(root.resolve(owner + "/src/main/resources/ai-automation-defaults.properties"),
+                "taxonomy.fixture.value=${CUSTOM_FIXTURE_VALUE:7}\n");
+        Files.writeString(root.resolve(owner + "/src/main/java/Fixture.java"),
+                "@Value(\"${taxonomy.fixture.value:7}\") int value;\n"
+                        + "@Value(\"${taxonomy.fixture.direct:1}\") int direct;\n");
+
+        assertThat(discoverRuntimeVariables(root))
+                .contains("CUSTOM_FIXTURE_VALUE", "TAXONOMY_FIXTURE_DIRECT")
+                .doesNotContain("TAXONOMY_FIXTURE_VALUE");
+    }
+
     private static Set<String> discoverRuntimeVariables(Path root) throws IOException {
-        Path resources = root.resolve("taxonomy-app/src/main/resources");
         Map<String, String> explicitPropertyVariables = new HashMap<>();
         Set<String> variables = new TreeSet<>(Set.of(
                 "SPRING_PROFILES_ACTIVE",
                 "SPRING_DATASOURCE_URL"));
 
-        try (Stream<Path> files = Files.list(resources)) {
-            for (Path file : files.filter(ConfigurationReferenceContractTest::isRuntimeProperties)
-                    .toList()) {
-                String source = Files.readString(file, StandardCharsets.UTF_8);
-                Matcher placeholder = ENV_PLACEHOLDER.matcher(source);
-                while (placeholder.find()) {
-                    variables.add(placeholder.group(1));
-                }
-                Matcher mapping = EXPLICIT_PROPERTY_ENV.matcher(source);
-                while (mapping.find()) {
-                    explicitPropertyVariables.put(mapping.group(1), mapping.group(2));
+        // Collect aliases from every runtime module before inspecting Java bindings.
+        // In particular, automation defaults are owned by taxonomy-portfolio now.
+        for (String module : RUNTIME_MODULES) {
+            Path resources = root.resolve(module + "/src/main/resources");
+            if (!Files.isDirectory(resources)) continue;
+            try (Stream<Path> files = Files.walk(resources)) {
+                for (Path file : files.filter(Files::isRegularFile)
+                        .filter(ConfigurationReferenceContractTest::isRuntimeProperties).toList()) {
+                    String source = Files.readString(file, StandardCharsets.UTF_8);
+                    Matcher placeholder = ENV_PLACEHOLDER.matcher(source);
+                    while (placeholder.find()) variables.add(placeholder.group(1));
+                    Matcher mapping = EXPLICIT_PROPERTY_ENV.matcher(source);
+                    while (mapping.find()) {
+                        explicitPropertyVariables.put(mapping.group(1), mapping.group(2));
+                    }
                 }
             }
         }
 
-        for (String module : java.util.List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates", "taxonomy-interop", "taxonomy-knowledge")) {
+        for (String module : RUNTIME_MODULES) {
             Path javaRoot = root.resolve(module + "/src/main/java");
             try (Stream<Path> files = Files.walk(javaRoot)) {
                 for (Path file : files.filter(path -> path.toString().endsWith(".java")).toList()) {
