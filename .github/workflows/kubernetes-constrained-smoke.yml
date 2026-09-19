@@ -14,6 +14,7 @@ on:
       - 'taxonomy-app/**'
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
+      - 'taxonomy-interop/**'
       - 'deploy/helm/taxonomy/**'
       - '.github/workflows/kubernetes-constrained-smoke.yml'
   push:
@@ -29,6 +30,7 @@ on:
       - 'taxonomy-app/**'
       - 'taxonomy-workspace/**'
       - 'taxonomy-templates/**'
+      - 'taxonomy-interop/**'
       - 'deploy/helm/taxonomy/**'
       - '.github/workflows/kubernetes-constrained-smoke.yml'
   workflow_dispatch:

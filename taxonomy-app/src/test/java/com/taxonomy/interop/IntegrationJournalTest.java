@@ -81,6 +81,57 @@ class IntegrationJournalTest {
             assertEquals(1, fixture.journal.read(CONTEXT).operations().size());
         }
     }
+    @Test void checkpointPointerCannotEscapeItsConnectionAndTenantScope() throws Exception {
+        try (var fixture = new EditorPersistenceFixture("jdbc:hsqldb:mem:interop-" + UUID.randomUUID(), ENTITIES)) {
+            var store = store(fixture);
+            UUID connection = UUID.randomUUID();
+            connection(store, connection);
+
+            RepositoryContext foreignContext =
+                    RepositoryContext.workspace("repo-b", "workspace-b", "draft", "bob");
+            UUID foreignConnection = UUID.randomUUID();
+            UUID foreignOperation = UUID.randomUUID();
+            store.create(foreignContext, foreignConnection, "ORGANIZATION:org-b", "Foreign", "archimate-3.1", "1",
+                    AuthorityMode.BIDIRECTIONAL, new ExternalScope("Foreign", "model-b", null), null, null);
+            InternalState foreignState = new InternalState(
+                    foreignContext.repositoryId(), "workspace-b", "draft",
+                    "0123456789012345678901234567890123456789", 1, null, "foreign");
+            store.locked(foreignContext, foreignConnection, session -> {
+                session.preview(
+                        foreignOperation,
+                        new IntegrationContext(
+                                foreignConnection, AuthorityMode.BIDIRECTIONAL,
+                                new ExternalScope("Foreign", "model-b", null),
+                                foreignState, "bob", "archimate-3.1", "1"),
+                        "INBOUND", "foreign-fingerprint", document(), List.of());
+                session.complete(
+                        foreignOperation, foreignState, "foreign-v1",
+                        "foreign-checkpoint", true);
+                return null;
+            });
+
+            var entityManager = fixture.factory.createEntityManager();
+            try {
+                entityManager.getTransaction().begin();
+                int changed = entityManager.createQuery(
+                                "update IntegrationConnectionEntity c "
+                                        + "set c.checkpointId=:checkpoint where c.id=:connection")
+                        .setParameter("checkpoint", foreignOperation.toString())
+                        .setParameter("connection", connection.toString())
+                        .executeUpdate();
+                assertEquals(1, changed);
+                entityManager.getTransaction().commit();
+            } finally {
+                entityManager.close();
+            }
+
+            IntegrationProblem missing = assertThrows(
+                    IntegrationProblem.class,
+                    () -> store.checkpoint(CONTEXT, connection));
+            assertEquals(404, missing.status());
+        }
+    }
+
     @Test void connectionLockAllowsOnlyOneReviewOfTheSameBaselineAndTenantLookupIsNonDisclosing() throws Exception {
         try (var fixture = new EditorPersistenceFixture("jdbc:hsqldb:mem:interop-" + UUID.randomUUID(), ENTITIES)) {
             var store = store(fixture); UUID connection = UUID.randomUUID(), first = UUID.randomUUID(), second = UUID.randomUUID(); connection(store, connection);
