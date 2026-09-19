@@ -3,6 +3,9 @@ on:
   push:
     branches: [work/628-publication-review]
     paths: [.github/workflows/628-publication-review.yml]
+concurrency:
+  group: bounded-628-publication-review
+  cancel-in-progress: true
 permissions:
   contents: write
   actions: read
