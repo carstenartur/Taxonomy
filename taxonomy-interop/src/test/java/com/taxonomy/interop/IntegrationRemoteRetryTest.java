@@ -20,7 +20,6 @@ import com.taxonomy.workspace.service.RepositoryMembershipService;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceAccessService;
 import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort;
-import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.State;
 import com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.WorkspaceDocument;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
@@ -96,9 +95,7 @@ class IntegrationRemoteRetryTest {
         when(remote.validate(context, connection, "requirement-1"))
                 .thenReturn(URI.create(frozenResource));
 
-        WorkspaceDocument workspaceDocument = new WorkspaceDocument(
-                new State(state.workspaceScopeKey(), state.commitId(), state.semanticRevision()),
-                "");
+        WorkspaceDocument workspaceDocument = mock(WorkspaceDocument.class);
         when(editor.read(context, null)).thenReturn(workspaceDocument);
         when(domain.snapshot(eq(context), eq(connection), any(), eq(workspaceDocument)))
                 .thenReturn(new IntegrationDomainAdapter.Snapshot(
