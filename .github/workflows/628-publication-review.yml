@@ -22,12 +22,13 @@ jobs:
         run: |
           python3 - <<'PY'
           import urllib.request,json,base64,hashlib,os,pathlib,subprocess
-          sha='dcdf6ecfa916e2430b63ab820570295c163ab807'
-          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-          with urllib.request.urlopen(req,timeout=120) as response: data=base64.b64decode(json.load(response)['content'])
-          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
-          path=pathlib.Path('/tmp/628-candidate.py');path.write_bytes(data)
-          subprocess.run(['python3',str(path)],check=True)
+          def script(sha,name):
+              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+              with urllib.request.urlopen(req,timeout=120) as response: data=base64.b64decode(json.load(response)['content'])
+              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+              path=pathlib.Path('/tmp',name);path.write_bytes(data);subprocess.run(['python3',str(path)],check=True)
+          script('dcdf6ecfa916e2430b63ab820570295c163ab807','628-candidate.py')
+          script('0f85f184e6dbc081de73ca41223a7a8eb1a9387c','628-optional-import.py')
           path=pathlib.Path('taxonomy-portfolio/src/test/java/com/taxonomy/portfolio/service/ProductCatalogPolicyContractTest.java')
           text=path.read_text();assert text.count('clearInvocations(products);')==1
           path.write_text(text.replace('clearInvocations(products);','clearInvocations(products,coverage,candidates,decisions,projects);'))
@@ -37,7 +38,7 @@ jobs:
       - name: Verify publication and existing portfolio contracts
         run: |
           set -euo pipefail
-          ./mvnw -B -ntp -Dtest=WorkspacePortfolioVersionBoundaryTest,WorkspacePortfolioDocumentAdapterTest,WorkspacePortfolioDocumentMonitorTest,PortfolioGitPublicationRaceTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioGitServiceTest,PortfolioDecisionGitRoundtripTest,PortfolioApiContractTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest,PortfolioControllerDelegationContractTest,PortfolioGitRequestContractTest,PortfolioRepresentationsContractTest,PortfolioReviewMutationContractTest,PortfolioJsonCodecBoundaryTest,DocumentAnalysisServiceTest,ProductCatalogPolicyContractTest,SolutionCatalogPolicyContractTest,PortfolioDecisionImportBoundaryTest,PortfolioReportServiceTest -Dsurefire.failIfNoSpecifiedTests=false test > target/628-green.log 2>&1 || { tail -180 target/628-green.log; exit 1; }
+          ./mvnw -B -ntp -Dtest=WorkspacePortfolioVersionBoundaryTest,WorkspacePortfolioDocumentAdapterTest,WorkspacePortfolioDocumentMonitorTest,PortfolioGitPublicationRaceTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioGitServiceTest,PortfolioDecisionGitRoundtripTest,PortfolioApiContractTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest,PortfolioControllerDelegationContractTest,PortfolioGitRequestContractTest,PortfolioRepresentationsContractTest,PortfolioReviewMutationContractTest,PortfolioJsonCodecBoundaryTest,DocumentAnalysisServiceTest,ProductCatalogPolicyContractTest,SolutionCatalogPolicyContractTest,PortfolioDecisionImportBoundaryTest,PortfolioReportServiceTest,PortfolioImportRoutingContractTest -Dsurefire.failIfNoSpecifiedTests=false test > target/628-green.log 2>&1 || { tail -180 target/628-green.log; exit 1; }
           tail -25 target/628-green.log
       - name: Aggregate focused coverage evidence
         run: |
