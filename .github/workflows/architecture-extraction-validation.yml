@@ -14,87 +14,20 @@ jobs:
         with:
           ref: b9e66644bd17dd370cfb4860245137088601631f
           persist-credentials: false
-          fetch-depth: 0
+          fetch-depth: 1
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Fetch pinned extraction script
+      - name: Verify exact architecture extraction from a clean build
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           python3 - <<'PY'
-          import urllib.request, json, base64, pathlib, hashlib
-          sha='85c0c8be7d0e9df24e85d3f433fa5bde9564a7c9'
-          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+__import__('os').environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          import urllib.request, json, base64, pathlib, hashlib, os, subprocess
+          sha='8470b8d317d9b8bee731581f5ec59239b507dc74'
+          request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
           with urllib.request.urlopen(request,timeout=60) as response: data=base64.b64decode(json.load(response)['content'])
           assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
-          pathlib.Path('/tmp/extract-architecture.py').write_bytes(data)
-          PY
-      - name: Prove missing module fails the new regression
-        run: python3 /tmp/extract-architecture.py red
-      - name: Apply history-preserving architecture moves and metadata seam
-        run: python3 /tmp/extract-architecture.py apply
-      - name: Verify isolated architecture library tests
-        run: |
-          set -euo pipefail
-          selectors=$(python3 - <<'PY'
-          import pathlib
-          print(','.join(sorted(p.stem for p in pathlib.Path('taxonomy-architecture/src/test/java').rglob('*Test.java'))))
-          PY
-          )
-          ./mvnw -B -ntp -pl taxonomy-architecture -am -Dtest="$selectors" -Dsurefire.failIfNoSpecifiedTests=false test > target/architecture-library-tests.log 2>&1 || { tail -120 target/architecture-library-tests.log; exit 1; }
-          tail -25 target/architecture-library-tests.log
-      - name: Package complete executable reactor
-        run: |
-          set -euo pipefail
-          ./mvnw -B -ntp -DskipTests package > target/architecture-package.log 2>&1 || { tail -120 target/architecture-package.log; exit 1; }
-          tail -25 target/architecture-package.log
-      - name: Verify report compatibility, boundaries and executable packaging
-        run: |
-          set -euo pipefail
-          ./mvnw -B -ntp -Dtest=ArchitectureDerivationModuleTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest,PreferenceArchitectureReportMetadataTest,ArchitectureReportTests,ArchitectureAnalysisTests,ArchitectureViewTests,ArchitectureIntelligenceTests,DecisionRationaleReportTests,DerivedMetadataAndSummaryTests,GraphQueryTests,ArchitectureModulePackagingIT -Dsurefire.failIfNoSpecifiedTests=false test > target/architecture-compatibility-tests.log 2>&1 || { tail -150 target/architecture-compatibility-tests.log; exit 1; }
-          tail -30 target/architecture-compatibility-tests.log
-      - name: Store verified tree without publishing any commit or branch
-        env: {GH_TOKEN: '${{ github.token }}'}
-        run: |
-          python3 - <<'PY'
-          import base64,json,os,pathlib,subprocess,urllib.request,xml.etree.ElementTree as ET
-          api='https://api.github.com/repos/carstenartur/Taxonomy'
-          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
-          def post(path,body):
-              with urllib.request.urlopen(urllib.request.Request(api+path,data=json.dumps(body).encode(),headers=headers),timeout=120) as r: return json.load(r)
-          subprocess.run(['git','diff','--cached','--check'],check=True)
-          expected=subprocess.check_output(['git','write-tree'],text=True).strip()
-          original={}
-          for raw in subprocess.check_output(['git','ls-tree','-rz','HEAD']).split(b'\0'):
-              if raw:
-                  meta,path=raw.split(b'\t',1); mode,kind,sha=meta.decode().split(); original[path.decode()]=(mode,sha)
-          current={}
-          for raw in subprocess.check_output(['git','ls-files','-sz']).split(b'\0'):
-              if raw:
-                  meta,path=raw.split(b'\t',1); mode,sha,stage=meta.decode().split(); assert stage=='0'; current[path.decode()]=(mode,sha)
-          known={sha for mode,sha in original.values()}; changes=[]; workflows={}
-          for path in sorted(original.keys()|current.keys()):
-              if original.get(path)==current.get(path): continue
-              if path not in current:
-                  changes.append({'path':path,'mode':original[path][0],'type':'blob','sha':None}); continue
-              mode,sha=current[path]; entry={'path':path,'mode':mode,'type':'blob'}
-              if path.startswith('.github/workflows/'):
-                  blob=post('/git/blobs',{'encoding':'utf-8','content':pathlib.Path(path).read_text()}); assert blob['sha']==sha; workflows[path]=sha; continue
-              if sha in known: entry['sha']=sha
-              else: entry['content']=pathlib.Path(path).read_text()
-              changes.append(entry)
-          base_tree=subprocess.check_output(['git','rev-parse','HEAD^{tree}'],text=True).strip()
-          tree=post('/git/trees',{'base_tree':base_tree,'tree':changes})['sha']
-          if not workflows: assert tree==expected,(tree,expected)
-          suites=[]
-          for path in pathlib.Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
-              report=ET.parse(path).getroot(); suites.append({'file':str(path),'tests':int(report.get('tests',0)),'failures':int(report.get('failures',0)),'errors':int(report.get('errors',0)),'skipped':int(report.get('skipped',0))})
-          summary=json.loads(pathlib.Path('target/architecture-extraction-summary.json').read_text())
-          summary.update(testedTree=expected,storedTree=tree,workflowBlobs=workflows,tests=suites)
-          pathlib.Path('target/architecture-verified-tree.json').write_text(json.dumps(summary,indent=2)+'\n')
-          pathlib.Path('target/architecture-change.patch').write_bytes(subprocess.check_output(['git','diff','--cached','--binary']))
-          print('VERIFIED_TREE',json.dumps({k:v for k,v in summary.items() if k!='tests'}))
-          print('TEST_TOTALS',json.dumps({key:sum(s[key] for s in suites) for key in ('tests','failures','errors','skipped')}))
-          print('No commit, branch, PR or main update was made by this job.')
+          path=pathlib.Path('/tmp/architecture-validation.py'); path.write_bytes(data)
+          subprocess.run(['python3',str(path)],check=True)
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
