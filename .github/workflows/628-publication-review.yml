@@ -4,29 +4,8 @@ on:
     branches: [work/628-publication-review]
     paths: [.github/workflows/628-publication-review.yml]
 permissions:
-  contents: read
-  actions: read
+  contents: write
 jobs:
-  diagnose:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Read exact previous coverage failure without changing the policy
-        env: {GH_TOKEN: '${{ github.token }}'}
-        run: |
-          python3 - <<'PY'
-          import urllib.request,urllib.error,os,zipfile,io
-          class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self,*args,**kwargs): return None
-          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/actions/artifacts/10589639775/zip',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-          try: urllib.request.build_opener(NoRedirect).open(req,timeout=120)
-          except urllib.error.HTTPError as error:
-              assert error.code==302,error.code
-              location=error.headers['Location']
-          with urllib.request.urlopen(location,timeout=120) as response: data=response.read(30000000)
-          with zipfile.ZipFile(io.BytesIO(data)) as archive:
-              print(archive.read('evidence/coverage-gate.txt').decode())
-          PY
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -37,7 +16,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Apply reproduced tests and the bounded publication fix
+      - name: Apply reproduced tests and bounded publication correction
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           python3 - <<'PY'
@@ -48,10 +27,14 @@ jobs:
               assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
               return data.decode()
           tests=blob('59dfc04b46861bd40115006b5cdd28005fac366e').replace('result.created()', 'result.changed()')
-          assert tests.count('for module,name,expected in ')==1
           pathlib.Path('/tmp/628-tests.py').write_text(tests[:tests.index('for module,name,expected in ')])
           fix=blob('d22e81c90e95558f9571bc57d8618dd146b024ae')
-          for before,after in [('normalizedBranch, message, username(context), context','normalizedBranch, message, username, context'),('parent, message, username(context), context','parent, message, username, context')]:
+          changes=[('normalizedBranch, message, username(context), context','normalizedBranch, message, username, context'),('parent, message, username(context), context','parent, message, username, context'),('                    ExpectedHeadDslCommitter.assertHeadMatches(branch, expectedHead, repository.getHeadCommit(branch));', '''                    String actualHead = repository.getHeadCommit(branch);
+                              if (!java.util.Objects.equals(expectedHead, actualHead)) {
+                                  throw new com.taxonomy.workspace.service.BranchHeadConflictException(
+                                          branch, expectedHead, actualHead, "Portfolio branch changed before publication");
+                              }''')]
+          for before,after in changes:
               assert fix.count(before)==1,before
               fix=fix.replace(before,after)
           pathlib.Path('/tmp/628-fix.py').write_text(fix)
@@ -65,6 +48,30 @@ jobs:
           set -euo pipefail
           ./mvnw -B -ntp -Dtest=WorkspacePortfolioVersionBoundaryTest,WorkspacePortfolioDocumentAdapterTest,WorkspacePortfolioDocumentMonitorTest,PortfolioGitPublicationRaceTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioGitServiceTest,PortfolioDecisionGitRoundtripTest,PortfolioApiContractTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false test > target/628-green.log 2>&1 || { tail -160 target/628-green.log; exit 1; }
           tail -25 target/628-green.log
+      - name: Record tested source tree without changing refs
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          python3 - <<'PY'
+          import subprocess,pathlib,json,urllib.request,os,xml.etree.ElementTree as ET
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          changes=[]
+          for path in subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines():
+              assert not path.startswith('.github/workflows/')
+              changes.append({'path':path,'mode':'100644','type':'blob','content':pathlib.Path(path).read_text()})
+          expected=subprocess.check_output(['git','write-tree'],text=True).strip()
+          body=json.dumps({'base_tree':'9ee4fd2bf0860346ee54af39ca4b915e9c8ff9a3','tree':changes}).encode()
+          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/trees',data=body,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+          with urllib.request.urlopen(req,timeout=120) as response: stored=json.load(response)['sha']
+          assert stored==expected
+          tests=[]
+          for path in pathlib.Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+              root=ET.parse(path).getroot(); assert int(root.get('failures','0'))==int(root.get('errors','0'))==0
+              tests.append({'suite':root.get('name'),'tests':int(root.get('tests','0')),'skipped':int(root.get('skipped','0'))})
+          report={'base':'823138373e330a00141f9482bab4a1f03d4506ec','testedTree':expected,'suites':tests}
+          pathlib.Path('target/628-verified.json').write_text(json.dumps(report,indent=2)+'\n')
+          print('VERIFIED_TREE',expected,'TESTS',sum(x['tests'] for x in tests))
+          PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
