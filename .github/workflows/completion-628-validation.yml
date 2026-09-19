@@ -16,12 +16,17 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Extract and verify final feature libraries and persistence ports
+      - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: ~/.m2/repository
+          key: completion-dependencies-f272-${{ github.run_id }}
+          restore-keys: completion-dependencies-f272-
+      - name: Verify final feature libraries, ports and executable packaging
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           python3 - <<'PY'
           import urllib.request,json,base64,hashlib,pathlib,os,subprocess
-          sha='d645596fe40580c12f24be39edf4404b32111e3f'
+          sha='f276745a3878e227c8113d647dfb4d743f531d9a'
           req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
           with urllib.request.urlopen(req,timeout=120) as response: data=base64.b64decode(json.load(response)['content'])
           assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
@@ -29,6 +34,11 @@ jobs:
           path=pathlib.Path('/tmp/completion-bootstrap.py');path.write_bytes(data)
           subprocess.run(['python3',str(path)],check=True)
           PY
+      - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        if: always()
+        with:
+          path: ~/.m2/repository
+          key: completion-dependencies-f272-${{ github.run_id }}
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
