@@ -4,25 +4,69 @@ on:
     branches: [work/628-knowledge-source-snapshot]
     paths: [.github/workflows/knowledge-source-snapshot.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
   snapshot:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: f29cd18dfc356eb9c184abfc9e02ed0c9377ceb8
           persist-credentials: false
-      - name: Archive exact tracked source only
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Verify test-only patch and store exact Git tree without changing refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          mkdir snapshot
-          git archive --format=tar.gz HEAD > snapshot/source.tar.gz
-          git rev-parse HEAD > snapshot/source-commit.txt
-          sha256sum snapshot/source.tar.gz > snapshot/SHA256SUMS
+          set -euo pipefail
+          python3 - <<'PY'
+          import base64, hashlib, json, lzma, os, pathlib, subprocess, urllib.request
+          api = 'https://api.github.com/repos/carstenartur/Taxonomy'
+          headers = {'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', 'Content-Type': 'application/json'}
+          def request(path, body=None):
+              req = urllib.request.Request(api + path, data=None if body is None else json.dumps(body).encode(), headers=headers)
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  return json.load(response)
+          data = request('/git/blobs/77f00f9efa8f32345d283140f481ae3d4488375b')
+          compressed = base64.b64decode(data['content'])
+          assert hashlib.sha256(compressed).hexdigest() == 'fc87c16dc122dcddc8741b5d77fb21254ca32936899dec16edaf92cca1be0685'
+          subprocess.run(['git', 'apply', '--index', '-'], input=lzma.decompress(compressed), check=True)
+          subprocess.run(['git', 'diff', '--cached', '--check'], check=True)
+          expected = '0f4ff169aff768a3c5d08984918410ed0b483c4a'
+          assert subprocess.check_output(['git', 'write-tree'], text=True).strip() == expected
+          paths = subprocess.check_output(['git', 'diff', '--cached', '--name-only', '-z']).decode().strip('\0').split('\0')
+          assert len(paths) == 9, paths
+          assert all(p.startswith(('taxonomy-knowledge/src/test/', 'taxonomy-app/src/test/')) or p == 'docs/dev/07-extension-points.md' for p in paths), paths
+          entries = [{'path': p, 'mode': '100644', 'type': 'blob', 'content': pathlib.Path(p).read_bytes().decode('utf-8')} for p in paths]
+          tree = request('/git/trees', {'base_tree': 'c116b42fd796ccf96f1526c2b05a79cbfd8bae3c', 'tree': entries})
+          assert tree['sha'] == expected, tree['sha']
+          pathlib.Path('target').mkdir(exist_ok=True)
+          manifest = {'base_commit': 'f29cd18dfc356eb9c184abfc9e02ed0c9377ceb8', 'verified_tree': expected, 'changed_paths': paths, 'production_and_policy_changes': False}
+          pathlib.Path('target/coverage-fix-tree.json').write_text(json.dumps(manifest, indent=2) + '\n')
+          print(json.dumps(manifest, indent=2))
+          print('Only unreferenced Git objects stored. No commit, branch, ref or PR changed by this job.')
+          PY
+      - name: Run all Knowledge unit tests and application importer regressions
+        shell: bash
+        run: |
+          set -euo pipefail
+          tests=$(python3 - <<'PY'
+          from pathlib import Path
+          tests = sorted(p.stem for p in Path('taxonomy-knowledge/src/test/java').rglob('*.java') if p.stem.endswith(('Test', 'Tests')))
+          print(','.join(tests + ['FrameworkImportServiceTest']))
+          PY
+          )
+          ./mvnw -B -ntp -pl taxonomy-app -am "-Dtest=$tests" -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee target/coverage-regression-tests.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
-          name: knowledge-1081-source
-          path: snapshot/*
+          name: knowledge-1081-coverage-evidence
+          path: |
+            target/coverage-fix-tree.json
+            target/coverage-regression-tests.log
+            **/target/surefire-reports/TEST-*.xml
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
