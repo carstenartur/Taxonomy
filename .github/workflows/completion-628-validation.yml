@@ -1,0 +1,62 @@
+name: Final module extraction validation
+on:
+  push:
+    branches: [work/628-completion-verify]
+    paths: [.github/workflows/completion-628-validation.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: f2722c61ebe0cfb828b0a43d3ce5efed7634c326
+          persist-credentials: false
+      - name: Inspect remaining ownership seams
+        run: |
+          python3 - <<'PY'
+          import pathlib,re,json,subprocess,collections
+          P=pathlib.Path
+          tracked=subprocess.check_output(['git','ls-files'],text=True).splitlines()
+          for name in tracked:
+              if P(name).name=='AGENTS.md': print('INSTRUCTIONS',name,P(name).read_text())
+          owners={}; texts={}
+          for name in tracked:
+              if '/src/main/java/' not in name or not name.endswith('.java'): continue
+              text=P(name).read_text(); package=re.search(r'^package\s+([\w.]+);',text,re.M)
+              if package: owners[package[1]+'.'+P(name).stem]=name; texts[name]=text
+          for context in ('analysis','portfolio'):
+              print('\n=== REMAINING APP DEPENDENCIES',context,'===')
+              for fqn,name in owners.items():
+                  if not fqn.startswith('com.taxonomy.'+context+'.'):continue
+                  dependencies=[]
+                  for imp in re.findall(r'^import\s+(?:static\s+)?(com\.taxonomy\.[\w.]+)(?:\.\*)?;',texts[name],re.M):
+                      key=imp
+                      while key not in owners and '.' in key: key=key.rsplit('.',1)[0]
+                      target=owners.get(key,'')
+                      if target.startswith('taxonomy-app/') and not imp.startswith('com.taxonomy.'+context+'.'):
+                          dependencies.append(imp)
+                  if dependencies: print(fqn, json.dumps(dependencies))
+              print('TESTS')
+              for name in tracked:
+                  if '/src/test/java/com/taxonomy/'+context+'/' in name and name.endswith('.java'):
+                      text=P(name).read_text(); imports=re.findall(r'^import\s+(?:static\s+)?(com\.taxonomy\.[\w.]+)(?:\.\*)?;',text,re.M)
+                      app=[]
+                      for imp in imports:
+                          key=imp
+                          while key not in owners and '.' in key:key=key.rsplit('.',1)[0]
+                          if owners.get(key,'').startswith('taxonomy-app/') and not imp.startswith('com.taxonomy.'+context+'.'):app.append(imp)
+                      spring=any(s in text for s in ('@SpringBootTest','@WebMvcTest','@DataJpaTest','AbstractDatabase','TaxonomyApplication'))
+                      print(name,'SPRING='+str(spring),'APP='+json.dumps(app))
+          print('\n=== OTHER APP CLASS COUNTS ===')
+          counts=collections.Counter('.'.join(f.split('.')[:3]) for f,p in owners.items() if p.startswith('taxonomy-app/'))
+          print(json.dumps(counts,indent=2))
+          print('\n=== CRITICAL HELPERS ===')
+          for fqn,name in owners.items():
+              if fqn.endswith(('.PromptTemplateService','.LogRingBufferService','.PreferencesService','.LlmProviderConfig','.AiTargetCatalogService')):
+                  text=texts[name]; print(name); print('\n'.join(line for line in text.splitlines() if 'import com.taxonomy.' in line or re.search(r'\b(public|protected)\b.*\(',line)))
+          print('\n=== CURRENT EXCEPTIONS ===')
+          print(P('.github/architecture-exceptions.json').read_text())
+          PY
