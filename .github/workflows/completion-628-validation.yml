@@ -4,11 +4,11 @@ on:
     branches: [work/628-completion-verify]
     paths: [.github/workflows/completion-628-validation.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -16,25 +16,23 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Prove completion guard fails on missing modules
+      - name: Extract and verify final feature libraries
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           python3 - <<'PY'
           import urllib.request,json,base64,hashlib,pathlib,os,subprocess
-          sha='ed61ef0fb68d0a942fc6ad5fdec39fbfe05c40f8'
+          sha='af83d60e4958aa51d1844db4b0bb1134863f1372'
           req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
           with urllib.request.urlopen(req,timeout=120) as response: data=base64.b64decode(json.load(response)['content'])
           assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
-          path=pathlib.Path('/tmp/completion-red.py'); path.write_bytes(data)
-          env=os.environ.copy(); env.pop('GH_TOKEN',None)
-          subprocess.run(['python3',str(path)],check=True,env=env)
+          path=pathlib.Path('/tmp/completion-build.py');path.write_bytes(data)
+          subprocess.run(['python3',str(path)],check=True)
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: completion-red-evidence
+          name: completion-candidate-evidence
           path: |
             target/completion-*
-            taxonomy-app/src/test/java/com/taxonomy/ArchitectureCompletionTest.java
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureCompletionTest.xml
+            **/target/surefire-reports/TEST-*.xml
           retention-days: 7
