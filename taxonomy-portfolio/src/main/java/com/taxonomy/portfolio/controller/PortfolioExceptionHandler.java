@@ -1,6 +1,7 @@
 package com.taxonomy.portfolio.controller;
 
 import com.taxonomy.portfolio.service.PortfolioException;
+import org.springframework.core.annotation.Order;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
@@ -11,8 +12,13 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 import java.net.URI;
 
-/** RFC 9457 responses for the project portfolio API. */
+/**
+ * RFC 9457 responses for the project portfolio API.
+ * Explicit precedence keeps these typed responses ahead of the application's
+ * catch-all handler, independently of classpath and module discovery order.
+ */
 @RestControllerAdvice(basePackages = "com.taxonomy.portfolio")
+@Order(0)
 public class PortfolioExceptionHandler {
 
     @ExceptionHandler(PortfolioException.class)
