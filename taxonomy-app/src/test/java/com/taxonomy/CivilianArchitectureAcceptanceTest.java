@@ -65,7 +65,15 @@ class CivilianArchitectureAcceptanceTest {
             String operationPath = "/api/projects/" + projectId + "/copilot-operations/" + run.operationId();
             long deadline = System.nanoTime() + Duration.ofMinutes(2).toNanos();
             do {
-                operation = get(operationPath);
+                // Real status clients race with the background finalizer. Every reader
+                // must succeed; retrying a 500 here would hide a persistence defect.
+                var readers = java.util.stream.IntStream.range(0, 3).mapToObj(index ->
+                        java.util.concurrent.CompletableFuture.supplyAsync(() -> {
+                            try { return get(operationPath); }
+                            catch (Exception failure) { throw new java.util.concurrent.CompletionException(failure); }
+                        })).toList();
+                operation = null;
+                for (var reader : readers) operation = reader.join();
                 if (Set.of("SUCCESS", "PARTIAL", "FAILED", "CANCELLED").contains(operation.path("status").asText())) break;
                 Thread.sleep(200);
             } while (System.nanoTime() < deadline);

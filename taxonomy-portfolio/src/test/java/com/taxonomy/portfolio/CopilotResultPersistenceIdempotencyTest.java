@@ -37,7 +37,7 @@ class CopilotResultPersistenceIdempotencyTest {
         RequirementAnalysisSnapshot snapshot =
                 org.mockito.Mockito.mock(RequirementAnalysisSnapshot.class);
         String scopeKey = PortfolioScope.key(context.username(), context);
-        when(requirementRepository.findByIdAndProjectIdAndScopeKey(
+        when(requirementRepository.findByIdAndProjectIdAndScopeKeyForUpdate(
                 7L, 41L, scopeKey)).thenReturn(Optional.of(requirement));
         when(snapshotRepository.findByIdAndProjectIdAndScopeKey(
                 "snapshot-1", 41L, scopeKey)).thenReturn(Optional.of(snapshot));

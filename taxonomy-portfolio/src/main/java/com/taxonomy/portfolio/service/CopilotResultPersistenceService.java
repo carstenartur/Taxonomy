@@ -33,8 +33,10 @@ public class CopilotResultPersistenceService {
             String username,
             WorkspaceContext context) {
         String scopeKey = PortfolioScope.key(username, context);
+        // The coordinator and any status readers can finalize the same operation.
+        // Serialize the version check and pointer update across transactions/nodes.
         ProjectRequirement requirement = requirementRepository
-                .findByIdAndProjectIdAndScopeKey(requirementId, projectId, scopeKey)
+                .findByIdAndProjectIdAndScopeKeyForUpdate(requirementId, projectId, scopeKey)
                 .orElseThrow(() -> PortfolioException.notFound(
                         "Requirement " + requirementId + " was not found in project " + projectId));
         RequirementAnalysisSnapshot snapshot = snapshotRepository

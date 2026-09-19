@@ -200,8 +200,23 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         for (var button : buttons.entrySet()) {
             Set<String> beforeDownload = downloadedFiles();
             click(By.id(button.getKey()));
-            String name = wait.until(browser -> downloadedFiles().stream()
-                    .filter(file -> !beforeDownload.contains(file)).findFirst().orElse(null));
+            String name;
+            try {
+                name = wait.withMessage("Actual download from " + button.getKey()).until(browser -> downloadedFiles().stream()
+                        .filter(file -> !beforeDownload.contains(file)).findFirst().orElse(null));
+            } catch (TimeoutException failure) {
+                Files.writeString(output.resolve("download-failure.json"), new ObjectMapper().writeValueAsString(Map.of(
+                        "button", button.getKey(), "url", driver.getCurrentUrl(),
+                        "managedDownloads", containerBrowser == null ? List.of() : driver.getDownloadedFiles())));
+                driver.get("chrome://downloads/");
+                wait.until(browser -> Boolean.TRUE.equals(driver.executeScript(
+                        "return !!document.querySelector('downloads-manager')?.shadowRoot")));
+                Files.writeString(output.resolve("download-manager.json"), String.valueOf(driver.executeScript("""
+                        const manager = document.querySelector('downloads-manager');
+                        return JSON.stringify(manager.shadowRoot.querySelector('#downloadsList')?.items || manager.items_ || []);
+                        """)));
+                throw failure;
+            }
             if (containerBrowser != null) driver.downloadFile(name, downloads);
             byte[] bytes = Files.readAllBytes(downloads.resolve(name));
             assertThat(bytes).as("Browser download %s", name).isNotEmpty();
