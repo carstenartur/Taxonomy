@@ -7,6 +7,26 @@ permissions:
   contents: read
   actions: read
 jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read exact previous coverage failure without changing the policy
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          python3 - <<'PY'
+          import urllib.request,urllib.error,os,zipfile,io
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self,*args,**kwargs): return None
+          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/actions/artifacts/10589639775/zip',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          try: urllib.request.build_opener(NoRedirect).open(req,timeout=120)
+          except urllib.error.HTTPError as error:
+              assert error.code==302,error.code
+              location=error.headers['Location']
+          with urllib.request.urlopen(location,timeout=120) as response: data=response.read(30000000)
+          with zipfile.ZipFile(io.BytesIO(data)) as archive:
+              print(archive.read('evidence/coverage-gate.txt').decode())
+          PY
   verify:
     runs-on: ubuntu-latest
     timeout-minutes: 25
@@ -17,33 +37,7 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Inspect previous canonical core diagnostics
-        env: {GH_TOKEN: '${{ github.token }}'}
-        run: |
-          python3 - <<'PY'
-          import urllib.request,urllib.error,os,zipfile,io,xml.etree.ElementTree as ET,pathlib
-          class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self,*args,**kwargs): return None
-          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/actions/artifacts/10589639775/zip',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-          try: urllib.request.build_opener(NoRedirect).open(req,timeout=120)
-          except urllib.error.HTTPError as error:
-              assert error.code==302,error.code
-              location=error.headers['Location']
-          with urllib.request.urlopen(location,timeout=120) as response: data=response.read(30000000)
-          with zipfile.ZipFile(io.BytesIO(data)) as archive:
-              print('DIAGNOSTIC_ENTRIES',archive.namelist())
-              for name in archive.namelist():
-                  if name.endswith('.xml') and 'TEST-' in name:
-                      root=ET.fromstring(archive.read(name))
-                      for case in root.iter('testcase'):
-                          for tag in ('failure','error'):
-                              for failure in case.findall(tag): print('FAILED_TEST',name,case.get('name'),failure.get('message'),(failure.text or '')[:7000])
-                  elif name.endswith(('.log','.txt','.json')):
-                      text=archive.read(name).decode('utf-8','replace')
-                      lines=[line for line in text.splitlines() if any(marker in line.lower() for marker in ('[error]','coverage gate','coverage policy','below minimum','threshold','violation'))]
-                      if lines: print('DIAGNOSTIC',name,'\n'.join(lines[-60:])[:18000])
-          PY
-      - name: Apply the exact reproduced regression tests and bounded fix
+      - name: Apply reproduced tests and the bounded publication fix
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           python3 - <<'PY'
@@ -55,9 +49,12 @@ jobs:
               return data.decode()
           tests=blob('59dfc04b46861bd40115006b5cdd28005fac366e').replace('result.created()', 'result.changed()')
           assert tests.count('for module,name,expected in ')==1
-          tests=tests[:tests.index('for module,name,expected in ')]
-          pathlib.Path('/tmp/628-tests.py').write_text(tests)
-          pathlib.Path('/tmp/628-fix.py').write_text(blob('d22e81c90e95558f9571bc57d8618dd146b024ae'))
+          pathlib.Path('/tmp/628-tests.py').write_text(tests[:tests.index('for module,name,expected in ')])
+          fix=blob('d22e81c90e95558f9571bc57d8618dd146b024ae')
+          for before,after in [('normalizedBranch, message, username(context), context','normalizedBranch, message, username, context'),('parent, message, username(context), context','parent, message, username, context')]:
+              assert fix.count(before)==1,before
+              fix=fix.replace(before,after)
+          pathlib.Path('/tmp/628-fix.py').write_text(fix)
           env=os.environ.copy();env.pop('GH_TOKEN',None)
           subprocess.run(['python3','/tmp/628-tests.py'],env=env,check=True)
           subprocess.run(['python3','/tmp/628-fix.py'],env=env,check=True)
@@ -66,7 +63,7 @@ jobs:
       - name: Verify publication regressions and existing contracts
         run: |
           set -euo pipefail
-          ./mvnw -B -ntp -Dtest=WorkspacePortfolioVersionBoundaryTest,WorkspacePortfolioDocumentAdapterTest,WorkspacePortfolioDocumentMonitorTest,PortfolioGitPublicationRaceTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioGitServiceTest,PortfolioGitDecisionRoundTripTest,PortfolioApiContractTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false test > target/628-green.log 2>&1 || { tail -130 target/628-green.log; exit 1; }
+          ./mvnw -B -ntp -Dtest=WorkspacePortfolioVersionBoundaryTest,WorkspacePortfolioDocumentAdapterTest,WorkspacePortfolioDocumentMonitorTest,PortfolioGitPublicationRaceTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioGitServiceTest,PortfolioDecisionGitRoundtripTest,PortfolioApiContractTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false test > target/628-green.log 2>&1 || { tail -160 target/628-green.log; exit 1; }
           tail -25 target/628-green.log
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
