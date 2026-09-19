@@ -17,7 +17,7 @@ jobs:
           fetch-depth: 1
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Verify exact architecture extraction from a clean build
+      - name: Verify exact architecture extraction and composition boundaries
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           python3 - <<'PY'
@@ -26,7 +26,14 @@ jobs:
           request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
           with urllib.request.urlopen(request,timeout=60) as response: data=base64.b64decode(json.load(response)['content'])
           assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
-          path=pathlib.Path('/tmp/architecture-validation.py'); path.write_bytes(data)
+          text=data.decode()
+          anchor="subprocess.run(['python3',complete],check=True)\n"
+          assert text.count(anchor)==1
+          text=text.replace(anchor, anchor + "subprocess.run(['python3',script('architecture-selectors.py','b144ad4c50f22f30a8753acb5b61b2d444b68379')],check=True)\nsubprocess.run(['python3',script('architecture-report-composition.py','8c6673d7f2ad0a5920cb0cd0eccf78926992fc53')],check=True)\n")
+          anchor="compatibility = ['ArchitectureDerivationModuleTest'"
+          assert text.count(anchor)==1
+          text=text.replace(anchor,"compatibility = ['ReportApiControllerCompositionTest','ArchitectureDerivationModuleTest'")
+          path=pathlib.Path('/tmp/architecture-validation.py'); path.write_text(text)
           subprocess.run(['python3',str(path)],check=True)
           PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
