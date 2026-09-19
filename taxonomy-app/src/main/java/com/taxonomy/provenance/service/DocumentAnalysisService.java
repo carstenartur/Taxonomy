@@ -5,7 +5,7 @@ import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiExtractedCandidate;
 import com.taxonomy.dto.RegulationArchitectureMatch;
-import com.taxonomy.shared.service.PromptTemplateService;
+import com.taxonomy.analysis.service.PromptTemplateService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

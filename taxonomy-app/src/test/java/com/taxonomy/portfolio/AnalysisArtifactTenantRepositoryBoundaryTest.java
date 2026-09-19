@@ -43,7 +43,7 @@ class AnalysisArtifactTenantRepositoryBoundaryTest {
     @Test
     void migratedAnalysisServicesUseOnlyExactTenantRepositoryMethods() throws IOException {
         Path serviceDirectory = repositoryRoot().resolve(
-                "taxonomy-app/src/main/java/com/taxonomy/portfolio/service");
+                "taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/service");
         for (String service : MIGRATED_SERVICES) {
             String source = Files.readString(
                     serviceDirectory.resolve(service), StandardCharsets.UTF_8);
@@ -58,7 +58,7 @@ class AnalysisArtifactTenantRepositoryBoundaryTest {
     @Test
     void gitProjectionLoadsCurrentMappingsInsideTheExactTenant() throws IOException {
         String source = Files.readString(repositoryRoot().resolve(
-                        "taxonomy-app/src/main/java/com/taxonomy/portfolio/service/"
+                        "taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/service/"
                                 + "PortfolioGitService.java"),
                 StandardCharsets.UTF_8);
 

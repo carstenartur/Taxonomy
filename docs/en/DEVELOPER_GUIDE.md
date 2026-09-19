@@ -185,7 +185,7 @@ The main Spring Boot application:
 | Change the DSL grammar | `taxonomy-dsl/.../parser/TaxDslParser.java` |
 | Add a DSL validation rule | `taxonomy-dsl/.../validation/DslValidator.java` |
 | Change the UI | `taxonomy-app/src/main/resources/templates/index.html` + `static/js/` |
-| Add a new LLM prompt | `taxonomy-app/src/main/resources/prompts/` — create `XX.txt` |
+| Add a new LLM prompt | `taxonomy-analysis/src/main/resources/prompts/` — create `XX.txt` |
 | Change configuration | `taxonomy-app/src/main/resources/application.properties` |
 
 ---

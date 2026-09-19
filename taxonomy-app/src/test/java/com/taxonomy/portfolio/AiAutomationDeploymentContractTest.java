@@ -14,9 +14,9 @@ class AiAutomationDeploymentContractTest {
     void applicationEnvAndHelmDefaultsRemainFailClosed() throws Exception {
         Path root = repositoryRoot();
         String defaults = read(root,
-                "taxonomy-app/src/main/resources/ai-automation-defaults.properties");
+                "taxonomy-portfolio/src/main/resources/ai-automation-defaults.properties");
         String configuration = read(root,
-                "taxonomy-app/src/main/java/com/taxonomy/portfolio/config/"
+                "taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/config/"
                         + "AiAutomationDefaultsConfiguration.java");
         String environment = read(root, ".env.example");
         String helm = read(root, "deploy/helm/taxonomy/values.yaml");
@@ -50,7 +50,7 @@ class AiAutomationDeploymentContractTest {
             throws Exception {
         Path root = repositoryRoot();
         String controller = read(root,
-                "taxonomy-app/src/main/java/com/taxonomy/portfolio/controller/"
+                "taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/controller/"
                         + "ProjectAutopilotController.java");
         String english = read(root, "docs/en/COPILOT_AUTOPILOT.md");
         String german = read(root, "docs/de/COPILOT_AUTOPILOT.md");

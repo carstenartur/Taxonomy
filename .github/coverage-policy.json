@@ -25,6 +25,8 @@
     "taxonomy-templates",
     "taxonomy-interop",
     "taxonomy-knowledge",
-    "taxonomy-architecture"
+    "taxonomy-architecture",
+    "taxonomy-analysis",
+    "taxonomy-portfolio"
   ]
 }

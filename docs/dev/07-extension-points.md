@@ -63,16 +63,16 @@ implemented by
 **Interface / registry / configuration point**
 
 - `taxonomy-extension-api/src/main/java/com/taxonomy/analysis/service/LlmProviderExtension.java`
-- `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProviderExtensionRegistry.java`
-- `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmGatewayRegistry.java`
-- `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProviderConfig.java`
+- `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmProviderExtensionRegistry.java`
+- `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmGatewayRegistry.java`
+- `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmProviderConfig.java`
 
 `LlmProviderExtension` describes provider metadata; `LlmGatewayRegistry`
 provides the HTTP gateway used by `LlmService`.
 
 **Required files**
 
-- `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProvider.java`
+- `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmProvider.java`
 - new Spring `@Component` implementing `LlmProviderExtension`
 - gateway registration in `LlmGatewayRegistry`
 - API-key or model wiring in `LlmProviderConfig`
@@ -83,13 +83,13 @@ provides the HTTP gateway used by `LlmService`.
 
 - provider-specific gateway class if `OpenAiCompatibleGateway` is not enough
 - `LlmResponseParser` only if the response JSON shape differs
-- prompt files under `taxonomy-app/src/main/resources/prompts/` only if the
+- prompt files under `taxonomy-analysis/src/main/resources/prompts/` only if the
   provider needs different prompt structure
 
 **Required tests**
 
-- `taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmProviderExtensionRegistryTest.java`
-- `taxonomy-app/src/test/java/com/taxonomy/analysis/service/LlmGatewayRegistryTest.java`
+- `taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/LlmProviderExtensionRegistryTest.java`
+- `taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/LlmGatewayRegistryTest.java`
 - provider-specific gateway test if custom HTTP behavior is added
 
 **Documentation updates**
@@ -114,15 +114,15 @@ provides the HTTP gateway used by `LlmService`.
 
 **Interface / registry / configuration point**
 
-- `taxonomy-app/src/main/java/com/taxonomy/shared/service/PromptTemplateService.java`
-- `taxonomy-app/src/main/resources/prompts/*.txt`
+- `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/PromptTemplateService.java`
+- `taxonomy-analysis/src/main/resources/prompts/*.txt`
 
 There is no prompt-template registry. The stable anchor is the combination of
 `PromptTemplateService` and filename-based lookup.
 
 **Required files**
 
-- new or updated `.txt` file in `taxonomy-app/src/main/resources/prompts/`
+- new or updated `.txt` file in `taxonomy-analysis/src/main/resources/prompts/`
 
 **Optional files**
 

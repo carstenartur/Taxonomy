@@ -9,7 +9,7 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface TaxonomyNodeRepository extends JpaRepository<TaxonomyNode, Long> {
+public interface TaxonomyNodeRepository extends JpaRepository<TaxonomyNode, Long> , com.taxonomy.catalog.api.TaxonomyNodeLookup {
 
     Optional<TaxonomyNode> findByCode(String code);
 

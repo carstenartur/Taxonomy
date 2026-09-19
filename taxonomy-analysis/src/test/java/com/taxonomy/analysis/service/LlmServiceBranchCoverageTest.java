@@ -1,0 +1,639 @@
+package com.taxonomy.analysis.service;
+
+import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.catalog.service.CatalogueOverlayService;
+import com.taxonomy.catalog.service.TaxonomyService;
+import com.taxonomy.dto.AiAvailabilityLevel;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+import com.taxonomy.analysis.service.PromptTemplateService;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
+import org.springframework.test.util.ReflectionTestUtils;
+import tools.jackson.databind.ObjectMapper;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
+
+@ExtendWith(MockitoExtension.class)
+@MockitoSettings(strictness = Strictness.LENIENT)
+class LlmServiceBranchCoverageTest {
+
+    @Mock private LlmProviderConfig providerConfig;
+    @Mock private LlmGatewayRegistry gatewayRegistry;
+    @Mock private TaxonomyService taxonomyService;
+    @Mock private PromptTemplateService promptTemplateService;
+    @Mock private LocalEmbeddingService localEmbeddingService;
+    @Mock private SavedAnalysisService savedAnalysisService;
+    @Mock private CatalogueOverlayService catalogueOverlayService;
+    @Mock private LlmGateway gateway;
+    @Mock private AnalysisEventCallback callback;
+
+    private LlmService service;
+
+    @Test
+    void cancellationBetweenRootsRetainsCompletedScoresWithoutAllocatingAnotherTree() {
+        var registry = new AnalysisProgressRegistry(new org.springframework.core.env.StandardEnvironment());
+        var scope = new com.taxonomy.workspace.service.WorkspaceContext("alice", "work-a", "draft", "repo-a");
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(
+                node("BP", null, "BP"), node("CP", null, "CP"))));
+        when(taxonomyService.getChildrenOf("BP")).thenReturn(List.of());
+        when(gateway.extractResponseText("first-body"))
+                .thenReturn("{\"BP\":{\"score\":80,\"reason\":\"completed evidence\"}}");
+        try (var run = registry.open(null, "alice", scope, null)) {
+            when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenAnswer(invocation -> {
+                registry.cancel(run.id(), "alice", scope);
+                return "first-body";
+            });
+            AnalysisResult result = service.analyzeWithBudget("requirement");
+            assertThat(result.getStatus()).isEqualTo("PARTIAL");
+            assertThat(result.getErrorMessage()).startsWith("CANCELLED:");
+            // A single category receives its full parent budget after existing normalization.
+            assertThat(result.getScores()).containsEntry("BP", 100).doesNotContainKey("CP");
+            assertThat(result.getReasons()).containsEntry("BP", "completed evidence");
+            assertThat(result.getTree()).isEmpty();
+            verify(taxonomyService, never()).getFullTree();
+            verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest(anyString(), anyString());
+            run.finish(result.getStatus());
+            assertThat(registry.snapshot(run.id(), "alice", scope).status()).isEqualTo("CANCELLED");
+        }
+        assertThat(AnalysisRunControl.active()).isFalse();
+    }
+
+    @Test
+    void cancellationBetweenProductBatchesKeepsEarlierCategoryAndProductEvidence() {
+        var registry = new AnalysisProgressRegistry(new org.springframework.core.env.StandardEnvironment());
+        var scope = new com.taxonomy.workspace.service.WorkspaceContext("alice", "work-a", "draft", "repo-a");
+        TaxonomyNode category = node("IP-C", "IP-F", "IP");
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        ReflectionTestUtils.setField(service, "productBatchSize", 1);
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("category-body");
+        when(gateway.extractResponseText("category-body")).thenReturn("{\"IP-C\":80}");
+        when(gateway.extractResponseText("product-body"))
+                .thenReturn("{\"IP-P1\":{\"score\":75,\"reason\":\"completed product\"}}");
+        try (var run = registry.open(null, "alice", scope, null)) {
+            when(gateway.sendHttpRequest("product prompt", "test-key")).thenAnswer(invocation -> {
+                registry.cancel(run.id(), "alice", scope);
+                return "product-body";
+            });
+            var stopped = org.assertj.core.api.Assertions.catchThrowableOfType(
+                    () -> service.analyzeSingleBatchDetailed("requirement", List.of(category, first, second), 100),
+                    AnalysisStoppedException.class);
+            assertThat(stopped).isNotNull();
+            assertThat(stopped.partialScores()).containsKeys("IP-C", "IP-P1").doesNotContainKey("IP-P2");
+            assertThat(stopped.partialScores()).containsEntry("IP-P1", 75);
+            assertThat(stopped.partialReasons()).containsEntry("IP-P1", "completed product");
+            verify(gateway, org.mockito.Mockito.times(1)).sendHttpRequest("product prompt", "test-key");
+        }
+    }
+
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(AnalysisStoppedException.Reason.class)
+    void stoppedProductResultKeepsFamilyWeightedSemanticsWithoutLoadingAResponseTree(
+            AnalysisStoppedException.Reason reason) throws Exception {
+        // Real catalogue identities and role: nato-taxonomy.json classifies IP-1011 under IP-1065.
+        TaxonomyNode root = node("IP", null, "IP");
+        TaxonomyNode family = node("IP-1065", "IP", "IP");
+        TaxonomyNode otherFamily = node("IP-1069", "IP", "IP");
+        TaxonomyNode product = node("IP-1011", "IP-1065", "IP");
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family, otherFamily));
+        when(taxonomyService.getChildrenOf("IP-1065")).thenReturn(List.of(product));
+        when(catalogueOverlayService.isProduct("IP-1011")).thenReturn(true);
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("root", "families");
+        when(gateway.extractResponseText("root")).thenReturn("{\"IP\":100}");
+        when(gateway.extractResponseText("families")).thenReturn("{\"IP-1065\":40,\"IP-1069\":60}");
+        var retained = new LlmCallDetail();
+        retained.setScores(Map.of("IP-1011", 75));
+        retained.setReasons(Map.of("IP-1011", "completed product rationale"));
+        when(gateway.sendHttpRequest("product prompt", "test-key"))
+                .thenThrow(new AnalysisStoppedException(reason).withPartial(retained));
+
+        AnalysisResult result = service.analyzeWithBudget("target information products");
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getErrorMessage()).startsWith(reason.name() + ":");
+        assertThat(result.getTree()).isEmpty();
+        verify(taxonomyService, never()).getFullTree();
+        verify(taxonomyService, never()).getFingerprintTree();
+        verify(taxonomyService, never()).getNodeByCode(anyString());
+        assertProductSemantics(result);
+        result.refreshScoreSemantics();
+        assertProductSemantics(result);
+        var json = new ObjectMapper();
+        String serialized = json.writeValueAsString(result);
+        assertProductSemantics(json.readValue(serialized, AnalysisResult.class));
+        assertThat(serialized).doesNotContain("nameEn", "descriptionEn", "semanticEmbedding");
+        result.getRawScores().put("IP-1065", 20);
+        assertThat(result.getScores()).containsEntry("IP-1011", 15);
+    }
+
+    private static void assertProductSemantics(AnalysisResult result) {
+        assertThat(result.getRawScores()).containsEntry("IP-1011", 75);
+        assertThat(result.getProductSuitabilityScores()).containsEntry("IP-1011", 75);
+        assertThat(result.getScores()).containsEntry("IP-1011", 30);
+        var detail = result.getScoreDetails().get("IP-1011");
+        assertThat(detail.isProductSuitability()).isTrue();
+        assertThat(detail.parentCode()).isEqualTo("IP-1065");
+        assertThat(detail.parentScore()).isEqualTo(40);
+        assertThat(result.getReasons()).containsEntry("IP-1011", "completed product rationale");
+    }
+
+    @Test
+    void ordinaryStreamingFailureRetainsReasonsFromCompletedRoots() {
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(
+                node("BP", null, "BP"), node("CP", null, "CP"))));
+        when(taxonomyService.getChildrenOf("BP")).thenReturn(List.of());
+        when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                .thenReturn("completed-root").thenThrow(new IllegalStateException("provider unavailable"));
+        when(gateway.extractResponseText("completed-root"))
+                .thenReturn("{\"BP\":{\"score\":80,\"reason\":\"retained evidence\"}}");
+        service.analyzeStreaming("requirement", callback);
+        verify(callback).onError(eq("PARTIAL"), anyString(),
+                argThat(scores -> scores.containsKey("BP")),
+                argThat(reasons -> "retained evidence".equals(reasons.get("BP"))),
+                anyList(), anyList(), anyList());
+    }
+
+    @BeforeEach
+    void setUp() {
+        service = new LlmService(providerConfig, gatewayRegistry, new ObjectMapper(), taxonomyService,
+                promptTemplateService, localEmbeddingService, savedAnalysisService);
+        ReflectionTestUtils.setField(service, "catalogueOverlayService", catalogueOverlayService);
+        lenient().when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.OPENAI);
+        lenient().when(providerConfig.getActiveProviderName()).thenReturn("OpenAI");
+        lenient().when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn("test-key");
+        lenient().when(providerConfig.getAvailabilityLevel()).thenReturn(AiAvailabilityLevel.FULL);
+        lenient().when(providerConfig.isAvailable()).thenReturn(true);
+        lenient().when(providerConfig.getAvailableProviders()).thenReturn(List.of("OPENAI", "LOCAL_ONNX"));
+        lenient().when(gatewayRegistry.getGateway(LlmProvider.OPENAI)).thenReturn(gateway);
+        lenient().when(promptTemplateService.renderPrompt(any(), anyString(), anyString(), anyInt(), anyString()))
+                .thenReturn("rendered prompt");
+        lenient().when(promptTemplateService.renderLeafJustificationPrompt(anyString(), anyString(), anyString(), anyString()))
+                .thenReturn("leaf prompt");
+        lenient().when(promptTemplateService.renderProductPrompt(anyString(), anyString(), anyString(), anyInt()))
+                .thenReturn("product prompt");
+        lenient().when(taxonomyService.getPathToRoot(anyString())).thenReturn(List.of());
+    }
+
+    @Test
+    void delegatesProviderSelectionAndExposesDiagnostics() {
+        service.setRequestProvider(LlmProvider.OPENAI);
+        service.clearRequestProvider();
+
+        assertThat(service.getActiveProvider()).isEqualTo(LlmProvider.OPENAI);
+        assertThat(service.getAvailabilityLevel()).isEqualTo(AiAvailabilityLevel.FULL);
+        assertThat(service.isAvailable()).isTrue();
+        assertThat(service.getActiveProviderName()).isEqualTo("OpenAI");
+        assertThat(service.getAvailableProviders()).containsExactly("OPENAI", "LOCAL_ONNX");
+
+        Map<String, Object> diagnostics = service.getDiagnostics();
+        assertThat(diagnostics)
+                .containsEntry("provider", "OpenAI")
+                .containsEntry("apiKeyConfigured", true)
+                .containsEntry("apiKeyPrefix", "test****")
+                .containsEntry("totalCalls", 0L);
+        verify(providerConfig).setRequestProvider(LlmProvider.OPENAI);
+        verify(providerConfig).clearRequestProvider();
+    }
+
+    @Test
+    void detailedCallCoversNoKeyAndLocalEmbeddingAvailability() {
+        TaxonomyNode node = node("A", null, "A");
+        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn(" ");
+
+        LlmCallDetail noKey = service.analyzeSingleBatchDetailed("requirement", List.of(node), 100);
+        assertThat(noKey.getScores()).containsEntry("A", 0);
+        assertThat(noKey.getError()).contains("No API key configured");
+
+        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
+        when(providerConfig.getActiveProviderName()).thenReturn("Local (bge-small-en-v1.5)");
+        when(localEmbeddingService.isAvailable()).thenReturn(false);
+        LlmCallDetail unavailable = service.analyzeSingleBatchDetailed("requirement", List.of(node), 100);
+        assertThat(unavailable.getError()).contains("not available");
+        assertThat(unavailable.getScores()).containsEntry("A", 0);
+
+        when(localEmbeddingService.isAvailable()).thenReturn(true);
+        when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 17));
+        LlmCallDetail available = service.analyzeSingleBatchDetailed("requirement", List.of(node), 100);
+        assertThat(available.getError()).isNull();
+        assertThat(available.getScores()).containsEntry("A", 100);
+        assertThat(available.getRawResponse()).contains("cosine similarity");
+    }
+
+    @Test
+    void detailedApiCallCoversSuccessEmptyResponseInvalidResponseAndTimeout() {
+        List<TaxonomyNode> nodes = List.of(node("A", "P", "R"), node("B", "P", "R"));
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("body");
+        when(gateway.extractResponseText("body"))
+                .thenReturn("{\"A\":{\"score\":70,\"reason\":\"primary\"},\"B\":30}");
+
+        LlmCallDetail success = service.analyzeSingleBatchDetailed("requirement", nodes, 100);
+        assertThat(success.getScores()).containsEntry("A", 70).containsEntry("B", 30);
+        assertThat(success.getReasons()).containsEntry("A", "primary");
+        assertThat(success.getPrompt()).isEqualTo("rendered prompt");
+        assertThat(success.getRawResponse()).contains("primary");
+
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn(null);
+        LlmCallDetail emptyBody = service.analyzeSingleBatchDetailed("requirement", nodes, 100);
+        assertThat(emptyBody.getError()).contains("returned no response");
+
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("body");
+        when(gateway.extractResponseText("body")).thenReturn(null);
+        LlmCallDetail emptyText = service.analyzeSingleBatchDetailed("requirement", nodes, 100);
+        assertThat(emptyText.getError()).contains("no usable text");
+
+        when(gateway.extractResponseText("body")).thenReturn("not-json");
+        LlmCallDetail invalid = service.analyzeSingleBatchDetailed("requirement", nodes, 100);
+        assertThat(invalid.getError()).contains("Failed to parse LLM response");
+
+        when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                .thenThrow(new LlmTimeoutException("provider timed out"));
+        LlmCallDetail timeout = service.analyzeSingleBatchDetailed("requirement", nodes, 100);
+        assertThat(timeout.getError()).isEqualTo("provider timed out");
+    }
+
+    @Test
+    void simpleBatchCoversApiLocalAndFailureFallbacks() {
+        TaxonomyNode node = node("A", null, "A");
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("body");
+        when(gateway.extractResponseText("body")).thenReturn("{\"A\":100}");
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 100);
+
+        when(gateway.extractResponseText("body")).thenReturn("bad-json");
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 0);
+
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn(null);
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 0);
+
+        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
+        when(localEmbeddingService.isAvailable()).thenReturn(false);
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 0);
+
+        when(localEmbeddingService.isAvailable()).thenReturn(true);
+        when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 9));
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 100);
+    }
+
+    @Test
+    void mockDetailedCallUsesDeterministicFallbackWhenRecordingIsUnavailable() throws Exception {
+        when(providerConfig.isMockMode()).thenReturn(true);
+        when(savedAnalysisService.loadFromClasspath(anyString())).thenThrow(new IllegalStateException("missing fixture"));
+        List<TaxonomyNode> nodes = List.of(node("BP-X", "BP", "BP"), node("BP-Y", "BP", "BP"));
+
+        LlmCallDetail detail = service.analyzeSingleBatchDetailed("A BUSINESS REQUIREMENT", nodes, 40);
+
+        assertThat(detail.getError()).isNull();
+        assertThat(detail.getPrompt()).contains("mock mode");
+        assertThat(detail.getRawResponse()).contains("hardcoded mock scores");
+        assertThat(detail.getScores().values().stream().mapToInt(Integer::intValue).sum()).isEqualTo(40);
+        assertThat(detail.getReasons()).containsKeys("BP-X", "BP-Y");
+    }
+
+    @Test
+    void analyzeWithBudgetCoversSuccessRateLimitAndOrdinaryFailure() {
+        TaxonomyNode root = node("BP", null, "BP");
+        root.setNameEn("Business Processes");
+        TaxonomyNode child = node("BP-1", "BP", "BP");
+        child.setNameEn("Child");
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("BP")).thenReturn(List.of(child));
+        when(taxonomyService.getChildrenOf("BP-1")).thenReturn(List.of());
+        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("root", "child");
+        when(gateway.extractResponseText("root")).thenReturn("{\"BP\":100}");
+        when(gateway.extractResponseText("child")).thenReturn("{\"BP-1\":100}");
+
+        AnalysisResult success = service.analyzeWithBudget("requirement");
+        assertThat(success.getStatus()).isEqualTo("SUCCESS");
+        assertThat(success.getScores()).containsEntry("BP", 100).containsEntry("BP-1", 100);
+
+        TaxonomyNode other = node("CP", null, "CP");
+        other.setNameEn("Capabilities");
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root, other)));
+        when(gateway.sendHttpRequest(anyString(), anyString())).thenThrow(new LlmRateLimitException("quota"));
+        AnalysisResult rateLimited = service.analyzeWithBudget("requirement");
+        assertThat(rateLimited.getStatus()).isEqualTo("PARTIAL");
+        assertThat(rateLimited.getErrorMessage()).contains("Rate limit reached");
+
+        org.mockito.Mockito.reset(gateway);
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(gateway.sendHttpRequest(anyString(), anyString())).thenThrow(new IllegalStateException("network"));
+        AnalysisResult failed = service.analyzeWithBudget("requirement");
+        assertThat(failed.getStatus()).isEqualTo("PARTIAL");
+        assertThat(failed.getWarnings()).anyMatch(w -> w.contains("network"));
+    }
+
+    @Test
+    void streamingAnalysisCoversRecursiveSuccessAndErrorNotification() {
+        TaxonomyNode root = node("R", null, "R");
+        root.setNameEn("Root");
+        TaxonomyNode child = node("C", "R", "R");
+        child.setNameEn("Child");
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("R")).thenReturn(List.of(child));
+        when(taxonomyService.getChildrenOf("C")).thenReturn(List.of());
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("root", "child");
+        when(gateway.extractResponseText("root")).thenReturn("{\"R\":100}");
+        when(gateway.extractResponseText("child")).thenReturn("{\"C\":100}");
+
+        service.analyzeStreaming("requirement", callback);
+        verify(callback).onPhase(anyString(), anyInt());
+        verify(callback).onExpanding("R", List.of("C"));
+        verify(callback).onComplete(anyString(), any(), anyList(), anyList(), anyList());
+        verify(callback, never()).onError(
+                anyString(), anyString(), any(), anyList(), anyList(), anyList());
+
+        when(gateway.sendHttpRequest(anyString(), anyString())).thenThrow(new IllegalStateException("stream failed"));
+        service.analyzeStreaming("requirement", callback);
+        verify(callback).onError(
+                anyString(), anyString(), any(), anyMap(), anyList(), anyList(), anyList());
+    }
+
+    @Test
+    void productBatchFailureRemainsPartialAndDoesNotCreateCoverageGap() {
+        TaxonomyNode root = node("IP", null, "IP");
+        root.setNameEn("Information Products");
+        TaxonomyNode product = node("IP-P1", "IP", "IP");
+        product.setNameEn("Concrete product");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(product));
+        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                .thenReturn("root-body");
+        when(gateway.extractResponseText("root-body")).thenReturn("{\"IP\":100}");
+        when(gateway.sendHttpRequest("product prompt", "test-key"))
+                .thenThrow(new LlmTimeoutException("product provider timed out"));
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        AnalysisResult result = service.analyzeWithBudget("requirement");
+
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getWarnings())
+                .anyMatch(warning -> warning.contains("IP")
+                        && warning.contains("product provider timed out"));
+        assertThat(result.getProductCoverageGaps()).isEmpty();
+
+        service.analyzeStreaming("requirement", callback);
+
+        verify(callback).onComplete(
+                eq("PARTIAL"),
+                any(),
+                argThat((List<String> warningList) -> warningList.stream()
+                        .anyMatch(warning -> warning.contains("product provider timed out"))),
+                anyList(),
+                anyList());
+        verify(callback, never()).onError(
+                anyString(), anyString(), any(), anyList(), anyList(), anyList());
+    }
+
+
+    @Test
+    void leafJustificationCoversMockLocalNoKeySuccessEmptyAndFailure() {
+        TaxonomyNode leaf = node("A", "P", "R");
+        leaf.setNameEn("Leaf");
+        Map<String, Integer> scores = Map.of("A", 90, "X", 80);
+        Map<String, String> reasons = Map.of("A", "path reason", "X", "cross reason");
+
+        when(providerConfig.isMockMode()).thenReturn(true);
+        assertThat(service.generateLeafJustification("Secure VOICE", "A", List.of(leaf), scores, reasons))
+                .contains("secure voice");
+
+        when(providerConfig.isMockMode()).thenReturn(false);
+        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
+        assertThat(service.generateLeafJustification("x", "A", List.of(leaf), scores, reasons))
+                .contains("not available");
+
+        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.OPENAI);
+        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn(" ");
+        assertThat(service.generateLeafJustification("x", "A", List.of(leaf), scores, reasons))
+                .contains("no API key");
+
+        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn("test-key");
+        when(gateway.sendHttpRequest("leaf prompt", "test-key")).thenReturn("body");
+        when(gateway.extractResponseText("body")).thenReturn("  useful justification  ");
+        assertThat(service.generateLeafJustification("x", "A", List.of(leaf), scores, reasons))
+                .isEqualTo("useful justification");
+
+        when(gateway.extractResponseText("body")).thenReturn(" ");
+        assertThat(service.generateLeafJustification("x", "A", List.of(leaf), scores, reasons))
+                .contains("did not return");
+
+        when(gateway.sendHttpRequest("leaf prompt", "test-key")).thenThrow(new IllegalStateException("leaf failure"));
+        assertThat(service.generateLeafJustification("x", "A", List.of(leaf), scores, reasons))
+                .contains("leaf failure");
+    }
+
+    @Test
+    void rawCallCoversEveryProviderAndExceptionOutcome() {
+        when(providerConfig.isMockMode()).thenReturn(true);
+        assertThat(service.callLlmRaw("prompt")).isEqualTo("[]");
+
+        when(providerConfig.isMockMode()).thenReturn(false);
+        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
+        assertThat(service.callLlmRaw("prompt")).isNull();
+
+        when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.OPENAI);
+        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn(" ");
+        assertThat(service.callLlmRaw("prompt")).isNull();
+
+        when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn("test-key");
+        when(gateway.sendHttpRequest("prompt", "test-key")).thenReturn("body");
+        when(gateway.extractResponseText("body")).thenReturn("answer");
+        assertThat(service.callLlmRaw("prompt")).isEqualTo("answer");
+
+        when(gateway.sendHttpRequest("prompt", "test-key")).thenReturn(null);
+        assertThat(service.callLlmRaw("prompt")).isNull();
+
+        when(gateway.sendHttpRequest("prompt", "test-key")).thenThrow(new LlmRateLimitException("quota"));
+        assertThatThrownBy(() -> service.callLlmRaw("prompt")).isInstanceOf(LlmRateLimitException.class);
+
+        org.mockito.Mockito.reset(gateway);
+        when(gateway.sendHttpRequest("prompt", "test-key")).thenThrow(new LlmTimeoutException("timeout"));
+        assertThatThrownBy(() -> service.callLlmRaw("prompt")).isInstanceOf(LlmTimeoutException.class);
+
+        org.mockito.Mockito.reset(gateway);
+        when(gateway.sendHttpRequest("prompt", "test-key")).thenThrow(new IllegalStateException("broken"));
+        assertThat(service.callLlmRaw("prompt")).isNull();
+        assertThat(service.getDiagnostics()).containsEntry("lastError", "broken");
+    }
+
+    @Test
+    void concreteProductsAreScoredIndependentlyInBoundedBatches() throws Exception {
+        when(providerConfig.isMockMode()).thenReturn(true);
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
+        saved.setScores(Map.of("IP-P1", 80, "IP-P2", 70));
+        saved.setReasons(Map.of("IP-P1", "first", "IP-P2", "second"));
+        when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
+        ReflectionTestUtils.setField(service, "productBatchSize", 1);
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        LlmCallDetail detail = service.analyzeSingleBatchDetailed(
+                "requirement", List.of(first, second), 40);
+
+        assertThat(detail.getScores()).containsEntry("IP-P1", 80).containsEntry("IP-P2", 70);
+        assertThat(detail.getScores().values().stream().mapToInt(Integer::intValue).sum())
+                .isEqualTo(150);
+        assertThat(detail.getPrompt()).contains("call 1", "call 2");
+    }
+
+    @Test
+    void relevantProductFamilyWithoutSuitableProductCreatesStructuredGap() throws Exception {
+        when(providerConfig.isMockMode()).thenReturn(true);
+        TaxonomyNode root = node("IP", null, "IP");
+        root.setNameEn("Information Products");
+        TaxonomyNode family = node("IP-F", "IP", "IP");
+        family.setNameEn("Product family");
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family));
+        when(taxonomyService.getChildrenOf("IP-F")).thenReturn(List.of(first, second));
+        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
+        com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
+        saved.setScores(Map.of("IP", 100, "IP-F", 80, "IP-P1", 30, "IP-P2", 20));
+        saved.setReasons(Map.of());
+        when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        AnalysisResult result = service.analyzeWithBudget("requirement");
+
+        assertThat(result.getProductCoverageGaps()).hasSize(1);
+        assertThat(result.getProductCoverageGaps().get(0).productFamilyCode()).isEqualTo("IP-F");
+        assertThat(result.getProductCoverageGaps().get(0).candidateCodes())
+                .containsExactly("IP-P1", "IP-P2");
+    }
+
+    @Test
+    void mixedCategoryAndProductChildrenStillCreateCoverageGap() throws Exception {
+        when(providerConfig.isMockMode()).thenReturn(true);
+        TaxonomyNode root = node("IP", null, "IP");
+        root.setNameEn("Information Products");
+        TaxonomyNode family = node("IP-F", "IP", "IP");
+        family.setNameEn("Product family");
+        TaxonomyNode category = node("IP-C", "IP-F", "IP");
+        TaxonomyNode first = node("IP-P1", "IP-F", "IP");
+        TaxonomyNode second = node("IP-P2", "IP-F", "IP");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(catalogueOverlayService.isProduct("IP-P2")).thenReturn(true);
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family));
+        when(taxonomyService.getChildrenOf("IP-F"))
+                .thenReturn(List.of(category, first, second));
+        when(taxonomyService.getChildrenOf("IP-C")).thenReturn(List.of());
+        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
+        com.taxonomy.dto.SavedAnalysis saved = new com.taxonomy.dto.SavedAnalysis();
+        saved.setScores(Map.of(
+                "IP", 100,
+                "IP-F", 80,
+                "IP-C", 20,
+                "IP-P1", 30,
+                "IP-P2", 20));
+        saved.setReasons(Map.of());
+        when(savedAnalysisService.loadFromClasspath(anyString())).thenReturn(saved);
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        AnalysisResult result = service.analyzeWithBudget("requirement");
+
+        assertThat(result.getProductCoverageGaps()).hasSize(1);
+        assertThat(result.getProductCoverageGaps().get(0).productFamilyCode())
+                .isEqualTo("IP-F");
+        assertThat(result.getProductCoverageGaps().get(0).candidateCodes())
+                .containsExactly("IP-P1", "IP-P2");
+    }
+
+    @Test
+    void mixedCategoryFailureDoesNotSuppressCompletedProductCoverageGap() {
+        TaxonomyNode root = node("IP", null, "IP");
+        root.setNameEn("Information Products");
+        TaxonomyNode family = node("IP-F", "IP", "IP");
+        family.setNameEn("Product family");
+        TaxonomyNode category = node("IP-C", "IP-F", "IP");
+        TaxonomyNode product = node("IP-P1", "IP-F", "IP");
+        product.setNameEn("Concrete product");
+        when(catalogueOverlayService.isProduct("IP-P1")).thenReturn(true);
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(root)));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(family));
+        when(taxonomyService.getChildrenOf("IP-F")).thenReturn(List.of(category, product));
+        when(taxonomyService.getFullTree()).thenReturn(List.of());
+        when(taxonomyService.getNodeByCode("IP-F")).thenReturn(family);
+        when(gateway.sendHttpRequest("rendered prompt", "test-key"))
+                .thenReturn("root-body", "family-body")
+                .thenReturn((String) null);
+        when(gateway.extractResponseText("root-body")).thenReturn("{\"IP\":100}");
+        when(gateway.extractResponseText("family-body"))
+                .thenReturn("{\"IP-F\":100}");
+        when(gateway.sendHttpRequest("product prompt", "test-key"))
+                .thenReturn("product-body");
+        when(gateway.extractResponseText("product-body")).thenReturn(
+                "{\"IP-P1\":{\"score\":20,\"reason\":\"below threshold\"}}");
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+
+        AnalysisResult result = service.analyzeWithBudget("requirement");
+
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getWarnings())
+                .anyMatch(warning -> warning.contains("IP-F")
+                        && warning.contains("returned no response"));
+        assertThat(result.getProductCoverageGaps()).hasSize(1);
+        assertThat(result.getProductCoverageGaps().get(0).productFamilyCode())
+                .isEqualTo("IP-F");
+        assertThat(result.getProductCoverageGaps().get(0).candidateCodes())
+                .containsExactly("IP-P1");
+    }
+
+    @Test
+    void concreteProductBatchSizeCannotExceedTen() {
+        ReflectionTestUtils.setField(service, "productBatchSize", 10);
+        ReflectionTestUtils.setField(service, "productMinimumScore", 50);
+        service.validateProductScoringConfiguration();
+
+        ReflectionTestUtils.setField(service, "productBatchSize", 11);
+        assertThatThrownBy(service::validateProductScoringConfiguration)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("between 1 and 10");
+    }
+
+    private static TaxonomyNode node(String code, String parentCode, String root) {
+        TaxonomyNode node = new TaxonomyNode();
+        node.setCode(code);
+        node.setNameEn(code);
+        node.setDescriptionEn("Description for " + code);
+        node.setParentCode(parentCode);
+        node.setTaxonomyRoot(root);
+        return node;
+    }
+}

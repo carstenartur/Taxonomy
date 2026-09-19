@@ -185,7 +185,7 @@ Die Haupt-Spring-Boot-Anwendung:
 | Die DSL-Grammatik ändern | `taxonomy-dsl/.../parser/TaxDslParser.java` |
 | Eine DSL-Validierungsregel hinzufügen | `taxonomy-dsl/.../validation/DslValidator.java` |
 | Die Benutzeroberfläche ändern | `taxonomy-app/src/main/resources/templates/index.html` + `static/js/` |
-| Einen neuen LLM-Prompt hinzufügen | `taxonomy-app/src/main/resources/prompts/` — `XX.txt` erstellen |
+| Einen neuen LLM-Prompt hinzufügen | `taxonomy-analysis/src/main/resources/prompts/` — `XX.txt` erstellen |
 | Die Konfiguration ändern | `taxonomy-app/src/main/resources/application.properties` |
 
 ---

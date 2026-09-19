@@ -36,10 +36,10 @@ Add new Java code only when at least one of these applies:
 
 | File | What to do |
 |---|---|
-| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProvider.java` | Add the runtime enum value |
-| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmProviderConfig.java` | Add configuration, detection, availability, URL/model, and credential handling |
-| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/LlmGatewayRegistry.java` | Register the transport gateway |
-| `taxonomy-app/src/main/java/com/taxonomy/analysis/service/*LlmProviderExtension.java` | Publish provider metadata through the extension SPI |
+| `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmProvider.java` | Add the runtime enum value |
+| `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmProviderConfig.java` | Add configuration, detection, availability, URL/model, and credential handling |
+| `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/LlmGatewayRegistry.java` | Register the transport gateway |
+| `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/*LlmProviderExtension.java` | Publish provider metadata through the extension SPI |
 | `taxonomy-app/src/main/resources/application.properties` | Map environment variables to Spring properties |
 
 `LlmService` should remain provider-agnostic. Provider-specific HTTP behaviour belongs in an `LlmGateway` implementation, while provider selection and mandatory configuration belong in `LlmProviderConfig`.
@@ -65,7 +65,7 @@ Add new Java code only when at least one of these applies:
 - `taxonomy-dsl/` — unrelated to provider transport
 - `taxonomy-export/` — export formats are provider-independent
 - `taxonomy-app/…/controller/` — controllers use provider-agnostic services
-- `taxonomy-app/src/main/resources/prompts/` — existing prompts should remain portable
+- `taxonomy-analysis/src/main/resources/prompts/` — existing prompts should remain portable
 - `taxonomy-app/src/main/resources/templates/index.html` — the provider selector is populated dynamically from `/api/ai-status`
 
 ---

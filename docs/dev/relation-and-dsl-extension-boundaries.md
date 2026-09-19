@@ -34,7 +34,7 @@ modules.
    - `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationValidationService.java`
    - `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationCandidateService.java`
    - `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationProposalService.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisRelationGenerator.java`
+   - `taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/AnalysisRelationGenerator.java`
    - `taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java`
 5. Review relation consumers in the DSL layer, especially:
    - `taxonomy-dsl/src/main/java/com/taxonomy/dsl/mapper/AstToModelMapper.java`

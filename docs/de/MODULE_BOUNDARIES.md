@@ -6,7 +6,7 @@ Die maschinenlesbare Quelle für die geplanten Extraktionskontexte ist `.github/
 
 ## Aktueller Maven-Reactor
 
-Der Root-Reactor enthält derzeit dreizehn Module mit unterschiedlichen Aufgaben:
+Der Root-Reactor enthält derzeit fünfzehn Module mit unterschiedlichen Aufgaben:
 
 | Modul | Aktuelle Aufgabe |
 |---|---|
@@ -20,7 +20,9 @@ Der Root-Reactor enthält derzeit dreizehn Module mit unterschiedlichen Aufgaben
 | `taxonomy-interop` | Geprüfte externe Werkzeuganbindung, Mappings, Checkpoints und OSLC; Portfoliozugriff über einen expliziten Port |
 | `taxonomy-knowledge` | Katalog- und Seed-Ressourcen, Relationen, Hibernate-Search-Mappings und lokale semantische Embeddings |
 | `taxonomy-architecture` | Architekturableitung, Scoring, Empfehlungen, Diagramme und Berichte; aktuelle Berichtseinstellungen über einen anwendungseigenen Adapter |
-| `taxonomy-app` | Ausführbare Spring-Boot-Anwendung und derzeit der Großteil der Spring-basierten Feature-Implementierungen |
+| `taxonomy-analysis` | Anforderungs-/LLM-Analyse, Prompts, Provider-Regeln und Sitzungen |
+| `taxonomy-portfolio` | Projektportfolio, Analysejobs, Snapshots, Reviews und Wiederanlauf |
+| `taxonomy-app` | Einzige ausführbare Anwendung, Komposition/Deployment, Sicherheit und unterstützende Anwendungsadapter |
 | `taxonomy-coverage` | Reactor-weite Coverage-Aggregation |
 | `taxonomy-build` | Build-Policy sowie Browser-/Verifikationsverträge |
 
@@ -32,7 +34,7 @@ In `taxonomy-app` haben sich mehrere eigenständig kohärente Bereiche angesamme
 
 Die Zerlegung folgt deshalb **Zuständigkeit und Bounded Contexts**, nicht mechanisch der heutigen Package-Hierarchie.
 
-## Geplante Bounded Contexts
+## Fachmodule und Zuständigkeiten
 
 ### `taxonomy-knowledge`
 
@@ -54,9 +56,13 @@ Besitzt Architekturableitung, Scoring, Gaps, Patterns, Empfehlungen, Architektur
 
 ### `taxonomy-analysis`
 
+Physisch mit eigenen Tests und Ressourcen ausgelagert; übergreifende Abnahmetests verbleiben in der Anwendung. Siehe [Abschlusskriterien](../dev/MODULE_EXTRACTION_COMPLETION.md).
+
 Besitzt Anforderungs- und LLM-Analyse, Provider-/Gateway-Auswahl, Response-Parsing, Prompt-/Policy-Logik, Analysesitzungen und lokale Inferenzabstraktionen. Zustandsbehafteter Repository- oder Hypothesen-Zugriff erfolgt über explizite Ports.
 
 ### `taxonomy-portfolio`
+
+Physisch mit eigenen Tests und Ressourcen ausgelagert; übergreifende Abnahmetests verbleiben in der Anwendung. Siehe [Abschlusskriterien](../dev/MODULE_EXTRACTION_COMPLETION.md).
 
 Besitzt Projekt-/Portfolio-Zustand und Orchestrierung: versionierte Anforderungen, persistierte Analysejobs/-ergebnisse/-Reviews, Queue/Recovery, Workbench-Snapshots und projektbezogene Workflows. Analysis-, Architecture- und Workspace-Fähigkeiten werden über deren APIs koordiniert; fremde Repositories werden nicht direkt angesprochen.
 

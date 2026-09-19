@@ -6,7 +6,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiExtractedCandidate;
 import com.taxonomy.dto.RegulationArchitectureMatch;
 import com.taxonomy.provenance.service.DocumentAnalysisService;
-import com.taxonomy.shared.service.PromptTemplateService;
+import com.taxonomy.analysis.service.PromptTemplateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;

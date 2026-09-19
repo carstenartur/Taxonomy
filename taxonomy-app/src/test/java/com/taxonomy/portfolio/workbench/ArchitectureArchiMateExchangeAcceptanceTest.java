@@ -7,7 +7,7 @@ import com.taxonomy.archimate.exchange.ArchiMateXmlExporter;
 import com.taxonomy.archimate.ArchiMateProperty;
 import com.taxonomy.diagram.*;
 import com.taxonomy.export.*;
-import com.taxonomy.export.service.CanonicalDiagramExportService;
+import com.taxonomy.architecture.export.CanonicalDiagramExportService;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
 import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchDtos.*;
 import com.taxonomy.workspace.service.WorkspaceContext;
