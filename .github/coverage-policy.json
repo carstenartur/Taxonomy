@@ -24,6 +24,7 @@
     "taxonomy-workspace",
     "taxonomy-templates",
     "taxonomy-interop",
-    "taxonomy-knowledge"
+    "taxonomy-knowledge",
+    "taxonomy-architecture"
   ]
 }

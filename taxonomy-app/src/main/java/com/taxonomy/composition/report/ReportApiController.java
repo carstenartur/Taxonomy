@@ -1,4 +1,4 @@
-package com.taxonomy.architecture.controller;
+package com.taxonomy.composition.report;
 
 import com.taxonomy.architecture.report.ReportRendererRegistry;
 import com.taxonomy.architecture.service.ArchitectureReportService;

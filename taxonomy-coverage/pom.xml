@@ -18,6 +18,11 @@
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-architecture</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>com.taxonomy</groupId>
             <artifactId>taxonomy-knowledge</artifactId>
             <version>${project.version}</version>
         </dependency>

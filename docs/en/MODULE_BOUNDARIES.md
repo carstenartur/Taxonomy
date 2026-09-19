@@ -6,7 +6,7 @@ The machine-readable source of truth for the planned extraction contexts is `.gi
 
 ## Current Maven reactor
 
-The root reactor currently contains twelve modules with different roles:
+The root reactor currently contains thirteen modules with different roles:
 
 | Module | Current role |
 |---|---|
@@ -19,6 +19,7 @@ The root reactor currently contains twelve modules with different roles:
 | `taxonomy-templates` | Document-template Git storage, OOXML validation and WebDAV |
 | `taxonomy-interop` | Reviewed external-tool interoperability, mappings, checkpoints and OSLC; portfolio access through an explicit port |
 | `taxonomy-knowledge` | Catalogue and seed resources, relations, Hibernate Search mappings and local semantic embeddings |
+| `taxonomy-architecture` | Architecture derivation, scoring, recommendations, diagrams and reports; live report preferences through an application-owned adapter |
 | `taxonomy-app` | Executable Spring Boot application and, currently, most Spring-aware feature implementations |
 | `taxonomy-coverage` | Reactor-wide coverage aggregation |
 | `taxonomy-build` | Build policy and browser/verification contracts |
@@ -46,6 +47,8 @@ Owns `workspace`, `versioning`, and `editor`. These packages jointly control edi
 The invariant introduced by the editor redesign remains unchanged: **accepted semantic operations are durable revisions; Git commits are explicit stable checkpoints, not the operation log.**
 
 ### `taxonomy-architecture`
+
+Physically extracted as a Maven library with its owned unit tests. Report preferences remain application-owned and enter through `ArchitectureReportMetadataPort`, resolved afresh for each report. Java package names, endpoint behavior and database migrations are unchanged; `taxonomy-app` remains the only deployable application. The report HTTP adapter and its repository/workspace resolution remain in application composition under `com.taxonomy.composition.report`; the architecture library cannot depend on `WorkspaceResolver`.
 
 Owns architecture derivation, scoring, gaps, patterns, recommendations, architecture view/domain models, and neutral diagram preparation. Repository/workspace lookup and cross-context HTTP orchestration do not belong in this module.
 

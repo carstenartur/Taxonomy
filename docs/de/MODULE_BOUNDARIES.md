@@ -6,7 +6,7 @@ Die maschinenlesbare Quelle für die geplanten Extraktionskontexte ist `.github/
 
 ## Aktueller Maven-Reactor
 
-Der Root-Reactor enthält derzeit zwölf Module mit unterschiedlichen Aufgaben:
+Der Root-Reactor enthält derzeit dreizehn Module mit unterschiedlichen Aufgaben:
 
 | Modul | Aktuelle Aufgabe |
 |---|---|
@@ -19,6 +19,7 @@ Der Root-Reactor enthält derzeit zwölf Module mit unterschiedlichen Aufgaben:
 | `taxonomy-templates` | Dokumentvorlagen-Git-Speicher, OOXML-Validierung und WebDAV |
 | `taxonomy-interop` | Geprüfte externe Werkzeuganbindung, Mappings, Checkpoints und OSLC; Portfoliozugriff über einen expliziten Port |
 | `taxonomy-knowledge` | Katalog- und Seed-Ressourcen, Relationen, Hibernate-Search-Mappings und lokale semantische Embeddings |
+| `taxonomy-architecture` | Architekturableitung, Scoring, Empfehlungen, Diagramme und Berichte; aktuelle Berichtseinstellungen über einen anwendungseigenen Adapter |
 | `taxonomy-app` | Ausführbare Spring-Boot-Anwendung und derzeit der Großteil der Spring-basierten Feature-Implementierungen |
 | `taxonomy-coverage` | Reactor-weite Coverage-Aggregation |
 | `taxonomy-build` | Build-Policy sowie Browser-/Verifikationsverträge |
@@ -46,6 +47,8 @@ Besitzt `workspace`, `versioning` und `editor`. Diese Packages kontrollieren gem
 Die mit dem Editor-Umbau eingeführte Invariante bleibt unverändert: **akzeptierte semantische Operationen sind dauerhaft gespeicherte Revisionen; Git-Commits sind explizite stabile Checkpoints und nicht das Operationslog.**
 
 ### `taxonomy-architecture`
+
+Physisch als Maven-Bibliothek mit ihren eigenen Unit-Tests ausgelagert. Berichtseinstellungen bleiben anwendungseigen und werden über `ArchitectureReportMetadataPort` für jeden Bericht neu aufgelöst. Java-Paketnamen, Endpunktverhalten und Datenbankmigrationen bleiben unverändert; `taxonomy-app` bleibt die einzige ausführbare Anwendung. Der Report-HTTP-Adapter und seine Repository-/Workspace-Auflösung bleiben in der Anwendungskomposition unter `com.taxonomy.composition.report`; die Architektur-Bibliothek darf nicht von `WorkspaceResolver` abhängen.
 
 Besitzt Architekturableitung, Scoring, Gaps, Patterns, Empfehlungen, Architektur-View-/Domain-Modelle und neutrale Diagrammvorbereitung. Repository-/Workspace-Auflösung und Cross-Context-HTTP-Orchestrierung gehören nicht in dieses Modul.
 
