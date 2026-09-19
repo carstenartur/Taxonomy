@@ -61,6 +61,24 @@ public class ImpactEndpointSelector {
             qualified.add(scored.get(0).element());
         }
 
+        // Scoring traverses entire paths, so this input can contain both a
+        // concrete endpoint and its equally relevant ancestors. An ancestor
+        // must not multiply the same cross-layer impact into a Cartesian
+        // product. Suppress it only when a qualified descendant supplies an
+        // explicit hierarchy path; unrelated branches remain independent.
+        Set<String> representedAncestors = new HashSet<>();
+        for (RequirementElementView endpoint : qualified) {
+            String path = endpoint.getHierarchyPath();
+            if (path == null || path.isBlank()) continue;
+            String[] segments = path.split("\\s*>\\s*");
+            if (!segments[segments.length - 1].strip().equals(endpoint.getNodeCode())) continue;
+            for (int i = 0; i < segments.length - 1; i++) representedAncestors.add(segments[i].strip());
+        }
+        List<RequirementElementView> concrete = qualified.stream()
+                .filter(endpoint -> !representedAncestors.contains(endpoint.getNodeCode()))
+                .toList();
+        if (!concrete.isEmpty()) return concrete;
+
         return qualified;
     }
 

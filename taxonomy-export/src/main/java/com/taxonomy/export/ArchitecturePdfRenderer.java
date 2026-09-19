@@ -24,6 +24,7 @@ public final class ArchitecturePdfRenderer {
 
     private static final float PAGE_MARGIN = 32.0f;
     private static final float HEADER_HEIGHT = 54.0f;
+    private static final float MAX_PAGE_SIZE = 14_400.0f;
     private static final PDType1Font REGULAR =
             new PDType1Font(Standard14Fonts.FontName.HELVETICA);
     private static final PDType1Font BOLD =
@@ -94,15 +95,21 @@ public final class ArchitecturePdfRenderer {
                                HeaderWriter header, FooterWriter footer) {
         try (PDDocument document = new PDDocument();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
-            PDPage page = new PDPage(new PDRectangle(PDRectangle.A3.getHeight(), PDRectangle.A3.getWidth()));
+            // Preserve natural-size labels on wide architecture views. A3 remains the minimum;
+            // larger scenes use a poster page, bounded by the PDF page-size limit.
+            float pageWidth = (float) Math.min(MAX_PAGE_SIZE,
+                    Math.max(PDRectangle.A3.getHeight(), scene.width() + 2 * PAGE_MARGIN));
+            float pageHeight = (float) Math.min(MAX_PAGE_SIZE,
+                    Math.max(PDRectangle.A3.getWidth(), scene.height() + 2 * PAGE_MARGIN + HEADER_HEIGHT));
+            PDPage page = new PDPage(new PDRectangle(pageWidth, pageHeight));
             document.addPage(page);
             metadata.accept(document);
 
             float availableWidth = page.getMediaBox().getWidth() - 2 * PAGE_MARGIN;
             float availableHeight = page.getMediaBox().getHeight() - 2 * PAGE_MARGIN - HEADER_HEIGHT;
-            float scale = (float) Math.min(
+            float scale = (float) Math.min(1.0, Math.min(
                     availableWidth / Math.max(1.0, scene.width()),
-                    availableHeight / Math.max(1.0, scene.height()));
+                    availableHeight / Math.max(1.0, scene.height())));
             float diagramX = PAGE_MARGIN;
             float diagramTop = page.getMediaBox().getHeight() - PAGE_MARGIN - HEADER_HEIGHT;
 
@@ -197,19 +204,21 @@ public final class ArchitecturePdfRenderer {
             stream.addRect(x, y, width, height);
             stream.stroke();
 
-            float fontScale = Math.max(0.62f, scale);
-            text(stream, BOLD, 7.5f * fontScale, x + 8 * scale, top - 15 * scale, node.id());
-            text(stream, REGULAR, 6.3f * fontScale,
-                    x + width - 62 * scale,
-                    top - 14 * scale,
-                    node.type() + " " + Math.round(node.relevance() * 100.0) + "%");
+            text(stream, BOLD, 8 * scale, x + 8 * scale, top - 15 * scale, node.id());
+            String score = Math.round(node.relevance() * 100.0) + "%";
+            float scoreWidth = REGULAR.getStringWidth(score) / 1000 * Math.max(5, 8 * scale);
+            text(stream, REGULAR, 8 * scale, x + width - 8 * scale - scoreWidth,
+                    top - 15 * scale, score);
             List<String> labelLines = DiagramTextWrapper.wrap(node.label(), 34, 2, "n/a");
             for (int index = 0; index < labelLines.size(); index++) {
-                text(stream, REGULAR, 8.3f * fontScale,
+                text(stream, REGULAR, 10 * scale,
                         x + 8 * scale,
                         top - (38 + index * 16) * scale,
                         labelLines.get(index));
             }
+            // Type names belong on their own line; the former right-hand header overflowed
+            // the box for names such as "Communications Services".
+            text(stream, REGULAR, 8 * scale, x + 8 * scale, y + 10 * scale, node.type());
         }
     }
 

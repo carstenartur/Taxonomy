@@ -96,7 +96,10 @@ public class ArchitectureWorkbenchService {
         String fallbackTitle = project.projectKey() + " / " + requirement.requirementKey()
                 + " — " + requirement.title();
         String persistedTitle = architectureView.getViewTitle();
+        // Policy keys are UI metadata, not human-readable document titles.
+        // Standalone SVG/PDF/exchange files have no browser translation service.
         String title = persistedTitle == null || persistedTitle.isBlank()
+                || persistedTitle.strip().startsWith("archview.policy.title.")
                 ? fallbackTitle
                 : persistedTitle.strip();
         DiagramModel diagram = PersistedDiagramProjection.project(
