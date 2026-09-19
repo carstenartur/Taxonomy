@@ -6,7 +6,7 @@ import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.LlmCallDetail;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.shared.service.PromptTemplateService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

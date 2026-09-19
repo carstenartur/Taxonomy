@@ -182,7 +182,7 @@ test('secure random-values fallback supplies the same canonical version-four ID 
 
 // Use actual catalogue identities and roles, never a fabricated taxonomy.
 const liveCatalogue = JSON.parse(readFileSync(new URL(
-    '../../taxonomy-app/src/main/resources/data/nato-taxonomy.json', import.meta.url), 'utf8'));
+    '../../taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json', import.meta.url), 'utf8'));
 const liveProduct = liveCatalogue.nodePatches.find(node => node.analysisRole === 'PRODUCT'
     && liveCatalogue.nodePatches.some(parent => parent.code === node.parentCode));
 assert.ok(liveProduct, 'Expected a real product with its real family in the catalogue');

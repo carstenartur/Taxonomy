@@ -1,5 +1,10 @@
 package com.taxonomy.catalog.service.importer;
 
+import com.taxonomy.composition.importer.ApqcCsvImportProfileExtension;
+import com.taxonomy.composition.importer.ApqcExcelImportProfileExtension;
+import com.taxonomy.composition.importer.C4ImportProfileExtension;
+import com.taxonomy.composition.importer.UafImportProfileExtension;
+
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.dto.ProfileInfo;
@@ -154,4 +159,28 @@ class FrameworkImportServiceTest {
                 new ByteArrayInputStream(new byte[0]), "main");
         assertThat(result.success()).isFalse();
     }
+    @Test
+    void invalidMaterializationPreservesValidationErrorsAndWarnings() {
+        when(materializeService.materialize(anyString(), anyString(), eq("draft"), isNull()))
+                .thenReturn(new DslMaterializeService.MaterializeResult(
+                        false, List.of("Invalid relation"), List.of("Review required"), 0, 0, null));
+        FrameworkImportResult result = service.importFile("apqc",
+                new ByteArrayInputStream("PCF ID,Name,Level\n1,Root,1\n".getBytes(StandardCharsets.UTF_8)), "draft");
+        assertThat(result.success()).isFalse();
+        assertThat(result.warnings()).contains("Review required", "Invalid relation");
+        assertThat(result.documentId()).isNull();
+        assertThat(result.relationsCreated()).isZero();
+        verify(materializeService).materialize(anyString(), startsWith("import/apqc-"), eq("draft"), isNull());
+    }
+
+    @Test
+    void malformedPreviewReportsParserFailureWithoutMaterialization() {
+        FrameworkImportResult result = service.preview("uaf",
+                new ByteArrayInputStream("<unclosed>".getBytes(StandardCharsets.UTF_8)));
+        assertThat(result.success()).isFalse();
+        assertThat(result.warnings()).anyMatch(message -> message.startsWith("Preview failed:"));
+        assertThat(result.elementsTotal()).isZero();
+        verifyNoInteractions(materializeService);
+    }
+
 }

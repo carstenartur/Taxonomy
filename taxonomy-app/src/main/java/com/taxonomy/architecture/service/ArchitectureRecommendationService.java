@@ -15,7 +15,7 @@ import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.MissingRelation;
 import com.taxonomy.dto.RecommendedElement;
 import com.taxonomy.dto.SuggestedRelation;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 
 /**
  * Combines requirement scoring, gap analysis, and semantic search

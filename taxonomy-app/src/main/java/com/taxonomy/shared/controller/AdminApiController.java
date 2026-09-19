@@ -78,7 +78,7 @@ public class AdminApiController {
         status.put("initialized", taxonomyService.isInitialized());
         status.put("status", taxonomyService.getInitStatus());
 
-        com.taxonomy.shared.service.AppInitializationStateService stateService = taxonomyService.getStateService();
+        com.taxonomy.catalog.service.AppInitializationStateService stateService = taxonomyService.getStateService();
         status.put("phase", stateService.getState().name());
         status.put("phaseMessage", stateService.getMessage());
         status.put("phaseUpdatedAt", stateService.getUpdatedAt().toString());

@@ -6,7 +6,7 @@ The machine-readable source of truth for the planned extraction contexts is `.gi
 
 ## Current Maven reactor
 
-The root reactor currently contains eleven modules with different roles:
+The root reactor currently contains twelve modules with different roles:
 
 | Module | Current role |
 |---|---|
@@ -18,6 +18,7 @@ The root reactor currently contains eleven modules with different roles:
 | `taxonomy-workspace` | Workspace authority, versioning, semantic editor history and JGit storage |
 | `taxonomy-templates` | Document-template Git storage, OOXML validation and WebDAV |
 | `taxonomy-interop` | Reviewed external-tool interoperability, mappings, checkpoints and OSLC; portfolio access through an explicit port |
+| `taxonomy-knowledge` | Catalogue and seed resources, relations, Hibernate Search mappings and local semantic embeddings |
 | `taxonomy-app` | Executable Spring Boot application and, currently, most Spring-aware feature implementations |
 | `taxonomy-coverage` | Reactor-wide coverage aggregation |
 | `taxonomy-build` | Build policy and browser/verification contracts |
@@ -33,6 +34,8 @@ The decomposition therefore follows **authority and bounded contexts**, not the 
 ## Planned bounded contexts
 
 ### `taxonomy-knowledge`
+
+Physically extracted as a Maven library. Catalogue startup state, embedding lifecycle, vector conversion and search analyzers are owned here. The five framework-import materialization adapters live in `taxonomy-app` under `com.taxonomy.composition.importer`; their parsers and the import registry remain knowledge-owned. Spring bean names and classpath resource names are unchanged.
 
 Owns `catalog`, `relations`, and `search`. Their current mutual dependencies are treated as internal implementation coupling of one knowledge context while their public contracts are narrowed. Search mappings/binders belong with the persistence side of this context rather than becoming a general application dependency.
 

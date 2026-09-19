@@ -12,17 +12,18 @@
   "changedSourcePrefixes": [
     "taxonomy-app/src/main/java/com/taxonomy/security/",
     "taxonomy-app/src/main/java/com/taxonomy/provenance/",
-    "taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/",
+    "taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/importer/",
     "taxonomy-workspace/src/main/java/com/taxonomy/workspace/storage/",
     "taxonomy-app/src/main/java/com/taxonomy/composition/persistence/",
-    "taxonomy-app/src/main/java/com/taxonomy/relations/controller/",
-    "taxonomy-app/src/main/java/com/taxonomy/relations/service/",
+    "taxonomy-knowledge/src/main/java/com/taxonomy/relations/controller/",
+    "taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/",
     "taxonomy-workspace/src/main/java/com/taxonomy/versioning/",
     "taxonomy-app/src/main/java/com/taxonomy/composition/report/",
     "taxonomy-app/src/main/java/com/taxonomy/composition/dsl/controller/",
     "taxonomy-app/src/main/java/com/taxonomy/composition/dsl/service/",
     "taxonomy-workspace/src/main/java/com/taxonomy/workspace/",
-    "taxonomy-app/src/main/java/com/taxonomy/portfolio/"
+    "taxonomy-app/src/main/java/com/taxonomy/portfolio/",
+    "taxonomy-app/src/main/java/com/taxonomy/composition/importer/"
   ],
   "criticalPackages": [
     {
@@ -56,8 +57,13 @@
       "minimums": { "LINE": 0.37, "BRANCH": 0.37 }
     },
     {
-      "module": "taxonomy-app",
+      "module": "taxonomy-knowledge",
       "package": "com/taxonomy/catalog/service/importer",
+      "minimums": { "LINE": 0.84, "BRANCH": 0.58 }
+    },
+    {
+      "module": "taxonomy-app",
+      "package": "com/taxonomy/composition/importer",
       "minimums": { "LINE": 0.84, "BRANCH": 0.58 }
     },
     {
@@ -76,7 +82,7 @@
       "minimums": { "LINE": 0.81, "BRANCH": 0.58 }
     },
     {
-      "module": "taxonomy-app",
+      "module": "taxonomy-knowledge",
       "package": "com/taxonomy/relations/controller",
       "minimums": { "LINE": 0.81, "BRANCH": 0.58 }
     },
@@ -101,7 +107,7 @@
       "minimums": { "LINE": 0.77, "BRANCH": 0.59 }
     },
     {
-      "module": "taxonomy-app",
+      "module": "taxonomy-knowledge",
       "package": "com/taxonomy/relations/service",
       "minimums": { "LINE": 0.77, "BRANCH": 0.59 }
     },

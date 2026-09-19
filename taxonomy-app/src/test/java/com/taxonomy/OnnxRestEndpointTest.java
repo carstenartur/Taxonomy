@@ -1,7 +1,7 @@
 package com.taxonomy;
 
 import com.taxonomy.search.LocalOnnxIndexInitializer;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;

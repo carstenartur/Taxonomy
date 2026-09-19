@@ -17,7 +17,7 @@ and imports consistent.
 | File | What to do |
 |---|---|
 | `taxonomy-domain/src/main/java/com/taxonomy/model/RelationType.java` | Add the persisted enum constant |
-| `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationCompatibilityMatrix.java` | Add allowed source/target type combinations |
+| `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationCompatibilityMatrix.java` | Add allowed source/target type combinations |
 | `taxonomy-dsl/src/main/java/com/taxonomy/dsl/validation/DslValidator.java` | Keep the DSL relation-type mirror and compatibility rules aligned |
 | `taxonomy-app/src/main/resources/templates/index.html` | Add the type to both hard-coded relation selectors |
 
@@ -47,7 +47,7 @@ Review these when the new type has special behavior:
 - `AnalysisRelationGenerator`
 - graph traversal, impact, coverage, or materialization services
 - import profiles and seed parsers that map external relation names
-- `taxonomy-app/src/main/resources/data/relations.csv`
+- `taxonomy-knowledge/src/main/resources/data/relations.csv`
 - `docs/en/RELATION_SEEDS.md`
 
 ---

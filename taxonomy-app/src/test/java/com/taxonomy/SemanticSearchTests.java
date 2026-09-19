@@ -6,7 +6,7 @@ import com.taxonomy.search.NodeEmbeddingBinder;
 import com.taxonomy.search.RelationEmbeddingBinder;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.relations.service.HybridSearchService;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.relations.service.RankFusionUtil;
 import com.taxonomy.catalog.service.SearchService;
 import org.junit.jupiter.api.Test;

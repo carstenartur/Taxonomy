@@ -22,8 +22,8 @@ tools/catalogue-overlay/generate.sh
 Standardmäßig werden folgende Dateien verwendet:
 
 ```text
-taxonomy-app/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx
-taxonomy-app/src/main/resources/data/nato-taxonomy.json
+taxonomy-knowledge/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx
+taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json
 target/catalogue-overlay/catalogue-overlay-proposal.json
 target/catalogue-overlay/catalogue-overlay-review.md
 ```

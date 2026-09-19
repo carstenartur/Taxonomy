@@ -1,6 +1,6 @@
 package com.taxonomy.provenance.service;
 
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;

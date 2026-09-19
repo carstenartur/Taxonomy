@@ -41,9 +41,9 @@ public final class CatalogueOverlayProposalGenerator {
     static final String ROLE_PRODUCT_FAMILY = "PRODUCT_FAMILY";
 
     private static final String DEFAULT_CATALOGUE =
-            "taxonomy-app/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx";
+            "taxonomy-knowledge/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx";
     private static final String DEFAULT_OVERLAY =
-            "taxonomy-app/src/main/resources/data/nato-taxonomy.json";
+            "taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json";
     private static final String DEFAULT_OUTPUT =
             "target/catalogue-overlay/catalogue-overlay-proposal.json";
     private static final String DEFAULT_REPORT =

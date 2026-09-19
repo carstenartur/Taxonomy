@@ -4,25 +4,25 @@
   "entries": [
     {
       "ruleId": "java/user-controlled-bypass",
-      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "artifactUri": "taxonomy-knowledge/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
       "primaryLocationLineHash": "fddf021f421e71e8:1",
       "rationale": "Every requested proposal still enters executeReview, whose service boundary enforces exact-context visibility, role and expected-head checks. User-controlled IDs and action only select and order requested review results; they do not bypass authorization. Reviewed in #857."
     },
     {
       "ruleId": "java/user-controlled-bypass",
-      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "artifactUri": "taxonomy-knowledge/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
       "primaryLocationLineHash": "bc1e87a17bceed95:1",
       "rationale": "Every requested proposal still enters executeReview, whose service boundary enforces exact-context visibility, role and expected-head checks. User-controlled IDs and action only select and order requested review results; they do not bypass authorization. Reviewed in #857."
     },
     {
       "ruleId": "java/user-controlled-bypass",
-      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
+      "artifactUri": "taxonomy-knowledge/src/main/java/com/taxonomy/relations/controller/ProposalApiController.java",
       "primaryLocationLineHash": "65e7cc55cc484ad9:1",
       "rationale": "Every requested proposal still enters executeReview, whose service boundary enforces exact-context visibility, role and expected-head checks. User-controlled IDs and action only select and order requested review results; they do not bypass authorization. Reviewed in #857."
     },
     {
       "ruleId": "java/sensitive-log",
-      "artifactUri": "taxonomy-app/src/main/java/com/taxonomy/catalog/service/TaxonomyRelationService.java",
+      "artifactUri": "taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/TaxonomyRelationService.java",
       "primaryLocationLineHash": "9c9cc85f29714170:1",
       "rationale": "Existing relation diagnostic dataflow remains tracked for a consistent non-disclosing logging contract in #857."
     },

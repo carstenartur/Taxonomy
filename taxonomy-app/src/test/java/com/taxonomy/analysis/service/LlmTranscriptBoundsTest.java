@@ -2,7 +2,7 @@ package com.taxonomy.analysis.service;
 
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.LlmCallDetail;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.shared.service.PromptTemplateService;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;

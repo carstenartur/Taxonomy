@@ -63,8 +63,8 @@ Relevante Implementierungsstellen sind insbesondere:
 
 - [`taxonomy-dsl-editor.js`](../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-dsl-editor.js)
 - [`CanonicalArchitectureModel.java`](../../taxonomy-dsl/src/main/java/com/taxonomy/dsl/model/CanonicalArchitectureModel.java)
-- [`ExternalParser.java`](../../taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/ExternalParser.java)
-- [`FrameworkImportService.java`](../../taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/FrameworkImportService.java)
+- [`ExternalParser.java`](../../taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/importer/ExternalParser.java)
+- [`FrameworkImportService.java`](../../taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/importer/FrameworkImportService.java)
 - [`ExternalModelMapper.java`](../../taxonomy-dsl/src/main/java/com/taxonomy/dsl/mapping/ExternalModelMapper.java)
 - [Repository-Topologie](REPOSITORY_TOPOLOGY.md)
 

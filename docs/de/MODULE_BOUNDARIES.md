@@ -6,7 +6,7 @@ Die maschinenlesbare Quelle für die geplanten Extraktionskontexte ist `.github/
 
 ## Aktueller Maven-Reactor
 
-Der Root-Reactor enthält derzeit elf Module mit unterschiedlichen Aufgaben:
+Der Root-Reactor enthält derzeit zwölf Module mit unterschiedlichen Aufgaben:
 
 | Modul | Aktuelle Aufgabe |
 |---|---|
@@ -18,6 +18,7 @@ Der Root-Reactor enthält derzeit elf Module mit unterschiedlichen Aufgaben:
 | `taxonomy-workspace` | Workspace-Zuständigkeit, Versionierung, semantische Editor-Historie und JGit-Speicher |
 | `taxonomy-templates` | Dokumentvorlagen-Git-Speicher, OOXML-Validierung und WebDAV |
 | `taxonomy-interop` | Geprüfte externe Werkzeuganbindung, Mappings, Checkpoints und OSLC; Portfoliozugriff über einen expliziten Port |
+| `taxonomy-knowledge` | Katalog- und Seed-Ressourcen, Relationen, Hibernate-Search-Mappings und lokale semantische Embeddings |
 | `taxonomy-app` | Ausführbare Spring-Boot-Anwendung und derzeit der Großteil der Spring-basierten Feature-Implementierungen |
 | `taxonomy-coverage` | Reactor-weite Coverage-Aggregation |
 | `taxonomy-build` | Build-Policy sowie Browser-/Verifikationsverträge |
@@ -33,6 +34,8 @@ Die Zerlegung folgt deshalb **Zuständigkeit und Bounded Contexts**, nicht mecha
 ## Geplante Bounded Contexts
 
 ### `taxonomy-knowledge`
+
+Physisch als Maven-Bibliothek ausgelagert. Katalog-Initialisierungszustand, Embedding-Lebenszyklus, Vektorkonvertierung und Suchanalysatoren gehören hierher. Die fünf materialisierenden Framework-Importadapter liegen in `taxonomy-app` unter `com.taxonomy.composition.importer`; ihre Parser und die Import-Registry verbleiben im Knowledge-Modul. Spring-Bean-Namen und Classpath-Ressourcennamen bleiben unverändert.
 
 Besitzt `catalog`, `relations` und `search`. Deren heutige gegenseitige Abhängigkeiten werden zunächst als interne Implementierungskopplung eines Knowledge-Kontexts behandelt, während die öffentlichen Verträge verengt werden. Search-Mappings und Binder gehören zur Persistenzseite dieses Kontexts und nicht als allgemeine Anwendungsabhängigkeit in die App.
 

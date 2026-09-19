@@ -47,7 +47,7 @@ import static org.assertj.core.api.Assertions.assertThatExceptionOfType;
  */
 class ArchitectureContextDependencyRatchetTest {
 
-    private static final List<String> SOURCE_MODULES = List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates", "taxonomy-interop");
+    private static final List<String> SOURCE_MODULES = List.of("taxonomy-app", "taxonomy-workspace", "taxonomy-templates", "taxonomy-interop", "taxonomy-knowledge");
 
     private static final Comparator<PackageEdge> EDGE_ORDER = Comparator
             .comparing(PackageEdge::fromContext)
@@ -95,7 +95,8 @@ class ArchitectureContextDependencyRatchetTest {
                     Files.writeString(root.resolve(compositionFile), "package com.taxonomy;\n");
                 }
             } else {
-                String context = sourceModule.substring("taxonomy-".length());
+                String context = "taxonomy-knowledge".equals(sourceModule)
+                        ? "catalog" : sourceModule.substring("taxonomy-".length());
                 Path packageRoot = Files.createDirectories(root.resolve(context));
                 Files.writeString(packageRoot.resolve("Sample.java"),
                         "package com.taxonomy." + context + ";\n");

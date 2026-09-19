@@ -212,8 +212,8 @@ document/provenance mappings
 **Interface / registry / configuration point**
 
 - `taxonomy-extension-api/src/main/java/com/taxonomy/catalog/service/importer/ImportProfileExtension.java`
-- `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/ImportProfileRegistry.java`
-- `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/FrameworkImportService.java`
+- `taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/importer/ImportProfileRegistry.java`
+- `taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/importer/FrameworkImportService.java`
 - `taxonomy-app/src/main/resources/static/js/api/import-api.js`
 
 **Required files**
@@ -301,9 +301,9 @@ There is no registry. The documented anchor is the provenance pipeline above.
 **Interface / registry / configuration point**
 
 - `taxonomy-domain/src/main/java/com/taxonomy/model/RelationType.java`
-- `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationCompatibilityMatrix.java`
-- `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationValidationService.java`
-- `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProposalService.java`
+- `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationCompatibilityMatrix.java`
+- `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationValidationService.java`
+- `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationProposalService.java`
 - `taxonomy-dsl/src/main/java/com/taxonomy/dsl/validation/DslValidator.java`
 
 There is currently **no dedicated relation-type registry or `/api/relations/types`
@@ -321,7 +321,7 @@ metadata endpoint**. The UI still duplicates the allowed values in
 - `RelationValidationService` if the new type needs special validation
 - `RelationProposalService` / `RelationCandidateService` if proposal heuristics
   depend on the new type
-- `taxonomy-app/src/main/resources/data/relation_seeds.csv`
+- `taxonomy-knowledge/src/main/resources/data/relations.csv`
 - `taxonomy-dsl/src/main/java/com/taxonomy/dsl/validation/DslValidator.java`
 - i18n or help text if the new type needs a user-facing label/description
 

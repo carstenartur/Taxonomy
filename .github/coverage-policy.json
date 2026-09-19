@@ -23,6 +23,7 @@
     "taxonomy-app",
     "taxonomy-workspace",
     "taxonomy-templates",
-    "taxonomy-interop"
+    "taxonomy-interop",
+    "taxonomy-knowledge"
   ]
 }
