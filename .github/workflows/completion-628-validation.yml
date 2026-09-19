@@ -21,12 +21,12 @@ jobs:
           path: ~/.m2/repository
           key: completion-dependencies-f272-${{ github.run_id }}
           restore-keys: completion-dependencies-f272-
-      - name: Verify final feature libraries, ports and executable packaging
+      - name: Verify final feature libraries and unchanged async behavior
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           python3 - <<'PY'
           import urllib.request,json,base64,hashlib,pathlib,os,subprocess
-          sha='f276745a3878e227c8113d647dfb4d743f531d9a'
+          sha='62d4ebe2dc64575fcd49a16e3d1ab92c4a5fcde1'
           req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
           with urllib.request.urlopen(req,timeout=120) as response: data=base64.b64decode(json.load(response)['content'])
           assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
