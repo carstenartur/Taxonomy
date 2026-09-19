@@ -230,7 +230,7 @@
       "fromPackage": "com.taxonomy.composition.interop",
       "toContext": "interop",
       "toPackage": "com.taxonomy.interop",
-      "classDependencyCount": 7
+      "classDependencyCount": 8
     },
     {
       "fromContext": "app-composition",
@@ -251,7 +251,7 @@
       "fromPackage": "com.taxonomy.composition.interop",
       "toContext": "portfolio",
       "toPackage": "com.taxonomy.portfolio.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 6
     },
     {
       "fromContext": "app-composition",
