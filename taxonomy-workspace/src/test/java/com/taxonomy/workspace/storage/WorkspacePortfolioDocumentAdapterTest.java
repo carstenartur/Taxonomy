@@ -18,14 +18,17 @@ class WorkspacePortfolioDocumentAdapterTest {
         var merges = mock(SemanticGitMergeService.class);
         var context = new WorkspaceContext("alice", "ws-a", "draft", "repo-a");
         when(factory.resolveRepository(context)).thenReturn(repository, other);
+        when(repository.getGitRepository()).thenReturn(mock(org.eclipse.jgit.lib.Repository.class));
         when(repository.getHeadCommit("draft")).thenReturn("head");
         when(repository.getDslAtHead("draft")).thenReturn("dsl");
+        when(repository.getDslAtCommit("head")).thenReturn("immutable dsl");
         when(repository.commitDsl("draft", "updated", "alice", "checkpoint")).thenReturn("next");
         when(merges.mergeBranches(repository, "source", "draft", "alice", "merge"))
                 .thenReturn(new SemanticGitMergeService.MergeOutcome(true, "merged", true, List.of(), null));
         var handle = new WorkspacePortfolioDocumentAdapter(factory, merges).resolveRepository(context);
         assertThat(handle.getHeadCommit("draft")).isEqualTo("head");
         assertThat(handle.getDslAtHead("draft")).isEqualTo("dsl");
+        assertThat(handle.getDslAtCommit("head")).isEqualTo("immutable dsl");
         assertThat(handle.commitDsl("draft", "updated", "alice", "checkpoint")).isEqualTo("next");
         var result = handle.mergeBranches("source", "draft", "alice", "merge");
         assertThat(result.success()).isTrue();
@@ -43,6 +46,7 @@ class WorkspacePortfolioDocumentAdapterTest {
         var merges = mock(SemanticGitMergeService.class);
         var context = new WorkspaceContext("alice", "ws-a", "draft", "repo-a");
         when(factory.resolveRepository(context)).thenReturn(repository);
+        when(repository.getGitRepository()).thenReturn(mock(org.eclipse.jgit.lib.Repository.class));
         var conflicts = List.of("requirement:REQ-1");
         when(merges.mergeBranches(repository, "source", "draft", "alice", null))
                 .thenReturn(new SemanticGitMergeService.MergeOutcome(false, null, false, conflicts, null));
@@ -61,6 +65,7 @@ class WorkspacePortfolioDocumentAdapterTest {
         var merges = mock(SemanticGitMergeService.class);
         var context = new WorkspaceContext("alice", "ws-a", "draft", "repo-a");
         when(factory.resolveRepository(context)).thenReturn(repository);
+        when(repository.getGitRepository()).thenReturn(mock(org.eclipse.jgit.lib.Repository.class));
         var failure = new IOException("storage unavailable");
         when(repository.getDslAtHead("draft")).thenThrow(failure);
         var handle = new WorkspacePortfolioDocumentAdapter(factory, merges).resolveRepository(context);

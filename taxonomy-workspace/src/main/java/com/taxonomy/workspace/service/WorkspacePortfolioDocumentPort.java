@@ -9,6 +9,8 @@ public interface WorkspacePortfolioDocumentPort {
 
     interface DocumentHandle {
         String getDslAtHead(String branch) throws IOException;
+        /** Reads immutable content without resolving a mutable branch again. */
+        String getDslAtCommit(String commitId) throws IOException;
         String getHeadCommit(String branch) throws IOException;
         String commitDsl(String branch, String dsl, String author, String message) throws IOException;
         MergeResult mergeBranches(String fromBranch, String intoBranch, String author, String message) throws IOException;

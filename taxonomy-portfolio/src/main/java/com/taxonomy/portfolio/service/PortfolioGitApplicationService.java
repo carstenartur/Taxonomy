@@ -105,7 +105,7 @@ public class PortfolioGitApplicationService {
         String username = username(context);
         DocumentHandle repository = repositoryFactory.resolveRepository(context);
         String targetHead = requireHead(repository, normalizedBranch);
-        String targetDsl = repository.getDslAtHead(normalizedBranch);
+        String targetDsl = repository.getDslAtCommit(targetHead);
         String currentProjection = portfolioGitService.contributeTo(
                 targetDsl, username, context);
 
@@ -142,8 +142,7 @@ public class PortfolioGitApplicationService {
                             + expectedHead.strip() + " but found " + actualHead);
         }
         PortfolioGitService.MaterializeResult materialized =
-                portfolioGitService.materializeHead(
-                        normalizedBranch, username(context), context);
+                materializeCommit(repository, actualHead, context);
         return new MaterializePortfolioResult(
                 normalizedBranch,
                 actualHead,
@@ -175,7 +174,7 @@ public class PortfolioGitApplicationService {
                     "Portfolio merge conflict: " + String.join(", ", outcome.conflicts()));
         }
 
-        portfolioGitService.materializeHead(target, username(context), context);
+        materializeCommit(repository, outcome.commitId(), context);
         Counts counts = counts(username(context), context);
         return new MergePortfolioResult(
                 source,
@@ -190,6 +189,18 @@ public class PortfolioGitApplicationService {
                 counts.products(),
                 counts.conflicts(),
                 Instant.now());
+    }
+
+    /** Apply immutable reviewed/merged bytes, never a subsequently advanced branch. */
+    private PortfolioGitService.MaterializeResult materializeCommit(DocumentHandle repository,
+                                                                   String commitId,
+                                                                   WorkspaceContext context) throws IOException {
+        String dsl = repository.getDslAtCommit(commitId);
+        if (dsl == null || dsl.isBlank()) {
+            return new PortfolioGitService.MaterializeResult(0, 0, 0, List.of("Branch has no DSL content"));
+        }
+        // The Git publication monitor is not held across database materialization.
+        return portfolioGitService.materialize(dsl, username(context), context);
     }
 
     private Counts counts(String username, WorkspaceContext context) {

@@ -31,7 +31,7 @@ class PortfolioGitMaterializationPreviewTest {
         String currentProjection =
                 "meta {\n version: \"2.0\";\n}\nrequirement OLD {}\n";
         when(fixture.repository().getHeadCommit("target")).thenReturn("target-head");
-        when(fixture.repository().getDslAtHead("target")).thenReturn(targetDsl);
+        when(fixture.repository().getDslAtCommit("target-head")).thenReturn(targetDsl);
         when(fixture.gitCore().contributeTo(targetDsl, "architect", fixture.context()))
                 .thenReturn(currentProjection);
 
@@ -46,6 +46,10 @@ class PortfolioGitMaterializationPreviewTest {
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any());
+        verify(fixture.gitCore(), never()).materialize(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any());
     }
 
     @Test
@@ -54,7 +58,7 @@ class PortfolioGitMaterializationPreviewTest {
         String targetDsl = "block {\n repeated;\n}\n";
         String currentProjection = "block {\n repeated;\n repeated;\n}\n";
         when(fixture.repository().getHeadCommit("target")).thenReturn("target-head");
-        when(fixture.repository().getDslAtHead("target")).thenReturn(targetDsl);
+        when(fixture.repository().getDslAtCommit("target-head")).thenReturn(targetDsl);
         when(fixture.gitCore().contributeTo(targetDsl, "architect", fixture.context()))
                 .thenReturn(currentProjection);
 
@@ -80,6 +84,10 @@ class PortfolioGitMaterializationPreviewTest {
                 .hasMessageContaining("new-head");
 
         verify(fixture.gitCore(), never()).materializeHead(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any());
+        verify(fixture.gitCore(), never()).materialize(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any());
@@ -131,7 +139,8 @@ class PortfolioGitMaterializationPreviewTest {
     void materializeAcceptsReviewedHeadAndReturnsObservedUpserts() throws Exception {
         Fixture fixture = fixture();
         when(fixture.repository().getHeadCommit("target")).thenReturn("reviewed-head");
-        when(fixture.gitCore().materializeHead("target", "architect", fixture.context()))
+        when(fixture.repository().getDslAtCommit("reviewed-head")).thenReturn("reviewed dsl");
+        when(fixture.gitCore().materialize("reviewed dsl", "architect", fixture.context()))
                 .thenReturn(new PortfolioGitService.MaterializeResult(
                         2, 3, 4, List.of("review warning")));
 
@@ -154,7 +163,8 @@ class PortfolioGitMaterializationPreviewTest {
                 fixture.repository(), "source", "target", "architect", "Merge portfolio"))
                 .thenReturn(new SemanticGitMergeService.MergeOutcome(
                         true, "merge-head", false, List.of(), null));
-        when(fixture.gitCore().materializeHead("target", "architect", fixture.context()))
+        when(fixture.repository().getDslAtCommit("merge-head")).thenReturn("merged dsl");
+        when(fixture.gitCore().materialize("merged dsl", "architect", fixture.context()))
                 .thenReturn(new PortfolioGitService.MaterializeResult(0, 0, 0, List.of()));
 
         var result = fixture.service().merge(
@@ -164,7 +174,7 @@ class PortfolioGitMaterializationPreviewTest {
         assertThat(result.targetHeadBefore()).isEqualTo("target-head");
         assertThat(result.mergeCommitId()).isEqualTo("merge-head");
         assertThat(result.strategy()).isEqualTo("GIT");
-        verify(fixture.gitCore()).materializeHead("target", "architect", fixture.context());
+        verify(fixture.gitCore()).materialize("merged dsl", "architect", fixture.context());
     }
 
     @Test
@@ -176,7 +186,8 @@ class PortfolioGitMaterializationPreviewTest {
                 fixture.repository(), "source", "target", "architect", "semantic"))
                 .thenReturn(new SemanticGitMergeService.MergeOutcome(
                         true, "semantic-head", true, List.of(), null));
-        when(fixture.gitCore().materializeHead("target", "architect", fixture.context()))
+        when(fixture.repository().getDslAtCommit("semantic-head")).thenReturn("semantic dsl");
+        when(fixture.gitCore().materialize("semantic dsl", "architect", fixture.context()))
                 .thenReturn(new PortfolioGitService.MaterializeResult(0, 0, 0, List.of()));
 
         assertThat(fixture.service().merge(
@@ -229,6 +240,7 @@ class PortfolioGitMaterializationPreviewTest {
         SemanticGitMergeService mergeService = mock(SemanticGitMergeService.class);
         DslGitRepository repository = mock(DslGitRepository.class);
         when(factory.resolveRepository(context)).thenReturn(repository);
+        when(repository.getGitRepository()).thenReturn(mock(org.eclipse.jgit.lib.Repository.class));
         when(projects.listProjects("architect", context)).thenReturn(List.of());
         when(solutions.listSolutions("architect", context)).thenReturn(List.of());
         when(products.listProducts("architect", context)).thenReturn(List.of());
