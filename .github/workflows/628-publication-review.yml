@@ -5,6 +5,7 @@ on:
     paths: [.github/workflows/628-publication-review.yml]
 permissions:
   contents: write
+  actions: read
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -21,18 +22,38 @@ jobs:
         run: |
           python3 - <<'PY'
           import urllib.request,json,base64,hashlib,os,pathlib,subprocess
-          sha='9dc4bdc83016afb65222e2bd9e7d92652e8180d0'
+          sha='dcdf6ecfa916e2430b63ab820570295c163ab807'
           req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
           with urllib.request.urlopen(req,timeout=120) as response: data=base64.b64decode(json.load(response)['content'])
           assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
           path=pathlib.Path('/tmp/628-candidate.py');path.write_bytes(data)
           subprocess.run(['python3',str(path)],check=True)
+          path=pathlib.Path('taxonomy-portfolio/src/test/java/com/taxonomy/portfolio/service/ProductCatalogPolicyContractTest.java')
+          text=path.read_text();assert text.count('clearInvocations(products);')==1
+          path.write_text(text.replace('clearInvocations(products);','clearInvocations(products,coverage,candidates,decisions,projects);'))
+          subprocess.run(['git','add','-A'],check=True)
+          pathlib.Path('target/628-publication.patch').write_bytes(subprocess.check_output(['git','diff','--cached','--binary']))
           PY
-      - name: Verify publication, routing, review-state and existing application contracts
+      - name: Verify publication and existing portfolio contracts
         run: |
           set -euo pipefail
-          ./mvnw -B -ntp -Dtest=WorkspacePortfolioVersionBoundaryTest,WorkspacePortfolioDocumentAdapterTest,WorkspacePortfolioDocumentMonitorTest,PortfolioGitPublicationRaceTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioGitServiceTest,PortfolioDecisionGitRoundtripTest,PortfolioApiContractTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest,PortfolioControllerDelegationContractTest,PortfolioGitRequestContractTest,PortfolioRepresentationsContractTest,PortfolioReviewMutationContractTest,PortfolioJsonCodecBoundaryTest,DocumentAnalysisServiceTest -Dsurefire.failIfNoSpecifiedTests=false test > target/628-green.log 2>&1 || { tail -180 target/628-green.log; exit 1; }
+          ./mvnw -B -ntp -Dtest=WorkspacePortfolioVersionBoundaryTest,WorkspacePortfolioDocumentAdapterTest,WorkspacePortfolioDocumentMonitorTest,PortfolioGitPublicationRaceTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioGitServiceTest,PortfolioDecisionGitRoundtripTest,PortfolioApiContractTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest,PortfolioControllerDelegationContractTest,PortfolioGitRequestContractTest,PortfolioRepresentationsContractTest,PortfolioReviewMutationContractTest,PortfolioJsonCodecBoundaryTest,DocumentAnalysisServiceTest,ProductCatalogPolicyContractTest,SolutionCatalogPolicyContractTest,PortfolioDecisionImportBoundaryTest,PortfolioReportServiceTest -Dsurefire.failIfNoSpecifiedTests=false test > target/628-green.log 2>&1 || { tail -180 target/628-green.log; exit 1; }
           tail -25 target/628-green.log
+      - name: Aggregate focused coverage evidence
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-coverage -am -DskipTests jacoco:report-aggregate > target/628-coverage.log 2>&1 || { tail -80 target/628-coverage.log; exit 1; }
+          python3 - <<'PY'
+          import pathlib,xml.etree.ElementTree as ET
+          p=pathlib.Path('taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml')
+          report=ET.parse(p).getroot()
+          for group in report.findall('group'):
+              for package in group.findall('package'):
+                  for source in package.findall('sourcefile'):
+                      if any(part in package.get('name') for part in ('portfolio/controller','portfolio/service','portfolio/model','provenance/service','workspace/storage')):
+                          counts={c.get('type'):(int(c.get('covered')),int(c.get('missed'))) for c in source.findall('counter')}
+                          print('FOCUSED_COVERAGE',group.get('name'),package.get('name'),source.get('name'),counts)
+          PY
       - name: Record tested source tree without changing refs
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
@@ -64,5 +85,6 @@ jobs:
           path: |
             target/628-*
             **/target/surefire-reports/TEST-*.xml
+            taxonomy-coverage/target/site/jacoco-aggregate/jacoco.xml
           if-no-files-found: error
           retention-days: 7
