@@ -1,0 +1,62 @@
+name: Architecture extraction validation
+on:
+  push:
+    branches: [work/628-architecture-validation]
+    paths: [.github/workflows/architecture-extraction-validation.yml]
+permissions:
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: b9e66644bd17dd370cfb4860245137088601631f
+          persist-credentials: false
+      - name: Inspect exact architecture ownership and build contracts
+        run: |
+          python3 - <<'PY'
+          import pathlib, re, json
+          root = pathlib.Path('.')
+          tracked = __import__('subprocess').check_output(['git','ls-files'], text=True).splitlines()
+          print('=== REPOSITORY INSTRUCTIONS ===')
+          for name in tracked:
+              if pathlib.Path(name).name == 'AGENTS.md':
+                  print(name, pathlib.Path(name).read_text())
+          print('=== ARCHITECTURE SOURCES AND APP-OWNED DEPENDENCIES ===')
+          owners = {}
+          for name in tracked:
+              if '/src/main/java/' not in name or not name.endswith('.java'): continue
+              text = pathlib.Path(name).read_text()
+              package = re.search(r'^package\s+([\w.]+);', text, re.M)
+              if package: owners[package[1]+'.'+pathlib.Path(name).stem] = name
+          for fqn, name in owners.items():
+              if not fqn.startswith('com.taxonomy.architecture.'): continue
+              text = pathlib.Path(name).read_text()
+              imports = re.findall(r'^import\s+(?:static\s+)?(com\.taxonomy\.[\w.]+)(?:\.\*)?;', text, re.M)
+              bad = []
+              for imp in imports:
+                  key = imp
+                  while key not in owners and '.' in key: key = key.rsplit('.',1)[0]
+                  target = owners.get(key, '')
+                  if target.startswith('taxonomy-app/') and not imp.startswith('com.taxonomy.architecture.'):
+                      bad.append(imp+' => '+target)
+              print(name, 'APP_DEPS='+json.dumps(bad))
+          print('=== ARCHITECTURE TESTS ===')
+          for name in tracked:
+              if '/src/test/' not in name or not name.endswith('.java'): continue
+              text=pathlib.Path(name).read_text()
+              if 'com.taxonomy.architecture' in text:
+                  print(name, 'SPRING='+str(any(s in text for s in ['@SpringBootTest','@WebMvcTest','@DataJpaTest','AbstractDatabase'])))
+          print('=== BUILD/DOCUMENT REFERENCES ===')
+          for name in tracked:
+              p=pathlib.Path(name)
+              if p.suffix not in ['.xml','.json','.md','.py','.sh','.java','.yml'] and name!='Dockerfile': continue
+              text=p.read_text(errors='replace')
+              if 'taxonomy-knowledge' in text and ('src/main/java/' not in name and '/src/test/java/' not in name or 'Architecture' in name or 'Coverage' in name):
+                  print(name)
+          print('=== ARCHITECTURE CONTEXT EDGES ===')
+          for edge in json.loads(pathlib.Path('.github/architecture-dependency-baseline.json').read_text())['edges']:
+              if edge['fromContext']=='architecture': print(json.dumps(edge))
+          PY
