@@ -9,6 +9,7 @@ import com.taxonomy.dsl.parser.TaxDslParser;
 import com.taxonomy.dsl.serializer.TaxDslSerializer;
 import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort.DocumentHandle;
 import com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort;
+import com.taxonomy.workspace.service.BranchHeadConflictException;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
@@ -124,19 +125,31 @@ public class PortfolioGitService {
                                String username,
                                WorkspaceContext context) throws IOException {
         DocumentHandle repository = repositoryFactory.resolveRepository(context);
-        String current = repository.getDslAtHead(branch);
+        return commitAtHead(repository, branch, repository.getHeadCommit(branch), message, username, context);
+    }
+
+    /** Use the same captured repository and parent that the application will report to the caller. */
+    @Transactional(readOnly = true)
+    public CommitResult commitAtHead(DocumentHandle repository,
+                                     String branch,
+                                     String expectedHead,
+                                     String message,
+                                     String username,
+                                     WorkspaceContext context) throws IOException {
+        String current = expectedHead == null ? null : repository.getDslAtCommit(expectedHead);
         String projected = contributeTo(current, username, context);
-        if (Objects.equals(normalize(current), normalize(projected))) {
-            return new CommitResult(repository.getHeadCommit(branch), false, branch);
+        String rationale = message == null || message.isBlank()
+                ? "Update Git-backed project requirement portfolio" : message.strip();
+        try {
+            if (normalize(current).equals(normalize(projected))) {
+                return new CommitResult(repository.verifyHeadForVersion(branch, expectedHead, username, rationale),
+                        false, branch);
+            }
+            String commit = repository.commitDslIfHeadMatches(branch, expectedHead, projected, username, rationale);
+            return new CommitResult(commit, true, branch);
+        } catch (BranchHeadConflictException conflict) {
+            throw PortfolioException.conflict("Portfolio branch changed while preparing the commit; refresh and retry.");
         }
-        String commit = repository.commitDsl(
-                branch,
-                projected,
-                username,
-                message == null || message.isBlank()
-                        ? "Update Git-backed project requirement portfolio"
-                        : message.strip());
-        return new CommitResult(commit, true, branch);
     }
 
     /** Materialize the portfolio blocks at a branch HEAD into the target workspace. */

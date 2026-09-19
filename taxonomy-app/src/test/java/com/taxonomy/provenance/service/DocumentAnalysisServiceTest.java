@@ -186,4 +186,30 @@ class DocumentAnalysisServiceTest {
         assertThat(result).hasSize(1);
         assertThat(result.get(0).nodeCode()).isEqualTo("BP-1000");
     }
+
+    @Test
+    void contextualExtractionPreservesParentContextAndHandlesAbsentContext() {
+        when(llmService.isAvailable()).thenReturn(true);
+        when(promptTemplateService.renderExtractionPrompt(anyString(), anyString())).thenReturn("prompt");
+        when(llmService.callLlmRaw("prompt")).thenReturn("[]");
+        service.extractWithAiContextual("clause", "section", "REGULATION");
+        verify(promptTemplateService).renderExtractionPrompt("extract-regulation",
+                "Context (parent section): section\n\nText to analyse:\nclause");
+        service.extractWithAiContextual("clause", null, null);
+        service.extractWithAiContextual("clause", " ", "OTHER");
+        verify(promptTemplateService, times(2)).renderExtractionPrompt("extract-default", "clause");
+        when(llmService.isAvailable()).thenReturn(false);
+        assertThat(service.extractWithAiContextual("clause", "section", "REGULATION")).isEmpty();
+        verify(llmService, times(3)).callLlmRaw("prompt");
+        assertThat(service.truncateIfNeeded(null)).isEmpty();
+    }
+
+    @Test
+    void malformedAndAbsentMappingsDoNotCreateFalseEvidence() {
+        for (String response : new String[]{null, "", " ", "not-json", "```", "["}) {
+            assertThat(service.parseRegulationMappingResponse(response)).isEmpty();
+            assertThat(service.parseExtractionResponse(response)).isEmpty();
+        }
+        assertThat(service.parseRegulationMappingResponse("prose [] afterwards")).isEmpty();
+    }
 }

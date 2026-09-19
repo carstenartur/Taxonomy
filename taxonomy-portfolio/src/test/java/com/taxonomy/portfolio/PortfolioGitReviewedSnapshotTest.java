@@ -36,7 +36,7 @@ class PortfolioGitReviewedSnapshotTest {
         when(core.materialize(anyString(), eq("alice"), eq(context))).thenReturn(result);
         return new PortfolioGitApplicationService(core, mock(ProjectPortfolioService.class),
                 mock(SolutionPortfolioService.class), mock(ProductCatalogService.class),
-                mock(ProjectConflictService.class), new WorkspacePortfolioDocumentAdapter(factory, merges));
+                mock(ProjectConflictService.class), new WorkspacePortfolioDocumentAdapter(factory, merges, publicationVersionsFixture()));
     }
 
     @Test
@@ -104,5 +104,15 @@ class PortfolioGitReviewedSnapshotTest {
                 () -> service.materialize("target", "reviewed-head", context)).isSameAs(failure);
         verifyNoInteractions(core);
         verify(repository, never()).getDslAtHead(anyString());
+    }
+
+    private static com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort publicationVersionsFixture() {
+        return new com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort() {
+            @Override
+            public <T> T version(com.taxonomy.workspace.service.RepositoryContext context, String rationale,
+                    GitAction<T> action) throws java.io.IOException {
+                return action.run();
+            }
+        };
     }
 }

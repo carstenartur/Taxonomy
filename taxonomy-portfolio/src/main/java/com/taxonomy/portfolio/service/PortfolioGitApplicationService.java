@@ -80,8 +80,8 @@ public class PortfolioGitApplicationService {
         String username = username(context);
         DocumentHandle repository = repositoryFactory.resolveRepository(context);
         String parent = repository.getHeadCommit(normalizedBranch);
-        PortfolioGitService.CommitResult committed = portfolioGitService.commit(
-                normalizedBranch, message, username, context);
+        PortfolioGitService.CommitResult committed = portfolioGitService.commitAtHead(
+                repository, normalizedBranch, parent, message, username, context);
         Counts counts = counts(username, context);
         return new PortfolioCommitResult(
                 normalizedBranch,

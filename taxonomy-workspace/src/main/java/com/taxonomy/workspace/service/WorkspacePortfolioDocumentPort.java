@@ -13,6 +13,12 @@ public interface WorkspacePortfolioDocumentPort {
         String getDslAtCommit(String commitId) throws IOException;
         String getHeadCommit(String branch) throws IOException;
         String commitDsl(String branch, String dsl, String author, String message) throws IOException;
+        /** Publish only against the immutable revision used to construct this projection. */
+        String commitDslIfHeadMatches(String branch, String expectedHead, String dsl,
+                                      String author, String message) throws IOException;
+        /** Validate a no-op under the same checkpoint/import boundary, without creating a commit. */
+        String verifyHeadForVersion(String branch, String expectedHead,
+                                    String author, String message) throws IOException;
         MergeResult mergeBranches(String fromBranch, String intoBranch, String author, String message) throws IOException;
     }
 

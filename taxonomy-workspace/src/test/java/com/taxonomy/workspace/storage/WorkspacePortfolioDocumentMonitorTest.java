@@ -24,7 +24,7 @@ class WorkspacePortfolioDocumentMonitorTest {
         var context = new WorkspaceContext("alice", "ws-a", "draft", "repo-a");
         when(factory.resolveRepository(context)).thenReturn(repository);
         when(repository.getGitRepository()).thenReturn(git);
-        var handle = new WorkspacePortfolioDocumentAdapter(factory, merges).resolveRepository(context);
+        var handle = new WorkspacePortfolioDocumentAdapter(factory, merges, publicationVersionsFixture()).resolveRepository(context);
         if (merge) {
             when(merges.mergeBranches(repository, "source", "draft", "alice", "publish"))
                     .thenAnswer(invocation -> {
@@ -54,7 +54,7 @@ class WorkspacePortfolioDocumentMonitorTest {
         var context = new WorkspaceContext("alice", "ws-a", "draft", "repo-a");
         when(factory.resolveRepository(context)).thenReturn(repository);
         when(repository.getGitRepository()).thenReturn(git);
-        var handle = new WorkspacePortfolioDocumentAdapter(factory, merges).resolveRepository(context);
+        var handle = new WorkspacePortfolioDocumentAdapter(factory, merges, publicationVersionsFixture()).resolveRepository(context);
         var failure = new IOException("publication failed");
         org.mockito.stubbing.Answer<Object> fail = invocation -> {
             assertThat(Thread.holdsLock(git)).as("failure occurs within publication monitor").isTrue();
@@ -68,5 +68,15 @@ class WorkspacePortfolioDocumentMonitorTest {
             assertThatThrownBy(() -> handle.commitDsl("draft", "dsl", "alice", "publish")).isSameAs(failure);
         }
         assertThat(Thread.holdsLock(git)).isFalse();
+    }
+
+    private static com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort publicationVersionsFixture() {
+        return new com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort() {
+            @Override
+            public <T> T version(com.taxonomy.workspace.service.RepositoryContext context, String rationale,
+                    GitAction<T> action) throws java.io.IOException {
+                return action.run();
+            }
+        };
     }
 }

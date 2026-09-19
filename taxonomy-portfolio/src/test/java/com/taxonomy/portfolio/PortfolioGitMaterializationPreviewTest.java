@@ -124,7 +124,11 @@ class PortfolioGitMaterializationPreviewTest {
     void commitReturnsParentAndResultingCounts() throws Exception {
         Fixture fixture = fixture();
         when(fixture.repository().getHeadCommit("feature")).thenReturn("parent");
-        when(fixture.gitCore().commit("feature", "Save", "architect", fixture.context()))
+        when(fixture.gitCore().commitAtHead(
+                org.mockito.ArgumentMatchers.any(com.taxonomy.workspace.service.WorkspacePortfolioDocumentPort.DocumentHandle.class),
+                org.mockito.ArgumentMatchers.eq("feature"), org.mockito.ArgumentMatchers.eq("parent"),
+                org.mockito.ArgumentMatchers.eq("Save"), org.mockito.ArgumentMatchers.eq("architect"),
+                org.mockito.ArgumentMatchers.eq(fixture.context())))
                 .thenReturn(new PortfolioGitService.CommitResult("commit-2", true, "feature"));
 
         var result = fixture.service().commit(" feature ", "Save", fixture.context());
@@ -219,6 +223,10 @@ class PortfolioGitMaterializationPreviewTest {
         assertThatThrownBy(() -> fixture.service().previewMaterialize("empty", fixture.context()))
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("has no commits");
+        verify(fixture.gitCore(), never()).commitAtHead(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(), org.mockito.ArgumentMatchers.any());
         verify(fixture.gitCore(), never()).commit(
                 org.mockito.ArgumentMatchers.anyString(),
                 org.mockito.ArgumentMatchers.any(),
@@ -249,7 +257,7 @@ class PortfolioGitMaterializationPreviewTest {
                 solutions,
                 products,
                 conflicts,
-                new com.taxonomy.workspace.storage.WorkspacePortfolioDocumentAdapter(factory, mergeService));
+                new com.taxonomy.workspace.storage.WorkspacePortfolioDocumentAdapter(factory, mergeService, publicationVersionsFixture()));
         return new Fixture(service, gitCore, repository, factory, mergeService, context);
     }
 
@@ -259,5 +267,15 @@ class PortfolioGitMaterializationPreviewTest {
                            DslGitRepositoryFactory factory,
                            SemanticGitMergeService mergeService,
                            WorkspaceContext context) {
+    }
+
+    private static com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort publicationVersionsFixture() {
+        return new com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort() {
+            @Override
+            public <T> T version(com.taxonomy.workspace.service.RepositoryContext context, String rationale,
+                    GitAction<T> action) throws java.io.IOException {
+                return action.run();
+            }
+        };
     }
 }

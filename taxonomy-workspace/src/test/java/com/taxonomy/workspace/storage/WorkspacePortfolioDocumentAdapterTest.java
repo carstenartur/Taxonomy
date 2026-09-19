@@ -25,7 +25,7 @@ class WorkspacePortfolioDocumentAdapterTest {
         when(repository.commitDsl("draft", "updated", "alice", "checkpoint")).thenReturn("next");
         when(merges.mergeBranches(repository, "source", "draft", "alice", "merge"))
                 .thenReturn(new SemanticGitMergeService.MergeOutcome(true, "merged", true, List.of(), null));
-        var handle = new WorkspacePortfolioDocumentAdapter(factory, merges).resolveRepository(context);
+        var handle = new WorkspacePortfolioDocumentAdapter(factory, merges, publicationVersionsFixture()).resolveRepository(context);
         assertThat(handle.getHeadCommit("draft")).isEqualTo("head");
         assertThat(handle.getDslAtHead("draft")).isEqualTo("dsl");
         assertThat(handle.getDslAtCommit("head")).isEqualTo("immutable dsl");
@@ -50,7 +50,7 @@ class WorkspacePortfolioDocumentAdapterTest {
         var conflicts = List.of("requirement:REQ-1");
         when(merges.mergeBranches(repository, "source", "draft", "alice", null))
                 .thenReturn(new SemanticGitMergeService.MergeOutcome(false, null, false, conflicts, null));
-        var result = new WorkspacePortfolioDocumentAdapter(factory, merges).resolveRepository(context)
+        var result = new WorkspacePortfolioDocumentAdapter(factory, merges, publicationVersionsFixture()).resolveRepository(context)
                 .mergeBranches("source", "draft", "alice", null);
         assertThat(result.success()).isFalse();
         assertThat(result.commitId()).isNull();
@@ -68,9 +68,19 @@ class WorkspacePortfolioDocumentAdapterTest {
         when(repository.getGitRepository()).thenReturn(mock(org.eclipse.jgit.lib.Repository.class));
         var failure = new IOException("storage unavailable");
         when(repository.getDslAtHead("draft")).thenThrow(failure);
-        var handle = new WorkspacePortfolioDocumentAdapter(factory, merges).resolveRepository(context);
+        var handle = new WorkspacePortfolioDocumentAdapter(factory, merges, publicationVersionsFixture()).resolveRepository(context);
         assertThatThrownBy(() -> handle.getDslAtHead("draft")).isSameAs(failure);
         verify(factory, times(1)).resolveRepository(context);
         verifyNoInteractions(merges);
+    }
+
+    private static com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort publicationVersionsFixture() {
+        return new com.taxonomy.workspace.service.WorkspaceArchitectureVersionPort() {
+            @Override
+            public <T> T version(com.taxonomy.workspace.service.RepositoryContext context, String rationale,
+                    GitAction<T> action) throws java.io.IOException {
+                return action.run();
+            }
+        };
     }
 }
