@@ -68,6 +68,9 @@ Playback-Fehler lassen den Test scheitern.
 Der Test verwendet eine echte HSQLDB-Datenbank. Optionales ONNX-Embedding ist deaktiviert;
 es wird nicht durch eine Attrappe ersetzt. Datenbankvarianten und reale Remote-LLMs
 bleiben Aufgaben ihrer vorhandenen separaten Testreihen.
+Während des Abschlusses lesen drei HTTP-Clients gleichzeitig den Auftragsstatus.
+Jede Antwort muss erfolgreich sein; ein HTTP-500-Fehler wird nicht durch erneutes
+Versuchen verdeckt.
 
 ## Ausführen
 
@@ -89,6 +92,11 @@ mit `-Dwebdriver.chrome.driver=/absolute/path/chromedriver` und optional
 `-Dcivilian.chrome.binary=/absolute/path/chrome` verwendet werden.
 Screenshots werden ausschließlich bei explizitem `generateScreenshots=true` erstellt.
 Es werden keine HTML-Inhalte, erfolgreichen Antworten oder Ergebniszustände injiziert.
+Der Container-Browser vertraut ausschließlich der dynamischen HTTP-Testadresse
+`host.testcontainers.internal:<port>`, wie die vorhandene Container-Testinfrastruktur.
+Damit blockiert Chrome die Anhänge nicht als unsichere Downloads. Die Ausnahme gilt
+nur für diesen Browserlauf; produktive Bereitstellungen benötigen ihre reguläre
+HTTPS-Konfiguration.
 
 Die ergänzende CI
 [`.github/workflows/civilian-acceptance.yml`](../../.github/workflows/civilian-acceptance.yml)
@@ -135,6 +143,15 @@ vorbereitete Eingabe in den nächsten Lauf geladen.
 |---|---|
 | Projects / neues Projekt / Save | Legt das Projekt über den echten Portfolio-Endpunkt an. |
 | Neue Anforderung / Typ / Save | Speichert den Text und eine erste Anforderungsversion. |
+| Anforderung / Portfolio / Matrices | Öffnet die Projektübersicht bzw. die Matrizen des Projekts. |
+| Anforderung / EN / DE | Wechselt die Sprache der Seite. |
+| Anforderung / Open architecture workbench | Öffnet die Architektur des ausgewählten gespeicherten Ergebnisses. |
+| Anforderung / Analyze current version | Startet die einzelne Analyse der aktuellen Anforderungsversion. Der Referenzablauf verwendet den vollständigen Copilot darunter. |
+| Anforderung / New version | Öffnet den Dialog für einen neuen Textstand; Create version speichert ihn, Cancel schließt den Dialog. |
+| Anforderung / Text & source | Zeigt Anforderungstext und gegebenenfalls das importierte Quellfragment. Die Quellen dieses manuell angelegten Falls stehen in der Szenariodatei. |
+| Anforderung / Versions / Analyses | Zeigt gespeicherte Textstände bzw. Analysen und deren auswählbare Snapshots. |
+| Anforderung / Taxonomy & architecture | Zeigt Zuordnungen und Architekturinformationen des Ergebnisses. |
+| Anforderung / Decisions / Solutions & products | Zeigt offene fachliche Entscheidungen bzw. Lösungs- und Produktvorschläge. Diese erfordern menschliche Prüfung. |
 | Copilot / Profile | Standard, Full oder Exhaustive wählen; die Referenz verwendet Exhaustive für zwei Verifikationsläufe. |
 | Copilot / Force | Erzwingt einen neuen Lauf, auch wenn ein verwendbares Ergebnis existiert. |
 | Copilot / Run full analysis | Startet den persistenten Auftrag; Status und Verifikationsläufe erscheinen. |
@@ -150,6 +167,7 @@ vorbereitete Eingabe in den nächsten Lauf geladen.
 | Workbench / − und + | Verkleinern bzw. vergrößern den Ausschnitt. |
 | Workbench / Fit | Passt die Darstellung an die verfügbare Zeichenfläche an. |
 | Workbench / Fullscreen | Wechselt in den Vollbildmodus und zurück. |
+| Workbench / Architecture editor | Öffnet den separaten Editor; die angezeigte Workbench selbst bleibt eine schreibgeschützte Snapshot-Ansicht. |
 | Workbench / Download SVG / PDF | Lädt die serverseitige Architektur; die Datei ist kein Screenshot der Seite. |
 | Workbench / Download ArchiMate + manifest | Lädt Austausch-XML mit Profil- und Verlustinformationen. |
 | Workbench / Download Visio + manifest | Lädt VSDX mit stabilen Identitäten und Verlustinformationen. |
@@ -176,6 +194,16 @@ Szenengröße, trennt Typ und Score und prüft deren Positionen in einer Regress
 A3 bleibt die Mindestgröße. Breite Diagramme sind damit Poster-PDFs; ein Ausdruck
 mit „auf A3 verkleinern“ würde die Schrift erneut verkleinern. Extrem große Szenen
 oberhalb der PDF-Seitengrenze von 14.400 pt werden weiterhin skaliert.
+
+Parallele Statusabfragen deckten außerdem einen Schreibkonflikt beim Abschluss des
+Copilot-Auftrags auf. Die Auswahl des aktuellen Snapshots sperrt jetzt die betroffene
+Anforderung innerhalb ihrer Transaktion; wiederholte Abschlussversuche bleiben
+idempotent. Die Regression verwendet drei gleichzeitige echte HTTP-Abfragen.
+
+„Fit“ berücksichtigt nun auch Ansichten unter 20 % Zoom. Die frühere Untergrenze
+schnitt breite Diagramme auf einem Telefon und sehr hohe Diagramme ab. Die
+Geometrieprüfung reproduziert beide Fälle und verlangt vollständig sichtbare Grenzen
+mit Rand; die Browserabnahme prüft zusätzlich die tatsächliche mobile SVG-Fläche.
 
 Der Copilot liefert weiterhin eine **Taxonomie-basierte Kandidatenarchitektur**.
 Kontoverwaltung, Zustellgarantien, konkrete Datenmodelle und die vollständige Umsetzung

@@ -416,12 +416,13 @@
         if (!state.bounds || !zoomBehavior) return;
         const size = viewportSize();
         const padding = 34;
-        let scale = Math.min(
+        const scale = Math.min(
             (size.width - padding * 2) / Math.max(1, state.bounds.width),
             (size.height - padding * 2) / Math.max(1, state.bounds.height),
             1.35
         );
-        scale = Math.max(0.2, Math.min(1.35, scale));
+        // Large scenes must fit narrow viewports, including subsequent manual zoom.
+        zoomBehavior.scaleExtent([Math.min(0.2, scale), 4]);
         const translateX = (size.width - state.bounds.width * scale) / 2
             - state.bounds.x * scale;
         const translateY = (size.height - state.bounds.height * scale) / 2

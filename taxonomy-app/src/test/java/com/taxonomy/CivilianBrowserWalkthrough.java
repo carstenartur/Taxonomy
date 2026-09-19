@@ -55,6 +55,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
             network = null;
             containerBrowser = null;
         } else {
+            origin = "http://host.testcontainers.internal:" + port;
             Testcontainers.exposeHostPorts(port);
             network = Network.newNetwork();
             String image = System.getProperty("selenium.container.image",
@@ -64,6 +65,9 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
             try {
                 containerBrowser.start();
                 var options = new ChromeOptions();
+                // Like ContainerTestUtils, trust only this isolated HTTP test origin.
+                // Chrome otherwise blocks attachment downloads from the host bridge.
+                options.addArguments("--unsafely-treat-insecure-origin-as-secure=" + origin);
                 options.setEnableDownloads(true);
                 options.setExperimentalOption("prefs", Map.of("plugins.always_open_pdf_externally", true));
                 driver = new RemoteWebDriver(containerBrowser.getSeleniumAddress(), options);
@@ -72,7 +76,6 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
                 network.close();
                 throw failure;
             }
-            origin = "http://host.testcontainers.internal:" + port;
         }
         driver.manage().window().setSize(new Dimension(1600, 1100));
         wait = new WebDriverWait(driver, Duration.ofSeconds(45));
@@ -133,6 +136,8 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         wait.until(browser -> browser.getCurrentUrl().contains("snapshot=" + snapshotId));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotResultOverview")));
         inventory("result");
+        driver.executeScript("arguments[0].scrollIntoView({block:'start'})",
+                driver.findElement(By.id("snapshotResultOverview")));
         screenshot("74-civilian-result.png");
         driver.navigate().refresh();
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("snapshotResultOverview")));
@@ -213,7 +218,8 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
                         "return !!document.querySelector('downloads-manager')?.shadowRoot")));
                 Files.writeString(output.resolve("download-manager.json"), String.valueOf(driver.executeScript("""
                         const manager = document.querySelector('downloads-manager');
-                        return JSON.stringify(manager.shadowRoot.querySelector('#downloadsList')?.items || manager.items_ || []);
+                        return JSON.stringify(manager.shadowRoot.querySelector('#downloadsList')?.items || manager.items_ || [],
+                            (key, value) => typeof value === 'bigint' ? value.toString() : value);
                         """)));
                 throw failure;
             }
