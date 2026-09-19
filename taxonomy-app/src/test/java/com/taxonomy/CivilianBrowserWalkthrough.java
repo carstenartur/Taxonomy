@@ -4,6 +4,8 @@ import com.taxonomy.acceptance.CivilianExportQa;
 import org.openqa.selenium.*;
 import org.openqa.selenium.chrome.ChromeDriver;
 import org.openqa.selenium.chrome.ChromeOptions;
+import org.openqa.selenium.chromium.HasCdp;
+import org.openqa.selenium.remote.Augmenter;
 import org.openqa.selenium.remote.RemoteWebDriver;
 import org.openqa.selenium.support.ui.ExpectedConditions;
 import org.openqa.selenium.support.ui.Select;
@@ -230,7 +232,11 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
             downloadHashes.put(button.getKey(), CivilianExportQa.sha256(bytes));
         }
         CivilianExportQa.verify(projection, downloaded, output, false);
-        driver.manage().window().setSize(new Dimension(390, 844));
+        // Chrome clamps ordinary window widths to 500px. Emulate and assert the
+        // actual narrow viewport, rather than accepting the requested outer size.
+        ((HasCdp) new Augmenter().augment(driver)).executeCdpCommand("Emulation.setDeviceMetricsOverride",
+                Map.of("width", 390, "height", 844, "deviceScaleFactor", 1, "mobile", true));
+        wait.until(browser -> ((Number) driver.executeScript("return window.innerWidth")).intValue() == 390);
         click(By.id("fitArchitecture"));
         awaitFit();
         assertThat(Boolean.TRUE.equals(driver.executeScript(
@@ -239,6 +245,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         Files.writeString(output.resolve("controls.json"), new ObjectMapper().writeValueAsString(controls));
         Files.writeString(output.resolve("browser.json"), new ObjectMapper().writeValueAsString(Map.of(
                 "browser", driver.getCapabilities().getBrowserName(), "version", driver.getCapabilities().getBrowserVersion(),
+                "mobileViewport", Map.of("width", 390, "height", 844),
                 "downloadSha256", downloadHashes, "contextNodeCount", total - anchors.size(),
                 "snapshotId", snapshotId, "screenshots", List.of("73-civilian-requirement.png", "74-civilian-result.png",
                 "75-civilian-architecture.png", "76-civilian-focus.png", "77-civilian-mobile.png"))));
