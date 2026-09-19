@@ -1,0 +1,88 @@
+{
+  "workflowRun": "https://github.com/carstenartur/Taxonomy/actions/runs/35475880662",
+  "headRevision": "8421556d612b5648b7040987d9b184ceb625cb44",
+  "artifactId": 10593643729,
+  "artifactArchiveSha256": "0c1d61d9ca48b863c88419ef7c31ff91f8b39fc988c665b8a5d56cad47d03d35",
+  "run": {
+    "snapshotId": "bfc86dc4-8fa2-4ad6-8363-48cdc5363e5b",
+    "projectId": 1,
+    "ciRun": "35475880662",
+    "sourceRevision": "082eaf56fb5da7c218b1671e09a87021eee8373b",
+    "mockBoundary": "remote LLM HTTP response only",
+    "llmCalls": 78,
+    "fixtureSha256": "1f2581bf8b6df78cc835b209bdc164f2eb66f31e2de9e98a51465bbccb4ed52a",
+    "requirementId": 1,
+    "scenario": "civilian-flood-information-v1"
+  },
+  "browser": {
+    "screenshots": [
+      "73-civilian-requirement.png",
+      "74-civilian-result.png",
+      "75-civilian-architecture.png",
+      "76-civilian-focus.png",
+      "77-civilian-mobile.png"
+    ],
+    "mobileViewport": {
+      "height": 844,
+      "width": 390
+    },
+    "browser": "chrome",
+    "snapshotId": "bfc86dc4-8fa2-4ad6-8363-48cdc5363e5b",
+    "downloadSha256": {
+      "downloadArchitectureSvg": "5ea1b3c5c15fb1d2aa3c60d530ec182f01e615d6bbbfdcfbc79a6e821ebc7cba",
+      "downloadArchitecturePdf": "54915a703316074eb77616fcd6c3bf953f21e0e17fb7010197ffdff10d38725f",
+      "downloadArchitectureArchiMate": "bb3eb11f5f71693f7506cb9a59a4fa53e77d10b9ae9c04830ee708c8ddc562f5",
+      "downloadArchitectureVisio": "5e90e8ac3e05eb8989b0eb4a57a0c024cd41b007f718b958f1870e0efa102fa5"
+    },
+    "version": "150.0.7871.124",
+    "contextNodeCount": 0
+  },
+  "screenshots": {
+    "73-civilian-requirement.png": {
+      "sha256": "20525fecba7b03ff374c0bb5fc8fdd0483c29b2686a2f5f1b923d8d7cf1c981d",
+      "pixels": [
+        1592,
+        953
+      ]
+    },
+    "74-civilian-result.png": {
+      "sha256": "0c080faad43fed6756329d0c6041dd3ab39085823ccc9571f733d5e21e683a88",
+      "pixels": [
+        1592,
+        953
+      ]
+    },
+    "75-civilian-architecture.png": {
+      "sha256": "260c184a6286c850c1cacfbaca3b0ccabcafeca3638699180a171772b9e2597c",
+      "pixels": [
+        1592,
+        953
+      ]
+    },
+    "76-civilian-focus.png": {
+      "sha256": "06cfa4899b814b8c4e0e3c9e5e7198be05278fd51ceee5dc9fb6b8a88a304ceb",
+      "pixels": [
+        1592,
+        953
+      ]
+    },
+    "77-civilian-mobile.png": {
+      "sha256": "a1ffe6b0790d1afe2656a6c3b82faa29c04492baa8a774266f16b021a6ef38dc",
+      "pixels": [
+        390,
+        844
+      ]
+    }
+  },
+  "localVerification": {
+    "command": "./mvnw verify -DexcludedGroups=\"real-llm\"",
+    "exitCode": 0,
+    "reportedTests": 5092,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "elapsed": "20m38s",
+    "logSha256": "6d66bf80b1ae9917436a8bbbdb8a62ccfcf7e5ec770a0c99f8314baf871af42d",
+    "scopeNote": "Existing POM defaults skip Failsafe/container and general browser suites; dedicated civilian browser CI is recorded above."
+  }
+}

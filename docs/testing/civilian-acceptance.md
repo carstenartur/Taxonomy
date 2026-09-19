@@ -137,6 +137,11 @@ und „Fit“ muss die Knoten innerhalb der sichtbaren SVG-Fläche platzieren.
 Der vollständige Snapshot bleibt ein generiertes Testartefakt; er wird nicht als
 vorbereitete Eingabe in den nächsten Lauf geladen.
 
+Die mobile Browserprüfung verwendet Chromes Geräteemulation mit 390 × 844 CSS-Pixeln
+und prüft die tatsächliche Viewport-Breite. Eine bloße Fenstergrößenanforderung reicht
+nicht aus: Chrome begrenzt normale Fenster in dieser Umgebung auf mindestens 500 Pixel.
+Die Emulation verändert weder Anwendungsdaten noch Netzwerkantworten.
+
 ## Bedienelemente des dokumentierten Ablaufs
 
 | Ansicht / Bedienelement | Funktion und erwartetes Ergebnis |
@@ -177,6 +182,47 @@ Endpunkte verwenden dessen vollständigen Graphen. Das vollständige DOM-Inventa
 enthält zusätzlich sichtbare, versteckte und deaktivierte Steuerelemente; die Tabelle
 beschreibt die für diesen Ablauf relevanten Aktionen, keine vollständige Anleitung
 aller Verwaltungsseiten der Anwendung.
+
+## Echte Bilder des Referenzlaufs
+
+Diese unveränderten Browserbilder stammen aus dem erfolgreichen
+[CI-Lauf 35475880662](https://github.com/carstenartur/Taxonomy/actions/runs/35475880662).
+Ergebnis- und Architekturansichten verwenden Snapshot `bfc86dc4-8fa2-4ad6-8363-48cdc5363e5b`;
+Anforderung und Projekt wurden zuvor in derselben Sitzung angelegt. Commit,
+Browser-Version, Abmessungen und SHA-256-Werte stehen im
+[Bildnachweis](../qa/civilian-acceptance-evidence.json).
+
+Vor dem Start: der nachvollziehbare zivile Anforderungstext und das gewählte
+Profil **Exhaustive**. Die Quellen stehen in der Szenariodatei, nicht in einem
+nachträglich erfundenen Importfragment.
+
+![Zivile Anforderung vor dem vollständigen Copilot-Lauf](../images/73-civilian-requirement.png)
+
+Nach dem Abschluss und Wiederöffnen: zwei erfolgreiche Durchläufe, der ausgewählte
+Snapshot und die zugehörige Ergebnisansicht. Die Profilauswahl oben ist die Vorgabe
+für einen nächsten Lauf; der abgeschlossene Auftrag belegt seine zwei Durchläufe
+im Statusbereich.
+
+![Abgeschlossener Copilot-Auftrag und ausgewählter Snapshot](../images/74-civilian-result.png)
+
+Die vollständige Workbench zeigt 38 Elemente und 44 Beziehungen. Die Übersicht
+bewahrt den Hierarchiekontext; für einzelne Bezeichnungen und Verbindungen sind
+Zoom, Suche und Fokus vorgesehen.
+
+![Gespeicherte zivile Kandidatenarchitektur mit Exportaktionen](../images/75-civilian-architecture.png)
+
+Der ausgewählte Hydrografiedienst und seine fünf direkten Nachbarn bilden die
+Fokusansicht mit sechs Knoten und 16 Beziehungen. Rechts bleiben Identität,
+Herkunft und der noch offene Review-Status sichtbar.
+
+![Fokus auf Hydrografiedienst, Nachbarn und Herkunftsinformationen](../images/76-civilian-focus.png)
+
+Die gescrollte mobile Ansicht verwendet echte 390 × 844 CSS-Pixel in Chrome-
+Geräteemulation. Die Bedienelemente umbrechen, und „Fit“ hält alle Knoten innerhalb
+der Zeichenfläche. Die Gesamtübersicht ist dabei bewusst klein; zum Lesen einzelner
+Elemente werden Zoom und Fokus benötigt. Dies ist kein Test auf einem physischen Telefon.
+
+![Mobile Workbench mit umgebrochenen Bedienelementen und eingepasster Übersicht](../images/77-civilian-mobile.png)
 
 ## Qualitätsbefunde und Grenzen
 

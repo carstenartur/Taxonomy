@@ -15,6 +15,13 @@ executed checks from pending visual/product acceptance.
 - Focused regressions cover qualified ancestor suppression without suppressing
   sibling branches, human-readable snapshot titles and PDF label size/bounds.
   Each defect was reproduced before its fix.
+- The initial full verification exposed an optimistic-lock conflict when the
+  coordinator and status readers promoted the same snapshot. Promotion now uses
+  the existing tenant-scoped pessimistic row lock. The real HTTP scenario passes
+  with three concurrent readers, without retrying failed responses.
+- The actual Fit handler failed the phone-width and tall-graph geometry cases
+  before its 20% floor was removed. All eight workbench URL/geometry contracts
+  now pass; the zoom range includes the fitted scale.
 - The PDF was rendered with Poppler and visually inspected. It now uses a wider
   poster page to preserve natural-size labels, and places long type names on
   their own line. The overall graph still needs zoom or a large print format;
@@ -26,21 +33,53 @@ executed checks from pending visual/product acceptance.
   approval. The parser/provenance assertions remain valid; compact, readable
   decision-report pagination needs separate corrective work.
 
-## Environment limits and pending evidence
+## Browser evidence and environment limits
 
 Local Chromium cannot create its process singleton socket (`Operation not
 permitted`). Automatic approval review rejected sandbox escalation. Docker is
-also unavailable. Browser clicks, responsive layout and the five documentation
-screenshots must therefore be established by the Maven-owned CI scenario; no
-screenshots are fabricated or marked as successful here.
+also unavailable. Browser evidence was therefore produced by the Maven-owned CI
+scenario, using the real application and Selenium on GitHub's runner.
 
 The independent review found two important browser-test gaps, now corrected:
 EXHAUSTIVE selects the required two passes, and actual downloaded bytes / exact
 focus neighbors are checked instead of accepting clicks alone. No critical issues
-were reported. The browser checks still require an executed CI run.
+were reported.
 
-The full repository verification is running with the pinned ONNX model. The exact
-browser profile command was executed locally and reached Testcontainers, which
-failed because `/var/run/docker.sock` is absent.
+CI runs 35474438121 and 35475122709 reached the actual generated workbench and
+passed focus, search, context-anchor stability, zoom and fullscreen checks. Their
+downloads failed. The latter's genuine Chrome download-history screenshot proves
+that Chrome blocked the HTTP host-bridge attachment as insecure; a `.crdownload`
+was present. The browser now trusts only its dynamic isolated test origin, matching
+the repository's existing ContainerTestUtils policy. This is test configuration,
+not a production security setting or a substituted export response.
+
+[Run 35475880662](https://github.com/carstenartur/Taxonomy/actions/runs/35475880662)
+passed all four selected tests in 3m08s on head `8421556`. It covers real UI
+creation, two Copilot passes, snapshot reopening, focus, search, context-anchor
+stability, zoom, fullscreen, four actual downloads with semantic validation, and
+the measured 390px mobile viewport. The five original PNGs were individually
+inspected and committed with [run and image hashes](civilian-acceptance-evidence.json).
+Chrome window sizing alone had yielded a 500px image; the final mobile image is
+390 × 844 using explicit device emulation. No physical phone was tested.
+
+The overview requires zoom; the six-node focus is easier to follow. The original
+PDF's node labels are legible at natural poster size, while connection crossings
+and full-graph density still require human assessment at the intended output size.
+
+The first full repository verification ran for 18m45s and failed on the snapshot
+promotion race above. The corrected exact command
+`./mvnw verify -DexcludedGroups="real-llm"` passed in 20m38s: 5,092 reported tests,
+zero failures/errors and one skipped test in `HelmConstrainedSmokeContractTest`.
+It used Java 25 (release 21), the pinned ONNX model and the runtime's supported
+Mockito premain agent. All production fixes were included; the later mobile-only
+test enhancement was compiled and executed by the successful CI run above.
+
+The repository's existing POM defaults are `skipITs=true`, `taxonomy.ui.skip=true`
+and `taxonomy.quality.skip=true`. The exact command therefore skips the separate
+Failsafe/container and general browser suites; no extra exclusions were added.
+The dedicated civilian profile supplies its own actual browser evidence. This
+result must not be described as a run of every database/container test. The exact
+browser profile command was also executed locally and reached Testcontainers,
+which failed because `/var/run/docker.sock` is absent.
 Desktop import into Sparx EA / Microsoft Visio, independent Structurizr grammar
 validation, and a domain review of the flood information design are not claimed.

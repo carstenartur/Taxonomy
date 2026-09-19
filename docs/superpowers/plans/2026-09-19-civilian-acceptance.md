@@ -70,7 +70,7 @@ real provider credentials. Inspect test-only configuration discovery/isolation.
   full gate. Docker is unavailable. Local Chrome/ChromeDriver were prepared,
   but Chrome's socket creation is forbidden by the runtime; automatic approval
   review rejected sandbox escalation. No browser screenshots have been claimed.
-- Task 4: final full verification and independent review pending.
+- Task 4: independent review and final full verification completed.
 - Final review: independent read-only review found no critical issues and two
   important browser gaps: FULL explicitly requests only one pass, and clicks
   alone do not establish download/filter behavior. Both paths now use EXHAUSTIVE;
@@ -82,3 +82,26 @@ real provider credentials. Inspect test-only configuration discovery/isolation.
   all-anchor result — retain the real generated graph and disclose the limited
   assertion instead of injecting context nodes — separate context-filter cases
   still need their own scenario.
+- The first full verification exposed concurrent snapshot promotion by coordinator
+  and status reader. The scoped row lock fixes the HTTP 500; the regression now
+  polls with three concurrent real clients and passes, without a retry exception.
+- Fit geometry reproduced clipping below the old 20% zoom floor for a phone-width
+  overview and tall graph. Both now pass, alongside the existing URL contracts.
+- Browser runs reached the real snapshot, focus and viewport controls. Run
+  35475122709 retained Chrome's actual download-history image: the HTTP bridge
+  download was blocked as insecure. The next run scopes the existing repository
+  trusted-origin test convention to the dynamic host bridge; no production browser
+  policy, response substitution or OS permission bypass is introduced.
+- DOCX visual QA found 87 pages and an empty page body; this remains an explicit
+  report-layout finding. Structural parser success is not treated as visual
+  acceptance or a reason to shorten the source requirement/response corpus.
+- Task 3 completed: CI 35475880662 passed the full browser and export scenario
+  (four selected tests, 3m08s), including actual downloads and an asserted 390px
+  device-emulated viewport. All five original images were inspected and included
+  with run/snapshot/image hashes. The fixture and snapshot were not altered to
+  improve a screenshot. The Word layout finding and domain/desktop limits remain.
+- Final verification: the exact mandatory command passed in 20m38s with 5,092
+  reported tests, zero failures/errors and one existing Helm test skipped. The
+  repository's default Failsafe/general-browser skips remain explicitly recorded;
+  no weaker command or extra exclusions were substituted. Eight workbench
+  URL/geometry contracts and the dedicated real browser CI also pass.
