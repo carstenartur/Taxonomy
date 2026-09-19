@@ -1,0 +1,37 @@
+name: Knowledge extraction source snapshot
+on:
+  push:
+    branches: [work/628-knowledge-source-snapshot]
+    paths: [.github/workflows/knowledge-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 604635ce2fa3de1847b786b003565dc6e464f435
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Archive tracked source and cached test libraries only
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p snapshot/test-libs
+          git archive --format=tar.gz HEAD > snapshot/source.tar.gz
+          git rev-parse HEAD > snapshot/source-commit.txt
+          if [ -d "$HOME/.m2/repository" ]; then
+            find "$HOME/.m2/repository" -type f \( -name 'junit-*.jar' -o -name 'opentest4j-*.jar' -o -name 'apiguardian-api-*.jar' -o -name 'assertj-core-*.jar' -o -name 'mockito-*.jar' -o -name 'byte-buddy*.jar' -o -name 'objenesis-*.jar' -o -name 'spring-test-*.jar' -o -name 'spring-boot-test*.jar' -o -name 'archunit*.jar' -o -name 'awaitility-*.jar' \) -exec cp -n {} snapshot/test-libs/ \;
+          fi
+          tar -czf snapshot/test-libs.tar.gz -C snapshot test-libs
+          rm -r snapshot/test-libs
+          sha256sum snapshot/*.tar.gz > snapshot/SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: knowledge-source-snapshot
+          path: snapshot/*
+          if-no-files-found: error
+          retention-days: 1
