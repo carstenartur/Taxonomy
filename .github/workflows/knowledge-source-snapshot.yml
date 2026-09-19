@@ -1,0 +1,28 @@
+name: Knowledge extraction source snapshot
+on:
+  push:
+    branches: [work/628-knowledge-source-snapshot]
+    paths: [.github/workflows/knowledge-source-snapshot.yml]
+permissions:
+  contents: read
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: f29cd18dfc356eb9c184abfc9e02ed0c9377ceb8
+          persist-credentials: false
+      - name: Archive exact tracked source only
+        run: |
+          mkdir snapshot
+          git archive --format=tar.gz HEAD > snapshot/source.tar.gz
+          git rev-parse HEAD > snapshot/source-commit.txt
+          sha256sum snapshot/source.tar.gz > snapshot/SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: knowledge-1081-source
+          path: snapshot/*
+          if-no-files-found: error
+          retention-days: 1
