@@ -321,7 +321,7 @@ metadata endpoint**. The UI still duplicates the allowed values in
 - `RelationValidationService` if the new type needs special validation
 - `RelationProposalService` / `RelationCandidateService` if proposal heuristics
   depend on the new type
-- `taxonomy-knowledge/src/main/resources/data/relation_seeds.csv`
+- `taxonomy-knowledge/src/main/resources/data/relations.csv`
 - `taxonomy-dsl/src/main/java/com/taxonomy/dsl/validation/DslValidator.java`
 - i18n or help text if the new type needs a user-facing label/description
 
