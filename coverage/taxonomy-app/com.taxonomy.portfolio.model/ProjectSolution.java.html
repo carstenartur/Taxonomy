@@ -1,0 +1,117 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectSolution.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">ProjectSolution.java</span></div><h1>ProjectSolution.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.ActionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProjectSolutionStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/** Project-specific use and decision state for a reusable solution definition. */
+@Entity
+@Table(name = &quot;project_solution&quot;, indexes = {
+        @Index(name = &quot;idx_psol_project&quot;, columnList = &quot;project_id&quot;),
+        @Index(name = &quot;idx_psol_status&quot;, columnList = &quot;project_id,status&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_psol_project_sol&quot;, columnNames = {&quot;project_id&quot;, &quot;solution_id&quot;})
+})
+public class ProjectSolution {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;project_id&quot;, nullable = false)
+    private ArchitectureProject project;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;solution_id&quot;, nullable = false)
+    private SolutionDefinition solution;
+
+<span class="fc" id="L44">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false, length = 32)
+    private ProjectSolutionStatus status = ProjectSolutionStatus.PROPOSED;
+
+<span class="fc" id="L48">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;action_status&quot;, nullable = false, length = 32)
+    private ActionStatus actionStatus = ActionStatus.UNDECIDED;
+
+<span class="fc" id="L52">    @Column(nullable = false)</span>
+    private int priority = 50;
+
+    @Column(length = 2000)
+    private String rationale;
+
+    @Column(name = &quot;created_by&quot;, nullable = false, length = 160)
+    private String createdBy;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;updated_at&quot;, nullable = false)
+    private Instant updatedAt;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    private long rowVersion;
+
+<span class="fc" id="L71">    protected ProjectSolution() {</span>
+<span class="fc" id="L72">    }</span>
+
+    public ProjectSolution(ArchitectureProject project,
+                           SolutionDefinition solution,
+                           ProjectSolutionStatus status,
+                           ActionStatus actionStatus,
+                           int priority,
+                           String rationale,
+                           String createdBy,
+<span class="fc" id="L81">                           Instant now) {</span>
+<span class="fc" id="L82">        this.project = project;</span>
+<span class="fc" id="L83">        this.solution = solution;</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">        this.status = status != null ? status : ProjectSolutionStatus.PROPOSED;</span>
+<span class="pc bpc" id="L85" title="1 of 2 branches missed.">        this.actionStatus = actionStatus != null ? actionStatus : ActionStatus.UNDECIDED;</span>
+<span class="fc" id="L86">        this.priority = priority;</span>
+<span class="fc" id="L87">        this.rationale = rationale;</span>
+<span class="fc" id="L88">        this.createdBy = createdBy;</span>
+<span class="fc" id="L89">        this.createdAt = now;</span>
+<span class="fc" id="L90">        this.updatedAt = now;</span>
+<span class="fc" id="L91">    }</span>
+
+    public void update(ProjectSolutionStatus status,
+                       ActionStatus actionStatus,
+                       Integer priority,
+                       String rationale,
+                       Instant now) {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        if (status != null) this.status = status;</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (actionStatus != null) this.actionStatus = actionStatus;</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        if (priority != null) this.priority = priority;</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">        if (rationale != null) this.rationale = rationale;</span>
+<span class="fc" id="L102">        this.updatedAt = now;</span>
+<span class="fc" id="L103">    }</span>
+
+<span class="fc" id="L105">    public Long getId() { return id; }</span>
+<span class="fc" id="L106">    public ArchitectureProject getProject() { return project; }</span>
+<span class="fc" id="L107">    public SolutionDefinition getSolution() { return solution; }</span>
+<span class="fc" id="L108">    public ProjectSolutionStatus getStatus() { return status; }</span>
+<span class="fc" id="L109">    public ActionStatus getActionStatus() { return actionStatus; }</span>
+<span class="fc" id="L110">    public int getPriority() { return priority; }</span>
+<span class="fc" id="L111">    public String getRationale() { return rationale; }</span>
+<span class="fc" id="L112">    public String getCreatedBy() { return createdBy; }</span>
+<span class="fc" id="L113">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L114">    public Instant getUpdatedAt() { return updatedAt; }</span>
+<span class="nc" id="L115">    public long getRowVersion() { return rowVersion; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

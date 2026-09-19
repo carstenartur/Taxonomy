@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmDetailAccumulator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmDetailAccumulator.java</span></div><h1>LlmDetailAccumulator.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.TaxonomyDiscrepancy;
+
+import java.util.LinkedHashMap;
+import java.util.Map;
+
+/** Incremental diagnostic aggregation; scores and explanations are never truncated. */
+<span class="fc" id="L10">final class LlmDetailAccumulator {</span>
+    private static final int TEXT_LIMIT = 32_768;
+    private static final String TRUNCATED = &quot;\n[diagnostic transcript truncated]&quot;;
+<span class="fc" id="L13">    private final Map&lt;String, Integer&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L14">    private final Map&lt;String, String&gt; reasons = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L15">    private final StringBuilder prompts = new StringBuilder();</span>
+<span class="fc" id="L16">    private final StringBuilder responses = new StringBuilder();</span>
+<span class="fc" id="L17">    private final StringBuilder errors = new StringBuilder();</span>
+    private String provider;
+    private TaxonomyDiscrepancy discrepancy;
+    private long duration;
+    private int count;
+
+    void add(LlmCallDetail detail) {
+<span class="fc" id="L24">        count++;</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">        if (detail.getScores() != null) scores.putAll(detail.getScores());</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        if (detail.getReasons() != null) reasons.putAll(detail.getReasons());</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        if (provider == null) provider = detail.getProvider();</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">        if (discrepancy == null) discrepancy = detail.getDiscrepancy();</span>
+<span class="fc" id="L29">        duration += detail.getDurationMs();</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        if (detail.getPrompt() != null) {</span>
+<span class="fc" id="L31">            append(prompts, &quot;--- call &quot; + count + &quot; ---\n&quot;);</span>
+<span class="fc" id="L32">            append(prompts, detail.getPrompt());</span>
+<span class="fc" id="L33">            append(prompts, &quot;\n&quot;);</span>
+        }
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (detail.getRawResponse() != null) {</span>
+<span class="fc" id="L36">            append(responses, &quot;--- call &quot; + count + &quot; ---\n&quot;);</span>
+<span class="fc" id="L37">            append(responses, detail.getRawResponse());</span>
+<span class="fc" id="L38">            append(responses, &quot;\n&quot;);</span>
+        }
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (detail.getError() != null) {</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            if (!errors.isEmpty()) append(errors, &quot;; &quot;);</span>
+<span class="fc" id="L42">            append(errors, detail.getError());</span>
+        }
+<span class="fc" id="L44">    }</span>
+
+    LlmCallDetail result() {
+<span class="fc" id="L47">        LlmCallDetail result = new LlmCallDetail();</span>
+<span class="fc" id="L48">        result.setScores(scores);</span>
+<span class="fc" id="L49">        result.setReasons(reasons);</span>
+<span class="fc" id="L50">        result.setProvider(provider);</span>
+<span class="fc" id="L51">        result.setPrompt(prompts.toString());</span>
+<span class="fc" id="L52">        result.setRawResponse(responses.toString());</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        result.setError(errors.isEmpty() ? null : errors.toString());</span>
+<span class="fc" id="L54">        result.setDurationMs(duration);</span>
+<span class="fc" id="L55">        result.setDiscrepancy(discrepancy);</span>
+<span class="fc" id="L56">        return result;</span>
+    }
+
+    private static void append(StringBuilder target, String value) {
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (value.isEmpty()) return;</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (value.length() &lt;= TEXT_LIMIT - target.length()) {</span>
+<span class="fc" id="L62">            target.append(value);</span>
+<span class="fc" id="L63">            return;</span>
+        }
+<span class="fc" id="L65">        int contentLimit = TEXT_LIMIT - TRUNCATED.length();</span>
+<span class="fc bfc" id="L66" title="All 2 branches covered.">        if (target.length() &gt; contentLimit) target.setLength(contentLimit);</span>
+<span class="fc" id="L67">        target.append(value, 0, Math.min(value.length(), contentLimit - target.length()));</span>
+<span class="fc" id="L68">        target.append(TRUNCATED);</span>
+<span class="fc" id="L69">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

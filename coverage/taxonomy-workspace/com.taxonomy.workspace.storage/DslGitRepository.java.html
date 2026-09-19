@@ -1,0 +1,735 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DslGitRepository.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-workspace</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.workspace.storage</a> &gt; <span class="el_source">DslGitRepository.java</span></div><h1>DslGitRepository.java</h1><pre class="source lang-java linenums">package com.taxonomy.workspace.storage;
+
+import com.taxonomy.dsl.diff.ModelDiff;
+import com.taxonomy.dsl.diff.ModelDiffer;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateGitStorage;
+import io.github.carstenartur.jgit.storage.hibernate.HibernateRepositoryFactory;
+import io.github.carstenartur.jgit.storage.hibernate.RepositoryName;
+import org.eclipse.jgit.diff.DiffEntry;
+import org.eclipse.jgit.diff.DiffFormatter;
+import org.eclipse.jgit.internal.storage.dfs.DfsRepositoryDescription;
+import org.eclipse.jgit.internal.storage.dfs.InMemoryRepository;
+import org.eclipse.jgit.lib.CommitBuilder;
+import org.eclipse.jgit.lib.Constants;
+import org.eclipse.jgit.lib.FileMode;
+import org.eclipse.jgit.lib.ObjectId;
+import org.eclipse.jgit.lib.ObjectInserter;
+import org.eclipse.jgit.lib.ObjectLoader;
+import org.eclipse.jgit.lib.PersonIdent;
+import org.eclipse.jgit.lib.Ref;
+import org.eclipse.jgit.lib.RefUpdate;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.TreeFormatter;
+import org.eclipse.jgit.merge.MergeStrategy;
+import org.eclipse.jgit.merge.ThreeWayMerger;
+import org.eclipse.jgit.revwalk.RevCommit;
+import org.eclipse.jgit.revwalk.RevTree;
+import org.eclipse.jgit.revwalk.RevWalk;
+import org.eclipse.jgit.treewalk.TreeWalk;
+import org.eclipse.jgit.util.io.DisabledOutputStream;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.concurrent.atomic.AtomicBoolean;
+
+/**
+ * Taxonomy-specific facade around a JGit repository that versions one DSL document.
+ *
+ * &lt;p&gt;DSL file conventions, parsing, semantic diff and workflow operations remain
+ * application concerns. Persistent pack, ref and queryable reflog storage is
+ * delegated to {@code jgit-storage-hibernate-core} through its public facade.&lt;/p&gt;
+ */
+public class DslGitRepository implements AutoCloseable {
+
+<span class="fc" id="L54">    private static final Logger log = LoggerFactory.getLogger(DslGitRepository.class);</span>
+    private static final String DEFAULT_REPOSITORY_NAME = &quot;taxonomy-dsl&quot;;
+
+    /** The single DSL file stored in every commit tree. */
+    public static final String DSL_FILENAME = &quot;architecture.taxdsl&quot;;
+
+    private final Repository gitRepo;
+    private final HibernateGitStorage storageHandle;
+    private final boolean databaseBacked;
+    private final boolean closeRepository;
+<span class="fc" id="L64">    private final AtomicBoolean closed = new AtomicBoolean();</span>
+<span class="fc" id="L65">    private final TaxDslParser parser = new TaxDslParser();</span>
+<span class="fc" id="L66">    private final AstToModelMapper astMapper = new AstToModelMapper();</span>
+<span class="fc" id="L67">    private final ModelDiffer differ = new ModelDiffer();</span>
+
+    /** Open the shared system repository through the reusable storage library. */
+    public DslGitRepository(HibernateRepositoryFactory storageFactory) {
+<span class="nc" id="L71">        this(storageFactory, DEFAULT_REPOSITORY_NAME);</span>
+<span class="nc" id="L72">    }</span>
+
+    /** Open a named logical repository through the reusable storage library. */
+    public DslGitRepository(
+            HibernateRepositoryFactory storageFactory,
+            String repositoryName) {
+<span class="fc" id="L78">        this(openStorage(storageFactory, repositoryName));</span>
+<span class="fc" id="L79">    }</span>
+
+<span class="fc" id="L81">    private DslGitRepository(HibernateGitStorage storageHandle) {</span>
+<span class="fc" id="L82">        this.gitRepo = storageHandle.repository();</span>
+<span class="fc" id="L83">        this.storageHandle = storageHandle;</span>
+<span class="fc" id="L84">        this.databaseBacked = true;</span>
+<span class="fc" id="L85">        this.closeRepository = false;</span>
+<span class="fc" id="L86">        log.info(&quot;Initialised database-backed DslGitRepository ({})&quot;,</span>
+<span class="fc" id="L87">                gitRepo.getClass().getSimpleName());</span>
+<span class="fc" id="L88">    }</span>
+
+    /** Create an owned, volatile in-memory repository for unit tests. */
+    public DslGitRepository() {
+<span class="fc" id="L92">        this(new InMemoryRepository(new DfsRepositoryDescription(DEFAULT_REPOSITORY_NAME)), true);</span>
+<span class="fc" id="L93">    }</span>
+
+    /** Use a caller-provided JGit repository without taking ownership of it. */
+    public DslGitRepository(Repository gitRepo) {
+<span class="nc" id="L97">        this(gitRepo, false);</span>
+<span class="nc" id="L98">    }</span>
+
+<span class="fc" id="L100">    DslGitRepository(Repository gitRepo, boolean closeRepository) {</span>
+<span class="fc" id="L101">        this.gitRepo = Objects.requireNonNull(gitRepo, &quot;gitRepo&quot;);</span>
+<span class="fc" id="L102">        this.storageHandle = null;</span>
+<span class="fc" id="L103">        this.databaseBacked = false;</span>
+<span class="fc" id="L104">        this.closeRepository = closeRepository;</span>
+<span class="fc" id="L105">        log.info(&quot;Initialised DslGitRepository ({})&quot;, gitRepo.getClass().getSimpleName());</span>
+<span class="fc" id="L106">    }</span>
+
+    private static HibernateGitStorage openStorage(
+            HibernateRepositoryFactory storageFactory,
+            String repositoryName) {
+<span class="fc" id="L111">        Objects.requireNonNull(storageFactory, &quot;storageFactory&quot;);</span>
+<span class="fc" id="L112">        return storageFactory.open(new RepositoryName(repositoryName));</span>
+    }
+
+    // ── Commit operations ───────────────────────────────────────────
+
+    /**
+     * Commit DSL text to a branch and update the branch optimistically.
+     *
+     * @return the new commit SHA
+     * @throws IOException if object insertion or the ref update fails
+     */
+    public String commitDsl(String branch, String dslText, String author, String message)
+            throws IOException {
+<span class="fc" id="L125">        PersonIdent actor = personIdent(author);</span>
+<span class="pc bpc" id="L126" title="1 of 2 branches missed.">        String commitMessage = message != null ? message : &quot;DSL update&quot;;</span>
+<span class="fc" id="L127">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L128">        Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);</span>
+
+<span class="fc" id="L130">        try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+<span class="fc" id="L131">            ObjectId blobId = inserter.insert(</span>
+<span class="fc" id="L132">                    Constants.OBJ_BLOB, dslText.getBytes(StandardCharsets.UTF_8));</span>
+
+<span class="fc" id="L134">            TreeFormatter tree = new TreeFormatter();</span>
+<span class="fc" id="L135">            tree.append(DSL_FILENAME, FileMode.REGULAR_FILE, blobId);</span>
+<span class="fc" id="L136">            ObjectId treeId = inserter.insert(tree);</span>
+
+<span class="fc" id="L138">            CommitBuilder commit = new CommitBuilder();</span>
+<span class="fc" id="L139">            commit.setTreeId(treeId);</span>
+<span class="fc" id="L140">            commit.setAuthor(actor);</span>
+<span class="fc" id="L141">            commit.setCommitter(actor);</span>
+<span class="fc" id="L142">            commit.setMessage(commitMessage);</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">            if (branchRef != null) {</span>
+<span class="fc" id="L144">                commit.setParentId(branchRef.getObjectId());</span>
+            }
+
+<span class="fc" id="L147">            ObjectId commitId = inserter.insert(commit);</span>
+<span class="fc" id="L148">            inserter.flush();</span>
+
+<span class="fc" id="L150">            RefUpdate.Result result = updateRef(</span>
+                    refName,
+                    commitId,
+<span class="fc bfc" id="L153" title="All 2 branches covered.">                    branchRef != null ? branchRef.getObjectId() : ObjectId.zeroId(),</span>
+                    false,
+                    actor,
+                    &quot;commit: &quot; + commitMessage);
+
+<span class="fc" id="L158">            log.info(&quot;Committed DSL to branch '{}': {} (ref update: {})&quot;,</span>
+<span class="fc" id="L159">                    branch, commitId.name(), result);</span>
+<span class="fc" id="L160">            return commitId.name();</span>
+        }
+    }
+
+    /** Commit only if the branch still has the exact head used to compute this content. */
+    public String commitDslIfHeadMatches(String branch, String expectedHead, String dslText,
+                                        String author, String message) throws IOException {
+<span class="fc" id="L167">        return new ExpectedHeadDslCommitter().commit(this,</span>
+<span class="fc" id="L168">                new ExpectedHeadDslCommitter.CommitRequest(branch, expectedHead, dslText, author, message)).commitId();</span>
+    }
+
+    /** Verify a no-op or recovery without adopting a concurrent branch head. */
+    public String verifyExpectedHead(String branch, String expectedHead) throws IOException {
+<span class="fc" id="L173">        return new ExpectedHeadDslCommitter().verifyExpectedHead(this, branch, expectedHead);</span>
+    }
+
+    // ── Read operations ─────────────────────────────────────────────
+
+    /** Read DSL text at a specific commit. */
+    public String getDslAtCommit(String commitId) throws IOException {
+<span class="fc" id="L180">        ObjectId objectId = ObjectId.fromString(commitId);</span>
+<span class="fc" id="L181">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L182">            return readDslFromTree(walk.parseCommit(objectId).getTree());</span>
+        }
+    }
+
+    /** Read DSL text at the HEAD of a branch. */
+    public String getDslAtHead(String branch) throws IOException {
+<span class="fc" id="L188">        Ref ref = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + branch);</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        if (ref == null) {</span>
+<span class="fc" id="L190">            return null;</span>
+        }
+<span class="fc" id="L192">        return getDslAtCommit(ref.getObjectId().name());</span>
+    }
+
+    /** Return commit history of a branch, newest first. */
+    public List&lt;DslCommit&gt; getDslHistory(String branch) throws IOException {
+<span class="fc" id="L197">        Ref ref = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + branch);</span>
+<span class="fc bfc" id="L198" title="All 2 branches covered.">        if (ref == null) {</span>
+<span class="fc" id="L199">            return List.of();</span>
+        }
+
+<span class="fc" id="L202">        List&lt;DslCommit&gt; history = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L203">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L204">            walk.markStart(walk.parseCommit(ref.getObjectId()));</span>
+<span class="fc bfc" id="L205" title="All 2 branches covered.">            for (RevCommit commit : walk) {</span>
+<span class="fc" id="L206">                PersonIdent authorIdent = commit.getAuthorIdent();</span>
+<span class="fc" id="L207">                history.add(new DslCommit(</span>
+<span class="fc" id="L208">                        commit.name(),</span>
+<span class="fc" id="L209">                        authorIdent.getName(),</span>
+<span class="fc" id="L210">                        Instant.ofEpochSecond(commit.getCommitTime()),</span>
+<span class="fc" id="L211">                        commit.getFullMessage()));</span>
+<span class="fc" id="L212">            }</span>
+        }
+<span class="fc" id="L214">        return history;</span>
+    }
+
+    // ── Branch operations ───────────────────────────────────────────
+
+    /** List all local branches. */
+    public List&lt;DslBranch&gt; listBranches() throws IOException {
+<span class="fc" id="L221">        List&lt;DslBranch&gt; branches = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L222" title="All 2 branches covered.">        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {</span>
+<span class="fc" id="L223">            String name = ref.getName().substring(Constants.R_HEADS.length());</span>
+<span class="pc bpc" id="L224" title="1 of 2 branches missed.">            String headCommitId = ref.getObjectId() != null ? ref.getObjectId().name() : null;</span>
+<span class="fc" id="L225">            Instant created = oldestCommitTime(ref);</span>
+<span class="fc" id="L226">            branches.add(new DslBranch(name, headCommitId, created));</span>
+<span class="fc" id="L227">        }</span>
+<span class="fc" id="L228">        return branches;</span>
+    }
+
+    private Instant oldestCommitTime(Ref ref) throws IOException {
+<span class="pc bpc" id="L232" title="1 of 2 branches missed.">        if (ref.getObjectId() == null) {</span>
+<span class="nc" id="L233">            return null;</span>
+        }
+<span class="fc" id="L235">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L236">            walk.markStart(walk.parseCommit(ref.getObjectId()));</span>
+<span class="fc" id="L237">            RevCommit oldest = null;</span>
+<span class="fc bfc" id="L238" title="All 2 branches covered.">            for (RevCommit commit : walk) {</span>
+<span class="fc" id="L239">                oldest = commit;</span>
+<span class="fc" id="L240">            }</span>
+<span class="pc bpc" id="L241" title="1 of 2 branches missed.">            return oldest != null ? Instant.ofEpochSecond(oldest.getCommitTime()) : null;</span>
+        }
+    }
+
+    /** Create a new branch at the HEAD of an existing branch. */
+    public String createBranch(String newBranch, String fromBranch) throws IOException {
+<span class="fc" id="L247">        Ref source = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + fromBranch);</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (source == null) {</span>
+<span class="fc" id="L249">            return null;</span>
+        }
+
+<span class="fc" id="L252">        String targetRef = Constants.R_HEADS + newBranch;</span>
+<span class="fc" id="L253">        updateRef(</span>
+                targetRef,
+<span class="fc" id="L255">                source.getObjectId(),</span>
+<span class="fc" id="L256">                ObjectId.zeroId(),</span>
+                false,
+<span class="fc" id="L258">                systemIdent(),</span>
+                &quot;branch: created from &quot; + fromBranch);
+
+<span class="fc" id="L261">        log.info(&quot;Created branch '{}' from '{}' at {}&quot;,</span>
+<span class="fc" id="L262">                newBranch, fromBranch, source.getObjectId().name());</span>
+<span class="fc" id="L263">        return source.getObjectId().name();</span>
+    }
+
+    /**
+     * Create an absent branch at one captured commit, without re-reading another
+     * branch's moving HEAD. Existing destination refs are never overwritten.
+     */
+    public String createBranchAtCommit(String newBranch, String commitId) throws IOException {
+<span class="fc" id="L271">        ObjectId snapshot = ObjectId.fromString(commitId);</span>
+<span class="fc" id="L272">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L273">            walk.parseCommit(snapshot);</span>
+        }
+<span class="fc" id="L275">        updateRef(Constants.R_HEADS + newBranch, snapshot, ObjectId.zeroId(), false,</span>
+<span class="fc" id="L276">                systemIdent(), &quot;branch: created at &quot; + commitId);</span>
+<span class="fc" id="L277">        return snapshot.name();</span>
+    }
+
+    // ── Diff operations ─────────────────────────────────────────────
+
+    /** Compute a semantic model diff between two commits. */
+    public ModelDiff diffBetween(String fromCommitId, String toCommitId) throws IOException {
+<span class="fc" id="L284">        String beforeDsl = getDslAtCommit(fromCommitId);</span>
+<span class="fc" id="L285">        String afterDsl = getDslAtCommit(toCommitId);</span>
+<span class="fc" id="L286">        return differ.diff(toModel(beforeDsl), toModel(afterDsl));</span>
+    }
+
+    /** Compute a semantic model diff between branch heads. */
+    public ModelDiff diffBranches(String fromBranch, String toBranch) throws IOException {
+<span class="fc" id="L291">        return differ.diff(toModel(getDslAtHead(fromBranch)), toModel(getDslAtHead(toBranch)));</span>
+    }
+
+    private CanonicalArchitectureModel toModel(String dsl) {
+<span class="fc bfc" id="L295" title="All 2 branches covered.">        return dsl != null ? astMapper.map(parser.parse(dsl)) : null;</span>
+    }
+
+    /** Produce a JGit-native unified text diff between two commits. */
+    public String textDiff(String fromCommitId, String toCommitId) throws IOException {
+<span class="fc" id="L300">        ObjectId fromObjectId = ObjectId.fromString(fromCommitId);</span>
+<span class="fc" id="L301">        ObjectId toObjectId = ObjectId.fromString(toCommitId);</span>
+
+<span class="fc" id="L303">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L304">            RevCommit fromCommit = walk.parseCommit(fromObjectId);</span>
+<span class="fc" id="L305">            RevCommit toCommit = walk.parseCommit(toObjectId);</span>
+<span class="fc" id="L306">            ByteArrayOutputStream output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L307">            try (DiffFormatter formatter = new DiffFormatter(output)) {</span>
+<span class="fc" id="L308">                formatter.setRepository(gitRepo);</span>
+<span class="fc" id="L309">                formatter.format(fromCommit.getTree(), toCommit.getTree());</span>
+<span class="fc" id="L310">                formatter.flush();</span>
+            }
+<span class="fc" id="L312">            return output.toString(StandardCharsets.UTF_8);</span>
+        }
+    }
+
+    /** Return JGit diff metadata between two commits. */
+    public List&lt;DiffEntry&gt; jgitDiffEntries(String fromCommitId, String toCommitId)
+            throws IOException {
+<span class="fc" id="L319">        ObjectId fromObjectId = ObjectId.fromString(fromCommitId);</span>
+<span class="fc" id="L320">        ObjectId toObjectId = ObjectId.fromString(toCommitId);</span>
+
+<span class="fc" id="L322">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L323">            RevCommit fromCommit = walk.parseCommit(fromObjectId);</span>
+<span class="fc" id="L324">            RevCommit toCommit = walk.parseCommit(toObjectId);</span>
+<span class="fc" id="L325">            try (DiffFormatter formatter = new DiffFormatter(DisabledOutputStream.INSTANCE)) {</span>
+<span class="fc" id="L326">                formatter.setRepository(gitRepo);</span>
+<span class="fc" id="L327">                return formatter.scan(fromCommit.getTree(), toCommit.getTree());</span>
+            }
+        }
+    }
+
+    // ── Cherry-pick and merge operations ────────────────────────────
+
+    /** Cherry-pick a commit onto a target branch. */
+    public String cherryPick(String commitId, String targetBranch) throws IOException {
+<span class="fc" id="L336">        ObjectId pickObjectId = ObjectId.fromString(commitId);</span>
+<span class="fc" id="L337">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L338">            RevCommit pickCommit = walk.parseCommit(pickObjectId);</span>
+<span class="fc" id="L339">            String targetRefName = Constants.R_HEADS + targetBranch;</span>
+<span class="fc" id="L340">            Ref targetRef = gitRepo.getRefDatabase().exactRef(targetRefName);</span>
+<span class="fc bfc" id="L341" title="All 2 branches covered.">            if (targetRef == null) {</span>
+<span class="fc" id="L342">                log.warn(&quot;Target branch '{}' not found for cherry-pick&quot;, targetBranch);</span>
+<span class="fc" id="L343">                return null;</span>
+            }
+
+<span class="fc" id="L346">            RevCommit targetHead = walk.parseCommit(targetRef.getObjectId());</span>
+<span class="fc" id="L347">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
+<span class="pc bpc" id="L348" title="1 of 2 branches missed.">            if (!merger.merge(targetHead, pickCommit)) {</span>
+<span class="nc" id="L349">                log.warn(&quot;Cherry-pick merge conflict for {} onto '{}'&quot;, commitId, targetBranch);</span>
+<span class="nc" id="L350">                return null;</span>
+            }
+
+<span class="fc" id="L353">            PersonIdent committer = systemIdent();</span>
+<span class="fc" id="L354">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+<span class="fc" id="L355">                CommitBuilder newCommit = new CommitBuilder();</span>
+<span class="fc" id="L356">                newCommit.setTreeId(merger.getResultTreeId());</span>
+<span class="fc" id="L357">                newCommit.setParentId(targetHead);</span>
+<span class="fc" id="L358">                newCommit.setAuthor(pickCommit.getAuthorIdent());</span>
+<span class="fc" id="L359">                newCommit.setCommitter(committer);</span>
+<span class="fc" id="L360">                newCommit.setMessage(&quot;Cherry-pick: &quot; + pickCommit.getShortMessage());</span>
+
+<span class="fc" id="L362">                ObjectId newCommitId = inserter.insert(newCommit);</span>
+<span class="fc" id="L363">                inserter.flush();</span>
+<span class="fc" id="L364">                updateRef(</span>
+                        targetRefName,
+                        newCommitId,
+                        targetHead,
+                        false,
+                        committer,
+<span class="fc" id="L370">                        &quot;cherry-pick: &quot; + pickCommit.getShortMessage());</span>
+
+<span class="fc" id="L372">                log.info(&quot;Cherry-picked {} onto '{}': {}&quot;,</span>
+<span class="fc" id="L373">                        commitId, targetBranch, newCommitId.name());</span>
+<span class="fc" id="L374">                return newCommitId.name();</span>
+            }
+<span class="pc" id="L376">        }</span>
+    }
+
+    /** Merge one branch into another. */
+    public String merge(String fromBranch, String intoBranch) throws IOException {
+<span class="fc" id="L381">        String fromRefName = Constants.R_HEADS + fromBranch;</span>
+<span class="fc" id="L382">        String intoRefName = Constants.R_HEADS + intoBranch;</span>
+<span class="fc" id="L383">        Ref fromRef = gitRepo.getRefDatabase().exactRef(fromRefName);</span>
+<span class="fc" id="L384">        Ref intoRef = gitRepo.getRefDatabase().exactRef(intoRefName);</span>
+<span class="pc bpc" id="L385" title="1 of 4 branches missed.">        if (fromRef == null || intoRef == null) {</span>
+<span class="fc" id="L386">            log.warn(&quot;Cannot merge: branch not found (from={}, into={})&quot;, fromBranch, intoBranch);</span>
+<span class="fc" id="L387">            return null;</span>
+        }
+
+<span class="fc" id="L390">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L391">            RevCommit fromCommit = walk.parseCommit(fromRef.getObjectId());</span>
+<span class="fc" id="L392">            RevCommit intoCommit = walk.parseCommit(intoRef.getObjectId());</span>
+<span class="fc" id="L393">            PersonIdent actor = systemIdent();</span>
+
+<span class="fc bfc" id="L395" title="All 2 branches covered.">            if (walk.isMergedInto(fromCommit, intoCommit)) {</span>
+<span class="fc" id="L396">                log.info(&quot;Already merged: '{}' is ancestor of '{}'&quot;, fromBranch, intoBranch);</span>
+<span class="fc" id="L397">                return intoCommit.name();</span>
+            }
+
+<span class="fc bfc" id="L400" title="All 2 branches covered.">            if (walk.isMergedInto(intoCommit, fromCommit)) {</span>
+<span class="fc" id="L401">                updateRef(</span>
+                        intoRefName,
+                        fromCommit,
+                        intoCommit,
+                        false,
+                        actor,
+                        &quot;merge: fast-forward &quot; + fromBranch + &quot; into &quot; + intoBranch);
+<span class="fc" id="L408">                log.info(&quot;Fast-forward merge '{}' into '{}': {}&quot;,</span>
+<span class="fc" id="L409">                        fromBranch, intoBranch, fromCommit.name());</span>
+<span class="fc" id="L410">                return fromCommit.name();</span>
+            }
+
+<span class="fc" id="L413">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">            if (!merger.merge(intoCommit, fromCommit)) {</span>
+<span class="fc" id="L415">                log.warn(&quot;Merge conflict: '{}' into '{}'&quot;, fromBranch, intoBranch);</span>
+<span class="fc" id="L416">                return null;</span>
+            }
+
+<span class="fc" id="L419">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+<span class="fc" id="L420">                CommitBuilder mergeCommit = new CommitBuilder();</span>
+<span class="fc" id="L421">                mergeCommit.setTreeId(merger.getResultTreeId());</span>
+<span class="fc" id="L422">                mergeCommit.setParentIds(intoCommit, fromCommit);</span>
+<span class="fc" id="L423">                mergeCommit.setAuthor(actor);</span>
+<span class="fc" id="L424">                mergeCommit.setCommitter(actor);</span>
+<span class="fc" id="L425">                mergeCommit.setMessage(&quot;Merge branch '&quot; + fromBranch + &quot;' into &quot; + intoBranch);</span>
+
+<span class="fc" id="L427">                ObjectId mergeCommitId = inserter.insert(mergeCommit);</span>
+<span class="fc" id="L428">                inserter.flush();</span>
+<span class="fc" id="L429">                updateRef(</span>
+                        intoRefName,
+                        mergeCommitId,
+                        intoCommit,
+                        false,
+                        actor,
+                        &quot;merge: &quot; + fromBranch + &quot; into &quot; + intoBranch);
+
+<span class="fc" id="L437">                log.info(&quot;Merged '{}' into '{}': {}&quot;,</span>
+<span class="fc" id="L438">                        fromBranch, intoBranch, mergeCommitId.name());</span>
+<span class="fc" id="L439">                return mergeCommitId.name();</span>
+            }
+<span class="fc" id="L441">        }</span>
+    }
+
+    // ── Revert and undo operations ──────────────────────────────────
+
+    /** Revert a specific commit on a branch by creating a new commit. */
+    public String revert(String commitId, String branch) throws IOException {
+<span class="fc" id="L448">        ObjectId revertObjectId = ObjectId.fromString(commitId);</span>
+<span class="fc" id="L449">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L450">            RevCommit revertCommit = walk.parseCommit(revertObjectId);</span>
+<span class="fc bfc" id="L451" title="All 2 branches covered.">            if (revertCommit.getParentCount() == 0) {</span>
+<span class="fc" id="L452">                log.warn(&quot;Cannot revert initial commit {}&quot;, commitId);</span>
+<span class="fc" id="L453">                return null;</span>
+            }
+
+<span class="fc" id="L456">            String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L457">            Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="pc bpc" id="L458" title="1 of 2 branches missed.">            if (branchRef == null) {</span>
+<span class="nc" id="L459">                log.warn(&quot;Branch '{}' not found for revert&quot;, branch);</span>
+<span class="nc" id="L460">                return null;</span>
+            }
+
+<span class="fc" id="L463">            RevCommit branchHead = walk.parseCommit(branchRef.getObjectId());</span>
+<span class="fc" id="L464">            RevCommit parentCommit = walk.parseCommit(revertCommit.getParent(0));</span>
+<span class="fc" id="L465">            ThreeWayMerger merger = MergeStrategy.RECURSIVE.newMerger(gitRepo, true);</span>
+<span class="fc" id="L466">            merger.setBase(revertCommit);</span>
+<span class="pc bpc" id="L467" title="1 of 2 branches missed.">            if (!merger.merge(branchHead, parentCommit)) {</span>
+<span class="nc" id="L468">                log.warn(&quot;Revert conflict for {} on '{}'&quot;, commitId, branch);</span>
+<span class="nc" id="L469">                return null;</span>
+            }
+
+<span class="fc" id="L472">            PersonIdent actor = systemIdent();</span>
+<span class="fc" id="L473">            try (ObjectInserter inserter = gitRepo.newObjectInserter()) {</span>
+<span class="fc" id="L474">                CommitBuilder newCommit = new CommitBuilder();</span>
+<span class="fc" id="L475">                newCommit.setTreeId(merger.getResultTreeId());</span>
+<span class="fc" id="L476">                newCommit.setParentId(branchHead);</span>
+<span class="fc" id="L477">                newCommit.setAuthor(actor);</span>
+<span class="fc" id="L478">                newCommit.setCommitter(actor);</span>
+<span class="fc" id="L479">                newCommit.setMessage(&quot;Revert: &quot; + revertCommit.getShortMessage());</span>
+
+<span class="fc" id="L481">                ObjectId newCommitId = inserter.insert(newCommit);</span>
+<span class="fc" id="L482">                inserter.flush();</span>
+<span class="fc" id="L483">                updateRef(</span>
+                        refName,
+                        newCommitId,
+                        branchHead,
+                        false,
+                        actor,
+<span class="fc" id="L489">                        &quot;revert: &quot; + revertCommit.getShortMessage());</span>
+
+<span class="fc" id="L491">                log.info(&quot;Reverted {} on '{}': {}&quot;, commitId, branch, newCommitId.name());</span>
+<span class="fc" id="L492">                return newCommitId.name();</span>
+            }
+<span class="pc" id="L494">        }</span>
+    }
+
+    /** Move a branch back to its first parent. */
+    public String undoLast(String branch) throws IOException {
+<span class="fc" id="L499">        String refName = Constants.R_HEADS + branch;</span>
+<span class="fc" id="L500">        Ref branchRef = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L501" title="All 2 branches covered.">        if (branchRef == null) {</span>
+<span class="fc" id="L502">            log.warn(&quot;Branch '{}' not found for undo&quot;, branch);</span>
+<span class="fc" id="L503">            return null;</span>
+        }
+
+<span class="fc" id="L506">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L507">            RevCommit headCommit = walk.parseCommit(branchRef.getObjectId());</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">            if (headCommit.getParentCount() == 0) {</span>
+<span class="fc" id="L509">                log.warn(&quot;Cannot undo: branch '{}' has only the initial commit&quot;, branch);</span>
+<span class="fc" id="L510">                return null;</span>
+            }
+
+<span class="fc" id="L513">            RevCommit parentCommit = walk.parseCommit(headCommit.getParent(0));</span>
+<span class="fc" id="L514">            updateRef(</span>
+                    refName,
+                    parentCommit,
+                    headCommit,
+                    true,
+<span class="fc" id="L519">                    systemIdent(),</span>
+<span class="fc" id="L520">                    &quot;reset: moving to &quot; + parentCommit.name());</span>
+
+<span class="fc" id="L522">            log.info(&quot;Undo last on '{}': {} -&gt; {}&quot;,</span>
+<span class="fc" id="L523">                    branch, headCommit.name(), parentCommit.name());</span>
+<span class="fc" id="L524">            return parentCommit.name();</span>
+<span class="fc" id="L525">        }</span>
+    }
+
+    /** Restore DSL content from a historic commit as a new branch commit. */
+    public String restore(String commitId, String branch) throws IOException {
+        String dslText;
+        try {
+<span class="fc" id="L532">            dslText = getDslAtCommit(commitId);</span>
+<span class="fc" id="L533">        } catch (org.eclipse.jgit.errors.MissingObjectException exception) {</span>
+<span class="fc" id="L534">            log.warn(&quot;Cannot restore: commit {} not found&quot;, commitId);</span>
+<span class="fc" id="L535">            return null;</span>
+<span class="fc" id="L536">        }</span>
+<span class="pc bpc" id="L537" title="1 of 2 branches missed.">        if (dslText == null) {</span>
+<span class="nc" id="L538">            log.warn(&quot;Cannot restore: commit {} has no DSL content&quot;, commitId);</span>
+<span class="nc" id="L539">            return null;</span>
+        }
+<span class="fc" id="L541">        return commitDsl(</span>
+                branch,
+                dslText,
+                &quot;taxonomy&quot;,
+<span class="fc" id="L545">                &quot;Restored from version &quot; + commitId.substring(0, 7));</span>
+    }
+
+    // ── State query helpers ─────────────────────────────────────────
+
+    /** Return the HEAD SHA for a branch, or {@code null}. */
+    public String getHeadCommit(String branch) throws IOException {
+<span class="fc" id="L552">        Ref ref = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + branch);</span>
+<span class="pc bpc" id="L553" title="1 of 4 branches missed.">        return ref != null &amp;&amp; ref.getObjectId() != null ? ref.getObjectId().name() : null;</span>
+    }
+
+    /** Return all branch names without the {@code refs/heads/} prefix. */
+    public List&lt;String&gt; getBranchNames() throws IOException {
+<span class="fc" id="L558">        List&lt;String&gt; names = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L559" title="All 2 branches covered.">        for (Ref ref : gitRepo.getRefDatabase().getRefsByPrefix(Constants.R_HEADS)) {</span>
+<span class="fc" id="L560">            names.add(ref.getName().substring(Constants.R_HEADS.length()));</span>
+<span class="fc" id="L561">        }</span>
+<span class="fc" id="L562">        return names;</span>
+    }
+
+    /** Count commits reachable from a branch. */
+    public int getCommitCount(String branch) throws IOException {
+<span class="fc" id="L567">        Ref ref = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + branch);</span>
+<span class="fc bfc" id="L568" title="All 2 branches covered.">        if (ref == null) {</span>
+<span class="fc" id="L569">            return 0;</span>
+        }
+
+<span class="fc" id="L572">        int count = 0;</span>
+<span class="fc" id="L573">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L574">            walk.markStart(walk.parseCommit(ref.getObjectId()));</span>
+<span class="fc bfc" id="L575" title="All 2 branches covered.">            for (RevCommit ignored : walk) {</span>
+<span class="fc" id="L576">                count++;</span>
+<span class="fc" id="L577">            }</span>
+        }
+<span class="fc" id="L579">        return count;</span>
+    }
+
+    /** Return {@code [ahead, behind]} commit counts for two branches. */
+    public int[] getAheadBehindCounts(String branch, String baseBranch) throws IOException {
+<span class="fc" id="L584">        Ref branchRef = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + branch);</span>
+<span class="fc" id="L585">        Ref baseRef = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + baseBranch);</span>
+<span class="pc bpc" id="L586" title="2 of 4 branches missed.">        if (branchRef == null || baseRef == null) {</span>
+<span class="nc" id="L587">            return new int[]{0, 0};</span>
+        }
+
+<span class="fc" id="L590">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L591">            RevCommit branchHead = walk.parseCommit(branchRef.getObjectId());</span>
+<span class="fc" id="L592">            RevCommit baseHead = walk.parseCommit(baseRef.getObjectId());</span>
+<span class="pc bpc" id="L593" title="1 of 2 branches missed.">            if (branchHead.equals(baseHead)) {</span>
+<span class="fc" id="L594">                return new int[]{0, 0};</span>
+            }
+
+<span class="nc" id="L597">            int ahead = countCommitsNotIn(walk, branchHead, baseHead);</span>
+<span class="nc" id="L598">            int behind = countCommitsNotIn(walk, baseHead, branchHead);</span>
+<span class="nc" id="L599">            return new int[]{ahead, behind};</span>
+<span class="fc" id="L600">        }</span>
+    }
+
+    private static int countCommitsNotIn(
+            RevWalk walk,
+            RevCommit tip,
+            RevCommit exclude) throws IOException {
+<span class="nc" id="L607">        walk.reset();</span>
+<span class="nc" id="L608">        walk.markStart(tip);</span>
+<span class="nc" id="L609">        walk.markUninteresting(exclude);</span>
+<span class="nc" id="L610">        int count = 0;</span>
+<span class="nc bnc" id="L611" title="All 2 branches missed.">        for (RevCommit ignored : walk) {</span>
+<span class="nc" id="L612">            count++;</span>
+<span class="nc" id="L613">        }</span>
+<span class="nc" id="L614">        return count;</span>
+    }
+
+    /** Return metadata for the HEAD commit of a branch. */
+    public DslCommit getHeadCommitInfo(String branch) throws IOException {
+<span class="fc" id="L619">        Ref ref = gitRepo.getRefDatabase().exactRef(Constants.R_HEADS + branch);</span>
+<span class="fc bfc" id="L620" title="All 2 branches covered.">        if (ref == null) {</span>
+<span class="fc" id="L621">            return null;</span>
+        }
+
+<span class="fc" id="L624">        try (RevWalk walk = new RevWalk(gitRepo)) {</span>
+<span class="fc" id="L625">            RevCommit commit = walk.parseCommit(ref.getObjectId());</span>
+<span class="fc" id="L626">            PersonIdent authorIdent = commit.getAuthorIdent();</span>
+<span class="fc" id="L627">            return new DslCommit(</span>
+<span class="fc" id="L628">                    commit.name(),</span>
+<span class="fc" id="L629">                    authorIdent.getName(),</span>
+<span class="fc" id="L630">                    Instant.ofEpochSecond(commit.getCommitTime()),</span>
+<span class="fc" id="L631">                    commit.getFullMessage());</span>
+        }
+    }
+
+    private String readDslFromTree(RevTree tree) throws IOException {
+<span class="fc" id="L636">        try (TreeWalk treeWalk = TreeWalk.forPath(gitRepo, DSL_FILENAME, tree)) {</span>
+<span class="fc bfc" id="L637" title="All 2 branches covered.">            if (treeWalk == null) {</span>
+<span class="fc" id="L638">                return null;</span>
+            }
+<span class="fc" id="L640">            ObjectLoader loader = gitRepo.open(treeWalk.getObjectId(0), Constants.OBJ_BLOB);</span>
+<span class="fc" id="L641">            return new String(loader.getBytes(), StandardCharsets.UTF_8);</span>
+<span class="pc bpc" id="L642" title="1 of 2 branches missed.">        }</span>
+    }
+
+    private RefUpdate.Result updateRef(
+            String refName,
+            ObjectId newObjectId,
+            ObjectId expectedOldObjectId,
+            boolean force,
+            PersonIdent actor,
+            String reflogMessage) throws IOException {
+<span class="fc" id="L652">        RefUpdate update = gitRepo.updateRef(refName);</span>
+<span class="fc" id="L653">        update.setNewObjectId(newObjectId);</span>
+<span class="fc" id="L654">        update.setExpectedOldObjectId(expectedOldObjectId);</span>
+<span class="fc" id="L655">        update.setForceUpdate(force);</span>
+<span class="fc" id="L656">        update.setRefLogIdent(actor);</span>
+<span class="fc" id="L657">        update.setRefLogMessage(reflogMessage, true);</span>
+<span class="fc" id="L658">        RefUpdate.Result result = update.update();</span>
+<span class="fc" id="L659">        requireSuccessfulUpdate(refName, result);</span>
+<span class="fc" id="L660">        return result;</span>
+    }
+
+    private static void requireSuccessfulUpdate(String refName, RefUpdate.Result result)
+            throws IOException {
+<span class="pc bpc" id="L665" title="1 of 8 branches missed.">        if (result != RefUpdate.Result.NEW</span>
+                &amp;&amp; result != RefUpdate.Result.FAST_FORWARD
+                &amp;&amp; result != RefUpdate.Result.FORCED
+                &amp;&amp; result != RefUpdate.Result.NO_CHANGE) {
+<span class="fc" id="L669">            throw new IOException(&quot;Ref update failed for &quot; + refName + &quot;: &quot; + result);</span>
+        }
+<span class="fc" id="L671">    }</span>
+
+    private static PersonIdent personIdent(String author) {
+<span class="pc bpc" id="L674" title="1 of 2 branches missed.">        String name = author != null ? author : &quot;taxonomy&quot;;</span>
+<span class="pc bpc" id="L675" title="1 of 2 branches missed.">        String email = author != null ? author : &quot;taxonomy@system&quot;;</span>
+<span class="fc" id="L676">        return new PersonIdent(name, email);</span>
+    }
+
+    private static PersonIdent systemIdent() {
+<span class="fc" id="L680">        return new PersonIdent(&quot;taxonomy&quot;, &quot;taxonomy@system&quot;);</span>
+    }
+
+    /** Expose the underlying public JGit repository for advanced operations. */
+    public Repository getGitRepository() {
+<span class="fc" id="L685">        return gitRepo;</span>
+    }
+
+    /** Return whether this instance uses persistent Hibernate-backed storage. */
+    public boolean isDatabaseBacked() {
+<span class="fc" id="L690">        return databaseBacked;</span>
+    }
+
+    /** Delete a non-protected branch and record a queryable reflog entry. */
+    public boolean deleteBranch(String branchName) throws IOException {
+<span class="fc bfc" id="L695" title="All 2 branches covered.">        if (&quot;draft&quot;.equals(branchName)</span>
+<span class="fc bfc" id="L696" title="All 2 branches covered.">                || &quot;accepted&quot;.equals(branchName)</span>
+<span class="fc bfc" id="L697" title="All 2 branches covered.">                || &quot;main&quot;.equals(branchName)) {</span>
+<span class="fc" id="L698">            throw new IllegalArgumentException(&quot;Cannot delete protected branch: &quot; + branchName);</span>
+        }
+
+<span class="fc" id="L701">        String refName = Constants.R_HEADS + branchName;</span>
+<span class="fc" id="L702">        Ref ref = gitRepo.getRefDatabase().exactRef(refName);</span>
+<span class="fc bfc" id="L703" title="All 2 branches covered.">        if (ref == null) {</span>
+<span class="fc" id="L704">            return false;</span>
+        }
+
+<span class="fc" id="L707">        RefUpdate update = gitRepo.updateRef(refName);</span>
+<span class="fc" id="L708">        update.setExpectedOldObjectId(ref.getObjectId());</span>
+<span class="fc" id="L709">        update.setForceUpdate(true);</span>
+<span class="fc" id="L710">        update.setRefLogIdent(systemIdent());</span>
+<span class="fc" id="L711">        update.setRefLogMessage(&quot;branch: deleted &quot; + branchName, true);</span>
+<span class="fc" id="L712">        RefUpdate.Result result = update.delete();</span>
+<span class="pc bpc" id="L713" title="3 of 4 branches missed.">        if (result != RefUpdate.Result.FORCED</span>
+                &amp;&amp; result != RefUpdate.Result.FAST_FORWARD) {
+<span class="nc" id="L715">            throw new IOException(&quot;Ref deletion failed for &quot; + refName + &quot;: &quot; + result);</span>
+        }
+
+<span class="fc" id="L718">        log.info(&quot;Deleted branch '{}' (ref update: {})&quot;, branchName, result);</span>
+<span class="fc" id="L719">        return true;</span>
+    }
+
+    /** Close the library handle or an owned in-memory repository exactly once. */
+    @Override
+    public void close() {
+<span class="pc bpc" id="L725" title="1 of 2 branches missed.">        if (!closed.compareAndSet(false, true)) {</span>
+<span class="nc" id="L726">            return;</span>
+        }
+<span class="fc bfc" id="L728" title="All 2 branches covered.">        if (storageHandle != null) {</span>
+<span class="fc" id="L729">            storageHandle.close();</span>
+<span class="pc bpc" id="L730" title="1 of 2 branches missed.">        } else if (closeRepository) {</span>
+<span class="fc" id="L731">            gitRepo.close();</span>
+        }
+<span class="fc" id="L733">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

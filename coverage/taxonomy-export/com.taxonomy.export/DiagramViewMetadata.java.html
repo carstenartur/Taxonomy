@@ -1,0 +1,77 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DiagramViewMetadata.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">DiagramViewMetadata.java</span></div><h1>DiagramViewMetadata.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/**
+ * Human-readable metadata describing the active diagram view policy.
+ *
+ * &lt;p&gt;Generated from a {@link DiagramSelectionConfig} by the
+ * {@link #fromConfig(DiagramSelectionConfig, String)} factory method.
+ * The UI displays this as a title and small legend/info block so
+ * users can see which policy is active without inspecting raw
+ * configuration values.&lt;/p&gt;
+ *
+ * &lt;p&gt;Titles, descriptions, and rule labels are returned as &lt;strong&gt;i18n
+ * message keys&lt;/strong&gt; (e.g. {@code &quot;archview.policy.title.defaultImpact&quot;})
+ * so the display layer can resolve them via its translation service.&lt;/p&gt;
+ *
+ * @param policyKey           internal key (e.g. &quot;defaultImpact&quot;, &quot;clustering&quot;)
+ * @param viewTitle           i18n key for the view title
+ * @param viewDescription     i18n key for the short description
+ * @param containmentEnabled  whether the policy collapses / clusters intermediate nodes
+ * @param activeRules         list of i18n keys for active rule descriptions
+ */
+<span class="fc" id="L25">public record DiagramViewMetadata(</span>
+        String policyKey,
+        String viewTitle,
+        String viewDescription,
+        boolean containmentEnabled,
+        List&lt;String&gt; activeRules
+) {
+
+    private static final String DEFAULT_IMPACT_KEY = &quot;defaultImpact&quot;;
+    private static final String LEAF_ONLY_KEY = &quot;leafOnly&quot;;
+    private static final String CLUSTERING_KEY = &quot;clustering&quot;;
+    private static final String TRACE_KEY = &quot;trace&quot;;
+
+    /**
+     * Generates view metadata from a policy key and its configuration.
+     *
+     * @param config    the active diagram selection configuration
+     * @param policyKey the policy key (e.g. &quot;defaultImpact&quot;, &quot;clustering&quot;, &quot;trace&quot;, &quot;leafOnly&quot;)
+     * @return metadata with i18n keys for title, description, and active rules
+     */
+    public static DiagramViewMetadata fromConfig(DiagramSelectionConfig config, String policyKey) {
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        String key = policyKey != null ? policyKey : DEFAULT_IMPACT_KEY;</span>
+<span class="fc" id="L47">        String titleKey = &quot;archview.policy.title.&quot; + key;</span>
+<span class="fc" id="L48">        String descKey = &quot;archview.policy.desc.&quot; + key;</span>
+<span class="pc bpc" id="L49" title="1 of 4 branches missed.">        boolean containment = config.collapseRedundantParentChild() || config.allowIntermediateAsClusters();</span>
+<span class="fc" id="L50">        List&lt;String&gt; rules = buildActiveRules(config);</span>
+<span class="fc" id="L51">        return new DiagramViewMetadata(key, titleKey, descKey, containment, rules);</span>
+    }
+
+    private static List&lt;String&gt; buildActiveRules(DiagramSelectionConfig config) {
+<span class="fc" id="L55">        List&lt;String&gt; rules = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (config.suppressRootNodes()) {</span>
+<span class="fc" id="L57">            rules.add(&quot;archview.rule.suppress.roots&quot;);</span>
+        }
+<span class="fc bfc" id="L59" title="All 2 branches covered.">        if (config.suppressScaffoldingNodes()) {</span>
+<span class="fc" id="L60">            rules.add(&quot;archview.rule.suppress.scaffolding&quot;);</span>
+        }
+<span class="fc bfc" id="L62" title="All 2 branches covered.">        if (config.collapseRedundantParentChild()) {</span>
+<span class="fc" id="L63">            rules.add(&quot;archview.rule.collapse.single.child&quot;);</span>
+        }
+<span class="fc bfc" id="L65" title="All 2 branches covered.">        if (config.allowIntermediateAsClusters()) {</span>
+<span class="fc" id="L66">            rules.add(&quot;archview.rule.cluster.multi.child&quot;);</span>
+        }
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        if (config.leafOnlyMode()) {</span>
+<span class="fc" id="L69">            rules.add(&quot;archview.rule.leaf.only&quot;);</span>
+        }
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (config.minRelevance() &gt; 0.0) {</span>
+<span class="fc" id="L72">            rules.add(&quot;archview.rule.min.relevance&quot;);</span>
+        }
+<span class="fc" id="L74">        return List.copyOf(rules);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

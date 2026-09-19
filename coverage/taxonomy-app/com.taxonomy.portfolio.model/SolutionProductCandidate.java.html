@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SolutionProductCandidate.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">SolutionProductCandidate.java</span></div><h1>SolutionProductCandidate.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.ProductSelectionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/** Reviewed product candidate for a project solution, never an autonomous purchase decision. */
+@Entity
+@Table(name = &quot;solution_product&quot;, indexes = {
+        @Index(name = &quot;idx_solprod_psol&quot;, columnList = &quot;project_solution_id&quot;),
+        @Index(name = &quot;idx_solprod_product&quot;, columnList = &quot;product_id&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_solprod_pair&quot;, columnNames = {&quot;project_solution_id&quot;, &quot;product_id&quot;})
+})
+public class SolutionProductCandidate {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;project_solution_id&quot;, nullable = false)
+    private ProjectSolution projectSolution;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;product_id&quot;, nullable = false)
+    private ProductCatalogEntry product;
+
+    @Column(name = &quot;coverage_percent&quot;, nullable = false)
+    private int coveragePercent;
+
+    @Column(name = &quot;hard_exclusions&quot;, length = 4000)
+    private String hardExclusions;
+
+    @Column(length = 4000)
+    private String strengths;
+
+    @Column(length = 4000)
+    private String weaknesses;
+
+    @Column(name = &quot;open_evidence&quot;, length = 4000)
+    private String openEvidence;
+
+    @Column(nullable = false)
+    private double confidence;
+
+<span class="fc" id="L62">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;review_status&quot;, nullable = false, length = 32)
+    private ReviewStatus reviewStatus = ReviewStatus.PROPOSED;
+
+<span class="fc" id="L66">    @Enumerated(EnumType.STRING)</span>
+    @Column(name = &quot;selection_status&quot;, nullable = false, length = 32)
+    private ProductSelectionStatus selectionStatus = ProductSelectionStatus.CANDIDATE;
+
+    @Column(name = &quot;updated_by&quot;, nullable = false, length = 160)
+    private String updatedBy;
+
+    @Column(name = &quot;updated_at&quot;, nullable = false)
+    private Instant updatedAt;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    private long rowVersion;
+
+<span class="fc" id="L80">    protected SolutionProductCandidate() {</span>
+<span class="fc" id="L81">    }</span>
+
+    public SolutionProductCandidate(ProjectSolution projectSolution,
+                                    ProductCatalogEntry product,
+                                    int coveragePercent,
+                                    String hardExclusions,
+                                    String strengths,
+                                    String weaknesses,
+                                    String openEvidence,
+                                    double confidence,
+                                    ReviewStatus reviewStatus,
+                                    ProductSelectionStatus selectionStatus,
+                                    String updatedBy,
+<span class="fc" id="L94">                                    Instant updatedAt) {</span>
+<span class="fc" id="L95">        this.projectSolution = projectSolution;</span>
+<span class="fc" id="L96">        this.product = product;</span>
+<span class="fc" id="L97">        this.coveragePercent = coveragePercent;</span>
+<span class="fc" id="L98">        this.hardExclusions = hardExclusions;</span>
+<span class="fc" id="L99">        this.strengths = strengths;</span>
+<span class="fc" id="L100">        this.weaknesses = weaknesses;</span>
+<span class="fc" id="L101">        this.openEvidence = openEvidence;</span>
+<span class="fc" id="L102">        this.confidence = confidence;</span>
+<span class="pc bpc" id="L103" title="1 of 2 branches missed.">        this.reviewStatus = reviewStatus != null ? reviewStatus : ReviewStatus.PROPOSED;</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        this.selectionStatus = selectionStatus != null</span>
+<span class="pc" id="L105">                ? selectionStatus : ProductSelectionStatus.CANDIDATE;</span>
+<span class="fc" id="L106">        this.updatedBy = updatedBy;</span>
+<span class="fc" id="L107">        this.updatedAt = updatedAt;</span>
+<span class="fc" id="L108">    }</span>
+
+    public void update(int coveragePercent,
+                       String hardExclusions,
+                       String strengths,
+                       String weaknesses,
+                       String openEvidence,
+                       double confidence,
+                       ReviewStatus reviewStatus,
+                       ProductSelectionStatus selectionStatus,
+                       String updatedBy,
+                       Instant updatedAt) {
+<span class="nc" id="L120">        this.coveragePercent = coveragePercent;</span>
+<span class="nc" id="L121">        this.hardExclusions = hardExclusions;</span>
+<span class="nc" id="L122">        this.strengths = strengths;</span>
+<span class="nc" id="L123">        this.weaknesses = weaknesses;</span>
+<span class="nc" id="L124">        this.openEvidence = openEvidence;</span>
+<span class="nc" id="L125">        this.confidence = confidence;</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        if (reviewStatus != null) this.reviewStatus = reviewStatus;</span>
+<span class="nc bnc" id="L127" title="All 2 branches missed.">        if (selectionStatus != null) this.selectionStatus = selectionStatus;</span>
+<span class="nc" id="L128">        this.updatedBy = updatedBy;</span>
+<span class="nc" id="L129">        this.updatedAt = updatedAt;</span>
+<span class="nc" id="L130">    }</span>
+
+<span class="fc" id="L132">    public Long getId() { return id; }</span>
+<span class="fc" id="L133">    public ProjectSolution getProjectSolution() { return projectSolution; }</span>
+<span class="fc" id="L134">    public ProductCatalogEntry getProduct() { return product; }</span>
+<span class="fc" id="L135">    public int getCoveragePercent() { return coveragePercent; }</span>
+<span class="fc" id="L136">    public String getHardExclusions() { return hardExclusions; }</span>
+<span class="fc" id="L137">    public String getStrengths() { return strengths; }</span>
+<span class="fc" id="L138">    public String getWeaknesses() { return weaknesses; }</span>
+<span class="fc" id="L139">    public String getOpenEvidence() { return openEvidence; }</span>
+<span class="fc" id="L140">    public double getConfidence() { return confidence; }</span>
+<span class="fc" id="L141">    public ReviewStatus getReviewStatus() { return reviewStatus; }</span>
+<span class="fc" id="L142">    public ProductSelectionStatus getSelectionStatus() { return selectionStatus; }</span>
+<span class="fc" id="L143">    public String getUpdatedBy() { return updatedBy; }</span>
+<span class="fc" id="L144">    public Instant getUpdatedAt() { return updatedAt; }</span>
+<span class="nc" id="L145">    public long getRowVersion() { return rowVersion; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

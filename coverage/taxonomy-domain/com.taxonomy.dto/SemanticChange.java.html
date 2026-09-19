@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SemanticChange.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">SemanticChange.java</span></div><h1>SemanticChange.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+/**
+ * A single semantic change between two architecture versions.
+ *
+ * &lt;p&gt;Represents one addition, removal, or modification of an element
+ * or relation, together with before/after values where applicable.
+ *
+ * @param changeType     ADD, REMOVE, or MODIFY
+ * @param category       ELEMENT or RELATION
+ * @param id             the element ID or relation key
+ * @param description    human-readable summary (e.g. &quot;Element CP-1023 title changed&quot;)
+ * @param beforeValue    the value before the change (null for additions)
+ * @param afterValue     the value after the change (null for removals)
+ */
+<span class="fc" id="L16">public record SemanticChange(</span>
+    String changeType,
+    String category,
+    String id,
+    String description,
+    String beforeValue,
+    String afterValue
+) {}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

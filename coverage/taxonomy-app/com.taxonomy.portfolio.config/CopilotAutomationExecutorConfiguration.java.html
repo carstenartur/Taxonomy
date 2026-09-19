@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CopilotAutomationExecutorConfiguration.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.config</a> &gt; <span class="el_source">CopilotAutomationExecutorConfiguration.java</span></div><h1>CopilotAutomationExecutorConfiguration.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.config;
+
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+
+/**
+ * Bounded coordinator capacity for persisted Copilot operations.
+ *
+ * &lt;p&gt;Workers remain virtual threads because they mostly wait for durable analysis
+ * jobs, but both concurrently active coordinators and queued operations are bounded
+ * so a large import cannot create an unbounded stream of database polling tasks.&lt;/p&gt;
+ */
+@Configuration
+<span class="fc" id="L21">public class CopilotAutomationExecutorConfiguration {</span>
+
+    private static final int MAX_CONFIGURED_CONCURRENCY = 64;
+    private static final int MAX_CONFIGURED_QUEUE = 10_000;
+
+    @Bean(name = &quot;copilotAutomationExecutor&quot;, destroyMethod = &quot;shutdown&quot;)
+    ExecutorService copilotAutomationExecutor(
+            @Value(&quot;${taxonomy.ai.coordinator.max-concurrent-operations:4}&quot;)
+            int maximumConcurrentOperations,
+            @Value(&quot;${taxonomy.ai.coordinator.queue-capacity:100}&quot;)
+            int queueCapacity) {
+<span class="fc" id="L32">        int concurrency = bounded(</span>
+                maximumConcurrentOperations,
+                1,
+                MAX_CONFIGURED_CONCURRENCY,
+                &quot;taxonomy.ai.coordinator.max-concurrent-operations&quot;);
+<span class="fc" id="L37">        int backlog = bounded(</span>
+                queueCapacity,
+                1,
+                MAX_CONFIGURED_QUEUE,
+                &quot;taxonomy.ai.coordinator.queue-capacity&quot;);
+<span class="fc" id="L42">        ThreadFactory workers = Thread.ofVirtual()</span>
+<span class="fc" id="L43">                .name(&quot;taxonomy-copilot-coordinator-&quot;, 0)</span>
+<span class="fc" id="L44">                .factory();</span>
+<span class="fc" id="L45">        return new ThreadPoolExecutor(</span>
+                concurrency,
+                concurrency,
+                0L,
+                TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue&lt;&gt;(backlog),
+                workers,
+                new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    private static int bounded(int value, int minimum, int maximum, String property) {
+<span class="fc bfc" id="L56" title="All 4 branches covered.">        if (value &lt; minimum || value &gt; maximum) {</span>
+<span class="fc" id="L57">            throw new IllegalArgumentException(</span>
+                    property + &quot; must be between &quot; + minimum + &quot; and &quot; + maximum);
+        }
+<span class="fc" id="L60">        return value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

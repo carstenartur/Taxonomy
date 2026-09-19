@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisMemoryGuard.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">AnalysisMemoryGuard.java</span></div><h1>AnalysisMemoryGuard.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import java.lang.management.ManagementFactory;
+import java.util.function.LongSupplier;
+import java.util.function.Supplier;
+
+/** Per-run pressure history. A transient pre-GC peak warns; sustained pressure stops. */
+public final class AnalysisMemoryGuard {
+    private static final long MIB = 1024 * 1024;
+
+    public record Policy(int warningPercent, int stopPercent, long minimumHeadroom,
+                         long pressureMillis, long maximumDurationMillis) {
+<span class="fc" id="L13">        public Policy {</span>
+<span class="pc bpc" id="L14" title="5 of 12 branches missed.">            if (warningPercent &lt; 1 || warningPercent &gt;= stopPercent || stopPercent &gt; 98</span>
+                    || minimumHeadroom &lt; MIB || pressureMillis &lt; 0 || maximumDurationMillis &lt; 1) {
+<span class="fc" id="L16">                throw new IllegalArgumentException(&quot;Invalid analysis memory/time policy&quot;);</span>
+            }
+<span class="fc" id="L18">        }</span>
+    }
+
+<span class="fc" id="L21">    public record Sample(long usedBytes, long maximumBytes) { }</span>
+<span class="fc" id="L22">    public record Reading(long usedBytes, long maximumBytes, long headroomBytes,</span>
+                          int percent, boolean warning) { }
+
+    private final Policy policy;
+    private final Supplier&lt;Sample&gt; source;
+    private final LongSupplier clock;
+    private final long started;
+    private Long pressureSince;
+
+<span class="fc" id="L31">    public AnalysisMemoryGuard(Policy policy, Supplier&lt;Sample&gt; source, LongSupplier clock) {</span>
+<span class="fc" id="L32">        this.policy = policy;</span>
+<span class="fc" id="L33">        this.source = source;</span>
+<span class="fc" id="L34">        this.clock = clock;</span>
+<span class="fc" id="L35">        this.started = clock.getAsLong();</span>
+<span class="fc" id="L36">    }</span>
+
+    public static Sample heapSample() {
+<span class="fc" id="L39">        var usage = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();</span>
+<span class="fc" id="L40">        return new Sample(usage.getUsed(), usage.getMax());</span>
+    }
+
+    public Reading reading() {
+<span class="fc" id="L44">        Sample sample = source.get();</span>
+<span class="pc bpc" id="L45" title="1 of 4 branches missed.">        if (sample.maximumBytes() &lt;= 0 || sample.usedBytes() &lt; 0) {</span>
+<span class="fc" id="L46">            return new Reading(sample.usedBytes(), sample.maximumBytes(), -1, -1, false);</span>
+        }
+<span class="fc" id="L48">        long free = Math.max(0, sample.maximumBytes() - sample.usedBytes());</span>
+<span class="fc" id="L49">        int percent = (int) Math.min(100, 100.0 * sample.usedBytes() / sample.maximumBytes());</span>
+<span class="fc" id="L50">        return new Reading(sample.usedBytes(), sample.maximumBytes(), free, percent,</span>
+<span class="pc bpc" id="L51" title="1 of 4 branches missed.">                percent &gt;= policy.warningPercent() || free &lt; policy.minimumHeadroom());</span>
+    }
+
+    public Reading check() {
+<span class="fc" id="L55">        long now = clock.getAsLong();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        if (now - started &gt;= policy.maximumDurationMillis()) {</span>
+<span class="fc" id="L57">            throw new AnalysisStoppedException(AnalysisStoppedException.Reason.TIME_LIMIT);</span>
+        }
+<span class="fc" id="L59">        Reading reading = reading();</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (reading.percent() &lt; 0) {</span>
+<span class="fc" id="L61">            pressureSince = null;</span>
+<span class="fc" id="L62">            return reading;</span>
+        }
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        if (reading.percent() &gt;= 98</span>
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">                || reading.headroomBytes() &lt;= Math.min(4 * MIB, policy.minimumHeadroom() / 4)) {</span>
+<span class="fc" id="L66">            throw new AnalysisStoppedException(AnalysisStoppedException.Reason.MEMORY_PRESSURE);</span>
+        }
+<span class="fc bfc" id="L68" title="All 2 branches covered.">        boolean critical = reading.percent() &gt;= policy.stopPercent()</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">                || reading.headroomBytes() &lt; policy.minimumHeadroom();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        if (!critical) {</span>
+<span class="fc" id="L71">            pressureSince = null;</span>
+        } else {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            if (pressureSince == null) pressureSince = now;</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">            if (now - pressureSince &gt;= policy.pressureMillis()) {</span>
+<span class="fc" id="L75">                throw new AnalysisStoppedException(AnalysisStoppedException.Reason.MEMORY_PRESSURE);</span>
+            }
+        }
+<span class="fc" id="L78">        return reading;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

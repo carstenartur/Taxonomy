@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectConflict.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">ProjectConflict.java</span></div><h1>ProjectConflict.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.ConflictStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ConflictType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+import jakarta.persistence.Version;
+
+import java.time.Instant;
+
+/** Evidence-backed, human-reviewable conflict hypothesis between requirements. */
+@Entity
+@Table(name = &quot;project_conflict&quot;, indexes = {
+        @Index(name = &quot;idx_conf_project&quot;, columnList = &quot;project_id,status&quot;),
+        @Index(name = &quot;idx_conf_req_a&quot;, columnList = &quot;requirement_a_id&quot;),
+        @Index(name = &quot;idx_conf_req_b&quot;, columnList = &quot;requirement_b_id&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_conf_signature&quot;,
+                columnNames = {&quot;project_id&quot;, &quot;requirement_a_id&quot;, &quot;requirement_b_id&quot;, &quot;conflict_type&quot;, &quot;fingerprint&quot;})
+})
+public class ProjectConflict {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;project_id&quot;, nullable = false)
+    private ArchitectureProject project;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;requirement_a_id&quot;, nullable = false)
+    private ProjectRequirement requirementA;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;requirement_b_id&quot;, nullable = false)
+    private ProjectRequirement requirementB;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;conflict_type&quot;, nullable = false, length = 32)
+    private ConflictType conflictType;
+
+<span class="fc" id="L55">    @Enumerated(EnumType.STRING)</span>
+    @Column(nullable = false, length = 32)
+    private ConflictStatus status = ConflictStatus.PROPOSED;
+
+    @Column(nullable = false, length = 64)
+    private String fingerprint;
+
+    @Column(nullable = false, length = 500)
+    private String title;
+
+    @Lob
+    @Column(nullable = false)
+    private String evidence;
+
+    @Column(nullable = false)
+    private double confidence;
+
+    @Column(name = &quot;resolution_note&quot;, length = 4000)
+    private String resolutionNote;
+
+    @Column(name = &quot;detected_at&quot;, nullable = false)
+    private Instant detectedAt;
+
+    @Column(name = &quot;reviewed_by&quot;, length = 160)
+    private String reviewedBy;
+
+    @Column(name = &quot;reviewed_at&quot;)
+    private Instant reviewedAt;
+
+    @Version
+    @Column(name = &quot;row_version&quot;, nullable = false)
+    private long rowVersion;
+
+<span class="fc" id="L88">    protected ProjectConflict() {</span>
+<span class="fc" id="L89">    }</span>
+
+    public ProjectConflict(ArchitectureProject project,
+                           ProjectRequirement requirementA,
+                           ProjectRequirement requirementB,
+                           ConflictType conflictType,
+                           String fingerprint,
+                           String title,
+                           String evidence,
+                           double confidence,
+<span class="fc" id="L99">                           Instant detectedAt) {</span>
+<span class="fc" id="L100">        this.project = project;</span>
+<span class="fc" id="L101">        this.requirementA = requirementA;</span>
+<span class="fc" id="L102">        this.requirementB = requirementB;</span>
+<span class="fc" id="L103">        this.conflictType = conflictType;</span>
+<span class="fc" id="L104">        this.fingerprint = fingerprint;</span>
+<span class="fc" id="L105">        this.title = title;</span>
+<span class="fc" id="L106">        this.evidence = evidence;</span>
+<span class="fc" id="L107">        this.confidence = confidence;</span>
+<span class="fc" id="L108">        this.detectedAt = detectedAt;</span>
+<span class="fc" id="L109">    }</span>
+
+    public void review(ConflictStatus status,
+                       String resolutionNote,
+                       String reviewedBy,
+                       Instant reviewedAt) {
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        if (status != null) this.status = status;</span>
+<span class="fc" id="L116">        this.resolutionNote = resolutionNote;</span>
+<span class="fc" id="L117">        this.reviewedBy = reviewedBy;</span>
+<span class="fc" id="L118">        this.reviewedAt = reviewedAt;</span>
+<span class="fc" id="L119">    }</span>
+
+<span class="fc" id="L121">    public Long getId() { return id; }</span>
+<span class="fc" id="L122">    public ArchitectureProject getProject() { return project; }</span>
+<span class="fc" id="L123">    public ProjectRequirement getRequirementA() { return requirementA; }</span>
+<span class="fc" id="L124">    public ProjectRequirement getRequirementB() { return requirementB; }</span>
+<span class="fc" id="L125">    public ConflictType getConflictType() { return conflictType; }</span>
+<span class="fc" id="L126">    public ConflictStatus getStatus() { return status; }</span>
+<span class="nc" id="L127">    public String getFingerprint() { return fingerprint; }</span>
+<span class="fc" id="L128">    public String getTitle() { return title; }</span>
+<span class="fc" id="L129">    public String getEvidence() { return evidence; }</span>
+<span class="fc" id="L130">    public double getConfidence() { return confidence; }</span>
+<span class="fc" id="L131">    public String getResolutionNote() { return resolutionNote; }</span>
+<span class="fc" id="L132">    public Instant getDetectedAt() { return detectedAt; }</span>
+<span class="fc" id="L133">    public String getReviewedBy() { return reviewedBy; }</span>
+<span class="fc" id="L134">    public Instant getReviewedAt() { return reviewedAt; }</span>
+<span class="nc" id="L135">    public long getRowVersion() { return rowVersion; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

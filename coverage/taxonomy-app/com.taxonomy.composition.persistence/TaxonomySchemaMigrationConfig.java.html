@@ -1,0 +1,171 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>TaxonomySchemaMigrationConfig.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.persistence</a> &gt; <span class="el_source">TaxonomySchemaMigrationConfig.java</span></div><h1>TaxonomySchemaMigrationConfig.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.persistence;
+
+import org.flywaydb.core.Flyway;
+import org.flywaydb.core.api.configuration.Configuration;
+import org.flywaydb.core.api.configuration.FluentConfiguration;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.flyway.autoconfigure.FlywayMigrationStrategy;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
+
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.DatabaseMetaData;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.util.LinkedHashSet;
+import java.util.Locale;
+import java.util.Set;
+
+/**
+ * Runs Taxonomy application schema migrations after the independently versioned
+ * JGit Core schema and before Hibernate validates the persistence unit.
+ */
+@org.springframework.context.annotation.Configuration(proxyBeanMethods = false)
+@ConditionalOnProperty(name = &quot;spring.flyway.enabled&quot;, havingValue = &quot;true&quot;)
+<span class="fc" id="L27">public class TaxonomySchemaMigrationConfig {</span>
+
+    static final String HISTORY_TABLE = &quot;taxonomy_schema_history&quot;;
+    static final String POSTGRES_LOCATION =
+            &quot;classpath:db/migration/taxonomy/postgresql&quot;;
+
+<span class="fc" id="L33">    private static final Set&lt;String&gt; LEGACY_MARKERS = Set.of(</span>
+            &quot;app_user&quot;,
+            &quot;architecture_dsl_document&quot;,
+            &quot;taxonomy_node&quot;,
+            &quot;taxonomy_relation&quot;);
+
+    /** Every post-baseline table required by the current JPA model. */
+<span class="fc" id="L40">    private static final Set&lt;String&gt; REQUIRED_PORTFOLIO_TABLES = Set.of(</span>
+            &quot;arch_project&quot;,
+            &quot;project_requirement&quot;,
+            &quot;project_req_version&quot;,
+            &quot;req_analysis_job&quot;,
+            &quot;req_analysis_item&quot;,
+            &quot;req_analysis_snapshot&quot;,
+            &quot;req_element_mapping&quot;,
+            &quot;req_relation_mapping&quot;,
+            &quot;solution_definition&quot;,
+            &quot;solution_taxonomy&quot;,
+            &quot;project_solution&quot;,
+            &quot;req_solution_link&quot;,
+            &quot;product_catalog&quot;,
+            &quot;product_taxonomy&quot;,
+            &quot;solution_product&quot;,
+            &quot;project_conflict&quot;,
+            &quot;webdav_application_credential&quot;,
+            &quot;editor_workspace&quot;,
+            &quot;editor_operation&quot;,
+            &quot;editor_checkpoint&quot;);
+
+    @Bean
+    @Primary
+    public FlywayMigrationStrategy taxonomyFlywayMigrationStrategy(
+            @Qualifier(&quot;jgitStorageFlywayMigrationStrategy&quot;)
+            FlywayMigrationStrategy coreMigrationStrategy) {
+<span class="fc" id="L67">        return flyway -&gt; {</span>
+<span class="fc" id="L68">            coreMigrationStrategy.migrate(flyway);</span>
+<span class="fc" id="L69">            migrateApplicationSchema(flyway.getConfiguration());</span>
+<span class="fc" id="L70">        };</span>
+    }
+
+    static void migrateApplicationSchema(Configuration source) {
+<span class="fc" id="L74">        DataSource dataSource = source.getDataSource();</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        if (!isPostgreSql(dataSource)) {</span>
+<span class="fc" id="L76">            return;</span>
+        }
+
+<span class="fc" id="L79">        SchemaState state = SchemaState.inspect(dataSource);</span>
+<span class="fc" id="L80">        FluentConfiguration configuration = new FluentConfiguration(source.getClassLoader())</span>
+<span class="fc" id="L81">                .dataSource(dataSource)</span>
+<span class="fc" id="L82">                .locations(POSTGRES_LOCATION)</span>
+<span class="fc" id="L83">                .table(HISTORY_TABLE);</span>
+
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if (!state.hasHistory()) {</span>
+<span class="fc" id="L86">            LegacyState legacyState = classifyLegacyState(state.tables());</span>
+<span class="fc" id="L87">            configuration</span>
+<span class="fc" id="L88">                    .baselineOnMigrate(true)</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">                    .baselineVersion(legacyState == LegacyState.FRESH ? &quot;0&quot; : &quot;1&quot;)</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                    .baselineDescription(legacyState == LegacyState.FRESH</span>
+<span class="fc" id="L91">                            ? &quot;before Taxonomy application schema&quot;</span>
+<span class="fc" id="L92">                            : &quot;verified pre-portfolio Taxonomy schema&quot;);</span>
+        }
+
+<span class="fc" id="L95">        configuration.load().migrate();</span>
+<span class="fc" id="L96">        requireCurrentSchema(SchemaState.inspect(dataSource));</span>
+<span class="fc" id="L97">    }</span>
+
+    private static LegacyState classifyLegacyState(Set&lt;String&gt; tables) {
+<span class="fc" id="L100">        long present = LEGACY_MARKERS.stream().filter(tables::contains).count();</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">        if (present == 0) {</span>
+<span class="fc" id="L102">            return LegacyState.FRESH;</span>
+        }
+<span class="fc bfc" id="L104" title="All 2 branches covered.">        if (present == LEGACY_MARKERS.size()) {</span>
+<span class="fc" id="L105">            return LegacyState.EXISTING;</span>
+        }
+<span class="fc" id="L107">        Set&lt;String&gt; missing = new LinkedHashSet&lt;&gt;(LEGACY_MARKERS);</span>
+<span class="fc" id="L108">        missing.removeAll(tables);</span>
+<span class="fc" id="L109">        throw new IllegalStateException(</span>
+                &quot;Unsafe partial Taxonomy application schema; missing legacy markers &quot;
+                        + missing + &quot;. Restore a complete backup before migration.&quot;);
+    }
+
+    private static void requireCurrentSchema(SchemaState state) {
+<span class="fc" id="L115">        Set&lt;String&gt; required = new LinkedHashSet&lt;&gt;(LEGACY_MARKERS);</span>
+<span class="fc" id="L116">        required.addAll(REQUIRED_PORTFOLIO_TABLES);</span>
+<span class="fc" id="L117">        required.add(HISTORY_TABLE);</span>
+<span class="fc" id="L118">        Set&lt;String&gt; missing = new LinkedHashSet&lt;&gt;(required);</span>
+<span class="fc" id="L119">        missing.removeAll(state.tables());</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if (!missing.isEmpty()) {</span>
+<span class="fc" id="L121">            throw new IllegalStateException(</span>
+                    &quot;Taxonomy application migration completed without required tables: &quot;
+                            + missing);
+        }
+<span class="fc" id="L125">    }</span>
+
+    private static boolean isPostgreSql(DataSource dataSource) {
+<span class="fc" id="L128">        try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L129">            return connection.getMetaData().getDatabaseProductName()</span>
+<span class="fc" id="L130">                    .toLowerCase(Locale.ROOT)</span>
+<span class="fc" id="L131">                    .contains(&quot;postgresql&quot;);</span>
+<span class="fc" id="L132">        } catch (SQLException exception) {</span>
+<span class="fc" id="L133">            throw new IllegalStateException(</span>
+                    &quot;Could not identify the database for Taxonomy schema migrations&quot;,
+                    exception);
+        }
+    }
+
+<span class="fc" id="L139">    private enum LegacyState {</span>
+<span class="fc" id="L140">        FRESH,</span>
+<span class="fc" id="L141">        EXISTING</span>
+    }
+
+<span class="fc" id="L144">    private record SchemaState(Set&lt;String&gt; tables) {</span>
+
+        boolean hasHistory() {
+<span class="fc" id="L147">            return tables.contains(HISTORY_TABLE);</span>
+        }
+
+        static SchemaState inspect(DataSource dataSource) {
+<span class="fc" id="L151">            try (Connection connection = dataSource.getConnection()) {</span>
+<span class="fc" id="L152">                DatabaseMetaData metadata = connection.getMetaData();</span>
+<span class="fc" id="L153">                String schema = connection.getSchema();</span>
+<span class="fc" id="L154">                Set&lt;String&gt; tables = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L155">                try (ResultSet resultSet = metadata.getTables(</span>
+<span class="fc" id="L156">                        connection.getCatalog(), schema, &quot;%&quot;, new String[] {&quot;TABLE&quot;})) {</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">                    while (resultSet.next()) {</span>
+<span class="fc" id="L158">                        tables.add(resultSet.getString(&quot;TABLE_NAME&quot;)</span>
+<span class="fc" id="L159">                                .toLowerCase(Locale.ROOT));</span>
+                    }
+                }
+<span class="fc" id="L162">                return new SchemaState(Set.copyOf(tables));</span>
+<span class="fc" id="L163">            } catch (SQLException exception) {</span>
+<span class="fc" id="L164">                throw new IllegalStateException(</span>
+                        &quot;Could not inspect the Taxonomy application schema&quot;,
+                        exception);
+            }
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

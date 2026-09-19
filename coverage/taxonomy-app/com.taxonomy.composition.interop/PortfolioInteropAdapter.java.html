@@ -1,0 +1,145 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioInteropAdapter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.interop</a> &gt; <span class="el_source">PortfolioInteropAdapter.java</span></div><h1>PortfolioInteropAdapter.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.interop;
+
+import com.taxonomy.interop.IntegrationPortfolioPort;
+import com.taxonomy.interop.IntegrationProblem;
+import com.taxonomy.portfolio.dto.PortfolioDtos.*;
+import com.taxonomy.portfolio.model.PortfolioTypes.*;
+import com.taxonomy.portfolio.service.PortfolioGitService;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import java.util.List;
+import java.util.function.Supplier;
+
+/** Maps the interoperability port to the unchanged portfolio authorities. */
+@Service
+public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
+    private final ProjectPortfolioService projects;
+    private final PortfolioGitService portfolio;
+
+<span class="fc" id="L21">    public PortfolioInteropAdapter(ProjectPortfolioService projects, PortfolioGitService portfolio) {</span>
+<span class="fc" id="L22">        this.projects = projects;</span>
+<span class="fc" id="L23">        this.portfolio = portfolio;</span>
+<span class="fc" id="L24">    }</span>
+
+    @Override
+    public List&lt;ProjectData&gt; listProjects(String username, WorkspaceContext context) {
+<span class="fc" id="L28">        return portfolio(() -&gt; projects.listProjects(username, context)).stream()</span>
+<span class="fc" id="L29">                .map(p -&gt; new ProjectData(p.id(), p.title())).toList();</span>
+    }
+
+    @Override
+    public ProjectData getProject(Long projectId, String username, WorkspaceContext context) {
+<span class="fc" id="L34">        var project = portfolio(() -&gt; projects.getProject(projectId, username, context));</span>
+<span class="fc" id="L35">        return new ProjectData(project.id(), project.title());</span>
+    }
+
+    @Override
+    public void requireProject(Long projectId, String username, WorkspaceContext context) {
+<span class="fc" id="L40">        portfolio(() -&gt; { projects.requireProject(projectId, username, context); return null; });</span>
+<span class="fc" id="L41">    }</span>
+
+    @Override
+    public void requireProjectForUpdate(Long projectId, String username, WorkspaceContext context) {
+<span class="fc" id="L45">        portfolio(() -&gt; { projects.requireProjectForUpdate(projectId, username, context); return null; });</span>
+<span class="fc" id="L46">    }</span>
+
+    @Override
+    public List&lt;RequirementData&gt; listRequirements(Long projectId, String username, WorkspaceContext context) {
+<span class="fc" id="L50">        return portfolio(() -&gt; projects.listRequirements(projectId, username, context)).stream()</span>
+<span class="fc" id="L51">                .map(PortfolioInteropAdapter::requirement).toList();</span>
+    }
+
+    @Override
+    public RequirementsPage listApprovedRequirements(Long projectId, String username, WorkspaceContext context,
+                                                     int page, int pageSize) {
+<span class="fc" id="L57">        var result = portfolio(</span>
+<span class="fc" id="L58">                () -&gt; projects.listApprovedRequirements(projectId, username, context, page, pageSize));</span>
+<span class="fc" id="L59">        return new RequirementsPage(result.requirements().stream()</span>
+<span class="fc" id="L60">                .map(PortfolioInteropAdapter::requirement).toList(), result.hasNext());</span>
+    }
+
+    @Override
+    public RequirementData getRequirement(Long projectId, Long requirementId, String username, WorkspaceContext context) {
+<span class="fc" id="L65">        return requirement(portfolio(</span>
+<span class="fc" id="L66">                () -&gt; projects.getRequirement(projectId, requirementId, username, context)));</span>
+    }
+
+    @Override
+    public RequirementData createRequirement(Long projectId, ImportedRequirement request,
+                                             String username, WorkspaceContext context) {
+<span class="fc" id="L72">        return requirement(portfolio(() -&gt; projects.createRequirement(projectId,</span>
+<span class="fc" id="L73">                new CreateRequirementRequest(request.key(), request.title(), request.text(),</span>
+<span class="fc" id="L74">                        RequirementStatus.DRAFT, 50, Criticality.MEDIUM, RequirementType.FUNCTIONAL,</span>
+<span class="fc" id="L75">                        ReviewStatus.PROPOSED, username, request.rationale(), provenance(request.source())),</span>
+                username, context)));
+    }
+
+    @Override
+    public void archiveRequirement(Long projectId, Long requirementId, String username, WorkspaceContext context) {
+<span class="fc" id="L81">        portfolio(() -&gt; projects.updateRequirement(projectId, requirementId,</span>
+                new UpdateRequirementRequest(null, RequirementStatus.ARCHIVED, null, null, null, null, null),
+                username, context));
+<span class="fc" id="L84">    }</span>
+
+    @Override
+    public void updateRequirement(Long projectId, Long requirementId, String title, boolean requiresReview,
+                                  String username, WorkspaceContext context) {
+<span class="fc" id="L89">        portfolio(() -&gt; projects.updateRequirement(projectId, requirementId,</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">                new UpdateRequirementRequest(title, requiresReview ? RequirementStatus.DRAFT : null,</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">                        null, null, null, requiresReview ? ReviewStatus.PROPOSED : null, null), username, context));</span>
+<span class="fc" id="L92">    }</span>
+
+    @Override
+    public void addRequirementVersion(Long projectId, Long requirementId, String text, String rationale,
+                                      ImportProvenance source, String username, WorkspaceContext context) {
+<span class="fc" id="L97">        portfolio(() -&gt; projects.addRequirementVersion(projectId, requirementId,</span>
+<span class="fc" id="L98">                new CreateRequirementVersionRequest(text, rationale, provenance(source)), username, context));</span>
+<span class="fc" id="L99">    }</span>
+
+    @Override
+    public String contributeTo(String source, String username, WorkspaceContext context) {
+<span class="fc" id="L103">        return portfolio(() -&gt; portfolio.contributeTo(source, username, context));</span>
+    }
+
+    private static &lt;T&gt; T portfolio(Supplier&lt;T&gt; action) {
+        try {
+<span class="fc" id="L108">            return action.get();</span>
+<span class="fc" id="L109">        } catch (PortfolioException failure) {</span>
+<span class="fc" id="L110">            String message = failure.getMessage();</span>
+<span class="pc bpc" id="L111" title="1 of 4 branches missed.">            if (failure.getKind() == PortfolioException.Kind.NOT_FOUND</span>
+                    &amp;&amp; message != null
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                    &amp;&amp; (message.startsWith(&quot;Current requirement version not found:&quot;)</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">                        || message.startsWith(&quot;Requirement has no text version:&quot;))) {</span>
+<span class="fc" id="L115">                throw new IntegrationProblem(</span>
+                        &quot;REQUIREMENT_VERSION_UNAVAILABLE&quot;, 409,
+                        &quot;Requirement has no readable current version; repair it before exchanging content&quot;);
+            }
+<span class="fc bfc" id="L119" title="All 6 branches covered.">            int status = switch (failure.getKind()) {</span>
+<span class="fc" id="L120">                case NOT_FOUND -&gt; 404;</span>
+<span class="fc" id="L121">                case CONFLICT -&gt; 409;</span>
+<span class="fc" id="L122">                case VALIDATION -&gt; 400;</span>
+<span class="fc" id="L123">                case PAYLOAD_TOO_LARGE -&gt; 413;</span>
+<span class="fc" id="L124">                case ANALYSIS_FAILED -&gt; 422;</span>
+<span class="fc" id="L125">                case UNAVAILABLE -&gt; 503;</span>
+            };
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            String code = failure.getCode() == null</span>
+<span class="fc" id="L128">                    ? &quot;PORTFOLIO_&quot; + failure.getKind().name()</span>
+<span class="fc" id="L129">                    : failure.getCode();</span>
+<span class="fc" id="L130">            throw new IntegrationProblem(code, status, message);</span>
+        }
+    }
+
+    private static SourceReference provenance(ImportProvenance source) {
+<span class="fc" id="L135">        return new SourceReference(null, null, List.of(), source.sectionReference(), null, source.originalText());</span>
+    }
+
+    private static RequirementData requirement(RequirementView value) {
+<span class="fc" id="L139">        var version = value.currentVersion();</span>
+<span class="fc" id="L140">        return new RequirementData(value.id(), value.requirementKey(), value.title(),</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">                value.status() == null ? null : value.status().name(), value.currentVersionId(), value.updatedAt(),</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">                version == null ? null : new VersionData(version.text(), version.createdAt()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CopilotJobControlService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">CopilotJobControlService.java</span></div><h1>CopilotJobControlService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import com.taxonomy.portfolio.model.RequirementAnalysisJob;
+import com.taxonomy.portfolio.repository.RequirementAnalysisJobRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import jakarta.persistence.EntityManager;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+
+/** Transactional cancellation boundary for one exact-tenant persisted analysis job. */
+@Service
+public class CopilotJobControlService {
+
+    private final RequirementAnalysisJobRepository jobRepository;
+    private final PortfolioAnalysisPersistenceService persistenceService;
+    private final EntityManager entityManager;
+
+    public CopilotJobControlService(
+            RequirementAnalysisJobRepository jobRepository,
+            PortfolioAnalysisPersistenceService persistenceService,
+<span class="fc" id="L26">            EntityManager entityManager) {</span>
+<span class="fc" id="L27">        this.jobRepository = jobRepository;</span>
+<span class="fc" id="L28">        this.persistenceService = persistenceService;</span>
+<span class="fc" id="L29">        this.entityManager = entityManager;</span>
+<span class="fc" id="L30">    }</span>
+
+    @Transactional
+    public AnalysisJobView cancel(
+            String jobId,
+            Long projectId,
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L38">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L39">        RequirementAnalysisJob job = jobRepository</span>
+<span class="fc" id="L40">                .findByIdAndProjectIdAndScopeKey(jobId, projectId, scopeKey)</span>
+<span class="fc" id="L41">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Analysis job not found: &quot; + jobId));
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (isTerminal(job.getStatus())) {</span>
+<span class="fc" id="L44">            return persistenceService.getJob(jobId, projectId, username, context);</span>
+        }
+<span class="fc" id="L46">        Instant now = Instant.now();</span>
+<span class="fc" id="L47">        entityManager.createQuery(&quot;&quot;&quot;</span>
+                update RequirementAnalysisJobItem item
+                   set item.status = :cancelled,
+                       item.completedAt = :completedAt,
+                       item.errorMessage = :message,
+                       item.rowVersion = item.rowVersion + 1
+                 where item.jobId = :jobId
+                   and item.projectId = :projectId
+                   and item.scopeKey = :scopeKey
+                   and item.status in :activeStatuses
+                &quot;&quot;&quot;)
+<span class="fc" id="L58">                .setParameter(&quot;cancelled&quot;, AnalysisStatus.CANCELLED)</span>
+<span class="fc" id="L59">                .setParameter(&quot;completedAt&quot;, now)</span>
+<span class="fc" id="L60">                .setParameter(&quot;message&quot;, &quot;Cancelled by user&quot;)</span>
+<span class="fc" id="L61">                .setParameter(&quot;jobId&quot;, jobId)</span>
+<span class="fc" id="L62">                .setParameter(&quot;projectId&quot;, projectId)</span>
+<span class="fc" id="L63">                .setParameter(&quot;scopeKey&quot;, scopeKey)</span>
+<span class="fc" id="L64">                .setParameter(&quot;activeStatuses&quot;, List.of(</span>
+                        AnalysisStatus.PENDING, AnalysisStatus.RUNNING))
+<span class="fc" id="L66">                .executeUpdate();</span>
+<span class="fc" id="L67">        job.cancel(now);</span>
+<span class="fc" id="L68">        jobRepository.save(job);</span>
+<span class="fc" id="L69">        entityManager.flush();</span>
+<span class="fc" id="L70">        entityManager.clear();</span>
+<span class="fc" id="L71">        return persistenceService.getJob(jobId, projectId, username, context);</span>
+    }
+
+    private static boolean isTerminal(AnalysisStatus status) {
+<span class="fc bfc" id="L75" title="All 8 branches covered.">        return status == AnalysisStatus.SUCCESS</span>
+                || status == AnalysisStatus.PARTIAL
+                || status == AnalysisStatus.FAILED
+                || status == AnalysisStatus.CANCELLED;
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

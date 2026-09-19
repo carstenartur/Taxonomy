@@ -1,0 +1,335 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateExchangeReader.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.archimate.exchange</a> &gt; <span class="el_source">ArchiMateExchangeReader.java</span></div><h1>ArchiMateExchangeReader.java</h1><pre class="source lang-java linenums">package com.taxonomy.archimate.exchange;
+
+import com.taxonomy.archimate.*;
+import com.taxonomy.diagram.*;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.Node;
+
+import javax.xml.XMLConstants;
+import java.util.*;
+
+/** Standards-aware, identity-preserving reader for the declared Taxonomy exchange profile. */
+<span class="fc" id="L13">public final class ArchiMateExchangeReader {</span>
+    public ArchiMateModel read(byte[] xml) {
+<span class="fc" id="L15">        return read(ArchiMateSchema.parse(xml));</span>
+    }
+
+    public ArchiMateModel read(Document document) {
+<span class="fc" id="L19">        Element root = document.getDocumentElement();</span>
+<span class="fc" id="L20">        requireSupportedStructure(root);</span>
+<span class="fc" id="L21">        Map&lt;String, Definition&gt; definitions = definitions(root);</span>
+<span class="fc" id="L22">        Map&lt;String, ArchiMateProperty&gt; modelProperties = properties(root, definitions);</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">        if (!ArchiMateExchangeProfile.VERSION.equals(value(modelProperties, &quot;taxonomy.mappingProfile&quot;))) {</span>
+<span class="fc" id="L24">            throw new IllegalArgumentException(&quot;Unsupported Taxonomy ArchiMate exchange profile&quot;);</span>
+        }
+<span class="fc" id="L26">        String modelId = identity(root, &quot;model&quot;, modelProperties);</span>
+<span class="fc" id="L27">        modelProperties.remove(&quot;taxonomy.id&quot;);</span>
+<span class="fc" id="L28">        List&lt;ArchiMateLoss&gt; losses = losses(modelProperties);</span>
+<span class="fc" id="L29">        List&lt;ArchiMateElement&gt; elements = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        for (Element element : children(child(root, &quot;elements&quot;), &quot;element&quot;)) {</span>
+<span class="fc" id="L31">            Map&lt;String, ArchiMateProperty&gt; props = properties(element, definitions);</span>
+<span class="fc" id="L32">            String id = identity(element, &quot;element&quot;, props);</span>
+<span class="fc" id="L33">            props.remove(&quot;taxonomy.id&quot;);</span>
+<span class="fc" id="L34">            var mapping = ArchiMateExchangeProfile.element(value(props, &quot;taxonomy.type&quot;));</span>
+<span class="fc" id="L35">            String type = type(element);</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">            if (!mapping.targetType().equals(type)) throw new IllegalArgumentException(&quot;Element type conflicts with mapping profile: &quot; + id);</span>
+<span class="fc" id="L37">            elements.add(new ArchiMateElement(id, content(element, &quot;name&quot;), type,</span>
+<span class="fc" id="L38">                    content(element, &quot;documentation&quot;), props));</span>
+<span class="fc" id="L39">        }</span>
+<span class="fc" id="L40">        List&lt;ArchiMateRelationship&gt; relationships = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">        for (Element relation : children(child(root, &quot;relationships&quot;), &quot;relationship&quot;)) {</span>
+<span class="fc" id="L42">            Map&lt;String, ArchiMateProperty&gt; props = properties(relation, definitions);</span>
+<span class="fc" id="L43">            String id = identity(relation, &quot;relationship&quot;, props);</span>
+<span class="fc" id="L44">            props.remove(&quot;taxonomy.id&quot;);</span>
+<span class="fc" id="L45">            var mapping = ArchiMateExchangeProfile.relationship(value(props, &quot;taxonomy.type&quot;));</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">            String accessType = relation.hasAttribute(&quot;accessType&quot;) ? relation.getAttribute(&quot;accessType&quot;) : null;</span>
+            // Schema validation materializes the XSD default. Unqualified Access
+            // means the same thing whether a consumer writes that default or omits it.
+<span class="fc bfc" id="L49" title="All 4 branches covered.">            if (mapping.accessType() == null &amp;&amp; &quot;Access&quot;.equals(accessType)) accessType = null;</span>
+<span class="fc" id="L50">            String type = type(relation);</span>
+<span class="pc bpc" id="L51" title="2 of 4 branches missed.">            if (!mapping.targetType().equals(type) || !Objects.equals(mapping.accessType(), accessType)) {</span>
+<span class="nc" id="L52">                throw new IllegalArgumentException(&quot;Relationship qualifier conflicts with mapping profile: &quot; + id);</span>
+            }
+<span class="fc" id="L54">            relationships.add(new ArchiMateRelationship(id, decode(&quot;element&quot;, relation.getAttribute(&quot;source&quot;)),</span>
+<span class="fc" id="L55">                    decode(&quot;element&quot;, relation.getAttribute(&quot;target&quot;)), type, accessType, content(relation, &quot;name&quot;), props));</span>
+<span class="fc" id="L56">        }</span>
+<span class="fc" id="L57">        Map&lt;String, List&lt;String&gt;&gt; organizations = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">        for (Element item : children(child(root, &quot;organizations&quot;), &quot;item&quot;)) {</span>
+<span class="fc" id="L59">            String label = content(item, &quot;label&quot;);</span>
+<span class="fc" id="L60">            List&lt;String&gt; ids = children(item, &quot;item&quot;).stream()</span>
+<span class="fc" id="L61">                    .map(e -&gt; decode(&quot;element&quot;, e.getAttribute(&quot;identifierRef&quot;))).toList();</span>
+<span class="pc bpc" id="L62" title="2 of 4 branches missed.">            if (label == null || organizations.putIfAbsent(label, ids) != null) {</span>
+<span class="nc" id="L63">                throw new IllegalArgumentException(&quot;Unsupported or duplicate organization group&quot;);</span>
+            }
+<span class="fc" id="L65">        }</span>
+<span class="fc" id="L66">        List&lt;ArchiMateView&gt; views = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for (Element view : children(child(child(root, &quot;views&quot;), &quot;diagrams&quot;), &quot;view&quot;)) {</span>
+<span class="fc" id="L68">            Map&lt;String, ArchiMateProperty&gt; viewProperties = properties(view, definitions);</span>
+<span class="fc" id="L69">            String viewId = identity(view, &quot;view&quot;, viewProperties);</span>
+<span class="fc" id="L70">            viewProperties.remove(&quot;taxonomy.id&quot;);</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">            if (!viewProperties.isEmpty()) {</span>
+<span class="fc" id="L72">                throw new IllegalArgumentException(&quot;Unsupported view properties in &quot; + viewId + &quot;: &quot; + viewProperties.keySet());</span>
+            }
+<span class="fc" id="L74">            List&lt;ArchiMateViewNode&gt; nodes = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            for (Element node : children(view, &quot;node&quot;)) {</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">                if (!&quot;Element&quot;.equals(type(node))) throw new IllegalArgumentException(&quot;Unsupported diagram node type&quot;);</span>
+<span class="fc" id="L77">                Element style = child(node, &quot;style&quot;);</span>
+<span class="fc" id="L78">                Element color = child(style, &quot;fillColor&quot;);</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">                if (color == null) throw new IllegalArgumentException(&quot;Missing profile node style&quot;);</span>
+<span class="fc" id="L80">                nodes.add(new ArchiMateViewNode(viewIdentity(&quot;node&quot;, node, viewId),</span>
+<span class="fc" id="L81">                        decode(&quot;element&quot;, node.getAttribute(&quot;elementRef&quot;)), integer(node, &quot;x&quot;), integer(node, &quot;y&quot;),</span>
+<span class="fc" id="L82">                        integer(node, &quot;w&quot;), integer(node, &quot;h&quot;), content(node, &quot;label&quot;), integer(color, &quot;r&quot;),</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                        integer(color, &quot;g&quot;), integer(color, &quot;b&quot;), style.hasAttribute(&quot;lineWidth&quot;) ? integer(style, &quot;lineWidth&quot;) : 1));</span>
+<span class="fc" id="L84">            }</span>
+<span class="fc" id="L85">            List&lt;ArchiMateViewConnection&gt; connections = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">            for (Element connection : children(view, &quot;connection&quot;)) {</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                if (!&quot;Relationship&quot;.equals(type(connection))) throw new IllegalArgumentException(&quot;Unsupported connection type&quot;);</span>
+<span class="fc" id="L88">                connections.add(new ArchiMateViewConnection(viewIdentity(&quot;connection&quot;, connection, viewId),</span>
+<span class="fc" id="L89">                        decode(&quot;relationship&quot;, connection.getAttribute(&quot;relationshipRef&quot;)),</span>
+<span class="fc" id="L90">                        viewReference(&quot;node&quot;, connection.getAttribute(&quot;source&quot;), viewId),</span>
+<span class="fc" id="L91">                        viewReference(&quot;node&quot;, connection.getAttribute(&quot;target&quot;), viewId)));</span>
+<span class="fc" id="L92">            }</span>
+<span class="fc" id="L93">            views.add(new ArchiMateView(viewId, content(view, &quot;name&quot;), nodes, connections));</span>
+<span class="fc" id="L94">        }</span>
+<span class="fc" id="L95">        ArchiMateModel model = new ArchiMateModel(modelId, content(root, &quot;name&quot;), elements, relationships,</span>
+                organizations, views, modelProperties, losses);
+<span class="fc" id="L97">        ArchiMateXmlExporter.validateReferences(model);</span>
+<span class="fc" id="L98">        toDiagram(model); // validate required property types and values before handing off to application code</span>
+<span class="fc" id="L99">        return model;</span>
+    }
+
+    public DiagramModel toDiagram(ArchiMateModel model) {
+<span class="fc" id="L103">        List&lt;DiagramNode&gt; nodes = model.elements().stream().map(element -&gt; {</span>
+<span class="fc" id="L104">            var p = element.properties();</span>
+<span class="fc" id="L105">            return new DiagramNode(element.id(), element.label(), value(p, &quot;taxonomy.type&quot;),</span>
+<span class="fc" id="L106">                    number(p, &quot;taxonomy.relevance&quot;), flag(p, &quot;taxonomy.anchor&quot;), integer(p, &quot;taxonomy.layer&quot;),</span>
+<span class="fc" id="L107">                    integer(p, &quot;taxonomy.depth&quot;), flag(p, &quot;taxonomy.selectedForImpact&quot;),</span>
+<span class="fc" id="L108">                    optional(p, &quot;taxonomy.parentId&quot;), false);</span>
+<span class="fc" id="L109">        }).toList();</span>
+<span class="fc" id="L110">        List&lt;DiagramEdge&gt; edges = model.relationships().stream().map(relation -&gt; {</span>
+<span class="fc" id="L111">            var p = relation.properties();</span>
+<span class="fc" id="L112">            return new DiagramEdge(relation.id(), relation.sourceId(), relation.targetId(),</span>
+<span class="fc" id="L113">                    value(p, &quot;taxonomy.type&quot;), number(p, &quot;taxonomy.relevance&quot;), optional(p, &quot;taxonomy.relationCategory&quot;));</span>
+<span class="fc" id="L114">        }).toList();</span>
+<span class="pc bpc" id="L115" title="1 of 2 branches missed.">        DiagramLayout layout = model.properties().containsKey(&quot;taxonomy.layoutDirection&quot;)</span>
+<span class="fc" id="L116">                ? new DiagramLayout(value(model.properties(), &quot;taxonomy.layoutDirection&quot;), flag(model.properties(), &quot;taxonomy.groupByLayer&quot;))</span>
+<span class="pc" id="L117">                : null;</span>
+<span class="fc" id="L118">        return new DiagramModel(model.title(), nodes, edges, layout);</span>
+    }
+
+    public static boolean hasTaxonomyProfile(Document document) {
+<span class="fc" id="L122">        Element root = document.getDocumentElement();</span>
+<span class="fc" id="L123">        Set&lt;String&gt; profileDefinitions = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">        for (Element definition : children(child(root, &quot;propertyDefinitions&quot;), &quot;propertyDefinition&quot;)) {</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">            if (&quot;taxonomy.mappingProfile&quot;.equals(content(definition, &quot;name&quot;))) {</span>
+<span class="fc" id="L126">                profileDefinitions.add(definition.getAttribute(&quot;identifier&quot;));</span>
+            }
+<span class="fc" id="L128">        }</span>
+<span class="fc" id="L129">        return children(child(root, &quot;properties&quot;), &quot;property&quot;).stream()</span>
+<span class="fc" id="L130">                .anyMatch(property -&gt; profileDefinitions.contains(property.getAttribute(&quot;propertyDefinitionRef&quot;)));</span>
+    }
+
+    private static String viewIdentity(String kind, Element element, String viewId) {
+<span class="fc" id="L134">        return viewReference(kind, element.getAttribute(&quot;identifier&quot;), viewId);</span>
+    }
+
+    private static String viewReference(String kind, String identifier, String viewId) {
+<span class="fc" id="L138">        List&lt;String&gt; parts = ArchiMateIds.decode(kind, identifier);</span>
+<span class="pc bpc" id="L139" title="2 of 4 branches missed.">        if (parts.size() != 2 || !parts.getFirst().equals(viewId)) throw new IllegalArgumentException(&quot;Cross-view identity reference&quot;);</span>
+<span class="fc" id="L140">        return parts.get(1);</span>
+    }
+
+    private static String decode(String kind, String identifier) {
+<span class="fc" id="L144">        List&lt;String&gt; parts = ArchiMateIds.decode(kind, identifier);</span>
+<span class="pc bpc" id="L145" title="1 of 2 branches missed.">        if (parts.size() != 1) throw new IllegalArgumentException(&quot;Invalid identity arity&quot;);</span>
+<span class="fc" id="L146">        return parts.getFirst();</span>
+    }
+
+    private static String identity(Element element, String kind, Map&lt;String, ArchiMateProperty&gt; props) {
+<span class="fc" id="L150">        String decoded = decode(kind, element.getAttribute(&quot;identifier&quot;));</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">        if (!decoded.equals(value(props, &quot;taxonomy.id&quot;))) throw new IllegalArgumentException(&quot;Conflicting original identity&quot;);</span>
+<span class="fc" id="L152">        return decoded;</span>
+    }
+
+    private static Map&lt;String, Definition&gt; definitions(Element root) {
+<span class="fc" id="L156">        Map&lt;String, Definition&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L157">        Set&lt;String&gt; names = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        for (Element definition : children(child(root, &quot;propertyDefinitions&quot;), &quot;propertyDefinition&quot;)) {</span>
+<span class="fc" id="L159">            String name = content(definition, &quot;name&quot;);</span>
+<span class="pc bpc" id="L160" title="2 of 4 branches missed.">            if (name == null || !names.add(name)) throw new IllegalArgumentException(&quot;Duplicate or absent property name&quot;);</span>
+<span class="pc bpc" id="L161" title="1 of 2 branches missed.">            if (result.putIfAbsent(definition.getAttribute(&quot;identifier&quot;), new Definition(name, definition.getAttribute(&quot;type&quot;))) != null) {</span>
+<span class="nc" id="L162">                throw new IllegalArgumentException(&quot;Duplicate property definition&quot;);</span>
+            }
+<span class="fc" id="L164">        }</span>
+<span class="fc" id="L165">        return result;</span>
+    }
+
+    private static Map&lt;String, ArchiMateProperty&gt; properties(Element parent, Map&lt;String, Definition&gt; definitions) {
+<span class="fc" id="L169">        Map&lt;String, ArchiMateProperty&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L170" title="All 2 branches covered.">        for (Element property : children(child(parent, &quot;properties&quot;), &quot;property&quot;)) {</span>
+<span class="fc" id="L171">            Definition definition = definitions.get(property.getAttribute(&quot;propertyDefinitionRef&quot;));</span>
+<span class="fc" id="L172">            List&lt;Element&gt; values = children(property, &quot;value&quot;);</span>
+<span class="pc bpc" id="L173" title="2 of 4 branches missed.">            if (definition == null || values.size() != 1) throw new IllegalArgumentException(&quot;Unsupported property cardinality or reference&quot;);</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">            if (result.putIfAbsent(definition.name(), new ArchiMateProperty(definition.type(), values.getFirst().getTextContent())) != null) {</span>
+<span class="nc" id="L175">                throw new IllegalArgumentException(&quot;Duplicate exchange property: &quot; + definition.name());</span>
+            }
+<span class="fc" id="L177">        }</span>
+<span class="fc" id="L178">        return result;</span>
+    }
+
+    private static List&lt;ArchiMateLoss&gt; losses(Map&lt;String, ArchiMateProperty&gt; props) {
+<span class="fc" id="L182">        List&lt;ArchiMateLoss&gt; losses = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        for (int index = 0; props.containsKey(&quot;taxonomy.loss.&quot; + index + &quot;.scope&quot;); index++) {</span>
+<span class="fc" id="L184">            String prefix = &quot;taxonomy.loss.&quot; + index + &quot;.&quot;;</span>
+<span class="fc" id="L185">            losses.add(new ArchiMateLoss(value(props, prefix + &quot;scope&quot;), value(props, prefix + &quot;id&quot;),</span>
+<span class="fc" id="L186">                    value(props, prefix + &quot;field&quot;), value(props, prefix + &quot;kind&quot;), value(props, prefix + &quot;rationale&quot;)));</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            for (String field : List.of(&quot;scope&quot;, &quot;id&quot;, &quot;field&quot;, &quot;kind&quot;, &quot;rationale&quot;)) props.remove(prefix + field);</span>
+        }
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">        if (props.keySet().stream().anyMatch(key -&gt; key.startsWith(&quot;taxonomy.loss.&quot;))) {</span>
+<span class="nc" id="L190">            throw new IllegalArgumentException(&quot;Incomplete or non-contiguous loss report&quot;);</span>
+        }
+<span class="fc" id="L192">        return losses;</span>
+    }
+
+    private static String value(Map&lt;String, ArchiMateProperty&gt; properties, String key) {
+<span class="fc" id="L196">        return typed(properties, key, &quot;string&quot;);</span>
+    }
+
+    private static String optional(Map&lt;String, ArchiMateProperty&gt; properties, String key) {
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        return properties.containsKey(key) ? value(properties, key) : null;</span>
+    }
+
+    private static String typed(Map&lt;String, ArchiMateProperty&gt; properties, String key, String type) {
+<span class="fc" id="L204">        ArchiMateProperty property = properties.get(key);</span>
+<span class="pc bpc" id="L205" title="1 of 4 branches missed.">        if (property == null || !type.equals(property.type())) throw new IllegalArgumentException(&quot;Missing or wrongly typed property: &quot; + key);</span>
+<span class="fc" id="L206">        return property.value();</span>
+    }
+
+    private static double number(Map&lt;String, ArchiMateProperty&gt; properties, String key) {
+<span class="fc" id="L210">        double result = Double.parseDouble(typed(properties, key, &quot;number&quot;));</span>
+<span class="pc bpc" id="L211" title="3 of 6 branches missed.">        if (!Double.isFinite(result) || result &lt; 0 || result &gt; 1) throw new IllegalArgumentException(&quot;Invalid relevance property&quot;);</span>
+<span class="fc" id="L212">        return result;</span>
+    }
+
+    private static int integer(Map&lt;String, ArchiMateProperty&gt; properties, String key) {
+<span class="fc" id="L216">        return new java.math.BigDecimal(typed(properties, key, &quot;number&quot;)).intValueExact();</span>
+    }
+
+    private static boolean flag(Map&lt;String, ArchiMateProperty&gt; properties, String key) {
+<span class="fc" id="L220">        return Boolean.parseBoolean(typed(properties, key, &quot;boolean&quot;));</span>
+    }
+
+    private static int integer(Element element, String attribute) {
+<span class="fc" id="L224">        return Integer.parseInt(element.getAttribute(attribute));</span>
+    }
+
+    public static String type(Element element) {
+<span class="fc" id="L228">        String value = element.getAttributeNS(XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI, &quot;type&quot;);</span>
+<span class="fc" id="L229">        int colon = value.indexOf(':');</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">        String prefix = colon &lt; 0 ? null : value.substring(0, colon);</span>
+<span class="pc bpc" id="L231" title="1 of 2 branches missed.">        if (!ArchiMateSchema.NAMESPACE.equals(element.lookupNamespaceURI(prefix))) {</span>
+<span class="nc" id="L232">            throw new IllegalArgumentException(&quot;Unexpected ArchiMate type namespace&quot;);</span>
+        }
+<span class="pc bpc" id="L234" title="1 of 2 branches missed.">        return colon &lt; 0 ? value : value.substring(colon + 1);</span>
+    }
+
+    public static String content(Element parent, String name) {
+<span class="fc" id="L238">        Element child = child(parent, name);</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        return child == null ? null : child.getTextContent();</span>
+    }
+
+    public static Element child(Element parent, String name) {
+<span class="fc" id="L243">        List&lt;Element&gt; matches = children(parent, name);</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">        return matches.isEmpty() ? null : matches.getFirst();</span>
+    }
+
+    public static List&lt;Element&gt; children(Element parent, String name) {
+<span class="fc bfc" id="L248" title="All 2 branches covered.">        if (parent == null) return List.of();</span>
+<span class="fc" id="L249">        List&lt;Element&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">        for (Node node = parent.getFirstChild(); node != null; node = node.getNextSibling()) {</span>
+<span class="pc bpc" id="L251" title="1 of 4 branches missed.">            if (node instanceof Element element &amp;&amp; ArchiMateSchema.NAMESPACE.equals(element.getNamespaceURI())</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">                    &amp;&amp; name.equals(element.getLocalName())) result.add(element);</span>
+        }
+<span class="fc" id="L254">        return result;</span>
+    }
+
+    /** Fail closed on schema-valid constructs that this profile cannot reconstruct. */
+    private static void requireSupportedStructure(Element element) {
+<span class="fc" id="L259">        String name = element.getLocalName();</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        if (element.hasAttributeNS(XMLConstants.XML_NS_URI, &quot;lang&quot;)</span>
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">                &amp;&amp; !&quot;en&quot;.equals(element.getAttributeNS(XMLConstants.XML_NS_URI, &quot;lang&quot;))) {</span>
+<span class="nc" id="L262">            throw new IllegalArgumentException(&quot;Unsupported language-tag projection&quot;);</span>
+        }
+<span class="pc bpc" id="L264" title="1 of 4 branches missed.">        if (&quot;view&quot;.equals(name) &amp;&amp; element.hasAttribute(&quot;viewpoint&quot;)</span>
+<span class="pc bpc" id="L265" title="1 of 2 branches missed.">                &amp;&amp; !&quot;Layered&quot;.equals(element.getAttribute(&quot;viewpoint&quot;))) {</span>
+<span class="nc" id="L266">            throw new IllegalArgumentException(&quot;Unsupported viewpoint projection&quot;);</span>
+        }
+<span class="fc bfc" id="L268" title="All 16 branches covered.">        Set&lt;String&gt; allowedChildren = switch (name) {</span>
+<span class="fc" id="L269">            case &quot;model&quot; -&gt; Set.of(&quot;name&quot;, &quot;properties&quot;, &quot;elements&quot;, &quot;relationships&quot;, &quot;organizations&quot;, &quot;propertyDefinitions&quot;, &quot;views&quot;);</span>
+<span class="fc" id="L270">            case &quot;elements&quot; -&gt; Set.of(&quot;element&quot;);</span>
+<span class="fc" id="L271">            case &quot;element&quot; -&gt; Set.of(&quot;name&quot;, &quot;documentation&quot;, &quot;properties&quot;);</span>
+<span class="fc" id="L272">            case &quot;relationships&quot; -&gt; Set.of(&quot;relationship&quot;);</span>
+<span class="fc" id="L273">            case &quot;relationship&quot; -&gt; Set.of(&quot;name&quot;, &quot;properties&quot;);</span>
+<span class="fc" id="L274">            case &quot;organizations&quot;, &quot;item&quot; -&gt; Set.of(&quot;item&quot;, &quot;label&quot;);</span>
+<span class="fc" id="L275">            case &quot;propertyDefinitions&quot; -&gt; Set.of(&quot;propertyDefinition&quot;);</span>
+<span class="fc" id="L276">            case &quot;propertyDefinition&quot; -&gt; Set.of(&quot;name&quot;);</span>
+<span class="fc" id="L277">            case &quot;properties&quot; -&gt; Set.of(&quot;property&quot;);</span>
+<span class="fc" id="L278">            case &quot;property&quot; -&gt; Set.of(&quot;value&quot;);</span>
+<span class="fc" id="L279">            case &quot;views&quot; -&gt; Set.of(&quot;diagrams&quot;);</span>
+<span class="fc" id="L280">            case &quot;diagrams&quot; -&gt; Set.of(&quot;view&quot;);</span>
+<span class="fc" id="L281">            case &quot;view&quot; -&gt; Set.of(&quot;name&quot;, &quot;properties&quot;, &quot;node&quot;, &quot;connection&quot;);</span>
+<span class="fc" id="L282">            case &quot;node&quot; -&gt; Set.of(&quot;label&quot;, &quot;style&quot;);</span>
+<span class="fc" id="L283">            case &quot;style&quot; -&gt; Set.of(&quot;fillColor&quot;);</span>
+<span class="fc" id="L284">            default -&gt; Set.of();</span>
+        };
+<span class="fc bfc" id="L286" title="All 8 branches covered.">        Set&lt;String&gt; repeated = switch (name) {</span>
+<span class="fc" id="L287">            case &quot;elements&quot; -&gt; Set.of(&quot;element&quot;);</span>
+<span class="fc" id="L288">            case &quot;relationships&quot; -&gt; Set.of(&quot;relationship&quot;);</span>
+<span class="fc" id="L289">            case &quot;organizations&quot;, &quot;item&quot; -&gt; Set.of(&quot;item&quot;);</span>
+<span class="fc" id="L290">            case &quot;propertyDefinitions&quot; -&gt; Set.of(&quot;propertyDefinition&quot;);</span>
+<span class="fc" id="L291">            case &quot;properties&quot; -&gt; Set.of(&quot;property&quot;);</span>
+<span class="fc" id="L292">            case &quot;diagrams&quot; -&gt; Set.of(&quot;view&quot;);</span>
+<span class="fc" id="L293">            case &quot;view&quot; -&gt; Set.of(&quot;node&quot;, &quot;connection&quot;);</span>
+<span class="fc" id="L294">            default -&gt; Set.of();</span>
+        };
+<span class="fc" id="L296">        Set&lt;String&gt; seen = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L297" title="All 2 branches covered.">        for (Node node = element.getFirstChild(); node != null; node = node.getNextSibling()) {</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">            if (!(node instanceof Element child)) continue;</span>
+<span class="pc bpc" id="L299" title="1 of 4 branches missed.">            if (!ArchiMateSchema.NAMESPACE.equals(child.getNamespaceURI()) || !allowedChildren.contains(child.getLocalName())</span>
+<span class="fc bfc" id="L300" title="All 4 branches covered.">                    || !repeated.contains(child.getLocalName()) &amp;&amp; !seen.add(child.getLocalName())) {</span>
+<span class="fc" id="L301">                throw new IllegalArgumentException(&quot;Unsupported exchange structure below &quot; + name + &quot;: &quot; + child.getLocalName());</span>
+            }
+<span class="fc" id="L303">            requireSupportedStructure(child);</span>
+        }
+<span class="fc bfc" id="L305" title="All 11 branches covered.">        Set&lt;String&gt; attributes = switch (name) {</span>
+<span class="fc" id="L306">            case &quot;model&quot;, &quot;element&quot; -&gt; Set.of(&quot;identifier&quot;);</span>
+<span class="fc" id="L307">            case &quot;view&quot; -&gt; Set.of(&quot;identifier&quot;, &quot;viewpoint&quot;);</span>
+<span class="fc" id="L308">            case &quot;propertyDefinition&quot; -&gt; Set.of(&quot;identifier&quot;, &quot;type&quot;);</span>
+<span class="fc" id="L309">            case &quot;relationship&quot; -&gt; Set.of(&quot;identifier&quot;, &quot;source&quot;, &quot;target&quot;, &quot;accessType&quot;);</span>
+<span class="fc" id="L310">            case &quot;node&quot; -&gt; Set.of(&quot;identifier&quot;, &quot;elementRef&quot;, &quot;x&quot;, &quot;y&quot;, &quot;w&quot;, &quot;h&quot;);</span>
+<span class="fc" id="L311">            case &quot;connection&quot; -&gt; Set.of(&quot;identifier&quot;, &quot;relationshipRef&quot;, &quot;source&quot;, &quot;target&quot;);</span>
+<span class="fc" id="L312">            case &quot;style&quot; -&gt; Set.of(&quot;lineWidth&quot;);</span>
+<span class="fc" id="L313">            case &quot;fillColor&quot; -&gt; Set.of(&quot;r&quot;, &quot;g&quot;, &quot;b&quot;);</span>
+<span class="fc" id="L314">            case &quot;property&quot; -&gt; Set.of(&quot;propertyDefinitionRef&quot;);</span>
+<span class="fc" id="L315">            case &quot;item&quot; -&gt; Set.of(&quot;identifierRef&quot;);</span>
+<span class="fc" id="L316">            default -&gt; Set.of();</span>
+        };
+<span class="fc bfc" id="L318" title="All 2 branches covered.">        for (int i = 0; i &lt; element.getAttributes().getLength(); i++) {</span>
+<span class="fc" id="L319">            var attribute = (org.w3c.dom.Attr) element.getAttributes().item(i);</span>
+            // XSD defaults are semantically normalized by the reader (for example opacity and Access).
+<span class="fc bfc" id="L321" title="All 2 branches covered.">            if (!attribute.getSpecified()) continue;</span>
+<span class="fc" id="L322">            String namespace = attribute.getNamespaceURI();</span>
+<span class="fc bfc" id="L323" title="All 2 branches covered.">            if (XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(namespace)</span>
+<span class="pc bpc" id="L324" title="1 of 4 branches missed.">                    || XMLConstants.XML_NS_URI.equals(namespace) &amp;&amp; &quot;lang&quot;.equals(attribute.getLocalName())</span>
+<span class="fc bfc" id="L325" title="All 2 branches covered.">                    || XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI.equals(namespace)</span>
+<span class="pc bpc" id="L326" title="1 of 2 branches missed.">                    &amp;&amp; Set.of(&quot;type&quot;, &quot;schemaLocation&quot;).contains(attribute.getLocalName())) continue;</span>
+<span class="pc bpc" id="L327" title="1 of 4 branches missed.">            if (namespace != null || !attributes.contains(attribute.getName())) {</span>
+<span class="fc" id="L328">                throw new IllegalArgumentException(&quot;Unsupported exchange attribute on &quot; + name + &quot;: &quot; + attribute.getName());</span>
+            }
+        }
+<span class="fc" id="L331">    }</span>
+
+<span class="fc" id="L333">    private record Definition(String name, String type) { }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

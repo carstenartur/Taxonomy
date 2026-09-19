@@ -1,0 +1,320 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementAnalysisSnapshot.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.model</a> &gt; <span class="el_source">RequirementAnalysisSnapshot.java</span></div><h1>RequirementAnalysisSnapshot.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.model;
+
+import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Index;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.JoinColumns;
+import jakarta.persistence.Lob;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.PrePersist;
+import jakarta.persistence.PreUpdate;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
+
+import java.time.Instant;
+import java.util.Objects;
+
+/**
+ * Immutable, reproducible result of analyzing one exact requirement version.
+ *
+ * &lt;p&gt;The complete typed analysis result and its derived intelligence views are
+ * serialized as JSON so old snapshots remain displayable after the live
+ * taxonomy, prompt templates or relation graph have changed. Queryable element
+ * and relation mappings are stored in dedicated tenant-bound tables.&lt;/p&gt;
+ */
+@Entity
+@Table(name = &quot;req_analysis_snapshot&quot;, indexes = {
+        @Index(name = &quot;idx_snap_project&quot;, columnList = &quot;scope_key,project_id,created_at&quot;),
+        @Index(name = &quot;idx_snap_req&quot;, columnList = &quot;scope_key,requirement_id,created_at&quot;),
+        @Index(name = &quot;idx_snap_job&quot;, columnList = &quot;scope_key,project_id,job_id&quot;),
+        @Index(name = &quot;idx_snap_scope&quot;, columnList = &quot;scope_key&quot;)
+}, uniqueConstraints = {
+        @UniqueConstraint(name = &quot;uq_snap_id_scope&quot;, columnNames = {&quot;id&quot;, &quot;scope_key&quot;}),
+        @UniqueConstraint(name = &quot;uq_snap_req_proj_scope&quot;,
+                columnNames = {&quot;id&quot;, &quot;requirement_id&quot;, &quot;project_id&quot;, &quot;scope_key&quot;}),
+        @UniqueConstraint(name = &quot;uq_snap_item_scope&quot;,
+                columnNames = {&quot;id&quot;, &quot;job_id&quot;, &quot;requirement_id&quot;,
+                        &quot;requirement_version_id&quot;, &quot;project_id&quot;, &quot;scope_key&quot;})
+})
+public class RequirementAnalysisSnapshot {
+
+    @Id
+    @Column(length = 36)
+    private String id;
+
+    @Column(name = &quot;scope_key&quot;, nullable = false,
+            length = PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH)
+    private String scopeKey;
+
+    @Column(name = &quot;project_id&quot;, nullable = false)
+    private Long projectId;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumns({
+            @JoinColumn(name = &quot;project_id&quot;, referencedColumnName = &quot;id&quot;,
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = &quot;scope_key&quot;, referencedColumnName = &quot;scope_key&quot;,
+                    nullable = false, insertable = false, updatable = false)
+    })
+    private ArchitectureProject project;
+
+    @Column(name = &quot;requirement_id&quot;, nullable = false)
+    private Long requirementId;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumns({
+            @JoinColumn(name = &quot;requirement_id&quot;, referencedColumnName = &quot;id&quot;,
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = &quot;project_id&quot;, referencedColumnName = &quot;project_id&quot;,
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = &quot;scope_key&quot;, referencedColumnName = &quot;scope_key&quot;,
+                    nullable = false, insertable = false, updatable = false)
+    })
+    private ProjectRequirement requirement;
+
+    @Column(name = &quot;requirement_version_id&quot;, nullable = false)
+    private Long requirementVersionId;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumns({
+            @JoinColumn(name = &quot;requirement_version_id&quot;, referencedColumnName = &quot;id&quot;,
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = &quot;requirement_id&quot;, referencedColumnName = &quot;requirement_id&quot;,
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = &quot;scope_key&quot;, referencedColumnName = &quot;scope_key&quot;,
+                    nullable = false, insertable = false, updatable = false)
+    })
+    private ProjectRequirementVersion requirementVersion;
+
+    @Column(name = &quot;job_id&quot;, nullable = false)
+    private String jobId;
+
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumns({
+            @JoinColumn(name = &quot;job_id&quot;, referencedColumnName = &quot;id&quot;,
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = &quot;project_id&quot;, referencedColumnName = &quot;project_id&quot;,
+                    nullable = false, insertable = false, updatable = false),
+            @JoinColumn(name = &quot;scope_key&quot;, referencedColumnName = &quot;scope_key&quot;,
+                    nullable = false, insertable = false, updatable = false)
+    })
+    private RequirementAnalysisJob job;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 32)
+    private AnalysisStatus status;
+
+    @Column(name = &quot;analysis_session_id&quot;, nullable = false, length = 64)
+    private String analysisSessionId;
+
+    @Column(length = 40)
+    private String provider;
+
+    @Column(name = &quot;model_name&quot;, length = 160)
+    private String modelName;
+
+    @Column(name = &quot;prompt_fingerprint&quot;, length = 64)
+    private String promptFingerprint;
+
+    @Column(name = &quot;taxonomy_fingerprint&quot;, length = 64)
+    private String taxonomyFingerprint;
+
+    /** Retained as immutable provenance; {@link #scopeKey} is the tenant authority. */
+    @Column(name = &quot;workspace_id&quot;, length = 120)
+    private String workspaceId;
+
+    /** Retained as immutable provenance and included in the encoded tenant scope. */
+    @Column(name = &quot;branch_name&quot;, length = 240)
+    private String branchName;
+
+    @Column(name = &quot;commit_sha&quot;, length = 64)
+    private String commitSha;
+
+    @Column(name = &quot;created_by&quot;, nullable = false, length = 160)
+    private String createdBy;
+
+    @Column(name = &quot;created_at&quot;, nullable = false)
+    private Instant createdAt;
+
+    @Column(name = &quot;duration_ms&quot;, nullable = false)
+    private long durationMs;
+
+    @Column(name = &quot;warning_count&quot;, nullable = false)
+    private int warningCount;
+
+    @Column(name = &quot;error_message&quot;, length = 2000)
+    private String errorMessage;
+
+    @Lob
+    @Column(name = &quot;analysis_payload&quot;, nullable = false)
+    private String analysisPayload;
+
+    @Lob
+    @Column(name = &quot;gap_payload&quot;)
+    private String gapAnalysisPayload;
+
+    @Lob
+    @Column(name = &quot;pattern_payload&quot;)
+    private String patternDetectionPayload;
+
+    @Lob
+    @Column(name = &quot;recommendation_payload&quot;)
+    private String recommendationPayload;
+
+<span class="fc" id="L170">    protected RequirementAnalysisSnapshot() {</span>
+<span class="fc" id="L171">    }</span>
+
+    public RequirementAnalysisSnapshot(String id,
+                                       ArchitectureProject project,
+                                       ProjectRequirement requirement,
+                                       ProjectRequirementVersion requirementVersion,
+                                       RequirementAnalysisJob job,
+                                       AnalysisStatus status,
+                                       String analysisSessionId,
+                                       String provider,
+                                       String modelName,
+                                       String promptFingerprint,
+                                       String taxonomyFingerprint,
+                                       String workspaceId,
+                                       String branchName,
+                                       String commitSha,
+                                       String createdBy,
+                                       Instant createdAt,
+                                       long durationMs,
+                                       int warningCount,
+                                       String errorMessage,
+                                       String analysisPayload,
+                                       String gapAnalysisPayload,
+                                       String patternDetectionPayload,
+<span class="fc" id="L195">                                       String recommendationPayload) {</span>
+<span class="fc bfc" id="L196" title="All 4 branches covered.">        if (status != AnalysisStatus.SUCCESS &amp;&amp; status != AnalysisStatus.PARTIAL) {</span>
+<span class="fc" id="L197">            throw new IllegalArgumentException(&quot;Snapshot status must be SUCCESS or PARTIAL&quot;);</span>
+        }
+<span class="fc" id="L199">        this.id = id;</span>
+<span class="fc" id="L200">        this.project = project;</span>
+<span class="fc" id="L201">        this.requirement = requirement;</span>
+<span class="fc" id="L202">        this.requirementVersion = requirementVersion;</span>
+<span class="fc" id="L203">        this.job = job;</span>
+<span class="fc" id="L204">        this.status = status;</span>
+<span class="fc" id="L205">        this.analysisSessionId = analysisSessionId;</span>
+<span class="fc" id="L206">        this.provider = provider;</span>
+<span class="fc" id="L207">        this.modelName = modelName;</span>
+<span class="fc" id="L208">        this.promptFingerprint = promptFingerprint;</span>
+<span class="fc" id="L209">        this.taxonomyFingerprint = taxonomyFingerprint;</span>
+<span class="fc" id="L210">        this.workspaceId = workspaceId;</span>
+<span class="fc" id="L211">        this.branchName = branchName;</span>
+<span class="fc" id="L212">        this.commitSha = commitSha;</span>
+<span class="fc" id="L213">        this.createdBy = createdBy;</span>
+<span class="fc" id="L214">        this.createdAt = createdAt;</span>
+<span class="fc" id="L215">        this.durationMs = durationMs;</span>
+<span class="fc" id="L216">        this.warningCount = warningCount;</span>
+<span class="fc" id="L217">        this.errorMessage = errorMessage;</span>
+<span class="fc" id="L218">        this.analysisPayload = analysisPayload;</span>
+<span class="fc" id="L219">        this.gapAnalysisPayload = gapAnalysisPayload;</span>
+<span class="fc" id="L220">        this.patternDetectionPayload = patternDetectionPayload;</span>
+<span class="fc" id="L221">        this.recommendationPayload = recommendationPayload;</span>
+<span class="fc" id="L222">        synchronizeTenantAuthority(false);</span>
+<span class="fc" id="L223">    }</span>
+
+    @PrePersist
+    @PreUpdate
+    private void synchronizeTenantAuthority() {
+<span class="fc" id="L228">        synchronizeTenantAuthority(true);</span>
+<span class="fc" id="L229">    }</span>
+
+    private void synchronizeTenantAuthority(boolean requirePersistentParents) {
+<span class="fc bfc" id="L232" title="All 8 branches covered.">        if (project == null || requirement == null || requirementVersion == null || job == null) {</span>
+<span class="fc" id="L233">            throw new IllegalArgumentException(</span>
+                    &quot;Analysis snapshot must reference project, requirement, version and job&quot;);
+        }
+<span class="fc" id="L236">        String projectScope = exactScope(project.getScopeKey(), &quot;Snapshot project&quot;);</span>
+<span class="fc" id="L237">        String requirementScope = exactScope(requirement.getScopeKey(), &quot;Snapshot requirement&quot;);</span>
+<span class="fc" id="L238">        String versionScope = exactScope(</span>
+<span class="fc" id="L239">                requirementVersion.getScopeKey(), &quot;Snapshot requirement version&quot;);</span>
+<span class="fc" id="L240">        String jobScope = exactScope(job.getScopeKey(), &quot;Snapshot analysis job&quot;);</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">        if (!projectScope.equals(requirementScope)</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">                || !projectScope.equals(versionScope)</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">                || !projectScope.equals(jobScope)) {</span>
+<span class="fc" id="L244">            throw new IllegalArgumentException(</span>
+                    &quot;Analysis snapshot parents do not belong to the same tenant scope&quot;);
+        }
+<span class="pc bpc" id="L247" title="1 of 4 branches missed.">        if (scopeKey != null &amp;&amp; !scopeKey.isBlank()</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">                &amp;&amp; !projectScope.equals(scopeKey.strip())) {</span>
+<span class="fc" id="L249">            throw new IllegalArgumentException(</span>
+                    &quot;Analysis snapshot tenant scope does not match its parents&quot;);
+        }
+<span class="fc" id="L252">        scopeKey = projectScope;</span>
+
+<span class="fc" id="L254">        Long persistentProjectId = project.getId();</span>
+<span class="fc" id="L255">        Long requirementProjectId = requirement.getProjectId();</span>
+<span class="fc" id="L256">        Long jobProjectId = job.getProjectId();</span>
+<span class="fc" id="L257">        Long persistentRequirementId = requirement.getId();</span>
+<span class="fc" id="L258">        Long versionRequirementId = requirementVersion.getRequirementId();</span>
+<span class="pc bpc" id="L259" title="4 of 10 branches missed.">        if (persistentProjectId == null || requirementProjectId == null</span>
+                || jobProjectId == null || persistentRequirementId == null
+<span class="pc bpc" id="L261" title="1 of 2 branches missed.">                || versionRequirementId == null || requirementVersion.getId() == null</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">                || job.getId() == null) {</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">            if (requirePersistentParents) {</span>
+<span class="fc" id="L264">                throw new IllegalArgumentException(</span>
+                        &quot;Analysis snapshot parents must be persisted before the snapshot&quot;);
+            }
+<span class="fc" id="L267">            return;</span>
+        }
+<span class="fc bfc" id="L269" title="All 2 branches covered.">        if (!Objects.equals(persistentProjectId, requirementProjectId)</span>
+<span class="fc bfc" id="L270" title="All 2 branches covered.">                || !Objects.equals(persistentProjectId, jobProjectId)) {</span>
+<span class="fc" id="L271">            throw new IllegalArgumentException(</span>
+                    &quot;Analysis snapshot project, requirement and job do not match&quot;);
+        }
+<span class="fc bfc" id="L274" title="All 2 branches covered.">        if (!Objects.equals(persistentRequirementId, versionRequirementId)) {</span>
+<span class="fc" id="L275">            throw new IllegalArgumentException(</span>
+                    &quot;Analysis snapshot version belongs to another requirement&quot;);
+        }
+<span class="fc" id="L278">        projectId = persistentProjectId;</span>
+<span class="fc" id="L279">        requirementId = persistentRequirementId;</span>
+<span class="fc" id="L280">        requirementVersionId = requirementVersion.getId();</span>
+<span class="fc" id="L281">        jobId = job.getId();</span>
+<span class="fc" id="L282">    }</span>
+
+    private static String exactScope(String scope, String parent) {
+<span class="fc bfc" id="L285" title="All 4 branches covered.">        if (scope == null || scope.isBlank()) {</span>
+<span class="fc" id="L286">            throw new IllegalArgumentException(parent + &quot; must expose an exact tenant scope&quot;);</span>
+        }
+<span class="fc" id="L288">        return scope.strip();</span>
+    }
+
+<span class="fc" id="L291">    public String getId() { return id; }</span>
+<span class="fc" id="L292">    public String getScopeKey() { return scopeKey; }</span>
+<span class="fc" id="L293">    public Long getProjectId() { return projectId; }</span>
+<span class="fc" id="L294">    public ArchitectureProject getProject() { return project; }</span>
+<span class="fc" id="L295">    public Long getRequirementId() { return requirementId; }</span>
+<span class="fc" id="L296">    public ProjectRequirement getRequirement() { return requirement; }</span>
+<span class="fc" id="L297">    public Long getRequirementVersionId() { return requirementVersionId; }</span>
+<span class="fc" id="L298">    public ProjectRequirementVersion getRequirementVersion() { return requirementVersion; }</span>
+<span class="fc" id="L299">    public String getJobId() { return jobId; }</span>
+<span class="fc" id="L300">    public RequirementAnalysisJob getJob() { return job; }</span>
+<span class="fc" id="L301">    public AnalysisStatus getStatus() { return status; }</span>
+<span class="fc" id="L302">    public String getAnalysisSessionId() { return analysisSessionId; }</span>
+<span class="fc" id="L303">    public String getProvider() { return provider; }</span>
+<span class="fc" id="L304">    public String getModelName() { return modelName; }</span>
+<span class="fc" id="L305">    public String getPromptFingerprint() { return promptFingerprint; }</span>
+<span class="fc" id="L306">    public String getTaxonomyFingerprint() { return taxonomyFingerprint; }</span>
+<span class="fc" id="L307">    public String getWorkspaceId() { return workspaceId; }</span>
+<span class="fc" id="L308">    public String getBranchName() { return branchName; }</span>
+<span class="fc" id="L309">    public String getCommitSha() { return commitSha; }</span>
+<span class="fc" id="L310">    public String getCreatedBy() { return createdBy; }</span>
+<span class="fc" id="L311">    public Instant getCreatedAt() { return createdAt; }</span>
+<span class="fc" id="L312">    public long getDurationMs() { return durationMs; }</span>
+<span class="fc" id="L313">    public int getWarningCount() { return warningCount; }</span>
+<span class="fc" id="L314">    public String getErrorMessage() { return errorMessage; }</span>
+<span class="fc" id="L315">    public String getAnalysisPayload() { return analysisPayload; }</span>
+<span class="fc" id="L316">    public String getGapAnalysisPayload() { return gapAnalysisPayload; }</span>
+<span class="fc" id="L317">    public String getPatternDetectionPayload() { return patternDetectionPayload; }</span>
+<span class="fc" id="L318">    public String getRecommendationPayload() { return recommendationPayload; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioScope.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioScope.java</span></div><h1>PortfolioScope.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
+import com.taxonomy.workspace.model.RepositoryTenantIdentity;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import com.taxonomy.workspace.service.WorkspaceScope;
+
+/** Portfolio compatibility facade over the canonical workspace tenant scope. */
+public final class PortfolioScope {
+
+    public static final String CENTRAL_SCOPE = RepositoryTenantIdentity.CENTRAL_SCOPE;
+
+    private PortfolioScope() {
+    }
+
+    public static String key(String username, WorkspaceContext context) {
+<span class="fc" id="L17">        return WorkspaceScope.key(username, context);</span>
+    }
+
+    public static PortfolioTenantIdentity identity(
+            String username,
+            WorkspaceContext context) {
+<span class="fc" id="L23">        RepositoryTenantIdentity identity = WorkspaceScope.identity(context);</span>
+<span class="fc" id="L24">        return new PortfolioTenantIdentity(</span>
+<span class="fc" id="L25">                identity.repositoryId(), identity.workspaceScope(), identity.branch());</span>
+    }
+
+    public static String username(String username, WorkspaceContext context) {
+<span class="fc" id="L29">        return WorkspaceScope.username(username, context);</span>
+    }
+
+    public static String workspaceId(WorkspaceContext context) {
+<span class="fc" id="L33">        return WorkspaceScope.workspaceId(context);</span>
+    }
+
+    public static String branch(WorkspaceContext context) {
+<span class="fc" id="L37">        return WorkspaceScope.branch(context);</span>
+    }
+
+    public static String repositoryId(WorkspaceContext context) {
+<span class="fc" id="L41">        return WorkspaceScope.repositoryId(context);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

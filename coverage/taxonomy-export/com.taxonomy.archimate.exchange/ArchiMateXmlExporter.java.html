@@ -1,0 +1,276 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchiMateXmlExporter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.archimate.exchange</a> &gt; <span class="el_source">ArchiMateXmlExporter.java</span></div><h1>ArchiMateXmlExporter.java</h1><pre class="source lang-java linenums">package com.taxonomy.archimate.exchange;
+
+import com.taxonomy.archimate.*;
+
+import javax.xml.XMLConstants;
+import javax.xml.stream.XMLOutputFactory;
+import javax.xml.stream.XMLStreamException;
+import javax.xml.stream.XMLStreamWriter;
+import java.io.ByteArrayOutputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Typed ArchiMate 3.1 subset writer. Every result passes offline normative validation. */
+<span class="fc" id="L14">public class ArchiMateXmlExporter {</span>
+    public byte[] export(ArchiMateModel model) {
+<span class="fc" id="L16">        validateReferences(model);</span>
+        try {
+<span class="fc" id="L18">            ByteArrayOutputStream output = new BoundedOutput();</span>
+<span class="fc" id="L19">            XMLStreamWriter xml = XMLOutputFactory.newDefaultFactory().createXMLStreamWriter(output, &quot;UTF-8&quot;);</span>
+            try {
+<span class="fc" id="L21">                write(xml, model);</span>
+            } finally {
+<span class="fc" id="L23">                xml.close();</span>
+            }
+<span class="fc" id="L25">            byte[] bytes = output.toByteArray();</span>
+<span class="fc" id="L26">            ArchiMateSchema.parse(bytes);</span>
+<span class="fc" id="L27">            return bytes;</span>
+<span class="nc" id="L28">        } catch (XMLStreamException exception) {</span>
+<span class="nc" id="L29">            throw new IllegalArgumentException(&quot;Cannot serialize ArchiMate exchange model&quot;, exception);</span>
+        }
+    }
+
+    private void write(XMLStreamWriter xml, ArchiMateModel model) throws XMLStreamException {
+<span class="fc" id="L34">        Map&lt;String, ArchiMateProperty&gt; modelProperties = modelProperties(model);</span>
+<span class="fc" id="L35">        Map&lt;String, String&gt; definitions = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L36">        collectDefinitions(definitions, modelProperties);</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        for (ArchiMateElement element : model.elements()) collectDefinitions(definitions, identity(element.id(), element.properties()));</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        for (ArchiMateRelationship relation : model.relationships()) collectDefinitions(definitions, identity(relation.id(), relation.properties()));</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">        if (!model.views().isEmpty()) definitions.put(&quot;taxonomy.id&quot;, &quot;string&quot;);</span>
+
+<span class="fc" id="L41">        xml.writeStartDocument(&quot;UTF-8&quot;, &quot;1.0&quot;);</span>
+<span class="fc" id="L42">        xml.writeStartElement(&quot;model&quot;);</span>
+<span class="fc" id="L43">        xml.writeDefaultNamespace(ArchiMateSchema.NAMESPACE);</span>
+<span class="fc" id="L44">        xml.writeNamespace(&quot;xsi&quot;, XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI);</span>
+<span class="fc" id="L45">        xml.writeAttribute(&quot;xsi&quot;, XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI, &quot;schemaLocation&quot;,</span>
+                ArchiMateSchema.NAMESPACE + &quot; http://www.opengroup.org/xsd/archimate/3.1/archimate3_Diagram.xsd&quot;);
+<span class="fc" id="L47">        attr(xml, &quot;identifier&quot;, ArchiMateIds.id(&quot;model&quot;, model.id()));</span>
+<span class="fc" id="L48">        text(xml, &quot;name&quot;, model.title());</span>
+<span class="fc" id="L49">        properties(xml, modelProperties);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (!model.elements().isEmpty()) {</span>
+<span class="fc" id="L51">            xml.writeStartElement(&quot;elements&quot;);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            for (ArchiMateElement element : model.elements()) {</span>
+<span class="fc" id="L53">                xml.writeStartElement(&quot;element&quot;);</span>
+<span class="fc" id="L54">                attr(xml, &quot;identifier&quot;, ArchiMateIds.id(&quot;element&quot;, element.id()));</span>
+<span class="fc" id="L55">                type(xml, element.archiMateType());</span>
+<span class="fc" id="L56">                text(xml, &quot;name&quot;, element.label());</span>
+<span class="pc bpc" id="L57" title="3 of 4 branches missed.">                if (element.documentation() != null &amp;&amp; !element.documentation().isEmpty()) text(xml, &quot;documentation&quot;, element.documentation());</span>
+<span class="fc" id="L58">                properties(xml, identity(element.id(), element.properties()));</span>
+<span class="fc" id="L59">                xml.writeEndElement();</span>
+<span class="fc" id="L60">            }</span>
+<span class="fc" id="L61">            xml.writeEndElement();</span>
+        }
+<span class="fc bfc" id="L63" title="All 2 branches covered.">        if (!model.relationships().isEmpty()) {</span>
+<span class="fc" id="L64">            xml.writeStartElement(&quot;relationships&quot;);</span>
+<span class="fc bfc" id="L65" title="All 2 branches covered.">            for (ArchiMateRelationship relation : model.relationships()) {</span>
+<span class="fc" id="L66">                xml.writeStartElement(&quot;relationship&quot;);</span>
+<span class="fc" id="L67">                attr(xml, &quot;identifier&quot;, ArchiMateIds.id(&quot;relationship&quot;, relation.id()));</span>
+<span class="fc" id="L68">                type(xml, relation.archiMateType());</span>
+<span class="fc" id="L69">                attr(xml, &quot;source&quot;, ArchiMateIds.id(&quot;element&quot;, relation.sourceId()));</span>
+<span class="fc" id="L70">                attr(xml, &quot;target&quot;, ArchiMateIds.id(&quot;element&quot;, relation.targetId()));</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">                if (relation.accessType() != null) attr(xml, &quot;accessType&quot;, relation.accessType());</span>
+<span class="fc" id="L72">                text(xml, &quot;name&quot;, relation.name());</span>
+<span class="fc" id="L73">                properties(xml, identity(relation.id(), relation.properties()));</span>
+<span class="fc" id="L74">                xml.writeEndElement();</span>
+<span class="fc" id="L75">            }</span>
+<span class="fc" id="L76">            xml.writeEndElement();</span>
+        }
+<span class="fc bfc" id="L78" title="All 2 branches covered.">        if (!model.organizations().isEmpty()) {</span>
+<span class="fc" id="L79">            xml.writeStartElement(&quot;organizations&quot;);</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">            for (var entry : new TreeMap&lt;&gt;(model.organizations()).entrySet()) {</span>
+<span class="fc" id="L81">                xml.writeStartElement(&quot;item&quot;);</span>
+<span class="fc" id="L82">                text(xml, &quot;label&quot;, entry.getKey());</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">                for (String id : entry.getValue()) {</span>
+<span class="fc" id="L84">                    xml.writeEmptyElement(&quot;item&quot;);</span>
+<span class="fc" id="L85">                    attr(xml, &quot;identifierRef&quot;, ArchiMateIds.id(&quot;element&quot;, id));</span>
+<span class="fc" id="L86">                }</span>
+<span class="fc" id="L87">                xml.writeEndElement();</span>
+<span class="fc" id="L88">            }</span>
+<span class="fc" id="L89">            xml.writeEndElement();</span>
+        }
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">        if (!definitions.isEmpty()) {</span>
+<span class="fc" id="L92">            xml.writeStartElement(&quot;propertyDefinitions&quot;);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">            for (var entry : definitions.entrySet()) {</span>
+<span class="fc" id="L94">                xml.writeStartElement(&quot;propertyDefinition&quot;);</span>
+<span class="fc" id="L95">                attr(xml, &quot;identifier&quot;, ArchiMateIds.id(&quot;property&quot;, entry.getKey()));</span>
+<span class="fc" id="L96">                attr(xml, &quot;type&quot;, entry.getValue());</span>
+<span class="fc" id="L97">                text(xml, &quot;name&quot;, entry.getKey());</span>
+<span class="fc" id="L98">                xml.writeEndElement();</span>
+<span class="fc" id="L99">            }</span>
+<span class="fc" id="L100">            xml.writeEndElement();</span>
+        }
+<span class="pc bpc" id="L102" title="1 of 2 branches missed.">        if (!model.views().isEmpty()) {</span>
+<span class="fc" id="L103">            xml.writeStartElement(&quot;views&quot;);</span>
+<span class="fc" id="L104">            xml.writeStartElement(&quot;diagrams&quot;);</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            for (ArchiMateView view : model.views()) writeView(xml, view);</span>
+<span class="fc" id="L106">            xml.writeEndElement();</span>
+<span class="fc" id="L107">            xml.writeEndElement();</span>
+        }
+<span class="fc" id="L109">        xml.writeEndElement();</span>
+<span class="fc" id="L110">        xml.writeEndDocument();</span>
+<span class="fc" id="L111">    }</span>
+
+    private void writeView(XMLStreamWriter xml, ArchiMateView view) throws XMLStreamException {
+        // The XSD declares diagrams/view directly as Diagram; xsi:type is not required here.
+<span class="fc" id="L115">        xml.writeStartElement(&quot;view&quot;);</span>
+<span class="fc" id="L116">        attr(xml, &quot;identifier&quot;, ArchiMateIds.id(&quot;view&quot;, view.id()));</span>
+<span class="fc" id="L117">        attr(xml, &quot;viewpoint&quot;, &quot;Layered&quot;);</span>
+<span class="fc" id="L118">        text(xml, &quot;name&quot;, view.name());</span>
+<span class="fc" id="L119">        properties(xml, identity(view.id(), Map.of()));</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        for (ArchiMateViewNode node : view.nodes()) {</span>
+<span class="fc" id="L121">            xml.writeStartElement(&quot;node&quot;);</span>
+<span class="fc" id="L122">            attr(xml, &quot;identifier&quot;, ArchiMateIds.id(&quot;node&quot;, view.id(), node.id()));</span>
+<span class="fc" id="L123">            type(xml, &quot;Element&quot;);</span>
+<span class="fc" id="L124">            attr(xml, &quot;elementRef&quot;, ArchiMateIds.id(&quot;element&quot;, node.elementId()));</span>
+<span class="fc" id="L125">            attr(xml, &quot;x&quot;, node.x()); attr(xml, &quot;y&quot;, node.y());</span>
+<span class="fc" id="L126">            attr(xml, &quot;w&quot;, node.w()); attr(xml, &quot;h&quot;, node.h());</span>
+<span class="fc" id="L127">            text(xml, &quot;label&quot;, node.label());</span>
+<span class="fc" id="L128">            xml.writeStartElement(&quot;style&quot;);</span>
+<span class="fc bfc" id="L129" title="All 2 branches covered.">            if (node.lineWidth() != 1) attr(xml, &quot;lineWidth&quot;, node.lineWidth());</span>
+<span class="fc" id="L130">            xml.writeEmptyElement(&quot;fillColor&quot;);</span>
+<span class="fc" id="L131">            attr(xml, &quot;r&quot;, node.r()); attr(xml, &quot;g&quot;, node.g()); attr(xml, &quot;b&quot;, node.b());</span>
+<span class="fc" id="L132">            xml.writeEndElement();</span>
+<span class="fc" id="L133">            xml.writeEndElement();</span>
+<span class="fc" id="L134">        }</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">        for (ArchiMateViewConnection connection : view.connections()) {</span>
+<span class="fc" id="L136">            xml.writeEmptyElement(&quot;connection&quot;);</span>
+<span class="fc" id="L137">            attr(xml, &quot;identifier&quot;, ArchiMateIds.id(&quot;connection&quot;, view.id(), connection.id()));</span>
+<span class="fc" id="L138">            type(xml, &quot;Relationship&quot;);</span>
+<span class="fc" id="L139">            attr(xml, &quot;relationshipRef&quot;, ArchiMateIds.id(&quot;relationship&quot;, connection.relationshipId()));</span>
+<span class="fc" id="L140">            attr(xml, &quot;source&quot;, ArchiMateIds.id(&quot;node&quot;, view.id(), connection.sourceNodeId()));</span>
+<span class="fc" id="L141">            attr(xml, &quot;target&quot;, ArchiMateIds.id(&quot;node&quot;, view.id(), connection.targetNodeId()));</span>
+<span class="fc" id="L142">        }</span>
+<span class="fc" id="L143">        xml.writeEndElement();</span>
+<span class="fc" id="L144">    }</span>
+
+    public static Map&lt;String, ArchiMateProperty&gt; modelProperties(ArchiMateModel model) {
+<span class="fc" id="L147">        Map&lt;String, ArchiMateProperty&gt; result = new TreeMap&lt;&gt;(identity(model.id(), model.properties()));</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        for (int i = 0; i &lt; model.losses().size(); i++) {</span>
+<span class="fc" id="L149">            ArchiMateLoss loss = model.losses().get(i);</span>
+<span class="fc" id="L150">            String prefix = &quot;taxonomy.loss.&quot; + i + &quot;.&quot;;</span>
+<span class="fc" id="L151">            result.put(prefix + &quot;scope&quot;, ArchiMateProperty.text(loss.scope()));</span>
+<span class="fc" id="L152">            result.put(prefix + &quot;id&quot;, ArchiMateProperty.text(loss.id()));</span>
+<span class="fc" id="L153">            result.put(prefix + &quot;field&quot;, ArchiMateProperty.text(loss.field()));</span>
+<span class="fc" id="L154">            result.put(prefix + &quot;kind&quot;, ArchiMateProperty.text(loss.kind()));</span>
+<span class="fc" id="L155">            result.put(prefix + &quot;rationale&quot;, ArchiMateProperty.text(loss.rationale()));</span>
+        }
+<span class="fc" id="L157">        return result;</span>
+    }
+
+    private static Map&lt;String, ArchiMateProperty&gt; identity(String id, Map&lt;String, ArchiMateProperty&gt; properties) {
+<span class="fc" id="L161">        Map&lt;String, ArchiMateProperty&gt; result = new TreeMap&lt;&gt;(properties);</span>
+<span class="fc" id="L162">        ArchiMateProperty original = result.put(&quot;taxonomy.id&quot;, ArchiMateProperty.text(id));</span>
+<span class="pc bpc" id="L163" title="3 of 4 branches missed.">        if (original != null &amp;&amp; !original.equals(ArchiMateProperty.text(id))) {</span>
+<span class="nc" id="L164">            throw new IllegalArgumentException(&quot;Conflicting Taxonomy identity property&quot;);</span>
+        }
+<span class="fc" id="L166">        return result;</span>
+    }
+
+    private static void collectDefinitions(Map&lt;String, String&gt; definitions, Map&lt;String, ArchiMateProperty&gt; properties) {
+<span class="fc" id="L170">        properties.forEach((key, value) -&gt; {</span>
+<span class="fc" id="L171">            String previous = definitions.putIfAbsent(key, value.type());</span>
+<span class="pc bpc" id="L172" title="1 of 4 branches missed.">            if (previous != null &amp;&amp; !previous.equals(value.type())) throw new IllegalArgumentException(&quot;Conflicting property types: &quot; + key);</span>
+<span class="fc" id="L173">        });</span>
+<span class="fc" id="L174">    }</span>
+
+    private static void properties(XMLStreamWriter xml, Map&lt;String, ArchiMateProperty&gt; properties) throws XMLStreamException {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        if (properties.isEmpty()) return;</span>
+<span class="fc" id="L178">        xml.writeStartElement(&quot;properties&quot;);</span>
+<span class="fc bfc" id="L179" title="All 2 branches covered.">        for (var entry : new TreeMap&lt;&gt;(properties).entrySet()) {</span>
+<span class="fc" id="L180">            xml.writeStartElement(&quot;property&quot;);</span>
+<span class="fc" id="L181">            attr(xml, &quot;propertyDefinitionRef&quot;, ArchiMateIds.id(&quot;property&quot;, entry.getKey()));</span>
+<span class="fc" id="L182">            text(xml, &quot;value&quot;, entry.getValue().value());</span>
+<span class="fc" id="L183">            xml.writeEndElement();</span>
+<span class="fc" id="L184">        }</span>
+<span class="fc" id="L185">        xml.writeEndElement();</span>
+<span class="fc" id="L186">    }</span>
+
+    private static void type(XMLStreamWriter xml, String value) throws XMLStreamException {
+<span class="fc" id="L189">        xml.writeAttribute(&quot;xsi&quot;, XMLConstants.W3C_XML_SCHEMA_INSTANCE_NS_URI, &quot;type&quot;, ArchiMateIds.requireXmlText(value));</span>
+<span class="fc" id="L190">    }</span>
+
+    private static void attr(XMLStreamWriter xml, String name, Object value) throws XMLStreamException {
+<span class="fc" id="L193">        xml.writeAttribute(name, ArchiMateIds.requireXmlText(String.valueOf(value)));</span>
+<span class="fc" id="L194">    }</span>
+
+    private static void text(XMLStreamWriter xml, String name, String value) throws XMLStreamException {
+<span class="fc" id="L197">        xml.writeStartElement(name);</span>
+<span class="fc" id="L198">        xml.writeAttribute(&quot;xml&quot;, XMLConstants.XML_NS_URI, &quot;lang&quot;, &quot;en&quot;);</span>
+<span class="fc" id="L199">        String[] parts = ArchiMateIds.requireXmlText(value).split(&quot;\r&quot;, -1);</span>
+<span class="fc bfc" id="L200" title="All 2 branches covered.">        for (int i = 0; i &lt; parts.length; i++) {</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">            if (i &gt; 0) xml.writeEntityRef(&quot;#xD&quot;);</span>
+<span class="fc" id="L202">            xml.writeCharacters(parts[i]);</span>
+        }
+<span class="fc" id="L204">        xml.writeEndElement();</span>
+<span class="fc" id="L205">    }</span>
+
+    static void validateReferences(ArchiMateModel model) {
+<span class="fc" id="L208">        Objects.requireNonNull(model, &quot;model&quot;);</span>
+<span class="fc" id="L209">        ArchiMateIds.requireIdentity(model.id());</span>
+<span class="pc bpc" id="L210" title="1 of 2 branches missed.">        if (model.title() == null) throw new IllegalArgumentException(&quot;Missing model title&quot;);</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        if (model.elements().size() &gt; ArchiMateSchema.MAX_ELEMENTS</span>
+<span class="pc bpc" id="L212" title="2 of 4 branches missed.">                || model.relationships().size() &gt; ArchiMateSchema.MAX_RELATIONSHIPS || model.views().size() &gt; 32) {</span>
+<span class="nc" id="L213">            throw new IllegalArgumentException(&quot;Model exceeds bounded exchange profile&quot;);</span>
+        }
+<span class="fc" id="L215">        Map&lt;String, ArchiMateElement&gt; elements = index(model.elements(), ArchiMateElement::id);</span>
+<span class="pc bpc" id="L216" title="2 of 4 branches missed.">        if (elements.values().stream().anyMatch(element -&gt; element.label() == null)) {</span>
+<span class="nc" id="L217">            throw new IllegalArgumentException(&quot;Missing element label&quot;);</span>
+        }
+<span class="fc" id="L219">        Map&lt;String, ArchiMateRelationship&gt; relations = index(model.relationships(), ArchiMateRelationship::id);</span>
+<span class="fc bfc" id="L220" title="All 2 branches covered.">        for (var relation : relations.values()) {</span>
+<span class="pc bpc" id="L221" title="1 of 2 branches missed.">            if (relation.name() == null) throw new IllegalArgumentException(&quot;Missing relationship name&quot;);</span>
+<span class="fc" id="L222">            requireRef(elements, relation.sourceId()); requireRef(elements, relation.targetId());</span>
+<span class="fc" id="L223">        }</span>
+<span class="fc" id="L224">        model.organizations().values().forEach(ids -&gt; ids.forEach(id -&gt; requireRef(elements, id)));</span>
+<span class="fc" id="L225">        index(model.views(), ArchiMateView::id);</span>
+<span class="fc bfc" id="L226" title="All 2 branches covered.">        for (var view : model.views()) {</span>
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">            if (view.name() == null) throw new IllegalArgumentException(&quot;Missing view name&quot;);</span>
+<span class="fc" id="L228">            var nodes = index(view.nodes(), ArchiMateViewNode::id);</span>
+<span class="pc bpc" id="L229" title="2 of 4 branches missed.">            if (nodes.values().stream().anyMatch(node -&gt; node.label() == null)) throw new IllegalArgumentException(&quot;Missing view node label&quot;);</span>
+<span class="fc" id="L230">            index(view.connections(), ArchiMateViewConnection::id);</span>
+<span class="fc" id="L231">            nodes.values().forEach(node -&gt; requireRef(elements, node.elementId()));</span>
+<span class="fc bfc" id="L232" title="All 2 branches covered.">            for (var connection : view.connections()) {</span>
+<span class="fc" id="L233">                var relation = requireRef(relations, connection.relationshipId());</span>
+<span class="fc" id="L234">                var source = requireRef(nodes, connection.sourceNodeId());</span>
+<span class="fc" id="L235">                var target = requireRef(nodes, connection.targetNodeId());</span>
+<span class="pc bpc" id="L236" title="1 of 4 branches missed.">                if (!relation.sourceId().equals(source.elementId()) || !relation.targetId().equals(target.elementId())) {</span>
+<span class="fc" id="L237">                    throw new IllegalArgumentException(&quot;View connection does not follow relationship endpoints: &quot; + connection.id());</span>
+                }
+<span class="fc" id="L239">            }</span>
+<span class="fc" id="L240">        }</span>
+<span class="fc" id="L241">    }</span>
+
+    private static &lt;T&gt; Map&lt;String, T&gt; index(List&lt;T&gt; values, java.util.function.Function&lt;T, String&gt; identity) {
+<span class="fc" id="L244">        Map&lt;String, T&gt; result = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L245" title="All 2 branches covered.">        for (T value : values) {</span>
+<span class="fc" id="L246">            String id = identity.apply(value);</span>
+<span class="fc" id="L247">            ArchiMateIds.requireIdentity(id);</span>
+<span class="fc bfc" id="L248" title="All 2 branches covered.">            if (result.putIfAbsent(id, value) != null) throw new IllegalArgumentException(&quot;Duplicate architecture identity: &quot; + id);</span>
+<span class="fc" id="L249">        }</span>
+<span class="fc" id="L250">        return result;</span>
+    }
+
+    private static &lt;T&gt; T requireRef(Map&lt;String, T&gt; values, String id) {
+<span class="fc" id="L254">        T value = values.get(id);</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">        if (value == null) throw new IllegalArgumentException(&quot;Unresolved architecture reference: &quot; + id);</span>
+<span class="fc" id="L256">        return value;</span>
+    }
+
+    static String escapeXml(String text) {
+<span class="nc" id="L260">        return ArchiMateIds.requireXmlText(text).replace(&quot;&amp;&quot;, &quot;&amp;amp;&quot;).replace(&quot;&lt;&quot;, &quot;&amp;lt;&quot;)</span>
+<span class="nc" id="L261">                .replace(&quot;&gt;&quot;, &quot;&amp;gt;&quot;).replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;).replace(&quot;'&quot;, &quot;&amp;apos;&quot;);</span>
+    }
+
+    private static final class BoundedOutput extends ByteArrayOutputStream {
+        @Override public synchronized void write(int value) {
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">            if (count &gt;= ArchiMateSchema.MAX_BYTES) throw new IllegalArgumentException(&quot;Exchange XML exceeds byte limit&quot;);</span>
+<span class="fc" id="L267">            super.write(value);</span>
+<span class="fc" id="L268">        }</span>
+
+        @Override public synchronized void write(byte[] bytes, int offset, int length) {
+<span class="nc bnc" id="L271" title="All 2 branches missed.">            if (length &gt; ArchiMateSchema.MAX_BYTES - count) throw new IllegalArgumentException(&quot;Exchange XML exceeds byte limit&quot;);</span>
+<span class="nc" id="L272">            super.write(bytes, offset, length);</span>
+<span class="nc" id="L273">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

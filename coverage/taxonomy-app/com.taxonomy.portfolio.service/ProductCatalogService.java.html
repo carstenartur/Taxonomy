@@ -1,0 +1,372 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProductCatalogService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">ProductCatalogService.java</span></div><h1>ProductCatalogService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.catalog.repository.TaxonomyNodeRepository;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProductRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ProductView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SolutionProductCandidateView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.TaxonomyCoverageView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpdateProductRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpsertProductCandidateRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.UpsertTaxonomyCoverageRequest;
+import com.taxonomy.portfolio.model.PortfolioTypes.OperatingModel;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProductSelectionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProductStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.model.ProductCatalogEntry;
+import com.taxonomy.portfolio.model.ProductTaxonomyCoverage;
+import com.taxonomy.portfolio.model.ProjectSolution;
+import com.taxonomy.portfolio.model.SolutionProductCandidate;
+import com.taxonomy.portfolio.repository.ProductCatalogEntryRepository;
+import com.taxonomy.portfolio.repository.ProductTaxonomyCoverageRepository;
+import com.taxonomy.portfolio.repository.ProjectSolutionRepository;
+import com.taxonomy.portfolio.repository.SolutionProductCandidateRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Instant;
+import java.util.List;
+import java.util.Locale;
+import java.util.regex.Pattern;
+
+/** Manually curated, sourced product catalogue and human-reviewed solution candidates. */
+@Service
+public class ProductCatalogService {
+
+<span class="fc" id="L36">    private static final Pattern BUSINESS_KEY =</span>
+<span class="fc" id="L37">            Pattern.compile(&quot;[A-Za-z0-9][A-Za-z0-9._-]{0,63}&quot;);</span>
+
+    private final ProductCatalogEntryRepository productRepository;
+    private final ProductTaxonomyCoverageRepository coverageRepository;
+    private final SolutionProductCandidateRepository candidateRepository;
+    private final ProjectSolutionRepository projectSolutionRepository;
+    private final TaxonomyNodeRepository taxonomyNodeRepository;
+    private final ProjectPortfolioService projectService;
+
+    public ProductCatalogService(ProductCatalogEntryRepository productRepository,
+                                 ProductTaxonomyCoverageRepository coverageRepository,
+                                 SolutionProductCandidateRepository candidateRepository,
+                                 ProjectSolutionRepository projectSolutionRepository,
+                                 TaxonomyNodeRepository taxonomyNodeRepository,
+<span class="fc" id="L51">                                 ProjectPortfolioService projectService) {</span>
+<span class="fc" id="L52">        this.productRepository = productRepository;</span>
+<span class="fc" id="L53">        this.coverageRepository = coverageRepository;</span>
+<span class="fc" id="L54">        this.candidateRepository = candidateRepository;</span>
+<span class="fc" id="L55">        this.projectSolutionRepository = projectSolutionRepository;</span>
+<span class="fc" id="L56">        this.taxonomyNodeRepository = taxonomyNodeRepository;</span>
+<span class="fc" id="L57">        this.projectService = projectService;</span>
+<span class="fc" id="L58">    }</span>
+
+    @Transactional
+    public ProductView createProduct(CreateProductRequest request,
+                                     String username,
+                                     WorkspaceContext context) {
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;product request is required&quot;);</span>
+<span class="fc" id="L65">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L66">        String productKey = normalizeKey(request.productKey(), &quot;productKey&quot;);</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (productRepository.findByScopeKeyAndProductKeyIgnoreCase(scopeKey, productKey).isPresent()) {</span>
+<span class="nc" id="L68">            throw PortfolioException.conflict(&quot;Product key already exists in this workspace: &quot; + productKey);</span>
+        }
+<span class="fc" id="L70">        String source = ProjectPortfolioService.requireText(</span>
+<span class="fc" id="L71">                request.sourceReference(), &quot;sourceReference&quot;, 100_000);</span>
+<span class="fc" id="L72">        Instant now = Instant.now();</span>
+<span class="fc" id="L73">        var costAmount = PortfolioValueValidator.money(request.costAmount(), &quot;costAmount&quot;);</span>
+<span class="fc" id="L74">        String costCurrency = normalizeCurrency(request.costCurrency());</span>
+<span class="fc" id="L75">        PortfolioValueValidator.requireMoneyPair(</span>
+                costAmount, costCurrency, &quot;costAmount&quot;, &quot;costCurrency&quot;);
+<span class="fc" id="L77">        Instant verifiedAt = PortfolioValueValidator.verifiedAt(request.verifiedAt(), now, true);</span>
+
+<span class="fc" id="L79">        ProductCatalogEntry product = new ProductCatalogEntry(</span>
+                scopeKey,
+<span class="fc" id="L81">                PortfolioScope.workspaceId(context),</span>
+                productKey,
+<span class="fc" id="L83">                ProjectPortfolioService.requireText(request.manufacturer(), &quot;manufacturer&quot;, 240),</span>
+<span class="fc" id="L84">                ProjectPortfolioService.limited(request.productFamily(), 240, &quot;productFamily&quot;),</span>
+<span class="fc" id="L85">                ProjectPortfolioService.requireText(request.productName(), &quot;productName&quot;, 240),</span>
+<span class="fc" id="L86">                ProjectPortfolioService.limited(request.editionVersion(), 160, &quot;editionVersion&quot;),</span>
+<span class="pc bpc" id="L87" title="1 of 2 branches missed.">                request.productStatus() != null ? request.productStatus() : ProductStatus.CANDIDATE,</span>
+<span class="fc" id="L88">                request.endOfSupport(),</span>
+<span class="fc" id="L89">                ProjectPortfolioService.limited(request.licenseModel(), 500, &quot;licenseModel&quot;),</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                request.operatingModel() != null ? request.operatingModel() : OperatingModel.UNSPECIFIED,</span>
+<span class="fc" id="L91">                ProjectPortfolioService.limited(request.supportedPlatforms(), 2000, &quot;supportedPlatforms&quot;),</span>
+<span class="fc" id="L92">                ProjectPortfolioService.limited(request.securityFeatures(), 4000, &quot;securityFeatures&quot;),</span>
+<span class="fc" id="L93">                ProjectPortfolioService.limited(request.complianceFeatures(), 4000, &quot;complianceFeatures&quot;),</span>
+                costAmount,
+                costCurrency,
+<span class="fc" id="L96">                ProjectPortfolioService.limited(request.costBasis(), 500, &quot;costBasis&quot;),</span>
+                source,
+                verifiedAt,
+<span class="fc" id="L99">                PortfolioScope.username(username, context),</span>
+                now);
+<span class="fc" id="L101">        return toProductView(productRepository.save(product));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;ProductView&gt; listProducts(String username, WorkspaceContext context) {
+<span class="fc" id="L106">        return productRepository</span>
+<span class="fc" id="L107">                .findByScopeKeyOrderByManufacturerAscProductNameAsc(PortfolioScope.key(username, context))</span>
+<span class="fc" id="L108">                .stream().map(this::toProductView).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public ProductView getProduct(Long productId, String username, WorkspaceContext context) {
+<span class="nc" id="L113">        return toProductView(requireProduct(productId, username, context));</span>
+    }
+
+    @Transactional
+    public ProductView updateProduct(Long productId,
+                                     UpdateProductRequest request,
+                                     String username,
+                                     WorkspaceContext context) {
+<span class="nc bnc" id="L121" title="All 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;product update is required&quot;);</span>
+<span class="nc" id="L122">        ProductCatalogEntry product = requireProduct(productId, username, context);</span>
+<span class="nc" id="L123">        Instant now = Instant.now();</span>
+<span class="nc bnc" id="L124" title="All 2 branches missed.">        var requestedAmount = request.costAmount() != null</span>
+<span class="nc" id="L125">                ? PortfolioValueValidator.money(request.costAmount(), &quot;costAmount&quot;) : null;</span>
+<span class="nc bnc" id="L126" title="All 2 branches missed.">        String requestedCurrency = request.costCurrency() != null</span>
+<span class="nc" id="L127">                ? normalizeCurrency(request.costCurrency()) : null;</span>
+<span class="nc bnc" id="L128" title="All 2 branches missed.">        var effectiveAmount = request.costAmount() != null</span>
+<span class="nc" id="L129">                ? requestedAmount : product.getCostAmount();</span>
+<span class="nc bnc" id="L130" title="All 2 branches missed.">        String effectiveCurrency = request.costCurrency() != null</span>
+<span class="nc" id="L131">                ? requestedCurrency : product.getCostCurrency();</span>
+<span class="nc" id="L132">        PortfolioValueValidator.requireMoneyPair(</span>
+                effectiveAmount, effectiveCurrency, &quot;costAmount&quot;, &quot;costCurrency&quot;);
+<span class="nc bnc" id="L134" title="All 2 branches missed.">        Instant verifiedAt = request.verifiedAt() != null</span>
+<span class="nc" id="L135">                ? PortfolioValueValidator.verifiedAt(request.verifiedAt(), now, false) : null;</span>
+
+<span class="nc" id="L137">        product.update(</span>
+<span class="nc bnc" id="L138" title="All 2 branches missed.">                request.manufacturer() != null</span>
+<span class="nc" id="L139">                        ? ProjectPortfolioService.requireText(request.manufacturer(), &quot;manufacturer&quot;, 240) : null,</span>
+<span class="nc" id="L140">                ProjectPortfolioService.limited(request.productFamily(), 240, &quot;productFamily&quot;),</span>
+<span class="nc bnc" id="L141" title="All 2 branches missed.">                request.productName() != null</span>
+<span class="nc" id="L142">                        ? ProjectPortfolioService.requireText(request.productName(), &quot;productName&quot;, 240) : null,</span>
+<span class="nc" id="L143">                ProjectPortfolioService.limited(request.editionVersion(), 160, &quot;editionVersion&quot;),</span>
+<span class="nc" id="L144">                request.productStatus(),</span>
+<span class="nc" id="L145">                request.endOfSupport(),</span>
+<span class="nc" id="L146">                ProjectPortfolioService.limited(request.licenseModel(), 500, &quot;licenseModel&quot;),</span>
+<span class="nc" id="L147">                request.operatingModel(),</span>
+<span class="nc" id="L148">                ProjectPortfolioService.limited(request.supportedPlatforms(), 2000, &quot;supportedPlatforms&quot;),</span>
+<span class="nc" id="L149">                ProjectPortfolioService.limited(request.securityFeatures(), 4000, &quot;securityFeatures&quot;),</span>
+<span class="nc" id="L150">                ProjectPortfolioService.limited(request.complianceFeatures(), 4000, &quot;complianceFeatures&quot;),</span>
+                requestedAmount,
+                requestedCurrency,
+<span class="nc" id="L153">                ProjectPortfolioService.limited(request.costBasis(), 500, &quot;costBasis&quot;),</span>
+<span class="nc bnc" id="L154" title="All 2 branches missed.">                request.sourceReference() != null</span>
+<span class="nc" id="L155">                        ? ProjectPortfolioService.requireText(</span>
+<span class="nc" id="L156">                                request.sourceReference(), &quot;sourceReference&quot;, 100_000) : null,</span>
+                verifiedAt,
+                now);
+<span class="nc" id="L159">        return toProductView(product);</span>
+    }
+
+    @Transactional
+    public ProductView upsertTaxonomyCoverage(Long productId,
+                                              UpsertTaxonomyCoverageRequest request,
+                                              String username,
+                                              WorkspaceContext context) {
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;taxonomy coverage is required&quot;);</span>
+<span class="fc" id="L168">        ProductCatalogEntry product = requireProduct(productId, username, context);</span>
+<span class="fc" id="L169">        String nodeCode = requireNodeCode(request.nodeCode());</span>
+<span class="fc" id="L170">        int coverage = normalizePercentage(request.coveragePercent(), &quot;coveragePercent&quot;);</span>
+<span class="fc" id="L171">        Instant now = Instant.now();</span>
+<span class="fc" id="L172">        ProductTaxonomyCoverage mapping = coverageRepository</span>
+<span class="fc" id="L173">                .findByProductIdAndNodeCode(productId, nodeCode)</span>
+<span class="fc" id="L174">                .orElseGet(() -&gt; new ProductTaxonomyCoverage(</span>
+                        product,
+                        nodeCode,
+                        coverage,
+<span class="fc" id="L178">                        ProjectPortfolioService.limited(request.evidence(), 2000, &quot;evidence&quot;),</span>
+<span class="pc bpc" id="L179" title="1 of 2 branches missed.">                        request.reviewStatus() != null ? request.reviewStatus() : ReviewStatus.PROPOSED,</span>
+<span class="fc" id="L180">                        PortfolioScope.username(username, context),</span>
+                        now));
+<span class="pc bpc" id="L182" title="1 of 2 branches missed.">        if (mapping.getId() != null) {</span>
+<span class="nc" id="L183">            mapping.update(</span>
+                    coverage,
+<span class="nc" id="L185">                    ProjectPortfolioService.limited(request.evidence(), 2000, &quot;evidence&quot;),</span>
+<span class="nc" id="L186">                    request.reviewStatus(),</span>
+<span class="nc" id="L187">                    PortfolioScope.username(username, context),</span>
+                    now);
+        }
+<span class="fc" id="L190">        coverageRepository.save(mapping);</span>
+<span class="fc" id="L191">        return toProductView(product);</span>
+    }
+
+    @Transactional
+    public SolutionProductCandidateView upsertCandidate(Long projectId,
+                                                        Long projectSolutionId,
+                                                        UpsertProductCandidateRequest request,
+                                                        String username,
+                                                        WorkspaceContext context) {
+<span class="pc bpc" id="L200" title="1 of 2 branches missed.">        if (request == null) throw PortfolioException.validation(&quot;product candidate is required&quot;);</span>
+<span class="fc" id="L201">        projectService.requireProject(projectId, username, context);</span>
+<span class="fc" id="L202">        ProjectSolution projectSolution = projectSolutionRepository</span>
+<span class="fc" id="L203">                .findByIdAndProjectId(projectSolutionId, projectId)</span>
+<span class="pc" id="L204">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Project solution not found: &quot; + projectSolutionId));
+<span class="fc" id="L206">        ProductCatalogEntry product = requireProduct(request.productId(), username, context);</span>
+<span class="fc" id="L207">        int coverage = normalizePercentage(request.coveragePercent(), &quot;coveragePercent&quot;);</span>
+<span class="fc" id="L208">        double confidence = normalizeConfidence(request.confidence());</span>
+<span class="pc bpc" id="L209" title="1 of 2 branches missed.">        ReviewStatus reviewStatus = request.reviewStatus() != null</span>
+<span class="pc" id="L210">                ? request.reviewStatus() : ReviewStatus.PROPOSED;</span>
+<span class="pc bpc" id="L211" title="1 of 2 branches missed.">        ProductSelectionStatus selectionStatus = request.selectionStatus() != null</span>
+<span class="pc" id="L212">                ? request.selectionStatus() : ProductSelectionStatus.CANDIDATE;</span>
+<span class="fc" id="L213">        String exclusions = ProjectPortfolioService.limited(</span>
+<span class="fc" id="L214">                request.hardExclusions(), 4000, &quot;hardExclusions&quot;);</span>
+<span class="pc bpc" id="L215" title="1 of 2 branches missed.">        if (selectionStatus == ProductSelectionStatus.SELECTED) {</span>
+<span class="pc bpc" id="L216" title="1 of 2 branches missed.">            if (reviewStatus != ReviewStatus.CONFIRMED) {</span>
+<span class="nc" id="L217">                throw PortfolioException.validation(</span>
+                        &quot;A selected product candidate must have reviewStatus CONFIRMED&quot;);
+            }
+<span class="pc bpc" id="L220" title="3 of 4 branches missed.">            if (exclusions != null &amp;&amp; !exclusions.isBlank()) {</span>
+<span class="nc" id="L221">                throw PortfolioException.validation(</span>
+                        &quot;A product with hard exclusions cannot be selected&quot;);
+            }
+        }
+
+<span class="fc" id="L226">        Instant now = Instant.now();</span>
+<span class="fc" id="L227">        SolutionProductCandidate candidate = candidateRepository</span>
+<span class="fc" id="L228">                .findByProjectSolutionIdAndProductId(projectSolutionId, product.getId())</span>
+<span class="fc" id="L229">                .orElseGet(() -&gt; new SolutionProductCandidate(</span>
+                        projectSolution,
+                        product,
+                        coverage,
+                        exclusions,
+<span class="fc" id="L234">                        ProjectPortfolioService.limited(request.strengths(), 4000, &quot;strengths&quot;),</span>
+<span class="fc" id="L235">                        ProjectPortfolioService.limited(request.weaknesses(), 4000, &quot;weaknesses&quot;),</span>
+<span class="fc" id="L236">                        ProjectPortfolioService.limited(request.openEvidence(), 4000, &quot;openEvidence&quot;),</span>
+                        confidence,
+                        reviewStatus,
+                        selectionStatus,
+<span class="fc" id="L240">                        PortfolioScope.username(username, context),</span>
+                        now));
+<span class="pc bpc" id="L242" title="1 of 2 branches missed.">        if (candidate.getId() != null) {</span>
+<span class="nc" id="L243">            candidate.update(</span>
+                    coverage,
+                    exclusions,
+<span class="nc" id="L246">                    ProjectPortfolioService.limited(request.strengths(), 4000, &quot;strengths&quot;),</span>
+<span class="nc" id="L247">                    ProjectPortfolioService.limited(request.weaknesses(), 4000, &quot;weaknesses&quot;),</span>
+<span class="nc" id="L248">                    ProjectPortfolioService.limited(request.openEvidence(), 4000, &quot;openEvidence&quot;),</span>
+                    confidence,
+                    reviewStatus,
+                    selectionStatus,
+<span class="nc" id="L252">                    PortfolioScope.username(username, context),</span>
+                    now);
+        }
+<span class="fc" id="L255">        candidateRepository.save(candidate);</span>
+<span class="fc" id="L256">        return toCandidateView(candidate);</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;SolutionProductCandidateView&gt; listCandidates(Long projectId,
+                                                             Long projectSolutionId,
+                                                             String username,
+                                                             WorkspaceContext context) {
+<span class="nc" id="L264">        projectService.requireProject(projectId, username, context);</span>
+<span class="nc" id="L265">        projectSolutionRepository.findByIdAndProjectId(projectSolutionId, projectId)</span>
+<span class="nc" id="L266">                .orElseThrow(() -&gt; PortfolioException.notFound(</span>
+                        &quot;Project solution not found: &quot; + projectSolutionId));
+<span class="nc" id="L268">        return candidateRepository.findByProjectSolutionIdOrderByCoveragePercentDesc(projectSolutionId)</span>
+<span class="nc" id="L269">                .stream().map(this::toCandidateView).toList();</span>
+    }
+
+    @Transactional(readOnly = true)
+    public ProductCatalogEntry requireProduct(Long productId,
+                                              String username,
+                                              WorkspaceContext context) {
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (productId == null) throw PortfolioException.validation(&quot;productId is required&quot;);</span>
+<span class="fc" id="L277">        return productRepository.findByIdAndScopeKey(productId, PortfolioScope.key(username, context))</span>
+<span class="pc" id="L278">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Product not found: &quot; + productId));</span>
+    }
+
+    public ProductView toProductView(ProductCatalogEntry product) {
+<span class="fc" id="L282">        List&lt;TaxonomyCoverageView&gt; coverage = coverageRepository</span>
+<span class="fc" id="L283">                .findByProductIdOrderByNodeCodeAsc(product.getId()).stream()</span>
+<span class="fc" id="L284">                .map(mapping -&gt; new TaxonomyCoverageView(</span>
+<span class="fc" id="L285">                        mapping.getId(),</span>
+<span class="fc" id="L286">                        mapping.getNodeCode(),</span>
+<span class="fc" id="L287">                        mapping.getCoveragePercent(),</span>
+<span class="fc" id="L288">                        mapping.getEvidence(),</span>
+<span class="fc" id="L289">                        mapping.getReviewStatus(),</span>
+<span class="fc" id="L290">                        mapping.getUpdatedBy(),</span>
+<span class="fc" id="L291">                        mapping.getUpdatedAt()))</span>
+<span class="fc" id="L292">                .toList();</span>
+<span class="fc" id="L293">        return new ProductView(</span>
+<span class="fc" id="L294">                product.getId(),</span>
+<span class="fc" id="L295">                product.getProductKey(),</span>
+<span class="fc" id="L296">                product.getManufacturer(),</span>
+<span class="fc" id="L297">                product.getProductFamily(),</span>
+<span class="fc" id="L298">                product.getProductName(),</span>
+<span class="fc" id="L299">                product.getEditionVersion(),</span>
+<span class="fc" id="L300">                product.getProductStatus(),</span>
+<span class="fc" id="L301">                product.getEndOfSupport(),</span>
+<span class="fc" id="L302">                product.getLicenseModel(),</span>
+<span class="fc" id="L303">                product.getOperatingModel(),</span>
+<span class="fc" id="L304">                product.getSupportedPlatforms(),</span>
+<span class="fc" id="L305">                product.getSecurityFeatures(),</span>
+<span class="fc" id="L306">                product.getComplianceFeatures(),</span>
+<span class="fc" id="L307">                product.getCostAmount(),</span>
+<span class="fc" id="L308">                product.getCostCurrency(),</span>
+<span class="fc" id="L309">                product.getCostBasis(),</span>
+<span class="fc" id="L310">                product.getSourceReference(),</span>
+<span class="fc" id="L311">                product.getVerifiedAt(),</span>
+<span class="fc" id="L312">                product.getCreatedBy(),</span>
+<span class="fc" id="L313">                product.getCreatedAt(),</span>
+<span class="fc" id="L314">                product.getUpdatedAt(),</span>
+                coverage);
+    }
+
+    public SolutionProductCandidateView toCandidateView(SolutionProductCandidate candidate) {
+<span class="fc" id="L319">        return new SolutionProductCandidateView(</span>
+<span class="fc" id="L320">                candidate.getId(),</span>
+<span class="fc" id="L321">                candidate.getProjectSolution().getId(),</span>
+<span class="fc" id="L322">                toProductView(candidate.getProduct()),</span>
+<span class="fc" id="L323">                candidate.getCoveragePercent(),</span>
+<span class="fc" id="L324">                candidate.getHardExclusions(),</span>
+<span class="fc" id="L325">                candidate.getStrengths(),</span>
+<span class="fc" id="L326">                candidate.getWeaknesses(),</span>
+<span class="fc" id="L327">                candidate.getOpenEvidence(),</span>
+<span class="fc" id="L328">                candidate.getConfidence(),</span>
+<span class="fc" id="L329">                candidate.getReviewStatus(),</span>
+<span class="fc" id="L330">                candidate.getSelectionStatus(),</span>
+<span class="fc" id="L331">                candidate.getUpdatedBy(),</span>
+<span class="fc" id="L332">                candidate.getUpdatedAt());</span>
+    }
+
+    private String requireNodeCode(String nodeCode) {
+<span class="fc" id="L336">        String normalized = ProjectPortfolioService.requireText(nodeCode, &quot;nodeCode&quot;, 80)</span>
+<span class="fc" id="L337">                .toUpperCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L338" title="1 of 2 branches missed.">        if (taxonomyNodeRepository.findByCode(normalized).isEmpty()) {</span>
+<span class="nc" id="L339">            throw PortfolioException.validation(&quot;Unknown taxonomy node: &quot; + normalized);</span>
+        }
+<span class="fc" id="L341">        return normalized;</span>
+    }
+
+    private static String normalizeKey(String value, String field) {
+<span class="fc" id="L345">        String normalized = ProjectPortfolioService.requireText(value, field, 64)</span>
+<span class="fc" id="L346">                .toUpperCase(Locale.ROOT);</span>
+<span class="pc bpc" id="L347" title="1 of 2 branches missed.">        if (!BUSINESS_KEY.matcher(normalized).matches()) {</span>
+<span class="nc" id="L348">            throw PortfolioException.validation(</span>
+                    field + &quot; contains unsupported characters&quot;);
+        }
+<span class="fc" id="L351">        return normalized;</span>
+    }
+
+    private static int normalizePercentage(int value, String field) {
+<span class="pc bpc" id="L355" title="2 of 4 branches missed.">        if (value &lt; 0 || value &gt; 100) {</span>
+<span class="nc" id="L356">            throw PortfolioException.validation(field + &quot; must be between 0 and 100&quot;);</span>
+        }
+<span class="fc" id="L358">        return value;</span>
+    }
+
+    private static double normalizeConfidence(double value) {
+<span class="pc bpc" id="L362" title="3 of 6 branches missed.">        if (!Double.isFinite(value) || value &lt; 0.0 || value &gt; 1.0) {</span>
+<span class="nc" id="L363">            throw PortfolioException.validation(&quot;confidence must be between 0.0 and 1.0&quot;);</span>
+        }
+<span class="fc" id="L365">        return value;</span>
+    }
+
+    private static String normalizeCurrency(String value) {
+<span class="fc" id="L369">        return PortfolioValueValidator.currency(value, &quot;costCurrency&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

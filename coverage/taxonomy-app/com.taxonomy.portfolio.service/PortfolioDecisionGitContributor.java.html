@@ -1,0 +1,820 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PortfolioDecisionGitContributor.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.service</a> &gt; <span class="el_source">PortfolioDecisionGitContributor.java</span></div><h1>PortfolioDecisionGitContributor.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.service;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.ast.MetaAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.ast.SourceLocation;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import com.taxonomy.portfolio.model.ArchitectureProject;
+import com.taxonomy.portfolio.model.PortfolioTypes.ActionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.LifecycleStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.OperatingModel;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProductSelectionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProductStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.ProjectSolutionStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.RequirementSolutionRole;
+import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.SolutionType;
+import com.taxonomy.portfolio.model.ProductCatalogEntry;
+import com.taxonomy.portfolio.model.ProductTaxonomyCoverage;
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.ProjectSolution;
+import com.taxonomy.portfolio.model.RequirementSolutionLink;
+import com.taxonomy.portfolio.model.SolutionDefinition;
+import com.taxonomy.portfolio.model.SolutionProductCandidate;
+import com.taxonomy.portfolio.model.SolutionTaxonomyCoverage;
+import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
+import com.taxonomy.portfolio.repository.ProductCatalogEntryRepository;
+import com.taxonomy.portfolio.repository.ProductTaxonomyCoverageRepository;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.repository.ProjectSolutionRepository;
+import com.taxonomy.portfolio.repository.RequirementSolutionLinkRepository;
+import com.taxonomy.portfolio.repository.SolutionDefinitionRepository;
+import com.taxonomy.portfolio.repository.SolutionProductCandidateRepository;
+import com.taxonomy.portfolio.repository.SolutionTaxonomyCoverageRepository;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+/**
+ * Projects durable solution and product decisions into Git and materializes
+ * them into another workspace using stable business keys.
+ *
+ * &lt;p&gt;No database primary key is part of a block identity. Project, requirement,
+ * solution and product links therefore remain portable across workspaces and
+ * deployments. Operational jobs and large analysis payloads stay relational.&lt;/p&gt;
+ */
+@Service
+public class PortfolioDecisionGitContributor {
+
+    public static final String SOLUTION_BLOCK = &quot;solutionDefinition&quot;;
+    public static final String SOLUTION_TAXONOMY_BLOCK = &quot;solutionTaxonomyCoverage&quot;;
+    public static final String PRODUCT_BLOCK = &quot;productDefinition&quot;;
+    public static final String PRODUCT_TAXONOMY_BLOCK = &quot;productTaxonomyCoverage&quot;;
+    public static final String PROJECT_SOLUTION_BLOCK = &quot;projectSolutionDecision&quot;;
+    public static final String REQUIREMENT_SOLUTION_BLOCK = &quot;requirementSolutionDecision&quot;;
+    public static final String SOLUTION_PRODUCT_BLOCK = &quot;solutionProductDecision&quot;;
+
+<span class="fc" id="L70">    private static final Set&lt;String&gt; MANAGED_BLOCKS = Set.of(</span>
+            SOLUTION_BLOCK,
+            SOLUTION_TAXONOMY_BLOCK,
+            PRODUCT_BLOCK,
+            PRODUCT_TAXONOMY_BLOCK,
+            PROJECT_SOLUTION_BLOCK,
+            REQUIREMENT_SOLUTION_BLOCK,
+            SOLUTION_PRODUCT_BLOCK);
+<span class="fc" id="L78">    private static final SourceLocation GENERATED =</span>
+            new SourceLocation(&quot;portfolio-decision-projection&quot;, 1, 1);
+
+    private final ArchitectureProjectRepository projectRepository;
+    private final ProjectRequirementRepository requirementRepository;
+    private final SolutionDefinitionRepository solutionRepository;
+    private final SolutionTaxonomyCoverageRepository solutionCoverageRepository;
+    private final ProjectSolutionRepository projectSolutionRepository;
+    private final RequirementSolutionLinkRepository requirementLinkRepository;
+    private final ProductCatalogEntryRepository productRepository;
+    private final ProductTaxonomyCoverageRepository productCoverageRepository;
+    private final SolutionProductCandidateRepository candidateRepository;
+<span class="fc" id="L90">    private final TaxDslParser parser = new TaxDslParser();</span>
+<span class="fc" id="L91">    private final TaxDslSerializer serializer = new TaxDslSerializer();</span>
+
+    public PortfolioDecisionGitContributor(
+            ArchitectureProjectRepository projectRepository,
+            ProjectRequirementRepository requirementRepository,
+            SolutionDefinitionRepository solutionRepository,
+            SolutionTaxonomyCoverageRepository solutionCoverageRepository,
+            ProjectSolutionRepository projectSolutionRepository,
+            RequirementSolutionLinkRepository requirementLinkRepository,
+            ProductCatalogEntryRepository productRepository,
+            ProductTaxonomyCoverageRepository productCoverageRepository,
+<span class="fc" id="L102">            SolutionProductCandidateRepository candidateRepository) {</span>
+<span class="fc" id="L103">        this.projectRepository = projectRepository;</span>
+<span class="fc" id="L104">        this.requirementRepository = requirementRepository;</span>
+<span class="fc" id="L105">        this.solutionRepository = solutionRepository;</span>
+<span class="fc" id="L106">        this.solutionCoverageRepository = solutionCoverageRepository;</span>
+<span class="fc" id="L107">        this.projectSolutionRepository = projectSolutionRepository;</span>
+<span class="fc" id="L108">        this.requirementLinkRepository = requirementLinkRepository;</span>
+<span class="fc" id="L109">        this.productRepository = productRepository;</span>
+<span class="fc" id="L110">        this.productCoverageRepository = productCoverageRepository;</span>
+<span class="fc" id="L111">        this.candidateRepository = candidateRepository;</span>
+<span class="fc" id="L112">    }</span>
+
+    /** Replace only decision blocks while preserving all other architecture DSL. */
+    @Transactional(readOnly = true)
+    public String contributeTo(String dsl, String username, WorkspaceContext context) {
+<span class="fc" id="L117">        DocumentAst document = parseOrEmpty(dsl);</span>
+<span class="fc" id="L118">        List&lt;BlockAst&gt; blocks = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        for (BlockAst block : document.getBlocks()) {</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">            if (!MANAGED_BLOCKS.contains(block.getKind())) {</span>
+<span class="fc" id="L121">                blocks.add(block);</span>
+            }
+<span class="fc" id="L123">        }</span>
+<span class="fc" id="L124">        blocks.addAll(exportBlocks(username, context));</span>
+<span class="fc" id="L125">        return serializer.serialize(new DocumentAst(document.getMeta(), blocks));</span>
+    }
+
+    @Transactional(readOnly = true)
+    public List&lt;BlockAst&gt; exportBlocks(String username, WorkspaceContext context) {
+<span class="fc" id="L130">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L131">        List&lt;BlockAst&gt; blocks = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L133">        List&lt;SolutionDefinition&gt; solutions = solutionRepository</span>
+<span class="fc" id="L134">                .findByScopeKeyOrderByTitleAsc(scopeKey).stream()</span>
+<span class="fc" id="L135">                .sorted(Comparator.comparing(SolutionDefinition::getSolutionKey))</span>
+<span class="fc" id="L136">                .toList();</span>
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        for (SolutionDefinition solution : solutions) {</span>
+<span class="fc" id="L138">            blocks.add(block(SOLUTION_BLOCK, List.of(solution.getSolutionKey()), properties(</span>
+<span class="fc" id="L139">                    &quot;title&quot;, solution.getTitle(),</span>
+<span class="fc" id="L140">                    &quot;description&quot;, solution.getDescription(),</span>
+<span class="fc" id="L141">                    &quot;solutionType&quot;, name(solution.getSolutionType()),</span>
+<span class="fc" id="L142">                    &quot;operatingModel&quot;, name(solution.getOperatingModel()),</span>
+<span class="fc" id="L143">                    &quot;lifecycleStatus&quot;, name(solution.getLifecycleStatus()),</span>
+<span class="fc" id="L144">                    &quot;maturityLevel&quot;, string(solution.getMaturityLevel()),</span>
+<span class="fc" id="L145">                    &quot;owner&quot;, solution.getOwnerUsername(),</span>
+<span class="fc" id="L146">                    &quot;responsibleOrganization&quot;, solution.getResponsibleOrganization(),</span>
+<span class="fc" id="L147">                    &quot;costAmount&quot;, string(solution.getCostAmount()),</span>
+<span class="fc" id="L148">                    &quot;costCurrency&quot;, solution.getCostCurrency(),</span>
+<span class="fc" id="L149">                    &quot;riskNotes&quot;, solution.getRiskNotes(),</span>
+<span class="fc" id="L150">                    &quot;leadTimeDays&quot;, string(solution.getLeadTimeDays()),</span>
+<span class="fc" id="L151">                    &quot;extensionAttributes&quot;, solution.getExtensionAttributesJson(),</span>
+<span class="fc" id="L152">                    &quot;createdAt&quot;, string(solution.getCreatedAt()),</span>
+<span class="fc" id="L153">                    &quot;updatedAt&quot;, string(solution.getUpdatedAt()),</span>
+                    PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)));
+
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">            for (SolutionTaxonomyCoverage coverage : solutionCoverageRepository</span>
+<span class="fc" id="L157">                    .findBySolutionIdOrderByNodeCodeAsc(solution.getId())) {</span>
+<span class="nc" id="L158">                blocks.add(block(SOLUTION_TAXONOMY_BLOCK,</span>
+<span class="nc" id="L159">                        List.of(solution.getSolutionKey(), coverage.getNodeCode()), properties(</span>
+<span class="nc" id="L160">                                &quot;coveragePercent&quot;, string(coverage.getCoveragePercent()),</span>
+<span class="nc" id="L161">                                &quot;evidence&quot;, coverage.getEvidence(),</span>
+<span class="nc" id="L162">                                &quot;reviewStatus&quot;, name(coverage.getReviewStatus()),</span>
+<span class="nc" id="L163">                                &quot;updatedBy&quot;, coverage.getUpdatedBy(),</span>
+<span class="nc" id="L164">                                &quot;updatedAt&quot;, string(coverage.getUpdatedAt()),</span>
+                                PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)));
+<span class="nc" id="L166">            }</span>
+<span class="fc" id="L167">        }</span>
+
+<span class="fc" id="L169">        List&lt;ProductCatalogEntry&gt; products = productRepository</span>
+<span class="fc" id="L170">                .findByScopeKeyOrderByManufacturerAscProductNameAsc(scopeKey).stream()</span>
+<span class="fc" id="L171">                .sorted(Comparator.comparing(ProductCatalogEntry::getProductKey))</span>
+<span class="fc" id="L172">                .toList();</span>
+<span class="fc bfc" id="L173" title="All 2 branches covered.">        for (ProductCatalogEntry product : products) {</span>
+<span class="fc" id="L174">            blocks.add(block(PRODUCT_BLOCK, List.of(product.getProductKey()), properties(</span>
+<span class="fc" id="L175">                    &quot;manufacturer&quot;, product.getManufacturer(),</span>
+<span class="fc" id="L176">                    &quot;productFamily&quot;, product.getProductFamily(),</span>
+<span class="fc" id="L177">                    &quot;productName&quot;, product.getProductName(),</span>
+<span class="fc" id="L178">                    &quot;editionVersion&quot;, product.getEditionVersion(),</span>
+<span class="fc" id="L179">                    &quot;productStatus&quot;, name(product.getProductStatus()),</span>
+<span class="fc" id="L180">                    &quot;endOfSupport&quot;, string(product.getEndOfSupport()),</span>
+<span class="fc" id="L181">                    &quot;licenseModel&quot;, product.getLicenseModel(),</span>
+<span class="fc" id="L182">                    &quot;operatingModel&quot;, name(product.getOperatingModel()),</span>
+<span class="fc" id="L183">                    &quot;supportedPlatforms&quot;, product.getSupportedPlatforms(),</span>
+<span class="fc" id="L184">                    &quot;securityFeatures&quot;, product.getSecurityFeatures(),</span>
+<span class="fc" id="L185">                    &quot;complianceFeatures&quot;, product.getComplianceFeatures(),</span>
+<span class="fc" id="L186">                    &quot;costAmount&quot;, string(product.getCostAmount()),</span>
+<span class="fc" id="L187">                    &quot;costCurrency&quot;, product.getCostCurrency(),</span>
+<span class="fc" id="L188">                    &quot;costBasis&quot;, product.getCostBasis(),</span>
+<span class="fc" id="L189">                    &quot;sourceReference&quot;, product.getSourceReference(),</span>
+<span class="fc" id="L190">                    &quot;verifiedAt&quot;, string(product.getVerifiedAt()),</span>
+<span class="fc" id="L191">                    &quot;createdBy&quot;, product.getCreatedBy(),</span>
+<span class="fc" id="L192">                    &quot;createdAt&quot;, string(product.getCreatedAt()),</span>
+<span class="fc" id="L193">                    &quot;updatedAt&quot;, string(product.getUpdatedAt()),</span>
+                    PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)));
+
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">            for (ProductTaxonomyCoverage coverage : productCoverageRepository</span>
+<span class="fc" id="L197">                    .findByProductIdOrderByNodeCodeAsc(product.getId())) {</span>
+<span class="nc" id="L198">                blocks.add(block(PRODUCT_TAXONOMY_BLOCK,</span>
+<span class="nc" id="L199">                        List.of(product.getProductKey(), coverage.getNodeCode()), properties(</span>
+<span class="nc" id="L200">                                &quot;coveragePercent&quot;, string(coverage.getCoveragePercent()),</span>
+<span class="nc" id="L201">                                &quot;evidence&quot;, coverage.getEvidence(),</span>
+<span class="nc" id="L202">                                &quot;reviewStatus&quot;, name(coverage.getReviewStatus()),</span>
+<span class="nc" id="L203">                                &quot;updatedBy&quot;, coverage.getUpdatedBy(),</span>
+<span class="nc" id="L204">                                &quot;updatedAt&quot;, string(coverage.getUpdatedAt()),</span>
+                                PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)));
+<span class="nc" id="L206">            }</span>
+<span class="fc" id="L207">        }</span>
+
+<span class="fc bfc" id="L209" title="All 2 branches covered.">        for (ArchitectureProject project : projectRepository</span>
+<span class="fc" id="L210">                .findByScopeKeyOrderByUpdatedAtDesc(scopeKey).stream()</span>
+<span class="fc" id="L211">                .sorted(Comparator.comparing(ArchitectureProject::getProjectKey))</span>
+<span class="fc" id="L212">                .toList()) {</span>
+<span class="fc bfc" id="L213" title="All 2 branches covered.">            for (ProjectSolution projectSolution : projectSolutionRepository</span>
+<span class="fc" id="L214">                    .findByProjectIdOrderByPriorityDescSolutionTitleAsc(project.getId())) {</span>
+<span class="fc" id="L215">                String solutionKey = projectSolution.getSolution().getSolutionKey();</span>
+<span class="fc" id="L216">                blocks.add(block(PROJECT_SOLUTION_BLOCK,</span>
+<span class="fc" id="L217">                        List.of(project.getProjectKey(), solutionKey), properties(</span>
+<span class="fc" id="L218">                                &quot;status&quot;, name(projectSolution.getStatus()),</span>
+<span class="fc" id="L219">                                &quot;actionStatus&quot;, name(projectSolution.getActionStatus()),</span>
+<span class="fc" id="L220">                                &quot;priority&quot;, string(projectSolution.getPriority()),</span>
+<span class="fc" id="L221">                                &quot;rationale&quot;, projectSolution.getRationale(),</span>
+<span class="fc" id="L222">                                &quot;createdBy&quot;, projectSolution.getCreatedBy(),</span>
+<span class="fc" id="L223">                                &quot;createdAt&quot;, string(projectSolution.getCreatedAt()),</span>
+<span class="fc" id="L224">                                &quot;updatedAt&quot;, string(projectSolution.getUpdatedAt()),</span>
+                                PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)));
+
+<span class="pc bpc" id="L227" title="1 of 2 branches missed.">                for (RequirementSolutionLink link : requirementLinkRepository</span>
+<span class="fc" id="L228">                        .findByProjectSolutionIdOrderByRequirementRequirementKeyAsc(</span>
+<span class="fc" id="L229">                                projectSolution.getId())) {</span>
+<span class="nc" id="L230">                    blocks.add(block(REQUIREMENT_SOLUTION_BLOCK,</span>
+<span class="nc" id="L231">                            List.of(project.getProjectKey(),</span>
+<span class="nc" id="L232">                                    link.getRequirement().getRequirementKey(), solutionKey), properties(</span>
+<span class="nc" id="L233">                                    &quot;sourceSnapshotId&quot;, link.getSnapshotId(),</span>
+<span class="nc" id="L234">                                    &quot;coveragePercent&quot;, string(link.getCoveragePercent()),</span>
+<span class="nc" id="L235">                                    &quot;role&quot;, name(link.getRole()),</span>
+<span class="nc" id="L236">                                    &quot;reviewStatus&quot;, name(link.getReviewStatus()),</span>
+<span class="nc" id="L237">                                    &quot;evidence&quot;, link.getEvidence(),</span>
+<span class="nc" id="L238">                                    &quot;updatedBy&quot;, link.getUpdatedBy(),</span>
+<span class="nc" id="L239">                                    &quot;updatedAt&quot;, string(link.getUpdatedAt()),</span>
+                                    PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)));
+<span class="nc" id="L241">                }</span>
+
+<span class="fc bfc" id="L243" title="All 2 branches covered.">                for (SolutionProductCandidate candidate : candidateRepository</span>
+<span class="fc" id="L244">                        .findByProjectSolutionIdOrderByCoveragePercentDesc(projectSolution.getId())) {</span>
+<span class="fc" id="L245">                    blocks.add(block(SOLUTION_PRODUCT_BLOCK,</span>
+<span class="fc" id="L246">                            List.of(project.getProjectKey(), solutionKey,</span>
+<span class="fc" id="L247">                                    candidate.getProduct().getProductKey()), properties(</span>
+<span class="fc" id="L248">                                    &quot;coveragePercent&quot;, string(candidate.getCoveragePercent()),</span>
+<span class="fc" id="L249">                                    &quot;hardExclusions&quot;, candidate.getHardExclusions(),</span>
+<span class="fc" id="L250">                                    &quot;strengths&quot;, candidate.getStrengths(),</span>
+<span class="fc" id="L251">                                    &quot;weaknesses&quot;, candidate.getWeaknesses(),</span>
+<span class="fc" id="L252">                                    &quot;openEvidence&quot;, candidate.getOpenEvidence(),</span>
+<span class="fc" id="L253">                                    &quot;confidence&quot;, string(candidate.getConfidence()),</span>
+<span class="fc" id="L254">                                    &quot;reviewStatus&quot;, name(candidate.getReviewStatus()),</span>
+<span class="fc" id="L255">                                    &quot;selectionStatus&quot;, name(candidate.getSelectionStatus()),</span>
+<span class="fc" id="L256">                                    &quot;updatedBy&quot;, candidate.getUpdatedBy(),</span>
+<span class="fc" id="L257">                                    &quot;updatedAt&quot;, string(candidate.getUpdatedAt()),</span>
+                                    PortfolioGitService.MANAGED_PROPERTY, &quot;true&quot;)));
+<span class="fc" id="L259">                }</span>
+<span class="fc" id="L260">            }</span>
+<span class="fc" id="L261">        }</span>
+<span class="fc" id="L262">        return List.copyOf(blocks);</span>
+    }
+
+    /** Materialize all durable decisions after projects and requirements exist. */
+    @Transactional
+    public DecisionMaterializeResult materialize(
+            String dsl, String username, WorkspaceContext context) {
+<span class="fc" id="L269">        DocumentAst document = parser.parse(dsl, &quot;portfolio-decisions.taxdsl&quot;);</span>
+<span class="fc" id="L270">        String scopeKey = PortfolioScope.key(username, context);</span>
+<span class="fc" id="L271">        String workspaceId = PortfolioScope.workspaceId(context);</span>
+<span class="fc" id="L272">        String owner = PortfolioScope.username(username, context);</span>
+<span class="fc" id="L273">        Instant now = Instant.now();</span>
+<span class="fc" id="L274">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+
+<span class="fc" id="L276">        Map&lt;String, SolutionDefinition&gt; solutions = materializeSolutions(</span>
+                document, scopeKey, workspaceId, owner, now, warnings);
+<span class="fc" id="L278">        Map&lt;String, ProductCatalogEntry&gt; products = materializeProducts(</span>
+                document, scopeKey, workspaceId, owner, now, warnings);
+<span class="fc" id="L280">        Map&lt;String, ArchitectureProject&gt; projects = projects(scopeKey);</span>
+<span class="fc" id="L281">        Map&lt;String, ProjectSolution&gt; projectSolutions = materializeProjectSolutions(</span>
+                document, projects, solutions, owner, now, warnings);
+<span class="fc" id="L283">        int requirementLinks = materializeRequirementLinks(</span>
+                document, projects, projectSolutions, owner, now, warnings);
+<span class="fc" id="L285">        int productCandidates = materializeProductCandidates(</span>
+                document, products, projectSolutions, owner, now, warnings);
+
+<span class="fc" id="L288">        return new DecisionMaterializeResult(</span>
+<span class="fc" id="L289">                solutions.size(),</span>
+<span class="fc" id="L290">                products.size(),</span>
+<span class="fc" id="L291">                projectSolutions.size(),</span>
+                requirementLinks,
+                productCandidates,
+<span class="fc" id="L294">                List.copyOf(warnings));</span>
+    }
+
+    private Map&lt;String, SolutionDefinition&gt; materializeSolutions(
+            DocumentAst document,
+            String scopeKey,
+            String workspaceId,
+            String owner,
+            Instant now,
+            List&lt;String&gt; warnings) {
+<span class="fc" id="L304">        Map&lt;String, SolutionDefinition&gt; solutions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L305" title="All 2 branches covered.">        for (BlockAst block : document.blocksOfKind(SOLUTION_BLOCK)) {</span>
+<span class="fc" id="L306">            String key = header(block, 0, warnings);</span>
+<span class="pc bpc" id="L307" title="1 of 2 branches missed.">            if (key == null) continue;</span>
+            try {
+<span class="fc" id="L309">                SolutionDefinition solution = solutionRepository</span>
+<span class="fc" id="L310">                        .findByScopeKeyAndSolutionKeyIgnoreCase(scopeKey, key)</span>
+<span class="fc" id="L311">                        .orElse(null);</span>
+<span class="pc bpc" id="L312" title="1 of 2 branches missed.">                if (solution == null) {</span>
+<span class="fc" id="L313">                    solution = new SolutionDefinition(</span>
+                            scopeKey,
+                            workspaceId,
+                            key,
+<span class="fc" id="L317">                            required(block, &quot;title&quot;, key),</span>
+<span class="fc" id="L318">                            block.property(&quot;description&quot;),</span>
+<span class="fc" id="L319">                            enumValue(SolutionType.class, block.property(&quot;solutionType&quot;), SolutionType.OTHER),</span>
+<span class="fc" id="L320">                            enumValue(OperatingModel.class, block.property(&quot;operatingModel&quot;), OperatingModel.UNSPECIFIED),</span>
+<span class="fc" id="L321">                            enumValue(LifecycleStatus.class, block.property(&quot;lifecycleStatus&quot;), LifecycleStatus.PLANNED),</span>
+<span class="fc" id="L322">                            clamp(integer(block.property(&quot;maturityLevel&quot;), 0), 0, 5),</span>
+<span class="fc" id="L323">                            valueOrDefault(block.property(&quot;owner&quot;), owner),</span>
+<span class="fc" id="L324">                            block.property(&quot;responsibleOrganization&quot;),</span>
+                            now);
+                }
+<span class="fc" id="L327">                solution.update(</span>
+<span class="fc" id="L328">                        required(block, &quot;title&quot;, solution.getTitle()),</span>
+<span class="fc" id="L329">                        block.property(&quot;description&quot;),</span>
+<span class="fc" id="L330">                        enumValue(SolutionType.class, block.property(&quot;solutionType&quot;), solution.getSolutionType()),</span>
+<span class="fc" id="L331">                        enumValue(OperatingModel.class, block.property(&quot;operatingModel&quot;), solution.getOperatingModel()),</span>
+<span class="fc" id="L332">                        enumValue(LifecycleStatus.class, block.property(&quot;lifecycleStatus&quot;), solution.getLifecycleStatus()),</span>
+<span class="fc" id="L333">                        clamp(integer(block.property(&quot;maturityLevel&quot;), solution.getMaturityLevel()), 0, 5),</span>
+<span class="fc" id="L334">                        valueOrDefault(block.property(&quot;owner&quot;), solution.getOwnerUsername()),</span>
+<span class="fc" id="L335">                        block.property(&quot;responsibleOrganization&quot;),</span>
+<span class="fc" id="L336">                        decimal(block.property(&quot;costAmount&quot;)),</span>
+<span class="fc" id="L337">                        normalizeCurrency(block.property(&quot;costCurrency&quot;)),</span>
+<span class="fc" id="L338">                        block.property(&quot;riskNotes&quot;),</span>
+<span class="fc" id="L339">                        nullableInteger(block.property(&quot;leadTimeDays&quot;)),</span>
+<span class="fc" id="L340">                        block.property(&quot;extensionAttributes&quot;),</span>
+                        now);
+<span class="fc" id="L342">                solution = solutionRepository.save(solution);</span>
+<span class="fc" id="L343">                solutions.put(key, solution);</span>
+<span class="nc" id="L344">            } catch (RuntimeException exception) {</span>
+<span class="nc" id="L345">                warnings.add(identity(block) + &quot;: &quot; + exception.getMessage());</span>
+<span class="fc" id="L346">            }</span>
+<span class="fc" id="L347">        }</span>
+
+<span class="pc bpc" id="L349" title="1 of 2 branches missed.">        for (BlockAst block : document.blocksOfKind(SOLUTION_TAXONOMY_BLOCK)) {</span>
+<span class="nc" id="L350">            String solutionKey = header(block, 0, warnings);</span>
+<span class="nc" id="L351">            String nodeCode = header(block, 1, warnings);</span>
+<span class="nc" id="L352">            SolutionDefinition solution = solutions.get(solutionKey);</span>
+<span class="nc bnc" id="L353" title="All 4 branches missed.">            if (solution == null || nodeCode == null) {</span>
+<span class="nc" id="L354">                warnings.add(identity(block) + &quot; references unavailable solution data&quot;);</span>
+<span class="nc" id="L355">                continue;</span>
+            }
+<span class="nc" id="L357">            SolutionTaxonomyCoverage coverage = solutionCoverageRepository</span>
+<span class="nc" id="L358">                    .findBySolutionIdAndNodeCode(solution.getId(), nodeCode)</span>
+<span class="nc" id="L359">                    .orElse(null);</span>
+<span class="nc" id="L360">            int percent = clamp(integer(block.property(&quot;coveragePercent&quot;), 0), 0, 100);</span>
+<span class="nc" id="L361">            ReviewStatus review = enumValue(</span>
+<span class="nc" id="L362">                    ReviewStatus.class, block.property(&quot;reviewStatus&quot;), ReviewStatus.PROPOSED);</span>
+<span class="nc bnc" id="L363" title="All 2 branches missed.">            if (coverage == null) {</span>
+<span class="nc" id="L364">                coverage = new SolutionTaxonomyCoverage(</span>
+<span class="nc" id="L365">                        solution, nodeCode, percent, block.property(&quot;evidence&quot;), review,</span>
+<span class="nc" id="L366">                        valueOrDefault(block.property(&quot;updatedBy&quot;), owner), now);</span>
+            } else {
+<span class="nc" id="L368">                coverage.update(</span>
+                        percent,
+<span class="nc" id="L370">                        block.property(&quot;evidence&quot;),</span>
+                        review,
+<span class="nc" id="L372">                        valueOrDefault(block.property(&quot;updatedBy&quot;), owner),</span>
+                        now);
+            }
+<span class="nc" id="L375">            solutionCoverageRepository.save(coverage);</span>
+<span class="nc" id="L376">        }</span>
+<span class="fc" id="L377">        return solutions;</span>
+    }
+
+    private Map&lt;String, ProductCatalogEntry&gt; materializeProducts(
+            DocumentAst document,
+            String scopeKey,
+            String workspaceId,
+            String owner,
+            Instant now,
+            List&lt;String&gt; warnings) {
+<span class="fc" id="L387">        Map&lt;String, ProductCatalogEntry&gt; products = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">        for (BlockAst block : document.blocksOfKind(PRODUCT_BLOCK)) {</span>
+<span class="fc" id="L389">            String key = header(block, 0, warnings);</span>
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">            if (key == null) continue;</span>
+<span class="fc" id="L391">            String sourceReference = block.property(&quot;sourceReference&quot;);</span>
+<span class="fc" id="L392">            Instant verifiedAt = instant(block.property(&quot;verifiedAt&quot;));</span>
+<span class="pc bpc" id="L393" title="2 of 4 branches missed.">            if (isBlank(sourceReference) || verifiedAt == null) {</span>
+<span class="nc" id="L394">                warnings.add(identity(block) + &quot; requires sourceReference and verifiedAt&quot;);</span>
+<span class="nc" id="L395">                continue;</span>
+            }
+            try {
+<span class="fc" id="L398">                ProductCatalogEntry product = productRepository</span>
+<span class="fc" id="L399">                        .findByScopeKeyAndProductKeyIgnoreCase(scopeKey, key)</span>
+<span class="fc" id="L400">                        .orElse(null);</span>
+<span class="pc bpc" id="L401" title="1 of 2 branches missed.">                if (product == null) {</span>
+<span class="fc" id="L402">                    product = new ProductCatalogEntry(</span>
+                            scopeKey,
+                            workspaceId,
+                            key,
+<span class="fc" id="L406">                            required(block, &quot;manufacturer&quot;, &quot;Unknown&quot;),</span>
+<span class="fc" id="L407">                            block.property(&quot;productFamily&quot;),</span>
+<span class="fc" id="L408">                            required(block, &quot;productName&quot;, key),</span>
+<span class="fc" id="L409">                            block.property(&quot;editionVersion&quot;),</span>
+<span class="fc" id="L410">                            enumValue(ProductStatus.class, block.property(&quot;productStatus&quot;), ProductStatus.CANDIDATE),</span>
+<span class="fc" id="L411">                            date(block.property(&quot;endOfSupport&quot;)),</span>
+<span class="fc" id="L412">                            block.property(&quot;licenseModel&quot;),</span>
+<span class="fc" id="L413">                            enumValue(OperatingModel.class, block.property(&quot;operatingModel&quot;), OperatingModel.UNSPECIFIED),</span>
+<span class="fc" id="L414">                            block.property(&quot;supportedPlatforms&quot;),</span>
+<span class="fc" id="L415">                            block.property(&quot;securityFeatures&quot;),</span>
+<span class="fc" id="L416">                            block.property(&quot;complianceFeatures&quot;),</span>
+<span class="fc" id="L417">                            decimal(block.property(&quot;costAmount&quot;)),</span>
+<span class="fc" id="L418">                            normalizeCurrency(block.property(&quot;costCurrency&quot;)),</span>
+<span class="fc" id="L419">                            block.property(&quot;costBasis&quot;),</span>
+                            sourceReference,
+                            verifiedAt,
+<span class="fc" id="L422">                            valueOrDefault(block.property(&quot;createdBy&quot;), owner),</span>
+                            now);
+                } else {
+<span class="nc" id="L425">                    product.update(</span>
+<span class="nc" id="L426">                            required(block, &quot;manufacturer&quot;, product.getManufacturer()),</span>
+<span class="nc" id="L427">                            block.property(&quot;productFamily&quot;),</span>
+<span class="nc" id="L428">                            required(block, &quot;productName&quot;, product.getProductName()),</span>
+<span class="nc" id="L429">                            block.property(&quot;editionVersion&quot;),</span>
+<span class="nc" id="L430">                            enumValue(ProductStatus.class, block.property(&quot;productStatus&quot;), product.getProductStatus()),</span>
+<span class="nc" id="L431">                            date(block.property(&quot;endOfSupport&quot;)),</span>
+<span class="nc" id="L432">                            block.property(&quot;licenseModel&quot;),</span>
+<span class="nc" id="L433">                            enumValue(OperatingModel.class, block.property(&quot;operatingModel&quot;), product.getOperatingModel()),</span>
+<span class="nc" id="L434">                            block.property(&quot;supportedPlatforms&quot;),</span>
+<span class="nc" id="L435">                            block.property(&quot;securityFeatures&quot;),</span>
+<span class="nc" id="L436">                            block.property(&quot;complianceFeatures&quot;),</span>
+<span class="nc" id="L437">                            decimal(block.property(&quot;costAmount&quot;)),</span>
+<span class="nc" id="L438">                            normalizeCurrency(block.property(&quot;costCurrency&quot;)),</span>
+<span class="nc" id="L439">                            block.property(&quot;costBasis&quot;),</span>
+                            sourceReference,
+                            verifiedAt,
+                            now);
+                }
+<span class="fc" id="L444">                product = productRepository.save(product);</span>
+<span class="fc" id="L445">                products.put(key, product);</span>
+<span class="nc" id="L446">            } catch (RuntimeException exception) {</span>
+<span class="nc" id="L447">                warnings.add(identity(block) + &quot;: &quot; + exception.getMessage());</span>
+<span class="fc" id="L448">            }</span>
+<span class="fc" id="L449">        }</span>
+
+<span class="pc bpc" id="L451" title="1 of 2 branches missed.">        for (BlockAst block : document.blocksOfKind(PRODUCT_TAXONOMY_BLOCK)) {</span>
+<span class="nc" id="L452">            String productKey = header(block, 0, warnings);</span>
+<span class="nc" id="L453">            String nodeCode = header(block, 1, warnings);</span>
+<span class="nc" id="L454">            ProductCatalogEntry product = products.get(productKey);</span>
+<span class="nc bnc" id="L455" title="All 4 branches missed.">            if (product == null || nodeCode == null) {</span>
+<span class="nc" id="L456">                warnings.add(identity(block) + &quot; references unavailable product data&quot;);</span>
+<span class="nc" id="L457">                continue;</span>
+            }
+<span class="nc" id="L459">            ProductTaxonomyCoverage coverage = productCoverageRepository</span>
+<span class="nc" id="L460">                    .findByProductIdAndNodeCode(product.getId(), nodeCode)</span>
+<span class="nc" id="L461">                    .orElse(null);</span>
+<span class="nc" id="L462">            int percent = clamp(integer(block.property(&quot;coveragePercent&quot;), 0), 0, 100);</span>
+<span class="nc" id="L463">            ReviewStatus review = enumValue(</span>
+<span class="nc" id="L464">                    ReviewStatus.class, block.property(&quot;reviewStatus&quot;), ReviewStatus.PROPOSED);</span>
+<span class="nc bnc" id="L465" title="All 2 branches missed.">            if (coverage == null) {</span>
+<span class="nc" id="L466">                coverage = new ProductTaxonomyCoverage(</span>
+<span class="nc" id="L467">                        product, nodeCode, percent, block.property(&quot;evidence&quot;), review,</span>
+<span class="nc" id="L468">                        valueOrDefault(block.property(&quot;updatedBy&quot;), owner), now);</span>
+            } else {
+<span class="nc" id="L470">                coverage.update(</span>
+                        percent,
+<span class="nc" id="L472">                        block.property(&quot;evidence&quot;),</span>
+                        review,
+<span class="nc" id="L474">                        valueOrDefault(block.property(&quot;updatedBy&quot;), owner),</span>
+                        now);
+            }
+<span class="nc" id="L477">            productCoverageRepository.save(coverage);</span>
+<span class="nc" id="L478">        }</span>
+<span class="fc" id="L479">        return products;</span>
+    }
+
+    private Map&lt;String, ArchitectureProject&gt; projects(String scopeKey) {
+<span class="fc" id="L483">        Map&lt;String, ArchitectureProject&gt; projects = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">        for (ArchitectureProject project : projectRepository</span>
+<span class="fc" id="L485">                .findByScopeKeyOrderByUpdatedAtDesc(scopeKey)) {</span>
+<span class="fc" id="L486">            projects.put(project.getProjectKey(), project);</span>
+<span class="fc" id="L487">        }</span>
+<span class="fc" id="L488">        return projects;</span>
+    }
+
+    private Map&lt;String, ProjectSolution&gt; materializeProjectSolutions(
+            DocumentAst document,
+            Map&lt;String, ArchitectureProject&gt; projects,
+            Map&lt;String, SolutionDefinition&gt; solutions,
+            String owner,
+            Instant now,
+            List&lt;String&gt; warnings) {
+<span class="fc" id="L498">        Map&lt;String, ProjectSolution&gt; projectSolutions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L499" title="All 2 branches covered.">        for (BlockAst block : document.blocksOfKind(PROJECT_SOLUTION_BLOCK)) {</span>
+<span class="fc" id="L500">            String projectKey = header(block, 0, warnings);</span>
+<span class="fc" id="L501">            String solutionKey = header(block, 1, warnings);</span>
+<span class="fc" id="L502">            ArchitectureProject project = projects.get(projectKey);</span>
+<span class="fc" id="L503">            SolutionDefinition solution = solutions.get(solutionKey);</span>
+<span class="pc bpc" id="L504" title="2 of 4 branches missed.">            if (project == null || solution == null) {</span>
+<span class="nc" id="L505">                warnings.add(identity(block) + &quot; references unavailable project or solution data&quot;);</span>
+<span class="nc" id="L506">                continue;</span>
+            }
+<span class="fc" id="L508">            ProjectSolution projectSolution = projectSolutionRepository</span>
+<span class="fc" id="L509">                    .findByProjectIdAndSolutionId(project.getId(), solution.getId())</span>
+<span class="fc" id="L510">                    .orElse(null);</span>
+<span class="fc" id="L511">            ProjectSolutionStatus status = enumValue(</span>
+<span class="fc" id="L512">                    ProjectSolutionStatus.class, block.property(&quot;status&quot;), ProjectSolutionStatus.PROPOSED);</span>
+<span class="fc" id="L513">            ActionStatus action = enumValue(</span>
+<span class="fc" id="L514">                    ActionStatus.class, block.property(&quot;actionStatus&quot;), ActionStatus.UNDECIDED);</span>
+<span class="fc" id="L515">            int priority = clamp(integer(block.property(&quot;priority&quot;), 50), 0, 100);</span>
+<span class="pc bpc" id="L516" title="1 of 2 branches missed.">            if (projectSolution == null) {</span>
+<span class="fc" id="L517">                projectSolution = new ProjectSolution(</span>
+                        project,
+                        solution,
+                        status,
+                        action,
+                        priority,
+<span class="fc" id="L523">                        block.property(&quot;rationale&quot;),</span>
+<span class="fc" id="L524">                        valueOrDefault(block.property(&quot;createdBy&quot;), owner),</span>
+                        now);
+            } else {
+<span class="nc" id="L527">                projectSolution.update(</span>
+                        status,
+                        action,
+<span class="nc" id="L530">                        priority,</span>
+<span class="nc" id="L531">                        block.property(&quot;rationale&quot;),</span>
+                        now);
+            }
+<span class="fc" id="L534">            projectSolution = projectSolutionRepository.save(projectSolution);</span>
+<span class="fc" id="L535">            projectSolutions.put(composite(projectKey, solutionKey), projectSolution);</span>
+<span class="fc" id="L536">        }</span>
+<span class="fc" id="L537">        return projectSolutions;</span>
+    }
+
+    private int materializeRequirementLinks(
+            DocumentAst document,
+            Map&lt;String, ArchitectureProject&gt; projects,
+            Map&lt;String, ProjectSolution&gt; projectSolutions,
+            String owner,
+            Instant now,
+            List&lt;String&gt; warnings) {
+<span class="fc" id="L547">        int count = 0;</span>
+<span class="pc bpc" id="L548" title="1 of 2 branches missed.">        for (BlockAst block : document.blocksOfKind(REQUIREMENT_SOLUTION_BLOCK)) {</span>
+<span class="nc" id="L549">            String projectKey = header(block, 0, warnings);</span>
+<span class="nc" id="L550">            String requirementKey = header(block, 1, warnings);</span>
+<span class="nc" id="L551">            String solutionKey = header(block, 2, warnings);</span>
+<span class="nc" id="L552">            ArchitectureProject project = projects.get(projectKey);</span>
+<span class="nc" id="L553">            ProjectSolution projectSolution = projectSolutions.get(composite(projectKey, solutionKey));</span>
+<span class="nc bnc" id="L554" title="All 6 branches missed.">            if (project == null || projectSolution == null || requirementKey == null) {</span>
+<span class="nc" id="L555">                warnings.add(identity(block) + &quot; references unavailable project data&quot;);</span>
+<span class="nc" id="L556">                continue;</span>
+            }
+<span class="nc" id="L558">            ProjectRequirement requirement = requirementRepository</span>
+<span class="nc" id="L559">                    .findByProjectIdAndRequirementKeyIgnoreCase(project.getId(), requirementKey)</span>
+<span class="nc" id="L560">                    .orElse(null);</span>
+<span class="nc bnc" id="L561" title="All 2 branches missed.">            if (requirement == null) {</span>
+<span class="nc" id="L562">                warnings.add(identity(block) + &quot; references unavailable requirement data&quot;);</span>
+<span class="nc" id="L563">                continue;</span>
+            }
+<span class="nc" id="L565">            RequirementSolutionLink link = requirementLinkRepository</span>
+<span class="nc" id="L566">                    .findByProjectSolutionIdAndRequirementId(</span>
+<span class="nc" id="L567">                            projectSolution.getId(), requirement.getId())</span>
+<span class="nc" id="L568">                    .orElse(null);</span>
+<span class="nc" id="L569">            String sourceSnapshotId = block.property(&quot;sourceSnapshotId&quot;);</span>
+<span class="nc" id="L570">            int percent = clamp(integer(block.property(&quot;coveragePercent&quot;), 0), 0, 100);</span>
+<span class="nc" id="L571">            RequirementSolutionRole role = enumValue(</span>
+<span class="nc" id="L572">                    RequirementSolutionRole.class, block.property(&quot;role&quot;), RequirementSolutionRole.USES);</span>
+<span class="nc" id="L573">            ReviewStatus review = enumValue(</span>
+<span class="nc" id="L574">                    ReviewStatus.class, block.property(&quot;reviewStatus&quot;), ReviewStatus.PROPOSED);</span>
+<span class="nc bnc" id="L575" title="All 2 branches missed.">            if (link == null) {</span>
+<span class="nc" id="L576">                link = new RequirementSolutionLink(</span>
+                        projectSolution,
+                        requirement,
+                        sourceSnapshotId,
+                        percent,
+                        role,
+                        review,
+<span class="nc" id="L583">                        block.property(&quot;evidence&quot;),</span>
+<span class="nc" id="L584">                        valueOrDefault(block.property(&quot;updatedBy&quot;), owner),</span>
+                        now);
+<span class="nc" id="L586">                count++;</span>
+            } else {
+<span class="nc" id="L588">                link.update(</span>
+                        sourceSnapshotId,
+                        percent,
+                        role,
+                        review,
+<span class="nc" id="L593">                        block.property(&quot;evidence&quot;),</span>
+<span class="nc" id="L594">                        valueOrDefault(block.property(&quot;updatedBy&quot;), owner),</span>
+                        now);
+            }
+<span class="nc" id="L597">            requirementLinkRepository.save(link);</span>
+<span class="nc" id="L598">        }</span>
+<span class="fc" id="L599">        return count;</span>
+    }
+
+    private int materializeProductCandidates(
+            DocumentAst document,
+            Map&lt;String, ProductCatalogEntry&gt; products,
+            Map&lt;String, ProjectSolution&gt; projectSolutions,
+            String owner,
+            Instant now,
+            List&lt;String&gt; warnings) {
+<span class="fc" id="L609">        int count = 0;</span>
+<span class="fc bfc" id="L610" title="All 2 branches covered.">        for (BlockAst block : document.blocksOfKind(SOLUTION_PRODUCT_BLOCK)) {</span>
+<span class="fc" id="L611">            String projectKey = header(block, 0, warnings);</span>
+<span class="fc" id="L612">            String solutionKey = header(block, 1, warnings);</span>
+<span class="fc" id="L613">            String productKey = header(block, 2, warnings);</span>
+<span class="fc" id="L614">            ProjectSolution projectSolution = projectSolutions.get(composite(projectKey, solutionKey));</span>
+<span class="fc" id="L615">            ProductCatalogEntry product = products.get(productKey);</span>
+<span class="pc bpc" id="L616" title="2 of 4 branches missed.">            if (projectSolution == null || product == null) {</span>
+<span class="nc" id="L617">                warnings.add(identity(block) + &quot; references unavailable solution or product data&quot;);</span>
+<span class="nc" id="L618">                continue;</span>
+            }
+<span class="fc" id="L620">            SolutionProductCandidate candidate = candidateRepository</span>
+<span class="fc" id="L621">                    .findByProjectSolutionIdAndProductId(</span>
+<span class="fc" id="L622">                            projectSolution.getId(), product.getId())</span>
+<span class="fc" id="L623">                    .orElse(null);</span>
+<span class="fc" id="L624">            int percent = clamp(integer(block.property(&quot;coveragePercent&quot;), 0), 0, 100);</span>
+<span class="fc" id="L625">            double confidence = clamp(decimalDouble(block.property(&quot;confidence&quot;), 0.0), 0.0, 1.0);</span>
+<span class="fc" id="L626">            ReviewStatus review = enumValue(</span>
+<span class="fc" id="L627">                    ReviewStatus.class, block.property(&quot;reviewStatus&quot;), ReviewStatus.PROPOSED);</span>
+<span class="fc" id="L628">            ProductSelectionStatus selection = enumValue(</span>
+                    ProductSelectionStatus.class,
+<span class="fc" id="L630">                    block.property(&quot;selectionStatus&quot;),</span>
+                    ProductSelectionStatus.CANDIDATE);
+<span class="fc" id="L632">            String exclusions = block.property(&quot;hardExclusions&quot;);</span>
+<span class="pc bpc" id="L633" title="2 of 4 branches missed.">            if (selection == ProductSelectionStatus.SELECTED</span>
+<span class="pc bpc" id="L634" title="1 of 2 branches missed.">                    &amp;&amp; (review != ReviewStatus.CONFIRMED || !isBlank(exclusions))) {</span>
+<span class="nc" id="L635">                warnings.add(identity(block)</span>
+                        + &quot; cannot remain SELECTED without confirmed review and no hard exclusions&quot;);
+<span class="nc" id="L637">                selection = ProductSelectionStatus.CANDIDATE;</span>
+            }
+<span class="pc bpc" id="L639" title="1 of 2 branches missed.">            if (candidate == null) {</span>
+<span class="fc" id="L640">                candidate = new SolutionProductCandidate(</span>
+                        projectSolution,
+                        product,
+                        percent,
+                        exclusions,
+<span class="fc" id="L645">                        block.property(&quot;strengths&quot;),</span>
+<span class="fc" id="L646">                        block.property(&quot;weaknesses&quot;),</span>
+<span class="fc" id="L647">                        block.property(&quot;openEvidence&quot;),</span>
+                        confidence,
+                        review,
+                        selection,
+<span class="fc" id="L651">                        valueOrDefault(block.property(&quot;updatedBy&quot;), owner),</span>
+                        now);
+<span class="fc" id="L653">                count++;</span>
+            } else {
+<span class="nc" id="L655">                candidate.update(</span>
+                        percent,
+                        exclusions,
+<span class="nc" id="L658">                        block.property(&quot;strengths&quot;),</span>
+<span class="nc" id="L659">                        block.property(&quot;weaknesses&quot;),</span>
+<span class="nc" id="L660">                        block.property(&quot;openEvidence&quot;),</span>
+                        confidence,
+                        review,
+                        selection,
+<span class="nc" id="L664">                        valueOrDefault(block.property(&quot;updatedBy&quot;), owner),</span>
+                        now);
+            }
+<span class="fc" id="L667">            candidateRepository.save(candidate);</span>
+<span class="fc" id="L668">        }</span>
+<span class="fc" id="L669">        return count;</span>
+    }
+
+    private DocumentAst parseOrEmpty(String dsl) {
+<span class="pc bpc" id="L673" title="2 of 4 branches missed.">        if (dsl == null || dsl.isBlank()) {</span>
+<span class="nc" id="L674">            return new DocumentAst(</span>
+                    new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION,
+                            &quot;default&quot;, GENERATED),
+<span class="nc" id="L677">                    List.of());</span>
+        }
+<span class="fc" id="L679">        return parser.parse(dsl, &quot;architecture.taxdsl&quot;);</span>
+    }
+
+    private static BlockAst block(String kind, List&lt;String&gt; header, List&lt;PropertyAst&gt; properties) {
+<span class="fc" id="L683">        return new BlockAst(kind, header, properties, List.of(), Map.of(), GENERATED);</span>
+    }
+
+    private static List&lt;PropertyAst&gt; properties(String... pairs) {
+<span class="fc" id="L687">        List&lt;PropertyAst&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L688" title="All 2 branches covered.">        for (int index = 0; index + 1 &lt; pairs.length; index += 2) {</span>
+<span class="fc bfc" id="L689" title="All 2 branches covered.">            if (pairs[index + 1] != null) {</span>
+<span class="fc" id="L690">                result.add(new PropertyAst(pairs[index], pairs[index + 1], GENERATED));</span>
+            }
+        }
+<span class="fc" id="L693">        return result;</span>
+    }
+
+    private static String header(BlockAst block, int index, List&lt;String&gt; warnings) {
+<span class="pc bpc" id="L697" title="1 of 2 branches missed.">        if (block.getHeaderTokens().size() &lt;= index) {</span>
+<span class="nc" id="L698">            warnings.add(&quot;Invalid header for &quot; + identity(block));</span>
+<span class="nc" id="L699">            return null;</span>
+        }
+<span class="fc" id="L701">        return block.getHeaderTokens().get(index);</span>
+    }
+
+    private static String required(BlockAst block, String property, String fallback) {
+<span class="fc" id="L705">        String value = block.property(property);</span>
+<span class="pc bpc" id="L706" title="1 of 2 branches missed.">        return isBlank(value) ? fallback : value;</span>
+    }
+
+    private static String identity(BlockAst block) {
+<span class="nc" id="L710">        return block.getKind() + &quot; &quot; + String.join(&quot; &quot;, block.getHeaderTokens());</span>
+    }
+
+    private static String composite(String left, String right) {
+<span class="fc" id="L714">        return left + '\u0000' + right;</span>
+    }
+
+    private static String name(Enum&lt;?&gt; value) {
+<span class="pc bpc" id="L718" title="1 of 2 branches missed.">        return value == null ? null : value.name();</span>
+    }
+
+    private static String string(Object value) {
+<span class="fc bfc" id="L722" title="All 2 branches covered.">        return value == null ? null : value.toString();</span>
+    }
+
+    private static boolean isBlank(String value) {
+<span class="pc bpc" id="L726" title="1 of 4 branches missed.">        return value == null || value.isBlank();</span>
+    }
+
+    private static String valueOrDefault(String value, String fallback) {
+<span class="pc bpc" id="L730" title="1 of 2 branches missed.">        return isBlank(value) ? fallback : value;</span>
+    }
+
+    private static int integer(String value, int fallback) {
+<span class="fc" id="L734">        Integer parsed = nullableInteger(value);</span>
+<span class="pc bpc" id="L735" title="1 of 2 branches missed.">        return parsed != null ? parsed : fallback;</span>
+    }
+
+    private static Integer nullableInteger(String value) {
+<span class="pc bpc" id="L739" title="1 of 2 branches missed.">        if (isBlank(value)) return null;</span>
+        try {
+<span class="fc" id="L741">            return Integer.valueOf(value.strip());</span>
+<span class="nc" id="L742">        } catch (NumberFormatException exception) {</span>
+<span class="nc" id="L743">            return null;</span>
+        }
+    }
+
+    private static BigDecimal decimal(String value) {
+<span class="pc bpc" id="L748" title="1 of 2 branches missed.">        if (isBlank(value)) return null;</span>
+        try {
+<span class="nc" id="L750">            return new BigDecimal(value.strip());</span>
+<span class="nc" id="L751">        } catch (NumberFormatException exception) {</span>
+<span class="nc" id="L752">            return null;</span>
+        }
+    }
+
+    private static double decimalDouble(String value, double fallback) {
+<span class="pc bpc" id="L757" title="1 of 2 branches missed.">        if (isBlank(value)) return fallback;</span>
+        try {
+<span class="fc" id="L759">            return Double.parseDouble(value.strip());</span>
+<span class="nc" id="L760">        } catch (NumberFormatException exception) {</span>
+<span class="nc" id="L761">            return fallback;</span>
+        }
+    }
+
+    private static LocalDate date(String value) {
+<span class="pc bpc" id="L766" title="1 of 2 branches missed.">        if (isBlank(value)) return null;</span>
+        try {
+<span class="nc" id="L768">            return LocalDate.parse(value.strip());</span>
+<span class="nc" id="L769">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L770">            return null;</span>
+        }
+    }
+
+    private static Instant instant(String value) {
+<span class="pc bpc" id="L775" title="1 of 2 branches missed.">        if (isBlank(value)) return null;</span>
+        try {
+<span class="fc" id="L777">            return Instant.parse(value.strip());</span>
+<span class="nc" id="L778">        } catch (RuntimeException exception) {</span>
+<span class="nc" id="L779">            return null;</span>
+        }
+    }
+
+    private static String normalizeCurrency(String value) {
+<span class="pc bpc" id="L784" title="1 of 2 branches missed.">        if (isBlank(value)) return null;</span>
+<span class="nc" id="L785">        String normalized = value.strip().toUpperCase();</span>
+<span class="nc bnc" id="L786" title="All 2 branches missed.">        return normalized.matches(&quot;[A-Z]{3}&quot;) ? normalized : null;</span>
+    }
+
+    private static int clamp(int value, int minimum, int maximum) {
+<span class="fc" id="L790">        return Math.max(minimum, Math.min(maximum, value));</span>
+    }
+
+    private static double clamp(double value, double minimum, double maximum) {
+<span class="pc bpc" id="L794" title="1 of 2 branches missed.">        if (!Double.isFinite(value)) return minimum;</span>
+<span class="fc" id="L795">        return Math.max(minimum, Math.min(maximum, value));</span>
+    }
+
+    private static &lt;E extends Enum&lt;E&gt;&gt; E enumValue(
+            Class&lt;E&gt; type, String value, E fallback) {
+<span class="pc bpc" id="L800" title="1 of 2 branches missed.">        if (isBlank(value)) return fallback;</span>
+        try {
+<span class="fc" id="L802">            return Enum.valueOf(type, value.strip().toUpperCase());</span>
+<span class="nc" id="L803">        } catch (IllegalArgumentException exception) {</span>
+<span class="nc" id="L804">            return fallback;</span>
+        }
+    }
+
+    public record DecisionMaterializeResult(
+            int solutionsMaterialized,
+            int productsMaterialized,
+            int projectSolutionsMaterialized,
+            int requirementLinksCreated,
+            int productCandidatesCreated,
+            List&lt;String&gt; warnings) {
+<span class="fc" id="L815">        public DecisionMaterializeResult {</span>
+<span class="pc bpc" id="L816" title="1 of 2 branches missed.">            warnings = warnings == null ? List.of() : List.copyOf(warnings);</span>
+<span class="fc" id="L817">        }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

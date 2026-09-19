@@ -1,0 +1,300 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitecturePdfRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">ArchitecturePdfRenderer.java</span></div><h1>ArchitecturePdfRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramScene;
+import com.taxonomy.diagram.DiagramSceneEdge;
+import com.taxonomy.diagram.DiagramSceneNode;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentInformation;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
+
+import java.awt.Color;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.text.Normalizer;
+import java.util.Arrays;
+import java.util.List;
+import java.util.function.Consumer;
+
+/** Draws a vector PDF directly from the same deterministic scene returned to other export adapters. */
+<span class="fc" id="L23">public final class ArchitecturePdfRenderer {</span>
+
+    private static final float PAGE_MARGIN = 32.0f;
+    private static final float HEADER_HEIGHT = 54.0f;
+<span class="fc" id="L27">    private static final PDType1Font REGULAR =</span>
+            new PDType1Font(Standard14Fonts.FontName.HELVETICA);
+<span class="fc" id="L29">    private static final PDType1Font BOLD =</span>
+            new PDType1Font(Standard14Fonts.FontName.HELVETICA_BOLD);
+
+    /** Neutral metadata required to decorate a persisted architecture snapshot export. */
+    public record SnapshotMetadata(
+            String projectKey,
+            String requirementKey,
+            String snapshotId,
+            String provider,
+            String branchName,
+            String commitSha,
+            List&lt;String&gt; warnings) {
+
+<span class="fc" id="L42">        public SnapshotMetadata {</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">            warnings = warnings == null ? List.of() : List.copyOf(warnings);</span>
+<span class="fc" id="L44">        }</span>
+    }
+
+    public byte[] render(DiagramScene scene, SnapshotMetadata metadata) {
+<span class="fc" id="L48">        requireScene(scene);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (metadata == null) {</span>
+<span class="nc" id="L50">            throw new IllegalArgumentException(&quot;Architecture snapshot metadata is required&quot;);</span>
+        }
+<span class="fc" id="L52">        return renderScene(scene, document -&gt; configureMetadata(document, scene, metadata),</span>
+<span class="fc" id="L53">                (stream, height) -&gt; drawHeader(stream, scene, metadata, height),</span>
+<span class="fc" id="L54">                stream -&gt; drawFooter(stream, metadata));</span>
+    }
+
+    /** Live editor export uses the same vector geometry without masquerading as an analysis snapshot. */
+    public byte[] render(DiagramScene scene, String provenance) {
+<span class="fc" id="L59">        requireScene(scene);</span>
+<span class="fc" id="L60">        String displayProvenance = safe(provenance);</span>
+<span class="fc" id="L61">        return renderScene(scene, document -&gt; {</span>
+<span class="fc" id="L62">            PDDocumentInformation information = new PDDocumentInformation();</span>
+<span class="fc" id="L63">            information.setTitle(scene.title());</span>
+<span class="fc" id="L64">            information.setSubject(provenance);</span>
+<span class="fc" id="L65">            information.setCreator(&quot;Taxonomy server-side vector renderer&quot;);</span>
+<span class="fc" id="L66">            document.setDocumentInformation(information);</span>
+<span class="fc" id="L67">        }, (stream, height) -&gt; {</span>
+<span class="fc" id="L68">            text(stream, BOLD, 16, PAGE_MARGIN, height - PAGE_MARGIN - 16, scene.title());</span>
+<span class="fc" id="L69">            List&lt;String&gt; lines = Arrays.asList(displayProvenance.split(&quot;\\n&quot;));</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">            for (int i = 0; i &lt; Math.min(2, lines.size()); i++) {</span>
+<span class="fc" id="L71">                text(stream, REGULAR, 8, PAGE_MARGIN, height - PAGE_MARGIN - 33 - i * 12, lines.get(i));</span>
+            }
+<span class="fc" id="L73">        }, stream -&gt; text(stream, REGULAR, 8, PAGE_MARGIN, 16,</span>
+                &quot;Derived server layout · Git-authoritative architecture&quot;));
+    }
+
+    private static void requireScene(DiagramScene scene) {
+<span class="pc bpc" id="L78" title="1 of 4 branches missed.">        if (scene == null || scene.isEmpty()) {</span>
+<span class="fc" id="L79">            throw new IllegalArgumentException(&quot;Architecture scene must not be empty&quot;);</span>
+        }
+<span class="fc" id="L81">    }</span>
+
+    @FunctionalInterface
+    private interface HeaderWriter {
+        void write(PDPageContentStream stream, float height) throws IOException;
+    }
+
+    @FunctionalInterface
+    private interface FooterWriter {
+        void write(PDPageContentStream stream) throws IOException;
+    }
+
+    private byte[] renderScene(DiagramScene scene, Consumer&lt;PDDocument&gt; metadata,
+                               HeaderWriter header, FooterWriter footer) {
+<span class="fc" id="L95">        try (PDDocument document = new PDDocument();</span>
+<span class="fc" id="L96">             ByteArrayOutputStream output = new ByteArrayOutputStream()) {</span>
+<span class="fc" id="L97">            PDPage page = new PDPage(new PDRectangle(PDRectangle.A3.getHeight(), PDRectangle.A3.getWidth()));</span>
+<span class="fc" id="L98">            document.addPage(page);</span>
+<span class="fc" id="L99">            metadata.accept(document);</span>
+
+<span class="fc" id="L101">            float availableWidth = page.getMediaBox().getWidth() - 2 * PAGE_MARGIN;</span>
+<span class="fc" id="L102">            float availableHeight = page.getMediaBox().getHeight() - 2 * PAGE_MARGIN - HEADER_HEIGHT;</span>
+<span class="fc" id="L103">            float scale = (float) Math.min(</span>
+<span class="fc" id="L104">                    availableWidth / Math.max(1.0, scene.width()),</span>
+<span class="fc" id="L105">                    availableHeight / Math.max(1.0, scene.height()));</span>
+<span class="fc" id="L106">            float diagramX = PAGE_MARGIN;</span>
+<span class="fc" id="L107">            float diagramTop = page.getMediaBox().getHeight() - PAGE_MARGIN - HEADER_HEIGHT;</span>
+
+<span class="fc" id="L109">            try (PDPageContentStream stream = new PDPageContentStream(document, page)) {</span>
+<span class="fc" id="L110">                stream.setNonStrokingColor(Color.WHITE);</span>
+<span class="fc" id="L111">                stream.addRect(0, 0, page.getMediaBox().getWidth(), page.getMediaBox().getHeight());</span>
+<span class="fc" id="L112">                stream.fill();</span>
+
+<span class="fc" id="L114">                header.write(stream, page.getMediaBox().getHeight());</span>
+<span class="fc" id="L115">                drawEdges(stream, scene, diagramX, diagramTop, scale);</span>
+<span class="fc" id="L116">                drawNodes(stream, scene, diagramX, diagramTop, scale);</span>
+<span class="fc" id="L117">                footer.write(stream);</span>
+            }
+
+<span class="fc" id="L120">            document.save(output);</span>
+<span class="fc" id="L121">            return output.toByteArray();</span>
+<span class="nc" id="L122">        } catch (IOException error) {</span>
+<span class="nc" id="L123">            throw new IllegalStateException(&quot;Unable to render architecture PDF&quot;, error);</span>
+        }
+    }
+
+    private static void configureMetadata(PDDocument document, DiagramScene scene, SnapshotMetadata metadata) {
+<span class="fc" id="L128">        PDDocumentInformation information = new PDDocumentInformation();</span>
+<span class="fc" id="L129">        information.setTitle(scene.title());</span>
+<span class="fc" id="L130">        information.setSubject(&quot;Requirement-derived architecture snapshot &quot; + metadata.snapshotId());</span>
+<span class="fc" id="L131">        information.setAuthor(&quot;Taxonomy Architecture Analyzer&quot;);</span>
+<span class="fc" id="L132">        information.setCreator(&quot;Taxonomy server-side vector renderer&quot;);</span>
+<span class="fc" id="L133">        information.setKeywords(&quot;architecture, taxonomy, requirement, snapshot, &quot; + metadata.snapshotId());</span>
+<span class="fc" id="L134">        document.setDocumentInformation(information);</span>
+<span class="fc" id="L135">    }</span>
+
+    private static void drawHeader(PDPageContentStream stream,
+                                   DiagramScene scene,
+                                   SnapshotMetadata metadata,
+                                   float pageHeight) throws IOException {
+<span class="fc" id="L141">        float y = pageHeight - PAGE_MARGIN - 16;</span>
+<span class="fc" id="L142">        text(stream, BOLD, 16, PAGE_MARGIN, y, scene.title());</span>
+<span class="fc" id="L143">        text(stream, REGULAR, 9, PAGE_MARGIN, y - 19,</span>
+<span class="fc" id="L144">                &quot;Project &quot; + metadata.projectKey()</span>
+<span class="fc" id="L145">                        + &quot; · Requirement &quot; + metadata.requirementKey()</span>
+<span class="fc" id="L146">                        + &quot; · Snapshot &quot; + metadata.snapshotId());</span>
+<span class="fc" id="L147">        text(stream, REGULAR, 8, PAGE_MARGIN, y - 33,</span>
+<span class="fc" id="L148">                &quot;Provider &quot; + safe(metadata.provider())</span>
+<span class="fc" id="L149">                        + &quot; · Branch &quot; + safe(metadata.branchName())</span>
+<span class="fc" id="L150">                        + &quot; · Commit &quot; + abbreviated(metadata.commitSha()));</span>
+<span class="fc" id="L151">    }</span>
+
+    private static void drawEdges(PDPageContentStream stream,
+                                  DiagramScene scene,
+                                  float diagramX,
+                                  float diagramTop,
+                                  float scale) throws IOException {
+<span class="fc" id="L158">        stream.setStrokingColor(new Color(88, 97, 116));</span>
+<span class="fc bfc" id="L159" title="All 2 branches covered.">        for (DiagramSceneEdge edge : scene.edges()) {</span>
+<span class="fc" id="L160">            float x1 = diagramX + (float) edge.sourceX() * scale;</span>
+<span class="fc" id="L161">            float y1 = diagramTop - (float) edge.sourceY() * scale;</span>
+<span class="fc" id="L162">            float x2 = diagramX + (float) edge.targetX() * scale;</span>
+<span class="fc" id="L163">            float y2 = diagramTop - (float) edge.targetY() * scale;</span>
+<span class="fc" id="L164">            stream.setLineWidth(Math.max(0.55f, (float) (0.8 + edge.relevance()) * scale));</span>
+<span class="fc" id="L165">            stream.moveTo(x1, y1);</span>
+<span class="fc" id="L166">            stream.lineTo(x2, y2);</span>
+<span class="fc" id="L167">            stream.stroke();</span>
+<span class="fc" id="L168">            drawArrow(stream, x1, y1, x2, y2, Math.max(4.0f, 7.0f * scale));</span>
+<span class="pc bpc" id="L169" title="2 of 4 branches missed.">            if (edge.relationType() != null &amp;&amp; !edge.relationType().isBlank()) {</span>
+<span class="fc" id="L170">                text(stream, REGULAR, Math.max(5.5f, 7.5f * scale),</span>
+                        (x1 + x2) / 2.0f - 12,
+                        (y1 + y2) / 2.0f + 4,
+<span class="fc" id="L173">                        edge.relationType());</span>
+            }
+<span class="fc" id="L175">        }</span>
+<span class="fc" id="L176">    }</span>
+
+    private static void drawNodes(PDPageContentStream stream,
+                                  DiagramScene scene,
+                                  float diagramX,
+                                  float diagramTop,
+                                  float scale) throws IOException {
+<span class="fc bfc" id="L183" title="All 2 branches covered.">        for (DiagramSceneNode node : scene.nodes()) {</span>
+<span class="fc" id="L184">            float x = diagramX + (float) node.x() * scale;</span>
+<span class="fc" id="L185">            float top = diagramTop - (float) node.y() * scale;</span>
+<span class="fc" id="L186">            float width = (float) node.width() * scale;</span>
+<span class="fc" id="L187">            float height = (float) node.height() * scale;</span>
+<span class="fc" id="L188">            float y = top - height;</span>
+
+<span class="fc" id="L190">            stream.setNonStrokingColor(fill(node.type()));</span>
+<span class="fc" id="L191">            stream.addRect(x, y, width, height);</span>
+<span class="fc" id="L192">            stream.fill();</span>
+<span class="fc bfc" id="L193" title="All 2 branches covered.">            stream.setStrokingColor(node.anchor()</span>
+<span class="fc" id="L194">                    ? new Color(23, 37, 84)</span>
+<span class="fc" id="L195">                    : new Color(100, 116, 139));</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">            stream.setLineWidth(node.anchor() ? Math.max(1.4f, 2.2f * scale) : Math.max(0.7f, scale));</span>
+<span class="fc" id="L197">            stream.addRect(x, y, width, height);</span>
+<span class="fc" id="L198">            stream.stroke();</span>
+
+<span class="fc" id="L200">            float fontScale = Math.max(0.62f, scale);</span>
+<span class="fc" id="L201">            text(stream, BOLD, 7.5f * fontScale, x + 8 * scale, top - 15 * scale, node.id());</span>
+<span class="fc" id="L202">            text(stream, REGULAR, 6.3f * fontScale,</span>
+                    x + width - 62 * scale,
+                    top - 14 * scale,
+<span class="fc" id="L205">                    node.type() + &quot; &quot; + Math.round(node.relevance() * 100.0) + &quot;%&quot;);</span>
+<span class="fc" id="L206">            List&lt;String&gt; labelLines = DiagramTextWrapper.wrap(node.label(), 34, 2, &quot;n/a&quot;);</span>
+<span class="fc bfc" id="L207" title="All 2 branches covered.">            for (int index = 0; index &lt; labelLines.size(); index++) {</span>
+<span class="fc" id="L208">                text(stream, REGULAR, 8.3f * fontScale,</span>
+                        x + 8 * scale,
+                        top - (38 + index * 16) * scale,
+<span class="fc" id="L211">                        labelLines.get(index));</span>
+            }
+<span class="fc" id="L213">        }</span>
+<span class="fc" id="L214">    }</span>
+
+    private static void drawFooter(PDPageContentStream stream, SnapshotMetadata metadata) throws IOException {
+<span class="fc" id="L217">        text(stream, REGULAR, 7, PAGE_MARGIN, 17,</span>
+                &quot;Generated from persisted architecture snapshot; no page screenshot and no LLM re-analysis.&quot;);
+<span class="pc bpc" id="L219" title="1 of 2 branches missed.">        if (!metadata.warnings().isEmpty()) {</span>
+<span class="fc" id="L220">            text(stream, REGULAR, 7, PAGE_MARGIN, 8,</span>
+<span class="fc" id="L221">                    &quot;Warnings: &quot; + String.join(&quot; | &quot;, metadata.warnings()));</span>
+        }
+<span class="fc" id="L223">    }</span>
+
+    private static void drawArrow(PDPageContentStream stream,
+                                  float x1,
+                                  float y1,
+                                  float x2,
+                                  float y2,
+                                  float size) throws IOException {
+<span class="fc" id="L231">        double angle = Math.atan2(y2 - y1, x2 - x1);</span>
+<span class="fc" id="L232">        float ax1 = (float) (x2 - size * Math.cos(angle - Math.PI / 6.0));</span>
+<span class="fc" id="L233">        float ay1 = (float) (y2 - size * Math.sin(angle - Math.PI / 6.0));</span>
+<span class="fc" id="L234">        float ax2 = (float) (x2 - size * Math.cos(angle + Math.PI / 6.0));</span>
+<span class="fc" id="L235">        float ay2 = (float) (y2 - size * Math.sin(angle + Math.PI / 6.0));</span>
+<span class="fc" id="L236">        stream.moveTo(x2, y2);</span>
+<span class="fc" id="L237">        stream.lineTo(ax1, ay1);</span>
+<span class="fc" id="L238">        stream.moveTo(x2, y2);</span>
+<span class="fc" id="L239">        stream.lineTo(ax2, ay2);</span>
+<span class="fc" id="L240">        stream.stroke();</span>
+<span class="fc" id="L241">    }</span>
+
+    private static void text(PDPageContentStream stream,
+                             PDType1Font font,
+                             float size,
+                             float x,
+                             float y,
+                             String value) throws IOException {
+<span class="fc" id="L249">        String printable = ascii(value);</span>
+<span class="pc bpc" id="L250" title="1 of 2 branches missed.">        if (printable.isBlank()) return;</span>
+<span class="fc" id="L251">        stream.beginText();</span>
+<span class="fc" id="L252">        stream.setNonStrokingColor(new Color(15, 23, 42));</span>
+<span class="fc" id="L253">        stream.setFont(font, Math.max(5.0f, size));</span>
+<span class="fc" id="L254">        stream.newLineAtOffset(x, y);</span>
+<span class="fc" id="L255">        stream.showText(printable);</span>
+<span class="fc" id="L256">        stream.endText();</span>
+<span class="fc" id="L257">    }</span>
+
+    private static Color fill(String type) {
+<span class="pc bpc" id="L260" title="1 of 2 branches missed.">        if (type == null) return new Color(241, 245, 249);</span>
+<span class="pc bpc" id="L261" title="3 of 7 branches missed.">        return switch (type) {</span>
+<span class="fc" id="L262">            case &quot;Capabilities&quot; -&gt; new Color(219, 234, 254);</span>
+<span class="nc" id="L263">            case &quot;Business Processes&quot;, &quot;Business Roles&quot; -&gt; new Color(220, 252, 231);</span>
+<span class="fc" id="L264">            case &quot;Core Services&quot;, &quot;COI Services&quot;, &quot;Services&quot; -&gt; new Color(254, 243, 199);</span>
+<span class="fc" id="L265">            case &quot;User Applications&quot;, &quot;Applications&quot; -&gt; new Color(243, 232, 255);</span>
+<span class="nc" id="L266">            case &quot;Information Products&quot; -&gt; new Color(255, 228, 230);</span>
+<span class="nc" id="L267">            case &quot;Communications Services&quot; -&gt; new Color(207, 250, 254);</span>
+<span class="fc" id="L268">            default -&gt; new Color(241, 245, 249);</span>
+        };
+    }
+
+    private static String abbreviated(String value) {
+<span class="fc" id="L273">        String normalized = safe(value);</span>
+<span class="pc bpc" id="L274" title="1 of 2 branches missed.">        return normalized.length() &gt; 12 ? normalized.substring(0, 12) : normalized;</span>
+    }
+
+    private static String safe(String value) {
+<span class="pc bpc" id="L278" title="2 of 4 branches missed.">        return value == null || value.isBlank() ? &quot;n/a&quot; : value.strip();</span>
+    }
+
+    /** Keep labels readable with the Standard 14 PDF fonts. */
+    private static String ascii(String value) {
+<span class="fc" id="L283">        String german = safe(value)</span>
+<span class="fc" id="L284">                .replace(&quot;Ä&quot;, &quot;Ae&quot;)</span>
+<span class="fc" id="L285">                .replace(&quot;Ö&quot;, &quot;Oe&quot;)</span>
+<span class="fc" id="L286">                .replace(&quot;Ü&quot;, &quot;Ue&quot;)</span>
+<span class="fc" id="L287">                .replace(&quot;ä&quot;, &quot;ae&quot;)</span>
+<span class="fc" id="L288">                .replace(&quot;ö&quot;, &quot;oe&quot;)</span>
+<span class="fc" id="L289">                .replace(&quot;ü&quot;, &quot;ue&quot;)</span>
+<span class="fc" id="L290">                .replace(&quot;ß&quot;, &quot;ss&quot;)</span>
+<span class="fc" id="L291">                .replace('–', '-')</span>
+<span class="fc" id="L292">                .replace('—', '-')</span>
+<span class="fc" id="L293">                .replace('…', '.')</span>
+<span class="fc" id="L294">                .replace('·', '|');</span>
+<span class="fc" id="L295">        return Normalizer.normalize(german, Normalizer.Form.NFD)</span>
+<span class="fc" id="L296">                .replaceAll(&quot;\\p{M}+&quot;, &quot;&quot;)</span>
+<span class="fc" id="L297">                .replaceAll(&quot;[^\\x20-\\x7E]&quot;, &quot;?&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
