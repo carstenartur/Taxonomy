@@ -1,9 +1,12 @@
 package com.taxonomy.shared.service;
 
+import com.taxonomy.catalog.service.AppInitializationStateService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
-import com.taxonomy.shared.service.AppInitializationStateService.State;
+import com.taxonomy.catalog.service.AppInitializationStateService.State;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;

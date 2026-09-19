@@ -29,7 +29,7 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.Duration;
 import java.util.List;
-import com.taxonomy.shared.service.AppInitializationStateService;
+import com.taxonomy.catalog.service.AppInitializationStateService;
 
 /**
  * Generates documentation screenshots for docs/images/.

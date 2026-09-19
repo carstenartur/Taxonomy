@@ -5,8 +5,8 @@ on:
     paths:
       - 'taxonomy-tooling/**'
       - 'tools/catalogue-overlay/**'
-      - 'taxonomy-app/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx'
-      - 'taxonomy-app/src/main/resources/data/nato-taxonomy.json'
+      - 'taxonomy-knowledge/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx'
+      - 'taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json'
       - 'docs/en/CATALOGUE_OVERLAY_PROPOSALS.md'
       - 'docs/de/CATALOGUE_OVERLAY_PROPOSALS.md'
       - '.github/workflows/catalogue-overlay-proposal.yml'
@@ -15,8 +15,8 @@ on:
     paths:
       - 'taxonomy-tooling/**'
       - 'tools/catalogue-overlay/**'
-      - 'taxonomy-app/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx'
-      - 'taxonomy-app/src/main/resources/data/nato-taxonomy.json'
+      - 'taxonomy-knowledge/src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx'
+      - 'taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json'
       - '.github/workflows/catalogue-overlay-proposal.yml'
   workflow_dispatch:
 

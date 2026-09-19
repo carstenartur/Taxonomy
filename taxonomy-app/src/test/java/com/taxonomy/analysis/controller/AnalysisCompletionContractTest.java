@@ -233,7 +233,7 @@ class AnalysisCompletionContractTest {
         var llm = new com.taxonomy.analysis.service.LlmService(provider,
                 mock(com.taxonomy.analysis.service.LlmGatewayRegistry.class), new ObjectMapper(), taxonomy,
                 mock(com.taxonomy.shared.service.PromptTemplateService.class),
-                mock(com.taxonomy.shared.service.LocalEmbeddingService.class),
+                mock(com.taxonomy.catalog.service.LocalEmbeddingService.class),
                 mock(com.taxonomy.analysis.service.SavedAnalysisService.class));
         var first = new com.taxonomy.catalog.model.TaxonomyNode();
         first.setCode("CP"); first.setNameEn("Capabilities"); first.setTaxonomyRoot("CP");

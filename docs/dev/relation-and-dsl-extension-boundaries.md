@@ -26,14 +26,14 @@ modules.
 1. Add or change the enum in
    `taxonomy-domain/src/main/java/com/taxonomy/model/RelationType.java`.
 2. Update the application compatibility rules in
-   `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationCompatibilityMatrix.java`.
+   `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationCompatibilityMatrix.java`.
 3. Keep the DSL-side mirror in sync in
    `taxonomy-dsl/src/main/java/com/taxonomy/dsl/validation/DslValidator.java`
    (`VALID_RELATION_TYPES` and `TYPE_MATRIX`).
 4. Review services that derive behavior from relation types, especially:
-   - `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationValidationService.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationCandidateService.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/relations/service/RelationProposalService.java`
+   - `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationValidationService.java`
+   - `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationCandidateService.java`
+   - `taxonomy-knowledge/src/main/java/com/taxonomy/relations/service/RelationProposalService.java`
    - `taxonomy-app/src/main/java/com/taxonomy/analysis/service/AnalysisRelationGenerator.java`
    - `taxonomy-app/src/main/java/com/taxonomy/dsl/export/DslMaterializeService.java`
 5. Review relation consumers in the DSL layer, especially:
@@ -49,14 +49,14 @@ modules.
    expose relation metadata consistently, but that refactoring is separate from
    the question of which relation semantics must remain core code.
 7. Review seed/import paths that persist or generate relation types, including:
-   - `taxonomy-app/src/main/resources/data/relations.csv`
-   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/RelationSeedParser.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/ArchiMateXmlImporter.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/UafImportProfileExtension.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/C4ImportProfileExtension.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/ApqcCsvImportProfileExtension.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/ApqcExcelImportProfileExtension.java`
-   - `taxonomy-app/src/main/java/com/taxonomy/catalog/service/importer/StructurizrDslParser.java`
+   - `taxonomy-knowledge/src/main/resources/data/relations.csv`
+   - `taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/RelationSeedParser.java`
+   - `taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/ArchiMateXmlImporter.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/composition/importer/UafImportProfileExtension.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/composition/importer/C4ImportProfileExtension.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/composition/importer/ApqcCsvImportProfileExtension.java`
+   - `taxonomy-app/src/main/java/com/taxonomy/composition/importer/ApqcExcelImportProfileExtension.java`
+   - `taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/importer/StructurizrDslParser.java`
 
 ### Files, services, UI modules, and tests affected by relation changes
 
@@ -68,7 +68,7 @@ modules.
 | Analysis / graph usage | `AnalysisRelationGenerator.java`, `GraphSearchService.java`, `RelationTraversalService.java`, `RelationshipBuildStep.java`, `ImpactRelationStep.java`, `ProvisionalRelationStep.java` |
 | DSL mirror | `taxonomy-dsl/.../DslValidator.java`, `AstToModelMapper.java`, `ModelToAstMapper.java`, `DslTokenizer.java`, `ModelDiffer.java`, `SemanticDiffDescriber.java` |
 | UI | `taxonomy-app/src/main/resources/templates/index.html`, `taxonomy-app/src/main/resources/static/js/relations/taxonomy-relations.js` |
-| Seed/import data | `taxonomy-app/src/main/resources/data/relations.csv`, `RelationSeedParser.java`, `ArchiMateXmlImporter.java`, `UafImportProfileExtension.java`, `C4ImportProfileExtension.java`, `ApqcCsvImportProfileExtension.java`, `ApqcExcelImportProfileExtension.java`, `StructurizrDslParser.java` |
+| Seed/import data | `taxonomy-knowledge/src/main/resources/data/relations.csv`, `RelationSeedParser.java`, `ArchiMateXmlImporter.java`, `UafImportProfileExtension.java`, `C4ImportProfileExtension.java`, `ApqcCsvImportProfileExtension.java`, `ApqcExcelImportProfileExtension.java`, `StructurizrDslParser.java` |
 | Tests | `taxonomy-domain/src/test/java/com/taxonomy/model/RelationTypeTest.java`, `taxonomy-app/src/test/java/com/taxonomy/TaxonomyRelationTests.java`, `RelationProposalTests.java`, `RelationQualityTests.java`, `AnalysisRelationGeneratorTests.java`, `RequirementCoverageTests.java`, `taxonomy-app/src/test/java/com/taxonomy/catalog/service/RelationSeedParserTest.java`, `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ProvisionalRelationStepTest.java`, plus DSL tests that assert relation parsing/validation/tokenization |
 
 ### Relation metadata that can safely move to an extension descriptor

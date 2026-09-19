@@ -1,5 +1,8 @@
 package com.taxonomy.shared.service;
 
+import com.taxonomy.catalog.service.AppInitializationStateService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
+
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;

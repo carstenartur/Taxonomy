@@ -24,7 +24,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import com.taxonomy.catalog.service.TaxonomyService;
 import com.taxonomy.dto.AiAvailabilityLevel;
 import com.taxonomy.dto.LlmCallDetail;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.shared.service.PromptTemplateService;
 
 /**

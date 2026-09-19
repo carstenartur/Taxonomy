@@ -2,7 +2,7 @@ package com.taxonomy;
 
 import com.taxonomy.dto.GraphSearchResult;
 import com.taxonomy.relations.service.GraphSearchService;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

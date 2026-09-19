@@ -34,7 +34,7 @@ These are temporary exceptions to:
 2. `com.taxonomy.dsl.export.DslMaterializeService`
    - Why: DSL materialization still switches between shared/workspace routing internally.
    - Remove when: materialization receives explicit `WorkspaceContext` from request boundary.
-3. `com.taxonomy.relations.service.GraphSearchService`
+3. `com.taxonomy.search.service.GraphSearchService`
    - Why: graph search still resolves current workspace internally for relation queries.
    - Remove when: graph search APIs accept `WorkspaceContext` from boundary/facade.
 4. `com.taxonomy.relations.service.RelationProposalService`

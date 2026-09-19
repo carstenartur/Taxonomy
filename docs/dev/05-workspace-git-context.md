@@ -40,7 +40,7 @@ The following service classes still resolve current request context internally a
 
 - `com.taxonomy.catalog.service.CatalogFacade` — legacy catalog endpoints still build workspace-aware response state internally.
 - `com.taxonomy.dsl.export.DslMaterializeService` — materialization still switches between shared/workspace routing internally.
-- `com.taxonomy.relations.service.GraphSearchService` — graph search still resolves the current workspace for relation queries.
+- `com.taxonomy.search.service.GraphSearchService` — graph search still resolves the current workspace for relation queries.
 - `com.taxonomy.relations.service.RelationProposalService` — proposal CRUD still derives the active workspace internally.
 - `com.taxonomy.versioning.service.DslOperationsFacade` — several remaining DSL/versioning operations still resolve workspace context inside the facade.
 - `com.taxonomy.versioning.service.SelectiveTransferService` — selective transfer still resolves the current workspace/user for navigation state.

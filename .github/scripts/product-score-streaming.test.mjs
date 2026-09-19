@@ -10,7 +10,7 @@ const viewsSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js',
   import.meta.url), 'utf8');
 const catalogue = JSON.parse(await readFile(new URL(
-  '../../taxonomy-app/src/main/resources/data/nato-taxonomy.json',
+  '../../taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json',
   import.meta.url), 'utf8'));
 // These identities are taken from the real catalogue; no provider is called.
 const product = 'IP-1286';

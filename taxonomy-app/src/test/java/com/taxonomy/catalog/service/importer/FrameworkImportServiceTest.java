@@ -1,5 +1,10 @@
 package com.taxonomy.catalog.service.importer;
 
+import com.taxonomy.composition.importer.ApqcCsvImportProfileExtension;
+import com.taxonomy.composition.importer.ApqcExcelImportProfileExtension;
+import com.taxonomy.composition.importer.C4ImportProfileExtension;
+import com.taxonomy.composition.importer.UafImportProfileExtension;
+
 import com.taxonomy.dsl.export.DslMaterializeService;
 import com.taxonomy.dto.FrameworkImportResult;
 import com.taxonomy.dto.ProfileInfo;

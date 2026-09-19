@@ -3,7 +3,7 @@
 ## Decision
 
 The checked-in C3 Excel workbook remains the baseline catalogue. Taxonomy applies
-`taxonomy-app/src/main/resources/data/nato-taxonomy.json` as a versioned, fail-closed overlay before
+`taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json` as a versioned, fail-closed overlay before
 catalogue persistence or reconciliation.
 
 The overlay does **not** copy titles, descriptions, UUIDs or source references. It contains only

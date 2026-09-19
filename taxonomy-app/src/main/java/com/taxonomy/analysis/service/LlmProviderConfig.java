@@ -1,7 +1,7 @@
 package com.taxonomy.analysis.service;
 
 import com.taxonomy.dto.AiAvailabilityLevel;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;

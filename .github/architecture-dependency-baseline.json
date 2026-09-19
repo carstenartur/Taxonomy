@@ -27,7 +27,7 @@
       "fromPackage": "com.taxonomy.analysis.service",
       "toContext": "app-composition",
       "toPackage": "com.taxonomy.shared.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 1
     },
     {
       "fromContext": "analysis",
@@ -48,7 +48,7 @@
       "fromPackage": "com.taxonomy.analysis.service",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 5
     },
     {
       "fromContext": "analysis",
@@ -214,6 +214,13 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.dsl.service",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.service",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.dsl.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.versioning.service",
       "classDependencyCount": 1
@@ -224,6 +231,20 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.storage",
       "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.importer",
+      "toContext": "dsl-adapters",
+      "toPackage": "com.taxonomy.dsl.export",
+      "classDependencyCount": 6
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.importer",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.service.importer",
+      "classDependencyCount": 10
     },
     {
       "fromContext": "app-composition",
@@ -342,7 +363,7 @@
       "fromPackage": "com.taxonomy.shared.controller",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 1
+      "classDependencyCount": 3
     },
     {
       "fromContext": "app-composition",
@@ -369,15 +390,8 @@
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.shared.service",
       "toContext": "knowledge",
-      "toPackage": "com.taxonomy.catalog.model",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "app-composition",
-      "fromPackage": "com.taxonomy.shared.service",
-      "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 1
+      "classDependencyCount": 4
     },
     {
       "fromContext": "architecture",
@@ -473,13 +487,6 @@
     {
       "fromContext": "architecture",
       "fromPackage": "com.taxonomy.architecture.service",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.service",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "architecture",
-      "fromPackage": "com.taxonomy.architecture.service",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.model",
       "classDependencyCount": 14
@@ -496,7 +503,7 @@
       "fromPackage": "com.taxonomy.architecture.service",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
     },
     {
       "fromContext": "architecture",
@@ -648,13 +655,6 @@
     {
       "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.catalog.model",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.model",
-      "classDependencyCount": 2
-    },
-    {
-      "fromContext": "knowledge",
-      "fromPackage": "com.taxonomy.catalog.model",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
       "classDependencyCount": 1
@@ -665,13 +665,6 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 1
-    },
-    {
-      "fromContext": "knowledge",
-      "fromPackage": "com.taxonomy.catalog.service",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.service",
-      "classDependencyCount": 3
     },
     {
       "fromContext": "knowledge",
@@ -686,13 +679,6 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 5
-    },
-    {
-      "fromContext": "knowledge",
-      "fromPackage": "com.taxonomy.catalog.service.importer",
-      "toContext": "dsl-adapters",
-      "toPackage": "com.taxonomy.dsl.export",
-      "classDependencyCount": 6
     },
     {
       "fromContext": "knowledge",
@@ -711,13 +697,6 @@
     {
       "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.relations.service",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.service",
-      "classDependencyCount": 3
-    },
-    {
-      "fromContext": "knowledge",
-      "fromPackage": "com.taxonomy.relations.service",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
       "classDependencyCount": 1
@@ -728,20 +707,6 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 51
-    },
-    {
-      "fromContext": "knowledge",
-      "fromPackage": "com.taxonomy.search",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.config",
-      "classDependencyCount": 1
-    },
-    {
-      "fromContext": "knowledge",
-      "fromPackage": "com.taxonomy.search",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.service",
-      "classDependencyCount": 4
     },
     {
       "fromContext": "knowledge",
@@ -756,13 +721,6 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
       "classDependencyCount": 2
-    },
-    {
-      "fromContext": "knowledge",
-      "fromPackage": "com.taxonomy.search.service",
-      "toContext": "app-composition",
-      "toPackage": "com.taxonomy.shared.service",
-      "classDependencyCount": 1
     },
     {
       "fromContext": "knowledge",
@@ -965,7 +923,7 @@
       "fromPackage": "com.taxonomy.provenance.service",
       "toContext": "app-composition",
       "toPackage": "com.taxonomy.shared.service",
-      "classDependencyCount": 3
+      "classDependencyCount": 1
     },
     {
       "fromContext": "provenance",
@@ -979,7 +937,7 @@
       "fromPackage": "com.taxonomy.provenance.service",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
-      "classDependencyCount": 1
+      "classDependencyCount": 3
     }
   ]
 }

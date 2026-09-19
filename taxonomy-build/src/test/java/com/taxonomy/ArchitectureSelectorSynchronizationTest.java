@@ -45,7 +45,8 @@ class ArchitectureSelectorSynchronizationTest {
             "ArchitectureSelectorSynchronizationTest",
             "ArchitectureWorkspaceModuleTest",
             "ArchitectureTemplatesModuleTest",
-            "ArchitectureInteropModuleTest");
+            "ArchitectureInteropModuleTest",
+            "ArchitectureKnowledgeModuleTest");
 
     private static final String APP = "taxonomy-app";
     private static final String FEATURE = "taxonomy-a";

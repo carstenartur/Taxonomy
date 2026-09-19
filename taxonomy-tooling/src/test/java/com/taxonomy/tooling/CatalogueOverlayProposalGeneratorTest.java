@@ -171,7 +171,7 @@ class CatalogueOverlayProposalGeneratorTest {
     @Test
     void commandLineUsesRepositoryRelativeDefaultsAndReportsTheDigest(
             @TempDir Path root) throws Exception {
-        Path data = root.resolve("taxonomy-app/src/main/resources/data");
+        Path data = root.resolve("taxonomy-knowledge/src/main/resources/data");
         Files.createDirectories(data);
         Path catalogue = data.resolve("C3_Taxonomy_Catalogue_25AUG2025.xlsx");
         Path overlay = data.resolve("nato-taxonomy.json");

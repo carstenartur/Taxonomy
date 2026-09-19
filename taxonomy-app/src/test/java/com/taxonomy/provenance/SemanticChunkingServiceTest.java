@@ -1,7 +1,7 @@
 package com.taxonomy.provenance;
 
 import com.taxonomy.provenance.service.SemanticChunkingService;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

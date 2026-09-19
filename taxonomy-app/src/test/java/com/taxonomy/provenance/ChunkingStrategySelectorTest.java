@@ -3,7 +3,7 @@ package com.taxonomy.provenance;
 import com.taxonomy.dto.ChunkingStrategy;
 import com.taxonomy.provenance.service.ChunkingStrategySelector;
 import com.taxonomy.provenance.service.DocumentParserService;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 

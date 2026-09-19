@@ -1,7 +1,7 @@
 package com.taxonomy.search;
 
-import com.taxonomy.shared.config.SpringContextHolder;
-import com.taxonomy.shared.service.LocalEmbeddingService;
+import com.taxonomy.search.config.SpringContextHolder;
+import com.taxonomy.catalog.service.LocalEmbeddingService;
 import org.hibernate.search.engine.backend.document.DocumentElement;
 import org.hibernate.search.engine.backend.document.IndexFieldReference;
 import org.junit.jupiter.api.Test;

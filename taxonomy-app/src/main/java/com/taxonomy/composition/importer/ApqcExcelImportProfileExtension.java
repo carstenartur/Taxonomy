@@ -1,0 +1,42 @@
+package com.taxonomy.composition.importer;
+
+import com.taxonomy.catalog.service.importer.ApqcExcelParser;
+import com.taxonomy.catalog.service.importer.ExternalParser;
+
+import com.taxonomy.dsl.export.DslMaterializeService;
+import com.taxonomy.dsl.mapping.MappingProfile;
+import com.taxonomy.dsl.mapping.profiles.ApqcMappingProfile;
+import com.taxonomy.extension.api.importer.ImportProfileDescriptor;
+import org.springframework.stereotype.Component;
+
+@Component
+public class ApqcExcelImportProfileExtension extends AbstractFrameworkImportProfileExtension {
+
+    private static final MappingProfile PROFILE = new ApqcMappingProfile();
+    private static final ExternalParser PARSER = new ApqcExcelParser();
+    private static final ImportProfileDescriptor DESCRIPTOR = new ImportProfileDescriptor(
+            "apqc-excel",
+            "APQC PCF (Excel)",
+            PROFILE.supportedElementTypes(),
+            PROFILE.supportedRelationTypes(),
+            PARSER.fileFormat());
+
+    public ApqcExcelImportProfileExtension(DslMaterializeService materializeService) {
+        super(materializeService);
+    }
+
+    @Override
+    public ImportProfileDescriptor descriptor() {
+        return DESCRIPTOR;
+    }
+
+    @Override
+    protected MappingProfile profile() {
+        return PROFILE;
+    }
+
+    @Override
+    protected ExternalParser parser() {
+        return PARSER;
+    }
+}
