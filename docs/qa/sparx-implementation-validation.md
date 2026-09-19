@@ -1,6 +1,7 @@
 # Sparx XMI implementation validation
 
 Date: 2026-09-19. Baseline: `0bd708eb965e630fa60218df0fce136958dea688`.
+Implementation commit: `d083e8f0734557f6b018520c4298fa121a0badde`.
 The implementation is an experimental delivery slice of #1075, based on the
 synthetic fixture described in `taxonomy-export/src/test/resources/interoperability/sparx/ORIGIN.md`.
 
@@ -35,7 +36,17 @@ because external JVM self-attachment failed. Starting the installed Mockito 5.23
 premain agent explicitly through `JAVA_TOOL_OPTIONS` resolved that environment
 failure. No test selectors, exclusions or repository gates were weakened.
 
-Final gate outcome is recorded in the application integration PR.
+Final outcome: **BUILD FAILURE** after 13 minutes 48 seconds. Across the completed
+unit-test phases, 4,778 tests ran: 4,769 passed, with 5 failures and 4 errors in
+the two existing ONNX suites. All 24 new Sparx tests passed in this full run too.
+
+`OnnxEmbeddingServiceTest` (4 errors) and `OnnxRestEndpointTest` (5 failures)
+require the pinned local embedding model. It is absent in this environment, and
+these tests explicitly disable downloading it (`embedding.allow-download=false`).
+No `.onnx` model or tokenizer was found in the available scratch workspaces.
+The later Failsafe/container and aggregate-quality phases were not reached.
+The complete gate must run in CI with its pinned model preparation before merge;
+the selected regression run is not a substitute for that gate.
 
 ## Product acceptance
 

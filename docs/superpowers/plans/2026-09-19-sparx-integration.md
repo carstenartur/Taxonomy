@@ -38,7 +38,7 @@ Unsupported EA metadata must never be silently interpreted or discarded.
 - [x] Add projection/diff and application tests for re-import, local edits, stale
   preview, UUID binding, package hierarchy and required project context.
 - [x] Register file selection and explicit DE/EN capability/compatibility guidance.
-- [ ] Commit the tested application integration.
+- [x] Commit the tested application integration.
 
 ### Task 3: OSLC contract and compatibility boundary
 
@@ -58,6 +58,11 @@ guides and `docs/qa/sparx-compatibility.json` for the remaining acceptance work.
 ### Task 4: Evidence and delivery
 
 - [x] Add EN/DE mapping, operations, loss, deletion, layout and recovery guides.
-- [ ] Run targeted regressions and `./mvnw verify -DexcludedGroups="real-llm"`.
+- [x] Run targeted regressions and `./mvnw verify -DexcludedGroups="real-llm"`.
 - [x] Have an independent reviewer inspect the branch and fix material findings.
-- [ ] Push reviewable commits and open PRs without prematurely closing #1075.
+- [x] Prepare and publish reviewable commits for stacked draft PRs without closing #1075.
+
+Validation: 56 focused tests passed. The complete gate ran 4,778 tests and failed
+only in 9 existing ONNX cases because the required local model is absent and
+downloads are disabled. Later integration/quality phases were not reached.
+See `docs/qa/sparx-implementation-validation.md`; the full issue remains open.
