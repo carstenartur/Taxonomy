@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic contract fixture. This is not a claim of real EA compatibility. -->
+<xmi:XMI xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmi:version="2.1">
+  <xmi:Documentation exporter="Enterprise Architect" exporterVersion="contract-fixture"/>
+  <uml:Model xmi:id="EAPK_00000000_0000_4000_8000_000000000000" name="Architecture">
+    <packagedElement xmi:type="uml:Package" xmi:id="EAPK_33333333_3333_4333_8333_333333333333" name="Subsystems">
+      <packagedElement xmi:type="uml:Class" xmi:id="EAID_11111111_1111_4111_8111_111111111111" name="System"/>
+      <packagedElement xmi:type="uml:Component" xmi:id="EAID_22222222_2222_4222_8222_222222222222" name="Component"/>
+      <packagedElement xmi:type="uml:Class" xmi:id="EAID_55555555_5555_4555_8555_555555555555" name="Requirement"/>
+      <packagedElement xmi:type="uml:Dependency" xmi:id="EAID_44444444_4444_4444_8444_444444444444" client="EAID_11111111_1111_4111_8111_111111111111" supplier="EAID_22222222_2222_4222_8222_222222222222"/>
+    </packagedElement>
+  </uml:Model>
+  <xmi:Extension extender="Enterprise Architect">
+    <elements>
+      <element xmi:idref="EAID_11111111_1111_4111_8111_111111111111"><properties documentation="System notes" stereotype="System"/><tags><tag name="owner" value="Team A"/></tags></element>
+      <element xmi:idref="EAID_22222222_2222_4222_8222_222222222222"><properties documentation="Component notes"/><tags><tag name="status" value="approved"/></tags></element>
+      <element xmi:idref="EAID_55555555_5555_4555_8555_555555555555"><properties documentation="The system shall preserve identity." stereotype="requirement" sType="Requirement"/></element>
+    </elements>
+    <connectors><connector xmi:idref="EAID_44444444_4444_4444_8444_444444444444"><source xmi:idref="EAID_11111111_1111_4111_8111_111111111111"/><target xmi:idref="EAID_22222222_2222_4222_8222_222222222222"/><properties ea_type="Dependency" direction="Source -&gt; Destination"/><tags><tag name="purpose" value="Calls"/></tags></connector></connectors>
+    <diagrams><diagram xmi:id="EAID_66666666_6666_4666_8666_666666666666"><elements><element subject="EAID_11111111_1111_4111_8111_111111111111" geometry="Left=0;Top=0;Right=100;Bottom=60;"/></elements></diagram></diagrams>
+  </xmi:Extension>
+</xmi:XMI>
