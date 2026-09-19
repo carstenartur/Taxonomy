@@ -8,7 +8,6 @@ concurrency:
   cancel-in-progress: true
 permissions:
   contents: write
-  actions: read
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -35,6 +34,7 @@ jobs:
               subprocess.run(['python3',str(path)],env=env,check=True)
           script('dcdf6ecfa916e2430b63ab820570295c163ab807','628-candidate.py',True)
           script('0f85f184e6dbc081de73ca41223a7a8eb1a9387c','628-optional-import.py')
+          script('f4e51615b87f36aee589b6e533266f3ef0c7adfc','628-valid-fixtures.py')
           path=pathlib.Path('taxonomy-portfolio/src/test/java/com/taxonomy/portfolio/service/ProductCatalogPolicyContractTest.java')
           text=path.read_text();assert text.count('clearInvocations(products);')==1
           path.write_text(text.replace('clearInvocations(products);','clearInvocations(products,coverage,candidates,decisions,projects);'))
