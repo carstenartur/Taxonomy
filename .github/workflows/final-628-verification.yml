@@ -4,29 +4,88 @@ on:
     branches: [work/628-final-review-verification]
     paths: [.github/workflows/final-628-verification.yml]
 permissions:
-  contents: read
+  contents: write
 jobs:
-  source:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: e87e419d2e344efe92f8fe63dc0f28cd735f5cb6
           persist-credentials: false
-      - name: Archive tracked source and exact Git identity
-        shell: bash
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Apply exact locally regression-tested patch and store candidate tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import base64,hashlib,json,lzma,os,pathlib,re,subprocess,urllib.request,xml.etree.ElementTree as ET
+          api='https://api.github.com/repos/carstenartur/Taxonomy'
+          headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'}
+          def request(path,body=None):
+              req=urllib.request.Request(api+path,data=None if body is None else json.dumps(body).encode(),headers=headers)
+              with urllib.request.urlopen(req,timeout=120) as response: return json.load(response)
+          blob='784c05315a8e797773877d7f66b3168847448d72'
+          data=base64.b64decode(request('/git/blobs/'+blob)['content'])
+          assert hashlib.sha256(data).hexdigest()=='75d2fbb13f61344087761268faeae596352311ec37daa398b2a8a458ca635411'
+          patch=lzma.decompress(data)
+          subprocess.run(['git','apply','--index','-'],input=patch,check=True)
+          subprocess.run(['git','diff','--cached','--check'],check=True)
+          expected='9ee4fd2bf0860346ee54af39ca4b915e9c8ff9a3'
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==expected
+          paths=subprocess.check_output(['git','diff','--cached','--name-only'],text=True).splitlines()
+          assert len(paths)==10 and not any(p.startswith('.github/workflows/') for p in paths)
+          ns={'m':'http://maven.apache.org/POM/4.0.0'}
+          modules=[n.text for n in ET.parse('pom.xml').findall('m:modules/m:module',ns)]
+          documented=re.findall(r'^\| `(taxonomy-[a-z-]+)` \|',pathlib.Path('README.md').read_text(),re.M)
+          assert len(documented)==len(set(documented))==15 and set(documented)==set(modules)
+          for path in re.findall(r'\]\((docs/[^)#]+)',pathlib.Path('README.md').read_text()+pathlib.Path('release_notes.md').read_text()):
+              assert pathlib.Path(path).exists(),path
+          entries=[{'path':p,'mode':'100644','type':'blob','content':pathlib.Path(p).read_text()} for p in paths]
+          tree=request('/git/trees',{'base_tree':'5707903d28dbc5cb4167288c77d36769e0e8e6dc','tree':entries})
+          assert tree['sha']==expected
+          pathlib.Path('target').mkdir(exist_ok=True)
+          pathlib.Path('target/final-628-patch.diff').write_bytes(patch)
+          pathlib.Path('target/final-628-tree.json').write_text(json.dumps({'base':'e87e419d2e344efe92f8fe63dc0f28cd735f5cb6','tree':expected,'files':paths,'readmeMatchesReactor':True,'verified':False},indent=2)+'\n')
+          print('Stored exact candidate tree:',expected,'; no commit, branch, PR or main updated by this job.')
+          PY
+      - name: Package all fifteen modules and the executable application
         run: |
           set -euo pipefail
-          mkdir -p snapshot
-          git archive --format=tar.gz HEAD > snapshot/source.tar.gz
-          git cat-file commit HEAD > snapshot/head-commit.txt
-          git rev-parse HEAD > snapshot/source-commit.txt
-          git rev-parse HEAD^{tree} > snapshot/source-tree.txt
-          sha256sum snapshot/source.tar.gz > snapshot/SHA256SUMS
+          ./mvnw -B -ntp -DskipTests package > target/final-628-package.log 2>&1 || { tail -100 target/final-628-package.log; exit 1; }
+          tail -25 target/final-628-package.log
+      - name: Verify regression, compatibility and final module acceptance
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -Dtest=ConfigurationReferenceContractTest,WorkspacePortfolioDocumentMonitorTest,WorkspacePortfolioDocumentAdapterTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioAdviceOrderingTest,PortfolioApiContractTest,PortfolioGitControllerWorkspaceIsolationTest,PortfolioGitServiceTest,PortfolioDecisionGitRoundtripTest,ReadmeShowcaseDriftTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest,FinalRuntimeModulesPackagingIT -Dsurefire.failIfNoSpecifiedTests=false test > target/final-628-tests.log 2>&1 || { tail -130 target/final-628-tests.log; exit 1; }
+          tail -25 target/final-628-tests.log
+      - name: Record exact non-empty successful test evidence
+        run: |
+          python3 - <<'PY'
+          import json,pathlib,subprocess,xml.etree.ElementTree as ET
+          p=pathlib.Path('target/final-628-tree.json'); data=json.loads(p.read_text())
+          assert subprocess.check_output(['git','write-tree'],text=True).strip()==data['tree']
+          subprocess.run(['git','diff','--exit-code'],check=True)
+          tests=[]
+          for path in sorted(pathlib.Path('.').glob('*/target/surefire-reports/TEST-*.xml')):
+              r=ET.parse(path).getroot()
+              record={'name':r.get('name'),'file':str(path),**{k:int(r.get(k,0)) for k in ('tests','failures','errors','skipped')}}
+              assert record['failures']==record['errors']==record['skipped']==0,record
+              tests.append(record)
+          required='ConfigurationReferenceContractTest WorkspacePortfolioDocumentMonitorTest WorkspacePortfolioDocumentAdapterTest PortfolioGitReviewedSnapshotTest PortfolioGitMaterializationPreviewTest PortfolioAdviceOrderingTest PortfolioApiContractTest PortfolioGitControllerWorkspaceIsolationTest PortfolioGitServiceTest PortfolioDecisionGitRoundtripTest ReadmeShowcaseDriftTest ArchitectureCompletionTest ArchitectureCycleBoundaryTest ArchitectureContextDependencyRatchetTest FinalRuntimeModulesPackagingIT'.split()
+          for name in required: assert any(t['name'].rsplit('.',1)[-1]==name and t['tests']>0 for t in tests),name
+          data.update(verified=True,tests=tests,totals={k:sum(t[k] for t in tests) for k in ('tests','failures','errors','skipped')})
+          p.write_text(json.dumps(data,indent=2)+'\n')
+          print('VERIFIED',data['tree'],data['totals'])
+          PY
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
-          name: final-628-source
-          path: snapshot/*
+          name: final-628-review-evidence
+          path: |
+            target/final-628-*
+            **/target/surefire-reports/TEST-*.xml
           if-no-files-found: error
-          retention-days: 1
+          retention-days: 7
