@@ -108,6 +108,28 @@ class DocumentTemplateWebDavPreconditionTest {
                 any());
     }
 
+    @Test
+    void lowercaseWeakMixedCaseCommitIfNoneMatchPreventsReplacement() throws Exception {
+        when(templates.downloadCurrent("decision-report"))
+                .thenReturn(templateFile(COMMIT_A));
+
+        MockHttpServletRequest request = request("decision-report");
+        request.addHeader("If-None-Match",
+                "w/\"" + COMMIT_A.toUpperCase(java.util.Locale.ROOT) + "\"");
+        MockHttpServletResponse response = new MockHttpServletResponse();
+
+        servlet().service(request, response);
+
+        assertThat(response.getStatus()).isEqualTo(412);
+        verify(templates, never()).upload(
+                eq("decision-report"),
+                any(),
+                any(InputStream.class),
+                any(),
+                any(),
+                any());
+    }
+
     private DocumentTemplateWebDavServlet servlet() {
         return new DocumentTemplateWebDavServlet(
                 templates,

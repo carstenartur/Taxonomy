@@ -45,10 +45,7 @@ public final class DocumentTemplateDetailController {
             @PathVariable String templateId,
             @RequestParam String revision,
             Model model) throws IOException {
-        if (revision == null || !revision.matches("[0-9a-f]{40}")) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    "A full immutable template revision is required");
-        }
+        revision = canonicalImmutableRevision(revision);
         TemplateFile original;
         try {
             original = templates.download(templateId, revision);
@@ -102,8 +99,8 @@ public final class DocumentTemplateDetailController {
             @RequestParam String revision,
             @RequestParam String expectedHead,
             Model model) throws IOException {
-        requireImmutableRevision(revision);
-        requireImmutableRevision(expectedHead);
+        revision = canonicalImmutableRevision(revision);
+        expectedHead = canonicalImmutableRevision(expectedHead);
         try {
             TemplateDescriptor target = templates.describe(templateId, revision);
             TemplateDescriptor current = templates.describeCurrent(templateId);
@@ -128,8 +125,8 @@ public final class DocumentTemplateDetailController {
             Model model,
             HttpServletResponse response,
             RedirectAttributes redirect) throws IOException {
-        requireImmutableRevision(revision);
-        requireImmutableRevision(expectedHead);
+        revision = canonicalImmutableRevision(revision);
+        expectedHead = canonicalImmutableRevision(expectedHead);
         if (!confirmed) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "Explicit confirmation is required to restore a template");
@@ -150,11 +147,12 @@ public final class DocumentTemplateDetailController {
         }
     }
 
-    private static void requireImmutableRevision(String revision) {
-        if (revision == null || !revision.matches("[0-9a-f]{40}")) {
+    private static String canonicalImmutableRevision(String revision) {
+        if (revision == null || !revision.matches("[0-9a-fA-F]{40}")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                     "A full immutable template revision is required");
         }
+        return revision.toLowerCase(java.util.Locale.ROOT);
     }
 
     private static ResponseStatusException missingRestoreVersion(TemplateNotFoundException cause) {

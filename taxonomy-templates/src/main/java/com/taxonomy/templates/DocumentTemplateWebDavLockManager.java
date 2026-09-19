@@ -41,6 +41,8 @@ public class DocumentTemplateWebDavLockManager {
             Duration requestedTimeout,
             String refreshToken) {
 
+        requireLockIdentity(resource, "resource");
+        requireLockIdentity(owner, "owner");
         purgeExpired();
         TemplateLock existing = locks.get(resource);
         Duration timeout = boundedTimeout(requestedTimeout);
@@ -174,6 +176,12 @@ public class DocumentTemplateWebDavLockManager {
     private void purgeExpired() {
         Instant now = clock.instant();
         locks.values().removeIf(lock -> !lock.expiresAt().isAfter(now));
+    }
+
+    private static void requireLockIdentity(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("WebDAV lock " + label + " must not be blank");
+        }
     }
 
     private static Instant later(Instant first, Instant second) {

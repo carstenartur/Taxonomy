@@ -65,13 +65,13 @@ class DocumentTemplateWebDavServletTest {
     }
 
     @Test
-    void conditionalGetKeepsValidatorsOnNotModifiedResponse() throws Exception {
+    void conditionalGetAcceptsLowercaseWeakMixedCaseCommitEtag() throws Exception {
         TemplateFile file = templateFile(COMMIT_A, new byte[]{1, 2, 3, 4});
         when(templates.downloadCurrent("decision-report")).thenReturn(file);
         MockHttpServletRequest request = request(
                 "GET", "/dav/templates/decision-report.dotx",
                 "/decision-report.dotx");
-        request.addHeader("If-None-Match", "\"" + COMMIT_A + "\"");
+        request.addHeader("If-None-Match", "w/\"" + COMMIT_A.toUpperCase(java.util.Locale.ROOT) + "\"");
         MockHttpServletResponse response = new MockHttpServletResponse();
 
         servlet(new DocumentTemplateWebDavLockManager())

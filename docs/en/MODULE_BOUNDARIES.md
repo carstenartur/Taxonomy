@@ -6,7 +6,7 @@ The machine-readable source of truth for the planned extraction contexts is `.gi
 
 ## Current Maven reactor
 
-The root reactor currently contains nine modules with different roles:
+The root reactor currently contains ten modules with different roles:
 
 | Module | Current role |
 |---|---|
@@ -16,6 +16,7 @@ The root reactor currently contains nine modules with different roles:
 | `taxonomy-export` | Framework-free diagram/export contracts and implementations |
 | `taxonomy-extension-api` | Framework-free common extension contracts |
 | `taxonomy-workspace` | Workspace authority, versioning, semantic editor history and JGit storage |
+| `taxonomy-templates` | Document-template Git storage, OOXML validation and WebDAV |
 | `taxonomy-app` | Executable Spring Boot application and, currently, most Spring-aware feature implementations |
 | `taxonomy-coverage` | Reactor-wide coverage aggregation |
 | `taxonomy-build` | Build policy and browser/verification contracts |
@@ -275,17 +276,17 @@ reactor so every module's production output is current:
 
 The profile includes all six ownership guards for decision reports, commit
 history, DSL document composition, workspace authority, application schema composition and workspace storage in both `pom.xml` and
-`.mvn/verification-suites.json`. Its 15 selected test classes are synchronized
+`.mvn/verification-suites.json`. Its 16 selected test classes are synchronized
 between the POM and catalog. In addition to the eleven existing guards,
 `ArchitectureModuleGraphTest`, `ArchitectureModuleExtractionTest` and
 `ArchitectureSelectorSynchronizationTest` enforce the module graph, extraction
 readiness and exact selector synchronization. Every selected guard must retain
 its source file in its owning reactor module inside the checkout. The build-owner
 contract also invokes the synchronization check, so deleting that check cannot
-silently disable it. The extracted-module guards (`ArchitectureWorkspaceModuleTest`) are also included. Full CI verification remains
+silently disable it. The extracted-module guards (`ArchitectureWorkspaceModuleTest`, `ArchitectureTemplatesModuleTest`) are also included. Full CI verification remains
 `./mvnw -B verify -Pci`.
 
-The ratchet walks `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`: every production Java package below these roots must be classified in `.github/architecture-contexts.json`. Only `taxonomy-app` may contain root-package Java files, and its composition files must exactly match the explicit allow-list. Extracted feature modules reject every root-package Java file, including a copied composition-class name or `package-info.java`.
+The ratchet walks `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`, `taxonomy-templates/src/main/java/com/taxonomy`: every production Java package below these roots must be classified in `.github/architecture-contexts.json`. Only `taxonomy-app` may contain root-package Java files, and its composition files must exactly match the explicit allow-list. Extracted feature modules reject every root-package Java file, including a copied composition-class name or `package-info.java`.
 
 The ratchet is intentionally a **current-state baseline, not an ideal-direction allowlist**. Architectural direction is improved by explicit port/refactoring PRs and then locked in monotonically.
 
@@ -296,7 +297,7 @@ Issue #628 remains the implementation parent. Extraction follows each candidate'
 1. Context map and dependency ratchet — implemented.
 2. Workspace authority and storage ownership — separated from application orchestration.
 3. `taxonomy-workspace` — physically extracted in this revision.
-4. `taxonomy-templates` — next independent extraction; not present in this revision.
+4. `taxonomy-templates` — physically extracted in this revision.
 5. `taxonomy-knowledge` and `taxonomy-interop` — pending; stabilize their owned APIs and remove blocking implementation dependencies.
 6. `taxonomy-architecture`, `taxonomy-analysis` and `taxonomy-portfolio` — pending; resolve their remaining cycles before each extraction.
 7. Reassess `provenance` and `preferences` after those boundaries are stable.
@@ -310,4 +311,14 @@ Every extracted feature library must remain independent of `taxonomy-app`; the a
 remain in the application. Java package names and runtime contracts are unchanged.
 `ArchitectureWorkspaceModuleTest` is included in both architecture selectors and
 requires physical source and compiled ownership. Maven enforces no dependency back
-to the application. The other six planned feature modules remain to be extracted.
+to the application. With templates extracted below, five planned feature modules remain to be extracted.
+
+## Physical templates module
+
+`taxonomy-templates` owns all 21 template production classes and the bundled
+`document-templates/decision-rationale-report.dotx` resource. Its classpath name
+and bytes are unchanged. The library has no dependency on another Taxonomy
+feature module or the Boot application. Twenty-one unit test classes follow
+the implementation; application/HTTP, security and UI resource contracts remain
+in `taxonomy-app`. Global configuration, migration scripts and presentation
+assets remain with application assembly.

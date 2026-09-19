@@ -116,6 +116,40 @@ class DocumentTemplateReadBoundaryTest {
     }
 
     @Test
+    void validatedDownloadRejectsStructurallyInvalidStoredPackage() throws Exception {
+        parts.remove("[Content_Types].xml");
+        when(repository.readCurrent(ID)).thenReturn(snapshot(A));
+
+        assertThrows(IllegalArgumentException.class, () -> service.downloadCurrentValidated(ID));
+
+        verify(codec).validatePackage(anyMap());
+        verify(codec, never()).pack(anyMap());
+    }
+
+    @Test
+    void partReadValidatesPackageBeforeReturningStoredPart() throws Exception {
+        parts.remove("[Content_Types].xml");
+        when(repository.read(ID, A)).thenReturn(snapshot(A));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.readPart(ID, A, "word/document.xml"));
+
+        verify(codec).validatePackage(anyMap());
+    }
+
+    @Test
+    void comparisonValidatesPackageBeforeInterpretingPartAbsence() throws Exception {
+        parts.remove("[Content_Types].xml");
+        when(repository.read(ID, A)).thenReturn(snapshot(A));
+        when(repository.read(ID, B)).thenReturn(snapshot(B));
+
+        assertThrows(IllegalArgumentException.class,
+                () -> service.comparePart(ID, A, B, "word/absent.xml"));
+
+        verify(codec).validatePackage(anyMap());
+    }
+
+    @Test
     void missingHistoricalMetadataNeverFallsBackToTheCurrentVersion() throws Exception {
         var missing = new TemplateNotFoundException(ID, A);
         when(repository.read(ID, A)).thenThrow(missing);

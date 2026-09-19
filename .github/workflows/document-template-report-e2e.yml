@@ -10,6 +10,7 @@ on:
       - '.github/workflows/document-template-report-e2e.yml'
       - 'taxonomy-app/src/main/**'
       - 'taxonomy-workspace/**'
+      - 'taxonomy-templates/**'
       - 'taxonomy-build/**'
       - 'docs/de/DOCUMENT_TEMPLATES.md'
       - 'docs/en/DOCUMENT_TEMPLATES.md'

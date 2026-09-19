@@ -6,12 +6,14 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.ui.ConcurrentModel;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.TreeMap;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -118,11 +120,18 @@ class DocumentTemplateComparisonPreviewLimitTest {
         verifyNoMoreInteractions(repository);
     }
 
-    private static TemplateSnapshot snapshot(byte[] content) {
-        Map<String, byte[]> parts = Map.of(PATH, content);
+    private static TemplateSnapshot snapshot(byte[] content) throws Exception {
+        var codec = new OoxmlTemplatePackageCodec();
+        Map<String, byte[]> parts;
+        try (var input = new ClassPathResource(DecisionRationaleTemplateContract.DEFAULT_RESOURCE)
+                .getInputStream()) {
+            parts = new TreeMap<>(codec.unpack(input).parts());
+        }
+        parts.put(PATH, content);
+        long size = parts.values().stream().mapToLong(bytes -> bytes.length).sum();
         var manifest = new TemplateManifest(1, ID, "Preview limit", ID + ".dotx",
                 OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE, "2026-09-06T00:00:00Z", "qa",
-                content.length, parts.size(), OoxmlTemplatePackageCodec.packageSha256(parts));
+                size, parts.size(), OoxmlTemplatePackageCodec.packageSha256(parts));
         return new TemplateSnapshot(manifest, REVISION, parts);
     }
 }

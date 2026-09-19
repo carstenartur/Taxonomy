@@ -13,7 +13,7 @@
     "database-mssql": {"itTest": "*Mssql*IT"},
     "database-oracle": {"itTest": "*Oracle*IT"},
     "onnx": {"itTest": "LocalOnnxPipelineIT,OnnxSeleniumIT", "systemProperty": "runOnnxTests"},
-    "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest"},
+    "architecture-tests": {"test": "ArchitectureTest,ArchitectureCycleBoundaryTest,ArchitectureExceptionLedgerTest,ArchitectureCycleRuleRegressionTest,ArchitectureContextDependencyRatchetTest,ArchitectureDecisionReportBoundaryTest,ArchitectureCommitHistoryOwnershipTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureModuleGraphTest,ArchitectureModuleExtractionTest,ArchitectureSelectorSynchronizationTest,ArchitectureWorkspaceModuleTest,ArchitectureTemplatesModuleTest"},
     "document-import-tests": {"test": "DocumentImportControllerTest,DocumentParserServiceTest,DocumentImportLimitsTest"},
     "archimate-import-tests": {"test": "ArchiMateWorkspaceImportTests,ArchiMateIdentityImportTest,ArchitectureArchiMateExchangeAcceptanceTest,CatalogFacadeTest"},
     "document-template-report-e2e": {
@@ -59,8 +59,6 @@
     "publish-helm-oci.yml": "immutable release chart publication and Rancher OCI verification",
     "protected-release-main-advance.yml": "protected next-development snapshot verification and pull-request handoff to main",
     "prepare-development-version.yml": "validated non-release development-version transition through a protected pull request",
-    "cleanup-workflow-runs.yml": "Actions retention",
-    "merged-pr-review-audit.yml": "repository-owned retrospective exact-head review evidence audit",
-    "refresh-review-gate.yml": "trusted review-evidence reconciliation and final Maven verification job refresh; executable tests remain Maven-owned"
+    "cleanup-workflow-runs.yml": "Actions retention"
   }
 }
