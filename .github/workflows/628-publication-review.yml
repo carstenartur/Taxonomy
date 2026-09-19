@@ -1,0 +1,42 @@
+name: Portfolio publication review verification
+on:
+  push:
+    branches: [work/628-publication-review]
+    paths: [.github/workflows/628-publication-review.yml]
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 823138373e330a00141f9482bab4a1f03d4506ec
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Verify exact regression failures
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          python3 - <<'PY'
+          import urllib.request,json,base64,hashlib,os,pathlib,subprocess
+          sha='59dfc04b46861bd40115006b5cdd28005fac366e'
+          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(req,timeout=120) as response: data=base64.b64decode(json.load(response)['content'])
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+          for p in pathlib.Path('.').rglob('AGENTS.md'): print('REPOSITORY_INSTRUCTIONS',p,p.read_text())
+          text=data.decode().replace('result.created()', 'result.changed()')
+          path=pathlib.Path('/tmp/628-publication-red.py'); path.write_text(text)
+          env=os.environ.copy();env.pop('GH_TOKEN',None)
+          subprocess.run(['python3',str(path)],env=env,check=True)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: portfolio-publication-red-evidence
+          path: |
+            target/628-*
+            **/target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
