@@ -12,8 +12,8 @@ specialised `RequirementArchitectureView`.
 
 | File | What to do |
 |---|---|
-| `taxonomy-app/src/main/java/com/taxonomy/architecture/service/RequirementArchitectureViewService.java` | Add the new step to the assembly pipeline |
-| `taxonomy-app/src/main/java/com/taxonomy/architecture/service/ArchitectureImpactSelector.java` | Modify element selection if the step changes which elements appear in a view |
+| `taxonomy-architecture/src/main/java/com/taxonomy/architecture/service/RequirementArchitectureViewService.java` | Add the new step to the assembly pipeline |
+| `taxonomy-architecture/src/main/java/com/taxonomy/architecture/service/ArchitectureImpactSelector.java` | Modify element selection if the step changes which elements appear in a view |
 
 ---
 

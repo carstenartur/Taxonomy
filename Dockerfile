@@ -31,6 +31,7 @@ COPY taxonomy-workspace/pom.xml taxonomy-workspace/pom.xml
 COPY taxonomy-templates/pom.xml taxonomy-templates/pom.xml
 COPY taxonomy-interop/pom.xml taxonomy-interop/pom.xml
 COPY taxonomy-knowledge/pom.xml taxonomy-knowledge/pom.xml
+COPY taxonomy-architecture/pom.xml taxonomy-architecture/pom.xml
 COPY taxonomy-app/pom.xml taxonomy-app/pom.xml
 COPY taxonomy-coverage/pom.xml taxonomy-coverage/pom.xml
 COPY taxonomy-build/pom.xml taxonomy-build/pom.xml
@@ -46,6 +47,7 @@ COPY taxonomy-workspace/src taxonomy-workspace/src
 COPY taxonomy-templates/src taxonomy-templates/src
 COPY taxonomy-interop/src taxonomy-interop/src
 COPY taxonomy-knowledge/src taxonomy-knowledge/src
+COPY taxonomy-architecture/src taxonomy-architecture/src
 COPY taxonomy-app/src taxonomy-app/src
 COPY docs docs
 COPY LICENSE NOTICE THIRD-PARTY-NOTICES.md ./

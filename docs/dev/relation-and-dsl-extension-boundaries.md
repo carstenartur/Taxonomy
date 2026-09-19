@@ -69,7 +69,7 @@ modules.
 | DSL mirror | `taxonomy-dsl/.../DslValidator.java`, `AstToModelMapper.java`, `ModelToAstMapper.java`, `DslTokenizer.java`, `ModelDiffer.java`, `SemanticDiffDescriber.java` |
 | UI | `taxonomy-app/src/main/resources/templates/index.html`, `taxonomy-app/src/main/resources/static/js/relations/taxonomy-relations.js` |
 | Seed/import data | `taxonomy-knowledge/src/main/resources/data/relations.csv`, `RelationSeedParser.java`, `ArchiMateXmlImporter.java`, `UafImportProfileExtension.java`, `C4ImportProfileExtension.java`, `ApqcCsvImportProfileExtension.java`, `ApqcExcelImportProfileExtension.java`, `StructurizrDslParser.java` |
-| Tests | `taxonomy-domain/src/test/java/com/taxonomy/model/RelationTypeTest.java`, `taxonomy-app/src/test/java/com/taxonomy/TaxonomyRelationTests.java`, `RelationProposalTests.java`, `RelationQualityTests.java`, `AnalysisRelationGeneratorTests.java`, `RequirementCoverageTests.java`, `taxonomy-app/src/test/java/com/taxonomy/catalog/service/RelationSeedParserTest.java`, `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ProvisionalRelationStepTest.java`, plus DSL tests that assert relation parsing/validation/tokenization |
+| Tests | `taxonomy-domain/src/test/java/com/taxonomy/model/RelationTypeTest.java`, `taxonomy-app/src/test/java/com/taxonomy/TaxonomyRelationTests.java`, `RelationProposalTests.java`, `RelationQualityTests.java`, `AnalysisRelationGeneratorTests.java`, `RequirementCoverageTests.java`, `taxonomy-app/src/test/java/com/taxonomy/catalog/service/RelationSeedParserTest.java`, `taxonomy-architecture/src/test/java/com/taxonomy/architecture/pipeline/ProvisionalRelationStepTest.java`, plus DSL tests that assert relation parsing/validation/tokenization |
 
 ### Relation metadata that can safely move to an extension descriptor
 
@@ -108,7 +108,7 @@ materialized, it is **not** descriptor-only metadata.
 - [ ] `taxonomy-app/src/test/java/com/taxonomy/RelationQualityTests.java`
 - [ ] `taxonomy-app/src/test/java/com/taxonomy/AnalysisRelationGeneratorTests.java`
 - [ ] `taxonomy-app/src/test/java/com/taxonomy/catalog/service/RelationSeedParserTest.java`
-- [ ] `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ProvisionalRelationStepTest.java`
+- [ ] `taxonomy-architecture/src/test/java/com/taxonomy/architecture/pipeline/ProvisionalRelationStepTest.java`
 - [ ] `taxonomy-dsl/src/test/java/com/taxonomy/dsl/DslValidatorTest.java`
 - [ ] `taxonomy-dsl/src/test/java/com/taxonomy/dsl/DslTokenizerTest.java`
 - [ ] `taxonomy-dsl/src/test/java/com/taxonomy/dsl/TaxDslParserTest.java`

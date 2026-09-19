@@ -353,9 +353,9 @@ metadata endpoint**. The UI still duplicates the allowed values in
 
 **Interface / registry / configuration point**
 
-- `taxonomy-app/src/main/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStep.java`
-- `taxonomy-app/src/main/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepRegistry.java`
-- `taxonomy-app/src/main/java/com/taxonomy/architecture/pipeline/ArchitectureViewPipeline.java`
+- `taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStep.java`
+- `taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepRegistry.java`
+- `taxonomy-architecture/src/main/java/com/taxonomy/architecture/pipeline/ArchitectureViewPipeline.java`
 
 Implementations are Spring `@Service` beans discovered automatically. Stable
 step IDs live on the built-ins as `STEP_ID` constants.
@@ -372,11 +372,11 @@ step IDs live on the built-ins as `STEP_ID` constants.
 
 **Required tests**
 
-- `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepRegistryTest.java`
-- `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ArchitectureViewPipelineTest.java`
+- `taxonomy-architecture/src/test/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepRegistryTest.java`
+- `taxonomy-architecture/src/test/java/com/taxonomy/architecture/pipeline/ArchitectureViewPipelineTest.java`
 - step-specific test such as `AnchorSelectionStepTest`,
   `NodeLimitStepTest`, or `ProvisionalRelationStepTest`
-- `taxonomy-app/src/test/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepContextWriteTest.java`
+- `taxonomy-architecture/src/test/java/com/taxonomy/architecture/pipeline/ArchitecturePipelineStepContextWriteTest.java`
   when the step writes new context fields
 
 **Documentation updates**
@@ -400,8 +400,8 @@ step IDs live on the built-ins as `STEP_ID` constants.
 **Interface / registry / configuration point**
 
 - `taxonomy-extension-api/src/main/java/com/taxonomy/extension/api/report/ReportRendererExtension.java`
-- `taxonomy-app/src/main/java/com/taxonomy/architecture/report/ReportRendererRegistry.java`
-- `taxonomy-app/src/main/java/com/taxonomy/architecture/controller/ReportApiController.java`
+- `taxonomy-architecture/src/main/java/com/taxonomy/architecture/report/ReportRendererRegistry.java`
+- `taxonomy-app/src/main/java/com/taxonomy/composition/report/ReportApiController.java`
 
 Renderers are addressed by `(reportTypeId, formatId)`. Existing renderers use the
 backward-compatible `architecture` report type. Additional report families, such as

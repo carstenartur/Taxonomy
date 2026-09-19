@@ -77,7 +77,7 @@ class ArchitectureReportPercentageTest {
     void rendererSourceCannotReintroduceDirectPatternScaling() throws IOException {
         Path source = Path.of("src/main/java").resolve(SERVICE_SOURCE);
         if (!Files.exists(source)) {
-            source = Path.of("taxonomy-app/src/main/java").resolve(SERVICE_SOURCE);
+            source = Path.of("taxonomy-architecture/src/main/java").resolve(SERVICE_SOURCE);
         }
         assertThat(findDirectPatternPercentageMultiplications(source)).isEmpty();
     }
