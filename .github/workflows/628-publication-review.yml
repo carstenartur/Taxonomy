@@ -16,37 +16,22 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Apply reproduced tests and bounded publication correction
+      - name: Apply bounded publication fix and behavior contracts
         env: {GH_TOKEN: '${{ github.token }}'}
         run: |
           python3 - <<'PY'
           import urllib.request,json,base64,hashlib,os,pathlib,subprocess
-          def blob(sha):
-              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
-              with urllib.request.urlopen(req,timeout=120) as response: data=base64.b64decode(json.load(response)['content'])
-              assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
-              return data.decode()
-          tests=blob('59dfc04b46861bd40115006b5cdd28005fac366e').replace('result.created()', 'result.changed()')
-          pathlib.Path('/tmp/628-tests.py').write_text(tests[:tests.index('for module,name,expected in ')])
-          fix=blob('d22e81c90e95558f9571bc57d8618dd146b024ae')
-          changes=[('normalizedBranch, message, username(context), context','normalizedBranch, message, username, context'),('parent, message, username(context), context','parent, message, username, context'),('                    ExpectedHeadDslCommitter.assertHeadMatches(branch, expectedHead, repository.getHeadCommit(branch));', '''                    String actualHead = repository.getHeadCommit(branch);
-                              if (!java.util.Objects.equals(expectedHead, actualHead)) {
-                                  throw new com.taxonomy.workspace.service.BranchHeadConflictException(
-                                          branch, expectedHead, actualHead, "Portfolio branch changed before publication");
-                              }''')]
-          for before,after in changes:
-              assert fix.count(before)==1,before
-              fix=fix.replace(before,after)
-          pathlib.Path('/tmp/628-fix.py').write_text(fix)
-          env=os.environ.copy();env.pop('GH_TOKEN',None)
-          subprocess.run(['python3','/tmp/628-tests.py'],env=env,check=True)
-          subprocess.run(['python3','/tmp/628-fix.py'],env=env,check=True)
-          pathlib.Path('target/628-publication.patch').write_bytes(subprocess.check_output(['git','diff','--cached','--binary']))
+          sha='9dc4bdc83016afb65222e2bd9e7d92652e8180d0'
+          req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/blobs/'+sha,headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json'})
+          with urllib.request.urlopen(req,timeout=120) as response: data=base64.b64decode(json.load(response)['content'])
+          assert hashlib.sha1(b'blob '+str(len(data)).encode()+b'\0'+data).hexdigest()==sha
+          path=pathlib.Path('/tmp/628-candidate.py');path.write_bytes(data)
+          subprocess.run(['python3',str(path)],check=True)
           PY
-      - name: Verify publication regressions and existing contracts
+      - name: Verify publication, routing, review-state and existing application contracts
         run: |
           set -euo pipefail
-          ./mvnw -B -ntp -Dtest=WorkspacePortfolioVersionBoundaryTest,WorkspacePortfolioDocumentAdapterTest,WorkspacePortfolioDocumentMonitorTest,PortfolioGitPublicationRaceTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioGitServiceTest,PortfolioDecisionGitRoundtripTest,PortfolioApiContractTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false test > target/628-green.log 2>&1 || { tail -160 target/628-green.log; exit 1; }
+          ./mvnw -B -ntp -Dtest=WorkspacePortfolioVersionBoundaryTest,WorkspacePortfolioDocumentAdapterTest,WorkspacePortfolioDocumentMonitorTest,PortfolioGitPublicationRaceTest,PortfolioGitReviewedSnapshotTest,PortfolioGitMaterializationPreviewTest,PortfolioGitServiceTest,PortfolioDecisionGitRoundtripTest,PortfolioApiContractTest,ArchitectureCompletionTest,ArchitectureCycleBoundaryTest,ArchitectureContextDependencyRatchetTest,PortfolioControllerDelegationContractTest,PortfolioGitRequestContractTest,PortfolioRepresentationsContractTest,PortfolioReviewMutationContractTest,PortfolioJsonCodecBoundaryTest,DocumentAnalysisServiceTest -Dsurefire.failIfNoSpecifiedTests=false test > target/628-green.log 2>&1 || { tail -180 target/628-green.log; exit 1; }
           tail -25 target/628-green.log
       - name: Record tested source tree without changing refs
         env: {GH_TOKEN: '${{ github.token }}'}
