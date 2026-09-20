@@ -14,8 +14,8 @@ import java.util.stream.Collectors;
 
 import static com.taxonomy.ArchitectureModuleGraph.*;
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 
 /** Ordinary full-reactor test; reuses the module gate rather than inventing a POM parser. */
 class ArchitectureDocumentationTest {
@@ -60,13 +60,15 @@ class ArchitectureDocumentationTest {
         assertThat(features).isNotEmpty();
         for (String file : List.of("README.md", "docs/en/MODULE_BOUNDARIES.md", "docs/de/MODULE_BOUNDARIES.md")) {
             String document = Files.readString(root.resolve(file));
-            assertThatCode(() -> ArchitectureDocumentation.checkInventory(document, inventory))
-                    .as(file).doesNotThrowAnyException();
+            assertDoesNotThrow(() -> {
+                ArchitectureDocumentation.checkInventory(document, inventory);
+            }, file);
         }
         for (String file : List.of("docs/en/ARCHITECTURE.md", "docs/de/ARCHITECTURE.md")) {
             String document = Files.readString(root.resolve(file));
-            assertThatCode(() -> ArchitectureDocumentation.checkFeatureGraph(document, features, edges))
-                    .as(file).doesNotThrowAnyException();
+            assertDoesNotThrow(() -> {
+                ArchitectureDocumentation.checkFeatureGraph(document, features, edges);
+            }, file);
         }
     }
 
