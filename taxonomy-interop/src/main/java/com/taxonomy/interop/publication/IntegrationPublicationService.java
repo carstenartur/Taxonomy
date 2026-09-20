@@ -347,9 +347,10 @@ public class IntegrationPublicationService {
                             return store.locked(context, connectionId, session -> {
                                 session.publications().recordPublicationLookup(claim, lookup);
                                 boolean reconciliation = session.publications().publication(id).phase() == PublicationPhase.RECONCILIATION_REQUIRED;
-                                // A lookup-only NOT_FOUND does not authorize SEND or another lookup
-                                // in this invocation. Retain UNKNOWN and await later evidence.
-                                return lookup.state() == LookupState.FOUND || lookup.state() == LookupState.NOT_FOUND && !reconciliation;
+                                // A nonterminal FOUND or lookup-only NOT_FOUND ends this invocation.
+                                // Neither fences an older SEND; await later authoritative evidence.
+                                return lookup.state() == LookupState.FOUND && lookup.receipt().terminal()
+                                        || lookup.state() == LookupState.NOT_FOUND && !reconciliation;
                             });
                         }
                         var receipt = connector.publishItem(plan.context(), claim.frozenRequest());

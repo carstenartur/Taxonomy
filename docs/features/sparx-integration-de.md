@@ -357,6 +357,18 @@ Git-Prüfpunkt, letzte Pull-Beobachtung (OBSERVATION) und verifizierter gemeinsa
 Stand (COMMON) sind getrennt. COMMON setzt vollständige externe Prüfung, bestätigte
 Effekte, abgeschlossenen lokalen Git-Stand und unveränderten lokalen Inhalt voraus.
 
+Nach einer lokalen Änderung gilt eine effektlose Einzelaktion nur als geklärt,
+wenn jeder SEND dieser Einzelaktion seine eigene gespeicherte Antwort ohne Effekt
+besitzt. Sobald alle Einzelaktionen geklärt sind, steht die verknüpfte Abgleichvorschau
+zur Verfügung. Bleibt ein älterer SEND unklar, bleibt die Reservierung bestehen;
+**Dauerhaften Vorgang fortsetzen** fragt dann ausschließlich Belege ab. Derselbe
+nichtterminale Beleg beendet diesen Aufruf. Ein verbindlicher terminaler Beleg
+kann die Unsicherheit auflösen. Nach lokaler Änderung wird der alte eingefrorene
+Plan nicht erneut gesendet. Fehlercodes bleiben im validierten Beleg vollständig
+erhalten; bei mehr als 64 Zeichen dient der Belegzustand als begrenzter Diagnosecode
+in Historie und Einzelstatus.
+
+
 ### API und optionaler SBPI-Cliententwurf
 
 Die authentifizierten Routen stehen unter `/api/integrations/{connection}`:

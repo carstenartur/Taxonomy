@@ -16,6 +16,94 @@ import static org.junit.jupiter.api.Assertions.*;
 class IntegrationPublicationRecoveryTest extends PublicationIntegrationFixture {
 
     @Test
+    void overlappingSendKeepsNoEffectUnresolvedAfterMovementAndRecoversByLookup() throws Exception {
+        edit(new CreateArchitectureElement("overlap-no-effect", "System", Map.of("title", "Before")));
+        var clock = new MutableClock();
+        var original = initialDispatchClaim(clock);
+        UUID id = original.operationId();
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var visits = new AtomicInteger();
+        provider.beforeWrite = () -> {
+            if (visits.incrementAndGet() == 1) {
+                entered.countDown();
+                await(release);
+            }
+        };
+        provider.closeAt = 1;
+        provider.noEffectAt = 2;
+        var executor = Executors.newSingleThreadExecutor();
+        var olderResponse = executor.submit(() -> connector.publishItem(null, original.frozenRequest()));
+        try {
+            assertTrue(entered.await(10, TimeUnit.SECONDS));
+            store.locked(context, connection, session -> {
+                session.publications().recordPublicationUnknown(original, "PUBLICATION_DEADLINE");
+                return null;
+            });
+            clock.advance(31);
+            var lookup = store.locked(context, connection, session -> session.publications().claimPublicationAttempt(id, clock.instant()));
+            assertEquals(AttemptKind.LOOKUP, lookup.attemptKind());
+            var absent = lookupReceipt(lookup);
+            assertEquals(LookupState.NOT_FOUND, absent.state());
+            store.locked(context, connection, session -> {
+                session.publications().recordPublicationLookup(lookup, absent);
+                return null;
+            });
+            var newer = store.locked(context, connection, session -> session.publications().claimPublicationAttempt(id, clock.instant()));
+            assertEquals(AttemptKind.SEND, newer.attemptKind());
+            assertEquals(original.frozenRequest(), newer.frozenRequest());
+            var noEffect = connector.publishItem(null, newer.frozenRequest());
+            assertEquals(ReceiptState.RETRYABLE_NO_EFFECT, noEffect.state());
+            store.locked(context, connection, session -> {
+                session.publications().recordPublicationReceipt(newer, noEffect);
+                return null;
+            });
+            edit(new UpdateArchitectureElement("overlap-no-effect", "System", Map.of("title", "After")));
+            var moved = publication.retryPublication(context, connection, id);
+            assertEquals(PublicationPhase.RECONCILIATION_REQUIRED, moved.phase());
+            assertEquals(ItemState.RETRYABLE_NO_EFFECT, moved.items().getFirst().state());
+            assertFalse(moved.allowedActions().contains(PublicationAction.RECONCILE));
+            assertTrue(moved.allowedActions().contains(PublicationAction.RETRY), "An older SEND can still commit; keep read-only receipt recovery available");
+            var nextRequest = new PublicationPreviewRequest(UUID.randomUUID(), state(), PublicationMode.PUSH, PublicationContractProvider.SCOPE, provider.snapshot().revision());
+            assertEquals("PUBLICATION_UNKNOWN_UNRESOLVED", assertThrows(IntegrationProblem.class,
+                    () -> publication.previewPublicationReconciliation(context, connection, id, new ReconciliationPreviewRequest(id, nextRequest, "Unsafe early successor"))).code());
+            var recoveredNoEffect = assertTimeout(Duration.ofSeconds(10), () -> publication.retryPublication(context, connection, id));
+            assertEquals(ItemState.RETRYABLE_NO_EFFECT, recoveredNoEffect.items().getFirst().state());
+            assertFalse(recoveredNoEffect.allowedActions().contains(PublicationAction.RECONCILE));
+            assertEquals(4, recoveredNoEffect.items().getFirst().attempts(), "One same-receipt lookup, not an attempt-budget spin");
+            assertEquals(2, provider.writes.get());
+            assertEquals(2, provider.lookups.get());
+            assertEquals(id, store.read(context, connection).activeOperationId());
+            assertNull(recoveredNoEffect.commonCheckpointId());
+            try (var em = entityManagerFactory.createEntityManager()) {
+                Object[] row = (Object[]) em.createNativeQuery("select ended_at,receipt_json from interop_publish_attempt where id=:id")
+                        .setParameter("id", original.attemptId().toString()).getSingleResult();
+                assertNotNull(row[0], "The deadline ended the local attempt, but did not prove remote completion");
+                assertNull(row[1], "The older SEND has supplied no receipt");
+            }
+            provider.noEffectAt = 0;
+            release.countDown();
+            assertInstanceOf(IllegalStateException.class, assertThrows(ExecutionException.class, () -> olderResponse.get(10, TimeUnit.SECONDS)).getCause());
+            assertEquals(1, provider.mutationCount(original.frozenRequest().item().resourceId()));
+            var terminal = publication.retryPublication(context, connection, id);
+            assertEquals(ItemState.ACKNOWLEDGED, terminal.items().getFirst().state());
+            assertEquals(ReceiptState.APPLIED, terminal.items().getFirst().receipt().state());
+            assertEquals(2, terminal.items().getFirst().receipt().receiptSequence());
+            assertEquals(PublicationPhase.RECONCILIATION_REQUIRED, terminal.phase());
+            assertTrue(terminal.allowedActions().contains(PublicationAction.RECONCILE));
+            assertNull(terminal.commonCheckpointId(), "Old-plan commit cannot promote moved local state to COMMON");
+            assertEquals(id, store.read(context, connection).activeOperationId());
+            assertEquals(2, provider.writes.get());
+            assertEquals(3, provider.lookups.get());
+            assertEquals(List.of(original.frozenRequest(), original.frozenRequest()), provider.requests);
+        } finally {
+            release.countDown();
+            executor.shutdownNow();
+            assertTrue(executor.awaitTermination(10, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
     void concurrentRetryAndExpiredLeaseReuseTheFrozenRequestAndAdoptLateAcknowledgment() throws Exception {
         edit(new CreateArchitectureElement("race", "System", Map.of("title", "Race")));
         var waiting = new CountDownLatch(1);

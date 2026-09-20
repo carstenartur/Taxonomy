@@ -8,6 +8,72 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class IntegrationPublicationPartialTest extends PublicationIntegrationFixture {
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.CsvSource({"64,false", "65,false", "100,false", "64,true", "65,true", "100,true"})
+    void validTerminalFailureCodeIsDurableAndCanReconcile(int length, boolean lostResponse) throws Exception {
+        edit(new CreateArchitectureElement("bounded-code", "System", Map.of("title", "Rejected")));
+        provider.failureCode = "R".repeat(length);
+        provider.staleAt = 1;
+        provider.closeAt = lostResponse ? 1 : 0;
+        var rejected = publication.publish(context, connection, review(preview(PublicationMode.PUSH)));
+        if (lostResponse) {
+            assertEquals(ItemState.UNKNOWN, rejected.items().getFirst().state());
+            publication.retryPublication(context, connection, rejected.operationId());
+        }
+        var durable = publication.publication(context, connection, rejected.operationId());
+        assertEquals(ItemState.REJECTED_STALE, durable.items().getFirst().state(), "Contract-valid code length " + length);
+        assertEquals(PublicationPhase.PARTIAL, durable.phase());
+        assertEquals(provider.failureCode, durable.items().getFirst().receipt().failureCode());
+        var providerEvidence = json.read(java.nio.file.Files.readString(provider.file), PublicationContractProvider.Durable.class);
+        assertEquals(providerEvidence.receipts().get(provider.requests.getFirst().item().idempotencyKey()), durable.items().getFirst().receipt(), "Preserve the complete validated receipt");
+        String diagnostic = length == 64 ? provider.failureCode : "REJECTED_STALE";
+        assertEquals(diagnostic, durable.items().getFirst().failureCode());
+        assertEquals(diagnostic, durable.failureCode());
+        assertTrue(store.events(context, connection, durable.operationId()).stream().anyMatch(e -> diagnostic.equals(e.failureCode())));
+        assertEquals(lostResponse, store.events(context, connection, durable.operationId()).stream().anyMatch(e -> e.type().contains("UNKNOWN")));
+        assertTrue(durable.allowedActions().contains(PublicationAction.RECONCILE));
+        assertNull(durable.commonCheckpointId());
+        assertEquals(durable, publication.retryPublication(context, connection, durable.operationId()));
+        var request = new PublicationPreviewRequest(java.util.UUID.randomUUID(), state(), PublicationMode.PUSH, PublicationContractProvider.SCOPE, provider.snapshot().revision());
+        var successor = publication.previewPublicationReconciliation(context, connection, durable.operationId(), new ReconciliationPreviewRequest(durable.operationId(), request, "Publish corrected state"));
+        var completed = publication.publish(context, connection, review(successor));
+        assertEquals(PublicationPhase.COMPLETED, completed.phase());
+        assertEquals(durable.operationId(), completed.predecessorOperationId());
+        assertEquals(2, provider.writes.get());
+        assertEquals(lostResponse ? 1 : 0, provider.lookups.get());
+        assertEquals(1, provider.mutationCount(completed.items().getFirst().resourceId()));
+        assertEquals(provider.failureCode, publication.publication(context, connection, durable.operationId()).items().getFirst().receipt().failureCode());
+    }
+
+    @Test
+    void completedNoEffectThenLocalMovementAllowsExplicitSuccessor() throws Exception {
+        edit(new CreateArchitectureElement("no-effect", "System", Map.of("title", "Before")));
+        provider.noEffectAt = 1;
+        var operation = publication.publish(context, connection, review(preview(PublicationMode.PUSH)));
+        assertEquals(ItemState.RETRYABLE_NO_EFFECT, operation.items().getFirst().state());
+        assertEquals(0, provider.mutationCount(operation.items().getFirst().resourceId()));
+        edit(new UpdateArchitectureElement("no-effect", "System", Map.of("title", "After")));
+        var moved = publication.retryPublication(context, connection, operation.operationId());
+        assertEquals(PublicationPhase.RECONCILIATION_REQUIRED, moved.phase());
+        assertTrue(moved.allowedActions().contains(PublicationAction.RECONCILE), "The only SEND completed with proven no effect");
+        assertFalse(moved.allowedActions().contains(PublicationAction.RETRY));
+        assertEquals(operation.operationId(), store.read(context, connection).activeOperationId());
+        assertNull(moved.commonCheckpointId());
+        assertEquals(1, provider.writes.get(), "Movement cannot dispatch the stale plan");
+        assertEquals(0, provider.lookups.get());
+        var request = new PublicationPreviewRequest(java.util.UUID.randomUUID(), state(), PublicationMode.PUSH, PublicationContractProvider.SCOPE, provider.snapshot().revision());
+        var successor = publication.previewPublicationReconciliation(context, connection, moved.operationId(), new ReconciliationPreviewRequest(moved.operationId(), request, "Publish moved local state"));
+        assertEquals(moved.operationId(), store.read(context, connection).activeOperationId(), "Preview retains the old reservation");
+        var completed = publication.publish(context, connection, review(successor));
+        assertEquals(PublicationPhase.COMPLETED, completed.phase());
+        assertEquals(moved.operationId(), completed.predecessorOperationId());
+        assertEquals(2, provider.writes.get());
+        assertEquals("After", provider.snapshot().document().artifacts().getFirst().title());
+        assertEquals(1, provider.mutationCount(completed.items().getFirst().resourceId()));
+        assertNull(store.read(context, connection).activeOperationId());
+        assertNotEquals(provider.requests.getFirst().item().idempotencyKey(), provider.requests.getLast().item().idempotencyKey());
+    }
+
     @Test
     void firstAppliedSecondStaleRetainsReservationAndNeverCompletes() throws Exception {
         edit(new CreateArchitectureElement("a", "System", Map.of("title", "A")), new CreateArchitectureElement("b", "System", Map.of("title", "B")), new CreateArchitectureElement("c", "System", Map.of("title", "C")));

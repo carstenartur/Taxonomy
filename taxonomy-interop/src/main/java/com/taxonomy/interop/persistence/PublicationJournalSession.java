@@ -276,7 +276,8 @@ public final class PublicationJournalSession {
         // NOT_FOUND never fences an overlapping original SEND. After movement, recovery
         // remains read-only even when a previous lookup permitted resubmission.
         boolean reconciliation = publicationEntity.phase.equals(PublicationPhase.RECONCILIATION_REQUIRED.name());
-        boolean lookup = item.state.equals(ItemState.UNKNOWN.name()) && (reconciliation || !item.resubmitAllowed);
+        boolean lookup = item.state.equals(ItemState.UNKNOWN.name()) && (reconciliation || !item.resubmitAllowed)
+                || reconciliation && item.state.equals(ItemState.RETRYABLE_NO_EFFECT.name()) && unresolved(item);
         if (!lookup) {
             if (publicationEntity.phase.equals(PublicationPhase.RECONCILIATION_REQUIRED.name())) {
                 return null;
@@ -340,6 +341,9 @@ public final class PublicationJournalSession {
                 throw IntegrationProblem.conflict("PUBLICATION_RECEIPT_CHANGED");
             }
             finishAttempt(attempt, "RECEIPT_REPLAY", receipt);
+            // A repeated lookup made useful bounded progress; its own lease must not
+            // delay a later recovery invocation. It supplies no proof about other SENDs.
+            releaseLease(publicationEntity, claim);
             return;
         }
         finishAttempt(attempt, receipt.state().name(), receipt);
@@ -349,7 +353,9 @@ public final class PublicationJournalSession {
             return;
         }
         item.receiptJson = json.write(receipt);
-        item.failureCode = receipt.failureCode();
+        String diagnostic = receipt.failureCode() != null && receipt.failureCode().length() > 64
+                ? receipt.state().name() : receipt.failureCode();
+        item.failureCode = diagnostic;
         item.state = switch(receipt.state()) {
             case APPLIED ->
                 ItemState.ACKNOWLEDGED.name();
@@ -361,12 +367,12 @@ public final class PublicationJournalSession {
                 ItemState.RETRYABLE_NO_EFFECT.name();
         };
         releaseLease(publicationEntity, claim);
-        event(publicationEntity, "PUBLICATION_RECEIPT", receipt.failureCode());
+        event(publicationEntity, "PUBLICATION_RECEIPT", diagnostic);
         if (publicationEntity.phase.equals(PublicationPhase.RECONCILIATION_REQUIRED.name())) {
             return;
         }
         if (receipt.state() == ReceiptState.REJECTED_STALE || receipt.state() == ReceiptState.REJECTED_PERMANENT) {
-            phase(publicationEntity, PublicationPhase.PARTIAL, receipt.failureCode());
+            phase(publicationEntity, PublicationPhase.PARTIAL, diagnostic);
         } else {
             phase(publicationEntity, items(publicationEntity).stream().allMatch(i -> i.state.equals(ItemState.ACKNOWLEDGED.name())) ? PublicationPhase.VERIFY_PENDING : PublicationPhase.PUBLISH_PENDING, null);
         }
@@ -539,11 +545,11 @@ public final class PublicationJournalSession {
             actions.addAll(Set.of(PublicationAction.RETRY, PublicationAction.CANCEL));
         }
         boolean active = Objects.equals(session.connection.activeOperationId, publicationEntity.id);
-        boolean unresolved = outcomes.stream().anyMatch(item -> item.state() == ItemState.UNKNOWN || item.state() == ItemState.IN_FLIGHT || item.state() == ItemState.RETRYABLE_NO_EFFECT);
+        boolean unresolved = items(publicationEntity).stream().anyMatch(this::unresolved);
         if (active && Set.of(PublicationPhase.LOCAL_APPLY_PENDING, PublicationPhase.LOCAL_CHECKPOINT_PENDING, PublicationPhase.PUBLISH_PENDING, PublicationPhase.RECOVERY_REQUIRED, PublicationPhase.VERIFY_PENDING).contains(phase) && outcomes.stream().noneMatch(i -> i.attempts() >= MAX_ATTEMPTS)) {
             actions.add(PublicationAction.RETRY);
         }
-        if (active && phase == PublicationPhase.RECONCILIATION_REQUIRED && unknown > 0 && !"PUBLICATION_RECEIPT_EXPIRED".equals(publicationEntity.failureCode)) {
+        if (active && phase == PublicationPhase.RECONCILIATION_REQUIRED && unresolved && outcomes.stream().noneMatch(i -> i.attempts() >= MAX_ATTEMPTS) && !"PUBLICATION_RECEIPT_EXPIRED".equals(publicationEntity.failureCode)) {
             actions.add(PublicationAction.RETRY);
         }
         if (active && !unresolved && Set.of(PublicationPhase.PARTIAL, PublicationPhase.RECONCILIATION_REQUIRED).contains(phase)) {
@@ -599,12 +605,32 @@ public final class PublicationJournalSession {
     }
 
     private void requireResolved(IntegrationPublicationEntity publicationEntity) {
-        if (items(publicationEntity).stream().anyMatch(i -> i.state.equals(ItemState.UNKNOWN.name()) || i.state.equals(ItemState.IN_FLIGHT.name()) || i.state.equals(ItemState.RETRYABLE_NO_EFFECT.name()))) {
+        if (items(publicationEntity).stream().anyMatch(this::unresolved)) {
             throw IntegrationProblem.conflict("PUBLICATION_UNKNOWN_UNRESOLVED");
         }
         if (!Set.of(PublicationPhase.PARTIAL.name(), PublicationPhase.RECONCILIATION_REQUIRED.name()).contains(publicationEntity.phase)) {
             throw IntegrationProblem.conflict("PUBLICATION_RECONCILIATION_REQUIRED");
         }
+    }
+
+    private boolean unresolved(IntegrationPublishItemEntity item) {
+        if (item.state.equals(ItemState.UNKNOWN.name()) || item.state.equals(ItemState.IN_FLIGHT.name())) {
+            return true;
+        }
+        if (!item.state.equals(ItemState.RETRYABLE_NO_EFFECT.name())) {
+            return false;
+        }
+        // Only each SEND's own validated response proves that invocation finished
+        // without effect. A LOOKUP's nonterminal receipt cannot fence an older SEND,
+        // and endedAt alone may merely record a timeout/transport failure.
+        var sends = em.createQuery("select a from IntegrationPublishAttemptEntity a where a.scopeId=:scope and a.connectionId=:connection and a.operationId=:operation and a.itemId=:item and a.kind=:kind", IntegrationPublishAttemptEntity.class)
+                .setParameter("scope", item.scopeId).setParameter("connection", item.connectionId)
+                .setParameter("operation", item.operationId).setParameter("item", item.id)
+                .setParameter("kind", AttemptKind.SEND.name()).getResultList();
+        return sends.isEmpty() || sends.stream().anyMatch(a -> {
+            var receipt = json.read(a.receiptJson, PublicationReceipt.class);
+            return a.endedAt == null || receipt == null || receipt.state() != ReceiptState.RETRYABLE_NO_EFFECT;
+        });
     }
 
     private List<IntegrationPublishItemEntity> items(IntegrationPublicationEntity publicationEntity) {

@@ -46,7 +46,7 @@ public final class PublicationContractProvider implements AutoCloseable {
     volatile LookupState lookupState;
     volatile int responseStatus;
     volatile boolean oversizedResponse, foreignReceipt;
-    volatile String reflectedCredential;
+    volatile String reflectedCredential, failureCode;
     public void closeAfterWrite(int ordinal) { closeAt = ordinal; }
     public synchronized String revision() { return snapshot().revision(); }
     public synchronized void seedDocument(ExchangeDocument document) throws Exception { seed(document); }
@@ -188,7 +188,7 @@ public final class PublicationContractProvider implements AutoCloseable {
             resources.put(r.item().resourceId(), result);
             mutations.merge(r.item().resourceId(), 1, Integer::sum);
         }
-        var receipt = new PublicationReceipt(1, CONTRACT_VERSION, PROVIDER, SCOPE, r.operationId(), r.item().itemId(), r.item().idempotencyKey(), r.planFingerprint(), r.requestFingerprint(), applied ? ReceiptState.APPLIED : noEffect ? ReceiptState.RETRYABLE_NO_EFFECT : ReceiptState.REJECTED_STALE, previous == null ? 1 : previous.receiptSequence() + 1, !noEffect, r.expectedScopeRevision(), applied ? "scope-" + revision : r.expectedScopeRevision(), result, applied ? null : noEffect ? "TRY_LATER" : "STALE_SCOPE", Instant.now());
+        var receipt = new PublicationReceipt(1, CONTRACT_VERSION, PROVIDER, SCOPE, r.operationId(), r.item().itemId(), r.item().idempotencyKey(), r.planFingerprint(), r.requestFingerprint(), applied ? ReceiptState.APPLIED : noEffect ? ReceiptState.RETRYABLE_NO_EFFECT : ReceiptState.REJECTED_STALE, previous == null ? 1 : previous.receiptSequence() + 1, !noEffect, r.expectedScopeRevision(), applied ? "scope-" + revision : r.expectedScopeRevision(), result, applied ? null : failureCode != null ? failureCode : noEffect ? "TRY_LATER" : "STALE_SCOPE", Instant.now());
         var receipts = new TreeMap<>(data.receipts());
         receipts.put(r.item().idempotencyKey(), receipt);
         save(new Durable(revision, artifacts, resources, receipts, mutations));

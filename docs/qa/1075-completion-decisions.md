@@ -474,3 +474,49 @@ Four new failure regressions reached meaningful RED before correction; one initi
 CLOB fixture error is retained separately. Seven focused tests and the final 41-test
 Flow/Partial/Concurrency/Recovery/editor selection passed with no failures or skips.
 Independent service-fix review and new-source final CI remain pending.
+
+
+## D81 — Final I1–I3 preservation and recovery correction
+
+Preserve the Sparx model-root occurrence exception for legacy v1 independently of
+native package-edit capability. Registered neutral profiles and Sparx v2 retain
+their existing root semantics; v1 still imports packages as retained evidence.
+Reason: the v1 reader encodes hierarchy with model-root containers and parent
+placement IDs. The regression uses that actual reader and integration export,
+checking all retained IDs, parents, sibling positions and absence of false losses.
+
+Keep the receipt contract's 100-character safe failure code and complete validated
+receipt JSON. Only scalar item/operation/event diagnostics longer than 64 characters
+map to the existing receipt-state name. Reason: legitimate terminal evidence must
+not roll back into UNKNOWN because a diagnostic column is shorter. Real HTTP SEND
+and lost-response LOOKUP cases cover 64, 65 and 100, durable full receipt equality,
+terminal projection and an explicit successor. Internal safe-code guards remain.
+
+Resolve a RETRYABLE_NO_EFFECT item for explicit reconciliation only when every
+persisted SEND for it has its own completed validated no-effect receipt. Neither a
+timeout's ended timestamp nor a LOOKUP receipt proves an older SEND cannot commit.
+Keep that uncertainty reserved and recoverable through read-only LOOKUP after
+local movement. A repeated nonterminal FOUND ends the invocation and releases only
+its owner/epoch lease; it cannot consume the 100-attempt quota in a loop. Terminal
+receipts remain authoritative, and movement never permits a new stale-plan SEND or
+premature COMMON. The real overlapping-provider case records a timeout, retains
+its unresolved SEND after a newer no-effect and repeated lookup, then adopts the
+older committed-but-lost result through lookup: one mutation, one frozen key/request.
+
+Five initial behavioral failures across six executions preceded production edits;
+the first focused GREEN passed all six. The later strengthened SEND/LOOKUP and
+timeout cases were explicitly tested with the journal/service restored to BASE:
+eight executions, six expected failures, two passing 64-character controls. An
+intermediate run executed stale test bytecode and is retained separately, excluded
+from that strengthened RED claim. Its cause is not established; removing affected
+generated compilation outputs restored the correct signature and assertions.
+The original GREEN production hashes were restored exactly. Final covering
+validation passed 60 tests (14 interop, 46 app), with no failures/errors/skips;
+inherited compiler/JVM/HSQL/Flyway/Hibernate/Lucene notices remain non-pristine.
+
+No schema, public API, dependency, ratchet, browser asset or export-rendering input
+was changed. The existing EN/DE help and contract spec describe these precise
+recovery and diagnostic rules. Fresh scoped rereview and controller exact-source
+clean-root/required CI remain gates; prior browser/process/CI evidence is historical.
+Actual EA/PCS/SBPI/MS Word/MS Visio remain NOT_EXECUTED. Process-crash evidence does
+not establish power-loss durability or arbitrary external Git-writer fencing.

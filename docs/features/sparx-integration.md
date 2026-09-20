@@ -362,6 +362,17 @@ checkpoint, last pull OBSERVATION and verified COMMON checkpoint are distinct.
 COMMON is recorded only after full-scope remote verification, acknowledged effects,
 completed local Git and an unchanged exact local state.
 
+After a local edit, a no-effect item is resolved only when every SEND for that
+item has its own saved no-effect response. Once all items are resolved, a linked
+reconciliation preview is available. If an older
+SEND remains uncertain, the reservation stays held and **Resume durable operation**
+only looks up receipts; a repeated nonterminal receipt ends that invocation.
+An authoritative terminal receipt can resolve that uncertainty. The old frozen
+plan is never sent again after local movement. Receipt failure codes retain their
+full validated value; codes longer than 64 characters use the receipt state as the
+bounded history/item diagnostic.
+
+
 ### Authenticated API and optional SBPI client design
 
 All paths below are under `/api/integrations/{connection}` and use the existing

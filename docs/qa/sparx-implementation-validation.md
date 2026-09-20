@@ -234,3 +234,22 @@ supported. No schema, public API, module edge or lock-order change was required.
 Scoped correction review and final full-source CI, including PostgreSQL, Oracle
 and SQL Server, remain required; earlier candidate CI is not evidence for these
 new bytes. Actual EA/PCS/SBPI/MS Word/MS Visio remain `NOT_EXECUTED`.
+
+
+The final [I1–I3 correction](1075-completion-decisions.md#d81--final-i1i3-preservation-and-recovery-correction)
+preserves actual legacy-v1 nested occurrence export without granting v1 native
+package editing; records full validated 64/65/100-character receipt codes through
+real SEND and LOOKUP while bounding scalar diagnostics; and separates completed
+no-effect SEND proof from an older timed-out SEND that may still commit. After
+movement, the former permits an explicit successor and the latter retains its
+reservation and read-only recovery. Repeated nonterminal lookup is bounded; later
+terminal evidence yields one remote mutation without a stale-plan SEND or COMMON.
+
+Final covering validation passed 60 tests (14 interop, 46 app), including v2 and
+registered neutral package paths, with zero failures, errors or skips. Meaningful
+REDs and the exact restored production hashes are retained in the correction
+report. One intermediate strengthened run used stale test bytecode; it is excluded
+from that claim, its cause remains unknown, and affected generated outputs were
+cleared before confirmed RED and final GREEN. Existing warning debt remains.
+No new browser/Office/proprietary-host execution is claimed. The controller still
+owns fresh exact-source clean-root, required CI and the single scoped rereview.

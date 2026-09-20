@@ -197,6 +197,19 @@ For skipped/rejected divergent items, all selected publication writes may succee
 
 Cancellation is allowed before accepted effects; after any local apply or dispatch it means stop scheduling and reconcile, never rollback or erase history. Provide `reconcilePublication` to resolve an operation only after unknown attempts have authoritative terminal outcomes (or a provider-specific verified fence proves they cannot later commit). A current GET that happens to match/miss an object is not sufficient to release an UNKNOWN creation. Unknown with expired receipts can remain blocked pending external recovery; this limitation is necessary and must be visible.
 
+A current RETRYABLE_NO_EFFECT display state is not by itself unresolved or resolved.
+After local movement, that item is resolved if every persisted SEND for the item
+has its own completed, validated no-effect receipt; explicit reconciliation requires
+all items to be resolved. A timeout's ended timestamp is not
+such proof. A nonterminal LOOKUP receipt belongs only to that lookup; it never
+completes an older possibly committing SEND. Retain lookup-only recovery while
+that uncertainty remains, including when the item displays RETRYABLE_NO_EFFECT.
+A repeated nonterminal FOUND ends the invocation and releases only its own lease;
+it cannot trigger another SEND or spin through the attempt budget. Terminal
+receipts remain authoritative across leases, and COMMON still requires full
+convergence against unchanged local state.
+
+
 A reconciliation preview has a new operation ID and `predecessorOperationId`, uses current full local and remote states plus prior common checkpoint and predecessor receipts, and records explicit field choices. Do not clone an old payload under a new key. Existing local semantic operations and their operation IDs remain immutable; successor operations apply only newly reviewed deltas. Clearing the old active reservation and reserving successor must be atomic and require no unresolved dispatches.
 
 ## Persistence additions
@@ -208,6 +221,12 @@ Add `V21__conditional_integration_publication.sql` (next free migration at inspe
 * `interop_publish_attempt`: attempt UUID, scope/connection/operation/item IDs, lease epoch, kind SEND/LOOKUP, start/end time, sanitized outcome code, validated receipt JSON or receipt digest. Retain useful monotonic attempt history, bounded by a deliberate quota; refuse additional attempts rather than silently discard durable evidence.
 * `interop_connection.common_checkpoint_id` nullable. Keep existing `checkpoint_id` for pull observation compatibility; expose both distinctly.
 * `interop_checkpoint.kind` default `OBSERVATION`, plus `baseline_json` and `publication_completion_json` nullable. COMMON baseline contains frozen local+remote canonical projections and exact scope/profile/provider; only verified new completion can set COMMON. Existing rows migrate to OBSERVATION even if their historical method parameter was named synchronizedState. No backfill guesses that those rows represent convergence.
+
+Validated receipt failure codes keep the existing wire bound of 100 safe uppercase
+characters in complete receipt JSON. Item, operation and event scalar diagnostics
+remain bounded to 64 characters: only an overlong receipt code maps to its existing
+receipt-state name. Do not truncate or mutate receipt evidence, or relax internal
+safe-code validation.
 
 Use scoped lookups for every publication, item, attempt and common checkpoint. Validate connection ownership even for globally unique operation IDs. Context contains exact branch but connection scope uses existing repository/workspace scope key: explicitly compare requested branch to frozen operation branch before retry/checkpoint/reconcile; the workspace lookup alone is insufficient. Treat repository organization, actor, project and immutable remote configuration identity as part of authorization, not just request fingerprint material.
 

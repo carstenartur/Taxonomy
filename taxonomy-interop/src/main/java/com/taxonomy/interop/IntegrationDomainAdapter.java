@@ -302,7 +302,7 @@ public class IntegrationDomainAdapter {
                         || item.kind() == ArtifactKind.PLACEMENT && (!value(extension.get("artifact")).isEmpty() && !present.contains(extension.get("artifact"))
                         || !value(extension.get("parent")).isEmpty() && !placements.contains(extension.get("parent"))
                         || !"organizations".equals(extension.get("container")) && !present.contains(extension.get("container"))
-                        && !(supportsNativePackages(connection) && Objects.equals(template.metadata().get("identifier"), extension.get("container"))));
+                        && !((SparxSnapshots.isSparx(connection.connectorId()) || supportsNativePackages(connection)) && Objects.equals(template.metadata().get("identifier"), extension.get("container"))));
                 if (omit) losses.add(new MappingLoss(item.id(), "dependency", "LOCAL_DEPENDENCY_REMOVED", LossDisposition.TRANSFORMED,
                         "Occurrence or relation is omitted because its canonical target was removed locally"));
                 return omit;
