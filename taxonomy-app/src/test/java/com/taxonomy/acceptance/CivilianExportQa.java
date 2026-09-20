@@ -28,6 +28,14 @@ public final class CivilianExportQa {
     private static final ObjectMapper JSON = new ObjectMapper();
     private CivilianExportQa() { }
 
+    private static org.w3c.dom.Document XmlSupport(String xml) throws Exception {
+        var factory=DocumentBuilderFactory.newInstance();factory.setNamespaceAware(true);
+        factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl",true);
+        factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD,"");
+        factory.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA,"");
+        return factory.newDocumentBuilder().parse(new ByteArrayInputStream(xml.getBytes(StandardCharsets.UTF_8)));
+    }
+
     public static Map<String, Object> verify(JsonNode projection, Map<String, byte[]> artifacts,
                                             Path output, boolean render) throws Exception {
         String snapshot = projection.path("snapshotId").asText();
@@ -117,19 +125,47 @@ public final class CivilianExportQa {
         assertThat(reportHtml).contains(requirement, snapshot, "CIV-FLOOD-001");
         JsonNode decision = JSON.readTree(artifacts.get("decision.json"));
         assertThat(decision.toString()).contains(requirement, snapshot);
-        try (var document = new XWPFDocument(new ByteArrayInputStream(artifacts.get("decision.docx")));
-             var extractor = new XWPFWordExtractor(document)) {
-            assertThat(extractor.getText()).contains(requirement, snapshot, "CIV-FLOOD-001");
-            assertThat(document.getTables()).isNotEmpty();
+        String wordGraphHash = com.taxonomy.architecture.report.ArchitectureReportDocument.graphSha256(expected);
+        for (String file : List.of("decision.docx", "report.docx")) {
+            try (var document = new XWPFDocument(new ByteArrayInputStream(artifacts.get(file)));
+                 var extractor = new XWPFWordExtractor(document)) {
+                String text = extractor.getText();
+                assertThat(text).contains(projection.path("requirementText").asText(), snapshot, wordGraphHash);
+                assertThat(document.getProperties().getCustomProperties().getProperty("taxonomy.snapshot.id").getLpwstr()).isEqualTo(snapshot);
+                assertThat(document.getProperties().getCustomProperties().getProperty("taxonomy.graph.sha256").getLpwstr()).isEqualTo(wordGraphHash);
+                assertThat(document.getTables().size()).isGreaterThanOrEqualTo(4);
+                assertThat(document.getAllPictures().size()).isGreaterThanOrEqualTo(3);
+                String xml = document.getDocument().xmlText();
+                assertThat(xml).contains("Heading1", "TOC ", "Caption", "SEQ Figure", "tblHeader", "cantSplit", "architecture-overview", "architecture-detail-");
+                for (var node : expected.nodes()) assertThat(text).contains(node.id());
+                for (var edge : expected.edges()) assertThat(text).contains(edge.id());
+                assertThat(document.getParagraphs()).noneMatch(p -> p.getText().contains("\t"));
+                var word = XmlSupport(document.getDocument().xmlText());
+                var drawings = word.getElementsByTagNameNS("http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing", "docPr");
+                for (int i=0;i<drawings.getLength();i++) {
+                    var drawing = (org.w3c.dom.Element)drawings.item(i);
+                    assertThat(drawing.getAttribute("title")).isNotBlank();
+                    assertThat(drawing.getAttribute("descr")).isNotBlank();
+                }
+                if (file.equals("decision.docx")) {
+                    var chapters = JSON.treeToValue(decision, com.taxonomy.architecture.decision.DecisionRationaleReport.class).chapters();
+                    var bookmarks = word.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "bookmarkStart");
+                    var links = word.getElementsByTagNameNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main", "hyperlink");
+                    Set<String> names=new HashSet<>(), anchors=new HashSet<>();
+                    for(int i=0;i<bookmarks.getLength();i++) names.add(((org.w3c.dom.Element)bookmarks.item(i)).getAttributeNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main","name"));
+                    for(int i=0;i<links.getLength();i++) anchors.add(((org.w3c.dom.Element)links.item(i)).getAttributeNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main","anchor"));
+                    for(var chapter:chapters) {
+                        String bookmark=com.taxonomy.architecture.report.DecisionTreeOverview.bookmark(chapter);
+                        assertThat(names).contains(bookmark);assertThat(anchors).contains(bookmark);
+                        assertThat(text).contains(chapter.parentCode(),chapter.decisionSummary(),chapter.comparativeRationale());
+                    }
+                }
+            }
         }
         for (String format : List.of("html", "markdown", "json")) {
             assertThat(new String(artifacts.get("report." + format), StandardCharsets.UTF_8)).contains(requirement);
         }
         JSON.readTree(artifacts.get("report.json"));
-        try (var document = new XWPFDocument(new ByteArrayInputStream(artifacts.get("report.docx")));
-             var extractor = new XWPFWordExtractor(document)) {
-            assertThat(extractor.getText()).contains(requirement);
-        }
         String structurizrFile = artifacts.keySet().stream().filter(name -> name.startsWith("adapter-structurizr.")).findFirst().orElseThrow();
         var officialParser = new com.structurizr.dsl.StructurizrDslParser();
         officialParser.setRestricted(true);

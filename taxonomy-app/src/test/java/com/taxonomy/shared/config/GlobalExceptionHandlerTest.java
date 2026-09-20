@@ -23,6 +23,14 @@ class GlobalExceptionHandlerTest {
     private static final String DEFAULT_INTERNAL_MESSAGE =
             "An internal error occurred. Please try again or check the server logs.";
 
+    @Test
+    void wordTemplateReadingScaleFailureIsClearConflict() {
+        var failure=new com.taxonomy.architecture.report.WordReportLayoutException("Word template cannot fit detail at minimum 8pt reading scale");
+        var response=handler(SAFE_INTERNAL_MESSAGE).handleWordLayoutConflict(failure,request("/api/projects/1/snapshots/s/decision-report/docx"));
+        assertThat(response.getStatusCode()).isEqualTo(HttpStatus.CONFLICT);
+        assertThat(response.getBody()).containsEntry("message",failure.getMessage());
+    }
+
     @AfterEach
     void resetLocale() {
         LocaleContextHolder.resetLocaleContext();

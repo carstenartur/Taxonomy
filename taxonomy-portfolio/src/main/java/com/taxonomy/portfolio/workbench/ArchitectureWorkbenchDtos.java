@@ -76,7 +76,35 @@ public final class ArchitectureWorkbenchDtos {
             Map<String, RelationMetadata> relations,
             List<String> warnings,
             SnapshotProvenance exportProvenance,
+            String policyTitleKey,
+            String persistedViewTitle) {
+
+        /** Source-compatible constructor for projections without persisted title provenance. */
+        public Projection(
+            Long projectId,
+            String projectKey,
+            String projectTitle,
+            Long requirementId,
+            String requirementKey,
+            String requirementTitle,
+            String requirementText,
+            String snapshotId,
+            AnalysisStatus snapshotStatus,
+            Instant snapshotCreatedAt,
+            String provider,
+            String modelName,
+            String workspaceId,
+            String branchName,
+            String commitSha,
+            DiagramModel diagram,
+            DiagramScene scene,
+            Map<String, ElementMetadata> elements,
+            Map<String, RelationMetadata> relations,
+            List<String> warnings,
+            SnapshotProvenance exportProvenance,
             String policyTitleKey) {
+            this(projectId, projectKey, projectTitle, requirementId, requirementKey, requirementTitle, requirementText, snapshotId, snapshotStatus, snapshotCreatedAt, provider, modelName, workspaceId, branchName, commitSha, diagram, scene, elements, relations, warnings, exportProvenance, policyTitleKey, null);
+        }
 
         public Projection {
             elements = elements == null ? Map.of() : Map.copyOf(elements);

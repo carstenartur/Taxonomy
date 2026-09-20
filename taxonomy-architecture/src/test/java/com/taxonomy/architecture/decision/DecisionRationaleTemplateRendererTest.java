@@ -173,6 +173,66 @@ class DecisionRationaleTemplateRendererTest {
                         .doesNotContain("{{taxonomy."));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"en","de","too-small"})
+    void enrichedBodyPreservesCustomStylesLogoStoriesAndDecisionIdentity(String language) throws Exception {
+        byte[] logo;
+        var image=new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB);
+        try(var output=new java.io.ByteArrayOutputStream()){javax.imageio.ImageIO.write(image,"png",output);logo=output.toByteArray();}
+        byte[] template;
+        try(var doc=new org.apache.poi.xwpf.usermodel.XWPFDocument();var output=new java.io.ByteArrayOutputStream()) {
+            var styles=doc.createStyles();var style=org.openxmlformats.schemas.wordprocessingml.x2006.main.CTStyle.Factory.newInstance();
+            style.setStyleId("Heading1");style.addNewName().setVal("Custom Heading");style.addNewRPr().addNewColor().setVal("AA22BB");
+            styles.addStyle(new org.apache.poi.xwpf.usermodel.XWPFStyle(style));
+            doc.createParagraph().createRun().setText(DecisionRationaleTemplateContract.TITLE_TOKEN);
+            doc.createParagraph().createRun().setText(DecisionRationaleTemplateContract.REQUIREMENT_TOKEN);
+            doc.createParagraph().createRun().setText(DecisionRationaleTemplateContract.BODY_MARKER);
+            var header=doc.createHeader(org.apache.poi.wp.usermodel.HeaderFooterType.DEFAULT);
+            var run=header.createParagraph().createRun();run.setText("Administrator header");
+            run.addPicture(new ByteArrayInputStream(logo),org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_PNG,"logo.png",100000,100000);
+            doc.createFooter(org.apache.poi.wp.usermodel.HeaderFooterType.DEFAULT).createParagraph().createRun().setText("Administrator footer");
+            if(language.equals("too-small")) {
+                var section=doc.getDocument().getBody().getSectPr();if(section==null)section=doc.getDocument().getBody().addNewSectPr();
+                var size=section.isSetPgSz()?section.getPgSz():section.addNewPgSz();size.setW(java.math.BigInteger.valueOf(15840));size.setH(java.math.BigInteger.valueOf(4320));
+                var margins=section.isSetPgMar()?section.getPgMar():section.addNewPgMar();margins.setTop(java.math.BigInteger.valueOf(1440));margins.setBottom(java.math.BigInteger.valueOf(1440));margins.setLeft(java.math.BigInteger.valueOf(1440));margins.setRight(java.math.BigInteger.valueOf(1440));
+            }
+            doc.write(output);template=output.toByteArray();
+        }
+        var codec=new OoxmlTemplatePackageCodec();var parts=new LinkedHashMap<>(unzip(template));
+        parts.put("[Content_Types].xml",new String(parts.get("[Content_Types].xml"),StandardCharsets.UTF_8)
+                .replace("wordprocessingml.document.main+xml","wordprocessingml.template.main+xml").getBytes(StandardCharsets.UTF_8));
+        template=codec.pack(parts);
+        var manifest=new TemplateManifest(1,DecisionRationaleTemplateContract.TEMPLATE_ID,"Custom","custom.dotx",OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,"2026-08-22T16:00:00Z","administrator",template.length,parts.size(),TEMPLATE_SHA256);
+        when(templates.downloadCurrentValidated(DecisionRationaleTemplateContract.TEMPLATE_ID))
+                .thenReturn(new TemplateFile(manifest,TEMPLATE_COMMIT,template,Instant.EPOCH));
+        var base=report();
+        var chapter=new DecisionRationaleReport.DecisionChapter(1,"BP","Saved parent","",100,0,true,"Saved decision","Saved comparison",List.of(),List.of());
+        var decision=new DecisionRationaleReport(base.title(),language,base.requirement(),base.status(),base.metadata(),base.executiveSummary(),List.of(chapter),List.of(),List.of(),List.of(),List.of(),null);
+        var graph=new com.taxonomy.diagram.DiagramModel("Saved graph",List.of(new com.taxonomy.diagram.DiagramNode("A","Saved A","Capability",1,true,0),new com.taxonomy.diagram.DiagramNode("B","Saved B","Service",.5,false,1)),List.of(new com.taxonomy.diagram.DiagramEdge("E1","A","B","serves",.5)),null);
+        var evidence=new com.taxonomy.architecture.report.ArchitectureReportDocument.SnapshotEvidence(1L,2L,3L,4,"snapshot","repository","workspace","main","based-on-commit","MOCK","model","fingerprint",com.taxonomy.architecture.report.ArchitectureReportDocument.graphSha256(graph));
+        var architecture=com.taxonomy.architecture.report.ArchitectureReportDocument.from("Architecture title",language,decision.requirement(),"Saved scope","Saved recommendation",List.of(),graph,new com.taxonomy.export.LayeredDiagramLayoutService().layout(graph),com.taxonomy.architecture.report.DecisionTreeOverview.from(decision.chapters()),evidence);
+        var renderer=new DecisionRationaleTemplateRenderer(templates,new DecisionRationaleTemplateContract());
+        if(language.equals("too-small")) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(()->renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture)))
+                .isInstanceOf(com.taxonomy.architecture.report.WordReportLayoutException.class).hasMessageContaining("8pt");
+            return;
+        }
+        byte[] result=renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture));
+        try(var doc=new org.apache.poi.xwpf.usermodel.XWPFDocument(new ByteArrayInputStream(result))) {
+            assertThat(doc.getHeaderList().getFirst().getText()).contains("Administrator header");
+            assertThat(doc.getFooterList().getFirst().getText()).contains("Administrator footer");
+            assertThat(unzip(result).values()).anyMatch(bytes->java.util.Arrays.equals(logo,bytes));
+            assertThat(doc.getStyles().getStyle("Heading1").getCTStyle().xmlText()).contains("AA22BB");
+            assertThat(doc.getProperties().getCoreProperties().getTitle()).isEqualTo(decision.title());
+            assertThat(doc.getProperties().getCustomProperties().getProperty("Taxonomy.Template.Commit").getLpwstr()).isEqualTo(TEMPLATE_COMMIT);
+            assertThat(doc.getProperties().getCustomProperties().getProperty("taxonomy.graph.sha256").getLpwstr()).isEqualTo(evidence.graphSha256());
+            String text=new org.apache.poi.xwpf.extractor.XWPFWordExtractor(doc).getText();
+            assertThat(text).contains("Saved A","Saved B","E1","Saved parent","Saved decision","Saved recommendation");
+            assertThat(text).contains(language.equals("de")?"Vollständiger Entscheidungsbaum":"Complete decision tree");
+            assertThat(doc.getDocument().xmlText()).contains("decision_chapter_1_BP","architecture-detail-1");
+        }
+    }
+
     private static final class RecordingDecisionRationaleDocxRenderer
             extends DecisionRationaleDocxRenderer {
 

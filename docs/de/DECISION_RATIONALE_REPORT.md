@@ -158,3 +158,22 @@ git.commit.id=${GIT_COMMIT:${GITHUB_SHA:unknown}}
 ```
 
 Bei Release-Builds liefert `BuildProperties` die Anwendungsversion; `GitProperties` beziehungsweise `git.commit.id` liefert den Build-Commit. Nicht verfügbare Metadaten werden als `unknown` dargestellt und niemals durch einen scheinbar plausiblen Wert ersetzt.
+
+## Word-Berichte aus unveränderlichen Snapshots
+
+Die Architekturansicht bietet **Architektur als Word** und **Entscheidungen als Word** für die ausgewählte gespeicherte Analyse:
+
+- `GET /api/projects/{projectId}/snapshots/{snapshotId}/architecture-report/docx?language=de`
+- `GET /api/projects/{projectId}/snapshots/{snapshotId}/decision-report/docx?language=de`
+
+Beide verwenden dieselbe gespeicherte Anforderungsversion, Entscheidungsevidenz und den persistierten Architekturgraphen. Aktuelle Katalogauswahlen, Präferenzen und Vorschläge berechnen den Graphen nicht erneut. Beide enthalten Architekturübersicht, begrenzte Detailabbildungen, vollständige Element- und Beziehungsinventare, Empfehlung, dokumentierte Lücken und Herkunftsnachweise. Der Entscheidungsbericht enthält außerdem alle Vaterknoten und Alternativen im verlinkten Entscheidungsbaum sowie sämtliche Entscheidungskapitel. Fehlende Werte bleiben „Nicht bewertet“; null Prozent bedeutet bewertet und verworfen.
+
+`X-Taxonomy-Snapshot-Id` und `X-Taxonomy-Graph-SHA256` kennzeichnen die gemeinsame Quelle. Dieselben Werte stehen in den Dokumenteigenschaften `taxonomy.snapshot.id` und `taxonomy.graph.sha256`. Der Graphen-Fingerabdruck umfasst alle eingefrorenen Knoten- und Beziehungsdaten einschließlich Container-Metadaten, ohne veränderliche Anzeigetitel. Er unterscheidet sich vom rein semantischen Fingerabdruck der Austauschformate.
+
+Überschriften, Inhaltsverzeichnisfelder, statische interne Navigation, wiederholte Tabellenköpfe, nummerierte Beschriftungen und Bildbeschreibungen sind native OOXML-Strukturen. Die Detailansichten umfassen alle Knoten und Beziehungen mit höchstens 12 Knoten und 18 Beziehungen je Abbildung sowie mindestens 8pt für Knotenbeschriftungen. Mehr als 500 Knoten, 1.000 Beziehungen oder 250 Detailansichten werden mit HTTP 409 abgewiesen; Graphen werden niemals still gekürzt. Fehlende oder widersprüchliche eingefrorene Evidenz führt ebenfalls zu 409.
+
+`language=en` wählt englische generierte Beschriftungen. Gespeicherte Evidenz und administrativ gepflegte Vorlagentexte bleiben unverändert. Der Entscheidungsbericht verwendet weiterhin den versionierten DOTX-Body-Marker und Dekorator; eigene Formatvorlagen, Kopf- und Fußzeilen, Logos und Vorlagenidentität bleiben erhalten. `/api/report/docx` bleibt der strukturierte **Ad-hoc-/Live-Bericht** ohne behauptete Snapshot-Herkunft.
+
+Die zivile Akzeptanzprüfung prüft Quellenparität und semantische Vollständigkeit und rendert beide Word-Dateien mit LibreOffice/Poppler. Dies ist keine Produktzertifizierung für Microsoft Word.
+
+Die vollständige zivile Prüffallausgabe umfasst 71 Entscheidungsseiten (davon 48 Kapitelseiten) und 10 eigenständige Architekturseiten. Die Render-QA-Grenzen betragen 74 bzw. 12 Seiten und erlauben 3/2 Seiten Renderer-Abweichung; Evidenzabdeckung, Lesbarkeit, leere Seiten und verwaiste Überschriften werden weiterhin geprüft. Kompakte Beziehungskennungen entfallen dort, wo sie Knoten verdecken würden; native Beziehungsschlüssel und Inventare erhalten jede Kennung, Quelle, jedes Ziel und jeden Typ.

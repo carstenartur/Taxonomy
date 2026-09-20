@@ -43,6 +43,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         this.messageSource = messageSource;
     }
 
+    @ExceptionHandler(com.taxonomy.architecture.report.WordReportLayoutException.class)
+    public ResponseEntity<Map<String,Object>> handleWordLayoutConflict(
+            com.taxonomy.architecture.report.WordReportLayoutException exception,WebRequest request) {
+        return buildErrorResponse(HttpStatus.CONFLICT,exception.getMessage(),request);
+    }
+
     /**
      * Handles IllegalArgumentException (bad input from client).
      */

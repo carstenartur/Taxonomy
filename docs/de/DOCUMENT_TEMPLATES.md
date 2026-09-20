@@ -157,3 +157,7 @@ XML, externe Beziehungen außer Hyperlinks, fehlende interne Beziehungsziele, Pa
 ohne genau eine Root-`officeDocument`-Beziehung auf `word/document.xml` sowie
 OOXML-Bestandteile namens `template.json` zurück. Dieser Name ist dem internen
 Taxonomy-Manifest vorbehalten.
+
+## Eingefrorene Architekturinhalte
+
+Snapshot-Entscheidungsberichte behalten diesen Vorlagenpfad bei und ergänzen die gemeinsamen eingefrorenen Architekturabschnitte sowie den vollständig verlinkten Entscheidungsbaum. Vorhandene Formatvorlagen `Title`, `Heading1`–`Heading3` und `Caption` bleiben erhalten; fehlende erhalten Ersatzdefinitionen. Statischer eigener Titeltext wird nicht übersetzt oder überschrieben. Die datenfreie Vorschau bleibt auch ohne Architekturgraph gültig. Siehe [Snapshot-Word-Routen und Grenzen](DECISION_RATIONALE_REPORT.md#word-berichte-aus-unveränderlichen-snapshots).

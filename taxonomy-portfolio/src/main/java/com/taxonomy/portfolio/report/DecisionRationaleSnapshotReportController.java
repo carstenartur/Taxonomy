@@ -36,13 +36,21 @@ public class DecisionRationaleSnapshotReportController {
 
     private final DecisionRationaleSnapshotReportService snapshotReportService;
     private final ReportRendererRegistry reportRendererRegistry;
+    private final SnapshotWordReportService wordReportService;
     private final WorkspaceResolver workspaceResolver;
 
+    public DecisionRationaleSnapshotReportController(DecisionRationaleSnapshotReportService service,
+            ReportRendererRegistry registry,WorkspaceResolver resolver) {
+        this(service,registry,resolver,null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
     public DecisionRationaleSnapshotReportController(
             DecisionRationaleSnapshotReportService snapshotReportService,
             ReportRendererRegistry reportRendererRegistry,
-            WorkspaceResolver workspaceResolver) {
+            WorkspaceResolver workspaceResolver, SnapshotWordReportService wordReportService) {
         this.snapshotReportService = snapshotReportService;
+        this.wordReportService = wordReportService;
         this.reportRendererRegistry = reportRendererRegistry;
         this.workspaceResolver = workspaceResolver;
     }
@@ -71,8 +79,9 @@ public class DecisionRationaleSnapshotReportController {
                         "Unknown decision-report format: " + formatId));
         WorkspaceContext context = workspaceResolver.resolveCurrentContext();
         String username = workspaceResolver.resolveCurrentUsername();
-        DecisionRationaleReport report = snapshotReportService.generate(
-                projectId, snapshotId, username, context, resolveLocale(language));
+        DecisionRationaleReport report = "docx".equals(formatId)
+                ? wordReportService.load(projectId,snapshotId,username,context,resolveLocale(language)).decision()
+                : snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language));
         ReportFormatDescriptor format = renderer.descriptor();
         ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));
         String filename = DecisionRationaleReportPlugin.BASE_FILENAME
@@ -87,6 +96,7 @@ public class DecisionRationaleSnapshotReportController {
                         report.metadata().taxonomyDataFingerprintSha256())
                 .header("X-Taxonomy-Analysis-SHA256",
                         report.metadata().analysisSnapshotFingerprintSha256());
+        if(report.architecture()!=null)response.header("X-Taxonomy-Graph-SHA256",report.architecture().evidence().graphSha256());
         DecisionReportTemplateHeaders.apply(response, rendered);
         return response
                 .contentType(MediaType.parseMediaType(format.contentType()))

@@ -1,6 +1,6 @@
 package com.taxonomy.architecture.report;
 
-import com.taxonomy.architecture.service.ArchitectureReportService;
+
 import com.taxonomy.extension.api.report.ReportFormatDescriptor;
 import com.taxonomy.extension.api.report.ReportRenderContext;
 import com.taxonomy.extension.api.report.ReportRenderResult;
@@ -17,9 +17,9 @@ public class DocxReportRendererExtension implements ReportRendererExtension {
             "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
             true);
 
-    private final ArchitectureReportService reportService;
+    private final ArchitectureReportDocxRenderer reportService;
 
-    public DocxReportRendererExtension(ArchitectureReportService reportService) {
+    public DocxReportRendererExtension(ArchitectureReportDocxRenderer reportService) {
         this.reportService = reportService;
     }
 
@@ -30,6 +30,6 @@ public class DocxReportRendererExtension implements ReportRendererExtension {
 
     @Override
     public ReportRenderResult render(ReportRenderContext context) {
-        return new ReportRenderResult(reportService.renderDocx(context.report()));
+        return new ReportRenderResult(reportService.render(context.report()));
     }
 }

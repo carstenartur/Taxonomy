@@ -201,6 +201,8 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         Map<String, String> buttons = new LinkedHashMap<>();
         buttons.put("downloadArchitectureSvg", "architecture.svg");
         buttons.put("downloadArchitecturePdf", "architecture.pdf");
+        buttons.put("downloadArchitectureWord", "report.docx");
+        buttons.put("downloadDecisionWord", "decision.docx");
         buttons.put("downloadArchitectureArchiMate", "architecture.archimate.zip");
         buttons.put("downloadArchitectureVisio", "architecture.visio.zip");
         var downloaded = new LinkedHashMap<>(artifacts);

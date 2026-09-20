@@ -31,7 +31,8 @@ public record DecisionRationaleReport(
         List<ProductCoverageGap> productCoverageGaps,
         List<TaxonomyDiscrepancy> discrepancies,
         ViewContext viewContext,
-        Map<String, AnalysisScoreDetail> scoreDetails) {
+        Map<String, AnalysisScoreDetail> scoreDetails,
+        com.taxonomy.architecture.report.ArchitectureReportDocument architecture) {
 
     public DecisionRationaleReport {
         languageTag = normalized(languageTag, "en");
@@ -45,6 +46,18 @@ public record DecisionRationaleReport(
         scoreDetails = scoreDetails == null
                 ? Map.of()
                 : Collections.unmodifiableMap(new LinkedHashMap<>(scoreDetails));
+    }
+
+    public DecisionRationaleReport(String title, String languageTag, String requirement, ReportStatus status,
+            ReportMetadata metadata, ExecutiveSummary executiveSummary, List<DecisionChapter> chapters,
+            List<LeafCandidate> leadingLeaves, List<String> warnings, List<ProductCoverageGap> productCoverageGaps,
+            List<TaxonomyDiscrepancy> discrepancies, ViewContext viewContext, Map<String,AnalysisScoreDetail> scoreDetails) {
+        this(title,languageTag,requirement,status,metadata,executiveSummary,chapters,leadingLeaves,warnings,
+                productCoverageGaps,discrepancies,viewContext,scoreDetails,null);
+    }
+    public DecisionRationaleReport withArchitecture(com.taxonomy.architecture.report.ArchitectureReportDocument document) {
+        return new DecisionRationaleReport(title,languageTag,requirement,status,metadata,executiveSummary,chapters,
+                leadingLeaves,warnings,productCoverageGaps,discrepancies,viewContext,scoreDetails,document);
     }
 
     /** Backward-compatible constructor used by the hierarchy builder before score adaptation. */

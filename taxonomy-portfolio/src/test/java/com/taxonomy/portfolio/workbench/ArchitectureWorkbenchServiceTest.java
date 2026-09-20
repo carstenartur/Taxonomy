@@ -99,6 +99,15 @@ class ArchitectureWorkbenchServiceTest {
     }
 
     @Test
+    void carriesPersistedTitleProvenanceEvenWhenItMatchesMutableFallbackText() {
+        var snapshot=snapshotWithArchitecture();
+        snapshot.analysis().getArchitectureView().setViewTitle("P-001 / REQ-001 — Secure command information");
+        prepareSnapshot(snapshot);
+        var projection=service.load(PROJECT_ID,SNAPSHOT_ID,"alice",CONTEXT);
+        assertThat(projection.persistedViewTitle()).isEqualTo("P-001 / REQ-001 — Secure command information");
+    }
+
+    @Test
     void failsClearlyWhenSnapshotContainsNoArchitecture() {
         AnalysisResult analysis = new AnalysisResult(Map.of("CP-1", 90), List.of());
         analysis.setStatus("SUCCESS");

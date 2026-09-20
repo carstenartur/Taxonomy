@@ -20,11 +20,18 @@ class CivilianDocumentQaTest {
     }
 
     @Test
-    void rejectsHeaderOnlyPagesAndPaginationRegression() {
+    void rejectsHeaderOnlyPagesAndPaginationRegression() throws Exception {
         assertThatThrownBy(() -> CivilianDocumentQa.checkText("decision.docx", xml(page("")), "",
                 List.of("Running header"), true)).hasMessageContaining("empty page bodies [1]");
-        assertThatThrownBy(() -> CivilianDocumentQa.checkText("decision.docx", xml(page("Text").repeat(66)), "",
-                List.of("Text"), true)).hasMessageContaining("grew to 66 pages");
+        assertThatThrownBy(() -> CivilianDocumentQa.checkText("decision.docx", xml(page("Text").repeat(75)), "",
+                List.of("Text"), true)).hasMessageContaining("grew to 75 pages");
+    }
+
+    @Test
+    void completeWordFixturesHaveSeparateMeasuredPaginationBudgets() throws Exception {
+        assertThat(CivilianDocumentQa.checkText("decision.docx",xml(page("Text").repeat(71)),"",List.of("Text"),true)).containsEntry("pages",71);
+        assertThat(CivilianDocumentQa.checkText("report.docx",xml(page("Text").repeat(10)),"",List.of("Text"),true)).containsEntry("pages",10);
+        assertThatThrownBy(() -> CivilianDocumentQa.checkText("report.docx",xml(page("Text").repeat(13)),"",List.of("Text"),true)).hasMessageContaining("limit 12");
     }
 
     @Test
@@ -42,6 +49,20 @@ class CivilianDocumentQaTest {
         assertThatThrownBy(() -> CivilianDocumentQa.checkText("decision.docx",
                 "<!DOCTYPE html [<!ENTITY secret SYSTEM 'file:///does-not-exist'>]>" + xml(page("Text")),
                 "", List.of("Text"), true)).isInstanceOf(java.io.IOException.class);
+    }
+
+    @Test
+    void wordSourceChecksRejectMixedSnapshotsAndMissingGraphEvidence() throws Exception {
+        var source=java.util.Map.<String,Object>of("snapshotId","snapshot-1","diagram",java.util.Map.of(
+                "nodes",List.of(java.util.Map.of("id","A"),java.util.Map.of("id","B")),
+                "edges",List.of(java.util.Map.of("id","R1"))));
+        String body="<w:document xmlns:w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'><w:body><w:p><w:r><w:t>A B R1</w:t></w:r></w:p></w:body></w:document>";
+        String props="<Properties><property name='taxonomy.snapshot.id'><lpwstr>snapshot-1</lpwstr></property><property name='taxonomy.graph.sha256'><lpwstr>"+"a".repeat(64)+"</lpwstr></property></Properties>";
+        var parts=java.util.Map.of("word/document.xml",body.getBytes(java.nio.charset.StandardCharsets.UTF_8),"docProps/custom.xml",props.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(CivilianDocumentQa.checkFrozenWordSource("report.docx",parts,source,null)).isEqualTo("a".repeat(64));
+        assertThatThrownBy(()->CivilianDocumentQa.checkFrozenWordSource("decision.docx",parts,source,"b".repeat(64))).hasMessageContaining("graph hash");
+        var incomplete=new java.util.HashMap<>(parts);incomplete.put("word/document.xml",body.replace("R1","").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThatThrownBy(()->CivilianDocumentQa.checkFrozenWordSource("report.docx",incomplete,source,null)).hasMessageContaining("R1");
     }
 
     private static String xml(String pages) {

@@ -42,6 +42,14 @@ class CivilianArchitectureAcceptanceTest {
     @LocalServerPort int port;
     @Autowired ScenarioLlmPlayback playback;
     @Autowired ExportFormatExtensionRegistry exportFormats;
+    @Autowired com.taxonomy.portfolio.report.SnapshotWordReportService snapshotWords;
+    @Autowired com.taxonomy.preferences.PreferencesService preferences;
+    @Autowired com.taxonomy.catalog.repository.TaxonomyNodeRepository catalogueRepository;
+    @Autowired com.taxonomy.catalog.service.TaxonomyService catalogueService;
+    @Autowired com.taxonomy.relations.repository.RelationProposalRepository proposalRepository;
+    @Autowired com.taxonomy.export.DiagramProjectionService diagramProjection;
+    @org.springframework.test.context.bean.override.mockito.MockitoSpyBean
+    com.taxonomy.architecture.service.ArchitectureReportService liveReports;
     final ObjectMapper json = new ObjectMapper();
     final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     final Path output = Path.of("target/civilian-acceptance");
@@ -146,8 +154,13 @@ class CivilianArchitectureAcceptanceTest {
                 }
             }
             assertThat(graphHashes).hasSize(1);
+            var wordHashes = new HashSet<String>();
             for (String format : List.of("html", "docx", "json")) {
-                var response = request("GET", snapshotPath + "/decision-report/" + format + "?lang=en", null, 200);
+                var response = request("GET", snapshotPath + "/decision-report/" + format + "?language=en", null, 200);
+                if (format.equals("docx")) {
+                    assertThat(response.headers().firstValue("X-Taxonomy-Snapshot-Id")).contains(snapshotId);
+                    wordHashes.add(response.headers().firstValue("X-Taxonomy-Graph-SHA256").orElseThrow());
+                }
                 String file = "decision." + format;
                 artifacts.put(file, response.body());
                 Files.write(output.resolve(file), response.body());
@@ -164,13 +177,19 @@ class CivilianArchitectureAcceptanceTest {
                 Files.write(output.resolve(file), bytes);
             }
             // Older report endpoints also consume the scores produced by this run.
-            for (String format : List.of("markdown", "html", "docx", "json")) {
+            for (String format : List.of("markdown", "html", "json")) {
                 var response = request("POST", "/api/report/" + format, Map.of("scores", analysis.get("scores"),
                         "businessText", requirement.get("text").asText(), "minScore", 50), 200);
                 String file = "report." + format;
                 artifacts.put(file, response.body());
                 Files.write(output.resolve(file), response.body());
             }
+            var wordResponse = request("GET", snapshotPath + "/architecture-report/docx?language=en", null, 200);
+            assertThat(wordResponse.headers().firstValue("X-Taxonomy-Snapshot-Id")).contains(snapshotId);
+            wordHashes.add(wordResponse.headers().firstValue("X-Taxonomy-Graph-SHA256").orElseThrow());
+            assertThat(wordHashes).hasSize(1);
+            artifacts.put("report.docx", wordResponse.body());
+            Files.write(output.resolve("report.docx"), wordResponse.body());
             save("quality.json", json.valueToTree(CivilianExportQa.verify(projection, artifacts, output,
                     Boolean.getBoolean("generateScreenshots"))));
             CivilianIntegrationWalkthrough.verify(this, artifacts.get("architecture.archimate.xml"));
@@ -178,12 +197,58 @@ class CivilianArchitectureAcceptanceTest {
             playback.verifyCoverage(2);
             if (browser != null) browser.inspect(projectId, requirementId, snapshotId, projection, artifacts);
             playback.verifyCoverage(2);
+            assertFrozenWordSourceSurvivesLiveStateMutations(projectId,snapshotId,projection);
             save("run.json", json.valueToTree(Map.of("scenario", fixture.path("id").asText(),
                     "fixtureSha256", ScenarioLlmPlayback.sha256(fixture.toString()),
                     "projectId", projectId, "requirementId", requirementId, "snapshotId", snapshotId,
                     "llmCalls", playback.calls().size(), "mockBoundary", "remote LLM HTTP response only",
                     "sourceRevision", System.getenv().getOrDefault("GITHUB_SHA", "local-working-tree"),
                     "ciRun", System.getenv().getOrDefault("GITHUB_RUN_ID", "local"))));
+        }
+    }
+
+    private void assertFrozenWordSourceSurvivesLiveStateMutations(long projectId,String snapshotId,JsonNode projection) throws Exception {
+        var context=new com.taxonomy.workspace.service.WorkspaceContext("admin",projection.path("workspaceId").asText(null),projection.path("branchName").asText(),projection.path("exportProvenance").path("repositoryId").asText());
+        var before=snapshotWords.load(projectId,snapshotId,"admin",context,Locale.ENGLISH);
+        var node=catalogueRepository.findByCode("BP-1017").orElseThrow();
+        var target=catalogueRepository.findByCode("CP-1041").orElseThrow();
+        String oldName=node.getNameEn(),oldDescription=node.getDescriptionEn();
+        Map<String,Object> oldPreferences=new LinkedHashMap<>();
+        for(String key:List.of("diagram.policy","analysis.min-relevance-score","limits.max-architecture-nodes"))oldPreferences.put(key,preferences.get(key));
+        var proposal=new com.taxonomy.relations.model.RelationProposal();
+        proposal.setRepositoryId(context.repositoryId());proposal.setWorkspaceId(context.workspaceId());proposal.setOwnerUsername("admin");
+        proposal.setSourceNode(node);proposal.setTargetNode(target);proposal.setRelationType(com.taxonomy.model.RelationType.DEPENDS_ON);
+        proposal.setConfidence(.99);proposal.setRationale("Live proposal added after frozen analysis");
+        int callsBefore=playback.calls().size();
+        org.mockito.Mockito.clearInvocations(liveReports);
+        try {
+            node.setNameEn("MUTATED LIVE CATALOGUE TITLE");node.setDescriptionEn("Mutated live description after saving snapshot");
+            catalogueRepository.saveAndFlush(node);
+            preferences.update(Map.of("diagram.policy","leafOnly","analysis.min-relevance-score",99,"limits.max-architecture-nodes",1),"word-regression");
+            proposal=proposalRepository.saveAndFlush(proposal);
+            assertThat(catalogueService.getNodeByCode("BP-1017").getNameEn()).isEqualTo("MUTATED LIVE CATALOGUE TITLE");
+            assertThat(preferences.get("diagram.policy")).isEqualTo("leafOnly");
+            assertThat(diagramProjection.getPolicy().apply(before.architecture().diagram()).edges()).hasSizeLessThan(before.architecture().diagram().edges().size());
+            assertThat(proposalRepository.findVisibleByRepositoryAndWorkspace(context.repositoryId(),context.workspaceId())).extracting(com.taxonomy.relations.model.RelationProposal::getId).contains(proposal.getId());
+
+            // Both real services deserialize the persisted analysis/version and project the saved view again.
+            var after=snapshotWords.load(projectId,snapshotId,"admin",context,Locale.ENGLISH);
+            assertThat(after.architecture()).isEqualTo(before.architecture());
+            assertThat(after.decision().architecture()).isEqualTo(before.architecture());
+            assertThat(after.decision().requirement()).isEqualTo(before.decision().requirement());
+            assertThat(after.decision().chapters()).isEqualTo(before.decision().chapters());
+            assertThat(after.architecture().evidence().snapshotId()).isEqualTo(snapshotId);
+            assertThat(after.architecture().evidence().requirementVersionId()).isEqualTo(before.architecture().evidence().requirementVersionId());
+            assertThat(after.architecture().evidence().commit()).isEqualTo(before.architecture().evidence().commit());
+            assertThat(after.architecture().elements()).isEqualTo(before.architecture().elements());
+            assertThat(after.architecture().relations()).isEqualTo(before.architecture().relations());
+            org.mockito.Mockito.verifyNoInteractions(liveReports);
+            assertThat(playback.calls()).hasSize(callsBefore);
+            save("frozen-word-mutation.json",json.valueToTree(Map.of("snapshotId",snapshotId,"graphSha256",after.architecture().evidence().graphSha256(),"catalogueChanged",true,"selectionPolicyChanged",true,"pendingProposalAdded",true,"frozenSourceUnchanged",true,"additionalLlmCalls",0)));
+        } finally {
+            node.setNameEn(oldName);node.setDescriptionEn(oldDescription);catalogueRepository.saveAndFlush(node);
+            preferences.update(oldPreferences,"word-regression-restore");
+            if(proposal.getId()!=null)proposalRepository.deleteById(proposal.getId());
         }
     }
 
