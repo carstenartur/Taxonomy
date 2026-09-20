@@ -17,6 +17,8 @@ import org.testcontainers.utility.DockerImageName;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -260,22 +262,48 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
     private void inspectNativePackageControls() throws Exception {
         var context = new ObjectMapper().readTree(Files.readString(output.resolve("integration-native-context.json")));
         String scope = context.path("scope").asText();
+        var editorContext = context.path("editorContext");
+        var editorScope = new StringJoiner("&", "?", "");
+        for (String key : List.of("repositoryId", "workspaceScopeKey", "branch")) {
+            String value = editorContext.path(key).asText();
+            assertThat(value).as("Native fixture editor context %s", key).isNotBlank();
+            editorScope.add(key + "=" + URLEncoder.encode(value, StandardCharsets.UTF_8));
+        }
+        String expectedContext = editorContext.path("repositoryId").asText() + " / "
+                + editorContext.path("workspaceScopeKey").asText() + " / " + editorContext.path("branch").asText() + " · ";
+        String packageId = context.path("packageId").asText();
+        assertThat(packageId).as("Native fixture package identity").isNotBlank();
         ((HasCdp) new Augmenter().augment(driver)).executeCdpCommand("Emulation.clearDeviceMetricsOverride", Map.of());
-        driver.get(origin + "/architecture/editor" + scope + "&lang=en");
-        wait.until(ExpectedConditions.elementToBeClickable(By.id("editorPackage")));
-        new Select(driver.findElement(By.id("editorPackage"))).selectByValue(context.path("packageId").asText());
+        driver.get(origin + "/architecture/editor" + editorScope + "&lang=en");
+        selectNativePackage(expectedContext, packageId);
         var title = driver.findElement(By.id("editorPackageTitle")); title.clear(); title.sendKeys("Browser reviewed package");
         var rationale = driver.findElement(By.id("editorRationale")); rationale.clear(); rationale.sendKeys("Review native package through keyboard-accessible controls");
         click(By.id("editorSavePackage"));
         wait.until(ExpectedConditions.elementToBeClickable(By.id("editorAccept"))).click();
         wait.until(browser -> browser.findElement(By.id("editorPackages")).getText().contains("Browser reviewed package"));
-        driver.get(origin + "/architecture/editor" + scope + "&lang=de");
+        driver.get(origin + "/architecture/editor" + editorScope + "&lang=de");
+        selectNativePackage(expectedContext, packageId);
         wait.until(browser -> browser.findElement(By.id("editorPackagesHeading")).getText().equals("Pakete"));
         assertThat(driver.findElement(By.id("editorPackageFields")).isEnabled()).isTrue();
+        assertThat(driver.findElement(By.id("editorPackageTitle")).getDomProperty("value")).isEqualTo("Browser reviewed package");
         driver.get(origin + "/integrations" + scope + "&connection=" + context.path("connection").asText() + "&lang=de");
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("integrationConnection")));
         Files.writeString(output.resolve("native-browser.json"), new ObjectMapper().writeValueAsString(Map.of("nativePackageEdited", true,
                 "languages", List.of("en", "de"), "requestInterception", false, "productCompatibility", "NOT_EXECUTED")));
+    }
+
+    private void selectNativePackage(String expectedContext, String packageId) {
+        wait.until(ExpectedConditions.attributeToBe(By.id("architectureEditor"), "aria-busy", "false"));
+        assertThat(driver.findElement(By.id("editorError")).isDisplayed()).as("Native editor loaded without errors").isFalse();
+        assertThat(driver.findElement(By.id("editorContext")).getText()).as("Exact native workspace").startsWith(expectedContext);
+        var selector = wait.withMessage("Expected native package " + packageId + " in " + expectedContext).until(browser -> {
+            var element = browser.findElement(By.id("editorPackage"));
+            var options = new Select(element);
+            return element.isEnabled() && options.getOptions().stream().anyMatch(option -> packageId.equals(option.getDomAttribute("value")))
+                    ? options : null;
+        });
+        selector.selectByValue(packageId);
+        assertThat(selector.getFirstSelectedOption().getDomAttribute("value")).isEqualTo(packageId);
     }
 
     private double zoom() { return ((Number) driver.executeScript("return document.getElementById('architectureCanvas').__zoom.k")).doubleValue(); }

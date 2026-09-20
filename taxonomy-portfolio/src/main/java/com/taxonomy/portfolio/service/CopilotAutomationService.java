@@ -145,10 +145,8 @@ public class CopilotAutomationService {
         OperationDefinition definition = definition(jobs);
         if (!operationTerminal(jobs, definition.totalPasses())) {
             schedule(definition, username, context);
-        } else {
-            finalizeOperation(definition, jobs, username, context);
         }
-        return view(definition, jobsForOperation(
+        return finalizedView(definition, jobsForOperation(
                 projectId, operationId, username, context), username, context);
     }
 
@@ -274,7 +272,7 @@ public class CopilotAutomationService {
 
         enqueuePass(definition, 1, username, context);
         schedule(definition, username, context);
-        return view(definition, jobsForOperation(
+        return finalizedView(definition, jobsForOperation(
                 projectId, operationId, username, context), username, context);
     }
 
@@ -429,6 +427,16 @@ public class CopilotAutomationService {
                     definition.proposeSolutions(),
                     definition.proposeProducts());
         });
+    }
+
+    /** Finalize the exact job snapshot used by the response, including completion during a status read. */
+    private CopilotOperationView finalizedView(
+            OperationDefinition definition,
+            List<JobWithKey> jobs,
+            String username,
+            WorkspaceContext context) {
+        finalizeOperation(definition, jobs, username, context);
+        return view(definition, jobs, username, context);
     }
 
     private CopilotOperationView view(

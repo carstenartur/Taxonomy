@@ -170,7 +170,8 @@ final class CivilianIntegrationWalkthrough {
         var finalEditor = app.get("/api/architecture/editor" + scope);
         assertThat(finalEditor.path("model").path("mappings")).isNotEmpty();
         assertThat(finalEditor.path("model").path("packages").toString()).contains(packageId, "Reviewed flood package");
-        app.save("integration-native-context.json", app.json.valueToTree(Map.of("scope", scope, "connection", connection.toString(), "packageId", packageId, "productCompatibility", "NOT_EXECUTED", "fixture", "contract")));
+        app.save("integration-native-context.json", app.json.valueToTree(Map.of("scope", scope, "editorContext", finalEditor.path("document").path("context"),
+                "connection", connection.toString(), "packageId", packageId, "productCompatibility", "NOT_EXECUTED", "fixture", "contract")));
         app.save("integration-native-review.json", app.json.valueToTree(review));
     }
     private static JsonNode editorRequest(CivilianArchitectureAcceptanceTest app, String path, Object body, long revision) throws Exception {

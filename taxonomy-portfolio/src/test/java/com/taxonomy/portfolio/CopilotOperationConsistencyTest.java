@@ -5,6 +5,8 @@ import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobItemView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.AnalysisJobView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementVersionView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotDetail;
+import com.taxonomy.portfolio.dto.PortfolioDtos.SnapshotSummary;
 import com.taxonomy.portfolio.model.AiCostPolicy;
 import com.taxonomy.portfolio.model.AnalysisAutomationProfile;
 import com.taxonomy.portfolio.model.PortfolioTypes.AnalysisStatus;
@@ -32,12 +34,17 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.RejectedExecutionException;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyList;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -279,6 +286,77 @@ class CopilotOperationConsistencyTest {
                 any(), any(), any(), any(), any(), any(), any());
         verifyNoInteractions(
                 resultSelector, resultPersistenceService, completionService, coordinator);
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {true, false})
+    void terminalStatusFinalizesTheSameJobsItExposesExactlyOnce(boolean initiallyRunning) {
+        String operationId = "9".repeat(64);
+        var first = job("job-1", operationId, 1, 2, 7L, AnalysisStatus.SUCCESS);
+        var running = job("job-2", operationId, 2, 2, 7L, AnalysisStatus.RUNNING);
+        var second = job("job-2", operationId, 2, 2, 7L, AnalysisStatus.SUCCESS);
+        arrangeWinningSnapshot();
+        when(analysisService.listJobs(41L, context.username(), context))
+                .thenReturn(List.of(first, initiallyRunning ? running : second), List.of(first, second));
+
+        var result = service.getOperation(41L, operationId, context.username(), context);
+
+        assertThat(result.status()).isEqualTo(AnalysisStatus.SUCCESS);
+        assertThat(result.selectedSnapshotId()).as("Expose the promoted winner, not the last completed pass").isEqualTo("snapshot-1");
+        verify(resultPersistenceService).selectCurrentSnapshot(41L, 7L, "snapshot-1", context.username(), context);
+        verify(completionService).enrich(41L, context.username(), context, true, true);
+    }
+
+    @Test
+    void fastCompletedEnqueuePromotesWinningSnapshotBeforeSuccess() {
+        var requirement = arrangeWinningSnapshot();
+        var version = mock(RequirementVersionView.class);
+        when(requirement.id()).thenReturn(7L);
+        when(requirement.currentVersion()).thenReturn(version);
+        when(version.id()).thenReturn(9L);
+        when(version.contentHash()).thenReturn("content-hash");
+        when(fingerprintService.taxonomyFingerprint()).thenReturn("taxonomy-fingerprint");
+        when(fingerprintService.promptFingerprint()).thenReturn("prompt-fingerprint");
+        var request = new CopilotRunRequest(null, "CUSTOM_OPENAI", 50, AnalysisAutomationProfile.FULL, 2, false, true, true);
+        when(policy.manual(request)).thenReturn(new AiAutomationPolicy.RunSettings(false, AnalysisAutomationProfile.FULL,
+                "CUSTOM_OPENAI", mock(com.taxonomy.analysis.dto.AiTargetDtos.AiTargetDescriptor.class), 50, 2, true, true, false));
+        var operationId = new AtomicReference<String>();
+        when(analysisService.enqueueRequirement(eq(41L), eq(7L), eq("CUSTOM_OPENAI"), eq(50), anyString(), eq(context.username()), eq(context)))
+                .thenAnswer(invocation -> {
+                    operationId.set(CopilotOperationKey.parse(invocation.getArgument(4)).orElseThrow().operationId());
+                    return job("job-1", operationId.get(), 1, 2, 7L, AnalysisStatus.SUCCESS);
+                });
+        when(analysisService.listJobs(41L, context.username(), context)).thenAnswer(invocation -> List.of(
+                job("job-1", operationId.get(), 1, 2, 7L, AnalysisStatus.SUCCESS),
+                job("job-2", operationId.get(), 2, 2, 7L, AnalysisStatus.SUCCESS)));
+
+        var result = service.enqueueManual(41L, 7L, request, context.username(), context);
+
+        assertThat(result.status()).isEqualTo(AnalysisStatus.SUCCESS);
+        assertThat(result.selectedSnapshotId()).as("Fast completion still promotes the selected winner before returning").isEqualTo("snapshot-1");
+        verify(resultPersistenceService).selectCurrentSnapshot(41L, 7L, "snapshot-1", context.username(), context);
+        verify(completionService).enrich(41L, context.username(), context, true, true);
+    }
+
+    /** The persistence boundary starts on pass 2 and changes only when promotion is invoked. */
+    private RequirementView arrangeWinningSnapshot() {
+        var currentSnapshot = new AtomicReference<>("snapshot-2");
+        var requirement = mock(RequirementView.class);
+        when(projectService.getRequirement(41L, 7L, context.username(), context)).thenReturn(requirement);
+        when(requirement.currentAnalysisSnapshotId()).thenAnswer(invocation -> currentSnapshot.get());
+        when(policy.costPolicy()).thenReturn(AiCostPolicy.METERED);
+        var winner = mock(SnapshotDetail.class);
+        var summary = mock(SnapshotSummary.class);
+        when(winner.summary()).thenReturn(summary);
+        when(summary.id()).thenReturn("snapshot-1");
+        when(analysisService.getSnapshot(41L, "snapshot-1", context.username(), context)).thenReturn(winner);
+        when(analysisService.getSnapshot(41L, "snapshot-2", context.username(), context)).thenReturn(mock(SnapshotDetail.class));
+        when(resultSelector.select(anyList())).thenReturn(Optional.of(winner));
+        when(resultPersistenceService.selectCurrentSnapshot(41L, 7L, "snapshot-1", context.username(), context)).thenAnswer(invocation -> {
+            currentSnapshot.set("snapshot-1");
+            return "snapshot-1";
+        });
+        return requirement;
     }
 
     private static AnalysisJobView job(
