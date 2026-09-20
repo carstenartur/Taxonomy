@@ -65,6 +65,40 @@ class CivilianDocumentQaTest {
         assertThatThrownBy(()->CivilianDocumentQa.checkFrozenWordSource("report.docx",incomplete,source,null)).hasMessageContaining("R1");
     }
 
+
+    @Test
+    void nativeVisioRelationshipCoverageRequiresRenderedKeyDirectionAndTypeOnTheSamePage() throws Exception {
+        var source = java.util.Map.<String,Object>of("diagram", java.util.Map.of("nodes", List.of(java.util.Map.of("id", "a"), java.util.Map.of("id", "b")), "edges", List.of(
+                java.util.Map.of("id", "edge-α", "sourceId", "a", "targetId", "b", "relationType", "SUPPORTS"))));
+        String shape = "<Shape><Section N='Property'>";
+        for (var pair : java.util.Map.of("taxonomy.id", "edge-α", "taxonomy.sourceId", "a", "taxonomy.targetId", "b",
+                "taxonomy.type", "SUPPORTS", "taxonomy.displayKey", "R1", "taxonomy.captionDisposition", "READABLE_DETAIL").entrySet())
+            shape += "<Row><Cell N='Label' V='" + pair.getKey() + "'/><Cell N='Value' V='" + pair.getValue() + "'/></Row>";
+        shape += "</Section><Text>R1 N1 → N2\nSUPPORTS</Text></Shape>";
+        var parts = java.util.Map.of("visio/pages/page1.xml", ("<PageContents><Shapes>" + shape + "</Shapes></PageContents>").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThat(CivilianDocumentQa.checkVisioRelationships(parts, source, "R1 N1 → N2 SUPPORTS\f")).containsEntry("renderedRelationships", 1);
+        assertThatThrownBy(() -> CivilianDocumentQa.checkVisioRelationships(parts, source, "R1 N1 → N2\fSUPPORTS"))
+                .hasMessageContaining("rendered relationship");
+        assertThatThrownBy(() -> CivilianDocumentQa.checkVisioRelationships(parts, source, "R1 N2 → N1 SUPPORTS"))
+                .hasMessageContaining("rendered relationship");
+        assertThatThrownBy(() -> CivilianDocumentQa.checkVisioRelationships(parts, source, "R1 N1 ← N2 SUPPORTS"))
+                .hasMessageContaining("rendered relationship");
+        var wrongCaption = java.util.Map.of("visio/pages/page1.xml", ("<PageContents><Shapes>" + shape.replace("N1 → N2", "N2 → N1") + "</Shapes></PageContents>").getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThatThrownBy(() -> CivilianDocumentQa.checkVisioRelationships(wrongCaption, source, "R1 N2 → N1 SUPPORTS"))
+                .hasMessageContaining("caption semantics");
+        var missing = java.util.Map.of("visio/pages/page1.xml", "<PageContents/>".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        assertThatThrownBy(() -> CivilianDocumentQa.checkVisioRelationships(missing, source, "R1 N1 N2 SUPPORTS"))
+                .hasMessageContaining("canonical relationship");
+    }
+
+    @Test
+    void cliVisioOnlyFlagKeepsTheArtifactArgumentAndDefaultsToAllDocuments() {
+        var selected = TaxonomyTooling.Arguments.parse(new String[]{"--visio-only", "--artifacts", "actual"});
+        assertThat(selected.flag("visio-only")).isTrue();
+        assertThat(selected.required("artifacts")).isEqualTo("actual");
+        assertThat(TaxonomyTooling.Arguments.parse(new String[]{"--artifacts", "actual"}).flag("visio-only")).isFalse();
+    }
+
     private static String xml(String pages) {
         return "<html xmlns='http://www.w3.org/1999/xhtml'><body><doc>" + pages + "</doc></body></html>";
     }

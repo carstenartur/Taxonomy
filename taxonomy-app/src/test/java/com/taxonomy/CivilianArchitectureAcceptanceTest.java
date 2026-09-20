@@ -35,12 +35,13 @@ import static org.assertj.core.api.Assertions.assertThat;
         "custom.llm.model=civilian-fixture", "taxonomy.admin-password=Civilian-Acceptance-2026!",
         "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2"
 })
-@Import(CivilianLlmConfiguration.class)
+@Import({CivilianLlmConfiguration.class, com.taxonomy.interop.publication.PublicationCivilianConfiguration.class})
 @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CivilianArchitectureAcceptanceTest {
     static final String PASSWORD = "Civilian-Acceptance-2026!";
     @LocalServerPort int port;
     @Autowired ScenarioLlmPlayback playback;
+    @Autowired com.taxonomy.interop.publication.PublicationContractProvider publicationProvider;
     @Autowired ExportFormatExtensionRegistry exportFormats;
     @Autowired com.taxonomy.portfolio.report.SnapshotWordReportService snapshotWords;
     @Autowired com.taxonomy.preferences.PreferencesService preferences;
@@ -195,7 +196,8 @@ class CivilianArchitectureAcceptanceTest {
             CivilianIntegrationWalkthrough.verify(this, artifacts.get("architecture.archimate.xml"));
             // Export/reopen must not perform another analysis, even when a provider is configured.
             playback.verifyCoverage(2);
-            if (browser != null) browser.inspect(projectId, requirementId, snapshotId, projection, artifacts);
+            CivilianPublicationWalkthrough.prepare(this, publicationProvider);
+            if (browser != null) browser.inspect(projectId, requirementId, snapshotId, projection, artifacts, this);
             playback.verifyCoverage(2);
             assertFrozenWordSourceSurvivesLiveStateMutations(projectId,snapshotId,projection);
             save("run.json", json.valueToTree(Map.of("scenario", fixture.path("id").asText(),

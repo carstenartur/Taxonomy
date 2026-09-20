@@ -47,9 +47,11 @@ executed checks from pending visual/product acceptance.
 - LibreOffice Writer and Draw independently open the actual DOCX/VSDX exports.
   `taxonomy-tooling check-civilian-documents` checks all report rationale text and all
   diagram labels, empty page bodies, page count and file/PDF hashes. CI preserves
-  every rendered page for visual inspection. The full Visio graph remains dense,
-  with overlapping/reversed edge labels in Draw; this is a semantic interchange
-  artifact, not an approved presentation layout or Microsoft Visio compatibility.
+  every rendered page for visual inspection. The [Visio graphical follow-up](visio-graphical-quality.json)
+  adds upright captions, strokes behind opaque nodes and bounded native detail pages.
+  The actual saved-snapshot follow-up renders 11 pages and verifies all 44 relationship
+  keys, source→target directions and types on their detail pages. Dense overview labels
+  remain compact keys; Microsoft Visio product acceptance is still NOT_EXECUTED.
 
 ## Browser evidence and environment limits
 
@@ -115,7 +117,8 @@ in 5m54s. LibreOffice 24 rendered 52 Word pages, with 261 preserved text asserti
 no empty body page and no orphan rationale-box heading. All 52 pages and all five
 original browser screenshots were inspected; corrected boxes on pages 5 and 37
 were also checked at full size. Draw retained all 38 element labels on one page;
-the dense/reversed connector-caption limitation remains as described above.
+this historical connector-caption defect is corrected by the separately source-bound
+[Visio graphical follow-up](visio-graphical-quality.json).
 
 The same implementation rendered to 55 pages with local LibreOffice 26. Page-count
 variation is recorded with renderer versions and source/PDF hashes. The original

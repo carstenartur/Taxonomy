@@ -45,6 +45,10 @@ public interface IntegrationPortfolioPort {
     ProjectData getProject(Long projectId, String username, WorkspaceContext context);
     void requireProject(Long projectId, String username, WorkspaceContext context);
     void requireProjectForUpdate(Long projectId, String username, WorkspaceContext context);
+    /** Flush and refresh scoped managed requirements without ending the caller's integration transaction. */
+    default void refreshIntegrationRequirements(Long projectId, String username, WorkspaceContext context) {
+        throw new UnsupportedOperationException("Persisted integration snapshot is unavailable");
+    }
     List<RequirementData> listRequirements(Long projectId, String username, WorkspaceContext context);
     RequirementsPage listApprovedRequirements(Long projectId, String username, WorkspaceContext context,
                                               int page, int pageSize);

@@ -13,6 +13,8 @@ import com.taxonomy.interop.sparx.SparxOslcAmReader;
 import com.taxonomy.exchange.sparx.SparxOslcAmCodec;
 import com.taxonomy.exchange.sparx.SparxMappingProfile;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.PublicationContracts.*;
+import com.taxonomy.interop.publication.IntegrationPublicationService;
 import com.taxonomy.interop.persistence.IntegrationStore;
 import com.taxonomy.interop.persistence.IntegrationStore.*;
 import com.taxonomy.workspace.service.*;
@@ -40,6 +42,7 @@ public class IntegrationService {
     private final OslcTransport remote;
     private final SparxOslcAmReader sparxRemote;
     private final WorkspaceAccessService workspaceAccess;
+    @org.springframework.beans.factory.annotation.Autowired private IntegrationPublicationService publicationService;
 
     public IntegrationService(IntegrationStore store, ExchangeConnectorRegistry connectors, IntegrationDomainAdapter domain,
                               WorkspaceArchitectureIntegrationPort editor, IntegrationDiff diff, IntegrationJson json,
@@ -61,7 +64,9 @@ public class IntegrationService {
     public record PreviewRequest(UUID operationId, InternalState expected, String mediaType, boolean completeScope) {}
     public record ExportRequest(UUID operationId, InternalState expected, String expectedExternalVersion) {}
     public record RemoteRequest(UUID operationId, InternalState expected, String resource, String expectedExternalVersion) {}
-    public record Overview(Connection connection, InternalState current, Checkpoint checkpoint, List<OperationSummary> history, String oslcCatalogPath) {}
+    public record Overview(Connection connection, InternalState current, Checkpoint checkpoint, List<OperationSummary> history, String oslcCatalogPath, PublicationAvailability publicationAvailability) {
+        public Overview(Connection connection, InternalState current, Checkpoint checkpoint, List<OperationSummary> history, String oslcCatalogPath) { this(connection, current, checkpoint, history, oslcCatalogPath, new PublicationAvailability(false, Set.of(), Set.of(), "PUBLICATION_GUARANTEES_UNVERIFIED")); }
+    }
 
     public List<IntegrationDescriptor> profiles(RepositoryContext context) { authorize(context, false); return connectors.descriptors(); }
     public List<Connection> connections(RepositoryContext context) { authorize(context, false); return store.list(context); }
@@ -95,12 +100,21 @@ public class IntegrationService {
         return store.create(context, request.id(), repository.getOwnerType() + ":" + repository.getOwnerId(), request.name(), descriptor.id(),
                 descriptor.version(), request.authority(), request.externalScope(), request.projectId(), request.remoteProfile());
     }
-    public Overview overview(RepositoryContext context, UUID connectionId) {
+    public Overview overview(RepositoryContext context, UUID connectionId) { return overview(context, connectionId, null, null); }
+    public Overview overview(RepositoryContext context, UUID connectionId, String rootResource, String selector) {
         authorize(context, false); Connection connection = store.read(context, connectionId);
         return new Overview(connection, domain.snapshot(context, connection, store.identities(context, connectionId), read(context)).state(),
                 store.checkpoint(context, connectionId), store.history(context, connectionId), "/oslc/scopes/" + context.repositoryWorkspaceScopeKey()
-                + "/catalog?repositoryId=" + encode(context.repositoryId()) + "&workspaceId=" + encode(context.workspaceId()) + "&branch=" + encode(context.branch()));
+                + "/catalog?repositoryId=" + encode(context.repositoryId()) + "&workspaceId=" + encode(context.workspaceId()) + "&branch=" + encode(context.branch()), publicationService == null ? new PublicationAvailability(false, Set.of(), Set.of(), "PUBLICATION_GUARANTEES_UNVERIFIED") : publicationService.availability(context, connectionId, rootResource == null || rootResource.isBlank() || selector == null || selector.isBlank() ? null : new PublicationScope(connection.externalScope(), rootResource, selector)));
     }
+    public PublicationOperation previewPublication(RepositoryContext context, UUID connection, PublicationPreviewRequest request) { return publicationService.previewPublication(context, connection, request); }
+    public PublicationOperation publish(RepositoryContext context, UUID connection, PublicationReview review) { return publicationService.publish(context, connection, review); }
+    public PublicationOperation publication(RepositoryContext context, UUID connection, UUID operation) { return publicationService.publication(context, connection, operation); }
+    public PublicationOperation reconcilePublication(RepositoryContext context, UUID connection, UUID operation, ReconciliationPreviewRequest request) { return publicationService.previewPublicationReconciliation(context, connection, operation, request); }
+    public Object retryOperation(RepositoryContext context, UUID connection, UUID operation) { return isPublication(context, connection, operation) ? publicationService.retryPublication(context, connection, operation) : retry(context, connection, operation); }
+    public Object cancelOperation(RepositoryContext context, UUID connection, UUID operation, String rationale) { boolean publication = isPublication(context, connection, operation); var cancelled = cancel(context, connection, operation, rationale); return publication ? publicationService.publication(context, connection, operation) : cancelled; }
+    public IntegrationDomainAdapter.EndpointIndex operationEndpointOptions(RepositoryContext context, UUID connection, UUID operation) { return isPublication(context, connection, operation) ? publicationService.endpointOptions(context, connection, operation) : endpointOptions(context, connection, operation); }
+    private boolean isPublication(RepositoryContext context, UUID connection, UUID id) { return Set.of("PUSH", "SYNCHRONIZE").contains(operation(context, connection, id).direction()); }
     public Operation operation(RepositoryContext context, UUID connectionId, UUID operationId) {
         authorize(context, false); return store.operation(context, connectionId, operationId);
     }
@@ -149,7 +163,7 @@ public class IntegrationService {
             expect(operation.context().internalState(), current.state());
             Map<String, Artifact> candidates = new TreeMap<>(current.items());
             candidates.putAll(ExchangeItems.flatten(operation.document()));
-            var plans = IntegrationDomainAdapter.nativePackages(connection)
+            var plans = domain.supportsNativePackages(connection)
                     ? domain.planRequirements(context, connection, candidates, mappings, before.dsl()) : Map.<String, IntegrationPortfolioPort.RequirementApplyPlan>of();
             return domain.indexEndpoints(connection, candidates, mappings, plans);
         }));
@@ -188,9 +202,9 @@ public class IntegrationService {
             boolean changed = !semanticItems(current.items()).equals(semanticItems(selected));
             // Validate the reviewed dependency closure and schema before mutating any canonical data.
             if (!linked && changed) connectors.require(connection.connectorId(), connection.profileVersion()).validateInboundSelection(new OutboundRequest(operation.context(), resultDocument, operation.document().externalVersion()));
-            String planningDsl = !linked && changed && IntegrationDomainAdapter.nativePackages(connection) && connection.projectId() != null
+            String planningDsl = !linked && changed && domain.supportsNativePackages(connection) && connection.projectId() != null
                     ? domain.portfolioContribution(context).apply(before.dsl()) : before.dsl();
-            Map<String, IntegrationPortfolioPort.RequirementApplyPlan> requirementPlans = !linked && IntegrationDomainAdapter.nativePackages(connection)
+            Map<String, IntegrationPortfolioPort.RequirementApplyPlan> requirementPlans = !linked && domain.supportsNativePackages(connection)
                     ? domain.planRequirements(context, connection, selected, mappings, planningDsl) : Map.of();
             var endpointIndex = domain.indexEndpoints(connection, selected, mappings, requirementPlans);
             // Selection already contains accepted endpoint choices and retained local approval.
@@ -502,30 +516,7 @@ public class IntegrationService {
     }
 
     private static Artifact remap(Artifact artifact, MappingOverride mapping) {
-        if (mapping == null) return artifact;
-        Map<String, String> extensions = new TreeMap<>(artifact.extensions()); String title = artifact.title(), text = artifact.text();
-        if (mapping.canonicalType() != null && !mapping.canonicalType().isBlank()) {
-            Set<String> supported = artifact.kind() == ArtifactKind.ELEMENT
-                    ? Set.of("Capability", "Process", "CoreService", "COIService", "CommunicationsService", "UserApplication", "InformationProduct", "BusinessRole", "System", "Component")
-                    : artifact.kind() == ArtifactKind.RELATION ? com.taxonomy.dsl.validation.DslValidator.relationTypes() : Set.of();
-            if (!supported.contains(mapping.canonicalType())) throw new IllegalArgumentException("Unsupported canonical type mapping");
-            extensions.put("canonicalType", mapping.canonicalType());
-            extensions.put("taxonomy:" + (artifact.kind() == ArtifactKind.ELEMENT ? "ElementType" : "RelationType"), mapping.canonicalType());
-        }
-        if (mapping.titleAttribute() != null && !mapping.titleAttribute().isBlank()) {
-            title = mappedText(artifact, mapping.titleAttribute()); extensions.put("titleAttribute", mapping.titleAttribute());
-        }
-        if (mapping.textAttribute() != null && !mapping.textAttribute().isBlank()) {
-            text = mappedText(artifact, mapping.textAttribute()); extensions.put("textAttribute", mapping.textAttribute());
-        }
-        if (extensions.get("titleAttribute") != null && extensions.get("titleAttribute").equals(extensions.get("textAttribute")))
-            throw new IllegalArgumentException("Title and body require independent mappings");
-        return new Artifact(artifact.id(), artifact.kind(), artifact.type(), title, text, artifact.attributes(), extensions);
-    }
-    private static String mappedText(Artifact artifact, String attribute) {
-        if (artifact.kind() != ArtifactKind.REQUIREMENT || !artifact.attributes().containsKey(attribute)) throw new IllegalArgumentException("Unknown requirement attribute mapping");
-        String value = artifact.attributes().get(attribute);
-        return "XHTML".equals(artifact.extensions().get("kind:" + attribute)) ? ExchangeXml.parse(value.getBytes(StandardCharsets.UTF_8)).getDocumentElement().getTextContent() : value;
+        return IntegrationMappingFields.remap(artifact, mapping);
     }
     private Map<String, Map<String, String>> semanticItems(Map<String, Artifact> items) {
         Map<String, Map<String, String>> values = new TreeMap<>(); items.forEach((key, value) -> values.put(key, ExchangeItems.fields(value))); return values;

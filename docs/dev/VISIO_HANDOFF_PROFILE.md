@@ -34,6 +34,12 @@ Display names never determine identity. Sorted original element IDs allocate pos
 
 The primary page contains the complete selected diagram. A second page is generated for a nonempty proper anchor/impact subset with its induced relationships. The canonical graph hash uses the shared semantic graph contract; explicitly visual container rectangles do not change that hash. The manifest records page membership and layout/container transformations.
 
+Dense overviews use compact `R1`, `R2`, … relationship keys; detail nodes use `N1`, `N2`, … keys. These are presentation keys in `taxonomy.displayKey`, assigned by sorted canonical IDs for the selected graph, not new model identities. Relationship detail pages contain at most six unique endpoints and six native 1-D relationships. Their separate caption area gives the relationship key, source → target keys and readable type, keeping coincident/multiple/reverse edges distinguishable. Endpoints may reappear on other pages; native `taxonomy.id`, type, direction, score, provenance and walking glue remain intact.
+
+Connector text has a complete upright text transform with finite cached values and formulas; strokes are behind opaque node rectangles. Overview caption placement tries a fixed bounded set of candidates against node/caption boxes. An unplaceable caption receives `taxonomy.captionDisposition=DETAIL_REQUIRED` and an explicit overview loss instead of overlapping text. Full node labels remain in `taxonomy.label`; shortened labels/types end with an ellipsis and carry `TRUNCATED` losses. Text uses a fixed readable size rather than shrinking to fit.
+
+Optional details share all existing page/node/connector/package-byte limits with the complete overview and impact pages. `relationshipDetailCoverage` records retained counts and the covered key range. At capacity, remaining canonical relationships stay in overview Shape Data; inspect `taxonomy.id/type/sourceId/targetId` or the complete report inventory. Optional detail growth never rejects an otherwise valid base package. The exporter does not promise visually exhaustive pages for arbitrarily large graphs.
+
 Unknown nonblank business types remain exact literal properties on generic rectangles/connectors. They do not acquire invented Visio architecture metamodel semantics. Shape Data rows use collision-safe UTF-8 hex names and retain the original property key in `Label`. String/number/Boolean `Type` values are `0`/`2`/`3`; user values never become ShapeSheet formulas.
 
 ## Validation and bounds
@@ -46,7 +52,7 @@ Validation runs before a download is returned, including every generated package
 - Masterless connector geometry with explicit standard styles, `Shapes`/`Connects` collections and begin/end glue. Master references are rejected by this profile.
 - Deterministic part ordering, ZIP timestamps, sorted properties and losses; bundle hashes bind the exact bytes. Determinism is tested with the pinned runtime/dependencies, not promised across arbitrary ZIP/JDK versions.
 
-All limits apply together: 10,000 input elements, 30,000 input relationships, 32 pages, 20,000 rendered node occurrences, 60,000 connectors, 64 properties per owner, 32,767 UTF-16 code units per text and 32 MiB total uncompressed package content. The workbench normally emits one or two pages. Empty graphs still emit one valid empty page. Self-loops, coincident endpoints, dangling references, invalid/control text, oversized values and unsupported package structures fail without a partial download. Long labels and parallel relationships retain their data; the fixed visual layout can need manual adjustment.
+All limits apply together: 10,000 input elements, 30,000 input relationships, 32 pages, 20,000 rendered node occurrences, 60,000 connectors, 64 properties per owner, 32,767 UTF-16 code units per text and 32 MiB total uncompressed package content. The workbench preserves the overview and optional impact page and adds bounded relationship detail pages when needed. Empty graphs still emit one valid empty page. Self-loops, coincident endpoints, dangling references, invalid/control text, oversized values and unsupported package structures fail without a partial download. Full labels and relationship types remain in native shape data; bounded visible text can wrap or be explicitly shortened. Input-count limits do not guarantee that an unusually large model also fits the independent package-byte limit.
 
 Schema dependencies are Maven-pinned Apache POI `5.5.1` (`poi-ooxml` and `poi-ooxml-full`) and XMLBeans `5.3.0`. The `lite` schema JAR is excluded because it lacks the complete FaceNames bindings. Upstream JARs carry their license/notice information; no third-party schema source is copied into this repository. The full schema JAR used for the supplementary run had SHA-256 `dbc7c6e6108ceb9f151c2fc866a2b287d48af3a10b05425da21315eec16ce022`.
 
@@ -59,7 +65,7 @@ verification is `./mvnw verify -DexcludedGroups=real-llm`. The following focused
 commands provide supplementary export evidence:
 
 ```sh
-./mvnw -B -pl taxonomy-export -am -Dtest=VisioHandoffContractTest,VisioPackageBuilderTest,VisioPackageContractTest,VisioPackagePoiCompatibilityTest -Dsurefire.failIfNoSpecifiedTests=false test
+./mvnw -B -pl taxonomy-export -am -Dtest=VisioGraphicalQualityTest,VisioDynamicGlueContractTest,VisioHandoffContractTest,VisioPackageBuilderTest,VisioPackageContractTest,VisioPackagePoiCompatibilityTest -Dsurefire.failIfNoSpecifiedTests=false test
 ./mvnw -B -pl taxonomy-app -am -Dtest=ArchitectureVisioHandoffAcceptanceTest,ArchitectureSnapshotExportServiceTest,ArchitectureSnapshotExportSemanticFingerprintTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 

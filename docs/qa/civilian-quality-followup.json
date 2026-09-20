@@ -1,5 +1,6 @@
 {
   "schemaVersion": 2,
+  "visioGraphicalFollowup": "visio-graphical-quality.json",
   "issue": 1075,
   "pullRequest": 1087,
   "implementationRevision": "658ad515f4255d7ac1b1aa351ce673170edc868b",
@@ -286,7 +287,7 @@
     "Real EA/PCS/Microsoft Visio execution NOT_EXECUTED",
     "PCS AM v1 reads package/element properties only; connectors, tags, attributes, operations and diagrams are not fetched",
     "No PCS writes or atomic provider snapshot guarantee",
-    "Draw preserves all 38 labels but dense crossings and reversed/overlapping captions remain; no presentation-layout approval",
+    "Historical one-page Draw output above had dense crossings and reversed/overlapping captions; see visio-graphical-quality.json for the corrected native detail pages and current graphical disposition",
     "F3/F4 and F5/A1 operational coverage obligations remain; no production flood-warning design approval"
   ]
 }

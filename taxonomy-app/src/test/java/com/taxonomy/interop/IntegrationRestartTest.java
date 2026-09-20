@@ -53,7 +53,7 @@ class IntegrationRestartTest {
         private static final RepositoryContext CONTEXT = RepositoryContext.workspace("repo-restart", "workspace-restart", "draft", "alice");
         private static final UUID CONNECTION = UUID.fromString("1502e67c-2941-4991-92ef-000000000001"), OPERATION = UUID.fromString("1502e67c-2941-4991-92ef-000000000002"),
                 CHECKPOINT = UUID.fromString("1502e67c-2941-4991-92ef-000000000003"), EXPORT = UUID.fromString("1502e67c-2941-4991-92ef-000000000004");
-        private static final Class<?>[] ENTITIES = { IntegrationConnectionEntity.class, IntegrationOperationEntity.class, ExternalIdentityMappingEntity.class, IntegrationCheckpointEntity.class, IntegrationEventEntity.class };
+        private static final Class<?>[] ENTITIES = { IntegrationConnectionEntity.class, IntegrationOperationEntity.class, ExternalIdentityMappingEntity.class, IntegrationCheckpointEntity.class, IntegrationEventEntity.class, IntegrationPublicationEntity.class, IntegrationPublishItemEntity.class, IntegrationPublishAttemptEntity.class };
         public static void main(String[] args) throws Exception {
             try (var fixture = new EditorPersistenceFixture("jdbc:hsqldb:file:" + args[0] + ";shutdown=true", ENTITIES)) {
                 var store = new IntegrationStore(fixture.factory, new JpaTransactionManager(fixture.factory), new IntegrationJson(JsonMapper.builder().build()));

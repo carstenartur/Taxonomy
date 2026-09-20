@@ -106,6 +106,14 @@ final class VisioPackageValidator {
                 }
 
                 validateProperties(connect.getProperties());
+                var box = connect.getTextBox();
+                if (box != null) {
+                    validateXmlText(box.text(), "Connector display text");
+                    validateCoordinate(box.x() - box.width() / 2, "Text left", true);
+                    validateCoordinate(box.y() - box.height() / 2, "Text bottom", true);
+                    validateCoordinate(box.width(), "Text width", false);
+                    validateCoordinate(box.height(), "Text height", false);
+                }
                 long fromId = parseShapeId(
                         connect.getFromShape(), "Source of connector " + connectIndex);
                 long toId = parseShapeId(

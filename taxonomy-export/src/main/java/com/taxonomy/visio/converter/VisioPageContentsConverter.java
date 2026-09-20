@@ -1,6 +1,7 @@
 package com.taxonomy.visio.converter;
 
 import com.taxonomy.visio.VisioConnect;
+import com.taxonomy.visio.VisioTextBox;
 import com.taxonomy.visio.VisioPage;
 import com.taxonomy.visio.VisioShape;
 import com.taxonomy.visio.VisioProperty;
@@ -48,10 +49,6 @@ public class VisioPageContentsConverter implements Converter {
 
         if (!page.getShapes().isEmpty() || !page.getConnects().isEmpty()) {
             writer.startNode("Shapes");
-            for (VisioShape shape : page.getShapes()) {
-                writeRegularShape(writer, shape);
-            }
-
             long connectorId = maximumShapeId(page);
             for (VisioConnect connect : page.getConnects()) {
                 connectorId++;
@@ -62,6 +59,8 @@ public class VisioPageContentsConverter implements Converter {
                         requireShape(shapesById, connect.getFromShape(), "source"),
                         requireShape(shapesById, connect.getToShape(), "target"));
             }
+            // Shape order is drawing order: opaque nodes cover crossing strokes.
+            for (VisioShape shape : page.getShapes()) writeRegularShape(writer, shape);
             writer.endNode();
         }
 
@@ -114,6 +113,7 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "LinePattern", "1");
         writeCell(writer, "LineWeight", "0.01388888888888889");
         writeCell(writer, "VerticalAlign", "1");
+        writeCharacterStyle(writer, shape.getHeight() >= 1 ? 12 : 10);
         writeRectangleGeometry(writer, shape.getWidth(), shape.getHeight());
         writeProperties(writer, shape.getProperties());
 
@@ -177,11 +177,42 @@ public class VisioPageContentsConverter implements Converter {
         writeCell(writer, "LineWeight", "0.01388888888888889");
         writeCell(writer, "EndArrow", "13");
         writeCell(writer, "EndArrowSize", "2");
+        VisioTextBox box = connect.getTextBox() != null ? connect.getTextBox()
+                : new VisioTextBox(connect.getRelationType(), (beginX + endX) / 2,
+                        (beginY + endY) / 2, 2, 0.5);
+        // Invert the rotating shape transform. Constant page-axis offsets from
+        // the midpoint stay upright and attached when Visio recalculates glue.
+        double dx = box.x() - (beginX + endX) / 2;
+        double dy = box.y() - (beginY + endY) / 2;
+        writeCell(writer, "TxtPinX", decimal(width / 2 + dx * Math.cos(angle) + dy * Math.sin(angle)),
+                "Width*0.5+(" + decimal(dx) + ")*COS(Angle)+(" + decimal(dy) + ")*SIN(Angle)");
+        writeCell(writer, "TxtPinY", decimal(-dx * Math.sin(angle) + dy * Math.cos(angle)),
+                "-(" + decimal(dx) + ")*SIN(Angle)+(" + decimal(dy) + ")*COS(Angle)");
+        writeCell(writer, "TxtWidth", decimal(box.width()));
+        writeCell(writer, "TxtHeight", decimal(box.height()));
+        writeCell(writer, "TxtLocPinX", decimal(box.width() / 2), "TxtWidth*0.5");
+        writeCell(writer, "TxtLocPinY", decimal(box.height() / 2), "TxtHeight*0.5");
+        writeCell(writer, "TxtAngle", decimal(-angle), "-Angle");
+        writeCell(writer, "TextBkgnd", "#FFFFFF");
+        writeCell(writer, "TextBkgndTrans", "0");
+        writeCell(writer, "VerticalAlign", "1");
+        writeCharacterStyle(writer, box.height() >= 1 ? 12 : 10);
         writeLineGeometry(writer, width);
         writeProperties(writer, connect.getProperties());
 
         writer.startNode("Text");
-        writer.setValue(connect.getRelationType());
+        writer.setValue(box.text());
+        writer.endNode();
+        writer.endNode();
+    }
+
+    private static void writeCharacterStyle(HierarchicalStreamWriter writer, int points) {
+        writer.startNode("Section");
+        writer.addAttribute("N", "Character");
+        writer.startNode("Row");
+        writer.addAttribute("IX", "0");
+        writeCell(writer, "Size", decimal(points / 72.0)); // Fixed readable size; never shrink to fit.
+        writeCell(writer, "Color", "#172B4D");
         writer.endNode();
         writer.endNode();
     }

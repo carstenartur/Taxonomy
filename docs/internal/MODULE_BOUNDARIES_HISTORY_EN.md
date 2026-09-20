@@ -1,0 +1,343 @@
+# Module and Bounded-Context Boundaries
+
+This document records the incremental target for decomposing `taxonomy-app` without changing Taxonomy's deployment model. Taxonomy remains a **modular monolith** and a single Spring Boot application. The goal is to make Maven boundaries reflect feature authority and dependency direction instead of splitting the system into services or creating one module per package.
+
+The machine-readable source of truth for the planned extraction contexts is `.github/architecture-contexts.json`. Temporary architecture exceptions remain in `.github/architecture-exceptions.json`, and the reviewed current cross-context dependency counts are frozen in `.github/architecture-dependency-baseline.json`.
+
+## Current Maven reactor
+
+The root reactor currently contains fifteen modules with different roles:
+
+| Module | Current role |
+|---|---|
+| `taxonomy-tooling` | Dependency-free build/repository tooling |
+| `taxonomy-domain` | Framework-free shared domain contracts |
+| `taxonomy-dsl` | Framework-free TaxDSL parser, model, validation, differ and command logic |
+| `taxonomy-export` | Framework-free diagram/export contracts and implementations |
+| `taxonomy-extension-api` | Framework-free common extension contracts |
+| `taxonomy-workspace` | Workspace authority, versioning, semantic editor history and JGit storage |
+| `taxonomy-templates` | Document-template Git storage, OOXML validation and WebDAV |
+| `taxonomy-interop` | Reviewed external-tool interoperability, mappings, checkpoints and OSLC; portfolio access through an explicit port |
+| `taxonomy-knowledge` | Catalogue and seed resources, relations, Hibernate Search mappings and local semantic embeddings |
+| `taxonomy-architecture` | Architecture derivation, scoring, recommendations, diagrams and reports; live report preferences through an application-owned adapter |
+| `taxonomy-analysis` | Requirement/LLM analysis, prompts, provider policy and sessions |
+| `taxonomy-portfolio` | Project portfolio, analysis jobs, snapshots, reviews and recovery |
+| `taxonomy-app` | Single executable composition/deployment root, security and supporting application adapters |
+| `taxonomy-coverage` | Reactor-wide coverage aggregation |
+| `taxonomy-build` | Build policy and browser/verification contracts |
+
+The shipped application modules are therefore only part of the reactor. `taxonomy-tooling`, `taxonomy-coverage`, and `taxonomy-build` exist for build and verification responsibilities and are not runtime bounded contexts.
+
+## Why `taxonomy-app` is being decomposed
+
+`taxonomy-app` has accumulated several independently coherent areas: catalogue/search, architecture generation, requirement analysis, workspace/version state, the semantic editor journal and Git checkpoints, project portfolio workflows, external-tool interoperability, document-template/WebDAV handling, provenance/document ingestion, preferences, security, and observability. Keeping all Spring-aware feature code in the executable module weakens dependency direction and makes Maven unable to prevent cross-feature coupling.
+
+The decomposition therefore follows **authority and bounded contexts**, not the current package hierarchy mechanically.
+
+## Planned bounded contexts
+
+### `taxonomy-knowledge`
+
+Physically extracted as a Maven library. Catalogue startup state, embedding lifecycle, vector conversion and search analyzers are owned here. The five framework-import materialization adapters live in `taxonomy-app` under `com.taxonomy.composition.importer`; their parsers and the import registry remain knowledge-owned. Spring bean names and classpath resource names are unchanged.
+
+Owns `catalog`, `relations`, and `search`. Their current mutual dependencies are treated as internal implementation coupling of one knowledge context while their public contracts are narrowed. Search mappings/binders belong with the persistence side of this context rather than becoming a general application dependency.
+
+### `taxonomy-workspace`
+
+Owns `workspace`, `versioning`, and `editor`. These packages jointly control editable and versioned state, including the durable semantic-operation journal, undo/redo, checkpoint preparation/publication, repository context, and JGit/Hibernate-backed DSL storage. They are kept together initially so a Maven split does not merely turn their present package coupling into a module cycle.
+
+The invariant introduced by the editor redesign remains unchanged: **accepted semantic operations are durable revisions; Git commits are explicit stable checkpoints, not the operation log.**
+
+### `taxonomy-architecture`
+
+Physically extracted as a Maven library with its owned unit tests. Report preferences remain application-owned and enter through `ArchitectureReportMetadataPort`, resolved afresh for each report. Java package names, endpoint behavior and database migrations are unchanged; `taxonomy-app` remains the only deployable application. The report HTTP adapter and its repository/workspace resolution remain in application composition under `com.taxonomy.composition.report`; the architecture library cannot depend on `WorkspaceResolver`.
+
+Owns architecture derivation, scoring, gaps, patterns, recommendations, architecture view/domain models, and neutral diagram preparation. Repository/workspace lookup and cross-context HTTP orchestration do not belong in this module.
+
+### `taxonomy-analysis`
+
+Physically extracted with owned tests and resources; cross-context acceptance remains in the application. See [completion criteria](../dev/MODULE_EXTRACTION_COMPLETION.md).
+
+Owns requirement and LLM analysis, provider/gateway selection, response parsing, prompt/policy logic, analysis sessions and local inference abstractions. Stateful repository or hypothesis access enters through explicit ports.
+
+### `taxonomy-portfolio`
+
+Physically extracted with owned tests and resources; cross-context acceptance remains in the application. See [completion criteria](../dev/MODULE_EXTRACTION_COMPLETION.md).
+
+Owns project/portfolio state and orchestration: versioned requirements, persisted analysis work/results/review state, queues/recovery, workbench snapshots and project-level workflows. It coordinates analysis, architecture and workspace capabilities through their APIs rather than reaching into their repositories.
+
+### `taxonomy-interop`
+
+Owns reviewed external-tool interoperability, including durable integration operations, mappings/checkpoints/events, connector orchestration and OSLC/ReqIF/ArchiMate application integration. It consumes narrow ports and must not depend on concrete editor services.
+
+### `taxonomy-templates`
+
+Owns the document-template subsystem: the template Git repository, OOXML package codec and safety validation, materialization/cache, WebDAV projection/locking and template administration/health contracts.
+
+## Residual contexts that are deliberately not modules yet
+
+`provenance` and `preferences` are explicitly classified so their dependencies are visible to the ratchet, but they have no target Maven module yet.
+
+- `provenance` is a real subsystem with document parsing/chunking, provenance persistence and AI-assisted document analysis. It currently crosses analysis, knowledge and shared application services, so extracting it now would freeze an unclear dependency direction.
+- `preferences` remains application-local until its ownership and persistence dependencies justify a separate feature boundary.
+
+Both are reassessed after the stronger context APIs exist. This avoids creating small modules merely to improve the module count.
+
+## Transitional adapter contexts
+
+`com.taxonomy.dsl.export..` and the Spring-aware `com.taxonomy.export.service..` / `com.taxonomy.export.controller..` packages remain explicit transitional contexts while their owning ports settle. JGit storage is classified under the existing `com.taxonomy.workspace..` context.
+
+They are **not** the seed of a generic `taxonomy-adapters` module. Each adapter should ultimately live with the bounded context whose port it implements. The framework-free modules continue to reject Spring, JPA and application-module dependencies.
+
+## `taxonomy-app` target role
+
+After the feature contexts are extracted, `taxonomy-app` remains the executable composition root. The context map currently classifies `composition`, `observability`, `security`, and `shared` as `app-composition`; the root `AppConfig` and `TaxonomyApplication` classes are composition classes as well.
+
+The long-term application module should contain only genuinely application-wide responsibilities such as:
+
+- Spring Boot assembly and cross-context wiring;
+- global security/authentication/request identity;
+- top-level configuration;
+- global exception handling and observability/health aggregation;
+- genuinely cross-context MVC orchestration that has no single feature owner;
+- final packaging and application resources.
+
+A package named `shared` is not automatically a module boundary. Shared classes must move to the lowest stable owner or remain composition concerns when they are truly application-wide.
+
+## Dependency fitness functions
+
+### Hypothesis authority (C2 of #1043)
+
+Hypothesis lifecycle, Git-authoritative review, review-state storage and the
+`/api/dsl/hypotheses/**` HTTP adapters are owned by `relations`. The remaining
+`DslApiController` does not call hypothesis services. Legacy `WorkspaceContext`
+arguments are translated by the workspace-owned `WorkspaceRepositoryContextPort`;
+an explicitly selected repository is retained, workspace provenance mismatches
+fail before review or branch access, and central contexts remain read-only.
+
+Hypothesis services consume workspace APIs for repository context, exact Git
+reads/commands and generated DSL publication. They do not depend on workspace
+entities/repositories, concrete DSL storage or JGit. Semantic review and
+transaction callbacks remain relation responsibilities; generated-snapshot
+publication remains separate from expected-head commands and editor checkpoints.
+
+C2 reduced cross-context class pairs from 559 to 540.
+`versioning.service -> catalog/relations` and
+`versioning.controller -> relations` are now zero. No cycle exception was added
+or expanded.
+
+### Decision-report composition (D1 of #1043)
+
+`DecisionRationaleReportController` now belongs to
+`com.taxonomy.composition.report` in `taxonomy-app`. It combines architecture
+report generation/rendering, knowledge-owned catalogue scores and workspace
+provenance. The versioning HTTP adapters no longer depend on architecture
+decision/report or catalogue services through this controller.
+
+The D1 slice recorded **543 cross-context class pairs**, compared with 540 after
+C2. This historical change from **540 to 543** exposed three workspace API
+references that were previously internal to the workspace context; it added no
+runtime dependency. `ArchitectureDecisionReportBoundaryTest` enforces the
+composition owner and the versioning HTTP boundary.
+
+### Git commit-history ownership (D2 of #1043)
+
+The historical D2 baseline recorded **537 cross-context class pairs**, down from
+**543** after D1. That change from **543 to 537** placed the Git commit-history
+projection under workspace versioning:
+
+| Types | Owner package |
+|---|---|
+| `ArchitectureCommitIndex` | `com.taxonomy.versioning.model` |
+| `ArchitectureCommitIndexRepository` | `com.taxonomy.versioning.repository` |
+| `CommitIndexService`, `CommitIndexSearchLifecycle`, `CommitIndexSearchRebuilder` | `com.taxonomy.versioning.service` |
+
+The Git index no longer contributes workspace-to-architecture dependencies.
+Its entity, table, search-index and analyzer names, tenant/branch scope and
+recovery behavior are unchanged. `ArchitectureCommitHistoryOwnershipTest`
+requires all five projection types to remain with their versioning owners.
+
+At D2, the **four remaining workspace-to-architecture class pairs** concerned the
+imported `ArchitectureDslDocument` archive and its repository, then accessed by
+the DSL controller and operations facades. This is historical D2 evidence; D3
+removes those four pairs below. The archive remains in its existing owner, and
+neither slice completes a physical module extraction.
+
+### DSL document composition (D3 of #1043)
+
+`DslDocumentApiController` in `com.taxonomy.composition.dsl.controller` owns
+export/current, materialization and incremental materialization, archive-enriched
+history, structural/semantic comparison and document listing under `/api/dsl`.
+`DslDocumentOperationsFacade` in `com.taxonomy.composition.dsl.service` composes
+knowledge export/materialization, the architecture archive and the Spring-selected
+workspace `DslOperationsFacade`. Parsing, validation, formatting, text diff,
+Git/workspace commands and history indexing/search remain in `DslApiController`.
+Both workspace DSL facades are free of architecture archive and document-export
+adapter dependencies.
+
+The single workspace-owned HTTP `DslReadWorkspaceContextResolver` is shared by
+both controllers. It preserves the legacy read provision/resolve sequence and
+shared-context fallback. The request pre-resolution interceptor and Git facade
+continue to fail closed on repository-selection failures. Git remains the
+versioned-content authority; numeric document comparisons keep archive
+compatibility without resolving Git. `ArchitectureDslDocument` and its repository
+remain architecture-owned, with unchanged archive/global query policy, URLs,
+security, repository identity, checkpoint/journal/lock behavior and materialization
+write scope.
+
+The historical D3 baseline, measured from fresh production bytecode, records
+**539 cross-context class pairs across 147 package edges**, compared with the
+historical D2 baseline of **537 pairs across 141 package edges**. All four former
+workspace-to-architecture archive pairs are gone. Three composition-to-architecture
+archive pairs replace that orchestration, two adapter pairs are removed, and five
+composition-to-workspace API pairs become visible because those calls previously
+lay inside the workspace context: **537 - 4 + 3 - 2 + 5 = 539**. The increase of two
+measured class pairs exposes composition ownership. No Maven dependency or
+additional feature-to-feature dependency is introduced.
+
+At D3, the **47 outgoing workspace class pairs** comprised **44 DSL storage
+adapter pairs**, **one bootstrap export pair** and **two application-readiness
+pairs**. The **117 knowledge-to-workspace pairs** require a separate review.
+At that checkpoint, bootstrap, storage and knowledge coupling still blocked physical feature extraction;
+D3 does not complete the extraction or close parent issues #628/#1043. The context
+map and cycle-exception ledger are unchanged. See
+[DSL document composition](../dev/DSL_DOCUMENT_COMPOSITION.md).
+
+### Git startup composition (D4 of #1043)
+
+`GitRepositoryBootstrap` now belongs to `com.taxonomy.composition.dsl.service`.
+Only its package changed: application readiness, default-enabled configuration,
+system-repository selection, one-shot initialization and failure retry behavior
+remain intact. Workspace no longer depends directly on application readiness or
+knowledge export through startup orchestration.
+
+The D4 baseline recorded **537 cross-context class pairs across
+146 package edges**, down from D3's **539 / 147**. The two readiness pairs become
+internal to composition; the bootstrap export pair and its two storage pairs
+retain their existing targets under their new composition owner. The **42
+remaining outgoing workspace pairs all target DSL storage adapters**. The **117
+knowledge-to-workspace pairs** are unchanged and still require separate review.
+Storage ownership and the broader graph remain extraction constraints; D4 does
+not create a Maven module or close #628/#1043. The context map, cycle exceptions
+and coverage floors remain unchanged. See
+[Git bootstrap composition](../dev/GIT_BOOTSTRAP_COMPOSITION.md).
+
+### Application schema composition (D5a of #1043)
+
+`TaxonomySchemaMigrationConfig` now belongs to
+`com.taxonomy.composition.persistence`. Its primary Flyway strategy composes the
+exact qualified `jgitStorageFlywayMigrationStrategy` before application migration.
+Core failure prevents application work; Core continues to own its existing
+legacy-adoption property and package-private migration implementation.
+
+The fresh bytecode measurement remains **537 cross-context class pairs across
+146 package edges**. No recorded package edge changes: the former direct call
+was internal to DSL storage, while the new composition depends on Flyway's
+strategy interface. The **42 workspace-to-DSL-storage pairs** and **117
+knowledge-to-workspace pairs** remain unchanged. The baseline, context map and
+cycle exceptions are unchanged.
+
+Ten application PostgreSQL integration tests follow their application owner;
+all existing assertions and SQL resources remain intact. Both storage and
+composition persistence retain independent **87% line / 71% branch** coverage
+floors. Storage adapter relocation remains a separate slice; D5a creates no Maven
+module and does not close #628/#1043. See
+[Application schema composition](../dev/APPLICATION_SCHEMA_COMPOSITION.md).
+
+### Workspace storage ownership (D5b of #1043)
+
+The eleven JGit storage types and their seventeen test/support owners now belong
+to `com.taxonomy.workspace.storage`. Repository identity, system-versus-selected
+repository routing, exact-head conflicts, semantic-operation versus checkpoint
+separation, recovery, merge/diff/version behavior, SQL and migration behavior
+are unchanged.
+
+Fresh production-bytecode measurement reduces the checked graph from **537 to
+472 cross-context class pairs** and from **146 to 140 package edges**. The **42
+workspace-to-storage pairs** and **23 storage-to-workspace pairs** become internal
+to workspace, removing six cross-context package edges and 65 class pairs.
+Workspace now has **zero outgoing class pairs to other managed application contexts**.
+Incoming edges retarget to workspace storage from composition DSL
+controller (1 pair), composition DSL service (2 pairs) and portfolio service (5
+pairs). The measured graph exactly matches the namespace-only projection of the
+old baseline, with no unexplained edge change.
+
+The **117 knowledge-to-workspace pairs** remain; an independent inventory found
+zero knowledge-to-former-storage pairs. Foundation dependencies still exist
+outside the managed application context graph, and the knowledge coupling still
+requires separate review. D5b does not create a Maven module or close
+#628/#1043. See [Workspace storage ownership](../dev/WORKSPACE_STORAGE_OWNERSHIP.md).
+
+The migration uses complementary protections:
+
+1. `ArchitectureCycleBoundaryTest` rejects undocumented package cycles. Temporary exceptions must exist in `.github/architecture-exceptions.json` and expire.
+2. `ArchitectureContextDependencyRatchetTest` records distinct direct class-to-class dependencies between planned, residual and transitional contexts per package pair. New edges or increased counts fail. When refactoring removes dependencies, the lower baseline must be committed in the same change so the improvement cannot regress silently.
+
+3. `ArchitectureDecisionReportBoundaryTest` rejects report orchestration in versioning HTTP adapters and requires the report controller to remain in `composition.report`.
+4. `ArchitectureCommitHistoryOwnershipTest` requires the Git commit-history entity, repository and three projection services to remain in their versioning owner packages.
+5. `ArchitectureDslCompositionBoundaryTest` requires the document controller/facade and shared HTTP context resolver in their owner packages, checks exclusive ownership of the eight document routes, and rejects architecture/knowledge/document-export dependencies from workspace controllers and both workspace DSL facades.
+6. `ArchitectureWorkspaceAuthorityBoundaryTest` requires the composition bootstrap owner and rejects direct workspace/versioning/editor dependencies on application composition, knowledge, architecture, portfolio and document-export implementations; representative owners make the rule non-vacuous.
+7. `ArchitectureApplicationSchemaCompositionTest` requires the application schema owner in composition, retains the Core storage owner and rejects a direct application-config dependency on Core implementation classes.
+8. `ArchitectureWorkspaceStorageOwnershipTest` requires all eleven JGit storage types under `com.taxonomy.workspace.storage` and rejects production types left under `com.taxonomy.dsl.storage`.
+
+Run the focused architecture profile from the repository root across the full
+reactor so every module's production output is current:
+
+```bash
+./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
+```
+
+The profile includes all six ownership guards for decision reports, commit
+history, DSL document composition, workspace authority, application schema composition and workspace storage in both `pom.xml` and
+`.mvn/verification-suites.json`. Its 17 selected test classes are synchronized
+between the POM and catalog. In addition to the eleven existing guards,
+`ArchitectureModuleGraphTest`, `ArchitectureModuleExtractionTest` and
+`ArchitectureSelectorSynchronizationTest` enforce the module graph, extraction
+readiness and exact selector synchronization. Every selected guard must retain
+its source file in its owning reactor module inside the checkout. The build-owner
+contract also invokes the synchronization check, so deleting that check cannot
+silently disable it. The extracted-module guards (`ArchitectureWorkspaceModuleTest`, `ArchitectureTemplatesModuleTest`, `ArchitectureInteropModuleTest`) are also included. Full CI verification remains
+`./mvnw -B verify -Pci`.
+
+The ratchet walks `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`, `taxonomy-templates/src/main/java/com/taxonomy`, `taxonomy-interop/src/main/java/com/taxonomy`: every production Java package below these roots must be classified in `.github/architecture-contexts.json`. Only `taxonomy-app` may contain root-package Java files, and its composition files must exactly match the explicit allow-list. Extracted feature modules reject every root-package Java file, including a copied composition-class name or `package-info.java`.
+
+The ratchet is intentionally a **current-state baseline, not an ideal-direction allowlist**. Architectural direction is improved by explicit port/refactoring PRs and then locked in monotonically.
+
+## Migration order
+
+Issue #628 remains the implementation parent. Extraction follows each candidate's actual dependencies; cycles in unrelated contexts do not block an independent library. The status below describes the code in this revision, not the merge status of a pull request.
+
+1. Context map and dependency ratchet — implemented.
+2. Workspace authority and storage ownership — separated from application orchestration.
+3. `taxonomy-workspace` — physically extracted in this revision.
+4. `taxonomy-templates` — physically extracted in this revision.
+5. `taxonomy-interop` — physically extracted through a scoped portfolio port in this revision.
+6. `taxonomy-knowledge` — pending; stabilize its owned APIs and remove blocking implementation dependencies.
+7. `taxonomy-architecture`, `taxonomy-analysis` and `taxonomy-portfolio` — pending; resolve their remaining cycles before each extraction.
+8. Reassess `provenance` and `preferences` after those boundaries are stable.
+
+Every extracted feature library must remain independent of `taxonomy-app`; the application is the only deployment/composition root.
+
+## Physical workspace module
+
+`taxonomy-workspace` owns the workspace, versioning and editor production packages.
+`taxonomy-app` depends on its ordinary JAR; application configuration and SQL migrations
+remain in the application. Java package names and runtime contracts are unchanged.
+`ArchitectureWorkspaceModuleTest` is included in both architecture selectors and
+requires physical source and compiled ownership. Maven enforces no dependency back
+to the application. With templates and interoperability extracted below, four planned feature modules remain to be extracted.
+
+## Physical templates module
+
+`taxonomy-templates` owns all 21 template production classes and the bundled
+`document-templates/decision-rationale-report.dotx` resource. Its classpath name
+and bytes are unchanged. The library has no dependency on another Taxonomy
+feature module or the Boot application. Twenty-one unit test classes follow
+the implementation; application/HTTP, security and UI resource contracts remain
+in `taxonomy-app`. Global configuration, migration scripts and presentation
+assets remain with application assembly.
+
+
+## Physical interoperability module
+
+`taxonomy-interop` now owns all interoperability production packages. It depends on the existing foundations and workspace, not on the application or portfolio implementation. `IntegrationPortfolioPort` exposes only the required scoped project/requirement operations and neutral values. `PortfolioInteropAdapter` in application composition delegates to the unchanged portfolio services, including access checks and locking. The original import decisions, provenance and checkpoint ordering remain in interoperability. Application-level flow, journal and restart tests remain in `taxonomy-app`; eight existing unit-test classes move with the library. Four planned feature modules remain after workspace, templates and interoperability. Physical ownership here describes this source revision, not PR merge status.

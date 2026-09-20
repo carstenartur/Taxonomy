@@ -1,654 +1,353 @@
 # Architekturbeschreibung
 
-Dieses Dokument beschreibt die Architektur des Taxonomy Architecture Analyzer — einer Spring-Boot-Webanwendung zum Durchsuchen, Analysieren und Visualisieren von C3-Taxonomiedaten. Es richtet sich an Entwickler und Systemintegratoren, die das Systemdesign, die Verarbeitungspipelines und das betriebliche Setup verstehen müssen.
+Taxonomy erzeugt aus Anforderungen und Quellmaterial mit KI-Unterstützung und
+menschlicher Prüfung plausible, nachvollziehbare Architekturprototypen. Dieses
+Dokument erklärt **die dafür eingesetzte Applikation**, nicht die Architektur
+eines mit ihr erzeugten Modells.
 
----
+Beschrieben wird die implementierte Architektur dieses Branches, keine Roadmap.
+Taxonomy ist ein **modularer Monolith mit genau einer deploybaren Spring-Boot-Anwendung**.
+Der Reactor umfasst fünfzehn Untermodule: vier frameworkfreie Grundlagen, sieben
+Laufzeit-Fachbibliotheken, ein Kompositionsmodul und drei Build-/Werkzeugmodule.
+Inventar und aktuelle Zuständigkeiten stehen in [Modulgrenzen](MODULE_BOUNDARIES.md).
+[English](../en/ARCHITECTURE.md).
 
-## Inhaltsverzeichnis
+## Inhalt
 
-- [Systemüberblick](#systemüberblick)
-- [Architekturprinzipien](#architekturprinzipien)
-- [Übergeordnete Architektur](#übergeordnete-architektur)
-- [Schlüsselkomponenten](#schlüsselkomponenten)
-- [Pipeline zur Generierung der Architekturansicht](#pipeline-zur-generierung-der-architekturansicht)
-- [Datenladung](#datenladung)
-- [CI / CD](#ci--cd)
-- [Datenbank](#datenbank)
-- [Sicherheitsarchitektur](#sicherheitsarchitektur)
-- [Git-Status als erstklassiges Konzept](#git-status-als-erstklassiges-konzept)
-- [ViewContext und Action Guards](#viewcontext-und-action-guards)
-- [Framework-Zuordnungsschicht](#framework-zuordnungsschicht)
-- [Exportformate](#exportformate)
-- [Detaillierte Architekturdiagramme](#detaillierte-architekturdiagramme)
-
----
+- [Systemüberblick](#systemüberblick) und [Architekturprinzipien](#architekturprinzipien)
+- [Übergeordnete Architektur](#übergeordnete-architektur) und [Modularchitektur](#modularchitektur)
+- [Schlüsselkomponenten](#schlüsselkomponenten) und [Anforderungsablauf](#pipeline-zur-generierung-der-architekturansicht)
+- [Persistenzzuständigkeiten](#dsl-speicherarchitektur) und [Git-Status](#git-status-als-erstklassiges-konzept)
+- [Kontext und Schreibschutz](#viewcontext-und-action-guards)
+- [Datenladung](#datenladung), [Datenbank](#datenbank) und [Sicherheit](#sicherheitsarchitektur)
+- [Import](#framework-zuordnungsschicht), [Export](#exportformate) und [Verifikation](#ci--cd)
 
 ## Systemüberblick
 
-Die Anwendung ist eine einzelne Spring Boot 4 / Java 21 Webanwendung mit folgenden Hauptmerkmalen:
+`taxonomy-app` setzt die Fachbibliotheken zusammen und enthält Spring-Verdrahtung,
+kontextübergreifende HTTP-/UI-Adapter, Sicherheit, Observability, Deployment-Konfiguration
+und Datenbankmigrationen. Ein Maven-Modul ist kein separat deployter Dienst.
+Fachbibliotheken hängen nicht von `taxonomy-app` ab; ihr produktiver Modulgraph ist
+azyklisch. Das behauptet weder die Auflösung aller Package-Kopplungen noch die
+Beseitigung sämtlicher historischer Ausnahmen.
 
-- **In-Process HSQLDB** — das konfigurationsfreie Profil verwendet eingebettete HSQLDB; dateibasierte Installationen persistieren Katalog- und JGit-Daten, während nur eine leere Datenbank oder ein explizites Neuladen die mitgelieferte Arbeitsmappe importiert. Standardmäßig ist keine externe Datenbank erforderlich.
-- **Multi-Anbieter-LLM-Integration** — Geschäftsanforderungen können von einem der sechs unterstützten Sprachmodellanbieter (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral) oder von einem lokalen Offline-Modell (`bge-small-en-v1.5` über DJL / ONNX Runtime) analysiert werden, das keinen API-Schlüssel benötigt.
-- **Taxonomiebaum-Visualisierung** — Die Hierarchie wird als zusammenklappbarer Bootstrap-5-Baum mit farbcodierten Übereinstimmungs-Overlays dargestellt.
-- **Architekturintelligenz** — Bewertete Analyseergebnisse werden zu Architekturansichten zusammengestellt. Mermaid steht als Textprojektion bereit; ArchiMate-3.1- und Visio-2012-Downloads sind experimentelle begrenzte Teilmengen, deren Interoperabilität und Desktop-Akzeptanz getrennt nachgewiesen werden.
-
----
+Der Browser nutzt die Anwendungs-APIs und Streaming-Antworten. Die Analyse kann einen
+konfigurierten entfernten LLM-Anbieter verwenden. Kataloganzeige und viele deterministische
+Bearbeitungs-, Validierungs-, Such- und Exportfunktionen benötigen keinen Anbieter.
+Lokale ONNX-Embeddings unterstützen semantische Suche und Scoring; sie belegen kein
+lokales generatives Sprachmodell mit allen Fähigkeiten entfernter Anbieter.
 
 ## Architekturprinzipien
 
-Das Systemdesign folgt diesen Leitprinzipien, abgestimmt auf die
-[Deutschland-Stack Architekturprinzipien](https://deutschland-stack.gov.de/gesamtbild/#architekturprinzipien):
-
-| Prinzip | Anwendung im Projekt |
+| Prinzip | Implementierungsgrenze |
 |---|---|
-| **Offene Standards** | Die REST-API verwendet OpenAPI; Mermaid, ONNX und CycloneDX sind offene Formate. Die ArchiMate-Ausgabe ist eine experimentelle begrenzte 3.1-Teilmenge, während die optionale VSDX-Übergabe getrennt als proprietäre Interoperabilitätsoberfläche geführt wird. |
-| **Open Source First** | MIT-Lizenz. Vollständiger Quellcode öffentlich. openCode-kompatibel. |
-| **Interoperabilität** | REST-API mit OpenAPI-Spezifikation, Framework-Import-Pipeline (UAF, APQC, C4) und formatspezifischen Exportgrenzen in der Funktionsmatrix. |
-| **Modularität & Wiederverwendung** | 4 Maven-Module mit minimaler Kopplung. 3 Module sind Spring-frei und unabhängig testbar. |
-| **Integration** | Import-Pipelines für UAF/DoDAF, APQC PCF, C4/Structurizr. Keycloak SSO. Externe Git-Synchronisation. |
-| **Skalierbarkeit** | Stateless REST API. Austauschbares Datenbank-Backend (HSQLDB, PostgreSQL, MSSQL, Oracle). Container-fähig. |
-| **Sicherheit & Vertrauen** | Spring Security 3-Rollen-Modell. HSTS/CSP-Header. Rate Limiting. Air-Gapped-Betrieb. DSGVO-Dokumentation. |
-| **Kooperatives Ökosystem** | Öffentliches GitHub-Repository. Docker-Images auf GHCR. CI/CD mit GitHub Actions. CycloneDX SBOM. |
-
-Für die vollständige Konformitätsbewertung siehe [Deutschland-Stack Konformität](DEUTSCHLAND_STACK_CONFORMITY.md).
-
----
+| Eindeutige Zuständigkeit | Fachmodule besitzen ihre Fachlogik und Tests; kontextübergreifende Komposition bleibt in der Anwendung. |
+| Menschliche Kontrolle | KI-Ausgaben sind Vorschläge. Prüfung, übernommene Änderungen, Identitäten und Herkunft bleiben explizit. |
+| Getrennte Historien | Semantische Operationen, bearbeitbarer Workspace-Zustand, Git-Checkpoints und Analysesnapshots sind verschiedene Konzepte. |
+| Stabile Verträge | Frameworkfreie Grundlagen und schmale fachliche Ports vermeiden Abhängigkeiten von Implementierungsklassen der Anwendung. |
+| Reproduzierbare Prüfung | Modulzuständigkeit, Abhängigkeitsrichtung, Packaging, Wiederanlauf und Browserverhalten haben eigene Prüfungen. |
+| Begrenzte Interoperabilität | Unterstützte Zuordnungen und Informationsverluste sind explizit; eine erzeugte Datei ist keine Desktop-Zertifizierung. |
 
 ## Übergeordnete Architektur
 
-```mermaid
-graph TB
-    subgraph Client["Browser / REST-Client"]
-        UI["Bootstrap 5 SPA<br/>(Thymeleaf + 11 JS-Module)"]
-    end
-
-    subgraph App["Spring Boot 4 Anwendung :8080"]
-        direction TB
-        Controllers["REST-Controller<br/>ApiController · GraphQueryApi<br/>ProposalApi · CoverageApi<br/>GapAnalysis · PatternDetection<br/>Recommendation · ArchiMateImport<br/>DslApi · ReportApi · RelationApi<br/>QualityApi · ExplanationTrace<br/>ArchitectureSummary"]
-        Services["Service-Schicht<br/>LlmService · TaxonomyService<br/>SearchService · HybridSearchService<br/>RequirementArchitectureViewService<br/>DiagramProjectionService<br/>RelationProposalService<br/>DslGitRepository · versioning.service.CommitIndexService<br/>ArchitectureReportService"]
-        Persistence["Persistenz<br/>HSQLDB (In-Process)<br/>Hibernate Search 8 / Lucene 9"]
-    end
-
-    subgraph External["Externe / Lokale KI"]
-        LLM["Cloud-LLM-Anbieter<br/>Gemini · OpenAI · DeepSeek<br/>Qwen · Llama · Mistral"]
-        ONNX["Lokales ONNX-Modell<br/>bge-small-en-v1.5<br/>(DJL / ONNX Runtime)"]
-    end
-
-    UI -->|"HTTP / SSE"| Controllers
-    Controllers --> Services
-    Services --> Persistence
-    Services -.->|"API-Aufruf (optional)"| LLM
-    Services -.->|"Embedding (lokal)"| ONNX
-```
-
----
-
-## Schlüsselkomponenten
-
-| Service | Rolle |
-|---|---|
-| `LlmService` | Multi-Anbieter-LLM-Integration. Leitet Analyseanfragen an den konfigurierten Anbieter (Gemini, OpenAI, DeepSeek, Qwen, Llama, Mistral) oder das lokale DJL/ONNX-Modell weiter. Behandelt Ratenbegrenzungs-Ausnahmen (`LlmRateLimitException` bei HTTP 429 / `RESOURCE_EXHAUSTED`). |
-| `TaxonomyService` | Lädt den Taxonomiekatalog aus der mitgelieferten Excel-Arbeitsmappe (Apache POI) oder dem CSV-Fallback beim Start. Verwaltet die 8 Taxonomie-Wurzelkategorien (BP, BR, CP, CI, CO, CR, IP, UA). |
-| `RequirementArchitectureViewService` | Erstellt Architekturansichten aus LLM-Analysebewertungen. Wählt Ankerknoten (Bewertung ≥ 70, mit Fallback auf ≥ 50) und propagiert Relevanz durch Taxonomiebeziehungen, um einen strukturierten Element-/Beziehungsgraphen aufzubauen. |
-| `ArchitectureRecommendationService` | Erzeugt Architekturempfehlungen durch Kombination direkter Treffer, Lückenanalyse und semantischer Suchergebnisse, um zusätzliche relevante Knoten und Beziehungen vorzuschlagen. |
-| `ArchitectureGapService` | Identifiziert fehlende Beziehungen und unvollständige Architekturmuster im Taxonomiegraphen bezüglich einer gegebenen Anforderung. |
-| `ArchitecturePatternService` | Erkennt Standard-Architekturmuster (Full Stack, App Chain, Role Chain) in bewerteten Taxonomieergebnissen. |
-| `ArchiMateDiagramService` | Erzeugt die experimentelle begrenzte ArchiMate-3.1-XML-Teilmenge. Jede Datei wird offline gegen den festgeschriebenen XSD-Satz validiert. Stabile IDs, typisierte Eigenschaften, Mapping-/Verlustprofil und semantischer Taxonomy-Roundtrip sind implementiert; die Fremdwerkzeug-Abnahme steht aus. |
-| `VisioDiagramService` | Erzeugt die experimentelle begrenzte Visio-2012-VSDX-Teilmenge; typisierte Identitäten und versionierte Übergabe-/Verlustmanifeste sind enthalten; Microsoft-Visio-Desktop-Zertifizierung steht aus. |
-| `MermaidExportService` | Exportiert Architekturansichten als Mermaid-Flussdiagramm-Codeblöcke. |
-| `DiagramProjectionService` | Projiziert Architekturansichten in neutrale Diagrammmodelle, die von mehreren Exportern gerendert werden können. |
-| `RelevancePropagationService` | Propagiert Relevanzbewertungen von Ankerknoten durch Taxonomiebeziehungen und erweitert die Architekturansicht um indirekt relevante Elemente. |
-| `SearchService` / `HybridSearchService` | Volltextsuche (Lucene), semantische Suche (Embedding-KNN), hybride Suche (Reciprocal Rank Fusion) und graphbasierte Suche über Taxonomieknoten. |
-| `LocalEmbeddingService` | Verwaltet das lokale `bge-small-en-v1.5`-Embedding-Modell über DJL/ONNX Runtime für semantische Suche und lokale Bewertung. |
-| `RelationProposalService` | KI-gestützte Beziehungsvorschlags-Pipeline: Generiert Kandidatenbeziehungen und verwaltet den menschlichen Überprüfungsworkflow. |
-| `ArchitectureReportService` | Generiert Analyseberichte in den Formaten Markdown, eigenständiges HTML, DOCX und strukturiertes JSON. |
-| `ExplanationTraceService` | Erstellt Erklärungsspuren, die beschreiben, warum ein Knoten eine bestimmte Bewertung erhalten hat, einschließlich der LLM-Argumentationskette. |
-| `DslGitRepository` | Versionierte DSL-Dokumentenspeicherung auf Basis von JGit DFS, wobei alle Git-Objekte in HSQLDB persistiert werden (kein Dateisystem). Unterstützt Branches, Commits, Cherry-Pick und Merge. |
-| `CommitIndexService` | Service der Workspace-Versionierung (`com.taxonomy.versioning.service`). Indexiert DSL-Commit-Verlauf in Hibernate Search / Lucene für die Volltextsuche über Commit-Nachrichten und Änderungsinhalte. |
-| `HypothesisService` | Verwaltet Beziehungshypothesen, die während der Analyse generiert werden. Hypothesen können akzeptiert (erzeugt `TaxonomyRelation`), abgelehnt oder nur für die aktuelle Sitzung angewendet werden. |
-| `LlmResponseParser` | Zustandsloser Parser für LLM-Antworten. Verarbeitet Gemini- und OpenAI-Antwortformate, Bewertungsextraktion (Ganzzahl und Bewertung+Begründung), Bewertungsnormalisierung (Größter-Rest-Methode) und JSON-Extraktion. |
-| `DocumentAnalysisService` | KI-gestützte Dokumentenanalyse. Bietet LLM-gestützte Extraktion von Anforderungskandidaten aus Dokumenttext (`extractWithAi`) und direktes Regulation-zu-Architektur-Taxonomie-Mapping (`mapRegulationToArchitecture`). Verwendet spezialisierte Prompt-Templates (`extract-*`, `reg-map-*`). |
-| `RateLimitFilter` | Begrenztes In-Memory-Kontingent für zugelassene LLM-Operationen. Es läuft nach der Autorisierung und ordnet lokale Benutzer dem kanonischen Benutzernamen sowie Keycloak-Zugriffe dem unveränderlichen Paar `iss`/`sub` zu, niemals einer IP oder `preferred_username`. Konfigurierbar über `TAXONOMY_RATE_LIMIT_PER_MINUTE`. |
-| `RelationCompatibilityMatrix` | Definiert, welche Beziehungstypen zwischen welchen Taxonomie-Wurzelkategorien gültig sind (z. B. `REALIZES` erfordert CP → CR). Wird vom Validator und Vorschlagsgenerator verwendet. |
-
----
-
-## Pipeline zur Generierung der Architekturansicht
-
-Das folgende Diagramm und die Schritte beschreiben, wie eine Freitext-Geschäftsanforderung zu einem exportierbaren Architekturdiagramm wird:
-
-```mermaid
-flowchart TD
-    A["1. Benutzer gibt<br/>Anforderungstext ein"] --> B["2. LlmService sendet<br/>an konfigurierten Anbieter"]
-    B --> C["3. Bewertungskarte zurückgegeben<br/>(Knotencode → 0–100%)"]
-    C --> D["4. Ankerauswahl<br/>(Bewertung ≥ 70, Fallback ≥ 50)"]
-    D --> E["5. Relevanzpropagation<br/>durch Taxonomiebeziehungen"]
-    E --> F["6. Element- &<br/>Beziehungsaufbau"]
-    F --> G["7. Diagrammprojektion"]
-    G --> H1["Experimentelle ArchiMate-3.1-Teilmenge"]
-    G --> H2["Experimentelle Visio-2012-Teilmenge"]
-    G --> H3["Mermaid-Flussdiagramm"]
-```
-
-1. **Anforderungstext** — Der Benutzer gibt eine Freitext-Geschäftsanforderung in der Benutzeroberfläche ein.
-2. **LLM-Analyse** — `LlmService` sendet die Anforderung an den konfigurierten Anbieter; die Antwort enthält eine Bewertungskarte (Taxonomie-Knotencode → Übereinstimmungsprozentsatz, 0–100).
-3. **Ankerauswahl** — `RequirementArchitectureViewService` wählt Knoten mit Bewertung ≥ 70 als primäre Anker. Wenn weniger als drei Anker gefunden werden, fällt der Schwellenwert auf Bewertung ≥ 50 zurück (Top 3).
-4. **Relevanzpropagation** — `RelevancePropagationService` folgt den Taxonomiebeziehungen von den Ankerknoten und weist verbundenen Knoten abgeleitete Bewertungen zu, wodurch ein gewichteter Elementgraph entsteht.
-5. **Element- und Beziehungsaufbau** — Architekturelemente und deren Beziehungen werden aus dem propagierten Graphen zusammengestellt, unter Berücksichtigung der Taxonomiehierarchie. Dieser übergeordnete Schritt umfasst intern Blattanreicherung, Impact-Relationen-Generierung, Scoring-Trace-Konstruktion, Impact-Auswahl und mehr (insgesamt 11 Schritte; siehe [Entscheidungspipeline](DECISION_PIPELINE.md) § Phase 3).
-6. **Diagrammprojektion** — `DiagramProjectionService` konvertiert das Architekturmodell in eine neutrale Darstellung, die von mehreren Exportern gerendert werden kann. Eine konfigurierbare `DiagramSelectionPolicy` kuratiert das Diagramm (Root-Unterdrückung, Clustering, Knoten-/Kantenlimits).
-7. **Export** — Das projizierte Modell wird in das gewählte Format exportiert:
-   - `ArchiMateDiagramService` → experimentelle begrenzte ArchiMate-3.1-Teilmenge (`.archimate` / `.xml`)
-   - `VisioDiagramService` → experimentelle begrenzte Visio-2012-VSDX-Teilmenge
-   - `MermaidExportService` → Mermaid-Flussdiagramm (`.md`)
-
-Die gewöhnlichen Exportbedienelemente der Analyse belegen keine Gleichheit mit einem persistierten Snapshot. Nur ein ausdrücklich an einen ausgewählten schreibgeschützten Architektur-Workbench-Snapshot gebundener Endpunkt trägt diese Autorität. Siehe die [Unterstützungsgrenze der Architekturexporte](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte); gemeinsame Artefakthülle und Autoritätsnachweise bleiben in #966 offen.
-
-> 📖 Für eine detaillierte Dokumentation aller Pipeline-Schritte,
-> Konstanten, des Propagierungsalgorithmus, der Wirkungsauswahl-Formel,
-> des Beziehungslebenszyklus und des Persistenzmodells siehe
-> **[Entscheidungspipeline](DECISION_PIPELINE.md)**.
-
----
-
-## Modularchitektur
-
-Das Projekt ist ein Multi-Modul-Maven-Build mit vier Modulen:
-
-```
-taxonomy-domain/       Reine Domänentypen (DTOs, Enums) — keine Framework-Abhängigkeiten
-taxonomy-dsl/          Architektur-DSL (Parser, Modell, Validator, Differ); Provenienz-Modell (source, sourceVersion, sourceFragment, requirementSourceLink) — keine Framework-Abhängigkeiten
-taxonomy-export/       Export-Services (ArchiMate, Visio, Mermaid, Diagramm) — keine Framework-Abhängigkeiten
-taxonomy-app/          Spring-Boot-Anwendung (Controller, Services, JPA, Suche, Speicher)
-```
-
-Abhängigkeitsgraph:
-
-```
-taxonomy-app  →  taxonomy-domain
-taxonomy-app  →  taxonomy-dsl
-taxonomy-app  →  taxonomy-export
-taxonomy-export  →  taxonomy-domain
-```
-
-`taxonomy-domain`, `taxonomy-dsl` und `taxonomy-export` haben **keine Spring-Abhängigkeiten** und können unabhängig getestet und verwendet werden.
-
----
-
-## DSL-Speicherarchitektur
-
-Die Anwendung enthält ein versioniertes Architektur-DSL-Subsystem auf Basis von JGit DFS (Distributed File System), wobei alle Git-Objekte in der HSQLDB-Datenbank persistiert werden — es wird kein Dateisystem verwendet.
-
-```
-DSL-Text  →  JGit-Commit  →  HibernateRepository  →  HSQLDB (git_packs- & git_reflog-Tabellen)
-```
-
-| Komponente | Klasse | Rolle |
-|---|---|---|
-| Repository-Fassade | `DslGitRepository` | Hochrangige API für Commit-, Lese-, Branch- und Diff-Operationen |
-| Git-Objektspeicher | `HibernateObjDatabase` | Speichert Blobs, Trees und Pack-Daten als BLOBs in der `git_packs`-Tabelle |
-| Git-Ref-Speicher | `HibernateRefDatabase` | Speichert Refs und Reftables in der `git_packs`-Tabelle (als Pack-Erweiterungen) |
-| Repository-Wrapper | `HibernateRepository` | Erweitert JGit `DfsRepository` mit datenbankgestützten Objekt- und Ref-Datenbanken |
-| Pack-Entität | `GitPackEntity` | JPA-Entität für die `git_packs`-Tabelle |
-| Reflog-Entität | `GitReflogEntity` | JPA-Entität für die `git_reflog`-Tabelle |
-| Konfiguration | `DslStorageConfig` | Spring-`@Configuration`, die die `DslGitRepository`-Bean verdrahtet |
-
-DSL-Dokumente werden unter dem Dateinamen `architecture.taxdsl` gespeichert. `DslApiController` besitzt Git-Kommandos, Text-Diff, Branching, Merge und Cherry-Pick. `composition.dsl` besitzt Export/Current, Materialisierung, archivangereicherten Verlauf, strukturellen/semantischen Vergleich und Dokumentlisten über `DslDocumentApiController` und `DslDocumentOperationsFacade`; Git-Autorität und Archivpolitik bleiben unverändert. Siehe [DSL-Dokument-Komposition](../dev/DSL_DOCUMENT_COMPOSITION.md). Provenienz-Blöcke (`source`, `sourceVersion`, `sourceFragment`, `requirementSourceLink`) werden im selben JGit-DFS-Repository zusammen mit Architekturblöcken gespeichert.
-
----
-
-## Datenladung
-
-Wenn der Katalog leer ist oder `TAXONOMY_INIT_RELOAD_EXISTING=true` ausdrücklich einen Ersatz anfordert, importiert `TaxonomyService` die mitgelieferte C3-Arbeitsmappe (`src/main/resources/data/C3_Taxonomy_Catalogue_25AUG2025.xlsx`) mit Apache POI. Vor der Persistierung wendet `CatalogueOverlayService` das versionierte JSON-Overlay in `src/main/resources/data/nato-taxonomy.json` an, prüft jede gepatchte Identität und Elternzuordnung, verwirft taxonomieübergreifende Verknüpfungen, Selbstreferenzen, Zyklen und unvollständige strikte Abdeckung und berechnet die Ebenen aus der wirksamen Hierarchie neu. Bei einem normalen Neustart wird dasselbe Overlay idempotent mit den persistierten Knoten abgeglichen, ohne Beziehungen oder Analysehistorie zu löschen. Eine CSV-Seed-Datei (`relations.csv`) liefert Standard-Beziehungen, wenn kein Relations-Blatt vorhanden ist.
-
-Das Overlay ordnet derzeit die konkreten Entwurfs-Information-Products unter die freigegebenen Produktfamilien ein. Kategorien behalten die hierarchische Elternbudget-Bewertung; konkrete `PRODUCT`-Blätter erhalten unabhängige Eignungswerte von 0 bis 100 in deterministischen begrenzten Batches und dürfen sämtlich null sein. Eine relevante Produktfamilie ohne Produkt oberhalb der konfigurierten Schwelle erzeugt eine strukturierte Produktabdeckungslücke statt eines erfundenen Katalogknotens. Siehe [Information-Product-Katalog-Overlay](../dev/INFORMATION_PRODUCT_OVERLAY.md).
-
-### Beziehungs-Seed-Modell
-
-Die Beziehungs-Seed-CSV (`src/main/resources/data/relations.csv`) unterstützt ein erweitertes Metadatenformat mit den folgenden Spalten:
-
-| Spalte | Pflicht | Beschreibung |
-|---|---|---|
-| SourceCode | ja | Taxonomie-Code des Quellelements (z. B. CP, CR) |
-| TargetCode | ja | Taxonomie-Code des Zielelements |
-| RelationType | ja | Ein gültiger `RelationType`-Enum-Wert |
-| Description | nein | Menschenlesbare Erklärung |
-| SourceStandard | nein | Framework/Standard (z. B. TOGAF, NAF, LOCAL) |
-| SourceReference | nein | Spezifische Referenz im Standard (z. B. NCV-2) |
-| Confidence | nein | Wert zwischen 0.0 und 1.0 (Standard 1.0) |
-| SeedType | nein | TYPE_DEFAULT, FRAMEWORK_SEED oder SOURCE_DERIVED |
-| ReviewRequired | nein | Ob menschliche Überprüfung empfohlen wird (Standard false) |
-| Status | nein | accepted oder proposed (Standard accepted) |
-
-Seed-Typen unterscheiden drei Kategorien:
-- **TYPE_DEFAULT** — Strukturelle Beziehungen, die immer zwischen Taxonomietypen erwartet werden.
-- **FRAMEWORK_SEED** — Beziehungen aus einem Framework-Standard (TOGAF, NAF usw.).
-- **SOURCE_DERIVED** — Beziehungen aus regulatorischen oder Referenzdokumenten.
-
-Siehe [RELATION_SEEDS.md (EN)](../en/RELATION_SEEDS.md) für die vollständige Dokumentation des Seed-Formats.
-
-Die 8 Taxonomie-Wurzelkategorien sind:
-
-| Code | Kategorie |
-|---|---|
-| **BP** | Geschäftsprozesse |
-| **BR** | Geschäftsrollen |
-| **CP** | Fähigkeiten |
-| **CI** | COI-Services |
-| **CO** | Kommunikationsservices |
-| **CR** | Kerndienste |
-| **IP** | Informationsprodukte |
-| **UA** | Benutzeranwendungen |
-
-Kinder werden durch hierarchische Codes aus der Arbeitsmappe identifiziert (z. B. `BP-1327`, `CP-1022`, `CR-1047`).
-
-## CI / CD
-
-Jeder Push und Pull Request führt einen schreibgeschützten Verifikationsjob aus.
-Der Build umfasst den deterministischen Maven-Lebenszyklus, die Abhängigkeits-
-und SBOM-Policy, JUnit-Veröffentlichung und unveränderliche Artefakte. Dafür ist
-keine Schreibberechtigung auf Repository-Inhalte erforderlich.
-
-| Ebene | Auslöser und Verantwortung |
-|---|---|
-| **Build & Test** | `./mvnw install` mit deterministischen Tests; erzeugt JAR-, SBOM-, Abhängigkeits-, Test- und Coverage-Artefakte |
-| **Core Integration** | Vier explizit ausgewählte HSQLDB-/Testcontainers-Szenarien |
-| **Database Compatibility** | PostgreSQL-Paar bei relevanten PRs; geplante/manuelle PostgreSQL-, MSSQL- und Oracle-Matrix |
-| **UI / Accessibility** | Chromium/Firefox sowie Desktop-/Tablet-/Mobil-Nachweise |
-| **Berichtsveröffentlichung** | Separater schreibberechtigter Job nur nach einem Push auf den Standard-Branch |
-| **Screenshot-Veröffentlichung** | Separater vertrauenswürdiger `workflow_dispatch`; schreibgeschützte Erzeugung und isolierter Main-Publisher |
-| **Container / Deployment** | GHCR-Veröffentlichung und optionaler Render-Hook erst nach erfolgreichem geeignetem Push |
-
-Die Grenze zwischen Prüfung und Mutation ist in
-[`docs/dev/CI_SECURITY.md`](../dev/CI_SECURITY.md) beschrieben.
-
-## Datenbank
-
-### Standard: eingebettete HSQLDB
-
-Das Standardprofil benötigt keinen Datenbankserver. Es verwendet einen
-begrenzten HikariCP-Pool mit `minimum-idle=1` und `maximum-pool-size=4`. Bei
-Datei-URLs mit `shutdown=true` muss eine Verbindung offen bleiben, damit HSQLDB
-nicht zwischen Spring-Startphasen beendet wird.
-
-Der Entwicklungsstandard ist eine In-Memory-URL. Die Produktions-Docker-
-Konfiguration verwendet dateibasierte HSQLDB- und Lucene-Speicherung. Vorhandene
-persistierte Katalogzeilen bleiben beim Neustart erhalten und werden mit dem eingecheckten JSON-Overlay abgeglichen; geänderte Eltern- und Ebenenwerte werden aktualisiert, ohne Beziehungen zu löschen.
-`TAXONOMY_INIT_RELOAD_EXISTING=true` löst bewusst ein destruktives Neuladen aus der mitgelieferten Arbeitsmappe mit anschließender identischer strikter Overlay-Anwendung aus.
-
-PostgreSQL, Microsoft SQL Server und Oracle verwenden eigene Profile und die
-begrenzte Testcontainers-Kompatibilitätsmatrix. Details und Testbefehle stehen
-in [Datenbank-Setup](DATABASE_SETUP.md) und
-[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
-
-## Ratenbegrenzung
-
-Der `RateLimitFilter` wird genau einmal innerhalb von Spring Security nach dem `AuthorizationFilter` registriert; seine gewöhnliche Servlet-Container-Registrierung ist deaktiviert. Nur authentifizierte und autorisierte LLM-Operationen können Kontingent verbrauchen oder Identitätszustand anlegen. Geschützte Operationen sind:
-
-- `POST /api/analyze`
-- `GET /api/analyze-stream`
-- `GET /api/analyze-node`
-- `POST /api/justify-leaf`
-
-Lokale Konten verwenden einen Digest des kanonischen authentifizierten Benutzernamens. Browser-OIDC und Bearer-JWT desselben Keycloak-Kontos verwenden einen Digest des exakten unveränderlichen Paares `iss`/`sub`; ein veränderliches `preferred_username`, ein Forwarding-Header oder eine Peer-Adresse kann das Budget daher nicht zurücksetzen. Die gleiche Pfadprüfung gilt unter einem Servlet-Kontextpfad wie `/taxonomy`.
-
-Standard sind **10 zugelassene Aufrufe je stabiler authentifizierter Identität und Minute**. Genau `0` deaktiviert den Begrenzer; negative Werte wirken fehlersicher als ein Aufruf pro Minute. Feste Fenster verwenden monotone Zeit, inaktive Identitäten laufen ab, die Zahl verfolgter Identitäten ist begrenzt, und neue Identitäten oberhalb der Kapazität teilen ein fehlersicheres Overflow-Budget. HTTP `429 Too Many Requests` enthält `Retry-After` und `Cache-Control: no-store`.
-
-Die Zähler liegen im Arbeitsspeicher und gelten daher je Anwendungsinstanz. Mehrere Replikate vervielfachen das Gesamtkontingent, sofern nicht ein Ingress oder eine andere verteilte Schicht ein clusterweites Budget erzwingt.
-
-## API-Versionierung
-
-Die API ist derzeit **unversioniert** — alle Endpunkte verwenden das `/api/`-Präfix ohne Versionsnummer (z. B. `/api/taxonomy`, `/api/analyze`).
-
-| Aspekt | Entscheidung |
-|---|---|
-| URL-Schema | `/api/{resource}` (kein Versionssegment) |
-| Abwärtskompatibilität | Wird innerhalb jeder Version beibehalten; Breaking Changes werden in den Release Notes dokumentiert |
-| Deprecation-Richtlinie | Veraltete Endpunkte geben einen `Deprecation`-Header zurück, bevor sie in der nächsten Hauptversion entfernt werden |
-| Content-Negotiation | Wird nicht für Versionierung verwendet |
-
-Die Anwendung ist für **Single-Tenant, Self-Hosted-Deployment** konzipiert, bei dem die Browser-UI immer zusammen mit dem Server bereitgestellt wird, wodurch das Multi-Client-Versionsskew-Problem entfällt, das typischerweise API-Versionierung motiviert. Die **OpenAPI-Spezifikation** (`/v3/api-docs`) dient als maschinenlesbarer Vertrag für externe Integrationen.
-
-Falls die API in Zukunft mehrere gleichzeitige Versionen unterstützen muss, ist der empfohlene Weg die URL-basierte Versionierung (`/api/v2/...`) mit separaten OpenAPI-Gruppen pro Version.
-
-## Sicherheitsarchitektur
-
-Die Anwendung verwendet **Spring Security** mit einem Drei-Rollen-Autorisierungsmodell:
-
-| Rolle | Berechtigungen |
-|---|---|
-| `ROLE_USER` | Alle API-Endpunkte lesen, Analysen durchführen, Diagramme exportieren, GUI-Zugriff |
-| `ROLE_ARCHITECT` | Alles aus USER, plus Schreibzugriff auf Beziehungen, DSL und Git-Operationen |
-| `ROLE_ADMIN` | Alles aus ARCHITECT, plus Admin-Endpunkte (`/admin/**`, `/api/admin/**`), Benutzerverwaltung |
-
-**Authentifizierungsmethoden:**
-
-- **Formularanmeldung** — Browser-Sitzungen über die `/login`-Seite (CSRF-geschützt)
-- **HTTP Basic** — Zustandslose REST-Clients (CSRF deaktiviert für `/api/**`)
-
-Beim ersten Start wird über `SecurityDataInitializer` ein `admin`-Benutzer mit allen drei Rollen angelegt. `TAXONOMY_ADMIN_PASSWORD` kann das initiale Passwort vorgeben. Ist der Wert außerhalb der Produktion leer, wird ein zufälliges einmaliges Passwort über eine eigentümergeschützte temporäre Datei bereitgestellt; ein wiederverwendbares Standardpasswort existiert nicht.
-
-**Öffentliche Endpunkte** (keine Authentifizierung erforderlich): `/login`, `/error`, `/actuator/health/**`, `/v3/api-docs/**` (konfigurierbar), `/swagger-ui/**` (konfigurierbar) und statische Assets.
-
-**Sicherheitshärtungsfunktionen:**
-
-| Funktion | Standard | Konfiguration |
-|---|---|---|
-| Brute-Force-Schutz bei der Anmeldung | Aktiviert (5 Versuche, 5 Min. Sperrung) | `TAXONOMY_LOGIN_RATE_LIMIT` |
-| Sicherheits-Header (HSTS, CSP, X-Frame-Options) | Immer aktiviert | — |
-| Swagger-Zugriffskontrolle | Öffentlich | `TAXONOMY_SWAGGER_PUBLIC` |
-| Passwortänderungspflicht | Deaktiviert (nur Warnung) | `TAXONOMY_REQUIRE_PASSWORD_CHANGE` |
-| Benutzerverwaltungs-API | Immer verfügbar für ADMIN | `/api/admin/users` |
-| Sicherheits-Audit-Protokollierung | Deaktiviert | `TAXONOMY_AUDIT_LOGGING` |
-
-Siehe [Sicherheit](SECURITY.md) für vollständige Details.
-
----
-
-## Git-Status als erstklassiges Konzept
-
-Der Repository-Status wird als erstklassiges Laufzeitkonzept durch drei zusammenarbeitende Services verfolgt und exponiert:
-
-| Komponente | Klasse | Verantwortlichkeit |
-|---|---|---|
-| **Statusverfolgung** | `RepositoryStateService` | Verfolgt Projektions-Commit, Index-Commit und Veralterung mittels `volatile`-Feldern |
-| **Konflikterkennung** | `ConflictDetectionService` | Dry-Run-Merge- und Cherry-Pick-Vorschauen mit Drei-Wege-Merge-Logik |
-| **REST-API** | `GitStateController` | Exponiert `/api/git/{state,projection,branches,stale}`-Endpunkte |
-
-**Veralterungsmodell:** Nach der DSL-Materialisierung zeichnet der `RepositoryStateService` den Projektions-Commit-SHA auf. Wenn der HEAD anschließend vorrückt (z. B. durch einen neuen Commit), wird die Projektion als **veraltet** markiert, bis eine erneute Materialisierung erfolgt. Die gleiche Logik gilt für den Hibernate-Search-Index.
-
-Die Benutzeroberfläche pollt `/api/git/state` alle 10 Sekunden (über `taxonomy-git-status.js`) und zeigt einen visuellen Indikator an, wenn die Projektion veraltet ist.
-
-Siehe [Git-Integration](GIT_INTEGRATION.md) für die vollständige REST-API und Nutzungsanleitung.
-
----
-
-## Mehrbenutzter-Workspace-Architektur
-
-Das System unterstützt gleichzeitige Mehrbenutzer-Bearbeitung durch ein Workspace-Isolationsmodell.
-Wenn eine `DslGitRepositoryFactory` konfiguriert ist (Standard in Produktion), erhält jeder
-Workspace ein eigenes logisch getrenntes Git-Repository innerhalb der gleichen Datenbank.
-Ohne die Factory werden Workspaces über Branches in einem gemeinsamen Repository isoliert.
-
-### Repository-pro-Workspace-Architektur
-
-```
-┌─────────────────────────────────────────────────────┐
-│                    HSQLDB (git_packs-Tabelle)         │
-│                                                       │
-│  ┌───────────────┐  ┌──────────────┐  ┌────────────┐ │
-│  │ System-Repo   │  │ Alice-Repo   │  │ Bob-Repo   │ │
-│  │ Name:         │  │ Name:        │  │ Name:      │ │
-│  │ "taxonomy-dsl"│  │ "ws-abc-123" │  │ "ws-def-456│ │
-│  │ Branch: draft │  │ Branch: main │  │ Branch: main│ │
-│  └───────┬───────┘  └──────┬───────┘  └──────┬─────┘ │
-│          │                 │                  │       │
-│          │    publish ◄────┘                  │       │
-│          │    sync    ────►                   │       │
-│          │    publish ◄──────────────────────┘       │
-│          │    sync    ──────────────────────►         │
-└──────────┼───────────────────────────────────────────┘
-           │
-           │ fetch/push (EXTERNAL_CANONICAL-Modus)
-           ▼
-┌──────────────────────┐
-│   Gitea / GitHub     │
-│   Remote-Repository  │
-└──────────────────────┘
-```
-
-### Komponenten
-
-| Komponente | Verantwortlichkeit |
-|---|---|
-| **DslGitRepositoryFactory** | Erstellt und cached workspace-spezifische `DslGitRepository`-Instanzen |
-| **WorkspaceManager** | In-Memory-Cache von benutzerspezifischen `UserWorkspaceState`-Instanzen (ConcurrentHashMap) |
-| **UserWorkspaceState** | Flüchtiger benutzerspezifischer Status: Kontext, Verlauf, Projektionsverfolgung, Operationsstatus |
-| **UserWorkspace** (Entität) | Persistente Workspace-Metadaten: Branch, Zeitstempel, Shared-Flag |
-| **WorkspaceProjection** (Entität) | Benutzerspezifischer Projektionsstatus: Commit-SHAs, Zeitstempel, Veralterung |
-| **ContextHistoryRecord** (Entität) | Persistenter Navigationsverlauf mit Herkunftsverfolgung |
-| **SyncState** (Entität) | Verfolgt den Synchronisierungsstatus zwischen Workspace und gemeinsamem Repository |
-| **WorkspaceResolver** | Extrahiert den Benutzernamen aus dem Spring-Security-Kontext |
-| **ExternalGitSyncService** | Fetch/Push-Operationen zum externen Git-Remote (EXTERNAL_CANONICAL-Modus) |
-
-### Isolationsmodell
-
-1. **Repository-Isolation** — Bei konfigurierter `DslGitRepositoryFactory` erhält jeder Workspace ein eigenes Git-Repository (gleiche DB, unterschiedlicher Namespace). Ohne die Factory wird Branch-basierte Isolation verwendet.
-2. **Status-Isolation** — Navigationskontext, Projektionsverfolgung und Operationsstatus sind benutzerspezifisch.
-3. **Synchronisierungs-Workflow** — Benutzer pullen explizit vom gemeinsamen Repository (Sync) und pushen explizit zum gemeinsamen Repository (Veröffentlichen). Cross-Repository-Sync kopiert DSL-Inhalte zwischen Workspace- und System-Repositories.
-
-### Datenisolation
-
-Über Branch- und Status-Isolation hinaus bieten workspace-spezifische Datenentitäten benutzerspezifische Sichten auf veränderliche Daten:
-
-| Entität | Isolation | Mechanismus |
-|---|---|---|
-| **TaxonomyNode** | Global (geteilt) | Schreibgeschützter Katalog aus Excel — kein Workspace-Filter |
-| **TaxonomyRelation** | Pro Workspace | `workspace_id`-Spalte + OR-null JPA/Hibernate-Search-Queries |
-| **RelationHypothesis** | Pro Workspace | `workspace_id`-Spalte |
-| **RelationProposal** | Pro Workspace | `workspace_id`-Spalte |
-| **ArchitectureCommitIndex** | Pro Branch | Vorhandenes `branch` `@KeywordField`, gefiltert nach `currentBranch` |
-
-Der `WorkspaceContextResolver` löst den `WorkspaceContext` (Benutzername, WorkspaceId, aktueller Branch) des aktuellen Benutzers aus dem Spring-Security-Kontext und den persistenten `UserWorkspace`-Metadaten auf. Alle Relation-Queries, Materialisierung und Graph-Suchen verwenden diesen Kontext zur Filterung. Der Branch-Fallback verwendet `SystemRepositoryService.getSharedBranch()` (konfigurierbar, Standard: `"draft"`).
-
-`WorkspaceContext.SHARED` hat `workspaceId = null`, wodurch die Workspace-Filterung übersprungen wird und nicht provisionierte Benutzer sowie Legacy-Aufrufer alle Daten sehen.
-
-Bei der Annahme von Vorschlägen oder Hypothesen wird die Relation im **gespeicherten Workspace der Entität** erstellt (nicht im Workspace des aktuellen Reviewers), um die korrekte Workspace-Zugehörigkeit sicherzustellen.
-
-Legacy-Daten mit `workspace_id = NULL` werden als geteilt behandelt und bleiben für alle Workspaces sichtbar.
-
-### Datenfluss
-
-```
-Browser → WorkspaceResolver (Benutzer extrahieren)
-       → WorkspaceManager (Status abrufen/erstellen)
-       → DslGitRepositoryFactory (Repository für Workspace auflösen)
-       → Service (workspace-bewusste Methode mit Benutzername-Parameter)
-       → DslGitRepository (branch-beschränkte Git-Operationen)
-```
-
-Alle workspace-bewussten Services akzeptieren einen `username`-Parameter zur Statusisolation. Controller lösen den Benutzernamen über `WorkspaceResolver.resolveCurrentUsername()` auf.
-
-Siehe [Konzepte](CONCEPTS.md) für Definitionen von Workspace, Variante, Projektion und Synchronisierung.
-
----
-
-## ViewContext und Action Guards
-
-Jede API-Antwort, die die DSL modifiziert, enthält ein `ViewContext`-Objekt mit dem aktuellen Repository-Status. Dies ermöglicht dem Frontend die Anzeige genauer Statusinformationen ohne einen zusätzlichen Roundtrip.
-
-Der `RepositoryStateGuard` validiert, ob eine Schreiboperation (Merge, Cherry-Pick, Commit) auf dem Zielbranch sicher durchgeführt werden kann. Er prüft:
-
-- Ob der Branch existiert
-- Ob bereits eine Operation läuft (`operationKind`-Feld)
-- Ob die Projektion veraltet ist (nur Warnung, blockiert nicht)
-
-Laufende Operationen werden über `beginOperation(kind)` / `endOperation()`-Aufrufe auf dem `RepositoryStateService` verfolgt.
-
----
-
-## Framework-Zuordnungsschicht
-
-Die Framework-Import-Pipeline konvertiert externe Architekturmodelle (UAF, APQC, C4/Structurizr) in das kanonische Taxonomie-Datenmodell. Die Pipeline ist als eine Reihe von steckbaren Komponenten strukturiert:
-
-```
-ExternalParser  →  ExternalModelMapper (MappingProfile)  →  CanonicalArchitectureModel
-                →  ModelToAstMapper  →  TaxDslSerializer  →  DslMaterializeService
-```
-
-| Komponente | Rolle |
-|---|---|
-| `ExternalParser` | Liest das native Dateiformat (XML, CSV, XLSX, DSL) in ein `ParsedExternalModel` |
-| `MappingProfile` | Ordnet externe Element-/Beziehungstypen Taxonomie-Wurzelcodes und Beziehungstypen zu |
-| `ExternalModelMapper` | Wendet das Profil an, um ein `CanonicalArchitectureModel` zu erzeugen |
-| `ModelToAstMapper` | Konvertiert das kanonische Modell in den DSL-AST |
-| `TaxDslSerializer` | Serialisiert den AST zu `.taxdsl`-Text |
-| `DslMaterializeService` | Erstellt Datenbankentitäten aus der DSL |
-
-Vier Zuordnungsprofile sind registriert:
-
-| Profil | Framework | Format | Elementtypen | Beziehungstypen |
-|---|---|---|---|---|
-| `uaf` | UAF / DoDAF | XMI/XML | 11 Typen → 8 Wurzeln | 9 Typen |
-| `apqc` | APQC PCF | CSV | 5 Ebenen → 5 Wurzeln | 4 Typen |
-| `apqc-excel` | APQC PCF | XLSX | 5 Ebenen → 5 Wurzeln | 4 Typen |
-| `c4` | C4 / Structurizr | DSL | 7 Typen → 5 Wurzeln | 7 Typen |
-
-Importierte Elemente tragen ein `x-source-framework`-Erweiterungsattribut für die Rückverfolgbarkeit. Siehe [Framework-Import](FRAMEWORK_IMPORT.md) für detaillierte Zuordnungstabellen.
-
----
-
-## Exportformate
-
-| Format | Beschreibung |
-|---|---|
-| **ArchiMate-3.1-XML** | Experimentelle begrenzte ArchiMate-3.1-Teilmenge. Jede Datei wird offline gegen den festgeschriebenen XSD-Satz validiert. Das versionierte Profil erhält stabile Identitäten, typisierte Eigenschaften und Ansichten im Taxonomy-Reader. Ein maschinenlesbares Verlustmanifest begleitet Snapshot-Downloads. Die Fremdwerkzeug-Abnahme bleibt in #967 offen; siehe [Profil und Grenzen](../dev/ARCHIMATE_EXCHANGE_PROFILE.md). |
-| **Visio-2012 `.vsdx`** | Experimentelle begrenzte Visio-2012-VSDX-Teilmenge. Paketprüfungen liegen vor; Microsoft-Visio-Desktop-Zertifizierung für Öffnen/Bearbeiten/Speichern/erneutes Öffnen steht in #965 aus; typisierte Identitäten und ein versioniertes Übergabe-/Verlustmanifest sind enthalten. |
-| **Mermaid-Flussdiagramm** | Textbasiertes Mermaid-Diagramm (Markdown-Codeblock), renderbar in GitHub, GitLab, Notion, Confluence und den meisten modernen Dokumentationsplattformen. |
-
-Diese Tabelle beschreibt erzeugte Formate, nicht eine breite Zertifizierung durch Drittwerkzeuge. Snapshot-Autorität und Formatverluste werden durch die [Unterstützungsgrenze der Architekturexporte](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte) festgelegt.
-
----
-
-## Detaillierte Architekturdiagramme
-
-### Anfrage-Lebenszyklus
-
-Das folgende Diagramm zeigt den vollständigen Lebenszyklus einer Analyseanfrage, von der Benutzereingabe über die LLM-Bewertung bis zum Diagrammexport:
-
-```mermaid
-sequenceDiagram
-    participant U as Browser
-    participant C as ApiController
-    participant L as LlmService
-    participant P as LlmResponseParser
-    participant R as RequirementArchView
-    participant T as RelationTraversal
-    participant D as DiagramProjection
-    participant E as ExportServices
-
-    U->>C: POST /api/analyze<br/>{businessText, includeArchView}
-    C->>L: analyzeRequirement(text)
-    L->>L: Anbieter auswählen<br/>(Gemini/OpenAI/Local)
-
-    loop Für jede Taxonomie-Wurzel (8 Wurzeln)
-        L->>L: Prompt aus Vorlage erstellen
-        L->>L: LLM-Anbieter-API aufrufen
-        L->>P: Antworttext parsen
-        P-->>L: Bewertungen + Begründungen
-    end
-
-    L-->>C: Map<nodeCode, score>
-
-    alt includeArchitectureView = true
-        C->>R: buildView(scores, text)
-        R->>R: Anker auswählen (Bewertung ≥ 70)
-        R->>T: propagateRelevance(anchors)
-        T->>T: Beziehungen durchlaufen (max. Hops)
-        T-->>R: Elemente + Beziehungen
-        R-->>C: RequirementArchitectureView
-
-        Note over D,E: Export wird separat ausgelöst
-        U->>D: POST /api/diagram/visio
-        D->>E: project → VisioDiagramService
-        E-->>U: .vsdx-Binärdownload
-    end
-
-    C-->>U: JSON {scores, reasons,<br/>architectureView?}
-```
-
-### Datenfluss-Architektur
-
-Dieses Diagramm zeigt, wie Daten zwischen den Hauptsubsystemen fließen:
+Die Grafik zeigt **logisches Zusammenwirken zur Laufzeit**, nicht jeden Java-Aufruf
+und nicht die Maven-Abhängigkeiten. Benötigt ein Fachmodul einen anderen Kontext über
+einen Port, stellt die Anwendung den Adapter bereit. Alle Bestandteile innerhalb
+der Anwendungsgrenze laufen in einem Prozess.
 
 ```mermaid
 flowchart TB
-    subgraph Input["Eingabeschicht"]
-        Excel["Excel-Arbeitsmappe<br/>(8 Taxonomie-Blätter)"]
-        ArchiImport["ArchiMate-XML<br/>Import"]
-        DSLInput["DSL-Text<br/>Eingabe"]
-        UserReq["Geschäfts-<br/>Anforderungstext"]
+    Client["Browser / REST-Client"] --> HTTP
+    subgraph Application["Eine Spring-Boot-Anwendung"]
+        HTTP["Anwendungskomposition<br/>Sicherheit, Kontext, HTTP-/UI-Adapter"]
+        Portfolio["Portfolio<br/>Versionierte Anforderungen, Jobs, Snapshots"]
+        Analysis["Analyse<br/>Prompts, Anbieterregeln, Parsing"]
+        Knowledge["Wissen<br/>Katalog, Relationen, Suche"]
+        Architecture["Architektur<br/>Ableitung, Diagramme, Berichte"]
+        Workspace["Workspace<br/>Editor, Journal, Git-Checkpoints"]
+        Interop["Interoperabilität<br/>Geprüfter Austausch und Zuordnungen"]
+        Templates["Vorlagen und Export<br/>Vorlagenlebenszyklus, neutrale Codecs"]
+        HTTP --> Portfolio
+        HTTP --> Workspace
+        HTTP --> Interop
+        Portfolio --> Analysis
+        Portfolio --> Architecture
+        Analysis --> Knowledge
+        Architecture --> Knowledge
+        Architecture --> Templates
+        Interop --> Workspace
     end
-
-    subgraph Storage["Persistenzschicht"]
-        HSQLDB["HSQLDB<br/>(In-Process)"]
-        HibSearch["Hibernate Search 8<br/>+ Lucene 9 Indizes"]
-        JGitDB["JGit DFS<br/>(Git-Packs in DB)"]
-    end
-
-    subgraph Processing["Verarbeitungsschicht"]
-        direction TB
-        TaxSvc["TaxonomyService<br/>(Laden & Cachen)"]
-        LLM["LlmService<br/>(6 Anbieter + lokal)"]
-        SearchSvc["SearchService<br/>(4 Suchmodi)"]
-        EmbedSvc["LocalEmbeddingService<br/>(DJL/ONNX)"]
-        PropSvc["RelationProposalService<br/>(Kandidat → Validieren → Vorschlagen)"]
-        GapSvc["Lückenanalyse +<br/>Mustererkennung"]
-        ArchView["Architekturansicht-<br/>Builder"]
-        DslSvc["DslGitRepository<br/>(Branch, Commit, Merge)"]
-    end
-
-    subgraph Output["Ausgabeschicht"]
-        UI["Bootstrap 5 SPA<br/>(11 JS-Module)"]
-        Visio["Experimentelle Visio-2012-<br/>Teilmenge"]
-        ArchiEx["Experimentelle ArchiMate-3.1-<br/>Teilmenge"]
-        Mermaid["Mermaid-Flussdiagramm"]
-        Reports["Berichte<br/>(MD, HTML, DOCX, JSON)"]
-        JSONAPI["REST-API<br/>(97 Endpunkte)"]
-    end
-
-    Excel --> TaxSvc
-    ArchiImport --> HSQLDB
-    DSLInput --> DslSvc
-    UserReq --> LLM
-
-    TaxSvc --> HSQLDB
-    TaxSvc --> HibSearch
-    EmbedSvc --> HibSearch
-    DslSvc --> JGitDB
-
-    HSQLDB --> SearchSvc
-    HSQLDB --> PropSvc
-    HSQLDB --> GapSvc
-    HibSearch --> SearchSvc
-    LLM --> ArchView
-    ArchView --> Visio
-    ArchView --> ArchiEx
-    ArchView --> Mermaid
-
-    SearchSvc --> UI
-    ArchView --> UI
-    PropSvc --> UI
-    GapSvc --> UI
-    ArchView --> Reports
-    JSONAPI --> UI
+    Analysis -.->|optionale Anbieteranfrage| LLM["Externer LLM-Anbieter"]
 ```
 
-### Modul-Abhängigkeitsgraph
+Persistenz folgt bewusst in einer eigenen Darstellung: Laufzeitaufruf,
+Maven-Abhängigkeit und Speichervorgang dürfen nicht dieselbe mehrdeutige Pfeilbedeutung haben.
+
+## Modularchitektur
+
+Dieser Graph enthält **alle direkten produktiven POM-Abhängigkeiten zwischen den
+sieben extrahierten Fachbibliotheken**. `A --> B` bedeutet eine deklarierte produktive
+Abhängigkeit von A nach B, nicht einen ausschließlich in diese Richtung laufenden Datenfluss.
+
+<!-- architecture-feature-graph:start -->
+```mermaid
+flowchart TB
+    taxonomy-portfolio["taxonomy-portfolio"]
+    taxonomy-analysis["taxonomy-analysis"]
+    taxonomy-architecture["taxonomy-architecture"]
+    taxonomy-knowledge["taxonomy-knowledge"]
+    taxonomy-interop["taxonomy-interop"]
+    taxonomy-workspace["taxonomy-workspace"]
+    taxonomy-templates["taxonomy-templates"]
+    taxonomy-portfolio --> taxonomy-analysis
+    taxonomy-portfolio --> taxonomy-architecture
+    taxonomy-portfolio --> taxonomy-knowledge
+    taxonomy-portfolio --> taxonomy-workspace
+    taxonomy-analysis --> taxonomy-architecture
+    taxonomy-analysis --> taxonomy-knowledge
+    taxonomy-analysis --> taxonomy-workspace
+    taxonomy-architecture --> taxonomy-knowledge
+    taxonomy-architecture --> taxonomy-templates
+    taxonomy-architecture --> taxonomy-workspace
+    taxonomy-knowledge --> taxonomy-workspace
+    taxonomy-interop --> taxonomy-workspace
+```
+<!-- architecture-feature-graph:end -->
+
+Abhängigkeiten der Anwendung auf Bibliotheken sowie der Grundlagenmodule sind in
+dieser fokussierten Grafik absichtlich ausgeblendet. Die vier Grundlagen heißen
+`taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export` und `taxonomy-extension-api`.
+Die separate Build-Gruppe besteht aus `taxonomy-tooling`, `taxonomy-coverage` und
+`taxonomy-build`; sie bildet keine Laufzeit-Fachkontexte. Das vollständige Inventar
+steht in [Modulgrenzen](MODULE_BOUNDARIES.md); das bestehende Modul-Gate schreibt
+umfassende Zuständigkeits- und Abhängigkeitsnachweise nach
+`taxonomy-build/target/architecture-module-graph.txt`.
+
+Insbesondere hängt `taxonomy-templates` von keiner anderen Fachbibliothek ab.
+`taxonomy-interop` hängt nicht von `taxonomy-portfolio` ab: Die Portfolioanbindung
+verwendet einen fachlichen Port und einen anwendungsseitigen Adapter statt einer
+umgekehrten Modulreferenz. Provenance und Preferences bleiben anwendungslokal.
+Die Aufteilung erfindet keine separaten Dienste oder zusätzlich abgeschlossenen Extraktionen.
+
+## Schlüsselkomponenten
+
+| Zuständiger Bereich | Aufgabe und Grenze |
+|---|---|
+| Portfolio | Projekte, versionierte Anforderungen, dauerhafte Analysejobs/-ergebnisse/-reviews, Wiederanlauf und unveränderliche Workbench-Snapshots; koordiniert Fach-APIs. |
+| Analyse | Anforderungsanalyse, Anbieterauswahl und -regeln, Prompts, Antwort-Parsing und Sitzungen; zustandsbehaftete Fremdzugriffe über Ports. |
+| Wissen | Katalogladung, Relationen/Hypothesen, Volltext- und semantische Suche, Indizes und Embedding-Lebenszyklus. |
+| Architektur | Ableitung, Scoring, Relevanzfortpflanzung, Lücken, Muster, Empfehlungen, neutrale Diagrammvorbereitung und Berichte; HTTP-Komposition und aktuelle Einstellungen über Anwendungsadapter. |
+| Workspace | Repository-/Workspace-Identität, bearbeitbarer Modellzustand, dauerhafte semantische Operationen, Undo/Redo, explizite Checkpoints und JGit-Speicher. |
+| Vorlagen | Versionierte Dokumentvorlagen, OOXML-Validierung, Materialisierung, WebDAV und Administration; Vorlagenhistorie ist keine Architekturhistorie. |
+| Interoperabilität | Geprüfter Austausch, Zuordnungen, Konnektorprofile, Verlustnachweise, Integrationsoperationen und Synchronisationscheckpoints. |
+| Anwendungskomposition | Kontextübergreifende HTTP-Abläufe, Berechtigungs-/Kontextauflösung, Quellenherkunft, Einstellungen, Verdrahtung, Migrationen und Packaging. |
+
+Die genaue Package-Zuordnung steht in der [Kontextdatei](../../.github/architecture-contexts.json).
+Historische Abhängigkeitszahlen belegen ihren jeweiligen Umbauzustand, keine aktuelle
+Laufzeitmessung; siehe [Extraktionshistorie](../internal/MODULE_BOUNDARIES_HISTORY_DE.md).
+
+## Pipeline zur Generierung der Architekturansicht
+
+Dies ist eine **Ablauf- und Zuständigkeitsdarstellung**. Nicht jeder Kasten entspricht
+einem HTTP-Aufruf; das Speichern eines Snapshots bearbeitet nicht automatisch einen
+Workspace. Eine Anforderung kann beispielsweise zivile Kommunikationsbedürfnisse
+eines Krankenhauses beschreiben. Maßgeblich bleiben der echte Katalog und die Quellenverknüpfungen.
 
 ```mermaid
-graph LR
-    subgraph Module
-        domain["taxonomy-domain<br/>(DTOs, Enums)"]
-        dsl["taxonomy-dsl<br/>(Parser, Validator,<br/>Model-Mapper)"]
-        export["taxonomy-export<br/>(ArchiMate, Visio,<br/>Mermaid, Diagramme)"]
-        app["taxonomy-app<br/>(Spring Boot,<br/>Controller, Services,<br/>JPA, Hibernate Search)"]
-    end
-
-    app --> domain
-    app --> dsl
-    app --> export
-    export --> domain
-
-    style domain fill:#E8F5E9
-    style dsl fill:#E3F2FD
-    style export fill:#FFF3E0
-    style app fill:#FCE4EC
+flowchart TB
+    Input["Text oder Quelldokument"] --> Provenance["Anwendungs-Provenance<br/>Begrenzte Extraktion und Kandidatenbestätigung"]
+    Provenance --> Requirement["Portfolio<br/>Versionierte Anforderung"]
+    Requirement --> Analyse["Analyse und Wissen<br/>Katalogdurchlauf, Bewertungen, Begründungen"]
+    Analyse --> Derive["Architektur<br/>Elemente, typisierte Kanten, Entscheidungsspur"]
+    Derive --> Snapshot["Portfolio<br/>Ergebnis und unveränderlichen Snapshot speichern"]
+    Snapshot --> Select["Nutzer wählt exakten Snapshot"]
+    Select --> Export["Snapshot-gebundener Bericht / Modellexport"]
+    Select --> Review["Menschliche Prüfung und expliziter Editorablauf"]
+    Review --> Edit["Workspace<br/>Validierte semantische Operation"]
+    Edit --> Revision["Dauerhaftes Journal und Arbeitsrevision<br/>Undo / Redo"]
+    Revision -->|expliziter Checkpoint-Auftrag| Checkpoint["Git-Checkpoint"]
 ```
 
-## Verifikationsarchitektur
+Hierarchische Analyse und Relevanzfortpflanzung liefern prüfbare Vorschläge.
+Die Bewertungs- und Entscheidungsstufen beschreibt die [Entscheidungspipeline](DECISION_PIPELINE.md).
+Der private Editor kann ein ausgewähltes Modell verbessern, ohne dessen unveränderlichen
+Analysesnapshot umzuschreiben. Checkpoints entstehen explizit, nicht als Nebeneffekt jedes Edits.
 
-Die Verifikation ist in einen deterministischen Maven-Standard-Lebenszyklus,
-vier zentrale Testcontainers-Szenarien und eine externe Datenbank-
-Kompatibilitätsmatrix aufgeteilt. Alle Tests bleiben aus einem normalen Checkout
-ausführbar; Workflows planen sie lediglich ein. Siehe
-[`docs/dev/06-testing-by-change-type.md`](../dev/06-testing-by-change-type.md).
+Nur ein tatsächlich an einen ausgewählten gespeicherten Snapshot gebundener
+Exportendpunkt besitzt dessen Verbindlichkeit. Ein Diagramm aus flüchtigen Bewertungen
+oder einer Editorrevision darf nicht als dasselbe Artefakt ausgegeben werden.
+Siehe [Exportgrenzen](FEATURE_MATRIX.md) und [Architektureditor](ARCHITECTURE_EDITOR.md).
+
+## DSL-Speicherarchitektur
+
+Die Grafik trennt **maßgebliche Zustände und explizite Persistenzübergänge**.
+Logische Speicher können dieselbe physische Datenbank verwenden, ohne dadurch eine
+einzige Historie oder eine gemeinsame Transaktion über alle Abläufe zu bilden.
+
+```mermaid
+flowchart TB
+    Command["Übernommener semantischer Editorbefehl"] --> Journal["Dauerhaftes Operationsjournal<br/>Identität, Actor, Begründung, Inverse"]
+    Command --> Working["Bearbeitbare Workspace-Revision"]
+    Journal -->|Replay / Undo / Redo| Working
+    Working -->|explizite Checkpoint-Vorbereitung| Frozen["Fixierter Checkpoint-Kandidat"]
+    Frozen -->|Checkpoint publizieren| Git["JGit-DSL-Checkpoint<br/>Git-Objekte und Referenzen in der Datenbank"]
+    Result["Abgeschlossenes Analyseergebnis"] --> Snapshot["Unveränderlicher Workbench-Snapshot"]
+    Snapshot -->|explizite Auswahl| Report["Snapshot-gebundener Export"]
+    Git -->|Versionsnavigation / Vergleich| GitView["Projektion der Git-Historie"]
+    Catalogue["Katalog und kontextgebundene Fachdaten"] -->|Indexierung| Index["Suchindizes / Embeddings<br/>Abgeleitete Zugriffsstrukturen"]
+```
+
+| Zustand | Zuständigkeit | Bedeutung |
+|---|---|---|
+| Übernommene Editoroperation | Workspace | Dauerhafte semantische Revision mit Audit-/Undo-Daten; Git-Commits sind nicht ihr Protokoll. |
+| Arbeitsmodell | Workspace | Aktuelle bearbeitbare Revision; der Editor prüft die zu ändernde Revision. |
+| Git-Checkpoint | Workspace | Stabiler versionierter DSL-Inhalt, Branches, Vergleiche, Merges und explizite Veröffentlichung. |
+| Analyse-/Workbench-Snapshot | Portfolio | Gespeichertes Analyseergebnis für schreibgeschützte Ansicht oder Snapshot-Export; kein Alias für Arbeitsrevision oder Git-Head. |
+| Vorlagenversion | Vorlagen | Separat versionierte Dokumentvorlage mit Validierung und Materialisierung. |
+| Suchindex/Cache | Wissen oder jeweiliger Fachkontext | Abgeleiteter Zugriffszustand, keine maßgebliche semantische Historie; Wiederanlauf und Isolation bleiben kontextspezifisch. |
+
+JGit verwendet `jgit-storage-hibernate` als Datenbankadapter. Git-Objekte und Referenzen
+liegen darüber in der konfigurierten relationalen Datenbank. HSQLDB ist der Standard,
+nicht das einzig mögliche Backend. Quellenverknüpfungen und DSL-Modellinhalte behalten
+in ihrem jeweiligen Persistenzweg ihre Identitäten.
+
+## Git-Status als erstklassiges Konzept
+
+Übernommene semantische Operation, Git-Commit und unveränderlicher Analysesnapshot
+haben verschiedene Identitäten und Lebenszyklen. Undo/Redo gehört zum dauerhaften
+semantischen Journal, explizite stabile Checkpoints zu Git. Externe Git-Synchronisation
+verwendet Repository-Identitäten, Commit-Abstammung und Merge-/Konfliktbehandlung;
+ein abgewiesener Push wird nicht stillschweigend als Erfolg behandelt.
+
+Details zur Auswahl sowie zu gemeinsamen und persönlichen Repositories stehen in
+[Repository-Topologie](REPOSITORY_TOPOLOGY.md), [Git-Integration](GIT_INTEGRATION.md)
+und [Workspace/Versionierung](WORKSPACE_VERSIONING.md).
+
+## ViewContext und Action Guards
+
+Kontextübergreifende HTTP-Adapter lösen authentifizierte Identität und gewähltes
+Repository beziehungsweise Workspace auf. Befehle benötigen ihre eigenen Berechtigungs-,
+Revisions- und Konfliktprüfungen; ein versteckter Button ist keine Autorisierung.
+Die Auswahl eines schreibgeschützten Snapshots ist ein anderer Weg als die Auswahl
+eines bearbeitbaren Workspaces.
+
+Ein Diagramm belegt weder vollständige Mandanten-/Branch-Isolation noch die Beseitigung
+aller Wiederanlaufgrenzen. Diese Verträge müssen an den tatsächlichen Lese-/Schreibgrenzen
+geprüft werden, nicht aus der Maven-Aufteilung abgeleitet. Kontextausnahmen und
+Abhängigkeiten bleiben in den bestehenden Architekturrichtlinien sichtbar.
+
+## Datenladung
+
+Wissen besitzt Katalog-/Seed-Ressourcen, Katalog-Overlay, Relationen und Embedding-Lebenszyklus.
+Der Katalog hat acht Wurzeln. Normaler Neustart mit Abgleich unterscheidet sich vom
+expliziten Neuladen; er darf nicht als Löschen und Neuimport sämtlicher Wissensdaten
+bei jedem Start beschrieben werden.
+
+Dokumentimport hat eigene Upload-/Extraktionsgrenzen und Herkunftsverknüpfungen zu
+Quellversionen und Fragmenten. Er ist nicht mit dem Laden des Katalogs gleichzusetzen.
+Siehe [Entscheidungspipeline](DECISION_PIPELINE.md) und [Modulgrenzen](MODULE_BOUNDARIES.md).
+
+## Datenbank
+
+Das Standardprofil nutzt eingebettete HSQLDB. PostgreSQL, SQL Server und Oracle haben
+eigene Konfiguration und Prüfläufe. Hibernate ORM persistiert Fachdaten;
+Hibernate Search/Lucene liefern Indizes. Migrationen und abschließende Schema-Komposition
+bleiben anwendungseigen, auch wenn ein Fachmodul seine Entities besitzt.
+
+Konkrete Einstellungen stehen in [Datenbank-Setup](DATABASE_SETUP.md) und
+[Konfigurationsreferenz](CONFIGURATION_REFERENCE.md). Diese Komponentenübersicht
+ersetzt keine Betriebsanleitung.
+
+## Sicherheitsarchitektur
+
+Die Anwendung bietet lokale Anmeldung und ein Keycloak-/OIDC-Profil. Authentifizierung,
+Anfrageidentität, Autorisierung und gewählter Repository-/Workspace-Kontext werden durch
+Anwendungskomposition und fachspezifische Lese-/Schreibprüfungen umgesetzt.
+Betriebsmaßnahmen, Geheimnisse, Reverse-Proxy-TLS und Transportbeschränkungen beschreibt
+[Sicherheit](SECURITY.md) zusammen mit dem [Deployment-Leitfaden](DEPLOYMENT_GUIDE.md).
+
+Das eingehende LLM-Kontingent wird nach dem `AuthorizationFilter` geprüft. Standard sind
+10 zugelassene Aufrufe je stabiler authentifizierter Identität und Minute. Lokale Konten
+verwenden ihren kanonischen authentifizierten Benutzernamen; Keycloak-Browser- und
+Bearer-Anfragen teilen das unveränderliche Paar `iss`/`sub`, nicht `preferred_username`
+oder eine Peer-Adresse. Wegen Authentifizierung oder Autorisierung abgewiesene Anfragen
+erzeugen und verbrauchen keinen Kontingentzustand. Die begrenzten In-Memory-Zähler gelten
+je Anwendungsinstanz. Mehrere Replikate vervielfachen das Gesamtkontingent.
+Für ein clusterweites Budget ist ein verteilter äußerer Begrenzer erforderlich.
+HTTP-`429`-Antworten enthalten `Retry-After` und `Cache-Control: no-store`.
+`TAXONOMY_RATE_LIMIT_PER_MINUTE=0` deaktiviert den Begrenzer; negative Werte begrenzen
+fehlersicher auf einen zugelassenen Aufruf je Minute. Konfiguration und Identitätsregeln
+stehen in [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) und [Einstellungen](PREFERENCES.md).
+
+Der modulare Monolith schafft keine Netzwerkisolation zwischen Fachbibliotheken.
+Sensible kontextübergreifende Funktionen benötigen Integrations-/Wiederanlauftests
+zusätzlich zu Compile-Zeit-Grenzen. Quelldokumente, Prompts und Exporte haben eigene
+Datenverarbeitungsgrenzen.
+
+## Framework-Zuordnungsschicht
+
+Framework-Parser und Zuordnungsprofile übersetzen unterstützte externe Darstellungen
+in neutrale Modell-/DSL-Konzepte. Anwendungseigene Materialisierungsadapter überbrücken
+die Kontextgrenze. Geprüfte Interoperabilität verfolgt zusätzlich externe Identitäten,
+Reviewentscheidungen, Verlustnachweise und Synchronisationscheckpoints. Unterschiedliche
+Importwege dürfen nicht mit identischen Review- oder Roundtrip-Garantien beworben werden.
+
+Der gelieferte Sparx-Weg mit Profilversion 2 ergänzt neutrale Paketorganisation und
+kanonische Anforderungszuordnungen über geprüfte Integrationsoperationen. Er verwendet
+die bestehende DSL, das Workspace-Journal und die Portfoliozuständigkeit statt eines
+zweiten Modellspeichers oder eines Git-Commits pro übernommenem Edit. Das zertifiziert
+weder uneingeschränkte Enterprise-Architect-/Pro-Cloud-Server-Kompatibilität noch
+bedingungslose entfernte Veröffentlichung.
+
+Siehe [Framework-Import](FRAMEWORK_IMPORT.md) und [Sparx-Austausch](../features/sparx-integration-de.md).
+Der Konnektorleitfaden beschreibt die unterstützte Version dieses Branches; zukünftige
+Profile oder native Editorfähigkeiten sind damit nicht vorweggenommen.
+
+## Exportformate
+
+| Ausgabe | Grenze |
+|---|---|
+| Mermaid / neutrale Diagramme | Text-/Diagrammprojektionen des ausdrücklich ausgewählten Modells; das README-Beispiel ist ein erzeugtes Fachmodell, nicht der Modulgraph dieser Anwendung. |
+| Berichte einschließlich Word | Berichtserzeugung gehört zur Architektur, Vorlagenlebenszyklus zum Vorlagenmodul und kontextübergreifende HTTP-/Einstellungsverdrahtung zur Anwendung. Verfügbare Vorlagenfunktionen hängen vom konkreten Berichtspfad ab. |
+| Experimentelle begrenzte ArchiMate-3.1-Teilmenge | Schema-validierte Ausgabe mit Identitäts-, Mapping- und Verlustverträgen; eine allgemeine Fremdwerkzeug-Abnahme darf nicht aus Dateierzeugung oder Paketprüfungen abgeleitet werden. |
+| Experimentelle begrenzte Visio-2012-VSDX-Teilmenge | Begrenzte Paket- und Übergabe-/Verlustverträge; Microsoft-Visio-Desktop-Zertifizierung ausstehend. |
+| Geprüfter externer Austausch | Konnektor-/profilspezifische Semantik mit ausdrücklicher Prüfung und Kompatibilitätsgrenzen, kein uneingeschränkter bidirektionaler Modelleditor. |
+
+Die [Funktionsmatrix](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte) definiert Unterstützungsgrenzen. Detaillierte
+Konnektor- und Editorleitfäden beschreiben die weiterentwickelte Semantik. Die Übersicht
+übernimmt keine Versprechen aus offenen PRs und macht ein geschlossenes Issue nicht zum
+Kompatibilitätsnachweis.
+
+## CI / CD
+
+Der eingecheckte Maven Wrapper wird vom Repository-Root aus verwendet. Unterstützte
+Prüfläufe stehen in der [README](../../README.md#build-and-verification) und im
+[Maven-Verifikationsleitfaden](../dev/MAVEN_VERIFICATION.md).
+
+`taxonomy-build` besitzt die Reactor-weiten Architekturprüfungen. Das bestehende Gate
+prüft physische Zuständigkeit, produktive POM-Abhängigkeiten und kompilierte Abhängigkeitsnachweise.
+Die normale Reactor-weite Surefire-Suite führt zusätzlich `ArchitectureDocumentationTest`
+aus: Mit dem Reactor-/POM-Leser des Gates gleicht er die drei aktuellen Modulinventare
+und beide Sprachfassungen des markierten Fachmodulgraphen mit dem Code ab. Parserregressionen
+weisen fehlende, zusätzliche, doppelte oder umgekehrte Einträge zurück. Der feste
+Selektor des Profils `architecture-tests` bleibt unverändert; der neue Dokumentationstest
+läuft im normalen Gesamt-Reactor-Test, nicht allein durch diesen engeren Selektor.
+
+Das verhindert strukturelle Dokumentationsabweichungen, belegt aber weder den Laufzeitablauf
+noch Kompatibilität zu Fremdwerkzeugen. Dafür bleiben Anwendungs-, Browser-, Datenbank-
+und Interoperabilitätstests erforderlich. Die Applikationsdiagramme sind versionierter
+Mermaid-Quelltext; keine erzeugte Architekturmodell-Fixture wird ersetzt.
+
+## Detaillierte Architekturdiagramme
+
+### Anfragelebenszyklus
+
+Der [Anforderungsablauf](#pipeline-zur-generierung-der-architekturansicht) benennt die
+Zuständigkeit jeder Stufe und trennt Ergebnisablage, menschliche Prüfung, Bearbeitung
+und Checkpoint-Erzeugung. Endpunktverträge stehen in der [API-Referenz](API_REFERENCE.md).
+
+### Datenflussarchitektur
+
+Die [Persistenzgrafik](#dsl-speicherarchitektur) trennt maßgebliche Zustände von abgeleiteten
+Indizes. Der [Fachmodulgraph](#modularchitektur) beantwortet dagegen, welche Bibliothek
+auf welche andere zugreift. Bei Erweiterungen dürfen diese Pfeilbedeutungen nicht vermischt werden.

@@ -58,7 +58,8 @@ class VisioHandoffContractTest {
             Map<String, String> data = values.get(node.id());
             assertNotNull(data);
             assertEquals(node.type(), data.get("taxonomy.type"));
-            assertEquals(node.label(), data.get("label"));
+            assertEquals(node.label(), data.get("taxonomy.label"));
+            assertEquals(node.label(), data.get("label").replace("\n", ""));
             assertEquals(node.relevance(), Double.parseDouble(data.get("taxonomy.relevance")));
             assertEquals(node.anchor() ? "1" : "0", data.get("taxonomy.anchor"));
             assertEquals(node.selectedForImpact() ? "1" : "0", data.get("taxonomy.selectedForImpact"));
@@ -229,7 +230,8 @@ class VisioHandoffContractTest {
         byte[] output = new VisioPackageBuilder().build(new VisioDiagramService().convert(graph));
         Map<String, Map<String, String>> data = shapeData(parts(output).get("visio/pages/page1.xml"));
         assertEquals(152, data.size());
-        assertEquals(longLabel, data.get("a").get("label"));
+        assertEquals(longLabel, data.get("a").get("taxonomy.label"));
+        assertTrue(data.get("a").get("label").endsWith("…"));
         assertEquals("CUSTOM/RELATION", data.get("e149").get("taxonomy.type"));
     }
 

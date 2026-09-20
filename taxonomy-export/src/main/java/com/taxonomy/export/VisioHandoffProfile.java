@@ -44,6 +44,15 @@ public final class VisioHandoffProfile {
                         "targetShapeId", connector.getToShape(), "label", connector.getRelationType(), "properties", connector.getProperties()));
                 if (!connector.getProperties().containsKey("taxonomy.id")) losses.add(new VisioLoss("connector", page.getId() + ":" + connectorId,
                         "semanticIdentity", "OMITTED", "Direct Visio model contains no original Taxonomy relationship identity."));
+                // Derive optional presentation losses from retained pages: byte trimming
+                // must not leave reports for captions that are no longer in the package.
+                var disposition = connector.getProperties().get("taxonomy.captionDisposition");
+                if (page.isRelationshipDetail() && disposition != null && "TYPE_TRUNCATED".equals(disposition.value())) {
+                    var identity = connector.getProperties().get("taxonomy.id");
+                    losses.add(new VisioLoss("relationship", identity == null ? page.getId() + ":" + connectorId : identity.value(),
+                            "displayType", "TRUNCATED",
+                            "Detail type shortened; full type retained in taxonomy.type on native connector."));
+                }
             }
             pages.add(Map.of("pageId", page.getId(), "name", page.getName(), "shapes", shapes, "relationships", relationships));
         }
