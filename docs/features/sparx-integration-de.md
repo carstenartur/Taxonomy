@@ -71,11 +71,13 @@ Remapping gehen. `Component` mit kanonischem Typ `System` braucht den passenden
 Stereotyp oder das Tag `taxonomy.elementType`. Widersprüchliche Beziehungs- und
 kanonische Typen werden vor dem Export abgewiesen.
 
-Pakete und ihre Hierarchie werden dauerhaft als Austauschsemantik gespeichert.
-Der native Editor bietet bislang keine Paketbearbeitung. Beziehungen zwischen
-Anforderungen und Architekturelementen sowie unzulässige Endpunkttypen erfordern
-Ablehnung oder unterstütztes Remapping vor dem Anwenden. Nicht jede EA-Beziehung
-ist damit in Taxonomy bearbeitbar.
+Version 1 bewahrt Pakete und ihre Hierarchie als Austauschnachweise. Der aktuelle
+native Editor unterstützt transportneutrales Anlegen, Umbenennen und Platzieren
+von Paketen; das ändert die eingefrorene Austauschsemantik von Version 1 nicht.
+Version 2 ergänzt native Paketprojektion und explizite Anforderungszuordnungen in
+der [nativen Prüfung](#native-prüfung-mit-version-2). Andere Endpunktkombinationen
+erfordern weiterhin eine erlaubte Projektion oder Ablehnung. Nicht jede
+EA-Beziehung ist damit bearbeitbar.
 
 ## Identität, Konflikte und Historie
 
@@ -206,9 +208,10 @@ geprüfte Vorgänge behalten ihre genaue Profilversion.
 
 AM und XMI verwenden in Version 2 dieselbe semantische Zuordnung. Die Beispiele
 sind **synthetische Vertragsfixtures, keine EA-Exporte oder PCS-Aufzeichnungen**.
-Native Paketbearbeitung und explizite Anforderungs-Endpunktzuordnung sind separate
-Arbeiten. UML-Features bleiben überprüfbare Austauschdaten; Live-Schreiben ist
-nicht verfügbar. Reale EA/PCS-Kompatibilität bleibt ungeprüft (`NOT_EXECUTED`).
+Native Paketbearbeitung und explizite Anforderungs-Endpunktzuordnung stehen in der
+[nativen Prüfung](#native-prüfung-mit-version-2) zur Verfügung. UML-Features bleiben
+überprüfbare Austauschdaten; Live-Schreiben ist nicht verfügbar. Reale
+EA/PCS-Kompatibilität bleibt ungeprüft (`NOT_EXECUTED`).
 
 | Konstrukt | Austauschdarstellung | Verhalten |
 |---|---|---|
@@ -223,8 +226,13 @@ nicht verfügbar. Reale EA/PCS-Kompatibilität bleibt ungeprüft (`NOT_EXECUTED`
 Der XMI-Schreiber überträgt die unterstützten Attribute, Operationen, Parameter
 und GUID-basierten Tags. Eine deklarierte `evidence`-Erweiterung bewahrt weitere
 kanonische Felder innerhalb dieses Fixture-Profils. EA-Erhaltung solcher
-Erweiterungen ist nicht bestätigt. Nicht unterstützte Feature-Kinder und externe
-Beziehungen müssen vor einer sonst verlustbehafteten XMI-Ausgabe abgelehnt werden.
+Erweiterungen ist nicht bestätigt. Nicht semantisch verarbeitete Feature-Eigenschaften,
+einschließlich Stereotypen, bleiben als begrenzte Evidenz mit `PRESERVED_EXTENSION`
+erhalten. Nicht unterstützte Feature-Kinder und externe Beziehungen müssen vor
+einer sonst verlustbehafteten XMI-Ausgabe abgelehnt werden. Nicht geschriebene
+Attribute und Teilbäume an Verbinderendpunkten erhalten vor der Ausgabe explizite
+Verlustmeldungen mit Verbinder-ID und Feldpfad. Quell-/Zielidentität und Richtung
+behalten ihre bisherige Bedeutung.
 
 AM Version 2 liest jede Sammlungsseite für Wurzeln, Beziehungen, Tags, Attribute,
 Operationen, Attribut-/Operations-Tags und Parameter. Ein gemeinsames Budget gilt

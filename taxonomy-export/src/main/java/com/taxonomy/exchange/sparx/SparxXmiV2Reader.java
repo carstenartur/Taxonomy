@@ -44,27 +44,50 @@ final class SparxXmiV2Reader {
         int position = 0;
         for (Element node : ExchangeXml.children(parent)) {
             if (!"packagedElement".equals(node.getLocalName())) { losses.add(loss(owner,node.getLocalName(),"SPARX_CONSTRUCT_EXCLUDED",LossDisposition.UNSUPPORTED)); continue; }
-            String id = identity(node), type = type(node); Element detail = details.get(id), properties = ExchangeXml.child(detail,"properties");
-            Map<String,String> attributes = new TreeMap<>(), extensions = new TreeMap<>(); readEvidence(detail, attributes, extensions); properties(properties,attributes);
+            String id = identity(node);
+            String type = type(node);
+            Element detail = details.get(id);
+            Element properties = ExchangeXml.child(detail, "properties");
+            Map<String, String> attributes = new TreeMap<>();
+            Map<String, String> extensions = new TreeMap<>();
+            readEvidence(detail, attributes, extensions);
+            rootProperties(properties, attributes);
             String stereotype = properties == null ? "" : properties.getAttribute("stereotype");
             if (!stereotype.isBlank()) extensions.put("stereotype",stereotype);
             unknownAttributes(node, Set.of("name", "client", "supplier", "memberEnd"), attributes);
             String text = text(node,properties);
             if (isRelation(type)) {
-                String source = reference(detail,"source",node.getAttribute("client")), target = reference(detail,"target",node.getAttribute("supplier"));
-                if (source.isEmpty() && type.equals("Association")) {
+                String source = reference(detail, "source", node.getAttribute("client"));
+                String target = reference(detail, "target", node.getAttribute("supplier"));
+                boolean usesOwnedEnds = source.isEmpty() && type.equals("Association");
+                if (usesOwnedEnds) {
                     var ends = ExchangeXml.children(node).stream().filter(e -> "ownedEnd".equals(e.getLocalName())).toList();
-                    if (ends.size() != 2) throw ExchangeXml.invalid("SPARX_ENDPOINT_REQUIRED","Association needs two endpoints");
-                    source = ends.get(0).getAttribute("type"); target = ends.get(1).getAttribute("type");
+                    if (ends.size() != 2) {
+                        throw ExchangeXml.invalid("SPARX_ENDPOINT_REQUIRED", "Association needs two endpoints");
+                    }
+                    source = ends.get(0).getAttribute("type");
+                    target = ends.get(1).getAttribute("type");
                 }
                 String eaType = properties != null && properties.hasAttribute("ea_type") ? properties.getAttribute("ea_type") : type;
-                String direction = properties != null && properties.hasAttribute("direction") ? properties.getAttribute("direction") : type.equals("Association") ? "Unspecified" : "Source -> Destination";
-                if (!node.getAttribute("name").isEmpty()) attributes.put("name",node.getAttribute("name"));
-                if (!text.isEmpty()) attributes.put("description",text);
-                legacyTags(detail,attributes);
-                preserved(id,attributes,extensions);
-                connectors.add(new Connector(id,guid(source),guid(target),eaType,direction,attributes,extensions));
-                for (Element child : ExchangeXml.children(node)) if (!Set.of("ownedComment","ownedEnd").contains(child.getLocalName())) excluded(id,child.getLocalName());
+                String direction = type.equals("Association") ? "Unspecified" : "Source -> Destination";
+                if (properties != null && properties.hasAttribute("direction")) {
+                    direction = properties.getAttribute("direction");
+                }
+                if (!node.getAttribute("name").isEmpty()) {
+                    attributes.put("name", node.getAttribute("name"));
+                }
+                if (!text.isEmpty()) {
+                    attributes.put("description", text);
+                }
+                legacyTags(detail, attributes);
+                unsupportedConnectorEnds(node, detail, id, usesOwnedEnds);
+                preserved(id, attributes, extensions);
+                connectors.add(new Connector(id, guid(source), guid(target), eaType, direction, attributes, extensions));
+                for (Element child : ExchangeXml.children(node)) {
+                    if (!Set.of("ownedComment", "ownedEnd").contains(child.getLocalName())) {
+                        excluded(id, child.getLocalName());
+                    }
+                }
             } else {
                 boolean pkg = type.equals("Package"), requirement = stereotype.equalsIgnoreCase("requirement") || properties != null && "Requirement".equals(properties.getAttribute("sType"));
                 roots.add(new Resource(id,pkg ? ArtifactKind.SPECIFICATION : requirement ? ArtifactKind.REQUIREMENT : ArtifactKind.ELEMENT,type,node.getAttribute("name"),text,owner,position++,attributes,extensions));
@@ -79,21 +102,40 @@ final class SparxXmiV2Reader {
             unsupportedDetailChildren(detail, id, Set.of("properties", "tags", "evidence", "source", "target"));
         }
     }
-    private void feature(Element node,String owner,String type) {
-        String id = identity(node); Element detail = details.get(id), properties = ExchangeXml.child(detail,"properties");
-        Map<String,String> attributes = new TreeMap<>(), extensions = new TreeMap<>(); readEvidence(detail,attributes,extensions); properties(properties,attributes);
-        for (int i=0;i<node.getAttributes().getLength();i++) {
-            var a=node.getAttributes().item(i); if (XMI.equals(a.getNamespaceURI()) || Set.of("name","position","classifier").contains(a.getNodeName())) continue;
-            String scalar = FEATURE_SCALARS.stream().filter(k -> k.equalsIgnoreCase(a.getNodeName())).findFirst().orElse(null);
-            attributes.put(scalar == null ? "xml:" + a.getNodeName() : "ea:" + scalar, a.getNodeValue());
+    private void feature(Element node, String owner, String type) {
+        String id = identity(node);
+        Element detail = details.get(id);
+        Element properties = ExchangeXml.child(detail, "properties");
+        Map<String, String> attributes = new TreeMap<>();
+        Map<String, String> extensions = new TreeMap<>();
+        readEvidence(detail, attributes, extensions);
+        featureProperties(properties, id, attributes);
+        for (int i = 0; i < node.getAttributes().getLength(); i++) {
+            var field = node.getAttributes().item(i);
+            if (XMI.equals(field.getNamespaceURI())
+                    || javax.xml.XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(field.getNamespaceURI())
+                    || Set.of("name", "position", "classifier").contains(field.getNodeName())) {
+                continue;
+            }
+            String scalar = featureScalar(field.getNodeName());
+            String key = scalar == null ? "xml:" + field.getNodeName() : "ea:" + scalar;
+            attributes.put(key, field.getNodeValue());
         }
-        if (node.hasAttribute("classifier")) extensions.put("classifier",guid(node.getAttribute("classifier")));
-        Integer position=null;
+        if (node.hasAttribute("classifier")) {
+            extensions.put("classifier", guid(node.getAttribute("classifier")));
+        }
+        Integer position = null;
         if (node.hasAttribute("position")) {
-            String value=node.getAttribute("position"); if (!value.matches("0|[1-9][0-9]{0,3}")) throw ExchangeXml.invalid("SPARX_FEATURE_POSITION","Invalid feature position"); position=Integer.valueOf(value);
+            String value = node.getAttribute("position");
+            if (!value.matches("0|[1-9][0-9]{0,3}")) {
+                throw ExchangeXml.invalid("SPARX_FEATURE_POSITION", "Invalid feature position");
+            }
+            position = Integer.valueOf(value);
         }
-        features.add(new Feature(id,owner,type,node.getAttribute("name"),text(node,properties),position,attributes,extensions)); tags(detail,id,attributes,extensions);
-        preserved(id,attributes,extensions);
+        features.add(new Feature(id, owner, type, node.getAttribute("name"), text(node, properties),
+                position, attributes, extensions));
+        tags(detail, id, attributes, extensions);
+        preserved(id, attributes, extensions);
         for (Element child : ExchangeXml.children(node)) {
             if (type.equals("operation") && child.getLocalName().equals("ownedParameter")) {
                 feature(child, id, "parameter");
@@ -103,6 +145,64 @@ final class SparxXmiV2Reader {
         }
         unsupportedDetailChildren(detail, id, Set.of("properties", "tags", "evidence"));
     }
+
+    private void featureProperties(Element properties, String id, Map<String, String> attributes) {
+        if (properties == null) {
+            return;
+        }
+        for (int i = 0; i < properties.getAttributes().getLength(); i++) {
+            var field = properties.getAttributes().item(i);
+            // Documentation is consumed as feature text; namespace declarations are XML syntax.
+            if ("documentation".equals(field.getNodeName())
+                    || javax.xml.XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(field.getNamespaceURI())) {
+                continue;
+            }
+            String scalar = featureScalar(field.getNodeName());
+            // Only documented feature scalars are authored. Other literals remain reviewable evidence.
+            String key = scalar == null ? "xml:properties." + field.getNodeName() : "ea:" + scalar;
+            sameField(attributes, key, field.getNodeValue());
+        }
+        for (Element child : ExchangeXml.children(properties)) {
+            excluded(id, "properties." + child.getLocalName());
+        }
+    }
+
+    private static String featureScalar(String name) {
+        return FEATURE_SCALARS.stream().filter(scalar -> scalar.equalsIgnoreCase(name)).findFirst().orElse(null);
+    }
+
+    private void unsupportedConnectorEnds(Element node, Element detail, String id, boolean usesOwnedEnds) {
+        for (String side : List.of("source", "target")) {
+            unsupportedEndFields(ExchangeXml.child(detail, side), id, side, Set.of("xmi:idref"));
+        }
+        int position = 0;
+        for (Element child : ExchangeXml.children(node)) {
+            if ("ownedEnd".equals(child.getLocalName())) {
+                // Only the fallback association path consumes UML endpoint types. End IDs are structural.
+                Set<String> consumed = usesOwnedEnds ? Set.of("xmi:id", "type") : Set.of("xmi:id");
+                unsupportedEndFields(child, id, "ownedEnd[" + position++ + "]", consumed);
+            }
+        }
+    }
+
+    private void unsupportedEndFields(Element end, String id, String path, Set<String> consumed) {
+        if (end == null) {
+            return;
+        }
+        for (int i = 0; i < end.getAttributes().getLength(); i++) {
+            var field = end.getAttributes().item(i);
+            String name = XMI.equals(field.getNamespaceURI()) ? "xmi:" + field.getLocalName() : field.getNodeName();
+            if (!consumed.contains(name)
+                    && !javax.xml.XMLConstants.XMLNS_ATTRIBUTE_NS_URI.equals(field.getNamespaceURI())) {
+                losses.add(loss(id, path + "." + name, "SPARX_PROPERTY_EXCLUDED", LossDisposition.UNSUPPORTED));
+            }
+        }
+        // A child loss covers its complete unsupported subtree, including role and multiplicity attributes.
+        for (Element child : ExchangeXml.children(end)) {
+            excluded(id, path + "." + child.getLocalName());
+        }
+    }
+
     private void unsupportedDetailChildren(Element detail, String id, Set<String> supportedChildren) {
         for (Element child : ExchangeXml.children(detail)) {
             if (!supportedChildren.contains(child.getLocalName())) {
@@ -182,9 +282,22 @@ final class SparxXmiV2Reader {
         if(properties!=null && properties.hasAttribute("documentation")) return properties.getAttribute("documentation");
         Element comment=ExchangeXml.child(node,"ownedComment"); return comment==null ? "" : comment.hasAttribute("body") ? comment.getAttribute("body") : ExchangeXml.text(comment,"body");
     }
-    private static String reference(Element detail,String side,String fallback) { Element value=ExchangeXml.child(detail,side); return value==null ? fallback : value.getAttributeNS(XMI,"idref"); }
-    private static void properties(Element p,Map<String,String> attributes) {
-        if(p!=null) for(int i=0;i<p.getAttributes().getLength();i++) {var a=p.getAttributes().item(i); if(!Set.of("documentation","stereotype","sType","ea_type","direction").contains(a.getNodeName())) attributes.put("ea:"+a.getNodeName(),a.getNodeValue());}
+    private static String reference(Element detail, String side, String fallback) {
+        Element end = ExchangeXml.child(detail, side);
+        return end == null ? fallback : end.getAttributeNS(XMI, "idref");
     }
+
+    private static void rootProperties(Element properties, Map<String, String> attributes) {
+        if (properties == null) {
+            return;
+        }
+        for (int i = 0; i < properties.getAttributes().getLength(); i++) {
+            var field = properties.getAttributes().item(i);
+            if (!Set.of("documentation", "stereotype", "sType", "ea_type", "direction").contains(field.getNodeName())) {
+                attributes.put("ea:" + field.getNodeName(), field.getNodeValue());
+            }
+        }
+    }
+
     private void excluded(String id,String field) { losses.add(loss(id,field,"SPARX_FEATURE_EXCLUDED",LossDisposition.UNSUPPORTED)); }
 }

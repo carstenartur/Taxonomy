@@ -68,11 +68,12 @@ first pass through the native projection or an explicit remap. `Component` with
 canonical `System` needs the corresponding stereotype or `taxonomy.elementType`
 tag; contradictory connector/canonical types are rejected before export.
 
-Packages and package hierarchy are durable exchange semantics. The current native
-editor does not provide package authoring. Requirements-to-element connectors and
-endpoint combinations outside the native architecture matrix require rejection or
-supported remapping before apply. This does not claim every EA relationship is
-editable in Taxonomy.
+Version 1 preserves packages and hierarchy as exchange evidence. The current
+native editor supports transport-neutral package creation, rename and placement;
+this does not change frozen v1 exchange behavior. Version 2 adds native package
+projection and explicit requirement-to-element mapping in
+[native review](#native-version-2-review). Other endpoint combinations still require
+an allowed projection or rejection; not every EA relationship is editable.
 
 ## Identity, conflicts and operation history
 
@@ -200,8 +201,9 @@ frozen reviews continue to dispatch their exact stored version.
 
 Both v2 transports use one semantic assembler and the same EA GUID identities.
 The fixtures are **synthetic contract fixtures, not EA exports or PCS captures**.
-Native package editing and requirement endpoint projection are separate work;
-v2 feature support does not imply native UML authoring or live publication.
+Native package editing and explicit requirement endpoint projection are available
+as described in [native review](#native-version-2-review). Feature preservation
+does not imply native UML authoring or live publication.
 
 | V2 construct | Canonical representation | Preservation and review |
 |---|---|---|
@@ -216,8 +218,12 @@ v2 feature support does not imply native UML authoring or live publication.
 The v2 XMI writer emits supported attributes, operations, parameters and
 identity-bearing tags. A declared `evidence` extension retains remaining canonical
 properties for this fixture profile; this is **not** a claim that EA preserves
-Taxonomy extensions. Unsupported feature children and external connectors cannot
-be silently delivered as a lossy XMI feature. Reject those items before file export.
+Taxonomy extensions. Non-consumed feature-detail properties, including stereotypes,
+remain in bounded evidence with `PRESERVED_EXTENSION` losses. Unsupported feature
+children and external connectors cannot be silently delivered as a lossy XMI
+feature. Reject those items before file export. Unauthored connector-end attributes
+and subtrees receive connector/field-specific unsupported losses before delivery;
+source/target identities and direction retain their existing meaning.
 
 AM v2 exhausts root queries and every connector/tag/attribute/operation/parameter
 collection, including attribute and operation tags. Traversal derives fixed paths

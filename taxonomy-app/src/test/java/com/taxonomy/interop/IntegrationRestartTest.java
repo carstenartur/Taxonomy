@@ -29,6 +29,26 @@ class IntegrationRestartTest {
             assertEquals(0, process.exitValue(), Files.readString(log));
         }
     }
+    @Test void nativeRequirementMappingApplyAndRetrySurviveCompleteApplicationRestart() throws Exception {
+        for (String phase : List.of("apply", "retry")) {
+            Path log = directory.resolve("native-" + phase + ".log");
+            Process process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                    "-Xmx768m", "-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
+                    NativeRequirementMappingRestartDriver.class.getName(), directory.toString(), phase)
+                    .redirectErrorStream(true).redirectOutput(log.toFile()).start();
+            boolean finished = process.waitFor(150, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+            }
+            String output = Files.readString(log);
+            assertTrue(finished, "Native recovery process did not finish: " + phase + "\n" + output);
+            assertEquals(0, process.exitValue(), output);
+            String marker = "NATIVE_REQUIREMENT_MAPPING_RESTART_OK " + phase;
+            assertTrue(output.contains(marker), output);
+            System.out.println(marker + " log=" + log);
+        }
+    }
+
     public static final class RecoveryApplication {
         private static final RepositoryContext CONTEXT = RepositoryContext.workspace("repo-restart", "workspace-restart", "draft", "alice");
         private static final UUID CONNECTION = UUID.fromString("1502e67c-2941-4991-92ef-000000000001"), OPERATION = UUID.fromString("1502e67c-2941-4991-92ef-000000000002"),

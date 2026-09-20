@@ -106,28 +106,64 @@ final class SparxXmiWriter {
     private static void field(Element parent,String type,String key,String value) {
         Element field=ExchangeXml.append(parent,null,type); field.setAttribute("key",key); field.setAttribute("value",value);
     }
-    private static void writeFeatures(ExchangeDocument source, Element elements, Map<String,Element> nodes) {
-        Map<String,Element> details = new HashMap<>();
-        for (Element d : ExchangeXml.children(elements)) details.put(guid(d.getAttributeNS(XMI,"idref")),d);
-        var features=source.artifacts().stream().filter(a -> a.kind()==ArtifactKind.FEATURE).sorted(Comparator.comparingInt((Artifact a) -> Integer.parseInt(a.extensions().getOrDefault("position","9999"))).thenComparing(Artifact::id)).toList();
-        for(Artifact a:features) {
-            if (a.type().equals("tagged-value")) continue;
-            if (a.type().equals("external-connector"))
-                throw ExchangeXml.invalid("SPARX_FEATURE_EXPORT_UNSUPPORTED","External connectors are preserved-only evidence; exclude from XMI delivery");
-            Element node=elements.getOwnerDocument().createElement(switch(a.type()) {case "attribute" -> "ownedAttribute"; case "operation" -> "ownedOperation"; case "parameter" -> "ownedParameter"; default -> throw ExchangeXml.invalid("SPARX_FEATURE_EXPORT_UNSUPPORTED","Unsupported feature output");});
-            node.setAttributeNS(XMI,"xmi:id",xmiId(a.id(),false)); node.setAttribute("name",a.title());
-            if(a.extensions().containsKey("position")) node.setAttribute("position",a.extensions().get("position"));
-            if(a.extensions().containsKey("classifier")) node.setAttribute("classifier",a.extensions().get("classifier"));
-            a.attributes().forEach((key,value)->{if(key.startsWith("ea:")) node.setAttribute(key.substring(3),value);});
-            Element detail=detail(elements,"feature",a.id(),false); details.put(a.id(),detail);
-            properties(detail,a.attributes()).setAttribute("documentation",a.text()); evidence(detail,a.attributes(),a.extensions()); nodes.put(a.id(),node);
+    private static void writeFeatures(ExchangeDocument source, Element elements, Map<String, Element> nodes) {
+        Map<String, Element> details = new HashMap<>();
+        for (Element detail : ExchangeXml.children(elements)) {
+            details.put(guid(detail.getAttributeNS(XMI, "idref")), detail);
         }
-        for(Artifact a:features) {
-            Element owner=details.get(a.extensions().get("owner"));
-            if(a.type().equals("tagged-value")) {
-                Element tags=ExchangeXml.child(owner,"tags"); if(tags==null) tags=ExchangeXml.append(owner,null,"tags");
-                Element tag=ExchangeXml.append(tags,null,"tag"); tag.setAttributeNS(XMI,"xmi:id",xmiId(a.id(),false)); tag.setAttribute("name",a.title()); tag.setAttribute("value",a.text()); evidence(tag,a.attributes(),a.extensions());
-            } else nodes.get(a.extensions().get("owner")).appendChild(nodes.get(a.id()));
+        var features = source.artifacts().stream().filter(a -> a.kind() == ArtifactKind.FEATURE)
+                .sorted(Comparator.comparingInt((Artifact a) -> Integer.parseInt(a.extensions().getOrDefault("position", "9999")))
+                        .thenComparing(Artifact::id)).toList();
+        for (Artifact feature : features) {
+            if (feature.type().equals("tagged-value")) {
+                continue;
+            }
+            if (feature.type().equals("external-connector")) {
+                throw ExchangeXml.invalid("SPARX_FEATURE_EXPORT_UNSUPPORTED",
+                        "External connectors are preserved-only evidence; exclude from XMI delivery");
+            }
+            String nodeName = switch (feature.type()) {
+                case "attribute" -> "ownedAttribute";
+                case "operation" -> "ownedOperation";
+                case "parameter" -> "ownedParameter";
+                default -> throw ExchangeXml.invalid("SPARX_FEATURE_EXPORT_UNSUPPORTED", "Unsupported feature output");
+            };
+            Element node = elements.getOwnerDocument().createElement(nodeName);
+            node.setAttributeNS(XMI, "xmi:id", xmiId(feature.id(), false));
+            node.setAttribute("name", feature.title());
+            if (feature.extensions().containsKey("position")) {
+                node.setAttribute("position", feature.extensions().get("position"));
+            }
+            if (feature.extensions().containsKey("classifier")) {
+                node.setAttribute("classifier", feature.extensions().get("classifier"));
+            }
+            feature.attributes().forEach((key, value) -> {
+                if (key.startsWith("ea:")) {
+                    node.setAttribute(key.substring(3), value);
+                }
+            });
+            Element detail = detail(elements, "feature", feature.id(), false);
+            details.put(feature.id(), detail);
+            properties(detail, feature.attributes()).setAttribute("documentation", feature.text());
+            // Non-consumed properties remain in evidence; they are not authored as native UML scalars.
+            evidence(detail, feature.attributes(), feature.extensions());
+            nodes.put(feature.id(), node);
+        }
+        for (Artifact feature : features) {
+            Element owner = details.get(feature.extensions().get("owner"));
+            if (feature.type().equals("tagged-value")) {
+                Element tags = ExchangeXml.child(owner, "tags");
+                if (tags == null) {
+                    tags = ExchangeXml.append(owner, null, "tags");
+                }
+                Element tag = ExchangeXml.append(tags, null, "tag");
+                tag.setAttributeNS(XMI, "xmi:id", xmiId(feature.id(), false));
+                tag.setAttribute("name", feature.title());
+                tag.setAttribute("value", feature.text());
+                evidence(tag, feature.attributes(), feature.extensions());
+            } else {
+                nodes.get(feature.extensions().get("owner")).appendChild(nodes.get(feature.id()));
+            }
         }
     }
 
