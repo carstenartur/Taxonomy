@@ -134,3 +134,13 @@ integration identities, previews, reconciliation, journal and checkpoints.
   body or orphan rationale heading. The final full gate and CI run follow.
 - A previous full-gate attempt hit temporary transfer leftovers in compiled test
   outputs. Maven clean removed them; no application code or test exclusions changed.
+- Final dependency ruling: the full suite found one unrecorded package edge,
+  `interop.sparx -> workspace.service` (one class, `SparxOslcAmReader` referencing
+  `RepositoryContext`). This is the existing interop-to-workspace direction, not
+  a new module dependency or cycle. Passing the current context to the shared
+  transport preserves repository/owner authorization on every read and page.
+  The pure export codec remains context-free. Record exactly this one reviewed
+  edge in the dependency baseline; do not relax the ratchet or its counts.
+- The exact architecture gate then passed all 22 checks. The preceding full
+  attempt reported 4,802 tests with this sole policy failure; it is not a passing
+  full-gate result. Run the complete command again, including downstream gates.
