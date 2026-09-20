@@ -6,9 +6,12 @@ import com.taxonomy.extension.api.integration.LifecycleIntegrationConnector;
 import org.springframework.stereotype.Component;
 
 @Component
-public final class SparxXmiConnector implements LifecycleIntegrationConnector {
-    private final SparxXmiCodec codec = new SparxXmiCodec();
-    @Override public IntegrationDescriptor descriptor() { return SparxIntegrationDescriptor.xmi(); }
+public class SparxXmiConnector implements LifecycleIntegrationConnector {
+    private final SparxXmiCodec codec;
+    private final String version;
+    public SparxXmiConnector() { this("1"); }
+    protected SparxXmiConnector(String version) { this.version = version; this.codec = new SparxXmiCodec(version); }
+    @Override public IntegrationDescriptor descriptor() { return SparxIntegrationDescriptor.xmi(version); }
     @Override public ExchangeDocument previewInbound(InboundRequest request) {
         return SparxSnapshots.identify(codec.read(request.content(), request.externalVersion(), request.completeScope()), request.context().connectionId());
     }

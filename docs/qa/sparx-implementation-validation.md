@@ -54,3 +54,39 @@ No actual EA or PCS execution was available. Neither the passing fixture tests n
 the application tests establish real-product compatibility. The authoritative
 unexecuted product matrix and remaining OSLC acceptance items are recorded in
 [sparx-compatibility.json](sparx-compatibility.json).
+
+## Semantic version 2 — Task 1 (2026-09-20)
+
+Review base: `3ca66eed8cbc9a85b7151b4361b38f95bc6afc90`. This slice adds
+shared AM/XMI feature semantics, frozen profile-version dispatch and bounded,
+complete AM collection traversal. Native package editing and requirement
+projection remain subsequent work. The v2 fixtures are handwritten contracts;
+real EA/PCS compatibility remains `NOT_EXECUTED`.
+
+Final focused verification compiles for Java 21 on the local JDK 25 runtime:
+
+```sh
+TAXONOMY_EMBEDDING_MODEL_DIR=/workspace/scratch/dae1667028d4/civilian-models/bge-small-en-v1.5 TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD=false python /workspace/scratch/dae1667028d4/verify-repo.py -pl taxonomy-app -am test -Dtest=SparxXmiCodecTest,SparxOslcAmCodecTest,SparxOslcAmReaderTest,ExchangeConnectorRegistryTest,IntegrationRemoteRetryTest,SparxIntegrationFlowTest -Dsurefire.failIfNoSpecifiedTests=false -DexcludedGroups=real-llm
+```
+
+**BUILD SUCCESS: 72 selected tests passed** (19 XMI codec, 14 AM codec,
+24 AM HTTP reader, 2 registry, 5 durable retry and 8 app flow cases).
+The selection covers shared feature/connector identities, deterministic XMI
+roundtrips, duplicate tags, owner/position/prefix validation, complete collection
+sets, every collection's HTTP pagination and later-page failure, aggregate bounds,
+credential/URI guards, exact profile versions and feature-only stale apply.
+
+A clean owning-reactor attempt (`-pl taxonomy-app -am clean test`, no test selector)
+passed all completed upstream modules, including 78 interop tests, then failed in
+portfolio test discovery with
+`Unable to create test class 'com.taxonomy.portfolio.service..rsync-tmp.SolutionCatalogPolicyContractTest'`.
+Portfolio ran no tests and app was not reached. The earlier clean attempt exposed
+old one-argument registry mocks in the retry suite; those Task 1 failures were
+corrected and covered in the final focused selection. Both failed logs are retained
+in the task workspace. The controller stopped further full-reactor retry loops
+for the diagnosed transient discovery condition; the broader gate remains
+incomplete. The separately confirmed Word-foundation dependency-ratchet failure
+also remains a controller-owned gate; no baseline was changed in this task.
+
+Detailed RED/GREEN logs, API changes and review notes are recorded in
+`.superpowers/sdd/2026-09-20-sparx-semantic-completion/task-1-report.md`.

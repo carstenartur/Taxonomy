@@ -66,6 +66,10 @@ public class IntegrationController {
                 .header("X-Taxonomy-Semantic-Revision", Long.toString(authority.semanticRevision()))
                 .header("X-Taxonomy-Checkpoint", authority.commitId() == null ? "none" : authority.commitId()).body(file.content());
     }
+    @GetMapping("/api/integrations/{connection}/operations/{operation}/endpoint-options") @ResponseBody
+    public com.taxonomy.interop.IntegrationDomainAdapter.EndpointIndex endpointOptions(@PathVariable UUID connection, @PathVariable UUID operation) {
+        return service.endpointOptions(resolver.resolveCurrentRepositoryContext(), connection, operation);
+    }
     @PostMapping("/api/integrations/{connection}/operations/{operation}/retry") @ResponseBody
     public Operation retry(@PathVariable UUID connection, @PathVariable UUID operation) { return service.retry(resolver.resolveCurrentRepositoryContext(), connection, operation); }
     public record Cancel(String rationale) {}

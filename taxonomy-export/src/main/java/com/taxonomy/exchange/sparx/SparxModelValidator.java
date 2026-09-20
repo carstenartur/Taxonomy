@@ -17,7 +17,7 @@ public final class SparxModelValidator {
         Map<String, Artifact> objects = new TreeMap<>(); Set<String> taxonomyIds = new HashSet<>();
         for (Artifact artifact : source.artifacts()) {
             if (objects.putIfAbsent(guid(artifact.id()), artifact) != null) throw duplicate();
-            if (!Set.of(ArtifactKind.SPECIFICATION, ArtifactKind.ELEMENT, ArtifactKind.REQUIREMENT).contains(artifact.kind()))
+            if (!Set.of(ArtifactKind.SPECIFICATION, ArtifactKind.ELEMENT, ArtifactKind.REQUIREMENT, ArtifactKind.FEATURE).contains(artifact.kind()))
                 throw ExchangeXml.invalid("SPARX_KIND_UNMAPPED", "Artifact kind is outside the semantic XMI subset");
             if (artifact.kind() == ArtifactKind.ELEMENT && (elementType(artifact.type(), null, null) == null
                     || !CANONICAL_TYPES.contains(artifact.extensions().getOrDefault("canonicalType", ""))
@@ -26,6 +26,9 @@ public final class SparxModelValidator {
                 throw ExchangeXml.invalid("SPARX_ELEMENT_UNMAPPED", "Reject or explicitly remap unsupported element types before export");
             checkTags(artifact.attributes(), taxonomyIds, source.profile() + "@" + source.profileVersion());
         }
+        if (source.artifacts().stream().anyMatch(a -> a.kind() == ArtifactKind.FEATURE) && !"2".equals(source.profileVersion()))
+            throw ExchangeXml.invalid("PROFILE_VERSION_CHANGED", "Features require Sparx version 2");
+        features(objects);
         String modelId = guid(source.metadata().get("identifier"));
         if (objects.containsKey(modelId)) throw duplicate();
         Set<String> allIds = new HashSet<>(objects.keySet()); allIds.add(modelId);
@@ -56,7 +59,42 @@ public final class SparxModelValidator {
         }
         return new Validated(objects, modelId, byId, byObject);
     }
-    private static void checkTags(Map<String, String> attributes, Set<String> identities, String selectedProfile) {
+    static void features(Map<String, Artifact> objects) {
+        Set<String> positions = new HashSet<>();
+        for (Artifact a : objects.values()) if (a.kind() == ArtifactKind.FEATURE) {
+            String ownerId = a.extensions().get("owner");
+            Artifact owner = ownerId == null ? null : objects.get(ownerId);
+            boolean element = owner != null && (owner.kind() == ArtifactKind.ELEMENT || owner.kind() == ArtifactKind.REQUIREMENT);
+            boolean feature = owner != null && owner.kind() == ArtifactKind.FEATURE;
+            boolean valid = owner != null && switch (a.type()) {
+                case "tagged-value" -> element || owner.kind() == ArtifactKind.SPECIFICATION || feature && Set.of("attribute", "operation").contains(owner.type());
+                case "attribute", "operation" -> element;
+                case "parameter" -> feature && owner.type().equals("operation");
+                case "external-connector" -> element || owner.kind() == ArtifactKind.SPECIFICATION;
+                default -> false;
+            };
+            if (!valid || a.id().equals(a.extensions().get("owner")))
+                throw ExchangeXml.invalid("SPARX_FEATURE_OWNER", "Feature type or owner is outside the bounded profile");
+            String external = a.extensions().get("externalIdentifier");
+            if (external != null) {
+                Set<String> prefixes = switch (a.type()) {
+                    case "attribute" -> Set.of("at_"); case "operation" -> Set.of("op_"); case "parameter" -> Set.of("pr_");
+                    case "external-connector" -> Set.of("lt_");
+                    default -> feature && owner.type().equals("attribute") ? Set.of("attv_") : feature && owner.type().equals("operation") ? Set.of("optv_") : Set.of("tv_");
+                };
+                if (!a.id().equals(prefixedGuid(external, prefixes))) throw ExchangeXml.invalid("SPARX_GUID_REQUIRED", "Feature evidence identity differs from its GUID");
+            }
+            String position = a.extensions().get("position");
+            if (position != null) {
+                if (!position.matches("0|[1-9][0-9]{0,3}") || Integer.parseInt(position) >= ExchangeXml.MAX_ARTIFACTS
+                        || !positions.add(owner.id() + "\u0000" + a.type() + "\u0000" + position))
+                    throw ExchangeXml.invalid("SPARX_FEATURE_POSITION", "Feature positions must be bounded and unique within owner and kind");
+            }
+            String classifier = a.extensions().get("classifier");
+            if (classifier != null) guid(classifier);
+        }
+    }
+    static void checkTags(Map<String, String> attributes, Set<String> identities, String selectedProfile) {
         String id = attributes.get("tag:taxonomy.id");
         if (id != null && !identities.add(guid(id))) throw duplicate();
         String profile = attributes.get("tag:taxonomy.mappingProfile");

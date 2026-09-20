@@ -10,6 +10,9 @@ import java.util.*;
  */
 public class CanonicalArchitectureModel {
 
+    private final List<ArchitecturePackage> packages = new ArrayList<>();
+    public List<ArchitecturePackage> getPackages() { return packages; }
+
     private final List<ArchitectureElement> elements = new ArrayList<>();
     private final List<ArchitectureRelation> relations = new ArrayList<>();
     private final List<ArchitectureRequirement> requirements = new ArrayList<>();

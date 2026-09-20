@@ -19,6 +19,29 @@ public final class SparxOslcAmCodec {
     public static final String AM = "http://open-services.net/ns/am#";
     public static final String SS = "http://www.sparxsystems.com.au/oslc_am#";
     public static final int MAX_PAGES = 20;
+    private final String profileVersion;
+    public SparxOslcAmCodec() { this("1"); }
+    public SparxOslcAmCodec(String version) { this.profileVersion = SparxMappingProfile.version(version); }
+    /** A complete collection, identified by a fixed endpoint kind and validated owner identifier. */
+    public record Collection(String kind, String owner, List<Page> pages) {
+        public Collection { pages = List.copyOf(pages); }
+    }
+    public List<String> rootIdentifiers(List<Page> pages, URI base) { return SparxAmV2Parser.roots(pages, base); }
+    public List<String> featureIdentifiers(Collection collection, URI base) { return SparxAmV2Parser.featureIds(collection, base); }
+    public Set<String> objectIdentities(byte[] bytes, URI base) {
+        var model = parse(bytes, base); Set<String> identities = new HashSet<>();
+        for (Resource resource : model.listResourcesWithProperty(model.createProperty(DCT + "identifier")).toList()) {
+            String identifier = literal(resource, DCT + "identifier", true);
+            identities.add(SparxMappingProfile.prefixedGuid(identifier,
+                    Set.of("pk_", "el_", "dg_", "lt_", "tv_", "at_", "attv_", "op_", "optv_", "pr_")));
+        }
+        return Set.copyOf(identities);
+    }
+    public long statementCount(byte[] bytes, URI base) { return parse(bytes, base).size(); }
+    public ExchangeDocument read(List<Page> roots, List<Collection> collections, URI base) {
+        if (!"2".equals(profileVersion)) throw invalid("PROFILE_VERSION_CHANGED");
+        return SparxAmV2Parser.read(roots, collections, base);
+    }
     public record Page(URI resource, String etag, byte[] content) {
         public Page { content = content.clone(); }
         @Override public byte[] content() { return content.clone(); }
@@ -47,6 +70,7 @@ public final class SparxOslcAmCodec {
     }
 
     public ExchangeDocument read(List<Page> pages, URI base) {
+        if ("2".equals(profileVersion)) return read(pages, List.of(), base);
         if (pages.isEmpty() || pages.size() > MAX_PAGES) throw invalid("SPARX_AM_PAGE_LIMIT");
         Map<String, Artifact> artifacts = new TreeMap<>();
         Map<String, String> parents = new TreeMap<>();
@@ -169,7 +193,7 @@ public final class SparxOslcAmCodec {
         return new Stereotypes(List.copyOf(names), unsupported || names.size() > 1);
     }
 
-    private static Model parse(byte[] content, URI base) {
+    static Model parse(byte[] content, URI base) {
         var xml = ExchangeXml.parse(content);
         for (var element : ExchangeXml.all(xml, "*", "*")) {
             if (Set.of("useridentifier", "accesstoken", "refreshtoken").contains(element.getLocalName().toLowerCase(Locale.ROOT)))
@@ -184,7 +208,7 @@ public final class SparxOslcAmCodec {
         }
         return OslcRequirementsCodec.parse(ExchangeXml.write(xml), base);
     }
-    private static String literal(Resource resource, String property, boolean required) {
+    static String literal(Resource resource, String property, boolean required) {
         var values = resource.listProperties(resource.getModel().createProperty(property)).toList();
         if (values.size() > 1 || values.size() == 1 && !values.getFirst().getObject().isLiteral()) throw invalid("SPARX_AM_PROPERTY");
         String value = values.isEmpty() ? "" : values.getFirst().getString();

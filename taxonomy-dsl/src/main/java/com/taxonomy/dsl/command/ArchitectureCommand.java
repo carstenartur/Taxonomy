@@ -17,6 +17,28 @@ public sealed interface ArchitectureCommand {
         public UpdateArchitectureElement { properties = copyProperties(properties); }
     }
 
+    record CreateArchitecturePackage(String id, Map<String, String> properties) implements ArchitectureCommand {
+        public CreateArchitecturePackage { properties = copyProperties(properties); }
+    }
+    record UpdateArchitecturePackage(String id, Map<String, String> properties) implements ArchitectureCommand {
+        public UpdateArchitecturePackage { properties = copyProperties(properties); }
+    }
+    enum PackageMemberKind { PACKAGE, ELEMENT }
+    /** Empty parent is root; null/-1 explicitly detaches an ELEMENT. */
+    record PackagePlacement(PackageMemberKind kind, String memberId, String parentPackageId, int position) {}
+    record SetArchitecturePackagePlacements(List<PackagePlacement> placements,
+                                           java.util.Set<String> completeParentScopes) implements ArchitectureCommand {
+        public SetArchitecturePackagePlacements {
+            placements = List.copyOf(placements); completeParentScopes = java.util.Set.copyOf(completeParentScopes);
+        }
+    }
+    record DeleteArchitecturePackage(String id) implements ArchitectureCommand {}
+    record UpsertRequirementMapping(String requirementIdentity, String elementId, String rationale,
+                                    Map<String, String> exchangeProperties) implements ArchitectureCommand {
+        public UpsertRequirementMapping { exchangeProperties = copyProperties(exchangeProperties); }
+    }
+    record DeleteRequirementMapping(String requirementIdentity, String elementId) implements ArchitectureCommand {}
+
     record DeleteArchitectureElement(String id) implements ArchitectureCommand {}
 
     private static Map<String, String> copyProperties(Map<String, String> properties) {

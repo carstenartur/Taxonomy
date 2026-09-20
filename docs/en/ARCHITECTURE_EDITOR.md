@@ -20,3 +20,27 @@ Graph and element list share the server model. The list shows 50 searchable entr
 SVG and vector PDF use the complete deterministic server layout at the displayed workspace revision or Git checkpoint. They are independent of local pan/zoom. The editor currently uses derived layout and a read-only synchronized DSL view; editable DSL translation, saved layouts, shared undo, richer evidence decisions and extended history remain tracked in [#814](https://github.com/carstenartur/Taxonomy/issues/814). Existing analysis snapshots remain immutable.
 
 Implementation decision: [ADR 0005](../adr/0005-private-architecture-editor.md). [Deutsche Anleitung](../de/ARCHITECTURE_EDITOR.md).
+
+### Neutral packages and requirement mappings
+
+The **Packages** panel creates, renames, describes, moves and deletes organization
+boundaries without adding taxonomy elements or `CONTAINS` relations. It uses the
+same preview, rationale, exact workspace revision and undo/redo journal as element
+editing. Select a package or element, parent and zero-based position to move it;
+**Detach selected element** removes explicit membership. Detach children before
+deleting a package. All controls support keyboard navigation.
+
+`SET_PACKAGE_PLACEMENTS` is one atomic final-state command. Its `placements` list
+contains `{kind: "PACKAGE"|"ELEMENT", memberId, parentPackageId, position}` and
+`completeParentScopes` lists every touched old/new parent. Empty-string parent is
+the explicit model root; null parent with position -1 detaches only an element.
+Retain every existing sibling in each touched scope. Unrelated ungrouped elements
+are outside the root list. Swaps and cross-parent moves are validated together;
+cycles, duplicate/gapped positions and depth above 80 fail before journal writes.
+Package updates accept only title/description; placement cannot bypass this command.
+
+`UPSERT_REQUIREMENT_MAPPING` uses `sourceId` for a real canonical requirement and
+`targetId` for an architecture element. It retains review rationale and bounded
+`x-exchange-*` provenance; analysis-owned mapping headers cannot be overwritten.
+`DELETE_REQUIREMENT_MAPPING` removes an exchange-owned mapping. These operations
+never relax the architecture relation type matrix.

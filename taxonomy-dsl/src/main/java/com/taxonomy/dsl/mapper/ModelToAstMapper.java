@@ -18,6 +18,15 @@ public class ModelToAstMapper {
         MetaAst meta = new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION, namespace, null);
         List<BlockAst> blocks = new ArrayList<>();
 
+        for (ArchitecturePackage pkg : model.getPackages()) {
+            List<PropertyAst> props = new ArrayList<>();
+            addProperty(props, "title", pkg.title());
+            addProperty(props, "description", pkg.description());
+            props.add(new PropertyAst("parent", pkg.parentId(), null));
+            addProperty(props, "position", Integer.toString(pkg.position()));
+            addExtensions(props, pkg.extensions());
+            blocks.add(new BlockAst("package", List.of(pkg.id()), props, List.of(), pkg.extensions(), null));
+        }
         for (ArchitectureElement el : model.getElements()) {
             blocks.add(elementToBlock(el));
         }
@@ -64,6 +73,10 @@ public class ModelToAstMapper {
         addProperty(props, "title", el.getTitle());
         addProperty(props, "description", el.getDescription());
         addProperty(props, "taxonomy", el.getTaxonomy());
+        if (el.getPackageId() != null) {
+            props.add(new PropertyAst("package", el.getPackageId(), null));
+            addProperty(props, "position", Integer.toString(el.getPackagePosition()));
+        }
         addExtensions(props, el.getExtensions());
 
         return new BlockAst("element", headerTokens, props, List.of(), el.getExtensions(), null);

@@ -178,6 +178,104 @@ class SparxXmiCodecTest {
         assertTrue(model.losses().stream().anyMatch(l -> l.code().equals("SPARX_DIRECTION_UNMAPPED")));
     }
 
+    @Test void attributesOperationsParametersAndDuplicateTagsRoundTripInVersionTwo() throws Exception {
+        var v2 = new SparxXmiCodec("2");
+        byte[] fixture;
+        try (var input = getClass().getResourceAsStream("/interoperability/sparx/semantic-v2.xmi")) { fixture = Objects.requireNonNull(input).readAllBytes(); }
+        var original = v2.read(fixture, "fixture", false);
+        assertEquals("2", original.profileVersion());
+        assertEquals(5, original.artifacts().stream().filter(a -> a.kind().name().equals("FEATURE")).count());
+        assertFalse(artifact(original, A).attributes().containsKey("tag:owner"));
+        byte[] written = v2.write(original);
+        var returned = v2.read(written, "returned", false);
+        assertEquals(original.artifacts(), returned.artifacts());
+        assertEquals(original.relations(), returned.relations());
+        assertEquals(original.placements(), returned.placements());
+        assertArrayEquals(written, v2.write(original));
+        assertThrows(ExchangeFormatException.class, () -> codec.write(original));
+        assertThrows(ExchangeFormatException.class, () -> v2.read(fixtureText().replace("<tags>",
+                "<tags><tag name=\"taxonomy.mappingProfile\" value=\"sparx-xmi-2.1@1\"/>").getBytes(StandardCharsets.UTF_8), null, false));
+    }
+
+    @Test void versionTwoRejectsWrongOwnersPositionsCollisionsAndLossyFeatures() throws Exception {
+        var v2=new SparxXmiCodec("2"); String xml;
+        try(var in=getClass().getResourceAsStream("/interoperability/sparx/semantic-v2.xmi")) {xml=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);}
+        var original=v2.read(bytes(xml),null,false);
+        var features=original.artifacts().stream().filter(a->a.kind()==ArtifactKind.FEATURE).toList();
+        for(String key:List.of("owner","position","externalIdentifier")) {
+            var changed=original.artifacts().stream().map(a->{
+                if(!a.type().equals("parameter"))return a;
+                var ext=new TreeMap<>(a.extensions());ext.put(key,key.equals("owner")?A:key.equals("position")?"-1":"lt_"+a.id());
+                return new Artifact(a.id(),a.kind(),a.type(),a.title(),a.text(),a.attributes(),ext);
+            }).toList();
+            assertThrows(ExchangeFormatException.class,()->v2.write(copy(original,changed,original.relations(),original.placements())));
+        }
+        var missingOwner=original.artifacts().stream().map(a->{
+            if(!a.type().equals("parameter"))return a;
+            var ext=new TreeMap<>(a.extensions());ext.remove("owner");
+            return new Artifact(a.id(),a.kind(),a.type(),a.title(),a.text(),a.attributes(),ext);
+        }).toList();
+        assertEquals("SPARX_FEATURE_OWNER",assertThrows(ExchangeFormatException.class,
+                ()->v2.write(copy(original,missingOwner,original.relations(),original.placements()))).code());
+        var duplicate=new ArrayList<>(original.artifacts());duplicate.add(features.getFirst());
+        assertThrows(ExchangeFormatException.class,()->v2.write(copy(original,duplicate,original.relations(),original.placements())));
+        var unsupported=v2.read(bytes(xml.replace("name=\"count\" scope=\"private\" classifierName=\"Integer\" position=\"0\"/>",
+                "name=\"count\" scope=\"private\" classifierName=\"Integer\" position=\"0\"><ownedRule name=\"unsupported\"/></ownedAttribute>")),null,false);
+        assertTrue(unsupported.losses().stream().anyMatch(l->l.code().equals("SPARX_FEATURE_EXCLUDED")));
+        assertEquals("SPARX_FEATURE_EXPORT_UNSUPPORTED",assertThrows(ExchangeFormatException.class,()->v2.write(unsupported)).code());
+    }
+
+    @Test void versionTwoPreservesSiblingOrderAndFeatureOwnerRenameAndMove() throws Exception {
+        var v2=new SparxXmiCodec("2"); byte[] xml;
+        try(var in=getClass().getResourceAsStream("/interoperability/sparx/semantic-v2.xmi")) {xml=Objects.requireNonNull(in).readAllBytes();}
+        var original=v2.read(xml,null,false);
+        assertEquals(0,original.placements().stream().filter(p->p.artifactId().equals(P)).findFirst().orElseThrow().position());
+        var placements=original.placements().stream().map(p->new Placement(p.id(),p.containerId(),p.parentId(),p.artifactId(),
+                p.artifactId().equals(A)?1:p.artifactId().equals(B)?0:p.position(),p.attributes())).toList();
+        var artifacts=original.artifacts().stream().map(a->{
+            if(!a.type().equals("attribute"))return a;
+            var ext=new TreeMap<>(a.extensions());ext.put("owner",B);ext.put("position","3");
+            return new Artifact(a.id(),a.kind(),a.type(),"renamed",a.text(),a.attributes(),ext);
+        }).toList();
+        var changed=copy(original,artifacts,original.relations(),placements);
+        var returned=v2.read(v2.write(changed),null,false);
+        assertEquals(changed.artifacts(),returned.artifacts());assertEquals(changed.placements(),returned.placements());
+    }
+
+    @Test void versionTwoPreservesTagPositionNotesAndUnknownFieldsAndValidatesProjectionTags() throws Exception {
+        var v2=new SparxXmiCodec("2"); String xml;
+        try(var in=getClass().getResourceAsStream("/interoperability/sparx/semantic-v2.xmi")) {xml=new String(Objects.requireNonNull(in).readAllBytes(),StandardCharsets.UTF_8);}
+        var original=v2.read(bytes(xml.replace("name=\"First\"", "name=\"First\" reviewHint=\"retain me\"")
+                .replace("name=\"owner\" value=\"Alice\"", "name=\"owner\" value=\"Alice\" position=\"4\" notes=\"Tag notes\" custom=\"retain tag field\"")),null,false);
+        assertEquals("retain me",artifact(original,A).attributes().get("xml:reviewHint"));
+        var tag=original.artifacts().stream().filter(a->a.type().equals("tagged-value")&&a.text().equals("Alice")).findFirst().orElseThrow();
+        assertEquals("4",tag.extensions().get("position"));
+        assertEquals("Tag notes",tag.attributes().get("attribute:http://purl.org/dc/terms/description"));
+        assertEquals("retain tag field",tag.attributes().get("xml:custom"));
+        assertTrue(original.losses().stream().anyMatch(l->l.disposition()==LossDisposition.PRESERVED_EXTENSION));
+        assertEquals(original.artifacts(),v2.read(v2.write(original),null,false).artifacts());
+        String wrong=xml.replace("<tags>","<tags><tag projection=\"true\" name=\"taxonomy.mappingProfile\" value=\"sparx-xmi-2.1@1\"/>");
+        assertEquals("PROFILE_VERSION_CHANGED",assertThrows(ExchangeFormatException.class,()->v2.read(bytes(wrong),null,false)).code());
+    }
+
+    @Test void unsupportedFeatureExtensionDetailsReportLossAndBlockExport() throws Exception {
+        String xml;
+        try (var input = getClass().getResourceAsStream("/interoperability/sparx/semantic-v2.xmi")) {
+            xml = new String(Objects.requireNonNull(input).readAllBytes(), StandardCharsets.UTF_8);
+        }
+        var v2 = new SparxXmiCodec("2");
+        for (String id : List.of("{55555555-5555-4555-8555-555555555551}",
+                "{55555555-5555-4555-8555-555555555552}", "{55555555-5555-4555-8555-555555555553}")) {
+            String detail = "<feature xmi:idref=\"" + id + "\"><unsupportedFeatureDetail value=\"MUST-NOT-DISAPPEAR\"/></feature>";
+            var document = v2.read(bytes(xml.replace("</elements>", detail + "</elements>")), null, false);
+            assertTrue(document.losses().stream().anyMatch(loss -> id.equals(loss.artifactId())
+                    && "unsupportedFeatureDetail".equals(loss.field())
+                    && loss.disposition() == LossDisposition.UNSUPPORTED));
+            assertEquals("SPARX_FEATURE_EXPORT_UNSUPPORTED",
+                    assertThrows(ExchangeFormatException.class, () -> v2.write(document)).code());
+        }
+    }
+
     private ExchangeDocument fixture() throws Exception { return codec.read(bytes(fixtureText()), "v1", true); }
     private String fixtureText() throws Exception {
         try (var input = getClass().getResourceAsStream("/interoperability/sparx/semantic-model.xmi")) {

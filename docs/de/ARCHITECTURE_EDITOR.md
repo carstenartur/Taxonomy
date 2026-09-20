@@ -20,3 +20,29 @@ Graph und Elementliste verwenden dasselbe Servermodell. Die Liste zeigt 50 durch
 SVG und Vektor-PDF verwenden das vollständige deterministische Serverlayout der angezeigten Workspace-Revision oder des Git-Checkpoints, unabhängig von lokalem Zoom und Ausschnitt. Der Editor verwendet derzeit abgeleitetes Layout und eine synchronisierte DSL-Leseansicht. Bearbeitbare DSL-Übersetzung, gespeicherte Layouts, gemeinsames Undo, weitergehende Belegentscheidungen und erweiterte Historie bleiben in [#814](https://github.com/carstenartur/Taxonomy/issues/814) verfolgt. Bestehende Analysesnapshots bleiben unveränderlich.
 
 Technische Entscheidung: [ADR 0005](../adr/0005-private-architecture-editor.md). [English guide](../en/ARCHITECTURE_EDITOR.md).
+
+### Neutrale Pakete und Anforderungszuordnungen
+
+Der Bereich **Pakete** erstellt, benennt, beschreibt, verschiebt und löscht
+Organisationsgrenzen ohne Taxonomieelemente oder `CONTAINS`-Beziehungen. Vorschau,
+Begründung, exakte Arbeitsbereichsrevision und Rückgängig/Wiederholen verwenden
+dasselbe Journal wie die Elementbearbeitung. Paket oder Element, Elternpaket und
+Position ab null auswählen; **Ausgewähltes Element lösen** entfernt die Zuordnung.
+Vor dem Löschen eines Pakets müssen seine Kinder gelöst werden. Alle Steuerelemente
+sind per Tastatur erreichbar.
+
+`SET_PACKAGE_PLACEMENTS` übernimmt einen atomaren Endzustand. `placements` enthält
+`{kind: "PACKAGE"|"ELEMENT", memberId, parentPackageId, position}`;
+`completeParentScopes` nennt alle berührten alten/neuen Eltern. Eine leere
+Elternzeichenfolge bezeichnet die Modellwurzel; null mit Position -1 löst nur ein
+Element. Alle Geschwister der berührten Bereiche bleiben ausdrücklich enthalten.
+Unabhängige, ungruppierte Elemente müssen nicht aufgelistet werden. Vertauschungen
+und Verschiebungen werden gemeinsam geprüft; Zyklen, doppelte/lückenhafte Positionen
+und Tiefe über 80 scheitern vor dem Journaleintrag. Paketänderungen erlauben nur
+Titel/Beschreibung, keine Umgehung der Platzierungsprüfung.
+
+`UPSERT_REQUIREMENT_MAPPING` verbindet eine echte kanonische Anforderung (`sourceId`)
+mit einem Architekturelement (`targetId`) und bewahrt Begründung und begrenzte
+`x-exchange-*`-Herkunftsdaten. Analysezuordnungen können nicht überschrieben werden.
+`DELETE_REQUIREMENT_MAPPING` entfernt eine Austauschzuordnung. Die Typregeln für
+Architekturbeziehungen bleiben unverändert.

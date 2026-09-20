@@ -13,7 +13,7 @@ public final class IntegrationContracts {
 
     public enum AuthorityMode { LINK_ONLY, IMPORT_COPY, MIRROR_READ, PUBLISH_TARGET, BIDIRECTIONAL }
     public enum Capability { FILE_IMPORT, FILE_EXPORT, DISCOVERY, READ_LINK, CONDITIONAL_PUBLISH, ARCHITECTURE_MODEL }
-    public enum ArtifactKind { REQUIREMENT, ELEMENT, VIEW, SPECIFICATION, RELATION, PLACEMENT, METADATA }
+    public enum ArtifactKind { REQUIREMENT, ELEMENT, VIEW, SPECIFICATION, FEATURE, RELATION, PLACEMENT, METADATA }
     public enum ChangeKind { ADD, UPDATE, MOVE, REMOVE_CANDIDATE, RELATION, CONFLICT, UNCHANGED }
     public enum Decision { ACCEPT, REJECT, TAKE_EXTERNAL, KEEP_INTERNAL }
     public enum OperationStatus { FETCH_PENDING, FETCH_FAILED, PREVIEWED, APPLYING, APPLIED, CHECKPOINT_PENDING, COMPLETED, CONFLICT, CANCELLED, FAILED, PARTIAL }
@@ -111,8 +111,16 @@ public final class IntegrationContracts {
     }
 
     public record MappingOverride(String canonicalType, String titleAttribute, String textAttribute, String internalIdentity) {}
+    public enum RelationProjection { ARCHITECTURE_RELATION, REQUIREMENT_MAPPING, PRESERVE_ONLY }
+    public record EndpointOverride(String sourceInternalIdentity, String targetInternalIdentity,
+                                   RelationProjection projection, String canonicalType) {}
     public record ReviewedChangeSet(UUID operationId, String previewFingerprint,
-                                    Map<String, Decision> decisions, String rationale, Map<String, MappingOverride> mappings) {
+                                    Map<String, Decision> decisions, String rationale, Map<String, MappingOverride> mappings,
+                                    Map<String, EndpointOverride> endpoints) {
+        public ReviewedChangeSet(UUID id, String fingerprint, Map<String, Decision> decisions, String rationale,
+                                 Map<String, MappingOverride> mappings) {
+            this(id, fingerprint, decisions, rationale, mappings, Map.of());
+        }
         public ReviewedChangeSet(UUID id, String fingerprint, Map<String, Decision> decisions, String rationale) {
             this(id, fingerprint, decisions, rationale, Map.of());
         }
@@ -120,6 +128,7 @@ public final class IntegrationContracts {
             Objects.requireNonNull(operationId); require(previewFingerprint, "preview fingerprint");
             decisions = Map.copyOf(decisions); require(rationale, "rationale");
             mappings = mappings == null ? Map.of() : Map.copyOf(mappings);
+            endpoints = endpoints == null ? Map.of() : Map.copyOf(endpoints);
             if (rationale.length() > 1000 || rationale.chars().anyMatch(Character::isISOControl))
                 throw new IllegalArgumentException("Rationale must be bounded plain text");
         }

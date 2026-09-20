@@ -252,7 +252,30 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
                 "downloadSha256", downloadHashes, "contextNodeCount", total - anchors.size(),
                 "snapshotId", snapshotId, "screenshots", List.of("73-civilian-requirement.png", "74-civilian-result.png",
                 "75-civilian-architecture.png", "76-civilian-focus.png", "77-civilian-mobile.png"))));
+        inspectNativePackageControls();
         completed = true;
+    }
+
+    /** Real browser controls, backed by the API walkthrough's isolated native workspace. */
+    private void inspectNativePackageControls() throws Exception {
+        var context = new ObjectMapper().readTree(Files.readString(output.resolve("integration-native-context.json")));
+        String scope = context.path("scope").asText();
+        ((HasCdp) new Augmenter().augment(driver)).executeCdpCommand("Emulation.clearDeviceMetricsOverride", Map.of());
+        driver.get(origin + "/architecture/editor" + scope + "&lang=en");
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("editorPackage")));
+        new Select(driver.findElement(By.id("editorPackage"))).selectByValue(context.path("packageId").asText());
+        var title = driver.findElement(By.id("editorPackageTitle")); title.clear(); title.sendKeys("Browser reviewed package");
+        var rationale = driver.findElement(By.id("editorRationale")); rationale.clear(); rationale.sendKeys("Review native package through keyboard-accessible controls");
+        click(By.id("editorSavePackage"));
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("editorAccept"))).click();
+        wait.until(browser -> browser.findElement(By.id("editorPackages")).getText().contains("Browser reviewed package"));
+        driver.get(origin + "/architecture/editor" + scope + "&lang=de");
+        wait.until(browser -> browser.findElement(By.id("editorPackagesHeading")).getText().equals("Pakete"));
+        assertThat(driver.findElement(By.id("editorPackageFields")).isEnabled()).isTrue();
+        driver.get(origin + "/integrations" + scope + "&connection=" + context.path("connection").asText() + "&lang=de");
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("integrationConnection")));
+        Files.writeString(output.resolve("native-browser.json"), new ObjectMapper().writeValueAsString(Map.of("nativePackageEdited", true,
+                "languages", List.of("en", "de"), "requestInterception", false, "productCompatibility", "NOT_EXECUTED")));
     }
 
     private double zoom() { return ((Number) driver.executeScript("return document.getElementById('architectureCanvas').__zoom.k")).doubleValue(); }

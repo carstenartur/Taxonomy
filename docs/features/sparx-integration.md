@@ -190,3 +190,89 @@ References: [EA XMI exchange](https://sparxsystems.com/enterprise_architect_user
 [EA update protocol](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_upd_resources.html),
 [authentication](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_user_cred.html),
 [GUID prefixes](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/guid_prefix_tables.html).
+
+## Explicit version 2 semantic features
+
+Choose `sparx-xmi-2.1@2` or `sparx-oslc-am-2.0@2` when creating a new connection.
+The profile ID remains unchanged; version is a separate immutable value. An API
+creation request without `profileVersion` selects `1`. Existing connections and
+frozen reviews continue to dispatch their exact stored version.
+
+Both v2 transports use one semantic assembler and the same EA GUID identities.
+The fixtures are **synthetic contract fixtures, not EA exports or PCS captures**.
+Native package editing and requirement endpoint projection are separate work;
+v2 feature support does not imply native UML authoring or live publication.
+
+| V2 construct | Canonical representation | Preservation and review |
+|---|---|---|
+| Tagged value (`tv_`, `attv_`, `optv_`) | `FEATURE`, `tagged-value`, stable GUID, owner, name/value | Duplicate names remain distinct features; no owner value wins. Unique names also project to `tag:<name>`. |
+| Attribute (`at_`) / `ownedAttribute` | `FEATURE`, `attribute` | Owner element, optional bounded position, scalar datatype/scope/default/multiplicity fields |
+| Operation (`op_`) / `ownedOperation` | `FEATURE`, `operation` | Owner element, optional position and declared operation fields |
+| Parameter (`pr_`) / `ownedParameter` | `FEATURE`, `parameter` | Owner operation, position, direction, datatype/default fields |
+| Reified dynamic AM connector (`lt_`) | Same directed `Relation` meaning as XMI | Identical reports deduplicate; conflicting same-GUID reports fail. Native type rules still apply. |
+| Endpoint outside queried roots | `FEATURE`, `external-connector`, preserved-only | Explicit `SPARX_AM_ENDPOINT_OUTSIDE_SCOPE`; no native relation or deletion inference |
+| Unknown RDF property | `attribute:<predicate>` or `extensions.rdf:<predicate>` | `PRESERVED_EXTENSION`; linked/structured values stay bounded evidence and are never fetched |
+
+The v2 XMI writer emits supported attributes, operations, parameters and
+identity-bearing tags. A declared `evidence` extension retains remaining canonical
+properties for this fixture profile; this is **not** a claim that EA preserves
+Taxonomy extensions. Unsupported feature children and external connectors cannot
+be silently delivered as a lossy XMI feature. Reject those items before file export.
+
+AM v2 exhausts root queries and every connector/tag/attribute/operation/parameter
+collection, including attribute and operation tags. Traversal derives fixed paths
+from validated kind-specific IDs. Every page uses the secured PCS transport;
+arbitrary RDF links never become requests. All collections share these limits:
+
+| Aggregate bound | Limit |
+|---|---:|
+| Enriched package/element roots | 250 |
+| Pages in one collection | 20 |
+| HTTP responses, including discovery | 1,024 |
+| Response bytes, including discovery | 16 MiB |
+| RDF statements | 100,000 |
+| Objects | 10,000 |
+| Properties per RDF object | 128 |
+| Stereotypes per object | 32 |
+| Successful read deadline | 30 seconds |
+
+Any failed page or exceeded bound fails the complete fetch and leaves a durable
+failed operation. The v2 fingerprint covers each endpoint kind, owner GUID,
+sanitized URI, ETag and body hash, including discovery and feature pages. Reviewed
+apply repeats the read, so changed features reject an otherwise unchanged-root
+preview with `REMOTE_STALE`. Collection exhaustion is neither atomic nor an
+authoritative deletion scope: AM v2 always returns `completeScope=false` and
+`EXHAUSTED_COLLECTIONS_NOT_ATOMIC_OR_AUTHORITATIVE`.
+
+## Native version 2 review
+
+Version 2 projects packages into neutral native packages with stable IDs and EA
+GUID mappings. Native package rename/move/placement edits appear in XMI delivery;
+version 1 connections retain their original evidence-only package behavior.
+Incomplete incoming scopes retain unmentioned native siblings. Requirement package
+membership remains evidence (`SPARX_REQUIREMENT_PACKAGE_PRESERVED_ONLY`).
+
+The review's **Native endpoint projection** chooses `ARCHITECTURE_RELATION`,
+`REQUIREMENT_MAPPING`, or `PRESERVE_ONLY`. Source/target lists use durable native
+identities supplied by the exact-state endpoint-options API, after direction
+normalization. Requirement mappings require an explicit choice. Package endpoints,
+requirement pairs and bidirectional connectors require preserve-only review or
+rejection. Invalid mappings report `SPARX_ENDPOINT_KIND_UNMAPPED`,
+`SPARX_ENDPOINT_MAPPING_REQUIRED` or `SPARX_DIRECTION_UNMAPPED` before native writes.
+
+For example, a review includes:
+
+```json
+{"endpoints":{"change-id":{"sourceInternalIdentity":"PROJECT__REQ-1","targetInternalIdentity":"arch-reader","projection":"REQUIREMENT_MAPPING","canonicalType":null}}}
+```
+
+The pure complete plan resolves the exact `x-project-key`/`x-requirement-key` pair,
+preserves existing canonical IDs and rejects sanitizer collisions with
+`REQUIREMENT_IDENTITY_MISMATCH`. Requirement database writes join the transaction;
+the real portfolio contribution precedes typed mapping commands and the final local
+semantic journal. An analysis-owned mapping causes
+`REQUIREMENT_MAPPING_OWNERSHIP_CONFLICT`. Old review JSON can omit `endpoints`.
+The application and browser walkthrough uses contract fixtures; EA/PCS product
+compatibility remains **NOT_EXECUTED**.
+
+Endpoint choices confirm the exact normalized connector ends. Even same-kind retargeting to another native object is rejected with `SPARX_ENDPOINT_KIND_UNMAPPED`; projection/type choices remain supported. This keeps native meaning aligned with retained and exported endpoint evidence.

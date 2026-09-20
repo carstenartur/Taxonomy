@@ -57,7 +57,10 @@ class IntegrationRestartTest {
                             s.beginReview(review(OPERATION));
                             try {
                                 Context next = fixture.service.acceptIntegration(CONTEXT, context, metadata(OPERATION), "review",
-                                        List.of(new CreateArchitectureElement("arch-restart-import", "System", Map.of("title", "Recovered import"))), null, metadata(CHECKPOINT));
+                                        List.of(new CreateArchitectureElement("arch-restart-import", "System", Map.of("title", "Recovered import")),
+                                                new CreateArchitecturePackage("pkg-restart", Map.of("title", "Recovered package")),
+                                                new SetArchitecturePackagePlacements(List.of(new PackagePlacement(PackageMemberKind.ELEMENT,
+                                                        "arch-restart-import", "pkg-restart", 0)), Set.of("pkg-restart"))), null, metadata(CHECKPOINT));
                                 var artifact = new Artifact("external-1", ArtifactKind.ELEMENT, "ApplicationComponent", "Recovered import", "", Map.of(), Map.of("canonicalType", "System"));
                                 s.mapping(OPERATION, "ELEMENT:external-1", "arch-restart-import", null, "v1", artifact, artifact, false);
                                 s.applied(OPERATION, new InternalState(next.repositoryId(), next.workspaceScopeKey(), next.branch(), next.commit(), next.revision(), null, "none"), document, true);
@@ -89,6 +92,9 @@ class IntegrationRestartTest {
                         check(fixture.repositories.resolveRepository(CONTEXT).getCommitCount("draft") == 1);
                         check(new String(store.operation(CONTEXT, CONNECTION, EXPORT).resultFile().content(), java.nio.charset.StandardCharsets.UTF_8).equals("durable-file"));
                         check(store.checkpoint(CONTEXT, CONNECTION).operationId().equals(OPERATION));
+                        var nativeModel = new com.taxonomy.dsl.command.ArchitectureDslCommands().model(fixture.repositories.resolveRepository(CONTEXT).getDslAtHead("draft"));
+                        check(nativeModel.getPackages().getFirst().id().equals("pkg-restart"));
+                        check(nativeModel.findElement("arch-restart-import").orElseThrow().getPackageId().equals("pkg-restart"));
                     }
                     default -> throw new IllegalArgumentException(args[1]);
                 }

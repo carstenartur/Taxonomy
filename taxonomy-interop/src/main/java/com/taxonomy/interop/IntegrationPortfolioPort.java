@@ -10,7 +10,9 @@ import java.util.List;
  * no portfolio entities or implementation DTOs cross this boundary.
  */
 public interface IntegrationPortfolioPort {
-    record ProjectData(Long id, String title) {}
+    record ProjectData(Long id, String title, String projectKey) {
+        public ProjectData(Long id, String title) { this(id, title, null); }
+    }
     record VersionData(String text, Instant createdAt) {}
     /** Status retains the portfolio's serialized enum name, including future values. */
     record RequirementData(Long id, String requirementKey, String title, String status,
@@ -31,6 +33,10 @@ public interface IntegrationPortfolioPort {
         }
     }
     record RequirementsPage(List<RequirementData> requirements, boolean hasNext) {}
+    record RequirementApplyPlan(String projectKey, String requirementKey, String canonicalIdentity) {}
+    /** Pure business/canonical identity planning through the real portfolio contributor. */
+    RequirementApplyPlan planRequirementApply(Long projectId, String requirementKey, String dsl,
+                                             String username, WorkspaceContext context);
     record ImportProvenance(String sectionReference, String originalText) {}
     record ImportedRequirement(String key, String title, String text, String rationale,
                                ImportProvenance source) {}

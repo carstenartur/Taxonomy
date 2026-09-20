@@ -51,6 +51,12 @@ public final class ArchitectureDslCommands {
         Objects.requireNonNull(source, "source");
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(source);
         String next = switch (command) {
+            case CreateArchitecturePackage create -> createPackage(source, blocks, create);
+            case UpdateArchitecturePackage update -> updatePackage(source, blocks, update);
+            case SetArchitecturePackagePlacements placements -> placePackages(source, blocks, placements);
+            case DeleteArchitecturePackage delete -> deletePackage(source, blocks, delete.id());
+            case UpsertRequirementMapping mapping -> upsertMapping(source, blocks, mapping);
+            case DeleteRequirementMapping mapping -> deleteMapping(source, blocks, mapping);
             case CreateArchitectureElement create -> createElement(source, blocks, create);
             case UpdateArchitectureElement update -> updateElement(source, blocks, update);
             case DeleteArchitectureElement delete -> deleteElement(source, blocks, delete.id());
@@ -72,7 +78,8 @@ public final class ArchitectureDslCommands {
         List<ArchitectureSemanticPatch.BlockChange> original = ArchitectureSemanticPatch.between(before, after);
         if (original.isEmpty()) throw problem("NOT_UNDOABLE", "targetOperationId", "Target has no semantic changes");
         if (original.stream().anyMatch(change -> !change.id().startsWith("element:")
-                && !change.id().startsWith("relation:"))) {
+                && !change.id().startsWith("relation:") && !change.id().startsWith("package:")
+                && !change.id().startsWith("mapping:"))) {
             throw problem("NOT_UNDOABLE", "targetOperationId", "Target contains unsupported semantic objects");
         }
         String next = ArchitectureSemanticPatch.inverse(current, before, original);
@@ -94,8 +101,126 @@ public final class ArchitectureDslCommands {
             if (changed.contains(ArchitectureSemanticPatch.key(block)) || changed.contains("element:" + key.sourceId())
                     || changed.contains("element:" + key.targetId())) validateRelation(blocks, key);
         }
+        for (BlockAst mapping : blocks.values()) if ("mapping".equals(mapping.getKind()) && changed.contains(ArchitectureSemanticPatch.key(mapping))) {
+            List<String> header = mapping.getHeaderTokens();
+            if (header.size() != 3 || !"->".equals(header.get(1))) throw problem("INVALID_HEADER", "mapping", "Malformed requirement mapping");
+            require(blocks, "requirement:" + header.get(0)); require(blocks, "element:" + header.get(2));
+        }
         validateContainment(blocks);
+        validatePackages(next);
         return new Change(next, ArchitectureSemanticPatch.between(current, next));
+    }
+
+    private void validatePackages(String dsl) {
+        com.taxonomy.dsl.model.ArchitecturePackageHierarchy.validate(model(dsl),
+                (code, message) -> { throw problem(code, "placements", message); });
+    }
+
+    private String createPackage(String source, Map<String, BlockAst> blocks, CreateArchitecturePackage command) {
+        token(command.id(), "id");
+        if (blocks.containsKey("package:" + command.id())) throw problem("DUPLICATE_ID", "id", "Package already exists");
+        packageProperties(command.properties(), true);
+        int position = (int) blocks.values().stream().filter(b -> "package".equals(b.getKind()) && "".equals(b.property("parent"))
+                || "element".equals(b.getKind()) && "".equals(b.property("package"))).count();
+        Map<String, String> values = new LinkedHashMap<>(command.properties());
+        values.put("parent", ""); values.put("position", Integer.toString(position));
+        String next = ArchitectureSemanticPatch.replace(source, null, block("package", List.of(command.id()), values, null));
+        validatePackages(next); return next;
+    }
+
+    private String updatePackage(String source, Map<String, BlockAst> blocks, UpdateArchitecturePackage command) {
+        packageProperties(command.properties(), false);
+        BlockAst existing = require(blocks, "package:" + command.id());
+        return ArchitectureSemanticPatch.replace(source, existing, block("package", existing.getHeaderTokens(), command.properties(), existing));
+    }
+
+    private static void packageProperties(Map<String, String> values, boolean creating) {
+        if (!Set.of("title", "description").containsAll(values.keySet())) throw problem("READ_ONLY_PROPERTY", "properties", "Package placement requires the atomic placement command");
+        requireProperties(values, creating);
+    }
+
+    private String deletePackage(String source, Map<String, BlockAst> blocks, String id) {
+        BlockAst existing = require(blocks, "package:" + id);
+        requireNoDependencies(id, dependencies(blocks, existing));
+        String parent = existing.property("parent");
+        int position = Integer.parseInt(existing.property("position"));
+        String next = ArchitectureSemanticPatch.replace(source, existing, null);
+        for (BlockAst sibling : ArchitectureSemanticPatch.index(next).values()) {
+            String property = "package".equals(sibling.getKind()) ? "parent" : "element".equals(sibling.getKind()) ? "package" : null;
+            if (property != null && Objects.equals(parent, sibling.property(property)) && Integer.parseInt(sibling.property("position")) > position)
+                next = ArchitectureSemanticPatch.replace(next, require(ArchitectureSemanticPatch.index(next), ArchitectureSemanticPatch.key(sibling)),
+                        block(sibling.getKind(), sibling.getHeaderTokens(), Map.of("position", Integer.toString(Integer.parseInt(sibling.property("position")) - 1)), sibling));
+        }
+        validatePackages(next); return next;
+    }
+
+    private String placePackages(String source, Map<String, BlockAst> blocks, SetArchitecturePackagePlacements command) {
+        Map<String, PackagePlacement> requested = new LinkedHashMap<>();
+        for (String scope : command.completeParentScopes()) if (!scope.isEmpty()) require(blocks, "package:" + scope);
+        for (PackagePlacement placement : command.placements()) {
+            if (placement.kind() == null) throw problem("INVALID_VALUE", "kind", "Package member kind is required");
+            token(placement.memberId(), "memberId");
+            String key = placement.kind() == PackageMemberKind.PACKAGE ? "package:" : "element:";
+            BlockAst existing = require(blocks, key + placement.memberId());
+            if (requested.putIfAbsent(key + placement.memberId(), placement) != null) throw problem("DUPLICATE_ID", "memberId", "Member placed more than once");
+            String oldParent = existing.property(placement.kind() == PackageMemberKind.PACKAGE ? "parent" : "package");
+            String newParent = placement.parentPackageId();
+            if (newParent == null && (placement.kind() != PackageMemberKind.ELEMENT || placement.position() != -1)
+                    || newParent != null && placement.position() < 0) throw problem("PACKAGE_POSITION", "position", "Only an element may detach using null parent and position -1");
+            if (oldParent != null && !command.completeParentScopes().contains(oldParent)
+                    || newParent != null && !command.completeParentScopes().contains(newParent))
+                throw problem("INCOMPLETE_PACKAGE_SCOPE", "completeParentScopes", "Both old and new parent scopes must be complete");
+        }
+        for (var entry : blocks.entrySet()) {
+            BlockAst b = entry.getValue();
+            String parent = "package".equals(b.getKind()) ? b.property("parent") : "element".equals(b.getKind()) ? b.property("package") : null;
+            if (parent != null && command.completeParentScopes().contains(parent) && !requested.containsKey(entry.getKey()))
+                throw problem("INCOMPLETE_PACKAGE_SCOPE", "placements", "Retain every sibling or detach it explicitly");
+        }
+        String next = source;
+        for (var entry : requested.entrySet()) {
+            PackagePlacement placement = entry.getValue();
+            BlockAst existing = require(ArchitectureSemanticPatch.index(next), entry.getKey());
+            String parentProperty = placement.kind() == PackageMemberKind.PACKAGE ? "parent" : "package";
+            List<PropertyAst> values = new ArrayList<>(existing.getProperties().stream()
+                    .filter(p -> !p.key().equals(parentProperty) && !p.key().equals("position")).toList());
+            if (placement.parentPackageId() != null) {
+                values.add(new PropertyAst(parentProperty, placement.parentPackageId(), null));
+                values.add(new PropertyAst("position", Integer.toString(placement.position()), null));
+            }
+            next = ArchitectureSemanticPatch.replace(next, existing, new BlockAst(existing.getKind(), existing.getHeaderTokens(), values, existing.getChildren(), existing.getExtensions(), null));
+        }
+        validatePackages(next); return next;
+    }
+
+    private static void mappingOwnership(BlockAst existing) {
+        if (existing != null && (existing.property("x-project-key") != null || existing.property("x-exchange-id") == null))
+            throw problem("REQUIREMENT_MAPPING_OWNERSHIP_CONFLICT", "mapping", "An exchange mapping cannot overwrite an analysis-owned mapping");
+    }
+    /** Pure forward-plan validation; this never supplies a synthetic requirement to application. */
+    public void validatePlannedRequirementMapping(String source, UpsertRequirementMapping command, Set<String> plannedRequirements) {
+        validateMapping(ArchitectureSemanticPatch.index(source), command, plannedRequirements);
+    }
+    private static void validateMapping(Map<String, BlockAst> blocks, UpsertRequirementMapping command, Set<String> plannedRequirements) {
+        token(command.requirementIdentity(), "requirementIdentity"); token(command.elementId(), "elementId");
+        if (!plannedRequirements.contains(command.requirementIdentity())) require(blocks, "requirement:" + command.requirementIdentity());
+        require(blocks, "element:" + command.elementId());
+        requireExchangeProperties(command.exchangeProperties());
+        if (command.rationale() == null || command.rationale().length() > 8000) throw problem("INVALID_VALUE", "rationale", "A bounded rationale is required");
+        mappingOwnership(blocks.get("mapping:" + command.requirementIdentity() + " -> " + command.elementId()));
+    }
+    private static String upsertMapping(String source, Map<String, BlockAst> blocks, UpsertRequirementMapping command) {
+        validateMapping(blocks, command, Set.of());
+        BlockAst existing = blocks.get("mapping:" + command.requirementIdentity() + " -> " + command.elementId());
+        Map<String, String> properties = new LinkedHashMap<>(command.exchangeProperties());
+        properties.put("source", "exchange"); properties.put("x-exchange-rationale", command.rationale());
+        if (!properties.containsKey("x-exchange-id")) properties.put("x-exchange-id", command.requirementIdentity() + " -> " + command.elementId());
+        return ArchitectureSemanticPatch.replace(source, existing, block("mapping", List.of(command.requirementIdentity(), "->", command.elementId()), properties, existing));
+    }
+    private static String deleteMapping(String source, Map<String, BlockAst> blocks, DeleteRequirementMapping command) {
+        BlockAst existing = require(blocks, "mapping:" + command.requirementIdentity() + " -> " + command.elementId());
+        mappingOwnership(existing);
+        return ArchitectureSemanticPatch.replace(source, existing, null);
     }
 
     private String createElement(String source, Map<String, BlockAst> blocks, CreateArchitectureElement command) {
@@ -108,7 +233,7 @@ public final class ArchitectureDslCommands {
     }
 
     private static String exchangeProperties(String source, Map<String, BlockAst> blocks, SetExchangeProperties command) {
-        if (!Set.of("element", "relation", "view").contains(command.objectKind()))
+        if (!Set.of("element", "relation", "view", "package", "mapping").contains(command.objectKind()))
             throw problem("INVALID_EXCHANGE_TARGET", "objectKind", "Exchange metadata requires a semantic target");
         requireExchangeProperties(command.properties());
         BlockAst existing = require(blocks, command.objectKind() + ":" + command.id());
@@ -213,6 +338,8 @@ public final class ArchitectureDslCommands {
 
     private String deleteElement(String source, Map<String, BlockAst> blocks, String id) {
         BlockAst existing = require(blocks, "element:" + id);
+        if (existing.property("package") != null) throw new CommandProblem("DEPENDENCIES_EXIST", id,
+                "Detach the element from its package before deletion", List.of("package:" + existing.property("package")));
         requireNoDependencies(id, dependencies(blocks, existing));
         return ArchitectureSemanticPatch.replace(source, existing, null);
     }
@@ -316,6 +443,9 @@ public final class ArchitectureDslCommands {
                     case "evidence" -> referencesElement(candidate.property("for-relation"), id);
                     default -> false;
                 };
+            } else if ("package".equals(removed.getKind())) {
+                references = "package".equals(candidate.getKind()) && id.equals(candidate.property("parent"))
+                        || "element".equals(candidate.getKind()) && id.equals(candidate.property("package"));
             } else if ("relation".equals(removed.getKind())) {
                 references = relationKey(removed).id().equals(candidate.property("for-relation"));
             }

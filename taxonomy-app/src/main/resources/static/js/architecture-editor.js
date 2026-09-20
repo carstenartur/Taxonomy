@@ -64,6 +64,7 @@
         el('editorResumeCheckpoint').disabled = busy;
         el('editorRecoverVersion').disabled = busy;
         el('editorNew').disabled = !writable;
+        el('editorPackageFields').disabled = !writable;
         el('editorFields').disabled = !writable;
         el('editorRelationFields').disabled = !writable || !selectedElement();
         el('editorDelete').disabled = !writable || !selectedElement();
@@ -93,6 +94,7 @@
         }
     }
     function render(preserveDraft) {
+        renderPackages();
         var c = context();
         var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit));
@@ -196,6 +198,46 @@
         var item = selectedElement();
         el('editorEvidence').textContent = JSON.stringify({ taxonomy: item && item.taxonomy, extensions: item && item.extensions, evidence: evidence }, null, 2);
     }
+    function renderPackages() {
+        var packages = view.model.packages || [], chosen = el('editorPackage').value;
+        el('editorPackage').replaceChildren(); option(el('editorPackage'), '', t('editor.packageNew'));
+        el('editorPackageParent').replaceChildren(); option(el('editorPackageParent'), '', t('editor.packageRoot'));
+        el('editorPackages').replaceChildren();
+        packages.forEach(function (pkg) {
+            option(el('editorPackage'), pkg.id, pkg.title + ' · ' + pkg.id);
+            option(el('editorPackageParent'), pkg.id, pkg.title + ' · ' + pkg.id);
+            var row = document.createElement('li');
+            row.textContent = pkg.title + ' · ' + pkg.id + ' → ' + (pkg.parentId || t('editor.packageRoot')) + ' [' + pkg.position + ']';
+            el('editorPackages').append(row);
+        });
+        el('editorPackage').value = packages.some(function (p) { return p.id === chosen; }) ? chosen : '';
+        fillPackage();
+    }
+    function fillPackage() {
+        var pkg = (view.model.packages || []).find(function (p) { return p.id === el('editorPackage').value; });
+        el('editorPackageTitle').value = pkg ? pkg.title : '';
+        el('editorPackageDescription').value = pkg ? pkg.description || '' : '';
+        el('editorPackageParent').value = pkg ? pkg.parentId : '';
+        el('editorPackagePosition').value = pkg ? pkg.position : 0;
+    }
+    function packagePlacement(kind, id, detach) {
+        if (!id) return;
+        var members = (view.model.packages || []).map(function (p) { return { kind: 'PACKAGE', memberId: p.id, parentPackageId: p.parentId, position: p.position }; });
+        view.model.elements.filter(function (e) { return e.packageId !== null && e.packageId !== undefined; }).forEach(function (e) {
+            members.push({ kind: 'ELEMENT', memberId: e.id, parentPackageId: e.packageId, position: e.packagePosition });
+        });
+        var old = members.find(function (p) { return p.kind === kind && p.memberId === id; });
+        var parent = detach ? null : el('editorPackageParent').value;
+        var scopes = new Set(); if (old) scopes.add(old.parentPackageId); if (parent !== null) scopes.add(parent);
+        var finalState = [];
+        scopes.forEach(function (scope) {
+            var siblings = members.filter(function (p) { return p.parentPackageId === scope && !(p.kind === kind && p.memberId === id); }).sort(function (a, b) { return a.position - b.position; });
+            if (scope === parent) siblings.splice(Math.min(Number(el('editorPackagePosition').value), siblings.length), 0, { kind: kind, memberId: id, parentPackageId: parent });
+            siblings.forEach(function (p, position) { finalState.push(Object.assign({}, p, { position: position })); });
+        });
+        if (detach) finalState.push({ kind: kind, memberId: id, parentPackageId: null, position: -1 });
+        stage({ kind: 'SET_PACKAGE_PLACEMENTS', placements: finalState, completeParentScopes: Array.from(scopes) });
+    }
     function renderHistory() {
         var historyList = el('editorHistory'); historyList.replaceChildren();
         view.document.history.forEach(function (entry) {
@@ -283,6 +325,13 @@
         stage(Object.assign({ kind: exists ? 'UPDATE_RELATION' : 'CREATE_RELATION', status: el('editorRelationStatus').value }, relation));
     });
     el('editorDelete').onclick = function () { stage({ kind: 'DELETE_ELEMENT', id: selected }); };
+    el('editorPackage').onchange = fillPackage;
+    el('editorSavePackage').onclick = function () { stage({ kind: el('editorPackage').value ? 'UPDATE_PACKAGE' : 'CREATE_PACKAGE', id: el('editorPackage').value,
+        properties: { title: el('editorPackageTitle').value, description: el('editorPackageDescription').value } }); };
+    el('editorDeletePackage').onclick = function () { if (el('editorPackage').value) stage({ kind: 'DELETE_PACKAGE', id: el('editorPackage').value }); };
+    el('editorMovePackage').onclick = function () { packagePlacement('PACKAGE', el('editorPackage').value, false); };
+    el('editorPlaceElement').onclick = function () { packagePlacement('ELEMENT', selected, false); };
+    el('editorDetachElement').onclick = function () { packagePlacement('ELEMENT', selected, true); };
     el('editorMove').onclick = function () { stage({ kind: 'MOVE_ELEMENT', id: selected, parentId: el('editorParent').value.trim() || null }); };
     el('editorDiscard').onclick = function () { pending = null; renderForm(); };
     el('editorNew').onclick = function () { selectElement(null); el('editorTitle').focus(); };

@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -38,7 +39,11 @@ public class IntegrationDomainAdapter {
     public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json) {
         this.projects = projects; this.json = json;
     }
-    public record Snapshot(InternalState state, Map<String, Artifact> items, List<RequirementData> requirements, List<MappingLoss> losses) {}
+    public record Snapshot(InternalState state, Map<String, Artifact> items, List<RequirementData> requirements, List<MappingLoss> losses, String projectKey) {
+        public Snapshot(InternalState state, Map<String, Artifact> items, List<RequirementData> requirements, List<MappingLoss> losses) {
+            this(state, items, requirements, losses, null);
+        }
+    }
     public record AppliedRequirement(String businessIdentity, Long requirementId) {}
 
     /** Bind only identities actually delivered in a reviewed file; this is not an external acknowledgement. */
@@ -55,12 +60,15 @@ public class IntegrationDomainAdapter {
         }
         if (connection.projectId() == null || SparxSnapshots.isSparx(connection.connectorId())) for (BlockAst block : ArchitectureSemanticPatch.index(document.dsl()).values()) {
             String kind = block.getKind();
-            if (!Set.of("element", "view", "relation").contains(kind)) continue;
+            if (!Set.of("element", "view", "relation").contains(kind) && !(nativePackages(connection) && "package".equals(kind))) continue;
             String business = kind.equals("relation") ? String.join(" ", block.getHeaderTokens()) : block.getHeaderTokens().getFirst();
-            result.put(kind.toUpperCase(java.util.Locale.ROOT) + ":" + externalId(connection, "export-" + kind + ":" + business), new AppliedRequirement(business, null));
+            result.put(("package".equals(kind) ? "SPECIFICATION" : kind.toUpperCase(java.util.Locale.ROOT)) + ":" + externalId(connection, "export-" + kind + ":" + business), new AppliedRequirement(business, null));
         }
+        if (nativePackages(connection)) for (Artifact a : selected.values()) if (a.kind() == ArtifactKind.RELATION
+                && "REQUIREMENT_MAPPING".equals(a.extensions().get("nativeProjection")))
+            result.put(ExchangeItems.key(a), new AppliedRequirement(a.extensions().get("nativeSource") + " -> " + a.extensions().get("nativeTarget"), null));
         for (var entry : selected.entrySet()) if (!Set.of(ArtifactKind.REQUIREMENT, ArtifactKind.ELEMENT, ArtifactKind.VIEW, ArtifactKind.RELATION).contains(entry.getValue().kind()))
-            result.put(entry.getKey(), new AppliedRequirement(businessId(connection, null, entry.getValue()), null));
+            result.putIfAbsent(entry.getKey(), new AppliedRequirement(businessId(connection, null, entry.getValue()), null));
         return result;
     }
     public Snapshot snapshot(RepositoryContext context, Connection connection, List<Identity> mappings, WorkspaceDocument document) {
@@ -103,6 +111,11 @@ public class IntegrationDomainAdapter {
                     attributes.put("tag:taxonomy.elementType", block.getHeaderTokens().get(2));
                 current = new Artifact(baseline.id(), baseline.kind(), type, value(block.property("title")), value(block.property("description")), attributes, extensions);
             } else if (baseline.kind() == ArtifactKind.RELATION && architectureProfile(connection)) {
+                if ("PRESERVE_ONLY".equals(baseline.extensions().get("nativeProjection"))) { items.put(mapping.externalId(), current); continue; }
+                if ("REQUIREMENT_MAPPING".equals(baseline.extensions().get("nativeProjection"))) {
+                    if (blocks.containsKey("mapping:" + mapping.businessIdentity())) items.put(mapping.externalId(), current);
+                    continue;
+                }
                 BlockAst relation = blocks.get("relation:" + mapping.businessIdentity()); if (relation == null) continue;
                 Map<String, String> extensions = new LinkedHashMap<>(baseline.extensions());
                 if (extensions.containsKey("taxonomy:RelationType")) extensions.put("taxonomy:RelationType", relation.getHeaderTokens().get(1));
@@ -121,9 +134,18 @@ public class IntegrationDomainAdapter {
             synchronizeViews(connection, blocks, elements, views, items, losses);
             pruneConnections(items, losses);
         }
+        if (nativePackages(connection) && connection.authority() != AuthorityMode.LINK_ONLY) {
+            String modelId = items.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT)
+                    .map(a -> a.extensions().get("container")).filter(Objects::nonNull).findFirst().orElse(null);
+            IntegrationPackageProjection.synchronize(connection, document.dsl(), mappings, items, modelId, false);
+            for (Artifact a : items.values()) if (a.kind() == ArtifactKind.PLACEMENT && items.containsKey("REQUIREMENT:" + a.extensions().get("artifact")))
+                losses.add(new MappingLoss(a.id(), "package", "SPARX_REQUIREMENT_PACKAGE_PRESERVED_ONLY", LossDisposition.PRESERVED_EXTENSION,
+                        "Requirement package membership remains exchange evidence"));
+        }
         InternalState state = new InternalState(context.repositoryId(), document.state().workspaceScopeKey(), context.branch(), document.state().commitId(),
                 document.state().semanticRevision(), connection.projectId(), json.fingerprint(requirements.stream().map(r -> java.util.Arrays.asList(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList()));
-        return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses));
+        return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses), nativePackages(connection) && connection.projectId() != null
+                ? projects.getProject(connection.projectId(), context.username(), workspace(context)).projectKey() : null);
     }
 
     public void requireProject(RepositoryContext context, Long projectId) { projects.requireProject(projectId, context.username(), workspace(context)); }
@@ -207,6 +229,26 @@ public class IntegrationDomainAdapter {
                 Artifact artifact = new Artifact(externalId, ArtifactKind.RELATION, mappedType == null ? type : mappedType, "", "", attributes, extension);
                 items.put(ExchangeItems.key(artifact), artifact);
             }
+            if (nativePackages(connection) && connection.projectId() != null) {
+                Map<String, String> requirementIds = new HashMap<>();
+                for (RequirementData requirement : current.requirements()) {
+                    Identity mapping = mappings.stream().filter(m -> requirement.id().equals(m.requirementId()) && !m.removed()).findFirst().orElse(null);
+                    String external = mapping == null ? requirementExternalId(connection, requirement.id()) : mapping.internal().id();
+                    List<BlockAst> candidates = blocks.values().stream().filter(b -> b.getKind().equals("requirement")
+                            && Objects.equals(current.projectKey(), b.property("x-project-key"))
+                            && requirement.requirementKey().equals(b.property("x-requirement-key"))).toList();
+                    if (candidates.size() == 1) requirementIds.put(candidates.getFirst().getHeaderTokens().getFirst(), external);
+                }
+                for (BlockAst block : blocks.values()) if (block.getKind().equals("mapping") && block.property("x-exchange-id") != null) {
+                    String key = String.join(" ", block.getHeaderTokens()); if (known.contains(key)) continue;
+                    String source = requirementIds.get(block.getHeaderTokens().get(0)), target = ids.get(block.getHeaderTokens().get(2));
+                    if (source == null || target == null) continue;
+                    Artifact relation = new Artifact(externalId(connection, "export-mapping:" + key), ArtifactKind.RELATION, "Dependency", "", "", Map.of(),
+                            Map.of("source", source, "target", target, "canonicalType", "DEPENDS_ON", "direction", "Source -> Destination",
+                                    "nativeProjection", "REQUIREMENT_MAPPING", "nativeSource", block.getHeaderTokens().get(0), "nativeTarget", block.getHeaderTokens().get(2)));
+                    items.put(ExchangeItems.key(relation), relation);
+                }
+            }
             for (BlockAst block : blocks.values()) if (block.getKind().equals("view") && !known.contains(block.getHeaderTokens().getFirst())) {
                 if (SparxSnapshots.isSparx(connection.connectorId())) {
                     losses.add(new MappingLoss(block.getHeaderTokens().getFirst(), "view", "SPARX_LAYOUT_EXCLUDED", LossDisposition.UNSUPPORTED,
@@ -230,6 +272,8 @@ public class IntegrationDomainAdapter {
             synchronizeViews(connection, blocks, ids, views, items, losses);
         }
         // Local removals have an explicit export loss report; never leave an orphaned hierarchy or view connection.
+        if (nativePackages(connection)) IntegrationPackageProjection.synchronize(connection, document.dsl(), mappings, items,
+                template.metadata().get("identifier"), true);
         boolean removed;
         do {
             Set<String> present = items.values().stream().filter(a -> a.kind() != ArtifactKind.PLACEMENT && a.kind() != ArtifactKind.METADATA).map(Artifact::id).collect(java.util.stream.Collectors.toSet());
@@ -344,8 +388,73 @@ public class IntegrationDomainAdapter {
         return new AppliedRequirement(previous.businessIdentity(), previous.requirementId());
     }
 
+    public enum EndpointKind { ARCHITECTURE_ELEMENT, REQUIREMENT, PACKAGE }
+    public record EndpointRef(EndpointKind kind, String businessIdentity, Long requirementId) {}
+    public record EndpointIndex(Map<String, EndpointRef> external) {
+        public EndpointIndex { external = Map.copyOf(external); }
+    }
+    public Map<String, RequirementApplyPlan> planRequirements(RepositoryContext context, Connection connection,
+            Map<String, Artifact> selected, List<Identity> mappings, String dsl) {
+        Map<String, Identity> known = new TreeMap<>(); mappings.forEach(m -> known.put(m.externalId(), m));
+        Map<String, RequirementApplyPlan> plans = new LinkedHashMap<>();
+        Map<String, RequirementApplyPlan> canonical = new LinkedHashMap<>();
+        for (Artifact artifact : selected.values()) if (artifact.kind() == ArtifactKind.REQUIREMENT) {
+            if (connection.projectId() == null) throw new IntegrationProblem("REQUIREMENT_PROJECT_REQUIRED", 422, "Select a project for reviewed requirements");
+            if (artifact.title().isBlank() || artifact.title().length() > 240 || artifact.text().isBlank() || artifact.text().length() > 100000)
+                throw new IntegrationProblem("REQUIREMENT_MAPPING_REQUIRED", 422, "Requirement title/text is outside the portfolio profile");
+            Identity previous = known.get(ExchangeItems.key(artifact));
+            String key = previous != null && previous.requirementId() != null
+                    ? projects.getRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context)).requirementKey()
+                    : "EXT-" + stableId(connection.id(), artifact.id()).substring(4).toUpperCase(java.util.Locale.ROOT);
+            RequirementApplyPlan plan = projects.planRequirementApply(connection.projectId(), key, dsl, context.username(), workspace(context));
+            RequirementApplyPlan collision = canonical.putIfAbsent(plan.canonicalIdentity(), plan);
+            if (collision != null && !collision.equals(plan)) throw new IntegrationProblem("REQUIREMENT_IDENTITY_MISMATCH", 409, "Planned requirement identities collide");
+            plans.put(ExchangeItems.key(artifact), plan);
+        }
+        return Map.copyOf(plans);
+    }
+    public EndpointIndex indexEndpoints(Connection connection, Map<String, Artifact> selected, List<Identity> mappings,
+                                         Map<String, RequirementApplyPlan> plans) {
+        Map<String, Identity> known = new TreeMap<>(); mappings.forEach(m -> known.put(m.externalId(), m));
+        Map<String, EndpointRef> endpoints = new LinkedHashMap<>();
+        for (Artifact a : selected.values()) {
+            Identity prior = known.get(ExchangeItems.key(a));
+            if (a.kind() == ArtifactKind.ELEMENT || a.kind() == ArtifactKind.SPECIFICATION)
+                endpoints.put(a.id(), new EndpointRef(a.kind() == ArtifactKind.ELEMENT ? EndpointKind.ARCHITECTURE_ELEMENT : EndpointKind.PACKAGE,
+                        businessId(connection, prior, a), null));
+            else if (a.kind() == ArtifactKind.REQUIREMENT) {
+                RequirementApplyPlan plan = plans.get(ExchangeItems.key(a));
+                if (plan != null) endpoints.put(a.id(), new EndpointRef(EndpointKind.REQUIREMENT, plan.canonicalIdentity(), prior == null ? null : prior.requirementId()));
+            }
+        }
+        return new EndpointIndex(endpoints);
+    }
+    /** Pure validation of the full planned state, including real/planned requirement identities. */
+    public void validateCompletePlan(String dsl, List<ArchitectureCommand> commands, Map<String, RequirementApplyPlan> plans) {
+        String preview = dsl;
+        ArchitectureDslCommands transformer = new ArchitectureDslCommands();
+        for (ArchitectureCommand command : commands) if (!(command instanceof UpsertRequirementMapping)) preview = transformer.apply(preview, command).dsl();
+        Set<String> planned = plans.values().stream().map(RequirementApplyPlan::canonicalIdentity).collect(java.util.stream.Collectors.toSet());
+        for (ArchitectureCommand command : commands) if (command instanceof UpsertRequirementMapping mapping) {
+            try { transformer.validatePlannedRequirementMapping(preview, mapping, planned); }
+            catch (ArchitectureDslCommands.CommandProblem problem) {
+                throw new IntegrationProblem(problem.code(), 422, problem.getMessage());
+            }
+        }
+    }
+
     public List<ArchitectureCommand> architectureCommands(Connection connection, String dsl, Map<String, Artifact> current,
                                                          Map<String, Artifact> selected, List<Identity> mappings) {
+        return architectureCommands(connection, dsl, current, selected, mappings,
+                indexEndpoints(connection, selected, mappings, Map.of()), Map.of());
+    }
+
+    public List<ArchitectureCommand> architectureCommands(Connection connection, String dsl, Map<String, Artifact> current,
+            Map<String, Artifact> selected, List<Identity> mappings, EndpointIndex endpoints, Map<String, EndpointOverride> overrides) {
+        return architectureCommands(connection, dsl, current, selected, mappings, endpoints, overrides, "Reviewed external connector");
+    }
+    public List<ArchitectureCommand> architectureCommands(Connection connection, String dsl, Map<String, Artifact> current,
+            Map<String, Artifact> selected, List<Identity> mappings, EndpointIndex endpoints, Map<String, EndpointOverride> overrides, String rationale) {
         Map<String, Identity> known = new TreeMap<>(); mappings.forEach(m -> known.put(m.externalId(), m));
         Map<String, String> elementIds = new LinkedHashMap<>();
         selected.values().stream().filter(a -> a.kind() == ArtifactKind.ELEMENT).forEach(a -> elementIds.put(a.id(), businessId(connection, known.get(ExchangeItems.key(a)), a)));
@@ -354,12 +463,20 @@ public class IntegrationDomainAdapter {
             Identity prior = known.get(entry.getKey());
             if (prior != null && blocks.containsKey("view:" + prior.businessIdentity())) commands.add(new DeleteArchitectureView(prior.businessIdentity()));
         }
+        Map<String, RelationTarget> relationTargets = new LinkedHashMap<>();
+        for (Artifact relation : selected.values()) if (relation.kind() == ArtifactKind.RELATION)
+            relationTargets.put(ExchangeItems.key(relation), relationTarget(relation, endpoints, overrides.get(ExchangeItems.key(relation))));
         // Remove replaced relations first; dependency checks remain server-authoritative.
         for (var entry : current.entrySet()) if (entry.getValue().kind() == ArtifactKind.RELATION) {
             Artifact next = selected.get(entry.getKey()); Identity prior = known.get(entry.getKey());
             if (prior != null && blocks.containsKey("relation:" + prior.businessIdentity())
-                    && (next == null || !prior.businessIdentity().equals(relationKey(next, elementIds).id())))
+                    && (next == null || !prior.businessIdentity().equals(relationTargets.get(entry.getKey()).businessIdentity())))
                 commands.add(new DeleteArchitectureRelation(parseRelation(prior.businessIdentity())));
+            if (prior != null && blocks.containsKey("mapping:" + prior.businessIdentity())
+                    && (next == null || !prior.businessIdentity().equals(relationTargets.get(entry.getKey()).businessIdentity()))) {
+                String[] pair = prior.businessIdentity().split(" -> ", 2);
+                commands.add(new DeleteRequirementMapping(pair[0], pair[1]));
+            }
         }
         for (Artifact artifact : selected.values()) if (artifact.kind() == ArtifactKind.ELEMENT) {
             if (ExchangeItems.fields(artifact).equals(ExchangeItems.fields(current.get(ExchangeItems.key(artifact))))) continue;
@@ -377,6 +494,7 @@ public class IntegrationDomainAdapter {
             }
             commands.add(new SetExchangeProperties("element", internalId, exchangeProperties(connection, artifact)));
         }
+        if (nativePackages(connection)) commands.addAll(IntegrationPackageProjection.commands(connection, dsl, current, selected, mappings, this));
         for (Artifact artifact : selected.values()) if (artifact.kind() == ArtifactKind.VIEW) {
             boolean layoutChanged = !current.entrySet().stream().filter(e -> e.getValue().kind() == ArtifactKind.PLACEMENT && artifact.id().equals(e.getValue().extensions().get("container")))
                     .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> ExchangeItems.fields(e.getValue())))
@@ -396,7 +514,13 @@ public class IntegrationDomainAdapter {
         }
         for (Artifact relation : selected.values()) if (relation.kind() == ArtifactKind.RELATION) {
             if (ExchangeItems.fields(relation).equals(ExchangeItems.fields(current.get(ExchangeItems.key(relation))))) continue;
-            RelationKey key = relationKey(relation, elementIds);
+            RelationTarget target = relationTargets.get(ExchangeItems.key(relation));
+            if (target.projection() == RelationProjection.PRESERVE_ONLY) continue;
+            if (target.projection() == RelationProjection.REQUIREMENT_MAPPING) {
+                commands.add(new UpsertRequirementMapping(target.source(), target.target(), rationale, exchangeProperties(connection, relation)));
+                continue;
+            }
+            RelationKey key = new RelationKey(target.source(), target.type(), target.target());
             String status = relation.extensions().getOrDefault("taxonomy:status", "accepted");
             if (!blocks.containsKey("relation:" + key.id())) commands.add(new CreateArchitectureRelation(key, status));
             else if (!status.equals(blocks.get("relation:" + key.id()).property("status"))) commands.add(new UpdateArchitectureRelation(key, status));
@@ -404,6 +528,63 @@ public class IntegrationDomainAdapter {
         }
         if (commands.size() > 2000) throw new IntegrationProblem("APPLY_COMMAND_LIMIT", 422, "Review at most 1000 semantic objects per import; the preview can contain a larger scope");
         return List.copyOf(commands);
+    }
+
+    public static boolean nativePackages(Connection connection) {
+        return SparxSnapshots.isSparx(connection.connectorId()) && "2".equals(connection.profileVersion());
+    }
+    public record RelationTarget(RelationProjection projection, String source, String target, String type) {
+        public String businessIdentity() {
+            return projection == RelationProjection.PRESERVE_ONLY ? "preserved" : source + (projection == RelationProjection.REQUIREMENT_MAPPING ? " -> " : " " + type + " ") + target;
+        }
+    }
+    private static RelationTarget relationTarget(Artifact relation, EndpointIndex index, EndpointOverride override) {
+        // Retained approval authorizes projection/ends; canonicalType is the effective relation type.
+        // Historical nativeType evidence must not override a later reviewed canonical remap.
+        if (override == null && relation.extensions().containsKey("nativeProjection")) override = new EndpointOverride(
+                relation.extensions().get("nativeSource"), relation.extensions().get("nativeTarget"),
+                RelationProjection.valueOf(relation.extensions().get("nativeProjection")), null);
+        if (override != null && override.projection() == RelationProjection.PRESERVE_ONLY)
+            return new RelationTarget(RelationProjection.PRESERVE_ONLY, null, null, null);
+        if ("Bi-Directional".equals(relation.extensions().get("direction")))
+            throw new IntegrationProblem("SPARX_DIRECTION_UNMAPPED", 422, "Bidirectional connector requires preserve-only review");
+        EndpointRef source = index.external().get(relation.extensions().get("source"));
+        EndpointRef target = index.external().get(relation.extensions().get("target"));
+        if ("Destination -> Source".equals(relation.extensions().get("direction"))) { EndpointRef swap = source; source = target; target = swap; }
+        if (override != null) {
+            if (override.projection() == null) throw new IntegrationProblem("SPARX_ENDPOINT_MAPPING_REQUIRED", 422, "Choose an endpoint projection");
+            EndpointRef reviewedSource = nativeEndpoint(index, override.sourceInternalIdentity());
+            EndpointRef reviewedTarget = nativeEndpoint(index, override.targetInternalIdentity());
+            if (source == null || target == null || reviewedSource == null || reviewedTarget == null
+                    || source.kind() != reviewedSource.kind() || target.kind() != reviewedTarget.kind()
+                    || !source.businessIdentity().equals(reviewedSource.businessIdentity()) || !target.businessIdentity().equals(reviewedTarget.businessIdentity()))
+                throw new IntegrationProblem("SPARX_ENDPOINT_KIND_UNMAPPED", 422,
+                        "Reviewed identities must match the exact normalized connector ends; endpoint retargeting is unsupported");
+            source = reviewedSource; target = reviewedTarget;
+        }
+        if (source == null || target == null) throw new IntegrationProblem("SPARX_ENDPOINT_KIND_UNMAPPED", 422, "Connector endpoint is outside the accepted scope");
+        RelationProjection projection = override == null ? RelationProjection.ARCHITECTURE_RELATION : override.projection();
+        if (source.kind() == EndpointKind.PACKAGE || target.kind() == EndpointKind.PACKAGE || source.kind() == EndpointKind.REQUIREMENT && target.kind() == EndpointKind.REQUIREMENT)
+            throw new IntegrationProblem("SPARX_ENDPOINT_KIND_UNMAPPED", 422, "Package and requirement-pair connectors require preserve-only review");
+        if (projection == RelationProjection.REQUIREMENT_MAPPING) {
+            if (source.kind() != EndpointKind.REQUIREMENT || target.kind() != EndpointKind.ARCHITECTURE_ELEMENT)
+                throw new IntegrationProblem("SPARX_ENDPOINT_KIND_UNMAPPED", 422, "Requirement mapping direction is requirement to element");
+            return new RelationTarget(projection, source.businessIdentity(), target.businessIdentity(), null);
+        }
+        if (source.kind() != EndpointKind.ARCHITECTURE_ELEMENT || target.kind() != EndpointKind.ARCHITECTURE_ELEMENT)
+            throw new IntegrationProblem("SPARX_ENDPOINT_MAPPING_REQUIRED", 422, "Requirement connectors need an explicit requirement mapping projection");
+        String type = override != null && override.canonicalType() != null ? override.canonicalType() : relation.extensions().get("canonicalType");
+        if (type == null) throw new IntegrationProblem("RELATION_MAPPING_REQUIRED", 422, "Select a native relation type");
+        return new RelationTarget(projection, source.businessIdentity(), target.businessIdentity(), type);
+    }
+    private static EndpointRef nativeEndpoint(EndpointIndex index, String identity) {
+        List<EndpointRef> matches = index.external().values().stream().filter(e -> e.businessIdentity().equals(identity)).distinct().toList();
+        if (matches.size() > 1) throw new IntegrationProblem("SPARX_ENDPOINT_KIND_UNMAPPED", 422, "Native endpoint identity is ambiguous");
+        return matches.isEmpty() ? null : matches.getFirst();
+    }
+    public String relationBusinessId(Artifact relation, EndpointIndex index, EndpointOverride override) {
+        RelationTarget target = relationTarget(relation, index, override);
+        return target.projection() == RelationProjection.PRESERVE_ONLY ? "preserved:" + relation.id() : target.businessIdentity();
     }
 
     public String businessId(Connection connection, Identity existing, Artifact artifact) {
