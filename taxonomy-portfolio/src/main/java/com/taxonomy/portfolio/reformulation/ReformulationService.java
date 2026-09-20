@@ -119,7 +119,10 @@ public class ReformulationService {
         var question=new DecisionQuestion("edit-"+statementId,new DecisionQuestion.Key(statementId,"edit","local"),"Human statement operation",List.of(),List.of(statementId),
                 new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),"Review affected architecture",DecisionQuestion.State.ANSWERED);
         var impact=ReformulationQuestionService.impact(previous,question,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));
-        var next=new Revision(expected+1,expected,previous.text().replace(old.wording(),reject?"":request.text()),previous.sections(),statements,previous.questions(),previous.answers(),previous.validation(),
+        // Statements are addressed by ID, not by occurrences of their wording in the document.
+        // The document may contain identical source text or independent manual edits and has no
+        // statement-bound spans. Preserve it; the impact records which sections need reconciliation.
+        var next=new Revision(expected+1,expected,previous.text(),previous.sections(),statements,previous.questions(),previous.answers(),previous.validation(),
                 PortfolioScope.username(actor,context),Instant.now(),request.rationale(),impact,previous.variantOrigin());
         proposal.advanceRevision();revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),next.number(),json.write(next)));
         return view(proposal);
