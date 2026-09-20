@@ -62,7 +62,9 @@ Playback-Fehler lassen den Test scheitern.
 4. Beide Snapshots auf gleiche Scores, Begründungen und Architektur prüfen.
 5. Den ausgewählten Snapshot erneut über HTTP öffnen und dessen Identität prüfen.
 6. Exporte aus diesem Snapshot bzw. seiner erzeugten Graphstruktur erstellen und prüfen.
-7. Optional denselben Ablauf im echten Browser ausführen, während der Analyse neu laden,
+7. Die erzeugte ArchiMate-Datei in einem per REST angelegten getrennten Repository prüfen
+   und übernehmen; den unterstützten Anteil als Sparx-XMI ausliefern und wieder einlesen.
+8. Optional denselben Ablauf im echten Browser ausführen, während der Analyse neu laden,
    Ergebnisse und Workbench öffnen, Bedienelemente ausführen und Screenshots speichern.
 
 Der Test verwendet eine echte HSQLDB-Datenbank. Optionales ONNX-Embedding ist deaktiviert;
@@ -117,15 +119,33 @@ nichts in den Branch zurück. Die allgemeine Pflichtprüfung bleibt:
 | ArchiMate XML + ZIP | Profil-Reader rekonstruiert denselben Graphen; Bundle-Inhalt und Hash stimmen überein |
 | Visio VSDX + ZIP | XML-Paket, ursprüngliche Element-/Beziehungsidentitäten, vorhandene Connector-Endpunkte, gleicher Bundle-Inhalt |
 | Entscheidungsbericht HTML, DOCX, JSON | Anforderung und Snapshot erhalten; Word-Dokument mit echtem POI-Parser gelesen |
-| Diagrammadapter ArchiMate, Visio, Mermaid, Structurizr | Alle registrierten Adapter erhalten denselben erzeugten Graphen; Mermaid-Labels und lokale Structurizr-Importparität |
+| Diagrammadapter ArchiMate, Visio, Mermaid, Structurizr | Alle registrierten Adapter erhalten denselben erzeugten Graphen; Mermaid-Labels sowie offizieller Structurizr-Parser 6.2.3 und lokale Importparität |
 | Allgemeiner Bericht Markdown, HTML, DOCX, JSON | Echte REST-Endpunkte erhalten die erzeugten Scores; Dokumente lesbar und der Anforderung zugeordnet |
+| Unabhängiges Rendering | LibreOffice Writer/Draw öffnen DOCX/VSDX; Poppler prüft alle Begründungen und Knotenlabels, leere Seiten und Seitenumfang; PNGs für Sichtprüfung |
+| Sparx-XMI über echte Integrations-API | Geprüfter ArchiMate-Import, natives Journal, Exportvorschau, Verlustentscheidungen, Dateiabruf und semantischer Vergleich der unterstützten Teilmenge |
 | ArchiMate-Integrationscodec | Tatsächlich exportierte Datei wird eingelesen, erneut geschrieben und mit gleichen Identitäten eingelesen |
 
-Das sind 17 Dateien, zusätzlich zu Snapshot, Auftragsdaten, LLM-Aufrufprotokoll und
+Das sind 17 Snapshot-/Berichtsdateien plus die geprüfte Sparx-XMI-Datei, zusätzlich zu Snapshot, Auftragsdaten, LLM-Aufrufprotokoll und
 Qualitätsbericht in `taxonomy-app/target/civilian-acceptance/`. Die vier Diagrammadapter
 werden direkt über ihre produktive Spring-Registrierung aufgerufen, da ihre älteren
 REST-Endpunkte bewusst eine neue Analyse starten würden. Die Snapshot-Exporte dürfen
 keinen zusätzlichen LLM-Aufruf auslösen.
+
+Die [fachliche Referenzprüfung](../qa/civilian-reference-review.md) dokumentiert
+F1–F5/A1 samt verbleibenden Abdeckungslücken. `integration-import-review.json` und
+`integration-sparx-review.json` halten jede Annahme/Ablehnung fest; der ursprüngliche
+Snapshot bleibt unverändert. Von 44 Beziehungskandidaten werden 36 nativ übernommen;
+das Sparx-Profil v1 kann davon 8 liefern. Diese Grenze ist ein geprüftes Ergebnis.
+
+Die CI rendert die tatsächlichen Dateien zusätzlich mit:
+
+```bash
+python3 .github/scripts/civilian-document-qa.py taxonomy-app/target/civilian-acceptance
+```
+
+Dafür werden LibreOffice Writer/Draw und Poppler benötigt. `document-qa/` enthält
+PDFs, sämtliche Seiten-PNGs und `quality.json` mit Renderer-Version, Hashes und
+Textprüfungen. Dies ersetzt keine Abnahme mit Microsoft Visio oder Sparx EA.
 
 `quality.json` dokumentiert Prüfungen, Graphgrößen, isolierte Kategorien und Datei-Hashes.
 `run.json` benennt Szenario, Fixture-Hash, Snapshot und in der CI den Commit und Run.

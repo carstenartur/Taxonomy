@@ -29,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real HTTP, authentication, catalogue, jobs, persistence and exports; only LLM HTTP is replaced. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+        "taxonomy.features.multi-repository-api.enabled=true",
         "embedding.enabled=false", "embedding.allow-download=false", "llm.mock=false",
         "llm.provider=CUSTOM_OPENAI", "custom.llm.url=" + CivilianLlmConfiguration.URL,
         "custom.llm.model=civilian-fixture", "taxonomy.admin-password=Civilian-Acceptance-2026!",
@@ -172,6 +173,7 @@ class CivilianArchitectureAcceptanceTest {
             }
             save("quality.json", json.valueToTree(CivilianExportQa.verify(projection, artifacts, output,
                     Boolean.getBoolean("generateScreenshots"))));
+            CivilianIntegrationWalkthrough.verify(this, artifacts.get("architecture.archimate.xml"));
             // Export/reopen must not perform another analysis, even when a provider is configured.
             playback.verifyCoverage(2);
             if (browser != null) browser.inspect(projectId, requirementId, snapshotId, projection, artifacts);

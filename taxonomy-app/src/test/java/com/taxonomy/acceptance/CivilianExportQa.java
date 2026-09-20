@@ -131,9 +131,19 @@ public final class CivilianExportQa {
             assertThat(extractor.getText()).contains(requirement);
         }
         String structurizrFile = artifacts.keySet().stream().filter(name -> name.startsWith("adapter-structurizr.")).findFirst().orElseThrow();
+        var officialParser = new com.structurizr.dsl.StructurizrDslParser();
+        officialParser.setRestricted(true);
+        officialParser.parse(new String(artifacts.get(structurizrFile), StandardCharsets.UTF_8));
+        assertThat(officialParser.getWorkspace().getModel().getElements()).hasSize(semanticIds.size());
+        assertThat(officialParser.getWorkspace().getModel().getElements()).extracting(e -> e.getProperties().get("taxonomy.id"))
+                .containsExactlyInAnyOrderElementsOf(semanticIds);
+        assertThat(officialParser.getWorkspace().getModel().getElements()).extracting(e -> e.getProperties().get("taxonomy.label"))
+                .containsExactlyInAnyOrderElementsOf(expected.nodes().stream().filter(n -> !n.container()).map(n -> n.label()).toList());
+        assertThat(officialParser.getWorkspace().getModel().getRelationships()).hasSize(expected.edges().size());
         var structurizr = new StructurizrDslParser().parse(new ByteArrayInputStream(artifacts.get(structurizrFile)));
         assertThat(structurizr.elements()).extracting(element -> element.name())
-                .containsExactlyInAnyOrderElementsOf(expected.nodes().stream().filter(node -> !node.container()).map(node -> node.label()).toList());
+                .containsExactlyInAnyOrderElementsOf(expected.nodes().stream().filter(node -> !node.container())
+                        .map(node -> node.label() + " [" + node.id() + "]").toList());
         String mermaidFile = artifacts.keySet().stream().filter(name -> name.startsWith("adapter-mermaid.")).findFirst().orElseThrow();
         String mermaid = new String(artifacts.get(mermaidFile), StandardCharsets.UTF_8);
         assertThat(mermaid).contains("flowchart");
@@ -147,11 +157,15 @@ public final class CivilianExportQa {
         report.put("semanticElements", semanticIds.size());
         report.put("relationships", expected.edges().size());
         report.put("isolatedElements", isolated);
-        report.put("architectureState", "GENERATED_CANDIDATE_REQUIRES_DOMAIN_REVIEW");
+        report.put("architectureState", "GENERATED_CANDIDATE");
+        report.put("referenceReview", Map.of("decision", "ACCEPTED_AS_INTEGRATION_TEST_REFERENCE",
+                "document", "docs/qa/civilian-reference-review.md", "productionApproval", false,
+                "remainingCoverage", List.of("F3 phone/email and subscription model", "F4 account management/deletion",
+                        "F5 timing/outage contracts", "A1 delivery/privacy/audit contracts")));
         report.put("automaticChecks", List.of("ArchiMate semantic round trip", "Visio identity and endpoint parity",
                 "ZIP and manifest checksums", "SVG identity and scene bounds", "PDF text, provenance and minimum 7pt glyph size",
                 "DOCX/HTML/JSON report provenance", "All four registered diagram adapters",
-                "ArchiMate integration codec round trip", "Structurizr local importer label parity",
+                "ArchiMate integration codec round trip", "Structurizr official 6.2.3 parser and local importer parity",
                 "Legacy Markdown/HTML/DOCX/JSON report endpoints"));
         report.put("notCertified", List.of("Sparx EA desktop", "Microsoft Visio desktop", "operational flood-warning design"));
         Map<String, String> hashes = new TreeMap<>();

@@ -48,6 +48,9 @@ import java.time.ZoneId;
 import java.time.ZoneOffset;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.LinkedHashMap;
+import java.util.ArrayList;
+import java.util.Map;
 import java.util.Locale;
 
 /**
@@ -335,7 +338,6 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         noteRun.setColor(MUTED);
         noteRun.setItalic(true);
         noteRun.setText(report.executiveSummary().methodologyNote());
-        addPageBreak(document);
     }
 
     private void renderExecutiveSummary(
@@ -384,36 +386,28 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         }
 
         addHeading(document, labels.highestPath(), 2, false);
-        XWPFTable pathTable = document.createTable(1, 6);
-        pathTable.setWidth("100%");
-        pathTable.setTableAlignment(TableRowAlign.CENTER);
-        String[] pathHeaders = {
-                labels.step(), labels.node(), labels.score(), labels.localShare(),
-                labels.rationale(), labels.reasonSource()
-        };
-        setHeaderRow(pathTable.getRow(0), pathHeaders);
+        XWPFTable pathTable = document.createTable(1, 5);
+        RationaleIndex reasons = new RationaleIndex();
+        setHeaderRow(pathTable.getRow(0), new String[]{
+                labels.step(), labels.node(), labels.score(), labels.localShare(), labels.rationale()});
         for (PathStep step : report.executiveSummary().path()) {
             XWPFTableRow row = pathTable.createRow();
-            setCellText(row.getCell(0), String.valueOf(step.position()), 8, false, NAVY,
-                    ParagraphAlignment.CENTER);
+            setCellText(row.getCell(0), String.valueOf(step.position()), 8, false, NAVY, ParagraphAlignment.CENTER);
             setCodeAndName(row.getCell(1), step.code(), step.title());
-            setCellText(row.getCell(2), score(step.absoluteScore()), 8, true, NAVY,
-                    ParagraphAlignment.CENTER);
-            setCellText(row.getCell(3), percent(step.localSharePercent()), 8, false, NAVY,
-                    ParagraphAlignment.CENTER);
-            setCellText(row.getCell(4), step.reason(), 8, false, NAVY,
-                    ParagraphAlignment.LEFT);
-            setCellText(row.getCell(5), reasonSource(step.reasonSource(), labels), 7, false,
-                    MUTED, ParagraphAlignment.LEFT);
+            setCellText(row.getCell(2), score(step.absoluteScore()), 8, true, NAVY, ParagraphAlignment.CENTER);
+            setCellText(row.getCell(3), percent(step.localSharePercent()), 8, false, NAVY, ParagraphAlignment.CENTER);
+            setCellText(row.getCell(4), reasons.reference(step.code(), step.reason(), step.reasonSource()),
+                    8, false, NAVY, ParagraphAlignment.LEFT);
             styleDataRow(row, step.position() % 2 == 0 ? LIGHT_GRAY : "FFFFFF");
         }
+        tableWidths(pathTable, 8, 46, 13, 18, 15);
+        reasons.render(document, labels);
 
         addHeading(document, labels.methodology(), 2, false);
         addBodyParagraph(document, report.executiveSummary().methodologyNote(), false);
         if (!report.warnings().isEmpty()) {
             addWarningBox(document, labels.warnings(), report.warnings());
         }
-        addPageBreak(document);
     }
 
     private void renderChapters(
@@ -424,7 +418,6 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         addBodyParagraph(document, labels.german()
                 ? "Jedes folgende Kapitel entspricht genau einem Vaterknoten, dessen direkte Kindknoten mindestens einen von Null verschiedenen Bewertungswert enthalten. Sämtliche direkten Kinder bleiben als geprüfte oder noch ungeprüfte Alternativen sichtbar."
                 : "Each following chapter corresponds to one parent whose direct children contain at least one non-zero score. All direct children remain visible as evaluated or unevaluated alternatives.", false);
-        addPageBreak(document);
 
         for (int chapterIndex = 0; chapterIndex < report.chapters().size(); chapterIndex++) {
             DecisionChapter chapter = report.chapters().get(chapterIndex);
@@ -439,13 +432,15 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
                 imageParagraph.setAlignment(ParagraphAlignment.CENTER);
                 imageParagraph.setSpacingBefore(100);
                 imageParagraph.setSpacingAfter(60);
+                imageParagraph.setKeepNext(true);
                 XWPFRun imageRun = imageParagraph.createRun();
                 imageRun.addPicture(
                         new ByteArrayInputStream(panel.png()),
                         Document.PICTURE_TYPE_PNG,
                         "decision-" + chapter.parentCode() + "-" + panel.panelNumber() + ".png",
                         Units.toEMU(6.45 * 72),
-                        Units.toEMU(3.87 * 72));
+                        Units.toEMU(6.45 * 72 * javax.imageio.ImageIO.read(
+                                new ByteArrayInputStream(panel.png())).getHeight() / DecisionChapterDiagramRenderer.WIDTH));
                 setLastPictureAltText(imageRun, panel.altText());
                 XWPFParagraph caption = document.createParagraph();
                 caption.setAlignment(ParagraphAlignment.RIGHT);
@@ -472,11 +467,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
                                 : "Unevaluated direct children: ")
                                 + String.join(", ", chapter.missingChildCodes())));
             }
-            if (chapterIndex < report.chapters().size() - 1) {
-                addPageBreak(document);
-            }
         }
-        addPageBreak(document);
     }
 
     private void renderAppendix(
@@ -485,29 +476,24 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             DecisionReportLabels labels) {
         addSectionHeading(document, "03", labels.appendix());
         addHeading(document, labels.leadingLeaves(), 2, false);
-        XWPFTable leafTable = document.createTable(1, 6);
-        leafTable.setWidth("100%");
+        XWPFTable leafTable = document.createTable(1, 5);
+        RationaleIndex reasons = new RationaleIndex();
         setHeaderRow(leafTable.getRow(0), new String[]{
-                labels.rank(), labels.node(), labels.score(), labels.taxonomyRoot(),
-                labels.hierarchyPath(), labels.rationale()
-        });
+                labels.rank(), labels.node(), labels.score(), labels.hierarchyPath(), labels.rationale()});
         int rank = 1;
         for (LeafCandidate leaf : report.leadingLeaves()) {
             XWPFTableRow row = leafTable.createRow();
-            setCellText(row.getCell(0), String.valueOf(rank), 8, false, NAVY,
-                    ParagraphAlignment.CENTER);
+            setCellText(row.getCell(0), String.valueOf(rank), 8, false, NAVY, ParagraphAlignment.CENTER);
             setCodeAndName(row.getCell(1), leaf.code(), leaf.title());
-            setCellText(row.getCell(2), leaf.score() + " %", 8, true, NAVY,
-                    ParagraphAlignment.CENTER);
-            setCellText(row.getCell(3), leaf.taxonomyRoot(), 8, false, NAVY,
-                    ParagraphAlignment.CENTER);
-            setCellText(row.getCell(4), leaf.hierarchyPath(), 7, false, NAVY,
-                    ParagraphAlignment.LEFT);
-            setCellText(row.getCell(5), leaf.reason(), 7, false, NAVY,
-                    ParagraphAlignment.LEFT);
+            setCellText(row.getCell(2), leaf.score() + " %", 8, true, NAVY, ParagraphAlignment.CENTER);
+            setCellText(row.getCell(3), leaf.taxonomyRoot() + " · " + leaf.hierarchyPath(), 8, false, NAVY, ParagraphAlignment.LEFT);
+            setCellText(row.getCell(4), reasons.reference(leaf.code(), leaf.reason(), leaf.reasonSource()),
+                    8, false, NAVY, ParagraphAlignment.LEFT);
             styleDataRow(row, rank % 2 == 0 ? LIGHT_GRAY : "FFFFFF");
             rank++;
         }
+        tableWidths(leafTable, 7, 31, 12, 36, 14);
+        reasons.render(document, labels);
 
         addHeading(document, labels.taxonomyBasis(), 2, false);
         XWPFTable evidence = document.createTable(1, 2);
@@ -561,6 +547,8 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             DecisionReportLabels labels) {
         XWPFParagraph number = document.createParagraph();
         number.setSpacingAfter(20);
+        number.setSpacingBefore(240);
+        number.setKeepNext(true);
         XWPFRun numberRun = number.createRun();
         numberRun.setText(labels.chapter().toUpperCase(Locale.ROOT) + " " + chapter.number());
         numberRun.setFontFamily(FONT);
@@ -593,17 +581,24 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         setCellText(scoreCell, score(chapter.parentScore()), 18, true, "FFFFFF",
                 ParagraphAlignment.CENTER);
         scoreCell.setVerticalAlignment(XWPFTableCell.XWPFVertAlign.CENTER);
+        for (XWPFTableCell cell : heading.getRow(0).getTableCells()) {
+            for (XWPFParagraph paragraph : cell.getParagraphs()) {
+                if (paragraph.getCTP().getPPr() == null) paragraph.getCTP().addNewPPr();
+                paragraph.setKeepNext(true);
+            }
+        }
     }
 
     private void addChildTable(
             XWPFDocument document,
             DecisionChapter chapter,
             DecisionReportLabels labels) {
-        XWPFTable table = document.createTable(1, 7);
+        XWPFTable table = document.createTable(1, 6);
+        RationaleIndex reasons = new RationaleIndex();
         table.setWidth("100%");
         setHeaderRow(table.getRow(0), new String[]{
                 labels.rank(), labels.node(), labels.score(), labels.localShare(),
-                labels.disposition(), labels.rationale(), labels.reasonSource()
+                labels.disposition(), labels.rationale()
         });
         int rowNumber = 0;
         for (ChildDecision child : chapter.children()) {
@@ -617,10 +612,8 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
                     ParagraphAlignment.CENTER);
             setCellText(row.getCell(4), disposition(child, labels), 7, false, NAVY,
                     ParagraphAlignment.LEFT);
-            setCellText(row.getCell(5), child.reason(), 7, false, NAVY,
-                    ParagraphAlignment.LEFT);
-            setCellText(row.getCell(6), reasonSource(child.reasonSource(), labels), 6, false,
-                    MUTED, ParagraphAlignment.LEFT);
+            setCellText(row.getCell(5), reasons.reference(child.code(), child.reason(), child.reasonSource()),
+                    8, false, NAVY, ParagraphAlignment.LEFT);
             String fill;
             if (child.leadingSibling()) {
                 fill = LIGHT_TEAL;
@@ -633,6 +626,8 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             styleDataRow(row, fill);
             rowNumber++;
         }
+        tableWidths(table, 7, 32, 12, 16, 19, 14);
+        reasons.render(document, labels);
     }
 
     private void addAccentBar(XWPFDocument document) {
@@ -655,6 +650,8 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
     private void addSectionHeading(XWPFDocument document, String number, String title) {
         XWPFParagraph kicker = document.createParagraph();
         kicker.setSpacingAfter(20);
+        kicker.setPageBreak(true);
+        kicker.setKeepNext(true);
         XWPFRun kickerRun = kicker.createRun();
         kickerRun.setText(number);
         kickerRun.setFontFamily(FONT);
@@ -663,6 +660,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         kickerRun.setColor(TEAL);
         XWPFParagraph heading = document.createParagraph();
         heading.setSpacingBefore(0);
+        heading.setKeepNext(true);
         heading.setSpacingAfter(220);
         XWPFRun run = heading.createRun();
         run.setText(title);
@@ -1011,10 +1009,38 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         run.setColor("26303A");
     }
 
-    private void addPageBreak(XWPFDocument document) {
-        XWPFParagraph paragraph = document.createParagraph();
-        paragraph.setPageBreak(true);
-        paragraph.setSpacingAfter(0);
+    /** Keep prose out of narrow numeric tables; source is part of the deduplication key. */
+    private final class RationaleIndex {
+        private record Evidence(String text, DecisionRationaleReport.ReasonSource source) {}
+        private final Map<Evidence, List<String>> entries = new LinkedHashMap<>();
+
+        String reference(String code, String text, DecisionRationaleReport.ReasonSource source) {
+            Evidence evidence = new Evidence(text, source);
+            entries.computeIfAbsent(evidence, ignored -> new ArrayList<>()).add(code);
+            return "R" + (new ArrayList<>(entries.keySet()).indexOf(evidence) + 1);
+        }
+
+        void render(XWPFDocument document, DecisionReportLabels labels) {
+            int index = 1;
+            for (var entry : entries.entrySet()) {
+                addLabel(document, "R" + index++ + " · " + String.join(", ", entry.getValue())
+                        + " · " + reasonSource(entry.getKey().source(), labels));
+                addBodyParagraph(document, entry.getKey().text(), false);
+            }
+        }
+    }
+
+    private void tableWidths(XWPFTable table, int... percentages) {
+        table.setWidth("100%");
+        var properties = table.getCTTbl().getTblPr();
+        var layout = properties.isSetTblLayout() ? properties.getTblLayout() : properties.addNewTblLayout();
+        layout.setType(org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblLayoutType.FIXED);
+        var grid = table.getCTTbl().getTblGrid();
+        if (grid == null) grid = table.getCTTbl().addNewTblGrid();
+        while (grid.sizeOfGridColArray() > 0) grid.removeGridCol(0);
+        for (int percent : percentages) grid.addNewGridCol().setW(BigInteger.valueOf(9806L * percent / 100));
+        for (var row : table.getRows()) for (int i = 0; i < percentages.length; i++)
+            row.getCell(i).setWidth(percentages[i] + "%");
     }
 
     private void spacer(XWPFDocument document, int points) {

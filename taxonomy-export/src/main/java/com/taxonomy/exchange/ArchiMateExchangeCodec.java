@@ -55,7 +55,8 @@ public final class ArchiMateExchangeCodec {
         for (Element element : children(child(doc.getDocumentElement(), "relationships"))) {
             String id = required(element, "identifier"), type = type(element);
             Map<String, String> properties = properties(element); Map<String, String> extensions = extensions(element, propertyNames);
-            String mapped = canonicalType(properties, propertyNames, "Taxonomy.RelationType", RELATION_TYPES.get(type));
+            String mapped = canonicalType(properties, propertyNames, "Taxonomy.RelationType",
+                    canonicalType(properties, propertyNames, "taxonomy.type", RELATION_TYPES.get(type)));
             if (type.equals("Access") && element.getAttribute("accessType").equals("Write")) mapped = "PRODUCES";
             if (mapped == null) losses.add(loss(id, "type", "UNSUPPORTED_RELATION_TYPE", LossDisposition.UNSUPPORTED,
                     "The source relationship has no declared canonical mapping; no Association fallback is applied"));

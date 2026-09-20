@@ -28,8 +28,8 @@ class StructurizrExportServiceTest {
         String dsl = service.export(model);
 
         assertThat(dsl).startsWith("workspace {");
-        assertThat(dsl).contains("softwareSystem \"User Portal\"");
-        assertThat(dsl).contains("container \"Auth Service\"");
+        assertThat(dsl).contains("element \"User Portal [n1]\"");
+        assertThat(dsl).contains("element \"Auth Service [n2]\"");
         assertThat(dsl).contains("-> ");
         assertThat(dsl).contains("authenticates via");
         assertThat(dsl).contains("views {");
@@ -57,7 +57,7 @@ class StructurizrExportServiceTest {
 
         String dsl = service.export(model);
 
-        assertThat(dsl).contains("person \"System Admin\"");
+        assertThat(dsl).contains("element \"System Admin [n1]\"");
     }
 
     @Test
@@ -95,7 +95,7 @@ class StructurizrExportServiceTest {
 
         // Both nodes should appear — IDs are based on node.id() not label
         long containerCount = dsl.lines()
-                .filter(l -> l.contains("container \"API Gateway\""))
+                .filter(l -> l.contains("element \"API Gateway ["))
                 .count();
         assertThat(containerCount).isEqualTo(2);
     }
@@ -115,6 +115,6 @@ class StructurizrExportServiceTest {
         // The edge should be skipped since target doesn't exist
         assertThat(dsl).doesNotContain("->");
         // The valid node should still be present
-        assertThat(dsl).contains("softwareSystem \"Portal\"");
+        assertThat(dsl).contains("element \"Portal [n1]\"");
     }
 }

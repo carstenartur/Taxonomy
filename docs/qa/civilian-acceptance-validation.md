@@ -26,12 +26,30 @@ executed checks from pending visual/product acceptance.
   poster page to preserve natural-size labels, and places long type names on
   their own line. The overall graph still needs zoom or a large print format;
   taxonomy hypotheses are not an approved application design.
-- The actual decision DOCX was rendered through LibreOffice to 87 PDF/PNG pages.
-  Inspection of pages 1–4 and 50 found an empty body on page 2, repeated long
-  rationales in narrow table columns and substantial pagination. This is a
-  concrete open presentation finding, not a successful full-document visual
-  approval. The parser/provenance assertions remain valid; compact, readable
-  decision-report pagination needs separate corrective work.
+- The original 87-page Word finding is corrected: page breaks are attached to
+  meaningful headings, tables use readable column widths, and repeated rationales
+  are referenced and printed once per section with their distinct provenance.
+  Diagram aspect ratios and spacing are preserved, and chapter headings/captions
+  stay with their following/preceding content. The follow-up native render and
+  every-page inspection are recorded in the follow-up evidence below.
+- Structurizr exports now pass the official 6.2.3 restricted parser. Custom
+  elements represent the flat taxonomy graph without inventing C4 parent systems;
+  duplicate display labels retain distinct IDs and the original label property.
+- The complete ArchiMate → native reviewed import → Sparx file delivery uses a
+  separate repository/workspace created through actual REST endpoints. It preserves
+  all 38 elements. Explicit review rejects 8 of 44 candidates under native endpoint
+  rules and 28 additional relations without a Sparx v1 mapping. The 8 delivered
+  relations retain their endpoint names, direction and canonical types on re-import.
+  Neither rejection changes the original generated snapshot.
+- The [reference-case review](civilian-reference-review.md) accepts the fixture as
+  an integration-test reference and records incomplete F3/F4 and F5/A1 contracts.
+  It does not approve a deployed flood-warning architecture.
+- LibreOffice Writer and Draw independently open the actual DOCX/VSDX exports.
+  `.github/scripts/civilian-document-qa.py` checks all report rationale text and all
+  diagram labels, empty page bodies, page count and file/PDF hashes. CI preserves
+  every rendered page for visual inspection. The full Visio graph remains dense,
+  with overlapping/reversed edge labels in Draw; this is a semantic interchange
+  artifact, not an approved presentation layout or Microsoft Visio compatibility.
 
 ## Browser evidence and environment limits
 
@@ -81,5 +99,8 @@ The dedicated civilian profile supplies its own actual browser evidence. This
 result must not be described as a run of every database/container test. The exact
 browser profile command was also executed locally and reached Testcontainers,
 which failed because `/var/run/docker.sock` is absent.
-Desktop import into Sparx EA / Microsoft Visio, independent Structurizr grammar
-validation, and a domain review of the flood information design are not claimed.
+Desktop import into Sparx EA / Microsoft Visio and production domain approval
+remain unexecuted. Official Structurizr grammar validation and the documented
+integration-reference review are now part of the follow-up. The counts and browser
+run above describe the earlier baseline; follow-up gate/CI evidence is recorded
+separately so historical results are not attributed to new code.

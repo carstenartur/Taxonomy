@@ -7,6 +7,7 @@ on:
       - 'pom.xml'
       - '.mvn/verification-suites.json'
       - '.github/workflows/civilian-acceptance.yml'
+      - '.github/scripts/civilian-document-qa.py'
   workflow_dispatch:
 
 permissions:
@@ -32,6 +33,11 @@ jobs:
       - name: Run sourced civilian scenario with real browser and remote LLM playback
         run: >-
           ./mvnw -B -ntp -pl taxonomy-app -am test -Pcivilian-acceptance
+      - name: Independently render and check Word and Visio exports
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends libreoffice-writer libreoffice-draw poppler-utils
+          python3 .github/scripts/civilian-document-qa.py taxonomy-app/target/civilian-acceptance
       - name: Preserve architecture, exports, screenshots and verification evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

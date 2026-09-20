@@ -31,7 +31,7 @@ import java.util.List;
 public class DecisionChapterDiagramRenderer {
 
     static final int WIDTH = 1200;
-    static final int HEIGHT = 720;
+    private static int height(int children) { return children <= 3 ? 520 : 770; }
     static final int CHILDREN_PER_PANEL = 6;
 
     private static final Color NAVY = new Color(11, 31, 51);
@@ -79,14 +79,14 @@ public class DecisionChapterDiagramRenderer {
             DecisionReportLabels labels,
             int panelNumber,
             int panelCount) {
-        BufferedImage image = new BufferedImage(WIDTH, HEIGHT, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage image = new BufferedImage(WIDTH, height(children.size()), BufferedImage.TYPE_INT_ARGB);
         Graphics2D graphics = image.createGraphics();
         try {
             graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
             graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING,
                     RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
             graphics.setColor(WHITE);
-            graphics.fillRect(0, 0, WIDTH, HEIGHT);
+            graphics.fillRect(0, 0, WIDTH, height(children.size()));
 
             graphics.setFont(new Font(Font.SANS_SERIF, Font.BOLD, 24));
             graphics.setColor(NAVY);
@@ -134,7 +134,7 @@ public class DecisionChapterDiagramRenderer {
             String legend = labels.german()
                     ? "Absoluter Relevanzwert · lokaler Anteil am Vaterwert · Status des Pfades"
                     : "Absolute relevance score · local share of parent score · path status";
-            graphics.drawString(legend, 50, HEIGHT - 30);
+            graphics.drawString(legend, 50, height(children.size()) - 30);
         } finally {
             graphics.dispose();
         }
@@ -222,7 +222,7 @@ public class DecisionChapterDiagramRenderer {
         int gapX = 34;
         int totalWidth = columns * cardWidth + (columns - 1) * gapX;
         int startX = (WIDTH - totalWidth) / 2;
-        int startY = rows == 1 ? 315 : 285;
+        int startY = rows == 1 ? 255 : 285;
         int gapY = 42;
         List<Card> result = new ArrayList<>();
         for (int index = 0; index < count; index++) {
@@ -262,7 +262,7 @@ public class DecisionChapterDiagramRenderer {
         String descriptionId = idPrefix + "-desc";
         StringBuilder svg = new StringBuilder(8_192);
         svg.append("<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 ")
-                .append(WIDTH).append(' ').append(HEIGHT)
+                .append(WIDTH).append(' ').append(height(children.size()))
                 .append("\" role=\"img\" aria-labelledby=\"")
                 .append(titleId).append(' ').append(descriptionId)
                 .append("\">");
@@ -273,7 +273,7 @@ public class DecisionChapterDiagramRenderer {
                 .append(xml(altText(
                         chapter, children, labels, panelNumber, panelCount)))
                 .append("</desc>");
-        svg.append("<rect width=\"1200\" height=\"720\" fill=\"#ffffff\"/>");
+        svg.append("<rect width=\"1200\" height=\"").append(height(children.size())).append("\" fill=\"#ffffff\"/>");
         String heading = labels.parentNode() + " " + chapter.parentCode()
                 + (panelCount > 1 ? " · " + panelNumber + "/" + panelCount : "");
         svg.append(text(50, 42, heading, 24, true, "#0b1f33", "start"));
@@ -337,7 +337,7 @@ public class DecisionChapterDiagramRenderer {
         String legend = labels.german()
                 ? "Absoluter Relevanzwert · lokaler Anteil am Vaterwert · Status des Pfades"
                 : "Absolute relevance score · local share of parent score · path status";
-        svg.append(text(50, HEIGHT - 30, legend, 15, false, "#64707c", "start"));
+        svg.append(text(50, height(children.size()) - 30, legend, 15, false, "#64707c", "start"));
         svg.append("</svg>");
         return svg.toString();
     }

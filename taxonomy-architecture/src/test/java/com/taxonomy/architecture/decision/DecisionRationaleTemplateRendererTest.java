@@ -118,6 +118,13 @@ class DecisionRationaleTemplateRendererTest {
                         TEMPLATE_SHA256,
                         1).artifactMetadata());
         byte[] docx = artifact.bytes();
+        try (var document = new org.apache.poi.xwpf.usermodel.XWPFDocument(
+                new ByteArrayInputStream(docx))) {
+            assertThat(document.getParagraphs()).noneMatch(p -> p.getText().isBlank()
+                    && (p.isPageBreak() || p.getRuns().stream().anyMatch(r ->
+                    r.getCTR().getBrList().stream().anyMatch(b ->
+                            org.openxmlformats.schemas.wordprocessingml.x2006.main.STBrType.PAGE.equals(b.getType())))));
+        }
         Map<String, byte[]> entries = unzip(docx);
 
         String contentTypes = text(entries, "[Content_Types].xml");
@@ -190,7 +197,7 @@ class DecisionRationaleTemplateRendererTest {
         }
     }
 
-    private static DecisionRationaleReport report() {
+    static DecisionRationaleReport report() {
         Instant generatedAt = Instant.parse("2026-08-22T14:30:00Z");
         DecisionRationaleReport.ReportMetadata metadata =
                 new DecisionRationaleReport.ReportMetadata(
