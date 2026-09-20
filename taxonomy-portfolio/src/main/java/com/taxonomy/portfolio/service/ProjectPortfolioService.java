@@ -45,6 +45,9 @@ public class ProjectPortfolioService {
     private static final List<ConflictStatus> CLOSED_CONFLICT_STATUSES =
             List.of(ConflictStatus.REJECTED, ConflictStatus.RESOLVED);
 
+    @jakarta.persistence.PersistenceContext
+    private jakarta.persistence.EntityManager entityManager;
+
     private final ArchitectureProjectRepository projectRepository;
     private final ProjectRequirementRepository requirementRepository;
     private final ProjectRequirementVersionRepository versionRepository;
@@ -236,6 +239,21 @@ public class ProjectPortfolioService {
                 .stream()
                 .map(requirement -> toRequirementView(requirement, currentVersion(requirement)))
                 .toList();
+    }
+
+    /** Freeze actual stored timestamp/version values inside an already active integration transaction. */
+    @Transactional(propagation = org.springframework.transaction.annotation.Propagation.MANDATORY)
+    public void refreshIntegrationRequirements(Long projectId, String username, WorkspaceContext context) {
+        ArchitectureProject project = requireProjectForUpdate(projectId, username, context);
+        entityManager.flush();
+        var requirements = requirementRepository.findByProjectIdAndScopeKeyOrderByRequirementKeyAsc(projectId, project.getScopeKey());
+        for (ProjectRequirement requirement : requirements) {
+            entityManager.refresh(requirement);
+            ProjectRequirementVersion version = currentVersion(requirement);
+            if (version != null) {
+                entityManager.refresh(version);
+            }
+        }
     }
 
     public record RequirementPage(List<RequirementView> requirements, boolean hasNext) {

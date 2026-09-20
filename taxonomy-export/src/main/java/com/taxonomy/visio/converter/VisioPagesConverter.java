@@ -71,6 +71,8 @@ public class VisioPagesConverter implements Converter {
                 .mapToDouble(shape -> shape.getX() + shape.getWidth() / 2.0)
                 .max()
                 .orElse(0.0);
+        right = Math.max(right, page.getConnects().stream().filter(c -> c.getTextBox() != null)
+                .mapToDouble(c -> c.getTextBox().x() + c.getTextBox().width() / 2).max().orElse(0));
         return Math.max(MINIMUM_PAGE_WIDTH, right + PAGE_MARGIN);
     }
 
@@ -79,6 +81,8 @@ public class VisioPagesConverter implements Converter {
                 .mapToDouble(shape -> shape.getY() + shape.getHeight() / 2.0)
                 .max()
                 .orElse(0.0);
+        top = Math.max(top, page.getConnects().stream().filter(c -> c.getTextBox() != null)
+                .mapToDouble(c -> c.getTextBox().y() + c.getTextBox().height() / 2).max().orElse(0));
         return Math.max(MINIMUM_PAGE_HEIGHT, top + PAGE_MARGIN);
     }
 

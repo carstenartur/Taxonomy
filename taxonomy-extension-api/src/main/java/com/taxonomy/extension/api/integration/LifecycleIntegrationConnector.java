@@ -19,6 +19,9 @@ public interface LifecycleIntegrationConnector {
     default DiscoveryResult discover(IntegrationContext context) {
         throw new UnsupportedOperationException("Discovery is not supported by this connector");
     }
+    /** Legacy weak hook: cannot prove atomicity, durable receipts or recovery. The conditional
+     * publication engine must use ConditionalPublicationConnector instead. */
+    @Deprecated(since = "1.4", forRemoval = false)
     default PublishResult publish(ReviewedChangeSet review, OutboundRequest request) {
         throw new UnsupportedOperationException("Conditional remote publication is not supported by this connector");
     }

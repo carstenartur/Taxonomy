@@ -22,6 +22,7 @@ public class IntegrationConnectionEntity {
     @Column(name="created_by", nullable=false, length=160) String createdBy;
     @Column(name="created_at", nullable=false, length=40) String createdAt;
     @Column(name="checkpoint_id", length=36) String checkpointId;
+    @Column(name="common_checkpoint_id", length=36) String commonCheckpointId;
     @Column(name="active_operation_id", length=36) String activeOperationId;
     @Column(name="connection_revision", nullable=false) long revision;
     @Version @Column(name="row_version", nullable=false) long rowVersion;

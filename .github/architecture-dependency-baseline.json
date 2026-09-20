@@ -573,7 +573,7 @@
       "fromPackage": "com.taxonomy.interop.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 6
     },
     {
       "fromContext": "interop",
@@ -594,7 +594,21 @@
       "fromPackage": "com.taxonomy.interop.persistence",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "interop",
+      "fromPackage": "com.taxonomy.interop.publication",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "interop",
+      "fromPackage": "com.taxonomy.interop.publication",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 13
     },
     {
       "fromContext": "interop",
