@@ -34,7 +34,7 @@ public class StructurizrDslParser implements ExternalParser {
 
     /** Pattern: identifier = elementType "name" ["description"] ["technology"] */
     private static final Pattern ELEMENT_PATTERN = Pattern.compile(
-            "^\\s*(\\w+)\\s*=\\s*(person|softwareSystem|softwaresystem|container|component|deploymentNode|infrastructureNode|containerInstance)\\s+\"([^\"]*)\"(?:\\s+\"([^\"]*)\")?(?:\\s+\"([^\"]*)\")?",
+            "^\\s*(\\w+)\\s*=\\s*(element|person|softwareSystem|softwaresystem|container|component|deploymentNode|infrastructureNode|containerInstance)\\s+\"([^\"]*)\"(?:\\s+\"([^\"]*)\")?(?:\\s+\"([^\"]*)\")?",
             Pattern.CASE_INSENSITIVE
     );
 
@@ -139,6 +139,7 @@ public class StructurizrDslParser implements ExternalParser {
 
     private String normalizeType(String rawType) {
         return switch (rawType.toLowerCase(Locale.ROOT)) {
+            case "element" -> "Element";
             case "person" -> "Person";
             case "softwaresystem" -> "SoftwareSystem";
             case "container" -> "Container";

@@ -177,6 +177,12 @@ public class IntegrationStore {
                 entity = new ExternalIdentityMappingEntity(); entity.id = id; entity.scopeId = connection.scopeId;
                 entity.connectionId = connection.id; entity.externalId = externalId;
             }
+            if (removed && !created) {
+                // Reserve historical identities after deletion. The removed flag excludes
+                // these last-known values from the live snapshot and repeat deletion diffs.
+                if (external == null) external = json.read(entity.externalJson, Artifact.class);
+                if (internal == null) internal = json.read(entity.internalJson, Artifact.class);
+            }
             entity.businessIdentity = businessIdentity; entity.requirementId = requirementId; entity.externalVersion = externalVersion;
             entity.externalJson = json.write(external); entity.internalJson = json.write(internal);
             entity.fingerprint = json.fingerprint(external); entity.operationId = operationId.toString(); entity.removed = removed;

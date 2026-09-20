@@ -12,6 +12,10 @@ public interface LifecycleIntegrationConnector {
     ExchangeDocument previewInbound(InboundRequest request);
     ExchangeFile previewOutbound(OutboundRequest request);
 
+    /** Validate a reviewed inbound selection before any canonical changes. Read-only profiles
+     * override this boundary without pretending to support file or remote publication. */
+    default void validateInboundSelection(OutboundRequest selection) { previewOutbound(selection); }
+
     default DiscoveryResult discover(IntegrationContext context) {
         throw new UnsupportedOperationException("Discovery is not supported by this connector");
     }

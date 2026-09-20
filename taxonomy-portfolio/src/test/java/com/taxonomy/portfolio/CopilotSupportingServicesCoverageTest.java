@@ -283,7 +283,7 @@ class CopilotSupportingServicesCoverageTest {
         ProjectRequirement requirement = mock(ProjectRequirement.class);
         RequirementAnalysisSnapshot snapshot = mock(RequirementAnalysisSnapshot.class);
         String scopeKey = PortfolioScope.key(context.username(), context);
-        when(requirements.findByIdAndProjectIdAndScopeKey(7L, 41L, scopeKey))
+        when(requirements.findByIdAndProjectIdAndScopeKeyForUpdate(7L, 41L, scopeKey))
                 .thenReturn(Optional.of(requirement));
         when(snapshots.findByIdAndProjectIdAndScopeKey("snapshot-1", 41L, scopeKey))
                 .thenReturn(Optional.of(snapshot));
@@ -318,7 +318,7 @@ class CopilotSupportingServicesCoverageTest {
         CopilotResultPersistenceService service = new CopilotResultPersistenceService(
                 requirements, snapshots);
         String scopeKey = PortfolioScope.key(context.username(), context);
-        when(requirements.findByIdAndProjectIdAndScopeKey(7L, 41L, scopeKey))
+        when(requirements.findByIdAndProjectIdAndScopeKeyForUpdate(7L, 41L, scopeKey))
                 .thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.selectCurrentSnapshot(

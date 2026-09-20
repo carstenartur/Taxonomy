@@ -608,6 +608,8 @@ Der Export-Tab bietet ein dediziertes Panel mit allen verfügbaren Exportformate
 
 ![Export-Tab — Gesamtansicht](../images/33-export-tab.png)
 
+Der [zivile Referenzablauf](../testing/civilian-acceptance.md) erklärt die Copilot- und Workbench-Bedienelemente an einer nachvollziehbaren Hochwasseranforderung und beschreibt die zugehörige Export-QA.
+
 > **Unterstützungsgrenze:** Browser-/SVG-/Vektor-PDF-Ansichten sind menschenlesbare Ansichten des ausgewählten Ergebnisses. Mermaid und JSON sind zweckgebundene Projektionen. ArchiMate-3.1- und Visio-2012-Downloads sind experimentelle begrenzte Teilmengen; Interoperabilität mit benannten Drittwerkzeugen sowie Öffnen/Bearbeiten/Speichern/erneutes Öffnen in Microsoft Visio Desktop sind nicht zertifiziert. Diese Bedienelemente belegen allein keine Gleichheit mit einem persistierten Snapshot; dafür ist ein ausdrücklich Snapshot-gebundener Architektur-Workbench-Endpunkt zu verwenden. Siehe die [Unterstützungsgrenze der Architekturexporte](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte) sowie [#965](https://github.com/carstenartur/Taxonomy/issues/965), [#966](https://github.com/carstenartur/Taxonomy/issues/966) und [#967](https://github.com/carstenartur/Taxonomy/issues/967).
 
 ### SVG-Export

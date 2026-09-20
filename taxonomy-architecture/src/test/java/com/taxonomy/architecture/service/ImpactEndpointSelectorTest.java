@@ -12,6 +12,25 @@ class ImpactEndpointSelectorTest {
     private final ImpactEndpointSelector selector = new ImpactEndpointSelector();
 
     @Test
+    void concreteDescendantSuppressesItsScoredAncestorsButKeepsOtherBranches() {
+        var parent = createLeaf("CP-1059", 1.0, "CP > CP-1000 > CP-1059");
+        parent.setAnchor(true);
+        var leaf = createLeaf("CP-1041", 1.0, "CP > CP-1000 > CP-1059 > CP-1041");
+        var sibling = createLeaf("CP-1020", .8, "CP > CP-1000 > CP-1059 > CP-1020");
+        assertThat(selector.selectEndpoints(List.of(parent, leaf, sibling)))
+                .extracting(RequirementElementView::getNodeCode)
+                .containsExactly("CP-1041", "CP-1020");
+    }
+
+    @Test
+    void lowScoringDescendantDoesNotDisplaceAQualifiedParent() {
+        var parent = createLeaf("CP-1059", 1.0, "CP > CP-1000 > CP-1059");
+        var weak = createLeaf("CP-1041", .01, "CP > CP-1000 > CP-1059 > CP-1041");
+        assertThat(selector.selectEndpoints(List.of(parent, weak)))
+                .extracting(RequirementElementView::getNodeCode).containsExactly("CP-1059");
+    }
+
+    @Test
     void emptyListReturnsEmpty() {
         assertThat(selector.selectEndpoints(List.of())).isEmpty();
     }

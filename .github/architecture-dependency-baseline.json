@@ -590,6 +590,13 @@
       "classDependencyCount": 2
     },
     {
+      "fromContext": "interop",
+      "fromPackage": "com.taxonomy.interop.sparx",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 1
+    },
+    {
       "fromContext": "knowledge",
       "fromPackage": "com.taxonomy.catalog.controller",
       "toContext": "workspace",

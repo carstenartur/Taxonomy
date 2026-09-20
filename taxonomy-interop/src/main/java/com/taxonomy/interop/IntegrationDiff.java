@@ -19,6 +19,14 @@ public class IntegrationDiff {
     public IntegrationDiff(IntegrationJson json) { this.json = json; }
     public List<IntegrationChange> compare(ExchangeDocument incoming, AuthorityMode mode, List<Identity> mappings, Map<String, Artifact> current) {
         Map<String, Identity> baselines = new TreeMap<>(); mappings.forEach(m -> baselines.put(m.externalId(), m));
+        Map<String, Set<String>> identityOwners = new TreeMap<>();
+        for (Identity mapping : mappings) {
+            // Removed and delivered-but-unacknowledged identities still reserve their UUID.
+            for (Artifact artifact : new Artifact[]{mapping.external(), mapping.internal()}) {
+                String identity = artifact == null ? null : artifact.extensions().get("internalIdentity");
+                if (identity != null) identityOwners.computeIfAbsent(identity, key -> new TreeSet<>()).add(mapping.externalId());
+            }
+        }
         Map<String, Artifact> external = ExchangeItems.flatten(incoming);
         TreeSet<String> ids = new TreeSet<>(external.keySet()); ids.addAll(baselines.keySet());
         List<IntegrationChange> changes = new ArrayList<>();
@@ -31,6 +39,14 @@ public class IntegrationDiff {
                 changes.add(change(id, conflict.isEmpty() ? ChangeKind.REMOVE_CANDIDATE : ChangeKind.CONFLICT, Set.of("removed"), local, baseline.external(), null, conflict));
                 continue;
             }
+            String identity = next.extensions().get("internalIdentity");
+            Artifact observed = baseline == null ? null : baseline.external() == null ? baseline.internal() : baseline.external();
+            boolean identityChanged = observed != null && !Objects.equals(observed.extensions().get("internalIdentity"), identity);
+            if (identityChanged || identity != null && identityOwners.getOrDefault(identity, Set.of()).stream().anyMatch(owner -> !owner.equals(id))) {
+                changes.add(change(id, ChangeKind.CONFLICT, ExchangeItems.fields(next).keySet(), local,
+                        baseline == null ? null : baseline.external(), next, List.of("INTERNAL_IDENTITY_REUSED")));
+                continue;
+            }
             if (baseline == null || baseline.removed()) {
                 List<String> conflicts = baseline != null ? List.of("EXTERNAL_IDENTITY_REUSED") : local != null ? List.of("DUPLICATE_MAPPING") : List.of();
                 changes.add(change(id, conflicts.isEmpty() ? ChangeKind.ADD : ChangeKind.CONFLICT, ExchangeItems.fields(next).keySet(), local, baseline == null ? null : baseline.external(), next, conflicts));
@@ -38,7 +54,6 @@ public class IntegrationDiff {
             }
             // A delivered identity is bound, but has no confirmed external baseline yet.
             // Compare its return against the frozen export without inferring deletion from omissions.
-            Artifact observed = baseline.external() == null ? baseline.internal() : baseline.external();
             Set<String> remoteFields = changed(observed, next);
             Set<String> localFields = changed(baseline.internal(), local);
             List<String> conflicts = new ArrayList<>();

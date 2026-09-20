@@ -8,6 +8,20 @@ The immutable `v1.3.1` Git tag remains release-ancestry evidence only. No GitHub
 
 ## Product highlights
 
+### Experimental Sparx EA XMI exchange
+
+The tool integration workflow now offers an experimental `sparx-xmi-2.1@1`
+profile for reviewed file import and export. It reuses the existing durable
+preview, identity, three-way conflict and semantic journal services. The semantic
+subset covers packages, mapped elements, project requirements, tags and supported
+connectors; layout remains excluded with an explicit loss report.
+
+This is partial delivery of [#1075](https://github.com/carstenartur/Taxonomy/issues/1075).
+Real Enterprise Architect compatibility has not been executed. OSLC AM live
+synchronization and conditional publication remain unimplemented. See the
+[English](docs/features/sparx-integration.md) or
+[German](docs/features/sparx-integration-de.md) guide before evaluating the profile.
+
 ### Complete project and requirement portfolio workflow
 
 The portfolio workbench supports a traceable end-to-end process rather than isolated screens:

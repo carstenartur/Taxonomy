@@ -171,6 +171,20 @@ class ArchitectureWorkbenchServiceTest {
     }
 
     @Test
+    void usesReadableRequirementTitleWhenSnapshotStoresAnUnresolvedPolicyKey() {
+        SnapshotDetail persisted = snapshotWithArchitecture();
+        persisted.analysis().getArchitectureView().setViewTitle("archview.policy.title.defaultImpact");
+        prepareSnapshot(persisted);
+        Projection projection = service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+        assertThat(new tools.jackson.databind.ObjectMapper().valueToTree(projection)
+                .path("policyTitleKey").asString()).isEqualTo("archview.policy.title.defaultImpact");
+        assertThat(projection.diagram().title()).contains("REQ-001", "Secure command information")
+                .doesNotContain("archview.");
+        assertThat(service.renderSvg(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))
+                .contains("REQ-001").doesNotContain("archview.policy.title.");
+    }
+
+    @Test
     void removesEmptyAndDuplicatePersistedWarningsWithoutChangingTheirOrder() {
         SnapshotDetail persisted = snapshotWithArchitecture();
         persisted.analysis().setWarnings(java.util.Arrays.asList(null, "", "Review relation", "  "));

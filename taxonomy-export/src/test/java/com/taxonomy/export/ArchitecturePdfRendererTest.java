@@ -19,6 +19,36 @@ class ArchitecturePdfRendererTest {
     private final ArchitecturePdfRenderer renderer = new ArchitecturePdfRenderer();
 
     @Test
+    void wideCivilianSceneKeepsReadableLabelsAndHeaderTextInsideTheNode() throws Exception {
+        var node = new com.taxonomy.diagram.DiagramSceneNode("CO-1048", "Short Messaging Access Services",
+                "Communications Services", 1, true, 8, 4, true, null, false,
+                2200, 40, 240, 84);
+        var wide = new DiagramScene("Civilian flood information", 2516, 650, "LR", List.of(node), List.of());
+        try (var document = org.apache.pdfbox.Loader.loadPDF(renderer.render(wide, "CIV-FLOOD-001"))) {
+            var labels = new java.util.ArrayList<org.apache.pdfbox.text.TextPosition>();
+            var nodeText = new java.util.ArrayList<org.apache.pdfbox.text.TextPosition>();
+            var text = new org.apache.pdfbox.text.PDFTextStripper() {
+                @Override protected void writeString(String value, List<org.apache.pdfbox.text.TextPosition> positions)
+                        throws java.io.IOException {
+                    if (value.contains("Short Messaging")) labels.addAll(positions);
+                    if (value.contains("Short Messaging") || value.contains("CO-1048")
+                            || value.contains("Communications Services") || value.contains("100%")) {
+                        nodeText.addAll(positions);
+                    }
+                    super.writeString(value, positions);
+                }
+            };
+            assertThat(text.getText(document)).contains("Short Messaging Access Services", "CO-1048", "100%", "Communications Services");
+            assertThat(labels).isNotEmpty().allSatisfy(position -> assertThat(position.getFontSizeInPt()).isGreaterThanOrEqualTo(8));
+            assertThat(nodeText).isNotEmpty().allSatisfy(position -> {
+                assertThat(position.getXDirAdj()).isGreaterThanOrEqualTo(2232);
+                assertThat(position.getXDirAdj() + position.getWidthDirAdj()).isLessThanOrEqualTo(2472);
+            });
+            assertThat(document.getPage(0).getMediaBox().getWidth()).isGreaterThan(2000);
+        }
+    }
+
+    @Test
     void rendersLiveEditorSceneWithoutDependingOnApplicationTypes() {
         DiagramScene scene = scene();
 

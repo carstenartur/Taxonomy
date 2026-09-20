@@ -8,6 +8,10 @@ import com.taxonomy.exchange.ExchangeXml;
 import com.taxonomy.exchange.ReqifExchangeCodec;
 import com.taxonomy.exchange.OslcRequirementsCodec;
 import com.taxonomy.interop.oslc.OslcTransport;
+import com.taxonomy.interop.sparx.SparxSnapshots;
+import com.taxonomy.interop.sparx.SparxOslcAmReader;
+import com.taxonomy.exchange.sparx.SparxOslcAmCodec;
+import com.taxonomy.exchange.sparx.SparxMappingProfile;
 import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import com.taxonomy.interop.persistence.IntegrationStore;
 import com.taxonomy.interop.persistence.IntegrationStore.*;
@@ -34,6 +38,7 @@ public class IntegrationService {
     private final SystemRepositoryService repositories;
     private final RepositoryMembershipService memberships;
     private final OslcTransport remote;
+    private final SparxOslcAmReader sparxRemote;
     private final WorkspaceAccessService workspaceAccess;
 
     public IntegrationService(IntegrationStore store, ExchangeConnectorRegistry connectors, IntegrationDomainAdapter domain,
@@ -42,6 +47,7 @@ public class IntegrationService {
         this.store = store; this.connectors = connectors; this.domain = domain; this.editor = editor;
         this.diff = diff; this.json = json; this.repositories = repositories; this.memberships = memberships;
         this.remote = remote;
+        this.sparxRemote = new SparxOslcAmReader(remote);
         this.workspaceAccess = workspaceAccess;
     }
     public record CreateConnection(UUID id, String name, String connectorId, AuthorityMode authority,
@@ -68,11 +74,18 @@ public class IntegrationService {
             if (request.projectId() == null) throw new IllegalArgumentException("ReqIF requires a project");
             domain.requireProject(context, request.projectId());
         }
-        if (OslcRequirementsCodec.PROFILE.equals(request.connectorId()) && (request.remoteProfile() == null || !request.remoteProfile().matches("[A-Za-z0-9_-]{1,100}")))
+        if (Set.of(OslcRequirementsCodec.PROFILE, SparxOslcAmCodec.PROFILE).contains(request.connectorId()) && (request.remoteProfile() == null || !request.remoteProfile().matches("[A-Za-z0-9_-]{1,100}")))
             throw new IllegalArgumentException("OSLC requires a configured remote profile");
         if (ArchiMateExchangeCodec.PROFILE.equals(request.connectorId()) && request.projectId() != null) throw new IllegalArgumentException("ArchiMate targets a workspace model, not a requirements project");
         if (request.projectId() != null) domain.requireProject(context, request.projectId());
         var repository = repositories.getRepository(context.repositoryId());
+        if (SparxOslcAmCodec.PROFILE.equals(request.connectorId())) {
+            if (!Set.of(AuthorityMode.LINK_ONLY, AuthorityMode.IMPORT_COPY, AuthorityMode.MIRROR_READ).contains(request.authority()))
+                throw new IntegrationProblem("AUTHORITY_MODE", 409, "PCS AM profile supports read and reviewed pull only");
+            sparxRemote.validate(context, new Connection(request.id(), repository.getOwnerType() + ":" + repository.getOwnerId(),
+                    request.name(), descriptor.id(), descriptor.version(), request.authority(), request.externalScope(),
+                    request.projectId(), request.remoteProfile(), 0, null, null, context.username()), null);
+        }
         return store.create(context, request.id(), repository.getOwnerType() + ":" + repository.getOwnerId(), request.name(), descriptor.id(),
                 descriptor.version(), request.authority(), request.externalScope(), request.projectId(), request.remoteProfile());
     }
@@ -120,6 +133,16 @@ public class IntegrationService {
 
     public Operation apply(RepositoryContext context, UUID connectionId, ReviewedChangeSet review) {
         authorize(context, true);
+        Connection external = store.read(context, connectionId);
+        if (SparxOslcAmCodec.PROFILE.equals(external.connectorId())) {
+            Operation preview = store.operation(context, connectionId, review.operationId());
+            requireActor(context, preview); requireProfile(external);
+            if (preview.reviewFingerprint() == null && preview.status() == OperationStatus.PREVIEWED
+                    && "INBOUND".equals(preview.direction())) {
+                RemoteRequest request = json.read(preview.document().metadata().get("remoteRequest"), RemoteRequest.class);
+                sparxRemote.read(context, external, request.resource(), preview.document().externalVersion());
+            }
+        }
         Operation result = store.locked(context, connectionId, session -> {
             Connection connection = session.connection(); requireProfile(connection);
             Operation operation = session.operation(review.operationId());
@@ -140,9 +163,9 @@ public class IntegrationService {
             boolean linked = connection.authority() == AuthorityMode.LINK_ONLY;
             boolean changed = !semanticItems(current.items()).equals(semanticItems(selected));
             // Validate the reviewed dependency closure and schema before mutating any canonical data.
-            if (!linked && changed) connectors.require(connection.connectorId()).previewOutbound(new OutboundRequest(operation.context(), resultDocument, operation.document().externalVersion()));
+            if (!linked && changed) connectors.require(connection.connectorId()).validateInboundSelection(new OutboundRequest(operation.context(), resultDocument, operation.document().externalVersion()));
             List<ArchitectureCommand> commands = new ArrayList<>();
-            if (!linked && changed && connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE)) {
+            if (!linked && changed && connectors.require(connection.connectorId()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL)) {
                 commands.addAll(domain.architectureCommands(connection, before.dsl(), current.items(), selected, mappings));
                 String preview = before.dsl();
                 for (ArchitectureCommand command : commands) preview = new ArchitectureDslCommands().apply(preview, command).dsl();
@@ -162,7 +185,7 @@ public class IntegrationService {
                 if (!linked && (value != null ? value.kind() == ArtifactKind.REQUIREMENT : previous != null && previous.internal().kind() == ArtifactKind.REQUIREMENT)) {
                     var applied = domain.applyRequirement(context, connection, value, previous, review.rationale());
                     business = applied.businessIdentity(); requirementId = applied.requirementId();
-                } else if (!linked && value != null && value.kind() == ArtifactKind.RELATION && connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE))
+                } else if (!linked && value != null && value.kind() == ArtifactKind.RELATION && connectors.require(connection.connectorId()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL))
                     business = domain.relationBusinessId(value, connection, selected, mappings);
                 session.mapping(operation.id(), change.externalId(), business, requirementId, operation.document().externalVersion(), change.after(), value, value == null);
             }
@@ -235,18 +258,20 @@ public class IntegrationService {
         authorize(context, true);
         if (request.operationId() == null || request.expected() == null) throw precondition();
         Connection connection = store.read(context, connectionId); requireProfile(connection);
-        if (!connection.connectorId().equals(OslcRequirementsCodec.PROFILE) || connection.authority() == AuthorityMode.PUBLISH_TARGET)
+        if (!Set.of(OslcRequirementsCodec.PROFILE, SparxOslcAmCodec.PROFILE).contains(connection.connectorId()) || connection.authority() == AuthorityMode.PUBLISH_TARGET)
             throw new IntegrationProblem("AUTHORITY_MODE", 409, "Connection has no remote read capability");
         String expectedExternalVersion =
                 OslcTransport.validateExpectedVersion(request.expectedExternalVersion());
-        String resource = remote.validate(context, connection, request.resource()).toString();
+        String resource = (SparxOslcAmCodec.PROFILE.equals(connection.connectorId())
+                ? sparxRemote.validate(context, connection, request.resource())
+                : remote.validate(context, connection, request.resource())).toString();
         RemoteRequest frozenRequest = new RemoteRequest(
                 request.operationId(), request.expected(), resource, expectedExternalVersion);
         String fingerprint = json.fingerprint(Arrays.asList(connectionId, context.username(), frozenRequest));
         Operation pending = store.locked(context, connectionId, session -> {
             Operation prior = session.find(request.operationId()); if (prior != null) return replay(prior, fingerprint);
             expect(request.expected(), domain.snapshot(context, connection, session.identities(), read(context)).state());
-            var template = new ExchangeDocument(OslcRequirementsCodec.PROFILE, connection.profileVersion(), expectedExternalVersion, false, "",
+            var template = new ExchangeDocument(connection.connectorId(), connection.profileVersion(), expectedExternalVersion, false, "",
                     List.of(), List.of(), List.of(), Map.of("resource", resource, "remoteRequest", json.write(frozenRequest)), List.of());
             session.preview(request.operationId(), authority(context, connection, request.expected()), "INBOUND", fingerprint, template, List.of());
             session.fetching(request.operationId()); return session.operation(request.operationId());
@@ -257,11 +282,19 @@ public class IntegrationService {
         try {
             Connection connection = store.read(context, connectionId); requireProfile(connection);
             RemoteRequest request = json.read(pending.document().metadata().get("remoteRequest"), RemoteRequest.class);
-            var response = remote.read(context, connection, request.resource(), request.expectedExternalVersion());
-            var codec = new OslcRequirementsCodec();
-            ExchangeDocument received = codec.read(response.content(), response.resource(), response.etag(), connection.externalScope().configuration());
-            Map<String, String> metadata = new TreeMap<>(received.metadata()); metadata.put("remoteRequest", json.write(request));
-            metadata.put("discovery", json.write(codec.discover(response.content(), response.resource(), response.etag(), connection.externalScope().configuration())));
+            ExchangeDocument received;
+            Map<String, String> metadata;
+            if (SparxOslcAmCodec.PROFILE.equals(connection.connectorId())) {
+                received = SparxSnapshots.identify(sparxRemote.read(context, connection, request.resource(), request.expectedExternalVersion()), connectionId);
+                metadata = new TreeMap<>(received.metadata());
+            } else {
+                var response = remote.read(context, connection, request.resource(), request.expectedExternalVersion());
+                var codec = new OslcRequirementsCodec();
+                received = codec.read(response.content(), response.resource(), response.etag(), connection.externalScope().configuration());
+                metadata = new TreeMap<>(received.metadata());
+                metadata.put("discovery", json.write(codec.discover(response.content(), response.resource(), response.etag(), connection.externalScope().configuration())));
+            }
+            metadata.put("remoteRequest", json.write(request));
             ExchangeDocument document = new ExchangeDocument(received.profile(), received.profileVersion(), received.externalVersion(), false, received.source(),
                     received.artifacts(), received.relations(), received.placements(), metadata, received.losses());
             return store.locked(context, connectionId, session -> {
@@ -361,6 +394,7 @@ public class IntegrationService {
             Decision decision = review.decisions().get(change.id());
             if (decision == null && change.kind() != ChangeKind.UNCHANGED) throw new IllegalArgumentException("Every proposed change needs an explicit decision");
             if (decision == null || decision == Decision.REJECT || decision == Decision.KEEP_INTERNAL) continue;
+            if (change.conflicts().contains("INTERNAL_IDENTITY_REUSED")) throw IntegrationProblem.conflict("IDENTITY_REMAP_REQUIRED");
             if (change.kind() == ChangeKind.CONFLICT && decision != Decision.TAKE_EXTERNAL) throw IntegrationProblem.conflict("CONFLICT_REQUIRES_EXPLICIT_RESOLUTION");
             if (change.after() == null) selected.remove(change.externalId());
             else {
@@ -369,6 +403,15 @@ public class IntegrationService {
                 Artifact selectedValue = ExchangeItems.merge(baseline, current.get(change.externalId()), change.after());
                 MappingOverride mapping = review.mappings().get(change.id());
                 Artifact mapped = remap(selectedValue, mapping);
+                if (SparxSnapshots.isSparx(operation.context().profile()) && mapping != null && mapping.canonicalType() != null) {
+                    String type = mapped.kind() == ArtifactKind.ELEMENT ? SparxMappingProfile.umlType(mapping.canonicalType())
+                            : mapped.kind() == ArtifactKind.RELATION ? SparxMappingProfile.eaRelation(mapping.canonicalType()) : mapped.type();
+                    if (type == null) throw new IntegrationProblem("SPARX_TYPE_MAPPING", 422,
+                            "The selected canonical relation type is not supported by this Sparx profile; choose a supported mapping or reject the change");
+                    Map<String, String> tags = new TreeMap<>(mapped.attributes());
+                    tags.put("tag:taxonomy." + (mapped.kind() == ArtifactKind.ELEMENT ? "elementType" : "relationType"), mapping.canonicalType());
+                    mapped = new Artifact(mapped.id(), mapped.kind(), type, mapped.title(), mapped.text(), tags, mapped.extensions());
+                }
                 if (operation.direction().equals("OUTBOUND") && operation.context().profile().equals(ArchiMateExchangeCodec.PROFILE)
                         && mapping != null && mapping.canonicalType() != null) {
                     String type = mapped.kind() == ArtifactKind.ELEMENT ? IntegrationDomainAdapter.archimateType(mapping.canonicalType())
@@ -388,7 +431,7 @@ public class IntegrationService {
         if (mapping.canonicalType() != null && !mapping.canonicalType().isBlank()) {
             Set<String> supported = artifact.kind() == ArtifactKind.ELEMENT
                     ? Set.of("Capability", "Process", "CoreService", "COIService", "CommunicationsService", "UserApplication", "InformationProduct", "BusinessRole", "System", "Component")
-                    : artifact.kind() == ArtifactKind.RELATION ? new HashSet<>(ArchiMateExchangeCodec.RELATION_TYPES.values()) : Set.of();
+                    : artifact.kind() == ArtifactKind.RELATION ? com.taxonomy.dsl.validation.DslValidator.relationTypes() : Set.of();
             if (!supported.contains(mapping.canonicalType())) throw new IllegalArgumentException("Unsupported canonical type mapping");
             extensions.put("canonicalType", mapping.canonicalType());
             extensions.put("taxonomy:" + (artifact.kind() == ArtifactKind.ELEMENT ? "ElementType" : "RelationType"), mapping.canonicalType());

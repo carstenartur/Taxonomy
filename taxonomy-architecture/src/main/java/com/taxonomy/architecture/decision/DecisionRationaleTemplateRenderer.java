@@ -279,6 +279,18 @@ public final class DecisionRationaleTemplateRenderer {
             if (DecisionRationaleTemplateContract.BODY_MARKER
                     .equals(paragraph.getText().strip())) {
                 document.removeBodyElement(index);
+                // The generated section heading owns the body page break. A trailing
+                // empty hard-break paragraph can overflow the cover and skip a page.
+                // Preserve all template content, drawings and section definitions.
+                if (index > 0 && elements.get(index - 1) instanceof XWPFParagraph previous
+                        && previous.getText().isBlank()
+                        && !(previous.getCTP().isSetPPr() && previous.getCTP().getPPr().isSetSectPr())
+                        && previous.getRuns().stream().allMatch(run ->
+                                run.getCTR().sizeOfDrawingArray() == 0 && run.getCTR().sizeOfPictArray() == 0)
+                        && previous.getRuns().stream().anyMatch(run -> run.getCTR().getBrList().stream()
+                        .anyMatch(br -> org.openxmlformats.schemas.wordprocessingml.x2006.main.STBrType.PAGE.equals(br.getType())))) {
+                    document.removeBodyElement(index - 1);
+                }
                 return;
             }
         }

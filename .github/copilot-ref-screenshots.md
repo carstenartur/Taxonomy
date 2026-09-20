@@ -46,11 +46,18 @@ Generated PNG files are written to `docs/images/` and must be committed to the r
 | `70`         | No              | Swagger UI (API Documentation)                        |
 | `71`         | Yes (mock mode) | Persisted Copilot architecture workbench from the owning snapshot acceptance |
 | `72`         | Yes (mock mode) | Complete persisted Copilot run result from `CompleteCopilotSessionIT` |
+| `73` – `77` | Spring HTTP playback | Civilian requirement, result, architecture, focus and mobile views from `CivilianArchitectureAcceptanceTest` |
 
 LLM-dependent tests are skipped gracefully with `Assumptions.assumeTrue(System.getenv("GEMINI_API_KEY") != null)` when no key is present.
 
 
 The complete Copilot result screenshot is owned by `CompleteCopilotSessionIT.java`, because only that acceptance creates, recovers and opens the authoritative selected snapshot while retaining the terminal operation evidence.
+
+The civilian acceptance is a separate test owner: it runs the real provider pipeline
+with only remote HTTP responses replaced by `MockRestServiceServer`. Its browser
+path is opt-in with `-DgenerateScreenshots=true` and requires no LLM credentials.
+See [the civilian acceptance guide](../docs/testing/civilian-acceptance.md) and
+`.github/workflows/civilian-acceptance.yml` for the command and artifact provenance.
 
 ## Adding a new screenshot
 

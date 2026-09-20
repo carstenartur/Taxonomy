@@ -1,0 +1,292 @@
+{
+  "schemaVersion": 2,
+  "issue": 1075,
+  "pullRequest": 1087,
+  "implementationRevision": "658ad515f4255d7ac1b1aa351ce673170edc868b",
+  "fullVerification": {
+    "command": "./mvnw verify -DexcludedGroups=\"real-llm\"",
+    "sourceRevision": "41d4ffb18e309443a464eecf70db3c64c01b1edc",
+    "sourceTree": "279172db719b0ad57a5c7c314f41af42c26b921c",
+    "result": "SUCCESS",
+    "tests": 5108,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 1,
+    "skippedSuites": [
+      "com.taxonomy.build.HelmConstrainedSmokeContractTest"
+    ],
+    "duration": "19:54 min",
+    "finishedAt": "2026-09-20T06:28:46+02:00",
+    "logSha256": "f1099fdaba647c76e56e604be47c1fe600ee31eedd06ab9d54d963e5603a1c4d",
+    "environment": "Java 25, release 21; pinned ONNX model; Mockito premain agent",
+    "repositoryDefaults": {
+      "skipITs": true,
+      "taxonomy.ui.skip": true,
+      "taxonomy.quality.skip": true
+    },
+    "scopeNote": "Separate Failsafe/container and general UI/quality suites retain their repository defaults. The dedicated civilian browser profile is independently executed in CI."
+  },
+  "ciVerification": {
+    "runId": 35487419613,
+    "jobId": 106016240848,
+    "artifactId": 10598296327,
+    "artifactSha256": "015cd816288a0c382832497e546c78aa8ab93fe2861c782e3bd8ce417dc43991",
+    "url": "https://github.com/carstenartur/Taxonomy/actions/runs/35487419613",
+    "headSha": "658ad515f4255d7ac1b1aa351ce673170edc868b",
+    "result": "SUCCESS",
+    "mavenDuration": "5m54s",
+    "tests": 4,
+    "failures": 0,
+    "errors": 0,
+    "scenario": {
+      "projectId": 1,
+      "snapshotId": "f997e970-465f-4d0c-93e8-c86bd880b4a5",
+      "scenario": "civilian-flood-information-v1",
+      "requirementId": 1,
+      "fixtureSha256": "1f2581bf8b6df78cc835b209bdc164f2eb66f31e2de9e98a51465bbccb4ed52a",
+      "llmCalls": 78,
+      "mockBoundary": "remote LLM HTTP response only",
+      "sourceRevision": "f2cf6a48c3e523dda1acfb529104e704ad895b41",
+      "ciRun": "35487419613"
+    },
+    "browser": {
+      "snapshotId": "f997e970-465f-4d0c-93e8-c86bd880b4a5",
+      "browser": "chrome",
+      "mobileViewport": {
+        "width": 390,
+        "height": 844
+      },
+      "screenshots": [
+        "73-civilian-requirement.png",
+        "74-civilian-result.png",
+        "75-civilian-architecture.png",
+        "76-civilian-focus.png",
+        "77-civilian-mobile.png"
+      ],
+      "contextNodeCount": 0,
+      "version": "150.0.7871.124",
+      "downloadSha256": {
+        "downloadArchitectureSvg": "021b33d2e08d179c8f6c1dccfc18e4d9c9d983d4da22ff45cc427cf6d92566e5",
+        "downloadArchitecturePdf": "2034d79138b84fd9290dcf7ec2dd19b747ac27c70fe06cce4f66f4794ff0c6da",
+        "downloadArchitectureArchiMate": "7c5c7e7b8482e37a336f845169e73bea171de6977bc2a67123fa8170ddfdef14",
+        "downloadArchitectureVisio": "6dad0bfaff546272c755e28cbcef203a66f5380adadb4ec2c21c2880f76ffbcc"
+      }
+    },
+    "screenshots": {
+      "73-civilian-requirement.png": {
+        "sha256": "f138b5b4c9963e5adf6de2acd45c3ed0b5a9a9f7b64eab7d390970872c6546fb",
+        "width": 1592,
+        "height": 953
+      },
+      "74-civilian-result.png": {
+        "sha256": "d18dceef9358fee917b31942870906eca0a5cca301c7df8d8f4259dc4ee92830",
+        "width": 1592,
+        "height": 953
+      },
+      "75-civilian-architecture.png": {
+        "sha256": "b7f41d86176bd55fb806e4be6289fc6c64f0485ee6ac3bb162fc2ce88f5203ca",
+        "width": 1592,
+        "height": 953
+      },
+      "76-civilian-focus.png": {
+        "sha256": "055c40aac10fab390cc4820d2ed28b4a393358569dc3bf0ca7f85af29a558762",
+        "width": 1592,
+        "height": 953
+      },
+      "77-civilian-mobile.png": {
+        "sha256": "100c4626551cfd778d0b5a8545cfd7282edc40244a7ac50685342df67c206b4f",
+        "width": 390,
+        "height": 844
+      }
+    },
+    "nativeDocuments": {
+      "renderer": "LibreOffice 24.2.7.2 420(Build:2)",
+      "documents": {
+        "decision.docx": {
+          "pages": 52,
+          "emptyBodyPages": [],
+          "contentAssertions": 261,
+          "sourceSha256": "bdf944028ed1b5a10a3ae94a2117da38e3c2594f403b5481982f1de9ba74e382",
+          "renderedPdfSha256": "472bd163b6254ca073708acb85e24f61fe5e8e506f37825f80b83605c5fe9950"
+        },
+        "architecture.vsdx": {
+          "pages": 1,
+          "emptyBodyPages": [],
+          "contentAssertions": 38,
+          "sourceSha256": "a75efda4841a6ae665255ff84ae4fb969063594b784d1556db5a931ebe9f5969",
+          "renderedPdfSha256": "94a57cf1c4617ac86c679108163a4eed9400d0ac5e734579cdd72eca60e2cc88"
+        }
+      }
+    },
+    "integration": {
+      "nativeAcceptedRelations": 36,
+      "sparxFileSha256": "0889d55a28e3ec11021cdc108c9d5f3c06e12f38b2a8e6dcef486f53a69ea032",
+      "nativeRejectedRelations": 8,
+      "productCompatibility": "NOT_EXECUTED",
+      "sparxDeliveredRelations": 8,
+      "sparxUnmappedRelations": 28,
+      "sparxDeliveredElements": 38,
+      "reviewEvidence": [
+        "integration-import-review.json",
+        "integration-sparx-review.json"
+      ],
+      "generatedRelations": 44
+    },
+    "visualInspection": {
+      "wordPages": [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+        13,
+        14,
+        15,
+        16,
+        17,
+        18,
+        19,
+        20,
+        21,
+        22,
+        23,
+        24,
+        25,
+        26,
+        27,
+        28,
+        29,
+        30,
+        31,
+        32,
+        33,
+        34,
+        35,
+        36,
+        37,
+        38,
+        39,
+        40,
+        41,
+        42,
+        43,
+        44,
+        45,
+        46,
+        47,
+        48,
+        49,
+        50,
+        51,
+        52
+      ],
+      "fullSizeWordPages": [
+        5,
+        37
+      ],
+      "method": "all pages in contact sheets; corrected rationale boxes at full size; all five original browser screenshots",
+      "findings": "No empty body pages or orphan rationale-box headings. Complete long catalogue descriptions remain; diagram text has full-width table counterparts."
+    },
+    "subsequentPolicyRun": {
+      "runId": 35488384460,
+      "jobId": 106018817533,
+      "headSha": "41d4ffb18e309443a464eecf70db3c64c01b1edc",
+      "result": "SUCCESS",
+      "artifactId": 10598612559,
+      "artifactSha256": "51db520008e7c76ff8b8eef3392fa5953618afe13dfa847285d3fe29f3e5f865",
+      "url": "https://github.com/carstenartur/Taxonomy/actions/runs/35488384460",
+      "changesSinceInspectedRun": [
+        ".github/architecture-dependency-baseline.json",
+        "docs/superpowers/plans/2026-09-20-civilian-quality-and-sparx-oslc.md"
+      ]
+    }
+  },
+  "localNativeRendering": {
+    "renderer": "LibreOfficeDev 26.8.0.0.alpha0 2c87e51eeaa2b413ff4ae097b2705eea1995d8e5",
+    "documents": {
+      "decision.docx": {
+        "pages": 55,
+        "emptyBodyPages": [],
+        "contentAssertions": 261,
+        "sourceSha256": "4ec3e92d7abca5d3cdc1e73637dd7889193a27483ae4e6bd97e6cb3a03cf682b",
+        "renderedPdfSha256": "5de292870724c6ebc12272f080ef171ecb6845498e7442abdfaaab6713ae451a"
+      },
+      "architecture.vsdx": {
+        "pages": 1,
+        "emptyBodyPages": [],
+        "contentAssertions": 38,
+        "sourceSha256": "88b242e7c2bc35154964d2a5c41785c13c8b2f500a196a3fae8ac205657d9832",
+        "renderedPdfSha256": "3ec0968753b5a8a04d4afc53218aee6c72554384f951beea5d449ba6643dfe2e"
+      }
+    }
+  },
+  "localRenderingNote": "Generated from the implementation working tree before publication as 658ad51. The later 41d4ffb changes only the reviewed dependency baseline and execution ledger. Local LibreOffice 26 renders 55 pages; CI LibreOffice 24 renders 52.",
+  "focusedVerification": [
+    {
+      "scope": "export, Word, PCS reader and Spring workflow",
+      "tests": 29,
+      "failures": 0,
+      "errors": 0,
+      "duration": "3m19s"
+    },
+    {
+      "scope": "review fix: documented structured PCS stereotypes",
+      "tests": 20,
+      "failures": 0,
+      "errors": 0,
+      "redBeforeFix": true
+    },
+    {
+      "scope": "rationale pagination: Word and real civilian HTTP acceptance",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "duration": "2m55s",
+      "redBeforeFix": true
+    },
+    {
+      "scope": "independent document QA and Python inventory policy",
+      "tests": 8,
+      "failures": 0,
+      "errors": 0
+    },
+    {
+      "scope": "reviewed context dependency baseline",
+      "tests": 22,
+      "failures": 0,
+      "errors": 0
+    }
+  ],
+  "independentReview": {
+    "reviewedLocalRange": "0b2a8ca3..7236df7",
+    "critical": 0,
+    "important": 1,
+    "importantResolution": "FIXED: documented nested stereotypes and explicit ambiguity losses",
+    "postReviewChanges": [
+      "structured stereotype regression/fix",
+      "Java document QA required by Python ratchet",
+      "native-render rationale pagination regression/fix",
+      "reviewed repository-context dependency baseline"
+    ],
+    "additionalReviews": 0
+  },
+  "referenceReview": {
+    "decision": "ACCEPTED_AS_INTEGRATION_TEST_REFERENCE",
+    "productionApproval": false,
+    "document": "docs/qa/civilian-reference-review.md"
+  },
+  "limits": [
+    "Real EA/PCS/Microsoft Visio execution NOT_EXECUTED",
+    "PCS AM v1 reads package/element properties only; connectors, tags, attributes, operations and diagrams are not fetched",
+    "No PCS writes or atomic provider snapshot guarantee",
+    "Draw preserves all 38 labels but dense crossings and reversed/overlapping captions remain; no presentation-layout approval",
+    "F3/F4 and F5/A1 operational coverage obligations remain; no production flood-warning design approval"
+  ]
+}

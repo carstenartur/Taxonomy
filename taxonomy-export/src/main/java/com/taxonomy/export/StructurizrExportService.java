@@ -11,25 +11,10 @@ import java.util.Map;
  * Exports a {@link DiagramModel} as Structurizr DSL text.
  *
  * <p>This is the reverse of {@code StructurizrDslParser}: given an internal architecture
- * model, it produces a valid Structurizr workspace definition that can be imported into
- * Structurizr Lite or other C4-compatible tools.</p>
+ * model, it produces a Structurizr custom view with explicit taxonomy identities.
+ * The flat model does not imply a C4 software-system/container hierarchy.</p>
  */
 public class StructurizrExportService {
-
-    private static final Map<String, String> TYPE_MAPPING = Map.ofEntries(
-            Map.entry("Capabilities", "container"),
-            Map.entry("Services", "container"),
-            Map.entry("Core Services", "container"),
-            Map.entry("COI Services", "container"),
-            Map.entry("Infrastructure", "softwareSystem"),
-            Map.entry("User Applications", "softwareSystem"),
-            Map.entry("Business Processes", "softwareSystem"),
-            Map.entry("Business Roles", "person"),
-            Map.entry("Communications", "component"),
-            Map.entry("Communications Services", "component"),
-            Map.entry("Applications", "softwareSystem"),
-            Map.entry("Information Products", "softwareSystem")
-    );
 
     /**
      * Exports the given {@link DiagramModel} as a Structurizr DSL workspace string.
@@ -52,17 +37,21 @@ public class StructurizrExportService {
             // Use node.id() to guarantee uniqueness; fall back to label for readability
             String id = sanitizeId(node.id(), counter++);
             // Ensure uniqueness even after sanitization
-            while (idMap.containsValue(id)) {
-                id = sanitizeId(node.id(), counter++);
-            }
+            String baseId = id;
+            while (idMap.containsValue(id)) id = baseId + "_" + counter++;
             idMap.put(node.id(), id);
-            String c4Type = mapToC4Type(node.type());
+            // The neutral graph has no C4 system/container hierarchy. Custom elements
+            // preserve its taxonomy semantics without inventing software boundaries.
+            String c4Type = "element";
             sb.append("        ").append(id).append(" = ").append(c4Type)
-                    .append(" \"").append(escapeQuotes(node.label())).append("\"");
+                    .append(" \"").append(escapeQuotes(node.label() + " [" + node.id() + "]")).append("\"");
             if (node.type() != null && !node.type().isEmpty()) {
                 sb.append(" \"").append(escapeQuotes(node.type())).append("\"");
             }
-            sb.append('\n');
+            sb.append(" {\n            properties {\n");
+            sb.append("                \"taxonomy.id\" \"").append(escapeQuotes(node.id())).append("\"\n");
+            sb.append("                \"taxonomy.label\" \"").append(escapeQuotes(node.label())).append("\"\n");
+            sb.append("            }\n        }\n");
         }
 
         if (!model.nodes().isEmpty() && !model.edges().isEmpty()) {
@@ -84,7 +73,7 @@ public class StructurizrExportService {
 
         sb.append("    }\n\n");
         sb.append("    views {\n");
-        sb.append("        systemLandscape \"overview\" {\n");
+        sb.append("        custom \"overview\" {\n");
         sb.append("            include *\n");
         sb.append("            autoLayout\n");
         sb.append("        }\n");
@@ -92,13 +81,6 @@ public class StructurizrExportService {
         sb.append("}\n");
 
         return sb.toString();
-    }
-
-    private String mapToC4Type(String taxonomyType) {
-        if (taxonomyType == null) {
-            return "softwareSystem";
-        }
-        return TYPE_MAPPING.getOrDefault(taxonomyType, "softwareSystem");
     }
 
     String sanitizeId(String label, int counter) {

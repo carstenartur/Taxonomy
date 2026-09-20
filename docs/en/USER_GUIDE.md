@@ -612,6 +612,8 @@ The Export tab provides a dedicated panel with all available export formats orga
 
 ![Export tab — full view](../images/33-export-tab.png)
 
+The [civilian reference workflow](../testing/civilian-acceptance.md) explains Copilot and Workbench controls using a sourced flood-information requirement and describes the corresponding export QA (German guide).
+
 > **Support boundary:** Browser/SVG/vector-PDF views are human-readable views of the selected result. Mermaid and JSON are special-purpose projections. ArchiMate 3.1 and Visio 2012 downloads are experimental bounded subsets; named-tool interoperability and Microsoft Visio desktop open/edit/save/reopen behavior are not certified. These controls do not by themselves prove equivalence with a persisted snapshot; use an explicitly snapshot-bound Architecture Workbench endpoint for that authority. See the [Architecture export support boundary](FEATURE_MATRIX.md#architecture-export-support-boundary), [#965](https://github.com/carstenartur/Taxonomy/issues/965), [#966](https://github.com/carstenartur/Taxonomy/issues/966), and [#967](https://github.com/carstenartur/Taxonomy/issues/967).
 
 ### SVG Export

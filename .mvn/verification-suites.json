@@ -22,6 +22,12 @@
       "systemProperty": "documentTemplateE2E",
       "requires": ["Java 21", "Docker", "Node 24", "Chromium", "LibreOffice", "Poppler"]
     },
+    "civilian-acceptance": {
+      "purpose": "Sourced civilian Copilot scenario with Spring remote LLM playback, export semantics and real browser screenshots",
+      "test": "CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest",
+      "systemProperty": "generateScreenshots",
+      "requires": ["Java 21", "Docker"]
+    },
     "supply-chain-policy": {
       "purpose": "Focused repository scan for immutable external GitHub Action commits and production image digests",
       "test": "SupplyChainPinPolicyRepositoryTest",
@@ -48,6 +54,7 @@
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
     "catalogue-overlay-proposal.yml": "Maven-verified deterministic catalogue-overlay proposal and review-evidence publication",
     "document-template-report-e2e.yml": "Maven-owned packaged browser and decision-report evidence",
+    "civilian-acceptance.yml": "Maven-owned civilian Copilot, remote LLM playback, export and screenshot evidence",
     "jgit-storage-hibernate-contract.yml": "consumer-owned storage compatibility contract with Maven verification catalogue selectors",
     "kubernetes-constrained-smoke.yml": "external kind and Helm constrained-cluster release-floor verification",
     "codeql.yml": "external source analysis",
