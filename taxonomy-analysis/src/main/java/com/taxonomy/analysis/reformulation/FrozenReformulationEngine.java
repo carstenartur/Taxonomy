@@ -45,7 +45,7 @@ public class FrozenReformulationEngine {
             var node=byId.get(step.nodeId());var children=step.childTaskIds().stream().map(results::get).toList();
             var data=new LinkedHashMap<String,Object>();data.put("current",node==null?"Synthetic source-based document root":node);
             data.put("terminalContributions",step.terminalIds().stream().map(byId::get).toList());data.put("directParentContributions",step.directNodeIds().stream().map(byId::get).toList());
-            var input=new NodeSynthesisInput(baseline,step.nodeId(),node==null || node.parentIds().isEmpty()?null:node.parentIds().getFirst(),json.writeValueAsString(data),sourceSpans,retainedStatements,children,boundary,answers,openDecisions,"Preserve all original anchors and child IDs verbatim; additions are unreviewed.");
+            var input=new NodeSynthesisInput(baseline,step.nodeId(),node==null || node.parentIds().isEmpty()?null:node.parentIds().getFirst(),json.writeValueAsString(data),sourceSpans,retainedStatements,children,boundariesFor(step,node,children,boundary),answers,openDecisions,"Preserve all original anchors and child IDs verbatim; additions are unreviewed.");
             var result=nodes.synthesize(input);
             var carriedStatements=new LinkedHashMap<String,Statement>();var carriedQuestions=new LinkedHashMap<String,DecisionQuestion>();
             retainedStatements.forEach(s->carriedStatements.put(s.id(),s));openDecisions.forEach(q->carriedQuestions.put(q.id(),q));
@@ -63,6 +63,30 @@ public class FrozenReformulationEngine {
         findings.add(new ValidationReport.Finding(ValidationReport.Kind.SEMANTIC_REVIEW,"UNREVIEWED_GENERATION","Generated offer requires human semantic review",List.of(),List.of()));
         String text=String.join("\n\n",statements.values().stream().map(Statement::wording).toList());
         return new ReformulationDocument(text,sections,List.copyOf(statements.values()),List.copyOf(questions.values()),new ValidationReport(findings),List.copyOf(results.values()));
+    }
+    /** Include only directed edges touching this step, collapsed terminals or carried child evidence. */
+    private Map<String,String> boundariesFor(WalkUpPlanner.Step step, WalkUpPlanner.Node node,
+            List<NodeSynthesisResult> children, Map<String,String> boundary) {
+        var selected = new HashSet<String>();
+        selected.add(step.nodeId());
+        selected.addAll(step.terminalIds());
+        selected.addAll(step.directNodeIds());
+        selected.addAll(step.childTaskIds());
+        if (node != null) selected.addAll(node.parentIds());
+        for (var child : children) {
+            child.statementProposals().forEach(s -> selected.addAll(s.architectureLinks()));
+            child.questionProposals().forEach(q -> q.discoveries().forEach(d -> {
+                selected.addAll(d.nodeIds());
+                selected.addAll(d.edgeIds());
+            }));
+        }
+        var local = new TreeMap<String,String>();
+        boundary.forEach((id, value) -> {
+            var edge = json.readTree(value);
+            if (selected.contains(id) || selected.contains(edge.path("sourceCode").asText())
+                    || selected.contains(edge.path("targetCode").asText())) local.put(id, value);
+        });
+        return local;
     }
     private static String root(String id,Map<String,Set<String>> parents) {while(!parents.get(id).isEmpty())id=parents.get(id).stream().sorted().findFirst().orElseThrow();return id;}
     /** Exact clause anchors preserve punctuation, negation and numbers/units without splitting decimals. */
