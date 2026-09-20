@@ -9,8 +9,38 @@
   "proCloudServerVersion": null,
   "realProductExecutions": [],
   "realProductStatus": "NOT_EXECUTED",
-  "oslcStatus": "NOT_IMPLEMENTED_CONDITIONAL_WRITE_CONTRACT_UNVERIFIED",
-  "requiredEvidenceFields": ["sourceSha", "adapterVersion", "enterpriseArchitectVersion", "proCloudServerVersion", "transport", "mappingProfile", "direction", "modelIdentity", "result", "knownLosses", "executionDate"],
-  "knownLosses": ["Diagram presentation excluded", "Unmapped UML/MDG features and connector-end metadata retained only in source evidence", "Bidirectional native connectors require rejection", "Package authoring not exposed in native editor", "Native relationship endpoint constraints apply"],
-  "remainingAcceptance": ["Real EA semantic round-trip and diagram preservation", "OSLC AM authentication/discovery/Pull", "Atomic expected-version PCS publication", "Item-level partial-publication recovery", "Product-backed compatibility evidence"]
+  "oslcStatus": "READ_PULL_CONTRACT_IMPLEMENTED_REAL_PCS_UNVERIFIED",
+  "requiredEvidenceFields": [
+    "sourceSha",
+    "adapterVersion",
+    "enterpriseArchitectVersion",
+    "proCloudServerVersion",
+    "transport",
+    "mappingProfile",
+    "direction",
+    "modelIdentity",
+    "result",
+    "knownLosses",
+    "executionDate"
+  ],
+  "knownLosses": [
+    "Diagram presentation excluded",
+    "Unmapped UML/MDG features and connector-end metadata retained only in source evidence",
+    "Bidirectional native connectors require rejection",
+    "Package authoring not exposed in native editor",
+    "Native relationship endpoint constraints apply"
+  ],
+  "remainingAcceptance": [
+    "Real EA semantic round-trip and diagram preservation",
+    "Real PCS authentication/discovery/read/pull compatibility",
+    "OSLC AM connector/tag/attribute/operation retrieval",
+    "Atomic expected-version PCS publication",
+    "Item-level partial-publication recovery",
+    "Product-backed compatibility evidence"
+  ],
+  "oslcMappingProfile": "sparx-oslc-am-2.0@1",
+  "oslcKnownLosses": [
+    "Package/element properties only; connectors, tags, attributes, operations and diagrams are not fetched",
+    "Collection fingerprint is not an atomic model snapshot; exhausted pages never authorize deletion"
+  ]
 }

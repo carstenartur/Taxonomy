@@ -29,6 +29,12 @@ and acceptance criteria are supplied by issue #1075 and ADR 0006.
 * Transport adapters share canonical exchange values and durable previews.
   Conditional live writes may only be advertised after the provider's exact
   version and retry contract is proven. A file download is not a remote success.
+* The separate `sparx-oslc-am-2.0@1` read/pull profile reuses scoped HTTP, reviewed
+  native changes and the durable journal. Only package/element properties and
+  hierarchy are mapped; uncollected features are explicit losses. PCS session
+  credentials are injected at the HTTP boundary and never become persisted URIs.
+  A collection fingerprint is rechecked before apply but is not an atomic model
+  version. Exhausted query pages are never authority to delete absent objects.
 * Real EA/PCS compatibility remains unverified until product evidence exists.
   Contract fixtures must be labeled as fixtures, with no fabricated version claim.
 

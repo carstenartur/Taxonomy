@@ -29,11 +29,78 @@ class SparxIntegrationFlowTest {
     @Autowired DslGitRepositoryFactory git;
     @Autowired EditorJournal journal;
     @Autowired ProjectPortfolioService projects;
+    @Autowired com.taxonomy.interop.oslc.OslcRemoteProfiles remoteProfiles;
     private RepositoryContext context;
     private UUID connection;
     private static final String A = "{11111111-1111-4111-8111-111111111111}";
     private static final String B = "{22222222-2222-4222-8222-222222222222}";
     private static final String P = "{33333333-3333-4333-8333-333333333333}";
+
+    @Test void pcsReadRetriesDurablyAndRejectsRemoteChangesBeforeReviewedPull() throws Exception {
+        var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        server.start();
+        var base = java.net.URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/model/oslc/am/");
+        String resource = base + "resource/el_" + A.replace("{", "%7B").replace("}", "%7D") + "/";
+        var title = new java.util.concurrent.atomic.AtomicReference<>("Flood observation reader");
+        var unauthorized = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var oldProfiles = remoteProfiles.getRemotes();
+        String credential = "SPARX_CONTRACT_TOKEN";
+        String oldToken = System.getProperty(credential);
+        try {
+            System.setProperty(credential, B);
+            var profiles = new HashMap<>(oldProfiles);
+            profiles.put("pcs-contract", new com.taxonomy.interop.oslc.OslcRemoteProfiles.RemoteProfile(
+                    context.repositoryId(), "USER:" + context.username(), base, credential, true, true));
+            remoteProfiles.setRemotes(profiles);
+            server.createContext(base.getPath(), exchange -> {
+                calls.incrementAndGet();
+                if (unauthorized.get()) { exchange.sendResponseHeaders(401, -1); exchange.close(); return; }
+                var rdf = new com.taxonomy.exchange.OslcRdf();
+                if (exchange.getRequestURI().getPath().endsWith("sp/")) {
+                    rdf.link(base + "query", com.taxonomy.exchange.OslcRdf.OSLC + "resourceType", SparxOslcAmCodec.AM + "Resource")
+                            .link(base + "query", com.taxonomy.exchange.OslcRdf.OSLC + "queryBase", base + "qc/");
+                } else {
+                    rdf.type(resource, SparxOslcAmCodec.AM + "Resource")
+                            .literal(resource, com.taxonomy.exchange.OslcRdf.DCT + "identifier", "el_" + A)
+                            .literal(resource, com.taxonomy.exchange.OslcRdf.DCT + "type", "Component")
+                            .literal(resource, com.taxonomy.exchange.OslcRdf.DCT + "title", title.get())
+                            .literal(resource, com.taxonomy.exchange.OslcRdf.DCT + "description", "Published observations with source and time");
+                }
+                byte[] body = rdf.xml(); exchange.getResponseHeaders().set("Content-Type", "application/rdf+xml");
+                exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body); exchange.close();
+            });
+            UUID pcs = UUID.randomUUID();
+            integrations.create(context, new CreateConnection(pcs, "PCS contract", SparxOslcAmCodec.PROFILE,
+                    AuthorityMode.IMPORT_COPY, new ExternalScope("SPARX", base.toString(), null), null, "pcs-contract"));
+            UUID id = UUID.randomUUID();
+            var request = new RemoteRequest(id, integrations.overview(context, pcs).current(), base + "sp/", null);
+            assertEquals("REMOTE_UNAUTHORIZED", assertThrows(IntegrationProblem.class,
+                    () -> integrations.previewRemote(context, pcs, request)).code());
+            assertEquals(OperationStatus.FETCH_FAILED, integrations.operation(context, pcs, id).status());
+            assertNull(integrations.overview(context, pcs).checkpoint()); assertTrue(integrations.identities(context, pcs).isEmpty());
+            unauthorized.set(false);
+            var preview = integrations.retry(context, pcs, id);
+            assertEquals(OperationStatus.PREVIEWED, preview.status());
+            assertFalse(preview.document().completeScope());
+            var applied = integrations.apply(context, pcs, accept(preview));
+            assertEquals(OperationStatus.COMPLETED, applied.status());
+            assertEquals(1, journal.read(context).operations().size());
+            int after = calls.get();
+            assertEquals(applied.id(), integrations.apply(context, pcs, accept(preview)).id());
+            assertEquals(after, calls.get(), "Replay must not refetch or mutate an already accepted operation");
+            var next = integrations.previewRemote(context, pcs, new RemoteRequest(UUID.randomUUID(),
+                    integrations.overview(context, pcs).current(), base + "sp/", null));
+            title.set("Changed while the reviewer was reading");
+            assertEquals("REMOTE_STALE", assertThrows(IntegrationProblem.class, () -> integrations.apply(context, pcs, accept(next))).code());
+            assertEquals(1, journal.read(context).operations().size());
+            assertFalse(integrations.operation(context, pcs, id).toString().contains("useridentifier"));
+            integrations.cancel(context, pcs, next.id(), "Remote state changed; request a fresh preview");
+        } finally {
+            server.stop(0); remoteProfiles.setRemotes(oldProfiles);
+            if (oldToken == null) System.clearProperty(credential); else System.setProperty(credential, oldToken);
+        }
+    }
 
     @BeforeEach void workspace() {
         String actor = "sparx-" + UUID.randomUUID().toString().substring(0, 8);

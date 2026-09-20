@@ -27,7 +27,14 @@
         el('integrationRemote').hidden = !capabilities.includes('READ_LINK');
         el('integrationImport').hidden = overview && !capabilities.includes('FILE_IMPORT');
         el('integrationExport').disabled = busy || !mayWrite || !capabilities.includes('FILE_EXPORT');
-        el('integrationSparxNotice').hidden = !overview || !overview.connection.connectorId.startsWith('sparx-');
+        el('integrationSparxNotice').hidden = !overview || overview.connection.connectorId !== 'sparx-xmi-2.1';
+        el('integrationPcsNotice').hidden = !overview || overview.connection.connectorId !== 'sparx-oslc-am-2.0';
+        var creating = profiles.find(function (candidate) { return candidate.id === el('connectionProfile').value; });
+        var readOnly = creating && creating.capabilities.includes('READ_LINK') && !creating.capabilities.includes('FILE_EXPORT');
+        Array.from(el('connectionAuthority').options).forEach(function (choice) {
+            choice.disabled = !!readOnly && ['BIDIRECTIONAL', 'PUBLISH_TARGET'].includes(choice.value);
+        });
+        if (el('connectionAuthority').selectedOptions[0].disabled) el('connectionAuthority').value = 'IMPORT_COPY';
         el('integrationPrevious').disabled = busy || page === 0;
         el('integrationNext').disabled = busy || (page + 1) * 40 >= filtered().length;
         el('integrationDownload').hidden = !(operation && operation.status === 'COMPLETED' && operation.direction === 'OUTBOUND');
@@ -141,6 +148,7 @@
         finally { await refresh(); }
     }); });
     el('integrationFile').addEventListener('change', function () { pendingUpload = null; }); el('integrationComplete').addEventListener('change', function () { pendingUpload = null; });
+    el('connectionProfile').addEventListener('change', controls);
     el('integrationImport').addEventListener('submit', function (event) { event.preventDefault(); run(async function () {
         if (!overview) throw new Error(t('choose')); var file = el('integrationFile').files[0]; if (!file) return;
         if (!pendingUpload) pendingUpload = { operationId: crypto.randomUUID(), expected: overview.current, mediaType: selectedProfile().mediaTypes.includes('application/xml') ? 'application/xml' : selectedProfile().mediaTypes[0], completeScope: el('integrationComplete').checked };

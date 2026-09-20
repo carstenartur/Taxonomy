@@ -38,7 +38,18 @@ public class OslcTransport {
         return target(profile(context, connection), resource);
     }
     public Response read(RepositoryContext context, Connection connection, String resource, String expectedVersion) {
+        return read(context, connection, resource, expectedVersion, false);
+    }
+    /** PCS requires its session token in both the request query and OSLC authorization header.
+     * The credential-bearing wire URI is never returned as durable resource identity. */
+    public Response readPcs(RepositoryContext context, Connection connection, String resource) {
+        return read(context, connection, resource, null, true);
+    }
+    private Response read(RepositoryContext context, Connection connection, String resource, String expectedVersion, boolean pcs) {
         var profile = profile(context, connection); URI target = target(profile, resource);
+        String token = credential(profile, pcs);
+        URI wireTarget = pcs ? URI.create(target + (target.getRawQuery() == null ? "?" : "&") + "useridentifier="
+                + URLEncoder.encode(token, java.nio.charset.StandardCharsets.UTF_8)) : target;
         DnsResolver resolver = new DnsResolver() {
             @Override public InetAddress[] resolve(String hostname) throws UnknownHostException {
                 if (!target.getHost().equalsIgnoreCase(hostname)) throw new UnknownHostException("Host outside configured integration origin");
@@ -53,7 +64,7 @@ public class OslcTransport {
                 .setMaxConnTotal(1).setMaxConnPerRoute(1).build();
         try (var client = HttpClients.custom().setConnectionManager(manager).disableRedirectHandling().disableAutomaticRetries().disableCookieManagement()
                 .disableContentCompression().setDefaultRequestConfig(RequestConfig.custom().setConnectionRequestTimeout(Timeout.ofSeconds(2)).setResponseTimeout(Timeout.ofSeconds(5)).build()).build()) {
-            HttpGet request = new HttpGet(target); request.setHeader("Accept", "application/rdf+xml"); request.setHeader("OSLC-Core-Version", "3.0");
+            HttpGet request = new HttpGet(wireTarget); request.setHeader("Accept", "application/rdf+xml"); request.setHeader("OSLC-Core-Version", pcs ? "2.0" : "3.0");
             String validatedExpectedVersion = validateExpectedVersion(expectedVersion);
             if (validatedExpectedVersion != null) {
                 request.setHeader("If-Match", validatedExpectedVersion);
@@ -64,12 +75,7 @@ public class OslcTransport {
                 if (!uri.isAbsolute() || configuration.length() > 2048 || configuration.chars().anyMatch(Character::isISOControl)) throw new IllegalArgumentException("Invalid configuration");
                 request.setHeader("Configuration-Context", configuration);
             }
-            if (profile.credentialEnvironmentVariable() != null) {
-                if (!profile.credentialEnvironmentVariable().matches("[A-Z][A-Z0-9_]{0,127}")) throw new IllegalStateException("Invalid credential reference");
-                String token = environment.getProperty(profile.credentialEnvironmentVariable());
-                if (token == null || !token.matches("[A-Za-z0-9._~+/=-]{1,8192}")) throw new IntegrationProblem("REMOTE_CREDENTIAL_UNAVAILABLE", 503, "Configured credential is unavailable");
-                request.setHeader("Authorization", "Bearer " + token);
-            }
+            if (token != null) request.setHeader("Authorization", (pcs ? "OSLC " : "Bearer ") + token);
             long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(15);
             var cancellation = deadlines.schedule(() -> request.cancel(), 15, java.util.concurrent.TimeUnit.SECONDS);
             try { return client.execute(request, response -> {
@@ -87,12 +93,46 @@ public class OslcTransport {
                     }
                     String etag = response.getFirstHeader("ETag") == null ? null : response.getFirstHeader("ETag").getValue();
                     if (etag != null && (etag.length() > 2048 || etag.chars().anyMatch(Character::isISOControl))) throw new IntegrationProblem("REMOTE_VERSION_INVALID", 502, "Invalid remote version metadata");
-                    return new Response(target, etag, output.toByteArray());
+                    byte[] content = output.toByteArray();
+                    if (pcs) rejectCredentialReflection(content, etag, token);
+                    return new Response(target, etag, content);
                 }
             }); } finally { cancellation.cancel(false); }
         } catch (SocketTimeoutException failure) { throw new IntegrationProblem("REMOTE_TIMEOUT", 504, "Remote request timed out"); }
         catch (IOException failure) { throw new IntegrationProblem("REMOTE_UNAVAILABLE", 502, "Remote resource is unavailable under the configured network policy"); }
     }
+    private String credential(OslcRemoteProfiles.RemoteProfile profile, boolean pcs) {
+        String reference = profile.credentialEnvironmentVariable();
+        if (reference == null && !pcs) return null;
+        if (reference != null && !reference.matches("[A-Z][A-Z0-9_]{0,127}"))
+            throw new IllegalStateException("Invalid credential reference");
+        String token = reference == null ? null : environment.getProperty(reference);
+        String pattern = pcs ? "\\{[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}}" : "[A-Za-z0-9._~+/=-]{1,8192}";
+        if (token == null || !token.matches(pattern))
+            throw new IntegrationProblem("REMOTE_CREDENTIAL_UNAVAILABLE", 503, "Configured credential is unavailable");
+        return token;
+    }
+    private static void rejectCredentialReflection(byte[] content, String etag, String token) {
+        // Decode XML references as well as percent escapes before inspecting values;
+        // no response body or credential-bearing URI may reach persisted evidence/errors.
+        var xml = ExchangeXml.parse(content);
+        String secret = token.substring(1, token.length() - 1).toLowerCase(Locale.ROOT);
+        var values = new ArrayList<String>();
+        values.add(xml.getDocumentElement().getTextContent());
+        if (etag != null) values.add(etag);
+        for (var element : ExchangeXml.all(xml, "*", "*")) {
+            var attributes = element.getAttributes();
+            for (int i = 0; i < attributes.getLength(); i++) values.add(attributes.item(i).getNodeValue());
+        }
+        for (String value : values) {
+            String decoded;
+            try { decoded = URLDecoder.decode(value, java.nio.charset.StandardCharsets.UTF_8); }
+            catch (IllegalArgumentException invalid) { decoded = value; }
+            if (decoded.toLowerCase(Locale.ROOT).contains(secret))
+                throw new IntegrationProblem("REMOTE_CREDENTIAL_REFLECTION", 502, "Remote representation contains credential material");
+        }
+    }
+
     public static String validateExpectedVersion(String expectedVersion) {
         if (expectedVersion == null) {
             return null;

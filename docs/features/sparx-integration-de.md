@@ -106,19 +106,71 @@ Vorschauen, Zuordnungen, Konflikte und Checkpoints; Git allein stellt diese nich
 wieder her. Eine neue Profilversion erfordert explizite Migration und erneuten
 Abgleich. Bestehende Zuordnungen dürfen nicht stillschweigend umgedeutet werden.
 
-## OSLC und verbleibende Abnahme
+## PCS OSLC AM lesen und geprüft übernehmen
 
-Dieser Schritt aktiviert **keine OSLC-Live-Synchronisation**. Der bestehende
-generische OSLC-RM-Connector ist kein EA-Architecture-Management-Connector.
-Die gemeinsame kanonische API, der Vergleich und das Journal bilden die Grundlage
-für den gesonderten AM-Adapter.
+Das getrennte Profil **Sparx PCS OSLC AM 2.0 read/pull** (`sparx-oslc-am-2.0@1`)
+nutzt dieselbe Prüfung, GUID-Zuordnung, nativen Kommandos, Journale und Checkpoints.
+Zulässig sind `LINK_ONLY`, `IMPORT_COPY` und `MIRROR_READ`. Der generische
+OSLC-RM-Connector ersetzt den AM-Connector nicht. Vertragstests sind vorhanden;
+die Kompatibilität mit einer echten PCS-Installation ist noch nicht bestätigt.
+
+Ein Administrator bindet den Endpunkt an das genaue Taxonomy-Repository und dessen
+Eigentümer. Beispiel mit zu ersetzenden, nicht geheimen Werten:
+
+```yaml
+taxonomy:
+  integrations:
+    remotes:
+      civilian-pcs:
+        repository-id: <repository-id>
+        organization-id: USER:<repository-eigentuemer>
+        base-uri: https://pcs.example.org/model/oslc/am/
+        credential-environment-variable: CIVILIAN_PCS_TOKEN
+        allow-private-networks: false
+        allow-insecure-http: false
+```
+
+`CIVILIAN_PCS_TOKEN` enthält die PCS-Sitzungs-GUID aus dem
+[dokumentierten Modell-Login](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_user_cred.html).
+Login, SSO und Token-Erneuerung erfolgen in diesem Schritt administrativ.
+Der Transport sendet `Authorization: OSLC <token>` und den erforderlichen
+Abfrageparameter `useridentifier`. Zugriffsprotokolle von PCS/Proxies müssen diesen
+Parameter maskieren. Taxonomy speichert nur den Profilschlüssel und Ressourcen ohne
+Zugangsdaten. Ein fehlgeschlagener Abruf kann nach Erneuerung des serverseitigen
+Tokens mit derselben Vorgangs-ID fortgesetzt werden.
+
+Auf der Integrationsseite AM-Profil, zulässigen Modus und `civilian-pcs` wählen.
+Die **externe Repository-Identität muss genau `base-uri` entsprechen**; die externe
+Konfiguration bleibt leer. Für Anforderungselemente ein Projekt zuordnen.
+Das Ressourcenfeld für `sp/`-Discovery leer lassen oder `qc/` eingeben. Gefilterte
+Abfragen und Eigenschaftsprojektionen werden abgewiesen. Vorschau und Verluste
+prüfen, jede Änderung entscheiden und mit Begründung anwenden. Bei `REMOTE_STALE`
+hat sich die Sammlung verändert: Vorschau abbrechen und neu abrufen. Bereits
+übernommene Vorgänge werden ohne weiteren Abruf oder Modelländerung wiedergegeben.
+
+Alle angekündigten `oslc:nextPage`-Seiten werden gelesen: höchstens 20 Seiten und
+insgesamt 16 MiB einschließlich Discovery. Gemeinsame HTTP-/DNS-Grenzen verhindern
+Weiterleitungen und fremde Endpunkte. Schleifen und zurückgespiegelte Zugangsdaten
+werden abgewiesen. Ein Seitenfehler erzeugt keine Teilvorschau. Vor der Übernahme
+wird die Sammlung erneut gelesen; ihr Fingerabdruck umfasst Seitenadressen,
+Inhalte und ETags. Dies garantiert **keinen atomaren PCS-Modellstand**. Vollständiges
+Durchlaufen der Seiten erlaubt niemals das Löschen fehlender Objekte.
+
+Version 1 übernimmt Paket- und Elementeigenschaften, Beschreibungen, GUIDs und
+Pakethierarchie einschließlich Anforderungselementen. Beziehungen, Tags, Attribute,
+Operationen und Diagramme werden nicht nachgeladen; der Verlustbericht benennt
+diese Grenzen. XMI bleibt der umfassendere semantische Austauschweg. Das AM-Profil
+bietet weder Dateiexport noch Live-Schreiben an; die Prüfung einer Auswahl ist
+von einer Veröffentlichung getrennt.
+
+## Verbleibende Produktabnahme und Live-Schreiben
 
 Sparx beschreibt eigene POST-Endpunkte und einen Modell-Login-Token, der bei GET
 als Abfrageparameter und bei POST im RDF übertragen wird. Aus der geprüften
 Anbieterdokumentation ergibt sich keine belegte atomare Versionsvorbedingung und
 keine abgesicherte idempotente Anlage. Ein GET vor einem unbedingten POST verhindert
 keine zwischenzeitliche Änderung. Live-Anlage/-Änderung/-Löschung, teilweise
-Veröffentlichung und vollständiges Pull/Push/Synchronize bleiben daher bis zu
+Veröffentlichung und vollständiges Push/Synchronize bleiben daher bis zu
 einem nachgewiesenen PCS-Vertrag oder bedingten Sparx-Adapter offen. Das optionale
 SBPI-Plugin ist ebenfalls nicht umgesetzt.
 

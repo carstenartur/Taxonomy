@@ -35,9 +35,10 @@
         </details>
         <pre id="integrationContext"></pre>
         <p id="integrationSparxNotice" hidden data-i18n="integration.sparxNotice">Experimental Sparx semantic exchange. Real EA/PCS compatibility is not yet verified. Diagram layout is excluded. Review the loss report and import into a backed-up EA package with diagram import disabled.</p>
+        <p id="integrationPcsNotice" hidden data-i18n="integration.pcsNotice">Experimental PCS read/pull: imports package and element properties. Connectors, tags and diagrams are excluded. Leave the resource blank for model discovery. Applying a review reads the collection again and rejects changed evidence; missing objects never authorize deletion. Real PCS compatibility remains unverified.</p>
         <a id="integrationOslcCatalog" hidden data-i18n="integration.oslcCatalog">OSLC discovery for this workspace</a>
         <form id="integrationRemote"><label for="integrationRemoteUri" data-i18n="integration.remoteUri">OSLC resource or catalog URI within the configured endpoint</label><input id="integrationRemoteUri" maxlength="2048"/>
-            <label for="integrationRemoteVersion" data-i18n="integration.remoteVersion">Expected remote ETag (optional for first discovery)</label><input id="integrationRemoteVersion" maxlength="2048"/>
+            <label for="integrationRemoteVersion" data-i18n="integration.remoteVersion">Expected remote ETag or AM collection fingerprint (optional)</label><input id="integrationRemoteVersion" maxlength="2048"/>
             <button type="submit" data-i18n="integration.remoteRead">Read and preview OSLC resource</button></form>
         <ul id="integrationDiscovery"></ul>
         <form id="integrationImport"><label for="integrationFile" data-i18n="integration.file">Exchange file (XML, maximum 16 MiB)</label><input id="integrationFile" type="file" accept=".reqif,.xml,.xmi" required/>

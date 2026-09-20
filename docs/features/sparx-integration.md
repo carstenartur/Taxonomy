@@ -103,12 +103,64 @@ previews, mappings, conflicts and checkpoints. Git alone cannot recover that sta
 Do not change a connection's profile version to reinterpret existing mappings;
 use an explicit migration/reconciliation after a future profile upgrade.
 
-## OSLC and remaining acceptance
+## PCS OSLC AM read and reviewed pull
 
-OSLC live synchronization is **not enabled by this slice**. The shared canonical
-contracts/diff/journal remain its required foundation. The existing generic OSLC
-RM connector is not an EA Architecture Management connector and must not be used
-as one.
+The separate **Sparx PCS OSLC AM 2.0 read/pull** profile (`sparx-oslc-am-2.0@1`)
+reuses the same review, identity mapping, native commands, journal and checkpoint.
+It supports `LINK_ONLY`, `IMPORT_COPY` and `MIRROR_READ`. The generic OSLC RM
+connector is not the EA AM connector. This implementation has contract tests;
+compatibility with an actual PCS installation remains unverified.
+
+An administrator binds a remote endpoint to the exact Taxonomy repository and
+owner. Example (replace the nonsecret identities and endpoint):
+
+```yaml
+taxonomy:
+  integrations:
+    remotes:
+      civilian-pcs:
+        repository-id: <repository-id>
+        organization-id: USER:<repository-owner>
+        base-uri: https://pcs.example.org/model/oslc/am/
+        credential-environment-variable: CIVILIAN_PCS_TOKEN
+        allow-private-networks: false
+        allow-insecure-http: false
+```
+
+`CIVILIAN_PCS_TOKEN` contains the PCS session GUID obtained using the model's
+[documented login](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_user_cred.html).
+Login, SSO and token renewal are administrator responsibilities in this slice.
+The transport sends `Authorization: OSLC <token>` and the required `useridentifier`
+query parameter; it does not use Bearer authentication. Configure PCS/proxy access
+logs to redact that credential parameter. Taxonomy stores only the profile key
+and credential-free resource identities. Authentication failures retain a failed
+operation that can be resumed after replacing the server-side credential.
+
+On the integration page select the AM profile, an allowed authority and the key
+`civilian-pcs`. **External repository identity must exactly equal `base-uri`**;
+leave external configuration blank. Set a project when importing requirement
+elements. Leave the remote resource blank for `sp/` discovery, or enter `qc/`.
+Projected/filtered queries are rejected so a partial property list cannot silently
+replace an existing object. Read the preview, inspect losses and decide each change;
+then apply with a rationale. A changed collection produces `REMOTE_STALE`: cancel
+that preview and fetch a fresh one. Already accepted operations replay without a
+second read or another model mutation.
+
+The reader follows an advertised AM query and every `oslc:nextPage`, bounded to
+20 pages and 16 MiB total including discovery. It uses the common scoped HTTP/DNS
+policy, rejects redirects, foreign endpoints, paging loops and credential reflection.
+A failed page yields no partial preview. The collection fingerprint includes the
+page identities, content and ETags. It is checked by reading again before apply;
+it is **not an atomic PCS snapshot or conditional remote write guarantee**. Page
+exhaustion never authorizes deletion of missing objects.
+
+Version 1 imports package/element properties, descriptions, GUIDs and package
+hierarchy, including requirement elements. Connectors, tags, attributes, operations
+and diagrams are not fetched; these exclusions appear in the loss report. XMI
+remains the broader semantic exchange route. AM advertises no file export or live
+write capability, and its selection validator is independent of publication.
+
+## Remaining product acceptance and live writes
 
 Sparx documents an AM-specific POST update endpoint and a model login token,
 including token transport in GET query parameters or POST RDF. These differ from
@@ -116,7 +168,7 @@ the generic OSLC RM transport. The reviewed vendor update documentation does not
 establish atomic expected-version writes or safe idempotent creation. A preflight
 GET followed by unconditional POST cannot provide the issue's concurrency guarantee.
 Live create/update/delete, item-level partial publication recovery and full
-Pull/Push/Synchronize therefore remain open pending a proven PCS contract or a
+Push/Synchronize therefore remain open pending a proven PCS contract or a
 Sparx-side conditional adapter. The optional SBPI plugin is also not implemented.
 
 Real EA acceptance must test native export → EA import → rename/move/tag/connector
