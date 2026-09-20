@@ -73,6 +73,11 @@ public class EditorWorkspaceArchitectureIntegrationAdapter implements WorkspaceA
         }
     }
 
+    @Override
+    public boolean isExactCheckpoint(RepositoryContext context, State expected) throws IOException {
+        return editor.integrationCheckpointMatches(context, editorContext(context, expected));
+    }
+
     private static WorkspaceDocument document(ArchitectureEditorService.Document document) {
         return new WorkspaceDocument(state(document.context()), document.dsl());
     }

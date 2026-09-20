@@ -159,6 +159,21 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         });
     }
 
+    /** Read checkpoint evidence from the caller's locked integration transaction; no Git writes. */
+    public boolean integrationCheckpointMatches(RepositoryContext context, Context expected) throws IOException {
+        requireContext(context, expected);
+        requireWritable(context);
+        String actualHead = head(repositories.resolveRepository(context), context.branch());
+        return journal.joinedLocked(context, seed(context), session -> {
+            State persisted = session.state();
+            Context actual = Context.of(context, persisted.checkpointCommit(), persisted.revision());
+            return actual.equals(expected) && persisted.pendingCheckpoint() == null
+                    && persisted.checkpointRevision() == persisted.revision()
+                    && persisted.checkpointCommit() != null
+                    && Objects.equals(actualHead, persisted.checkpointCommit());
+        });
+    }
+
     private static Accepted accepted(RepositoryContext context, State state, Entry entry, boolean replayed) {
         return new Accepted(Context.of(context, state.checkpointCommit(), entry.revision()), entry.commandId(), entry.commandId(), replayed,
                 "READY", new Change(entry.afterDsl(), ArchitectureSemanticPatch.between(entry.beforeDsl(), entry.afterDsl())));

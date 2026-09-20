@@ -36,9 +36,27 @@ import java.util.function.UnaryOperator;
 public class IntegrationDomainAdapter {
     private final IntegrationPortfolioPort projects;
     private final IntegrationJson json;
-    public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json) {
-        this.projects = projects; this.json = json;
+    public record ProjectionProfile(String connectorId, String profileVersion) {
+        public ProjectionProfile { if (connectorId == null || connectorId.isBlank() || profileVersion == null || profileVersion.isBlank()) throw new IllegalArgumentException("Exact projection profile required"); }
     }
+    private final Set<ProjectionProfile> nativeProfiles;
+    @org.springframework.beans.factory.annotation.Autowired
+    public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json) { this(projects, json, List.of()); }
+    public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json, List<ProjectionProfile> profiles) {
+        this.projects = projects; this.json = json;
+        this.nativeProfiles = Set.copyOf(profiles);
+        if (nativeProfiles.size() != profiles.size()) throw new IllegalArgumentException("Duplicate projection profile");
+        if (profiles.stream().anyMatch(p -> SparxSnapshots.isSparx(p.connectorId()))) throw new IllegalArgumentException("Built-in projection profiles cannot be overridden");
+    }
+    public boolean supportsNativePackages(Connection connection) { return nativePackages(connection) || nativeProfiles.contains(new ProjectionProfile(connection.connectorId(), connection.profileVersion())); }
+    public boolean supportsArchitecture(Connection connection) { return architectureProfile(connection) || supportsNativePackages(connection); }
+
+    public void refreshIntegrationRequirements(RepositoryContext context, Long projectId) {
+        if (projectId != null) {
+            projects.refreshIntegrationRequirements(projectId, context.username(), workspace(context));
+        }
+    }
+
     public record Snapshot(InternalState state, Map<String, Artifact> items, List<RequirementData> requirements, List<MappingLoss> losses, String projectKey) {
         public Snapshot(InternalState state, Map<String, Artifact> items, List<RequirementData> requirements, List<MappingLoss> losses) {
             this(state, items, requirements, losses, null);
@@ -58,13 +76,13 @@ public class IntegrationDomainAdapter {
                 result.put("REQUIREMENT:" + external, new AppliedRequirement(requirement.requirementKey(), requirement.id()));
             }
         }
-        if (connection.projectId() == null || SparxSnapshots.isSparx(connection.connectorId())) for (BlockAst block : ArchitectureSemanticPatch.index(document.dsl()).values()) {
+        if (connection.projectId() == null || supportsNativePackages(connection) || SparxSnapshots.isSparx(connection.connectorId())) for (BlockAst block : ArchitectureSemanticPatch.index(document.dsl()).values()) {
             String kind = block.getKind();
-            if (!Set.of("element", "view", "relation").contains(kind) && !(nativePackages(connection) && "package".equals(kind))) continue;
+            if (!Set.of("element", "view", "relation").contains(kind) && !(supportsNativePackages(connection) && "package".equals(kind))) continue;
             String business = kind.equals("relation") ? String.join(" ", block.getHeaderTokens()) : block.getHeaderTokens().getFirst();
             result.put(("package".equals(kind) ? "SPECIFICATION" : kind.toUpperCase(java.util.Locale.ROOT)) + ":" + externalId(connection, "export-" + kind + ":" + business), new AppliedRequirement(business, null));
         }
-        if (nativePackages(connection)) for (Artifact a : selected.values()) if (a.kind() == ArtifactKind.RELATION
+        if (supportsNativePackages(connection)) for (Artifact a : selected.values()) if (a.kind() == ArtifactKind.RELATION
                 && "REQUIREMENT_MAPPING".equals(a.extensions().get("nativeProjection")))
             result.put(ExchangeItems.key(a), new AppliedRequirement(a.extensions().get("nativeSource") + " -> " + a.extensions().get("nativeTarget"), null));
         for (var entry : selected.entrySet()) if (!Set.of(ArtifactKind.REQUIREMENT, ArtifactKind.ELEMENT, ArtifactKind.VIEW, ArtifactKind.RELATION).contains(entry.getValue().kind()))
@@ -110,7 +128,7 @@ public class IntegrationDomainAdapter {
                         && !Objects.equals(extensions.get("canonicalType"), baseline.extensions().get("canonicalType")))
                     attributes.put("tag:taxonomy.elementType", block.getHeaderTokens().get(2));
                 current = new Artifact(baseline.id(), baseline.kind(), type, value(block.property("title")), value(block.property("description")), attributes, extensions);
-            } else if (baseline.kind() == ArtifactKind.RELATION && architectureProfile(connection)) {
+            } else if (baseline.kind() == ArtifactKind.RELATION && supportsArchitecture(connection)) {
                 if ("PRESERVE_ONLY".equals(baseline.extensions().get("nativeProjection"))) { items.put(mapping.externalId(), current); continue; }
                 if ("REQUIREMENT_MAPPING".equals(baseline.extensions().get("nativeProjection"))) {
                     if (blocks.containsKey("mapping:" + mapping.businessIdentity())) items.put(mapping.externalId(), current);
@@ -134,7 +152,7 @@ public class IntegrationDomainAdapter {
             synchronizeViews(connection, blocks, elements, views, items, losses);
             pruneConnections(items, losses);
         }
-        if (nativePackages(connection) && connection.authority() != AuthorityMode.LINK_ONLY) {
+        if (supportsNativePackages(connection) && connection.authority() != AuthorityMode.LINK_ONLY) {
             String modelId = items.values().stream().filter(a -> a.kind() == ArtifactKind.PLACEMENT)
                     .map(a -> a.extensions().get("container")).filter(Objects::nonNull).findFirst().orElse(null);
             IntegrationPackageProjection.synchronize(connection, document.dsl(), mappings, items, modelId, false);
@@ -144,7 +162,7 @@ public class IntegrationDomainAdapter {
         }
         InternalState state = new InternalState(context.repositoryId(), document.state().workspaceScopeKey(), context.branch(), document.state().commitId(),
                 document.state().semanticRevision(), connection.projectId(), json.fingerprint(requirements.stream().map(r -> java.util.Arrays.asList(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList()));
-        return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses), nativePackages(connection) && connection.projectId() != null
+        return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses), supportsNativePackages(connection) && connection.projectId() != null
                 ? projects.getProject(connection.projectId(), context.username(), workspace(context)).projectKey() : null);
     }
 
@@ -198,7 +216,7 @@ public class IntegrationDomainAdapter {
                 }
             }
         }
-        if (connection.projectId() == null || SparxSnapshots.isSparx(connection.connectorId())) {
+        if (connection.projectId() == null || supportsNativePackages(connection) || SparxSnapshots.isSparx(connection.connectorId())) {
             Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(document.dsl());
             Map<String, String> ids = new TreeMap<>();
             mappings.stream().filter(m -> !m.removed()).forEach(m -> { if (m.internal() != null && m.internal().kind() == ArtifactKind.ELEMENT) ids.put(m.businessIdentity(), m.internal().id()); });
@@ -229,7 +247,7 @@ public class IntegrationDomainAdapter {
                 Artifact artifact = new Artifact(externalId, ArtifactKind.RELATION, mappedType == null ? type : mappedType, "", "", attributes, extension);
                 items.put(ExchangeItems.key(artifact), artifact);
             }
-            if (nativePackages(connection) && connection.projectId() != null) {
+            if (supportsNativePackages(connection) && connection.projectId() != null) {
                 Map<String, String> requirementIds = new HashMap<>();
                 for (RequirementData requirement : current.requirements()) {
                     Identity mapping = mappings.stream().filter(m -> requirement.id().equals(m.requirementId()) && !m.removed()).findFirst().orElse(null);
@@ -272,7 +290,7 @@ public class IntegrationDomainAdapter {
             synchronizeViews(connection, blocks, ids, views, items, losses);
         }
         // Local removals have an explicit export loss report; never leave an orphaned hierarchy or view connection.
-        if (nativePackages(connection)) IntegrationPackageProjection.synchronize(connection, document.dsl(), mappings, items,
+        if (supportsNativePackages(connection)) IntegrationPackageProjection.synchronize(connection, document.dsl(), mappings, items,
                 template.metadata().get("identifier"), true);
         boolean removed;
         do {
@@ -284,7 +302,7 @@ public class IntegrationDomainAdapter {
                         || item.kind() == ArtifactKind.PLACEMENT && (!value(extension.get("artifact")).isEmpty() && !present.contains(extension.get("artifact"))
                         || !value(extension.get("parent")).isEmpty() && !placements.contains(extension.get("parent"))
                         || !"organizations".equals(extension.get("container")) && !present.contains(extension.get("container"))
-                        && !(SparxSnapshots.isSparx(connection.connectorId()) && template.metadata().get("identifier").equals(extension.get("container"))));
+                        && !(supportsNativePackages(connection) && Objects.equals(template.metadata().get("identifier"), extension.get("container"))));
                 if (omit) losses.add(new MappingLoss(item.id(), "dependency", "LOCAL_DEPENDENCY_REMOVED", LossDisposition.TRANSFORMED,
                         "Occurrence or relation is omitted because its canonical target was removed locally"));
                 return omit;
@@ -494,7 +512,7 @@ public class IntegrationDomainAdapter {
             }
             commands.add(new SetExchangeProperties("element", internalId, exchangeProperties(connection, artifact)));
         }
-        if (nativePackages(connection)) commands.addAll(IntegrationPackageProjection.commands(connection, dsl, current, selected, mappings, this));
+        if (supportsNativePackages(connection)) commands.addAll(IntegrationPackageProjection.commands(connection, dsl, current, selected, mappings, this));
         for (Artifact artifact : selected.values()) if (artifact.kind() == ArtifactKind.VIEW) {
             boolean layoutChanged = !current.entrySet().stream().filter(e -> e.getValue().kind() == ArtifactKind.PLACEMENT && artifact.id().equals(e.getValue().extensions().get("container")))
                     .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -> ExchangeItems.fields(e.getValue())))
@@ -538,7 +556,8 @@ public class IntegrationDomainAdapter {
             return projection == RelationProjection.PRESERVE_ONLY ? "preserved" : source + (projection == RelationProjection.REQUIREMENT_MAPPING ? " -> " : " " + type + " ") + target;
         }
     }
-    private static RelationTarget relationTarget(Artifact relation, EndpointIndex index, EndpointOverride override) {
+    /** Pure endpoint normalization shared by scoped publication review; callers supply locally validated identities. */
+    public static RelationTarget relationTarget(Artifact relation, EndpointIndex index, EndpointOverride override) {
         // Retained approval authorizes projection/ends; canonicalType is the effective relation type.
         // Historical nativeType evidence must not override a later reviewed canonical remap.
         if (override == null && relation.extensions().containsKey("nativeProjection")) override = new EndpointOverride(
@@ -616,7 +635,7 @@ public class IntegrationDomainAdapter {
     }
     private static RelationKey parseRelation(String value) { String[] tokens = value.split(" ", 3); return new RelationKey(tokens[0], tokens[1], tokens[2]); }
     public static String stableId(UUID connection, String id) { return "ext-" + UUID.nameUUIDFromBytes((connection + "\u0000" + id).getBytes(StandardCharsets.UTF_8)).toString(); }
-    private static String externalId(Connection connection, String identity) {
+    static String externalId(Connection connection, String identity) {
         return SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.externalId(connection.id(), identity) : stableId(connection.id(), identity);
     }
     private static String requirementExternalId(Connection connection, Long identity) {

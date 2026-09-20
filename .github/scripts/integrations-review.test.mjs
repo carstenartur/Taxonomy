@@ -19,7 +19,7 @@ class Element {
     focus() {}
 }
 
-async function page(profileId, { profilesMissing = false } = {}) {
+async function page(profileId, { profilesMissing = false, publication = false } = {}) {
     const elements = new Map();
     const el = id => {
         if (!elements.has(id)) elements.set(id, new Element());
@@ -31,23 +31,28 @@ async function page(profileId, { profilesMissing = false } = {}) {
     }
     authority.value = 'IMPORT_COPY';
     const operation = {
-        id: 'op', status: 'PREVIEWED', direction: 'INBOUND', context: { profile: profileId, authority: 'IMPORT_COPY' },
+        id: 'op', status: 'PREVIEWED', direction: publication ? 'PUSH' : 'INBOUND', context: { profile: profileId, authority: 'IMPORT_COPY' },
         document: { losses: [], metadata: {} },
         changes: [{ id: 'change', externalId: 'RELATION:r', kind: 'ADD', conflicts: [],
             after: { kind: 'RELATION', title: 'Dependency', attributes: {}, extensions: {} } }]
     };
     const overview = { connection: { connectorId: profileId, authority: 'IMPORT_COPY' }, current: {}, history: [], oslcCatalogPath: '/oslc' };
-    const uploads = [];
+    const uploads = [], writes = [];
+    const publicationOperation = { operationId: 'op', mode: 'PUSH', phase: 'PREVIEWED', status: 'PREVIEWED', allowedActions: ['REVIEW', 'PUBLISH', 'CANCEL'], scope: { rootResource: 'urn:model', selectorFingerprint: 'all' }, expectedExternalRevision: 'scope-1', items: [], acknowledgedCount: 0, unknownCount: 0, remainingCount: 0, preview: { fingerprint: 'frozen', changes: [{ id: 'change', externalId: 'RELATION:r', local: operation.changes[0].after, remote: null, merged: operation.changes[0].after, localFields: ['title'], remoteFields: [], conflicts: [], dependencies: [] }], losses: [] } };
+    overview.publicationAvailability = { available: publication, modes: publication ? ['PUSH', 'SYNCHRONIZE'] : [], reasonCode: publication ? null : 'PUBLICATION_GUARANTEES_UNVERIFIED' };
     const api = {
         async read(path) {
             if (path === '/profiles') return profilesMissing ? [] : [{ id: profileId, title: profileId,
                 capabilities: ['FILE_IMPORT'], mediaTypes: ['application/xml'] }];
             if (path === '') return [{ id: 'conn', displayName: 'Test', connectorId: profileId }];
-            if (path === '/conn') return overview;
+            if (path === '/conn' || path.startsWith('/conn?')) return overview;
             if (path === '/conn/operations/op') return operation;
+            if (path === '/conn/operations/op/publication') return publicationOperation;
+            if (path === '/conn/operations/op/endpoint-options') return { external: {} };
             if (path === '/conn/operations/op/events') return [];
             throw new Error('Unexpected read: ' + path);
         },
+        async write(path, request) { writes.push({ path, request }); return publicationOperation; },
         async upload(path, request) { uploads.push({ path, request }); return operation; }
     };
     vm.runInNewContext(source, {
@@ -59,7 +64,7 @@ async function page(profileId, { profilesMissing = false } = {}) {
     });
     await new Promise(resolve => setImmediate(resolve));
     assert.equal(el('integrationError').hidden, true, el('integrationError').textContent);
-    return { el, uploads };
+    return { el, uploads, writes };
 }
 
 function descendants(node) { return node.children.flatMap(child => [child, ...descendants(child)]); }
@@ -86,4 +91,17 @@ test('a missing connection profile produces an actionable import error', async (
     assert.equal(el('integrationError').textContent, 'integration.profileUnavailable');
     assert.equal(el('integrationError').hidden, false);
     assert.equal(uploads.length, 0);
+});
+
+ test('publication reload renders directed choices and publishes through its own route', async () => {
+    const { el, writes } = await page('taxonomy-publication-contract-v1', { publication: true });
+    const select = descendants(el('integrationChanges')).find(node => node.tag === 'select' && node.children.some(option => option.value === 'KEEP_LOCAL'));
+    assert.ok(select, 'Directed publication decisions must be restored after reload');
+    select.value = 'KEEP_LOCAL'; select.listeners.change();
+    el('integrationRationale').value = 'Reviewed outbound addition';
+    el('integrationApply').listeners.click();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(writes[0].path, '/conn/publish');
+    assert.equal(writes[0].request.resolutions.change, 'KEEP_LOCAL');
+    assert.deepEqual(Object.keys(writes[0].request.review.decisions), []);
 });

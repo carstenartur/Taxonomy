@@ -125,6 +125,7 @@ final class CivilianIntegrationWalkthrough {
                 List.of(new Placement("placement:" + pkg, root, null, pkg, 0, Map.of()), new Placement("placement:" + element, root, "placement:" + pkg, element, 0, Map.of()),
                         new Placement("placement:" + req, root, "placement:" + pkg, req, 1, Map.of())), Map.of("identifier", root, "title", "Contract fixture"), List.of());
         byte[] fixture = new SparxXmiCodec("2").write(document);
+        java.nio.file.Files.write(app.output.resolve("native-browser-fixture.xmi"), fixture);
         JsonNode preview = uploadXmi(app, path, scope, fixture);
         var choices = app.get(path + "/operations/" + preview.path("id").asText() + "/endpoint-options" + scope).path("external");
         var decision = new TreeMap<String, String>(); String connectorChange = null;
@@ -174,7 +175,7 @@ final class CivilianIntegrationWalkthrough {
                 "connection", connection.toString(), "packageId", packageId, "productCompatibility", "NOT_EXECUTED", "fixture", "contract")));
         app.save("integration-native-review.json", app.json.valueToTree(review));
     }
-    private static JsonNode editorRequest(CivilianArchitectureAcceptanceTest app, String path, Object body, long revision) throws Exception {
+    static JsonNode editorRequest(CivilianArchitectureAcceptanceTest app, String path, Object body, long revision) throws Exception {
         var response = app.http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port + path)).timeout(Duration.ofSeconds(30))
                 .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + CivilianArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
                 .header("Content-Type", "application/json").header("If-Match", "\"workspace-revision-" + revision + "\"")
@@ -182,7 +183,7 @@ final class CivilianIntegrationWalkthrough {
         assertThat(response.statusCode()).as(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo(200);
         return app.json.readTree(response.body());
     }
-    private static JsonNode uploadXmi(CivilianArchitectureAcceptanceTest app, String path, String scope, byte[] file) throws Exception {
+    static JsonNode uploadXmi(CivilianArchitectureAcceptanceTest app, String path, String scope, byte[] file) throws Exception {
         String boundary = "native-" + UUID.randomUUID();
         var request = Map.of("operationId", UUID.randomUUID(), "expected", app.get(path + scope).path("current"), "mediaType", "application/xmi+xml", "completeScope", true);
         var body = new java.io.ByteArrayOutputStream();

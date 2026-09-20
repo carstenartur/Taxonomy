@@ -16,3 +16,7 @@ td { max-width: 28rem; overflow-wrap: anywhere; } td pre { max-height: 14rem; ov
 .conflict { background: #fff1dd; } :focus-visible { outline: 3px solid #1167bb; outline-offset: 3px; }
 .skip { position: absolute; left: -10000px; } .skip:focus { left: 1rem; top: 1rem; background: white; padding: 1rem; }
 @media (prefers-color-scheme: dark) { body { background: #111d2c; color: #e6edf6; } section, input, select, textarea, button { background: #1a2b40; color: #e6edf6; } .conflict { background: #473723; } a { color: #a7d5ff; } }
+
+#integrationPublication { border: 1px solid #64788e; border-radius: .3rem; padding: 1rem; margin-top: 1rem; }
+#integrationPublicationReason, #integrationPublicationCounts { font-weight: 600; }
+#integrationPublicationItems { line-height: 1.7; }

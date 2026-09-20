@@ -47,10 +47,20 @@
             <button type="submit" data-i18n="integration.preview">Preview import</button>
         </form>
         <button id="integrationExport" type="button" data-i18n="integration.export">Preview export of this exact state</button>
+        <fieldset id="integrationPublication"><legend data-i18n="integration.publication">Conditional publication</legend>
+            <p data-i18n="integration.publicationScopeHint">Select the model or package and the subset defined by the configured provider. Only a server-verified provider can accept publication.</p>
+            <label for="integrationPublicationRoot" data-i18n="integration.publicationRoot">Model or package resource identity</label><input id="integrationPublicationRoot" maxlength="2048"/>
+            <label for="integrationPublicationSelector" data-i18n="integration.publicationSelector">Provider-defined subset</label><input id="integrationPublicationSelector" maxlength="2048"/>
+            <label for="integrationPublicationRevision" data-i18n="integration.publicationRevision">Exact expected remote revision</label><input id="integrationPublicationRevision" maxlength="2048"/>
+            <button id="integrationPublicationCheck" type="button" data-i18n="integration.publicationCheck">Check publication availability</button>
+            <p id="integrationPublicationReason" role="status"></p>
+            <button id="integrationPush" type="button" data-i18n="integration.push">Preview Push to external tool</button>
+            <button id="integrationSynchronize" type="button" data-i18n="integration.synchronize">Preview Synchronize</button>
+        </fieldset>
         <p data-i18n="integration.delivery">A downloaded file is an export artifact. It does not confirm that another tool accepted it.</p>
     </section>
     <section id="integrationReview" aria-labelledby="reviewTitle" tabindex="-1"><h2 id="reviewTitle" data-i18n="integration.review">Review changes</h2>
-        <p id="integrationOperation"></p><pre id="integrationProvenance"></pre>
+        <p id="integrationProvider"></p><p id="integrationOperation"></p><pre id="integrationProvenance"></pre>
         <label for="integrationFilter" data-i18n="integration.filter">Filter by identity, title, kind or conflict</label><input id="integrationFilter" type="search"/>
         <div class="toolbar"><button id="integrationAccept" type="button" data-i18n="integration.acceptVisible">Accept visible nonconflicting changes</button><button id="integrationReject" type="button" data-i18n="integration.rejectVisible">Reject visible changes</button></div>
         <div class="table-scroll" tabindex="0" role="region" aria-labelledby="reviewTitle"><table><thead><tr><th data-i18n="integration.object">Object</th><th data-i18n="integration.change">Change</th><th data-i18n="integration.values">Current → proposed</th><th data-i18n="integration.decision">Decision</th></tr></thead><tbody id="integrationChanges"></tbody></table></div>
@@ -58,6 +68,8 @@
         <details><summary data-i18n="integration.losses">Mappings and loss report</summary><ul id="integrationLosses"></ul></details>
         <label for="integrationRationale" data-i18n="integration.rationale">Rationale for this review</label><textarea id="integrationRationale" rows="3" maxlength="1000"></textarea>
         <div class="toolbar"><button id="integrationApply" type="button" data-i18n="integration.apply">Apply reviewed decisions</button><button id="integrationCancel" type="button" data-i18n="integration.cancel">Cancel preview</button><button id="integrationRetry" type="button" data-i18n="integration.retry">Resume durable operation</button><a id="integrationDownload" hidden data-i18n="integration.download">Download reviewed file</a></div>
+        <button id="integrationReconcile" type="button" hidden data-i18n="integration.reconcile">Create linked reconciliation preview</button>
+        <section id="integrationPublicationOutcomes" hidden aria-labelledby="integrationPublicationCounts"><h3 id="integrationPublicationCounts" aria-live="polite"></h3><ul id="integrationPublicationItems"></ul></section>
         <ol id="integrationEvents"></ol>
     </section>
     <section aria-labelledby="historyTitle"><h2 id="historyTitle" data-i18n="integration.history">Integration operations</h2><p data-i18n="integration.historyHint">Reload an operation to inspect its frozen context, decisions and recovery state. Editor operations and Git versions are available in the architecture editor.</p><ul id="integrationHistory"></ul></section>
