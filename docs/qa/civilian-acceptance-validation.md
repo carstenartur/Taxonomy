@@ -107,11 +107,27 @@ separately so historical results are not attributed to new code.
 
 ## Quality follow-up (2026-09-20)
 
-[Machine-readable follow-up evidence](civilian-quality-followup.json) records a
-55-page Word render, no empty page bodies, 261 preserved text assertions and all
-38 Visio element labels. All 55 Word pages were inspected in contact sheets with
-selected full-size pages. The slight increase from the interim 53-page render
-keeps chapter headings and picture captions with their content. The original
-87-page defect is closed; no source requirement, alternative or reason was removed.
-The selected implementation checks passed: 29 tests, zero failures/errors, 3m19s.
-The final full gate and new browser run will be recorded with their own revisions.
+[Machine-readable follow-up evidence](civilian-quality-followup.json) records the
+final implementation and the separate full-suite, browser and native-render runs.
+[CI run 35487419613](https://github.com/carstenartur/Taxonomy/actions/runs/35487419613)
+passed all four selected tests on implementation head `658ad51` (merge `f2cf6a4`)
+in 5m54s. LibreOffice 24 rendered 52 Word pages, with 261 preserved text assertions,
+no empty body page and no orphan rationale-box heading. All 52 pages and all five
+original browser screenshots were inspected; corrected boxes on pages 5 and 37
+were also checked at full size. Draw retained all 38 element labels on one page;
+the dense/reversed connector-caption limitation remains as described above.
+
+The same implementation rendered to 55 pages with local LibreOffice 26. Page-count
+variation is recorded with renderer versions and source/PDF hashes. The original
+87-page/empty-page defect and the later split rationale-box finding are corrected;
+no source requirement, alternative or rationale was removed. Both XML structure
+and independently rendered page bodies now guard the rationale-box regression.
+
+[CI run 35488384460](https://github.com/carstenartur/Taxonomy/actions/runs/35488384460)
+also passed on `41d4ffb`. Only the reviewed dependency baseline and execution ledger
+changed after the visually inspected run; application/test sources are identical.
+The exact full command `./mvnw verify -DexcludedGroups="real-llm"` passed on
+`41d4ffb` in 19:54 min: 5,108 reported tests, zero failures/errors and
+1 skipped test(s). The evidence lists the skipped suite and existing POM
+defaults; separate container/general browser suites were not added to this command.
+The dedicated civilian CI supplies the actual browser and independent rendering.

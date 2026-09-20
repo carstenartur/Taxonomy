@@ -144,3 +144,15 @@ integration identities, previews, reconciliation, journal and checkpoints.
 - The exact architecture gate then passed all 22 checks. The preceding full
   attempt reported 4,802 tests with this sole policy failure; it is not a passing
   full-gate result. Run the complete command again, including downstream gates.
+
+- Final verification GREEN on published `41d4ffb`: exact required Maven command,
+  5,108 reported tests, zero failures/errors, 1 skipped, 19:54 min.
+  Full log hash, execution environment, skipped suite and default suite boundaries
+  are recorded in `docs/qa/civilian-quality-followup.json`.
+- Final browser/native evidence GREEN: implementation run 35487419613, all 52
+  Word pages and five original browser captures inspected, corrected rationale
+  boxes checked at full size; artifact/source/PDF/XMI hashes verified. Subsequent
+  baseline-only run 35488384460 also passed. No application or test source changed.
+- Final: Ruling: publish the follow-up as PR #1087, stacked on #1086; leave the
+  existing three ready PRs untouched and #1075 open. Genuine product compatibility,
+  PCS publication and dense Visio presentation remain explicitly unapproved.
