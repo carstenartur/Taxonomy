@@ -905,7 +905,7 @@
             });
         svgSelection.call(zoomBehavior).on('dblclick.zoom', null);
 
-        document.getElementById('architectureTitle').textContent = resolvePolicyTitle(scene.title);
+        document.getElementById('architectureTitle').textContent = resolvePolicyTitle(data.policyTitleKey || scene.title);
         renderProvenance(data);
         const archiMateDownload = document.getElementById('downloadArchitectureArchiMate');
         if (archiMateDownload) archiMateDownload.disabled = false;

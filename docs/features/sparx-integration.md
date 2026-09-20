@@ -62,6 +62,12 @@ Node → System, Artifact → InformationProduct. A recognized stereotype or exp
 `taxonomy.elementType` tag refines that mapping. Unsupported types require review
 and a supported remap; they are never silently converted to a generic component.
 
+The XMI codec requires the supported EA transport type and its declared canonical
+meaning to agree. A foreign transport type such as `ApplicationComponent` must
+first pass through the native projection or an explicit remap. `Component` with
+canonical `System` needs the corresponding stereotype or `taxonomy.elementType`
+tag; contradictory connector/canonical types are rejected before export.
+
 Packages and package hierarchy are durable exchange semantics. The current native
 editor does not provide package authoring. Requirements-to-element connectors and
 endpoint combinations outside the native architecture matrix require rejection or

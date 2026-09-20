@@ -19,8 +19,10 @@ public final class SparxModelValidator {
             if (objects.putIfAbsent(guid(artifact.id()), artifact) != null) throw duplicate();
             if (!Set.of(ArtifactKind.SPECIFICATION, ArtifactKind.ELEMENT, ArtifactKind.REQUIREMENT).contains(artifact.kind()))
                 throw ExchangeXml.invalid("SPARX_KIND_UNMAPPED", "Artifact kind is outside the semantic XMI subset");
-            if (artifact.kind() == ArtifactKind.ELEMENT && (elementType(artifact.type(), artifact.extensions().get("stereotype"),
-                    artifact.attributes().get("tag:taxonomy.elementType")) == null || !CANONICAL_TYPES.contains(artifact.extensions().getOrDefault("canonicalType", ""))))
+            if (artifact.kind() == ArtifactKind.ELEMENT && (elementType(artifact.type(), null, null) == null
+                    || !CANONICAL_TYPES.contains(artifact.extensions().getOrDefault("canonicalType", ""))
+                    || !artifact.extensions().get("canonicalType").equals(elementType(artifact.type(),
+                            artifact.extensions().get("stereotype"), artifact.attributes().get("tag:taxonomy.elementType")))))
                 throw ExchangeXml.invalid("SPARX_ELEMENT_UNMAPPED", "Reject or explicitly remap unsupported element types before export");
             checkTags(artifact.attributes(), taxonomyIds, source.profile() + "@" + source.profileVersion());
         }
@@ -31,7 +33,8 @@ public final class SparxModelValidator {
             if (!allIds.add(guid(relation.id()))) throw duplicate();
             if (!objects.containsKey(relation.source()) || !objects.containsKey(relation.target()))
                 throw ExchangeXml.invalid("SPARX_ENDPOINT_REQUIRED", "A reviewed connector endpoint is missing");
-            if (relationType(relation.type()) == null || relation.extensions().get("canonicalType") == null)
+            if (relationType(relation.type()) == null
+                    || !relationType(relation.type()).equals(relation.extensions().get("canonicalType")))
                 throw ExchangeXml.invalid("SPARX_RELATION_UNMAPPED", "Reject or remap unsupported connectors before export");
             checkTags(relation.attributes(), taxonomyIds, source.profile() + "@" + source.profileVersion());
         }

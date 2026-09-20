@@ -64,6 +64,13 @@ Node → System, Artifact → InformationProduct. Ein bekannter Stereotyp oder e
 explizites Tag `taxonomy.elementType` präzisiert die Zuordnung. Unbekannte Typen
 müssen abgelehnt oder bewusst auf einen unterstützten Typ abgebildet werden.
 
+Der XMI-Codec verlangt, dass unterstützter EA-Transporttyp und deklarierte
+kanonische Bedeutung übereinstimmen. Ein fremder Transporttyp wie
+`ApplicationComponent` muss zuerst durch die native Projektion oder ein explizites
+Remapping gehen. `Component` mit kanonischem Typ `System` braucht den passenden
+Stereotyp oder das Tag `taxonomy.elementType`. Widersprüchliche Beziehungs- und
+kanonische Typen werden vor dem Export abgewiesen.
+
 Pakete und ihre Hierarchie werden dauerhaft als Austauschsemantik gespeichert.
 Der native Editor bietet bislang keine Paketbearbeitung. Beziehungen zwischen
 Anforderungen und Architekturelementen sowie unzulässige Endpunkttypen erfordern

@@ -176,6 +176,8 @@ class ArchitectureWorkbenchServiceTest {
         persisted.analysis().getArchitectureView().setViewTitle("archview.policy.title.defaultImpact");
         prepareSnapshot(persisted);
         Projection projection = service.load(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT);
+        assertThat(new tools.jackson.databind.ObjectMapper().valueToTree(projection)
+                .path("policyTitleKey").asString()).isEqualTo("archview.policy.title.defaultImpact");
         assertThat(projection.diagram().title()).contains("REQ-001", "Secure command information")
                 .doesNotContain("archview.");
         assertThat(service.renderSvg(PROJECT_ID, SNAPSHOT_ID, "alice", CONTEXT))

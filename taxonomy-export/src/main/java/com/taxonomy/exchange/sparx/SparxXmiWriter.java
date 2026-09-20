@@ -68,7 +68,8 @@ final class SparxXmiWriter {
                 targetEnd.setAttribute("type", xmiId(relation.target(), objects.get(relation.target()).kind() == ArtifactKind.SPECIFICATION));
                 if (relation.type().equals("Composition")) targetEnd.setAttribute("aggregation", "composite");
             } else {
-                node.setAttribute("client", xmiId(relation.source(), false)); node.setAttribute("supplier", xmiId(relation.target(), false));
+                node.setAttribute("client", xmiId(relation.source(), objects.get(relation.source()).kind() == ArtifactKind.SPECIFICATION));
+                node.setAttribute("supplier", xmiId(relation.target(), objects.get(relation.target()).kind() == ArtifactKind.SPECIFICATION));
             }
             Element detail = detail(connectors, "connector", relation.id(), false);
             ExchangeXml.append(detail, null, "source").setAttributeNS(XMI, "xmi:idref", xmiId(relation.source(), objects.get(relation.source()).kind() == ArtifactKind.SPECIFICATION));
