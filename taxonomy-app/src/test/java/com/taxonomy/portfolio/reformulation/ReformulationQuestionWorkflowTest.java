@@ -16,6 +16,38 @@ class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
             .contentType(MediaType.APPLICATION_JSON).content(json.writeValueAsString(Map.of("questionId",q,"action",action,"values",values,"otherText",other,"rationale","Human decision","author","forged"))))
             .andExpect(status().is(status)).andReturn().getResponse().getContentAsString());
     }
+    @Test void freeTextChoiceLabelsRemainAnsweredDataAndExplicitDeferralStillWorks() throws Exception {
+        var p=seed();long revision=2;
+        for(String text:List.of("open","Still open","offen","noch offen")) {
+            var result=answer(p.id(),revision++,"text","ANSWER",List.of(text),"",201);
+            assertThat(result.at("/currentRevision/questions/2/state").asText()).isEqualTo("ANSWERED");
+            assertThat(result.at("/currentRevision/answers").get((int)revision-3).path("values").get(0).asText()).isEqualTo(text);
+        }
+        var deferred=answer(p.id(),revision,"text","DEFER",List.of(),"",201);
+        assertThat(deferred.at("/currentRevision/questions/2/state").asText()).isEqualTo("DEFERRED");
+    }
+    @Test void ambiguousStatementEditAndRejectionPreserveOtherOccurrencesAndExposeConflict() throws Exception {
+        for(String independent:List.of("Capture time offline","Capture time")) {
+            documentTransform=d->new com.taxonomy.reformulation.ReformulationDocument("Capture time\n\n"+independent,d.sections(),
+                List.of(statement("capture","Capture time","BP-1"),statement("independent",independent,"BP-2")),d.questions(),d.validation(),List.of());
+            for(String action:List.of("EDIT","REJECT")) {
+                var p=seed();var result=reformulations.statement(project.id(),requirement.id(),p.id(),2,"capture",
+                    new ReformulationDtos.StatementRequest(action,"Record time","Selected paragraph only"),"architect",context);
+                assertThat(result.currentRevision().text()).isEqualTo(p.currentRevision().text());
+                assertThat(result.currentRevision().statements().get(1)).isEqualTo(p.currentRevision().statements().get(1));
+                assertThat(result.currentRevision().validation().findings()).anyMatch(f->f.code().equals("STATEMENT_TEXT_CONFLICT"));
+                assertThat(result.currentRevision().statements().getFirst().reviewState()).isEqualTo(action.equals("REJECT")?"REJECTED":"UNREVIEWED");
+            }
+        }
+    }
+    @Test void statementOperationPreservesProtectedFullDocumentWording() throws Exception {
+        var p=seed();String manual="Human introduction. Arbeitsbeginn und Ende erfassen. Human conclusion.";
+        reformulations.saveDraft(project.id(),requirement.id(),p.id(),2,new ReformulationDtos.SaveDraftRequest(manual,"Deliberate whole document"),"architect",context);
+        var changed=reformulations.statement(project.id(),requirement.id(),p.id(),3,"capture",new ReformulationDtos.StatementRequest("EDIT","Record time","Only selected statement"),"architect",context);
+        assertThat(changed.currentRevision().text()).isEqualTo(manual);
+        assertThat(changed.currentRevision().validation().findings()).anyMatch(f->f.code().equals("STATEMENT_TEXT_CONFLICT"));
+        assertThat(changed.currentRevision().statements().getFirst().wording()).isEqualTo("Record time");
+    }
     @Test void answersAllKindsAppendEvidenceAndKeepRequirementActive() throws Exception {
         originalText="Arbeitszeiterfassung";requirement=createRequirement("TERSE");snapshot=snapshot(requirement);
         var p=seed(); var before=projects.getRequirement(project.id(),requirement.id(),"architect",context);long n=2;

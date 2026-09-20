@@ -42,6 +42,7 @@ abstract class ReformulationWorkflowFixture {
     RequirementView requirement;
     String snapshot;
     String originalText=ORIGINAL;
+    boolean withBoundary;
     static final String ORIGINAL = "Arbeitszeiterfassung\n  <img src=x onerror=alert(1)>";
 
     @BeforeEach void fixture() {
@@ -73,6 +74,12 @@ abstract class ReformulationWorkflowFixture {
         var peer = new TaxonomyNodeDto(); peer.setCode("BP-2"); peer.setNameEn("Independent billing");
         var root = new TaxonomyNodeDto(); root.setCode("BP"); root.setNameEn("Business process"); root.setChildren(List.of(node,peer));
         var result = new AnalysisResult(Map.of("BP-1",45,"BP-2",40),List.of(root)); result.setStatus("PARTIAL");
+        if(withBoundary) {
+            node.setDescriptionEn("Frozen <img src=x onerror=alert(1)> node detail");
+            var edge=new com.taxonomy.dto.RequirementRelationshipView();edge.setSourceCode("BP-1");edge.setTargetCode("BP-2");
+            edge.setRelationType("FLOW");edge.setPresenceReason("Frozen <b>directed boundary</b>");
+            var view=new com.taxonomy.dto.RequirementArchitectureView();view.setIncludedRelationships(List.of(edge));result.setArchitectureView(view);
+        }
         String id = UUID.randomUUID().toString();
         analyses.persistSnapshot(job.items().getFirst().id(),job.id(),project.id(),PortfolioScope.key("architect",context),
                 id,"session-"+id,result,null,null,null,null,null,"prompt-fingerprint","catalogue-fingerprint","architect",context,1);
@@ -89,6 +96,7 @@ abstract class ReformulationWorkflowFixture {
                 .andReturn().getResponse().getContentAsString());
     }
     @Autowired ReformulationService reformulations;
+    java.util.function.UnaryOperator<com.taxonomy.reformulation.ReformulationDocument> documentTransform=java.util.function.UnaryOperator.identity();
     java.util.function.UnaryOperator<List<com.taxonomy.reformulation.DecisionQuestion>> questionTransform=java.util.function.UnaryOperator.identity();
     com.taxonomy.portfolio.reformulation.ReformulationDtos.Proposal seed() throws Exception {
         var p=reformulations.create(project.id(),requirement.id(),new ReformulationDtos.CreateRequest(requirement.currentVersionId(),snapshot,"de"),"architect",context);
@@ -101,7 +109,7 @@ abstract class ReformulationWorkflowFixture {
         var sections=List.of(new com.taxonomy.reformulation.Section("BP","BP","Process","Parent",List.of("BP-1","BP-2"),List.of(),List.of()),
             new com.taxonomy.reformulation.Section("BP-1","BP","Capture","Capture",List.of(),List.of("capture"),List.of("channel")),
             new com.taxonomy.reformulation.Section("BP-2","BP","Independent","Independent",List.of(),List.of("independent"),List.of()));
-        reformulations.finishRun(project.id(),requirement.id(),p.id(),run.id(),new com.taxonomy.reformulation.ReformulationDocument("Arbeitsbeginn und Ende erfassen.\n\nUnabhängige Abrechnung.",sections,statements,questionTransform.apply(questions),new com.taxonomy.reformulation.ValidationReport(List.of()),List.of()),null,"architect",context);
+        reformulations.finishRun(project.id(),requirement.id(),p.id(),run.id(),documentTransform.apply(new com.taxonomy.reformulation.ReformulationDocument("Arbeitsbeginn und Ende erfassen.\n\nUnabhängige Abrechnung.",sections,statements,questionTransform.apply(questions),new com.taxonomy.reformulation.ValidationReport(List.of()),List.of())),null,"architect",context);
         return reformulations.get(project.id(),requirement.id(),p.id(),"architect",context);
     }
     com.taxonomy.reformulation.Statement statement(String id,String text,String node) {

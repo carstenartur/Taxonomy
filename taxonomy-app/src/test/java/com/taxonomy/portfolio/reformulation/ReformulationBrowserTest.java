@@ -21,6 +21,110 @@ import static org.assertj.core.api.Assertions.*;
 @AutoConfigureMockMvc @WithMockUser(username="architect",roles="ARCHITECT")
 class ReformulationBrowserTest extends ReformulationWorkflowFixture {
     @LocalServerPort int port;
+    @org.springframework.beans.factory.annotation.Autowired SaveGate saveGate;
+    @org.springframework.boot.test.context.TestConfiguration
+    static class DelayConfiguration {
+        @org.springframework.context.annotation.Bean SaveGate saveGate() { return new SaveGate(); }
+    }
+    static class SaveGate extends org.springframework.web.filter.OncePerRequestFilter {
+        volatile java.util.concurrent.CountDownLatch entered=new java.util.concurrent.CountDownLatch(0);
+        volatile java.util.concurrent.CountDownLatch release=new java.util.concurrent.CountDownLatch(0);
+        final java.util.concurrent.atomic.AtomicBoolean armed=new java.util.concurrent.atomic.AtomicBoolean();
+        void arm() { entered=new java.util.concurrent.CountDownLatch(1);release=new java.util.concurrent.CountDownLatch(1);armed.set(true); }
+        @Override protected void doFilterInternal(jakarta.servlet.http.HttpServletRequest request,jakarta.servlet.http.HttpServletResponse response,jakarta.servlet.FilterChain chain) throws java.io.IOException,jakarta.servlet.ServletException {
+            if(request.getMethod().equals("POST") && request.getRequestURI().endsWith("/revisions") && armed.compareAndSet(true,false)) {
+                entered.countDown();try { if(!release.await(20,java.util.concurrent.TimeUnit.SECONDS))throw new jakarta.servlet.ServletException("Save gate timed out"); }
+                catch(InterruptedException failure) { Thread.currentThread().interrupt();throw new jakarta.servlet.ServletException(failure); }
+            }
+            chain.doFilter(request,response);
+        }
+    }
+    @Test void unsavedControlsSurviveOtherAnswerRunSourceRefreshAndBlockedOfferTransitions() throws Exception {
+        var p=seed();var alternative=seed();
+        inBrowser("draft-controls",p.id(),(driver,wait)->{
+            var editor=driver.findElement(By.cssSelector("[data-reformulation-editor]"));editor.clear();editor.sendKeys("Unsaved main draft");
+            click(driver,By.xpath("//div[@id='statement-capture']/parent::details/summary"));
+            var statement=driver.findElement(By.cssSelector("#statement-capture textarea"));statement.clear();statement.sendKeys("Unsaved selected paragraph");
+            driver.findElement(By.cssSelector("#question-text textarea")).sendKeys("Unsaved question wording");
+            driver.findElement(By.cssSelector("#question-channel [data-other-answer]")).sendKeys("Unsaved other choice");
+            var reason=driver.findElement(By.cssSelector("#question-text label:last-of-type input"));reason.clear();reason.sendKeys("Unsaved rationale");
+            new Select(driver.findElement(By.cssSelector("#question-boolean select"))).selectByValue("true");
+            var old=driver.findElement(By.id("question-boolean"));questionButton(driver,"boolean","Save answer").click();wait.until(ExpectedConditions.stalenessOf(old));
+            assertDraftControls(driver);
+            var revision=reformulations.get(project.id(),requirement.id(),p.id(),"architect",context).currentRevision();
+            var run=reformulations.beginRun(project.id(),requirement.id(),p.id(),revision.number(),"TEST","test","v1","v1","frozen","architect",context);
+            reformulations.finishRun(project.id(),requirement.id(),p.id(),run.id(),new com.taxonomy.reformulation.ReformulationDocument("New completed model wording",revision.sections(),revision.statements(),revision.questions(),revision.validation(),List.of()),null,"architect",context);
+            old=driver.findElement(By.id("question-boolean"));click(driver,By.xpath("//section[@id='reformulationOffers']//button[normalize-space()='Refresh status']"));wait.until(ExpectedConditions.stalenessOf(old));assertDraftControls(driver);
+            projects.addRequirementVersion(project.id(),requirement.id(),new com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest("External source change","Separate version",null),"architect",context);
+            click(driver,By.xpath("//section[@id='reformulationOffers']//button[normalize-space()='Refresh status']"));
+            wait.until(d->d.findElement(By.id("reformulationList")).getText().contains("older source version"));assertDraftControls(driver);
+            int count=reformulations.list(project.id(),requirement.id(),"architect",context).size();
+            click(driver,By.xpath("//section[@id='reformulationOffers']//button[normalize-space()='Propose reformulation']"));
+            wait.until(d->d.findElement(By.cssSelector("[data-reformulation-status]")).getText().contains("Unsaved"));assertDraftControls(driver);
+            assertThat(reformulations.list(project.id(),requirement.id(),"architect",context)).hasSize(count);
+            new Select(driver.findElement(By.cssSelector("#reformulationList > select"))).selectByValue(alternative.id());
+            assertThat(driver.findElement(By.cssSelector("#reformulationList > select")).getDomProperty("value")).isEqualTo(p.id());assertDraftControls(driver);
+        });
+    }
+    private static void assertDraftControls(RemoteWebDriver driver) {
+        org.assertj.core.api.SoftAssertions.assertSoftly(soft->{
+            soft.assertThat(driver.findElement(By.cssSelector("[data-reformulation-editor]")).getDomProperty("value")).isEqualTo("Unsaved main draft");
+            soft.assertThat(driver.findElement(By.cssSelector("#statement-capture textarea")).getDomProperty("value")).isEqualTo("Unsaved selected paragraph");
+            soft.assertThat(driver.findElement(By.cssSelector("#question-text textarea")).getDomProperty("value")).isEqualTo("Unsaved question wording");
+            soft.assertThat(driver.findElement(By.cssSelector("#question-channel [data-other-answer]")).getDomProperty("value")).isEqualTo("Unsaved other choice");
+            soft.assertThat(driver.findElement(By.cssSelector("#question-text label:last-of-type input")).getDomProperty("value")).isEqualTo("Unsaved rationale");
+        });
+    }
+    @Test void typingDuringActualHttpSaveRetainsNewerDraftGeneration() throws Exception {
+        var p=seed();inBrowser("in-flight-save",p.id(),(driver,wait)->{
+            var editor=driver.findElement(By.cssSelector("[data-reformulation-editor]"));editor.clear();editor.sendKeys("Submitted text");
+            saveGate.arm();try {
+                click(driver,By.cssSelector("[data-reformulation-save]"));assertThat(saveGate.entered.await(10,java.util.concurrent.TimeUnit.SECONDS)).isTrue();
+                editor.sendKeys(" plus newer typing");
+            } finally {saveGate.release.countDown();}
+            wait.until(ExpectedConditions.stalenessOf(editor));wait.until(d->d.findElement(By.cssSelector("[data-reformulation-status]")).getText().contains("Saved"));
+            assertThat(reformulations.get(project.id(),requirement.id(),p.id(),"architect",context).currentRevision().text()).isEqualTo("Submitted text");
+            assertThat(driver.findElement(By.cssSelector("[data-reformulation-editor]")).getDomProperty("value")).isEqualTo("Submitted text plus newer typing");
+        });
+    }
+    @Test void nodeAndDirectedEdgeLinksOpenSafeDetailsFromOfferFrozenSnapshot() throws Exception {
+        withBoundary=true;snapshot=snapshot(requirement);String frozenSnapshot=snapshot;
+        String edgeId="edge-"+analyses.getSnapshot(project.id(),snapshot,"architect",context).relationMappings().getFirst().id();
+        questionTransform=qs->{var result=new ArrayList<>(qs);var q=qs.getFirst();
+            var discovery=new com.taxonomy.reformulation.DecisionQuestion.Discovery("BP-1","Capture","Frozen reference",List.of(),List.of("BP-1"),List.of(edgeId));
+            result.set(0,new com.taxonomy.reformulation.DecisionQuestion(q.id(),q.key(),q.wording(),List.of(discovery),q.affectedStatementIds(),q.answerSchema(),q.prerequisites(),q.dependentQuestionIds(),q.consequences(),q.state()));return result;};
+        var p=seed();withBoundary=false;snapshot(requirement);
+        inBrowser("frozen-details",p.id(),(driver,wait)->{
+            click(driver,By.cssSelector("#question-channel > details > summary"));
+            click(driver,By.linkText("Architecture reference BP-1"));
+            assertThat(driver.findElements(By.cssSelector("[data-reformulation-architecture-detail]"))).hasSize(1);
+            var detail=driver.findElement(By.cssSelector("[data-reformulation-architecture-detail]"));
+            assertThat(detail.getDomAttribute("data-snapshot-id")).isEqualTo(frozenSnapshot);
+            assertThat(detail.getText()).contains("BP-1","Frozen <img src=x onerror=alert(1)> node detail");
+            click(driver,By.linkText("Architecture reference "+edgeId));detail=driver.findElement(By.cssSelector("[data-reformulation-architecture-detail]"));
+            assertThat(detail.getDomAttribute("data-snapshot-id")).isEqualTo(frozenSnapshot);
+            assertThat(detail.getText()).contains("BP-1 → BP-2","FLOW","Frozen <b>directed boundary</b>");
+            assertThat(detail.findElements(By.cssSelector("img,b,script"))).isEmpty();
+        });
+    }
+    @FunctionalInterface interface BrowserAction { void run(RemoteWebDriver driver,WebDriverWait wait) throws Exception; }
+    private void inBrowser(String name,String proposalId,BrowserAction action) throws Exception {
+        var options=new ChromeOptions();options.addArguments("--headless=new","--no-sandbox","--disable-dev-shm-usage");
+        String binary=System.getProperty("civilian.chrome.binary");if(binary!=null)options.setBinary(binary);
+        BrowserWebDriverContainer<?> container=null;RemoteWebDriver driver;String origin;
+        if(System.getProperty("webdriver.chrome.driver")!=null){driver=new ChromeDriver(options);origin="http://localhost:"+port;}
+        else {Testcontainers.exposeHostPorts(port);origin="http://host.testcontainers.internal:"+port;container=new BrowserWebDriverContainer<>(DockerImageName.parse(System.getProperty("selenium.container.image","selenium/standalone-chrome:"+new BuildInfo().getReleaseLabel())));container.start();driver=new RemoteWebDriver(container.getSeleniumAddress(),options);}
+        Path output=Path.of("target/civilian-acceptance/reformulation-browser",name);Files.createDirectories(output);
+        try {
+            var wait=new WebDriverWait(driver,Duration.ofSeconds(20));driver.manage().window().setSize(new Dimension(1440,1000));driver.get(origin+"/login");
+            driver.findElement(By.name("username")).sendKeys("admin");driver.findElement(By.name("password")).sendKeys("Reformulation-Browser-2026!");driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
+            driver.get(origin+"/projects/"+project.id()+"/requirements/"+requirement.id()+"?lang=en&proposal="+proposalId);wait.until(d->!d.findElements(By.cssSelector("[data-reformulation-editor]")).isEmpty());
+            action.run(driver,wait);Files.write(output.resolve("passed.png"),driver.getScreenshotAs(OutputType.BYTES));
+        } catch(Throwable failure) {
+            Files.write(output.resolve("failure.png"),driver.getScreenshotAs(OutputType.BYTES));Files.writeString(output.resolve("failure-page.html"),driver.getPageSource());
+            Files.writeString(output.resolve("failure-geometry.json"),String.valueOf(driver.executeScript("return JSON.stringify(window.__reformulationClickGeometry || {})")));throw failure;
+        } finally {saveGate.release.countDown();driver.quit();if(container!=null)container.close();}
+    }
     @Test void wideAndNarrowWorkspacePreservesEditsWhitespaceAndExplicitProposalSave() throws Exception {
         var proposal=seed();var before=projects.getRequirement(project.id(),requirement.id(),"architect",context);
         var options=new ChromeOptions(); options.addArguments("--headless=new","--no-sandbox","--disable-dev-shm-usage");

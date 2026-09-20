@@ -127,7 +127,7 @@
         let answerHost=box;
         if((q.sourceResolutions || []).length){answerHost=el('details');answerHost.append(el('summary',t('changeDecision')));box.append(answerHost);}
         const schema=q.answerSchema, inputs=[];
-        const last=activeAnswers().filter(a=>refs(q).includes(a.questionId())).at(-1);
+        const last=activeAnswers().filter(a=>refs(q).includes(a.questionId)).at(-1);
         if(['SINGLE_CHOICE','MULTIPLE_CHOICE'].includes(schema.kind))schema.options.forEach(option=>{
             const input=el('input');input.type=schema.kind==='MULTIPLE_CHOICE'?'checkbox':'radio';input.name='question-'+q.id;input.value=option;input.className='form-check-input me-2';input.checked=!!last?.values.includes(option);inputs.push(input);const label=el('label',undefined,'d-block my-1');label.append(input,document.createTextNode(option));answerHost.append(label);
         });
