@@ -78,13 +78,16 @@ public class VisioDiagramService {
 
                 VisioShape shape = new VisioShape(
                         shapeId,
-                        node.label(),
+                        VisioPresentation.display(node.label(), 24, 3),
                         x, y,
                         SHAPE_WIDTH, SHAPE_HEIGHT,
                         node.type(),
                         node.anchor());
                 shape.getProperties().putAll(metadata.elements().getOrDefault(node.id(), Map.of()));
                 var values = shape.getProperties();
+                values.put("taxonomy.label", VisioProperty.text(node.label()));
+                values.put("taxonomy.displayKey", VisioProperty.text("N" + shapeId));
+                VisioPresentation.labelLoss(doc, node.id(), node.label(), shape.getText());
                 values.put("taxonomy.id", VisioProperty.text(node.id()));
                 values.put("taxonomy.type", VisioProperty.text(node.type()));
                 values.put("taxonomy.relevance", VisioProperty.number(node.relevance()));
@@ -132,6 +135,7 @@ public class VisioDiagramService {
                     .map(VisioDiagramService::copyConnect).forEach(impact.getConnects()::add);
             doc.getPages().add(impact);
         }
+        VisioPresentation.apply(doc);
         return doc;
     }
 

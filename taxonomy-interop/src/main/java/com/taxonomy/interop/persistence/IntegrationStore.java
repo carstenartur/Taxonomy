@@ -26,12 +26,23 @@ public class IntegrationStore {
     private final EntityManager em;
     private final TransactionTemplate transaction;
     private final IntegrationJson json;
-    public IntegrationStore(EntityManagerFactory factory, PlatformTransactionManager manager, IntegrationJson json) {
+    private final com.taxonomy.interop.publication.PublicationLocalAuthority publicationAuthority;
+    public IntegrationStore(EntityManagerFactory factory, PlatformTransactionManager manager, IntegrationJson json) { this(factory, manager, json, null); }
+    @org.springframework.beans.factory.annotation.Autowired
+    public IntegrationStore(EntityManagerFactory factory, PlatformTransactionManager manager, IntegrationJson json,
+            com.taxonomy.interop.publication.PublicationLocalAuthority publicationAuthority) {
+        this.publicationAuthority = publicationAuthority;
         this.em = SharedEntityManagerCreator.createSharedEntityManager(factory); this.transaction = new TransactionTemplate(manager); this.json = json;
     }
     public record Connection(UUID id, String organizationId, String displayName, String connectorId, String profileVersion,
                              AuthorityMode authority, ExternalScope externalScope, Long projectId, String remoteProfile,
-                             long revision, UUID checkpointId, UUID activeOperationId, String createdBy) {}
+                             long revision, UUID checkpointId, UUID activeOperationId, String createdBy, UUID commonCheckpointId) {
+        public Connection(UUID id, String organizationId, String displayName, String connectorId, String profileVersion,
+                AuthorityMode authority, ExternalScope externalScope, Long projectId, String remoteProfile,
+                long revision, UUID checkpointId, UUID activeOperationId, String createdBy) {
+            this(id,organizationId,displayName,connectorId,profileVersion,authority,externalScope,projectId,remoteProfile,revision,checkpointId,activeOperationId,createdBy,null);
+        }
+    }
     public record Operation(UUID id, UUID connectionId, IntegrationContext context, String direction, OperationStatus status,
                             String fingerprint, long connectionRevision, ExchangeDocument document, List<IntegrationChange> changes,
                             ReviewedChangeSet review, String reviewFingerprint, String resultCommit, Long resultRevision,
@@ -109,9 +120,10 @@ public class IntegrationStore {
     }
 
     public final class Session {
-        private final RepositoryContext context;
-        private final IntegrationConnectionEntity connection;
+        final RepositoryContext context;
+        final IntegrationConnectionEntity connection;
         private Session(RepositoryContext context, IntegrationConnectionEntity connection) { this.context = context; this.connection = connection; }
+        public PublicationJournalSession publications() { return new PublicationJournalSession(this, em, json, publicationAuthority); }
         public Connection connection() { return IntegrationStore.this.connection(connection); }
         public Operation operation(UUID id) { return view(requireOperation(id)); }
         public Operation find(UUID id) {
@@ -195,6 +207,7 @@ public class IntegrationStore {
         }
         public void complete(UUID id, InternalState state, String externalVersion, String fingerprint, boolean synchronizedState) {
             IntegrationOperationEntity operation = requireOperation(id);
+            if (List.of("PUSH", "SYNCHRONIZE").contains(operation.direction)) throw IntegrationProblem.conflict("PUBLICATION_COMPLETION_REQUIRED");
             if (operation.status.equals(OperationStatus.COMPLETED.name())) return;
             operation.resultCommit = state.commitId(); operation.resultRevision = state.semanticRevision();
             operation.resultStateJson = json.write(state);
@@ -209,6 +222,10 @@ public class IntegrationStore {
         }
         public void cancel(UUID id, String rationale) {
             var operation = requireOperation(id);
+            if (List.of("PUSH", "SYNCHRONIZE").contains(operation.direction)) {
+                publications().cancel(id);
+                return;
+            }
             if (!List.of(OperationStatus.PREVIEWED.name(), OperationStatus.FETCH_PENDING.name(), OperationStatus.FETCH_FAILED.name()).contains(operation.status)) throw IntegrationProblem.conflict("CANNOT_CANCEL_APPLIED_OPERATION");
             transition(operation, OperationStatus.CANCELLED, "CANCELLED", rationale, null);
         }
@@ -223,16 +240,16 @@ public class IntegrationStore {
             connection.activeOperationId = null;
             transition(operation, OperationStatus.CONFLICT, "MODEL_APPLIED_CHECKPOINT_CONFLICT", json.read(operation.reviewJson, ReviewedChangeSet.class).rationale(), "CHECKPOINT_CONFLICT");
         }
-        private IntegrationOperationEntity requireOperation(UUID id) {
+        IntegrationOperationEntity requireOperation(UUID id) {
             var entity = em.find(IntegrationOperationEntity.class, id.toString()); if (entity == null) throw IntegrationProblem.missing(); requireScope(entity); return entity;
         }
         private void requireScope(IntegrationOperationEntity entity) {
             if (!entity.scopeId.equals(connection.scopeId) || !entity.connectionId.equals(connection.id)) throw IntegrationProblem.missing();
         }
-        private void transition(IntegrationOperationEntity entity, OperationStatus status, String event, String rationale, String code) {
+        void transition(IntegrationOperationEntity entity, OperationStatus status, String event, String rationale, String code) {
             entity.status = status.name(); entity.updatedAt = Instant.now().toString(); entity.failureCode = code; event(entity, event, rationale, code);
         }
-        private void event(IntegrationOperationEntity operation, String type, String rationale, String code) {
+        void event(IntegrationOperationEntity operation, String type, String rationale, String code) {
             var event = new IntegrationEventEntity(); event.id = UUID.randomUUID().toString(); event.scopeId = connection.scopeId;
             event.connectionId = connection.id; event.operationId = operation.id; event.eventType = type; event.actor = context.username();
             event.occurredAt = Instant.now().toString(); event.rationale = rationale; event.failureCode = code; em.persist(event);
@@ -247,7 +264,7 @@ public class IntegrationStore {
     }
     private Connection connection(IntegrationConnectionEntity c) {
         return new Connection(uuid(c.id), c.organizationId, c.displayName, c.connectorId, c.profileVersion, AuthorityMode.valueOf(c.authorityMode),
-                json.read(c.externalScope, ExternalScope.class), c.projectId, c.remoteProfile, c.revision, uuid(c.checkpointId), uuid(c.activeOperationId), c.createdBy);
+                json.read(c.externalScope, ExternalScope.class), c.projectId, c.remoteProfile, c.revision, uuid(c.checkpointId), uuid(c.activeOperationId), c.createdBy, uuid(c.commonCheckpointId));
     }
     private Operation view(IntegrationOperationEntity o) {
         return new Operation(uuid(o.id), uuid(o.connectionId), json.read(o.contextJson, IntegrationContext.class), o.direction, OperationStatus.valueOf(o.status),

@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class IntegrationJournalTest {
     @TempDir Path directory;
     private static final RepositoryContext CONTEXT = RepositoryContext.workspace("repo-a", "workspace-a", "draft", "alice");
-    private static final Class<?>[] ENTITIES = { IntegrationConnectionEntity.class, IntegrationOperationEntity.class, ExternalIdentityMappingEntity.class, IntegrationCheckpointEntity.class, IntegrationEventEntity.class };
+    private static final Class<?>[] ENTITIES = { IntegrationConnectionEntity.class, IntegrationOperationEntity.class, ExternalIdentityMappingEntity.class, IntegrationCheckpointEntity.class, IntegrationEventEntity.class, IntegrationPublicationEntity.class, IntegrationPublishItemEntity.class, IntegrationPublishAttemptEntity.class };
     private final IntegrationJson json = new IntegrationJson(JsonMapper.builder().build());
     private IntegrationStore store(EditorPersistenceFixture fixture) { return new IntegrationStore(fixture.factory, new JpaTransactionManager(fixture.factory), json); }
     private IntegrationStore.Connection connection(IntegrationStore store, UUID id) {

@@ -33,7 +33,7 @@ final class CivilianDocumentQa {
             var arguments = TaxonomyTooling.Arguments.parse(rawArguments);
             Path root = workingDirectory.resolve(arguments.required("artifacts")).toAbsolutePath().normalize();
             String soffice = arguments.optionalOrDefault("soffice", "soffice");
-            output.println(FlatJson.pretty(inspect(root, soffice)));
+            output.println(FlatJson.pretty(inspect(root, soffice, arguments.flag("visio-only"))));
             return 0;
         } catch (IOException | IllegalArgumentException failure) {
             error.println("::error::Civilian document QA failed: " + failure.getMessage());
@@ -46,16 +46,20 @@ final class CivilianDocumentQa {
     }
 
     static Map<String, Object> inspect(Path root, String soffice) throws IOException, InterruptedException {
+        return inspect(root, soffice, false);
+    }
+
+    static Map<String, Object> inspect(Path root, String soffice, boolean visioOnly) throws IOException, InterruptedException {
         Path output = Files.createDirectories(root.resolve("document-qa"));
         Files.deleteIfExists(output.resolve("quality.json"));
         Map<String, Object> report = new LinkedHashMap<>();
         report.put("renderer", command(soffice, "--version").strip());
         Map<String, Object> documents = new LinkedHashMap<>();
         report.put("documents", documents);
-        var decision = FlatJson.parseObject(Files.readString(root.resolve("decision.json")));
+        var decision = visioOnly ? Map.<String,Object>of() : FlatJson.parseObject(Files.readString(root.resolve("decision.json")));
         var architecture = FlatJson.parseObject(Files.readString(root.resolve("architecture.json")));
         String wordGraphHash=null;
-        for (String name : List.of("decision.docx", "report.docx", "architecture.vsdx")) {
+        for (String name : visioOnly ? List.of("architecture.vsdx") : List.of("decision.docx", "report.docx", "architecture.vsdx")) {
             boolean word = name.endsWith(".docx");
             if(word)wordGraphHash=checkFrozenWordSource(name,unzip(root.resolve(name)),architecture,wordGraphHash);
             String stem = name.substring(0, name.lastIndexOf('.'));
@@ -82,17 +86,82 @@ final class CivilianDocumentQa {
                 for(String collection:List.of("nodes","edges"))for(Object value:array(object(architecture.get("diagram")).get(collection)))expected.add(text(object(value),"id"));
             }
             var document = checkText(name, bbox, text, expected, word);
+            if (!word) document.put("relationshipCoverage", checkVisioRelationships(unzip(root.resolve(name)), architecture, text));
+            Files.writeString(output.resolve(stem + ".txt"), text);
+            Files.writeString(output.resolve(stem + ".bbox.html"), bbox);
             try (var files = Files.newDirectoryStream(output, stem + "-*.png")) {
                 for (Path old : files) Files.delete(old);
             }
             command("pdftoppm", "-scale-to", "1400", "-png", pdf.toString(), output.resolve(stem).toString());
             document.put("sourceSha256", sha256(root.resolve(name)));
+            document.put("architectureSourceSha256", sha256(root.resolve("architecture.json")));
+            Map<String, String> imageHashes = new LinkedHashMap<>();
+            try (var files = Files.newDirectoryStream(output, stem + "-*.png")) {
+                for (Path file : files) imageHashes.put(file.getFileName().toString(), sha256(file));
+            }
+            document.put("pageImagesSha256", imageHashes);
             if(word){document.put("snapshotId",text(architecture,"snapshotId"));document.put("graphSha256",wordGraphHash);}
             document.put("renderedPdfSha256", sha256(pdf));
             documents.put(name, document);
         }
         Files.writeString(output.resolve("quality.json"), FlatJson.pretty(report) + "\n");
         return report;
+    }
+
+    static Map<String, Object> checkVisioRelationships(Map<String, byte[]> parts,
+            Map<String, Object> architecture, String rawText) throws IOException {
+        Map<String, Map<?, ?>> expected = new LinkedHashMap<>();
+        for (Object value : array(object(architecture.get("diagram")).get("edges"))) {
+            var edge = object(value); expected.put(text(edge, "id"), edge);
+        }
+        Map<String, String> nodeKeys = new LinkedHashMap<>();
+        array(object(architecture.get("diagram")).get("nodes")).stream().map(value -> text(object(value), "id")).sorted()
+                .forEach(id -> nodeKeys.put(id, "N" + (nodeKeys.size() + 1)));
+        Map<String, String> relationKeys = new LinkedHashMap<>();
+        expected.keySet().stream().sorted().forEach(id -> relationKeys.put(id, "R" + (relationKeys.size() + 1)));
+        var canonical = new java.util.HashSet<String>();
+        Map<String, Object> coverage = new LinkedHashMap<>();
+        String[] renderedPages = rawText.split("\\f", -1);
+        for (var part : parts.entrySet()) {
+            if (!part.getKey().matches("visio/pages/page[0-9]+\\.xml")) continue;
+            int pageNumber = Integer.parseInt(part.getKey().replaceAll("[^0-9]", ""));
+            var page = XmlSupport.parse(new ByteArrayInputStream(part.getValue()));
+            for (var shape : XmlSupport.descendants(page.getDocumentElement(), "Shape")) {
+                Map<String, String> properties = new LinkedHashMap<>();
+                for (var section : XmlSupport.descendants(shape, "Section")) if (section.getAttribute("N").equals("Property"))
+                    for (var row : XmlSupport.descendants(section, "Row")) {
+                        String label = null, value = null;
+                        for (var cell : XmlSupport.descendants(row, "Cell")) {
+                            if (cell.getAttribute("N").equals("Label")) label = cell.getAttribute("V");
+                            if (cell.getAttribute("N").equals("Value")) value = cell.getAttribute("V");
+                        }
+                        if (label != null) properties.put(label, value);
+                    }
+                if (!properties.containsKey("taxonomy.sourceId")) continue;
+                String id = properties.get("taxonomy.id");
+                var edge = expected.get(id);
+                require(edge != null, "Unexpected canonical relationship " + id);
+                for (String field : List.of("sourceId", "targetId", "type"))
+                    require(text(edge, field.equals("type") ? "relationType" : field).equals(properties.get("taxonomy." + field)),
+                            "Canonical relationship " + id + " changed " + field);
+                if (pageNumber == 1) canonical.add(id);
+                if (!"READABLE_DETAIL".equals(properties.get("taxonomy.captionDisposition"))) continue;
+                String caption = XmlSupport.descendants(shape, "Text").getFirst().getTextContent();
+                String expectedCaption = relationKeys.get(id) + " " + nodeKeys.get(text(edge, "sourceId")) + " → "
+                        + nodeKeys.get(text(edge, "targetId")) + " " + text(edge, "relationType");
+                require(relationshipText(caption).equals(relationshipText(expectedCaption)),
+                        "Wrong caption semantics for canonical relationship " + id);
+                require(pageNumber <= renderedPages.length && !caption.isBlank()
+                                && relationshipText(renderedPages[pageNumber - 1]).contains(relationshipText(caption)),
+                        "Missing rendered relationship " + id + " key/direction/type on page " + pageNumber);
+                coverage.put(id, Map.of("key", properties.get("taxonomy.displayKey"), "page", pageNumber,
+                        "sourceId", text(edge, "sourceId"), "targetId", text(edge, "targetId"), "type", text(edge, "relationType")));
+            }
+        }
+        require(canonical.equals(expected.keySet()), "Missing canonical relationship in overview");
+        require(coverage.keySet().equals(expected.keySet()), "Missing rendered relationship details: "
+                + expected.keySet().stream().filter(id -> !coverage.containsKey(id)).toList());
+        return Map.of("canonicalRelationships", canonical.size(), "renderedRelationships", coverage.size(), "relationships", coverage);
     }
 
     static Map<String, Object> checkText(String name, String bbox, String rawText,
@@ -164,7 +233,7 @@ final class CivilianDocumentQa {
         var parts=new LinkedHashMap<String,byte[]>();
         try(var input=new java.util.zip.ZipInputStream(Files.newInputStream(path))) {
             for(var entry=input.getNextEntry();entry!=null;entry=input.getNextEntry()) {
-                if(entry.getName().equals("word/document.xml") || entry.getName().equals("docProps/custom.xml"))parts.put(entry.getName(),input.readAllBytes());
+                if(entry.getName().equals("word/document.xml") || entry.getName().equals("docProps/custom.xml") || entry.getName().matches("visio/pages/page[0-9]+\\.xml"))parts.put(entry.getName(),input.readAllBytes());
             }
         }
         return parts;
@@ -209,6 +278,12 @@ final class CivilianDocumentQa {
     private static String text(Map<?, ?> object, String key) {
         if (object.get(key) instanceof String text) return text;
         throw new IllegalArgumentException("Missing text field " + key);
+    }
+
+    private static String relationshipText(String text) {
+        // Keep arrows and punctuation: a reversed or missing direction glyph is
+        // not equivalent to the canonical source → target caption.
+        return text.replaceAll("(?U)\\s+", "");
     }
 
     private static String normalized(String text) {

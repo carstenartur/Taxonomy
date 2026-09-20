@@ -22,6 +22,42 @@ class SparxProjectionTest {
             AuthorityMode.BIDIRECTIONAL, new ExternalScope("SPARX", "ea-model", null), null, null, 0, null, null, "alice");
     private final RepositoryContext context = RepositoryContext.workspace("repository", "workspace", "draft", "alice");
 
+    @Test void legacyV1NestedOccurrencesSurviveIntegrationExportRoundTrip() {
+        var codec = new SparxXmiCodec("1");
+        var imported = codec.read("""
+                <xmi:XMI xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmi:version="2.1">
+                  <uml:Model xmi:id="{00000000-0000-4000-8000-000000000000}" name="Legacy">
+                    <packagedElement xmi:type="uml:Package" xmi:id="{11111111-1111-4111-8111-111111111111}" name="Outer">
+                      <packagedElement xmi:type="uml:Component" xmi:id="{33333333-3333-4333-8333-333333333333}" name="First"/>
+                      <packagedElement xmi:type="uml:Package" xmi:id="{22222222-2222-4222-8222-222222222222}" name="Inner">
+                        <packagedElement xmi:type="uml:Component" xmi:id="{44444444-4444-4444-8444-444444444444}" name="Nested"/>
+                      </packagedElement>
+                    </packagedElement>
+                  </uml:Model>
+                </xmi:XMI>
+                """.getBytes(java.nio.charset.StandardCharsets.UTF_8), "legacy", true);
+        var selected = ExchangeItems.flatten(imported);
+        String dsl = "";
+        for (var command : domain.architectureCommands(connection, dsl, Map.of(), selected, List.of()))
+            dsl = commands.apply(dsl, command).dsl();
+        var mappings = selected.values().stream().map(a -> new Identity(ExchangeItems.key(a),
+                domain.businessId(connection, null, a), null, "legacy", "fp", a, a, UUID.randomUUID(), false)).toList();
+        var document = document(dsl);
+        var exported = domain.exportDocument(connection, domain.snapshot(context, connection, mappings, document), document, mappings, imported);
+        String outer = "placement:{11111111-1111-4111-8111-111111111111}";
+        String inner = "placement:{22222222-2222-4222-8222-222222222222}";
+        var expected = List.of(
+                new Placement(outer, "{00000000-0000-4000-8000-000000000000}", null, "{11111111-1111-4111-8111-111111111111}", 0, Map.of()),
+                new Placement(inner, "{00000000-0000-4000-8000-000000000000}", outer, "{22222222-2222-4222-8222-222222222222}", 1, Map.of()),
+                new Placement("placement:{33333333-3333-4333-8333-333333333333}", "{00000000-0000-4000-8000-000000000000}", outer, "{33333333-3333-4333-8333-333333333333}", 0, Map.of()),
+                new Placement("placement:{44444444-4444-4444-8444-444444444444}", "{00000000-0000-4000-8000-000000000000}", inner, "{44444444-4444-4444-8444-444444444444}", 0, Map.of()));
+        assertEquals(expected, imported.placements(), "The actual legacy reader establishes the nested fixture");
+        assertAll(() -> assertEquals(expected, exported.placements()),
+                () -> assertFalse(exported.losses().stream().anyMatch(l -> l.code().equals("LOCAL_DEPENDENCY_REMOVED"))),
+                () -> assertFalse(domain.supportsNativePackages(connection)));
+        assertEquals(expected, codec.read(codec.write(exported), "roundtrip", true).placements());
+    }
+
     @Test void nativeExportBindsStableGuidsToOriginalElementsAndRelations() {
         String dsl = commands.apply("", new CreateArchitectureElement("arch-system", "Component", Map.of("title", "System"))).dsl();
         dsl = commands.apply(dsl, new CreateArchitectureElement("arch-component", "Component", Map.of("title", "Component"))).dsl();

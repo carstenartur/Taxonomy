@@ -310,6 +310,46 @@ class ArchitectureEditorServiceTest {
         assertThat(service.read(alice, null).dsl()).contains("Keep this uncheckpointed");
     }
 
+    @Test void exactCheckpointProofSamplesGitAfterJoinedLockFollowingVersionRollback() throws Exception {
+        execute(update("Checkpoint C"));
+        var checkpoint = service.checkpoint(alice, new CreateCheckpointCommand(service.read(alice, null).context(), metadata()));
+        var expected = checkpoint.context();
+        var beforeJoinedLock = new CountDownLatch(1);
+        var versionRolledBack = new CountDownLatch(1);
+        var journalProbe = spy(fixture.journal);
+        doAnswer(invocation -> {
+            // Delay only entry to the real joined boundary, without fabricating state or owning its row lock.
+            beforeJoinedLock.countDown();
+            assertThat(versionRolledBack.await(10, TimeUnit.SECONDS)).isTrue();
+            return invocation.callRealMethod();
+        }).when(journalProbe).joinedLocked(any(), any(), any());
+        var proof = new ArchitectureEditorService(fixture.repositories, journalProbe, new ArchitectureCheckpointWriter());
+        var transaction = new org.springframework.transaction.support.TransactionTemplate(new org.springframework.orm.jpa.JpaTransactionManager(fixture.factory));
+        var executor = Executors.newSingleThreadExecutor();
+        var checked = executor.submit(() -> transaction.execute(status -> {
+            try { return proof.integrationCheckpointMatches(alice, expected); }
+            catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
+        }));
+        try {
+            assertThat(beforeJoinedLock.await(10, TimeUnit.SECONDS)).isTrue();
+            var git = fixture.repositories.resolveRepository(alice);
+            assertThatThrownBy(() -> service.version(alice, "Interrupted concurrent version", () -> {
+                git.commitDsl("draft", SEED, "alice", "Git D before ORM rollback");
+                throw new java.io.IOException("Rollback after real Git write");
+            })).isInstanceOf(java.io.IOException.class);
+            var persisted = fixture.journal.read(alice).state();
+            assertThat(persisted.pendingCheckpoint()).isNull();
+            assertThat(persisted.checkpointCommit()).isEqualTo(checkpoint.commitId());
+            assertThat(git.getHeadCommit("draft")).isNotEqualTo(checkpoint.commitId());
+            versionRolledBack.countDown();
+            assertThat(checked.get(10, TimeUnit.SECONDS)).isFalse();
+        } finally {
+            versionRolledBack.countDown();
+            executor.shutdownNow();
+            assertThat(executor.awaitTermination(10, TimeUnit.SECONDS)).isTrue();
+        }
+    }
+
     private Accepted execute(Operation operation) throws Exception { return service.execute(alice, command(operation)); }
     private Command command(Operation operation) throws Exception { return new Command(service.read(alice, null).context(), metadata(), operation); }
     static Metadata metadata() { String id = UUID.randomUUID().toString(); return new Metadata(id, id, id, "Architecture decision"); }

@@ -18,5 +18,9 @@ public class IntegrationCheckpointEntity {
     @Column(name="fingerprint", nullable=false, length=64) String fingerprint;
     @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name="context_json", nullable=false) String contextJson;
     @Column(name="created_at", nullable=false, length=40) String createdAt;
+    @org.hibernate.annotations.ColumnDefault("'OBSERVATION'")
+    @Column(name="kind", nullable=false, length=16) String kind = "OBSERVATION";
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name="baseline_json") String baselineJson;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name="publication_completion_json") String publicationCompletionJson;
     protected IntegrationCheckpointEntity() {}
 }

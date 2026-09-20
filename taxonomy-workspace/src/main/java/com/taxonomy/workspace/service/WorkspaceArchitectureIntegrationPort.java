@@ -103,6 +103,9 @@ public interface WorkspaceArchitectureIntegrationPort extends WorkspaceArchitect
                             UnaryOperator<String> portfolioContribution,
                             CommandMetadata checkpointMetadata) throws IOException;
 
+    /** Independent read-only proof that this exact semantic revision is durably checkpointed. */
+    default boolean isExactCheckpoint(RepositoryContext context, State expected) throws IOException { return false; }
+
     /** Finish or replay the explicit Git checkpoint for already durable semantic state. */
     Checkpoint checkpoint(RepositoryContext context, State expected,
                           CommandMetadata checkpointMetadata) throws IOException;

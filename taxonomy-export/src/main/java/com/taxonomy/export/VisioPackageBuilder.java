@@ -49,7 +49,23 @@ public class VisioPackageBuilder {
      */
     public byte[] build(VisioDocument doc) throws IOException {
         VisioPackageValidator.validate(doc);
-        Map<String, String> parts = buildParts(doc);
+        Map<String, String> parts = buildParts(doc, Map.of());
+        long bytes = partBytes(parts);
+        boolean trimmed = false;
+        // Optional trailing detail pages must never invalidate a serializable
+        // complete overview/impact package. Reuse base XML; only metadata/index
+        // parts need rebuilding. Counting removed page XML alone is conservative
+        // because its manifest entries will disappear too.
+        while (bytes > VisioHandoffProfile.MAX_XML_BYTES && doc.getPages().size() > 1 && doc.getPages().getLast().isRelationshipDetail()) {
+            String part = "visio/pages/page" + doc.getPages().size() + ".xml";
+            bytes -= parts.get(part).getBytes(StandardCharsets.UTF_8).length;
+            doc.getPages().removeLast();
+            trimmed = true;
+        }
+        if (trimmed) {
+            VisioPresentation.updateDetailCoverage(doc, "byte capacity");
+            parts = buildParts(doc, parts);
+        }
         VisioOpcValidator.validate(parts);
 
         ByteArrayOutputStream output = new ByteArrayOutputStream();
@@ -79,7 +95,11 @@ public class VisioPackageBuilder {
         return output.toByteArray();
     }
 
-    private Map<String, String> buildParts(VisioDocument doc) {
+    private static long partBytes(Map<String, String> parts) {
+        return parts.values().stream().mapToLong(value -> value.getBytes(StandardCharsets.UTF_8).length).sum();
+    }
+
+    private Map<String, String> buildParts(VisioDocument doc, Map<String, String> previousParts) {
         Map<String, String> parts = new LinkedHashMap<>();
         parts.put("[Content_Types].xml", buildContentTypes(doc));
         parts.put("_rels/.rels", buildRootRelationships());
@@ -95,7 +115,8 @@ public class VisioPackageBuilder {
 
         for (int index = 0; index < doc.getPages().size(); index++) {
             VisioPage page = doc.getPages().get(index);
-            parts.put("visio/pages/page" + (index + 1) + ".xml", buildPageXml(page));
+            String name = "visio/pages/page" + (index + 1) + ".xml";
+            parts.put(name, previousParts.containsKey(name) ? previousParts.get(name) : buildPageXml(page));
         }
         return parts;
     }
