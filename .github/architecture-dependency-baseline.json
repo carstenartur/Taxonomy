@@ -573,7 +573,7 @@
       "fromPackage": "com.taxonomy.interop.controller",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 6
     },
     {
       "fromContext": "interop",

@@ -52,4 +52,14 @@ class IntegrationPublicationApiTest extends PublicationIntegrationFixture {
                 .andExpect(status().isPreconditionRequired());
         assertEquals(0, provider.writes.get());
     }
+    @Test void reconciliationRequiresExactStateAtTheSameHttpBoundary() throws Exception {
+        var before = preview(PublicationMode.PUSH);
+        var request = Map.of("operationId", UUID.randomUUID(), "mode", "PUSH", "scope", PublicationContractProvider.SCOPE, "expectedExternalRevision", provider.revision());
+        mvc.perform(scoped(post(path() + "/operations/" + before.operationId() + "/reconciliation-previews")).contentType("application/json")
+                .content(json.write(Map.of("predecessorOperationId", before.operationId(), "request", request, "rationale", "Explicit next review"))))
+                .andExpect(status().isPreconditionRequired()).andExpect(jsonPath("code").value("EXACT_STATE_REQUIRED"));
+        assertEquals(before, publication.publication(context, connection, before.operationId()));
+        assertEquals(0, provider.writes.get());
+    }
+
 }

@@ -31,5 +31,16 @@ class CivilianPublicationFixtureTest {
         assertThat(recovered.path("phase").asText()).isEqualTo("COMPLETED");
         assertThat(recovered.path("acknowledgedCount").asInt()).isEqualTo(3);
         assertThat(recovered.path("requestFingerprint").asText()).isEqualTo(partial.path("requestFingerprint").asText());
+        var divergence = CivilianPublicationWalkthrough.prepareDivergence(app, provider, context);
+        var skipped = app.post(path + "/publish" + scope, CivilianPublicationWalkthrough.review(divergence, "SKIP"), 200);
+        assertThat(skipped.path("phase").asText()).isEqualTo("PARTIAL");
+        assertThat(skipped.path("unknownCount").asInt()).isZero();
+        assertThat(skipped.path("allowedActions").toString()).contains("RECONCILE");
+        var successor = app.post(path + "/operations/" + skipped.path("operationId").asText() + "/reconciliation-previews" + scope,
+                Map.of("predecessorOperationId", skipped.path("operationId").asText(), "rationale", "Explicit linked reconciliation", "request",
+                        Map.of("operationId", java.util.UUID.randomUUID(), "expected", app.get(path + scope).path("current"), "mode", "PUSH", "scope", PublicationContractProvider.SCOPE, "expectedExternalRevision", provider.revision())), 200);
+        assertThat(successor.path("predecessorOperationId")).isEqualTo(skipped.path("operationId"));
+        assertThat(successor.path("operationId")).isNotEqualTo(skipped.path("operationId"));
+        assertThat(successor.path("phase").asText()).isEqualTo("PREVIEWED");
     }
 }

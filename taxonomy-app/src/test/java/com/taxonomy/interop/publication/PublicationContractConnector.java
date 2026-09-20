@@ -19,6 +19,7 @@ public final class PublicationContractConnector implements ConditionalPublicatio
     private volatile java.net.URI endpoint;
     volatile String fixtureCredential;
     volatile Runnable afterResponse = () -> {};
+    volatile Runnable beforeMutation = () -> {};
     public void endpoint(java.net.URI value) {
         if (!"http".equals(value.getScheme()) || !"127.0.0.1".equals(value.getHost()) || value.getPort() < 1 || value.getUserInfo() != null || value.getQuery() != null || value.getFragment() != null || !(value.getPath().isEmpty() || value.getPath().equals("/"))) throw new IllegalArgumentException("Only an explicit credential-free loopback test endpoint is permitted");
         endpoint = value;
@@ -71,6 +72,7 @@ public final class PublicationContractConnector implements ConditionalPublicatio
             } else {
                 builder.GET();
             }
+            if (path.equals("/item")) beforeMutation.run();
             var response = http.send(builder.build(), HttpResponse.BodyHandlers.ofInputStream());
             try (var stream = response.body()) {
                 if (response.statusCode() != 200) {

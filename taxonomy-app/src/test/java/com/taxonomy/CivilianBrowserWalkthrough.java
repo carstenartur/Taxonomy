@@ -255,7 +255,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
                 "snapshotId", snapshotId, "screenshots", List.of("73-civilian-requirement.png", "74-civilian-result.png",
                 "75-civilian-architecture.png", "76-civilian-focus.png", "77-civilian-mobile.png"))));
         inspectNativePackageControls(app);
-        inspectPublicationControls();
+        inspectPublicationControls(app);
         Files.writeString(output.resolve("controls.json"), new ObjectMapper().writeValueAsString(controls));
         completed = true;
     }
@@ -283,12 +283,16 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         click(By.id("editorSavePackage"));
         wait.until(ExpectedConditions.elementToBeClickable(By.id("editorAccept"))).click();
         wait.until(browser -> browser.findElement(By.id("editorPackages")).getText().contains("Browser reviewed package"));
+        selectNativePackage(expectedContext, packageId);
+        assertThat(driver.findElement(By.id("editorPackageTitle")).getDomProperty("value")).isEqualTo("Browser reviewed package");
+        showNativePackagePanel();
         inventory("native-package-en"); screenshot("78-native-package-en.png");
         driver.get(origin + "/architecture/editor" + editorScope + "&lang=de");
         selectNativePackage(expectedContext, packageId);
         wait.until(browser -> browser.findElement(By.id("editorPackagesHeading")).getText().equals("Pakete"));
         assertThat(driver.findElement(By.id("editorPackageFields")).isEnabled()).isTrue();
         assertThat(driver.findElement(By.id("editorPackageTitle")).getDomProperty("value")).isEqualTo("Browser reviewed package");
+        showNativePackagePanel();
         inventory("native-package-de"); screenshot("79-native-package-de.png");
         byte[] original = Files.readAllBytes(output.resolve("native-browser-fixture.xmi"));
         String changed = new String(original, StandardCharsets.UTF_8).replace("10000000-0000-4000-8000-000000000004", "10000000-0000-4000-8000-000000000005")
@@ -312,7 +316,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
                 "languages", List.of("en", "de"), "requestInterception", false, "productCompatibility", "NOT_EXECUTED")));
     }
 
-    private void inspectPublicationControls() throws Exception {
+    private void inspectPublicationControls(CivilianArchitectureAcceptanceTest app) throws Exception {
         var context = new ObjectMapper().readTree(Files.readString(output.resolve("publication-context.json")));
         String link = origin + "/integrations" + context.path("scope").asText() + "&connection=" + context.path("connection").asText() + "&operation=" + context.path("operation").asText();
         for (String language : List.of("en", "de")) {
@@ -342,7 +346,36 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
             driver.executeScript("arguments[0].scrollIntoView({block:'start'})", driver.findElement(By.id("integrationReview")));
             inventory("publication-recovery-" + language); screenshot("83-publication-recovery-" + language + ".png");
         }
-        Files.writeString(output.resolve("publication-browser.json"), new ObjectMapper().writeValueAsString(Map.of("provider", "taxonomy-publication-contract-v1", "testOnly", true, "languages", List.of("en", "de"), "keyboardDecisions", true, "unknownReload", true, "frozenRetry", true, "requestInterception", false, "productCompatibility", "NOT_EXECUTED")));
+        var divergence = CivilianPublicationWalkthrough.prepareDivergence(app, app.publicationProvider, context);
+        String predecessor = divergence.path("operationId").asText();
+        String predecessorLink = origin + "/integrations" + context.path("scope").asText() + "&connection=" + context.path("connection").asText() + "&operation=" + predecessor;
+        driver.get(predecessorLink + "&lang=en"); wait.until(ExpectedConditions.elementToBeClickable(By.id("integrationReject"))).sendKeys(Keys.ENTER);
+        driver.findElement(By.id("integrationRationale")).sendKeys("Explicitly skip the new local item and review remaining divergence");
+        driver.findElement(By.id("integrationApply")).sendKeys(Keys.ENTER);
+        wait.until(ExpectedConditions.elementToBeClickable(By.id("integrationReconcile")));
+        for (String language : List.of("en", "de")) {
+            driver.get(predecessorLink + "&lang=" + language); wait.until(ExpectedConditions.elementToBeClickable(By.id("integrationReconcile")));
+            assertThat(driver.findElement(By.id("integrationPublicationCounts")).getText()).contains(language.equals("en") ? "Unknown outcome: 0" : "Unbekanntes Ergebnis: 0");
+            driver.executeScript("arguments[0].scrollIntoView({block:'center'})", driver.findElement(By.id("integrationReconcile")));
+            inventory("publication-reconciliation-ready-" + language); screenshot("84-publication-reconciliation-ready-" + language + ".png");
+        }
+        var rationale = driver.findElement(By.id("integrationRationale")); rationale.clear(); rationale.sendKeys("Review explicit divergence in a linked successor");
+        driver.findElement(By.id("integrationReconcile")).sendKeys(Keys.ENTER);
+        wait.until(browser -> browser.findElement(By.id("integrationPredecessor")).isDisplayed() && browser.findElement(By.id("integrationApply")).isEnabled());
+        String successorLink = driver.getCurrentUrl();
+        for (String language : List.of("en", "de")) {
+            driver.get(successorLink.replaceAll("([?&])lang=[^&]+", "$1lang=" + language));
+            wait.until(ExpectedConditions.elementToBeClickable(By.id("integrationApply")));
+            assertThat(driver.findElement(By.id("integrationPredecessor")).getText()).contains(predecessor);
+            driver.executeScript("arguments[0].scrollIntoView({block:'start'})", driver.findElement(By.id("integrationReview")));
+            inventory("publication-reconciliation-preview-" + language); screenshot("85-publication-reconciliation-preview-" + language + ".png");
+        }
+        Files.writeString(output.resolve("publication-browser.json"), new ObjectMapper().writeValueAsString(Map.of("provider", "taxonomy-publication-contract-v1", "testOnly", true, "languages", List.of("en", "de"), "keyboardDecisions", true, "unknownReload", true, "frozenRetry", true, "reconciliationKeyboard", true, "requestInterception", false, "productCompatibility", "NOT_EXECUTED")));
+    }
+
+    private void showNativePackagePanel() {
+        driver.executeScript("arguments[0].scrollIntoView({block:'center'})", driver.findElement(By.id("editorPackageFields")));
+        assertThat((Boolean) driver.executeScript("return ['editorPackageTitle','editorSavePackage','editorDeletePackage','editorMovePackage','editorPlaceElement','editorDetachElement'].every(id=>{const r=document.getElementById(id).getBoundingClientRect();return r.top>=0&&r.bottom<=innerHeight;});")).as("Saved package controls are inside the actual screenshot viewport").isTrue();
     }
 
     private void selectNativePackage(String expectedContext, String packageId) {

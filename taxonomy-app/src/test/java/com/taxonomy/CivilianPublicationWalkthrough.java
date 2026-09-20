@@ -28,6 +28,19 @@ final class CivilianPublicationWalkthrough {
         app.save("publication-context.json", result); app.save("publication-preview.json", preview);
         return result;
     }
+    static JsonNode prepareDivergence(CivilianArchitectureAcceptanceTest app, PublicationContractProvider provider, JsonNode context) throws Exception {
+        String scope = context.path("scope").asText(), path = "/api/integrations/" + context.path("connection").asText();
+        var editor = app.get("/api/architecture/editor" + scope); String id = UUID.randomUUID().toString();
+        CivilianIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/commands" + scope,
+                Map.of("context", editor.path("document").path("context"), "metadata", metadata(id, "Keep a reviewed divergence visible"), "kind", "CREATE_ELEMENT", "type", "System", "properties", Map.of("title", "Review pending evacuation plans")), editor.path("document").path("context").path("revision").asLong());
+        editor = app.get("/api/architecture/editor" + scope); String checkpoint = UUID.randomUUID().toString();
+        CivilianIntegrationWalkthrough.editorRequest(app, "/api/architecture/editor/checkpoints" + scope,
+                Map.of("context", editor.path("document").path("context"), "metadata", metadata(checkpoint, "Freeze explicit divergence for review")), editor.path("document").path("context").path("revision").asLong());
+        var preview = app.post(path + "/publication-previews" + scope,
+                Map.of("operationId", UUID.randomUUID(), "expected", app.get(path + scope).path("current"), "mode", "PUSH", "scope", PublicationContractProvider.SCOPE, "expectedExternalRevision", provider.revision()), 200);
+        assertThat(preview.path("preview").path("changes")).isNotEmpty();
+        return preview;
+    }
     static Map<String, Object> review(JsonNode preview, String resolution) {
         var decisions = new TreeMap<String, String>(); preview.path("preview").path("changes").forEach(c -> decisions.put(c.path("id").asText(), resolution));
         return Map.of("review", Map.of("operationId", preview.path("operationId").asText(), "previewFingerprint", preview.path("preview").path("fingerprint").asText(), "decisions", Map.of(), "rationale", "Reviewed test-only conditional publication"), "resolutions", decisions);

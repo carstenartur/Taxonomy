@@ -92,8 +92,14 @@ public class IntegrationController {
     public PublicationOperation publish(@PathVariable UUID connection, @RequestBody PublicationReview request, @RequestParam(required=false) String branch) { return service.publish(publicationContext(branch), connection, request); }
     @GetMapping("/api/integrations/{connection}/operations/{operation}/publication") @ResponseBody
     public PublicationOperation publication(@PathVariable UUID connection, @PathVariable UUID operation, @RequestParam(required=false) String branch) { return service.publication(publicationContext(branch), connection, operation); }
+    public record ReconciliationInput(UUID predecessorOperationId, PublicationInput request, String rationale) {
+        ReconciliationPreviewRequest checked() {
+            if (request == null) throw new IntegrationProblem("EXACT_STATE_REQUIRED", 428, "An exact local state and remote revision are required");
+            return new ReconciliationPreviewRequest(predecessorOperationId, request.request(), rationale);
+        }
+    }
     @PostMapping("/api/integrations/{connection}/operations/{operation}/reconciliation-previews") @ResponseBody
-    public PublicationOperation reconcile(@PathVariable UUID connection, @PathVariable UUID operation, @RequestBody ReconciliationPreviewRequest request, @RequestParam(required=false) String branch) { return service.reconcilePublication(publicationContext(branch), connection, operation, request); }
+    public PublicationOperation reconcile(@PathVariable UUID connection, @PathVariable UUID operation, @RequestBody ReconciliationInput request, @RequestParam(required=false) String branch) { return service.reconcilePublication(publicationContext(branch), connection, operation, request.checked()); }
 
     private RepositoryContext publicationContext(String branch) {
         return requirePublicationBranch(resolver.resolveCurrentRepositoryContext(), branch);

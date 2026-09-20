@@ -38,7 +38,7 @@
         var availability = overview && overview.publicationAvailability, modes = availability && availability.available ? availability.modes : [];
         el('integrationPush').disabled = busy || !mayWrite || !modes.includes('PUSH');
         el('integrationSynchronize').disabled = busy || !mayWrite || !modes.includes('SYNCHRONIZE');
-        el('integrationPublicationReason').textContent = availability && availability.reasonCode ? t('reason.' + availability.reasonCode) : t('publicationReady');
+        el('integrationPublicationReason').textContent = availability && availability.available ? t('publicationReady') : t('reason.' + (availability && availability.reasonCode || 'PUBLICATION_GUARANTEES_UNVERIFIED'));
         var profile = selectedProfile(), capabilities = profile ? profile.capabilities : [];
         el('integrationRemote').hidden = !capabilities.includes('READ_LINK');
         el('integrationImport').hidden = overview && !capabilities.includes('FILE_IMPORT');
@@ -210,6 +210,11 @@
         el('integrationPublicationRevision').value = value.expectedExternalRevision || '';
         el('integrationRationale').value = value.review ? value.review.review.rationale : '';
         el('integrationProvider').textContent = overview ? overview.connection.displayName : '';
+        el('integrationPredecessor').hidden = !value.predecessorOperationId;
+        if (value.predecessorOperationId) {
+            var previous = new URL(location.href); previous.searchParams.set('connection', connection()); previous.searchParams.set('operation', value.predecessorOperationId);
+            el('integrationPredecessor').href = previous.toString(); el('integrationPredecessor').textContent = t('predecessor') + ': ' + value.predecessorOperationId;
+        }
         el('integrationOperation').textContent = value.operationId + ' · ' + t('publicationMode.' + value.mode) + ' · ' + t('phase.' + value.phase);
         el('integrationProvenance').textContent = t('requestFingerprint') + ': ' + (value.requestFingerprint || '—') + '\n' + t('observationCheckpoint') + ': ' + (value.observationCheckpointId || '—') + '\n' + t('commonCheckpoint') + ': ' + (value.commonCheckpointId || '—') + '\n' + t('localCheckpoint') + ': ' + (value.localCheckpoint ? value.localCheckpoint.commitId || t('pending') : '—');
         el('integrationPublicationOutcomes').hidden = false;
@@ -228,7 +233,7 @@
             expectedExternalRevision: el('integrationPublicationRevision').value.trim() };
     }
     async function previewPublication(mode) {
-        if (!pendingPublication) pendingPublication = publicationRequest(mode);
+        if (!pendingPublication || pendingPublication.mode !== mode) pendingPublication = publicationRequest(mode);
         var id = pendingPublication.operationId; link(id);
         try { showPublication(await api.write(prefix() + '/publication-previews', pendingPublication)); pendingPublication = null; }
         catch (error) { try { await loadOperation(id); } catch (missing) { /* The original failure remains authoritative if no operation was stored. */ } throw error; }
@@ -241,7 +246,7 @@
     }
     function show(value) {
         if (value.operationId && value.phase) { showPublication(value); return; }
-        publication = null; el('integrationPublicationOutcomes').hidden = true;
+        publication = null; el('integrationPublicationOutcomes').hidden = true; el('integrationPredecessor').hidden = true;
         operation = value; endpoints = Object.assign({}, value.review ? value.review.endpoints : {}); endpointOptions = {};
         if (value.status === 'PREVIEWED' && value.context.profileVersion === '2' && value.context.profile.startsWith('sparx-')) {
             api.read(prefix() + '/operations/' + value.id + '/endpoint-options').then(function (result) { if (operation && operation.id === value.id) { endpointOptions = result.external; renderChanges(); } }).catch(report);
@@ -285,6 +290,7 @@
     }
     el('integrationConnection').addEventListener('change', function () {
         operation = null; publication = null; resolutions = {}; pendingPublication = null; pendingReview = null; decisions = {}; mappings = {}; pendingUpload = null; pendingExport = null; pendingRemote = null;
+        el('integrationPublicationOutcomes').hidden = true; el('integrationPredecessor').hidden = true; el('integrationProvider').textContent = '';
         ['integrationOperation', 'integrationProvenance', 'integrationEvents', 'integrationLosses', 'integrationDiscovery'].forEach(function (id) { el(id).replaceChildren(); });
         el('integrationRationale').value = ''; link(null); run(refresh); renderChanges();
     });

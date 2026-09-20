@@ -401,6 +401,25 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
   }
 
   async function capture(target, directory, name) {
+    if (!(await target.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2))) {
+      const layout = await target.evaluate(() => ({
+        viewport: { width: innerWidth, height: innerHeight }, scrollWidth: document.documentElement.scrollWidth,
+        overflowing: Array.from(document.querySelectorAll('body *')).filter(element => {
+          const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
+          return rect.width > 0 && rect.right > innerWidth + 2 && style.display !== 'none' && style.visibility !== 'hidden';
+        }).slice(0, 120).map(element => {
+          const rect = element.getBoundingClientRect(), style = getComputedStyle(element);
+          return { tag: element.tagName, id: element.id, classes: String(element.className).slice(0, 200),
+            rect: { left: rect.left, right: rect.right, top: rect.top, width: rect.width, height: rect.height },
+            clientWidth: element.clientWidth, scrollWidth: element.scrollWidth,
+            styles: { display: style.display, minWidth: style.minWidth, maxWidth: style.maxWidth, overflowX: style.overflowX,
+              whiteSpace: style.whiteSpace, overflowWrap: style.overflowWrap, wordBreak: style.wordBreak, flexShrink: style.flexShrink },
+            parent: element.parentElement && { tag: element.parentElement.tagName, id: element.parentElement.id, overflowX: getComputedStyle(element.parentElement).overflowX } };
+        })
+      }));
+      await writeFile(path.join(directory, name + '-overflow.json'), JSON.stringify(layout, null, 2) + '\n');
+      await target.screenshot({ path: path.join(directory, name + '-overflow.png'), fullPage: true });
+    }
     assert.ok(await target.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2),
       'Local-edit workflow must not require horizontal page scrolling');
     for (const selector of ['#localTemplateDownload', '#localTemplateSave', '#localTemplateHistory']) {
