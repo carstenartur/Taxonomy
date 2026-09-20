@@ -124,6 +124,10 @@ window.TaxonomyPortfolioApi = (function () {
         listReformulations: function (projectId, requirementId) {
             return getJson(requirementPath(projectId, requirementId) + '/reformulations');
         },
+        getReformulation: function (projectId, requirementId, proposalId) {
+            return getJson(requirementPath(projectId, requirementId) + '/reformulations/'
+                + encodeURIComponent(String(proposalId)));
+        },
         listRequirementVersions: function (projectId, requirementId) {
             return getJson(requirementPath(projectId, requirementId) + '/versions');
         },
