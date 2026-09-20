@@ -272,7 +272,7 @@
       "fromPackage": "com.taxonomy.composition.reformulation",
       "toContext": "portfolio",
       "toPackage": "com.taxonomy.portfolio.reformulation",
-      "classDependencyCount": 7
+      "classDependencyCount": 8
     },
     {
       "fromContext": "app-composition",

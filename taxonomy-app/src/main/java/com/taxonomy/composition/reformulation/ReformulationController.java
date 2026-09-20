@@ -2,6 +2,7 @@ package com.taxonomy.composition.reformulation;
 
 import com.taxonomy.portfolio.reformulation.ReformulationService;
 import com.taxonomy.portfolio.reformulation.ReformulationPreconditionException;
+import com.taxonomy.portfolio.reformulation.ProposalSummary;
 
 import com.taxonomy.portfolio.reformulation.ReformulationDtos.*;
 import com.taxonomy.workspace.service.WorkspaceResolver;
@@ -23,7 +24,7 @@ public class ReformulationController {
         return ResponseEntity.accepted().location(URI.create("/api/projects/"+projectId+"/requirements/"+requirementId+"/reformulations/"+proposal.id()))
                 .eTag(Long.toString(proposal.currentRevision().number())).body(proposal);
     }
-    @GetMapping public List<Proposal> list(@PathVariable Long projectId,@PathVariable Long requirementId) {
+    @GetMapping public List<ProposalSummary> list(@PathVariable Long projectId,@PathVariable Long requirementId) {
         return service.list(projectId,requirementId,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());
     }
     @GetMapping("/{proposalId}") public ResponseEntity<Proposal> get(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId) {
