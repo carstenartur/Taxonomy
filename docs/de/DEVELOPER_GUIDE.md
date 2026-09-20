@@ -94,23 +94,28 @@ cd Taxonomy
 ./mvnw -pl taxonomy-app spring-boot:run
 ```
 
-Öffnen Sie <http://localhost:8080>. Der Reaktor enthält fünf ausgelieferte
-Module sowie die Module für aggregierte Coverage und Build-Policy.
+Öffnen Sie <http://localhost:8080>. Der Reactor enthält fünfzehn Untermodule;
+`taxonomy-app` ist die einzige deploybare Spring-Boot-Anwendung.
 
 ## Modularchitektur
 
-Das Projekt ist ein Multi-Modul-Maven-Build mit fünf Modulen. Siehe [Architektur](ARCHITECTURE.md#module-architecture) für das vollständige Moduldiagramm und den Abhängigkeitsgraphen.
+Das aktuelle Modulinventar, die Zuständigkeiten und Abhängigkeitsrichtungen stehen
+in [Modulgrenzen](MODULE_BOUNDARIES.md). [Architektur](ARCHITECTURE.md#modularchitektur)
+zeigt den Fachmodulgraphen sowie Laufzeit- und Persistenzansichten. Diese aktuellen
+Referenzen ersetzen die frühere Fünf-Modul-Aufteilung bei der Wahl des Änderungsortes.
 
-| Modul | Umfang | Spring? |
-|---|---|---|
-| `taxonomy-domain` | Reine Domänentypen (DTOs, Enums) | Nein |
-| `taxonomy-dsl` | Architektur-DSL (Parser, Modell, Validator, Differ, Provenienz) | Nein |
-| `taxonomy-export` | Exportdienste (ArchiMate, Visio, Mermaid, Diagramm) | Nein |
-| `taxonomy-extension-api` | Interne Extension-SPI-Verträge + Metadaten | Nein |
-| `taxonomy-app` | Spring-Boot-Anwendung (Controller, Services, JPA, Suche, Speicher) | Ja |
+Es gibt vier frameworkfreie Grundlagen (`taxonomy-domain`, `taxonomy-dsl`,
+`taxonomy-export`, `taxonomy-extension-api`), sieben Laufzeit-Fachbibliotheken,
+eine Anwendungskomposition und drei Build-/Werkzeugmodule. Fachbibliotheken
+hängen nicht zurück von `taxonomy-app` ab. Das ist ein modularer Monolith,
+keine Sammlung unabhängig deployter Dienste.
 
-- `taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export` und `taxonomy-extension-api` haben **keine Spring-Abhängigkeiten** und können unabhängig getestet werden.
-- Das Spring-Boot-JAR wird von `taxonomy-app` erzeugt.
+Die sieben Fachmodule heißen `taxonomy-workspace`, `taxonomy-knowledge`,
+`taxonomy-templates`, `taxonomy-interop`, `taxonomy-architecture`,
+`taxonomy-analysis` und `taxonomy-portfolio`. Build-/Release-Werkzeuge,
+Coverage-Aggregation und Repository-weite Verifikation gehören zu
+`taxonomy-tooling`, `taxonomy-coverage` und `taxonomy-build`, nicht zu den
+Laufzeit-Fachkontexten.
 
 ---
 
@@ -152,24 +157,26 @@ Exportdienste — framework-frei, als Spring Beans über `ExportConfig` registri
 
 ### taxonomy-app
 
-Die Haupt-Spring-Boot-Anwendung:
+Einzige ausführbare Kompositions- und Deployment-Wurzel, nicht Eigentümer des
+gesamten Spring-basierten Fachcodes. Fachliche Controller, Services, Entitäten,
+Repositories und ihre Tests gehören in die unter
+[Modulgrenzen](MODULE_BOUNDARIES.md) genannte Fachbibliothek. Katalog/Suche gehören
+beispielsweise zu `taxonomy-knowledge`, Prompts und LLM-Analyse zu
+`taxonomy-analysis`, Versionierung, Editorhistorie und JGit-Speicher zu
+`taxonomy-workspace`.
 
-| Verzeichnis | Inhalt |
+| Anwendungseigener Bereich | Verantwortung |
 |---|---|
-| `controller/` | REST-Controller |
-| `service/` | Service-Klassen — LLM, Suche, Architektur, Graph, Proposals, Reports usw. |
-| `model/` | JPA-Entitäten — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis` usw. |
-| `versioning/model/` | Workspace-Projektionsentität für die Git-Commit-Historie — `ArchitectureCommitIndex` |
-| `versioning/repository/` | Repository für die Git-Commit-Historienprojektion mit explizitem Scope — `ArchitectureCommitIndexRepository` |
-| `versioning/service/` | Git-Historienindizierung und Suchindex-Lebenszyklus — `CommitIndexService`, `CommitIndexSearchLifecycle`, `CommitIndexSearchRebuilder` |
-| `repository/` | Spring Data JPA Repositories |
-| `config/` | Konfigurationsklassen — Sicherheit, Rate Limiting, Hibernate-Search-Analysatoren, OpenAPI, Actuator |
-| `search/` | Hibernate-Search-Konfiguration |
-| `workspace/storage/` | Workspace-eigene JGit-DFS-Adapter und Core-Schema-Konfiguration; Persistenz-Entities stammen aus `jgit-storage-hibernate` |
-| `resources/data/` | Excel-Arbeitsmappe, CSV-Fallback, JSON-Taxonomie |
-| `resources/prompts/` | LLM-Prompt-Vorlagen (eine pro Taxonomieblatt + Standardvorlagen) |
-| `resources/static/js/` | JavaScript-Module (UI-Logik) |
-| `resources/templates/` | Einzelnes Thymeleaf-Template (`index.html`) |
+| `com.taxonomy.composition` | Kontextübergreifende HTTP-/UI-Orchestrierung und Port-Adapter |
+| `com.taxonomy.security`, `com.taxonomy.observability`, `com.taxonomy.shared` | Anwendungsweite Sicherheit, Observability und gemeinsame Komposition |
+| `com.taxonomy.provenance`, `com.taxonomy.preferences` | Bewusst in der Anwendung verbliebene unterstützende Kontexte |
+| `src/main/resources/static/`, `src/main/resources/templates/` | Browser-Ressourcen und Thymeleaf-Seiten |
+| `src/main/resources/application.properties` | Anwendungskonfiguration |
+| Anwendungseigene Datenbankmigrationen | Komposition der Anwendungsschemata; Schemaverträge der Speicherbibliothek bleiben separat zuständig |
+
+Java-Paketnamen blieben bei der Modulextraktion weitgehend erhalten. Ein Paket
+wie `com.taxonomy.versioning` belegt daher keine physische Zuständigkeit von
+`taxonomy-app`; vor einer Änderung das zuständige Maven-Modul bestimmen.
 
 ---
 
@@ -177,10 +184,10 @@ Die Haupt-Spring-Boot-Anwendung:
 
 | Ich möchte… | Wo nachschauen |
 |---|---|
-| Einen neuen Taxonomie-Endpunkt hinzufügen | `taxonomy-app/.../controller/` — einen `@RestController` erstellen oder erweitern |
-| Einen neuen Service hinzufügen | `taxonomy-app/.../service/` — eine `@Service`-Klasse erstellen |
+| Einen neuen Taxonomie-Endpunkt hinzufügen | `taxonomy-knowledge/.../catalog/` — den katalogeigenen Controller erstellen oder erweitern; Anwendungskomposition nur für kontextübergreifende Orchestrierung |
+| Einen neuen Service hinzufügen | Die zuständige Fachbibliothek aus [Modulgrenzen](MODULE_BOUNDARIES.md); ohne Spring-Bedarf einen frameworkfreien Typ verwenden |
 | Ein neues Exportformat hinzufügen | `taxonomy-export/.../export/` — den Exporter implementieren und in `ExportConfig` registrieren |
-| Eine neue JPA-Entität hinzufügen | `taxonomy-app/.../model/` — mit `@Entity` annotieren |
+| Eine neue JPA-Entität hinzufügen | Die zuständige Fachbibliothek; anwendungsweite Migrationskomposition bleibt in `taxonomy-app` |
 | Ein neues DTO hinzufügen | `taxonomy-domain/.../dto/` — einen Record oder eine Klasse erstellen |
 | Die DSL-Grammatik ändern | `taxonomy-dsl/.../parser/TaxDslParser.java` |
 | Eine DSL-Validierungsregel hinzufügen | `taxonomy-dsl/.../validation/DslValidator.java` |
@@ -217,9 +224,9 @@ Skripte direkt aufrufen.
 
 ## Einen neuen REST-Endpunkt hinzufügen
 
-1. Erstellen oder erweitern Sie einen Controller in `taxonomy-app/src/main/java/com/taxonomy/controller/`.
+1. Bestimmen Sie die zuständige Fachbibliothek über [Modulgrenzen](MODULE_BOUNDARIES.md) und erstellen oder erweitern Sie dort den Controller. Nur kontextübergreifende HTTP-Orchestrierung gehört nach `taxonomy-app/src/main/java/com/taxonomy/composition/`.
 2. Falls der Endpunkt ein neues DTO zurückgibt, fügen Sie es unter `taxonomy-domain/src/main/java/com/taxonomy/dto/` hinzu.
-3. Falls der Endpunkt einen neuen Service benötigt, fügen Sie ihn unter `taxonomy-app/src/main/java/com/taxonomy/service/` hinzu.
+3. Legen Sie Service und zugehörige Tests im selben Fachkontext an; kontextübergreifende Zugriffe verwenden dessen öffentliche API oder einen expliziten Port.
 4. Fügen Sie Tests hinzu (typischerweise mit `@SpringBootTest` + `@AutoConfigureMockMvc` + `@WithMockUser(roles = "ADMIN")`).
 5. Falls der Endpunkt nur für Administratoren bestimmt ist, platzieren Sie ihn unter `/api/admin/` (geschützt durch `ROLE_ADMIN` in `SecurityConfig`).
 6. Falls der Endpunkt Architekturdaten ändert (Relationen, DSL), platzieren Sie ihn unter `/api/relations/`, `/api/dsl/` oder `/api/git/` — Schreiboperationen auf diesen Pfaden erfordern `ROLE_ARCHITECT` oder `ROLE_ADMIN`.
@@ -397,7 +404,7 @@ Siehe [Architekturprinzipien](ARCHITECTURE.md#architekturprinzipien) für die vo
 
 ### Checkliste für neue Services
 
-1. In `taxonomy-app/.../service/` platzieren
+1. In der zuständigen Fachbibliothek aus [Modulgrenzen](MODULE_BOUNDARIES.md) platzieren, nicht automatisch in `taxonomy-app`
 2. Mit `@Service` annotieren
 3. `username`-Parameter akzeptieren, wenn Workspace-bezogen
 4. Unit-Test mit `@SpringBootTest` hinzufügen
@@ -538,7 +545,7 @@ Die Produkt-UI unterstützt sowohl Deutsch als auch Englisch. Der aktuelle i18n-
 
 ### Einen neuen UI-Text hinzufügen
 
-1. Den englischen Text in `messages.properties` hinzufügen (oder ins JS-Locale-Bundle)
+1. Den englischen Text in `messages.properties` (oder ins JS-Locale-Bundle) hinzufügen
 2. Die deutsche Übersetzung in `messages_de.properties` hinzufügen
 3. Den Message-Key im Thymeleaf-Template oder JS-Modul verwenden — niemals Text hart kodieren
 4. Beide Sprachen durch Wechseln der Browser-Locale verifizieren
