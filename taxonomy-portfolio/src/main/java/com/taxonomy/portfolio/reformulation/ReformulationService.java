@@ -119,10 +119,27 @@ public class ReformulationService {
         var question=new DecisionQuestion("edit-"+statementId,new DecisionQuestion.Key(statementId,"edit","local"),"Human statement operation",List.of(),List.of(statementId),
                 new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),"Review affected architecture",DecisionQuestion.State.ANSWERED);
         var impact=ReformulationQuestionService.impact(previous,question,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));
-        // Statements are addressed by ID, not by occurrences of their wording in the document.
-        // The document may contain identical source text or independent manual edits and has no
-        // statement-bound spans. Preserve it; the impact records which sections need reconciliation.
-        var next=new Revision(expected+1,expected,previous.text(),previous.sections(),statements,previous.questions(),previous.answers(),previous.validation(),
+        // Recompose by stable IDs only when the entire flat layout can be proven and the
+        // selected wording is unambiguous. Never replace matching substrings in manual prose.
+        String canonical = String.join("\n\n", previous.statements().stream()
+                .filter(s -> !"REJECTED".equals(s.reviewState())).map(Statement::wording).toList());
+        int first = previous.text().indexOf(old.wording());
+        boolean mapped = !"REJECTED".equals(old.reviewState()) && !old.wording().isEmpty()
+                && previous.text().equals(canonical) && first >= 0
+                && previous.text().indexOf(old.wording(), first + 1) < 0;
+        var findings = new ArrayList<>(previous.validation().findings());
+        findings.removeIf(f -> f.code().equals("STATEMENT_TEXT_CONFLICT")
+                && f.statementIds().equals(List.of(statementId)));
+        String text = previous.text();
+        if (mapped) {
+            text = String.join("\n\n", statements.stream()
+                    .filter(s -> !"REJECTED".equals(s.reviewState())).map(Statement::wording).toList());
+        } else {
+            findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT, "STATEMENT_TEXT_CONFLICT",
+                    "Statement changed by ID; document wording was retained because its mapping is ambiguous or manually edited",
+                    List.of(statementId), old.sourceSpans()));
+        }
+        var next=new Revision(expected+1,expected,text,previous.sections(),statements,previous.questions(),previous.answers(),new ValidationReport(findings),
                 PortfolioScope.username(actor,context),Instant.now(),request.rationale(),impact,previous.variantOrigin());
         proposal.advanceRevision();revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),next.number(),json.write(next)));
         return view(proposal);

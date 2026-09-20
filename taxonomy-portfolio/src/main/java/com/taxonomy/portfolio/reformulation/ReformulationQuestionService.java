@@ -21,6 +21,8 @@ public final class ReformulationQuestionService {
         if(values.stream().anyMatch(Objects::isNull))throw invalid("Answer values cannot be null");
         String action = request.action();
         if (!Set.of("ANSWER", "DEFER", "NOT_APPLICABLE").contains(Objects.toString(action, ""))) throw invalid("Invalid answer action");
+        if ("NOT_APPLICABLE".equals(action) && !values.isEmpty())
+            throw invalid("Not-applicable must not contain answer values");
         // OPEN is an option meaning, not a reserved word in a free-text answer.
         boolean choice = question.answerSchema().kind() == DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE
                 || question.answerSchema().kind() == DecisionQuestion.AnswerSchema.Kind.MULTIPLE_CHOICE;
