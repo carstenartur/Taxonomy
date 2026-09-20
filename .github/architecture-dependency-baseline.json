@@ -251,7 +251,7 @@
       "fromPackage": "com.taxonomy.composition.reformulation",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.reformulation",
-      "classDependencyCount": 3
+      "classDependencyCount": 5
     },
     {
       "fromContext": "app-composition",

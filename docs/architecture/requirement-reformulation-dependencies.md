@@ -41,3 +41,13 @@ inspected its imports and authorized exactly these four further class-pair delta
 No Maven dependencies, reverse edges, ratchet tests or broad allowances change.
 Model calls run outside transactions, via the existing LlmGatewayRegistry budget
 and provider transport. Independent package review checks these exact additions.
+
+Package 3 adds one further reviewed count change:
+
+| From package | To package | Count change | Exact new class pairs |
+| --- | --- | ---: | --- |
+| composition.reformulation | analysis.reformulation | 3 → 5 | ReformulationExecutionService → CrossTaxonomyReconciler invokes Phase B in the actual worker; ReformulationExecutionService → ReconcilePromptBuilder freezes its prompt/schema content in the durable run before any gateway call. |
+
+The controller inspected and authorized these two pairs before the baseline edit.
+All other counts and dependency rules remain unchanged. Reconciliation uses the
+same node service, gateway registry, provider budgets and bounded executor.

@@ -18,6 +18,13 @@ public class NodeReformulationService {
         this.json=json;this.registry=registry;this.config=config;this.prompts=new ReformulationPromptBuilder(json);this.parser=new ReformulationResponseParser(json);
     }
     public NodeSynthesisResult synthesize(NodeSynthesisInput input) {
+        return call(errors->prompts.build(input,errors),raw->parser.parse(raw,input));
+    }
+    public ReconciliationResult reconcile(ReconciliationInput input) {
+        var builder=new ReconcilePromptBuilder(json);var responses=new ReconcileResponseParser(json);
+        return call(errors->builder.build(input,errors),raw->responses.parse(raw,input));
+    }
+    private <T> T call(java.util.function.Function<String,String> prompt,java.util.function.Function<String,T> response) {
         if(TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException("LLM_CALL_INSIDE_TRANSACTION");
         var provider=config.getActiveProvider();String key=config.getApiKey(provider);
         if(provider==LlmProvider.LOCAL_ONNX || !config.isProviderConfigured(provider) || config.isMockMode())
@@ -25,12 +32,12 @@ public class NodeReformulationService {
         var gateway=registry.getGateway(provider);String errors=null;
         for(int attempt=0;attempt<2;attempt++) {
             String raw;
-            try {raw=gateway.sendHttpRequest(prompts.build(input,errors),key);}
+            try {raw=gateway.sendHttpRequest(prompt.apply(errors),key);}
             catch(PromptBudgetExceededException tooLarge) {throw new IllegalStateException("INPUT_TOO_LARGE_FOR_PROVIDER",tooLarge);}
             if(raw==null) throw new IllegalStateException("PROVIDER_TRANSPORT_FAILED");
             try {
                 if(truncated(raw)) throw new IllegalArgumentException("Provider reports truncated or filtered output");
-                return parser.parse(gateway.extractResponseText(raw),input);
+                return response.apply(gateway.extractResponseText(raw));
             }
             catch(IllegalArgumentException invalid) { errors=invalid.getMessage(); }
         }

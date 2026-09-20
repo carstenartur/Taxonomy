@@ -91,10 +91,15 @@ public class ReformulationService {
     @Transactional
     public Run beginRun(Long projectId,Long requirementId,String id,long expectedRevision,String provider,String model,
             String promptVersion,String schemaVersion,String promptContent,String actor,WorkspaceContext context) {
+        return beginRun(projectId,requirementId,id,expectedRevision,provider,model,promptVersion,schemaVersion,promptContent,Map.of(),actor,context);
+    }
+    @Transactional
+    public Run beginRun(Long projectId,Long requirementId,String id,long expectedRevision,String provider,String model,
+            String promptVersion,String schemaVersion,String promptContent,Map<String,String> reconcileContext,String actor,WorkspaceContext context) {
         var proposal=require(projectId,requirementId,id,actor,context,true);
         if(proposal.getCurrentRevision()!=expectedRevision) throw new ReformulationPreconditionException();
         var run=new Run(UUID.randomUUID().toString(),id,expectedRevision,"QUEUED",provider,model,promptVersion,schemaVersion,promptContent,
-                null,null,null,PortfolioScope.username(actor,context),Instant.now());
+                null,null,null,PortfolioScope.username(actor,context),Instant.now(),reconcileContext);
         runs.saveAndFlush(new ReformulationRun(run.id(),id,proposal.getScopeKey(),json.write(run)));
         return run;
     }
@@ -122,7 +127,7 @@ public class ReformulationService {
         if(previous.number()!=old.sourceRevision() || human) {
             entity.setPayload(json.write(state(old,"PARTIAL",human?"MANUAL_DRAFT_PROTECTED":"PROPOSAL_REVISION_CHANGED",null,document)));return;
         }
-        if(!hasClosedReferences(document,previous)) {
+        if(!hasClosedReferences(document,previous,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class))) {
             entity.setPayload(json.write(state(old,"PARTIAL","INVALID_REFERENCE_CLOSURE",null,document)));return;
         }
         proposal.advanceRevision();
@@ -132,11 +137,24 @@ public class ReformulationService {
         entity.setPayload(json.write(state(old,"COMPLETED",null,revision.number(),document)));
     }
     /** Publication boundary: references resolve within this exact immutable candidate revision. */
-    private static boolean hasClosedReferences(ReformulationDocument document,Revision previous) {
+    private static boolean hasClosedReferences(ReformulationDocument document,Revision previous,ReformulationBaseline baseline) {
         var statements=new HashMap<String,Statement>();
         for(var statement:document.statements()) if(statements.put(statement.id(),statement)!=null) return false;
         var questions=new HashMap<String,DecisionQuestion>();
-        for(var question:document.questions()) if(question.id()==null || question.id().isBlank() || questions.put(question.id(),question)!=null) return false;
+        for(var question:document.questions()) {
+            if(question.id()==null || question.id().isBlank())return false;
+            for(String ref:question.referenceIds())if(ref==null || ref.isBlank() || questions.put(ref,question)!=null)return false;
+            for(String alias:question.aliases())if(question.origins().stream().noneMatch(o->o.id().equals(alias)))return false;
+            for(var origin:question.origins()) {
+                var previousForm=new DecisionQuestion(origin.id(),origin.key(),origin.wording(),origin.discoveries(),origin.affectedStatementIds(),origin.answerSchema(),origin.prerequisites(),origin.dependentQuestionIds(),origin.consequences(),origin.state());
+                if(!question.retains(previousForm))return false;
+            }
+            for(var resolution:question.sourceResolutions()) {
+                if(resolution.sourceSpans().isEmpty() || resolution.values().isEmpty() || resolution.rationale()==null || resolution.rationale().isBlank()
+                        || resolution.sourceSpans().stream().anyMatch(span->!span.matches(baseline.originalText()))
+                        || question.state()!=DecisionQuestion.State.ANSWERED && question.state()!=DecisionQuestion.State.CONFLICT)return false;
+            }
+        }
         var sections=new HashSet<String>();
         for(var section:document.sections()) if(section.id()==null || section.id().isBlank() || !sections.add(section.id())) return false;
         for(var statement:statements.values()) if(!questions.keySet().containsAll(statement.questionDependencies())) return false;
@@ -158,8 +176,12 @@ public class ReformulationService {
         }
         // A retained question cannot silently change meaning or point at rewritten old evidence.
         var previousStatements=new HashMap<String,Statement>();previous.statements().forEach(s->previousStatements.put(s.id(),s));
-        for(var question:previous.questions()) if(questions.containsKey(question.id())) {
-            if(!question.equals(questions.get(question.id()))) return false;
+        for(var evidence:previous.statements())if(!evidence.equals(statements.get(evidence.id())))return false;
+        for(var question:previous.questions()) {
+            var retained=questions.get(question.id());
+            if(retained==null || !retained.retains(question)) return false;
+            if(question.state()==DecisionQuestion.State.ANSWERED && retained.state()!=DecisionQuestion.State.ANSWERED && retained.state()!=DecisionQuestion.State.CONFLICT)return false;
+            if(question.state()==DecisionQuestion.State.CONFLICT && retained.state()!=DecisionQuestion.State.CONFLICT)return false;
             for(String id:question.affectedStatementIds()) {
                 var evidence=previousStatements.get(id);
                 if(evidence==null || !evidence.equals(statements.get(id))) return false;
@@ -171,7 +193,7 @@ public class ReformulationService {
         return runs.lockScoped(runId,proposal.getId(),proposal.getScopeKey()).orElseThrow(()->PortfolioException.notFound("Synthesis run not found"));
     }
     private static Run state(Run old,String status,String failure,Long revision,ReformulationDocument candidate) {
-        return new Run(old.id(),old.proposalId(),old.sourceRevision(),status,old.provider(),old.model(),old.promptVersion(),old.schemaVersion(),old.promptContent(),failure,revision,candidate,old.actor(),old.createdAt());
+        return new Run(old.id(),old.proposalId(),old.sourceRevision(),status,old.provider(),old.model(),old.promptVersion(),old.schemaVersion(),old.promptContent(),failure,revision,candidate,old.actor(),old.createdAt(),old.reconcileContext());
     }
     private void saveRevision(ReformulationProposal proposal,String text,String rationale,String actor,Instant now) {
         long number=proposal.getCurrentRevision();

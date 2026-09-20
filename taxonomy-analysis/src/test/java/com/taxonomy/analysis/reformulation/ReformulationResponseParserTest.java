@@ -12,6 +12,10 @@ class ReformulationResponseParserTest {
         return new NodeSynthesisInput(WalkUpReformulationTest.baseline(),"P",null,"description",List.of(),List.of(),List.of(),Map.of(),List.of(),List.of(),"preserve");
     }
     final ReformulationResponseParser parser=new ReformulationResponseParser(new ObjectMapper());
+    @Test void rejectsOverflowOffsetsBeforeNarrowing() {
+        String response=EMPTY.replace("\"uncoveredSourceRefs\":[]","\"uncoveredSourceRefs\":[{\"start\":4294967296,\"end\":4294967297,\"exactText\":\"A\"}]");
+        assertThatThrownBy(()->parser.parse(response,input())).isInstanceOf(IllegalArgumentException.class).hasMessage("Invalid span offsets");
+    }
     @Test void rejectsTruncationTrailingContentMissingFieldsUnknownFieldsAndInventedIds() {
         for(String response:List.of(EMPTY.substring(0,40),EMPTY+" {}","{\"summary\":\"x\"}",EMPTY.replace("\"summary\"","\"intrusion\""),EMPTY.replace("\"preservedStatementIds\":[]","\"preservedStatementIds\":[\"invented\"]")))
             assertThatThrownBy(()->parser.parse(response,input())).isInstanceOf(IllegalArgumentException.class);
