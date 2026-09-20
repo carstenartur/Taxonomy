@@ -24,10 +24,13 @@ import com.taxonomy.portfolio.model.RequirementAnalysisSnapshot;
 import com.taxonomy.portfolio.repository.RequirementAnalysisSnapshotRepository;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.portfolio.workbench.ArchitectureWorkbenchService;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpHeaders;
@@ -291,6 +294,55 @@ class DecisionRationaleSnapshotReportTest {
                 .isEqualTo("payload".getBytes(StandardCharsets.UTF_8));
         verify(reportService).generate(
                 41L, "snapshot-1", "auditor", CONTEXT, Locale.GERMAN);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {"docx", "DOCX", " docx ", " DoCx "})
+    void acceptedDocxFormatVariantsRenderFrozenCompositionAndGraphHeaders(String requestedFormat) {
+        var decisions = mock(DecisionRationaleSnapshotReportService.class);
+        var workbench = mock(ArchitectureWorkbenchService.class);
+        var workspaceResolver = mock(WorkspaceResolver.class);
+        var decision = SnapshotWordReportServiceTest.decision();
+        var projection = SnapshotWordReportServiceTest.projection("Saved view", "commit-a");
+        when(decisions.generate(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH))
+                .thenReturn(decision);
+        when(workbench.load(41L, "snapshot-1", "auditor", CONTEXT)).thenReturn(projection);
+        when(workspaceResolver.resolveCurrentContext()).thenReturn(CONTEXT);
+        when(workspaceResolver.resolveCurrentUsername()).thenReturn("auditor");
+
+        var renderer = mock(ReportRendererExtension.class);
+        when(renderer.reportTypeId()).thenReturn(DecisionRationaleReportPlugin.REPORT_TYPE_ID);
+        org.mockito.Mockito.doReturn(DecisionRationaleReport.class).when(renderer).reportModelType();
+        when(renderer.descriptor()).thenReturn(new ReportFormatDescriptor(
+                "docx", "Word", "docx",
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document", true));
+        when(renderer.render(any())).thenAnswer(invocation -> {
+            var rendered = invocation.getArgument(0, ReportRenderContext.class)
+                    .payloadAs(DecisionRationaleReport.class);
+            assertThat(rendered.architecture()).isNotNull();
+            assertThat(rendered.architecture().diagram().nodes())
+                    .containsExactlyElementsOf(projection.diagram().nodes());
+            assertThat(rendered.architecture().evidence().snapshotId()).isEqualTo("snapshot-1");
+            return new ReportRenderResult("frozen Word".getBytes(StandardCharsets.UTF_8), templateMetadata());
+        });
+        var controller = new DecisionRationaleSnapshotReportController(
+                decisions, new ReportRendererRegistry(List.of(renderer)), workspaceResolver,
+                new SnapshotWordReportService(decisions, workbench));
+
+        var response = controller.export(41L, "snapshot-1", requestedFormat, "en");
+
+        assertThat(response.getHeaders().getFirst("X-Taxonomy-Graph-SHA256"))
+                .isEqualTo(com.taxonomy.architecture.report.ArchitectureReportDocument
+                        .graphSha256(projection.diagram()));
+        assertThat(response.getHeaders().getFirst("X-Taxonomy-Snapshot-Id")).isEqualTo("snapshot-1");
+        assertThat(response.getHeaders().getFirst("X-Taxonomy-Data-SHA256")).isEqualTo("data-sha");
+        assertThat(response.getHeaders().getFirst("X-Taxonomy-Analysis-SHA256")).isEqualTo("analysis-sha");
+        assertThat(response.getHeaders().getFirst(DecisionReportTemplateHeaders.HEADER_TEMPLATE_SHA256))
+                .isEqualTo("c".repeat(64));
+        assertThat(response.getHeaders().getFirst(HttpHeaders.CONTENT_DISPOSITION))
+                .isEqualTo("attachment; filename=\"taxonomy-decision-rationale-report-v7.docx\"");
+        assertThat(response.getBody()).isEqualTo("frozen Word".getBytes(StandardCharsets.UTF_8));
+        verify(workbench).load(41L, "snapshot-1", "auditor", CONTEXT);
     }
 
     @Test

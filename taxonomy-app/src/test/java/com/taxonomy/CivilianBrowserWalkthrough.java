@@ -270,7 +270,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
                 names = files.map(path -> path.getFileName().toString()).toList();
             }
             var completed = new TreeSet<String>();
-            names.stream().filter(name -> name.endsWith(".svg") || name.endsWith(".pdf") || name.endsWith(".zip"))
+            names.stream().filter(name -> name.endsWith(".svg") || name.endsWith(".pdf") || name.endsWith(".zip") || name.endsWith(".docx"))
                     .forEach(completed::add);
             return completed;
         } catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }

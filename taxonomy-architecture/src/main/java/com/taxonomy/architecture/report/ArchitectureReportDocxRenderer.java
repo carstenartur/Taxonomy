@@ -156,6 +156,8 @@ public final class ArchitectureReportDocxRenderer {
             var patterns = report.getPatternDetection();
             if (patterns != null) {
                 w.heading("Detected patterns", 1, null);
+                w.paragraph("Pattern Coverage: " + String.format(Locale.ROOT, "%.1f%%",
+                        boundedPatternPercentage(patterns.getPatternCoverage())));
                 var all = new ArrayList<DetectedPattern>(patterns.getMatchedPatterns());
                 all.addAll(patterns.getIncompletePatterns());
                 w.table(
@@ -168,7 +170,7 @@ public final class ArchitectureReportDocxRenderer {
                                                         String.format(
                                                                 Locale.ROOT,
                                                                 "%.0f%%",
-                                                                e.getCompleteness()),
+                                                                boundedPatternPercentage(e.getCompleteness())),
                                                         String.join(", ", e.getMissingSteps())))
                                 .toList());
             }
@@ -228,6 +230,11 @@ public final class ArchitectureReportDocxRenderer {
             throw new IllegalStateException(
                     "Could not render legacy architecture Word report", exception);
         }
+    }
+
+    /** Pattern DTO percentages already use the 0–100 scale, unlike element relevance. */
+    private static double boundedPatternPercentage(double value) {
+        return Double.isFinite(value) ? Math.max(0.0, Math.min(100.0, value)) : 0.0;
     }
 
     private static String value(String text) {

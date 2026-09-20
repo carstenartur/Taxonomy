@@ -79,10 +79,10 @@ public class DecisionRationaleSnapshotReportController {
                         "Unknown decision-report format: " + formatId));
         WorkspaceContext context = workspaceResolver.resolveCurrentContext();
         String username = workspaceResolver.resolveCurrentUsername();
-        DecisionRationaleReport report = "docx".equals(formatId)
+        ReportFormatDescriptor format = renderer.descriptor();
+        DecisionRationaleReport report = "docx".equals(format.id().trim().toLowerCase(Locale.ROOT))
                 ? wordReportService.load(projectId,snapshotId,username,context,resolveLocale(language)).decision()
                 : snapshotReportService.generate(projectId, snapshotId, username, context, resolveLocale(language));
-        ReportFormatDescriptor format = renderer.descriptor();
         ReportRenderResult rendered = renderer.render(ReportRenderContext.ofPayload(report));
         String filename = DecisionRationaleReportPlugin.BASE_FILENAME
                 + "-v" + valueOrUnknown(report.metadata().requirementVersionNumber())

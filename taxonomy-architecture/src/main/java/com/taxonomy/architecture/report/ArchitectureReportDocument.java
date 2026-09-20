@@ -7,7 +7,11 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.util.*;
 
-/** Immutable evidence shared by both frozen Word artifacts. Titles never affect graph identity. */
+/**
+ * Immutable evidence shared by both frozen Word artifacts. The graph content digest includes saved
+ * node labels as frozen evidence; report, diagram and scene presentation titles are excluded.
+ * This is a content digest, not a name-insensitive identity digest.
+ */
 public record ArchitectureReportDocument(
         String title,
         String languageTag,
