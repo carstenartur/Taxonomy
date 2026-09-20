@@ -1,6 +1,7 @@
 package com.taxonomy.composition.reformulation;
 
 import com.taxonomy.portfolio.reformulation.ReformulationService;
+import com.taxonomy.portfolio.reformulation.ProposalSummary;
 import com.taxonomy.portfolio.reformulation.ReformulationPreconditionException;
 
 import com.taxonomy.portfolio.reformulation.ReformulationDtos.*;
@@ -8,7 +9,7 @@ import com.taxonomy.workspace.service.WorkspaceResolver;
 import org.springframework.http.*;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
-import java.net.URI;
+import org.springframework.web.servlet.support.ServletUriComponentsBuilder;
 import java.util.List;
 
 /** Scope and actor always come from authenticated workspace resolution, never request JSON. */
@@ -23,10 +24,11 @@ public class ReformulationController {
         var actor=resolver.resolveCurrentUsername();var context=resolver.resolveCurrentContext();
         var proposal=service.create(projectId,requirementId,request,actor,context);
         execution.start(projectId,requirementId,proposal.id(),proposal.currentRevision().number(),actor,context);
-        return ResponseEntity.accepted().location(URI.create("/api/projects/"+projectId+"/requirements/"+requirementId+"/reformulations/"+proposal.id()))
+        return ResponseEntity.accepted().location(ServletUriComponentsBuilder.fromCurrentRequestUri()
+                        .pathSegment(proposal.id()).build().toUri())
                 .eTag(Long.toString(proposal.currentRevision().number())).body(proposal);
     }
-    @GetMapping public List<Proposal> list(@PathVariable Long projectId,@PathVariable Long requirementId) {
+    @GetMapping public List<ProposalSummary> list(@PathVariable Long projectId,@PathVariable Long requirementId) {
         return service.list(projectId,requirementId,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());
     }
     @GetMapping("/{proposalId}") public ResponseEntity<Proposal> get(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId) {

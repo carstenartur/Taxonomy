@@ -66,3 +66,15 @@ guarded publication; application composition retains asynchronous gateway
 coordination. No new Maven dependency, reverse edge, ratchet-test change or broader
 allowance is introduced. The strict 22-case dependency ratchet passes; independent
 package review must verify the exact four pairs.
+
+## Integrated metadata-list correction
+
+The corrected baseline package introduces the exact additional pair
+`ReformulationController → ProposalSummary` in the existing
+`composition.reformulation → portfolio.reformulation` direction. Combining it with
+package 4 changes that one count from **17 to 18**, not the unrelated edges. The
+list endpoint now returns the explicit metadata projection instead of loading
+frozen baseline/revision payloads. The interactive client fetches selected details
+separately. The compiled controller signature and actual authenticated HTTP output
+were checked before recording this pair. The unchanged strict ratchet remains the
+full integrated CI gate; no arbitrary allowance or test exclusion is introduced.

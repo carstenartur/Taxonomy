@@ -22,12 +22,24 @@ public class ReformulationService {
     private final ReformulationRevisionRepository revisions;
     private final PortfolioJsonCodec json;
     private final ReformulationRunRepository runs;
-    public ReformulationService(ProjectPortfolioService projects,ProjectRequirementVersionRepository versions,
-            RequirementAnalysisSnapshotRepository snapshots,PortfolioAnalysisPersistenceService analysis,
-            ReformulationBaselineContextPort contextPort,ReformulationProposalRepository proposals,
-            ReformulationRevisionRepository revisions,PortfolioJsonCodec json,ReformulationRunRepository runs) {
-        this.projects=projects;this.versions=versions;this.snapshots=snapshots;this.analysis=analysis;
-        this.runs=runs;this.contextPort=contextPort;this.proposals=proposals;this.revisions=revisions;this.json=json;
+    public ReformulationService(ProjectPortfolioService projects,
+            ProjectRequirementVersionRepository versions,
+            RequirementAnalysisSnapshotRepository snapshots,
+            PortfolioAnalysisPersistenceService analysis,
+            ReformulationBaselineContextPort contextPort,
+            ReformulationProposalRepository proposals,
+            ReformulationRevisionRepository revisions,
+            PortfolioJsonCodec json,
+            ReformulationRunRepository runs) {
+        this.projects = projects;
+        this.versions = versions;
+        this.snapshots = snapshots;
+        this.analysis = analysis;
+        this.contextPort = contextPort;
+        this.proposals = proposals;
+        this.revisions = revisions;
+        this.json = json;
+        this.runs = runs;
     }
     @Transactional
     public Proposal create(Long projectId,Long requirementId,CreateRequest request,String actor,WorkspaceContext context) {
@@ -63,9 +75,9 @@ public class ReformulationService {
         return view(require(projectId,requirementId,id,actor,context,false));
     }
     @Transactional(readOnly=true)
-    public List<Proposal> list(Long projectId,Long requirementId,String actor,WorkspaceContext context) {
+    public List<ProposalSummary> list(Long projectId,Long requirementId,String actor,WorkspaceContext context) {
         var requirement=projects.requireRequirement(projectId,requirementId,actor,context);
-        return proposals.findByProjectIdAndRequirementIdAndScopeKeyOrderByCreatedAtDesc(projectId,requirementId,requirement.getScopeKey()).stream().map(this::view).toList();
+        return proposals.findSummaries(projectId, requirementId, requirement.getScopeKey());
     }
     @Transactional(readOnly=true)
     public Revision revision(Long projectId,Long requirementId,String id,long number,String actor,WorkspaceContext context) {
@@ -276,10 +288,9 @@ public class ReformulationService {
     }
     private void saveRevision(ReformulationProposal proposal,String text,String rationale,String actor,Instant now) {
         long number=proposal.getCurrentRevision();
-        var original=json.read(proposal.getBaselinePayload(),ReformulationBaseline.class).originalText();
-        var spans=original.isEmpty()?List.<Statement.SourceSpan>of():List.of(new Statement.SourceSpan(0,original.length(),original));
+        // No particular source span was evaluated. The exact original is retained once in the baseline.
         var validation=new ValidationReport(List.of(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,
-                "NOT_SYNTHESIZED","Source coverage has not been evaluated",List.of(),spans)));
+                "NOT_SYNTHESIZED","Source coverage has not been evaluated",List.of(),List.of())));
         var revision=new Revision(number,number==1?null:number-1,text,List.of(),List.of(),List.of(),List.of(),validation,actor,now,rationale);
         revisions.save(new ReformulationRevision(proposal.getId(),proposal.getScopeKey(),number,json.write(revision)));
     }

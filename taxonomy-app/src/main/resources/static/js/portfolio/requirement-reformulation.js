@@ -1,7 +1,7 @@
 /* Interactive immutable proposal workspace. All external strings are rendered as text. */
 (function () {
     'use strict';
-    const route = location.pathname.match(/^\/projects\/(\d+)\/requirements\/(\d+)\/?$/);
+    const route = location.pathname.match(/\/projects\/(\d+)\/requirements\/(\d+)\/?$/);
     const host = document.getElementById('reformulationList');
     if (!route || !host) return;
     const api = window.TaxonomyPortfolioApi, project = Number(route[1]), requirement = Number(route[2]);
@@ -64,7 +64,7 @@
         mutationInFlight = true; ++readGeneration;
         try {
             const next = await load();
-            if (!offers.some(p => p.id === next.id)) offers.unshift(next);
+            if (!offers.some(p => p.id === next.id)) offers.unshift({id:next.id,currentRevision:next.currentRevision.number});
             // The outgoing form remains editable while the request is in flight.
             if (hasDrafts()) { render(); throw new Error(t('dirty')); }
             offer = next; render();
@@ -152,7 +152,7 @@
         host.replaceChildren(); if(!offer){host.append(el('p',t('empty')));return;}
         const revision=offer.currentRevision;
         const selection=el('select',undefined,'form-select');selection.setAttribute('aria-label',t('proposal'));
-        offers.forEach(p=>{const o=el('option',p.id.slice(0,8)+' · '+t('revision')+' '+p.currentRevision.number);o.value=p.id;selection.append(o);});
+        offers.forEach(p=>{const o=el('option',p.id.slice(0,8)+' · '+t('revision')+' '+(p.id===offer.id ? revision.number : p.currentRevision));o.value=p.id;selection.append(o);});
         if(!offers.some(p=>p.id===offer.id)){const o=el('option',offer.id.slice(0,8));o.value=offer.id;selection.append(o);}selection.value=offer.id;
         selection.addEventListener('change',()=>perform(async()=>{
             const selected = selection.value; selection.value = offer.id;
@@ -269,7 +269,10 @@
             const snapshot=snapshots.find(s=>s.id===select.value);if(!snapshot)throw new Error(t('noSnapshot'));
             return api.createReformulation(project,requirement,{sourceVersionId:snapshot.requirementVersionId,snapshotId:snapshot.id,language:lang});
         })));
-        offers=await api.listReformulations(project,requirement);offer=offers.find(p=>p.id===new URLSearchParams(location.search).get('proposal')) || offers[0];render();if(offer)await refreshRuns();else announce(t('empty'));
+        offers=await api.listReformulations(project,requirement);
+        const selected=offers.find(p=>p.id===new URLSearchParams(location.search).get('proposal')) || offers[0];
+        offer=selected ? await api.getReformulation(project,requirement,selected.id) : undefined;
+        render();if(offer)await refreshRuns();else announce(t('empty'));
     }
     window.addEventListener('beforeunload',event=>{if(hasDrafts() || mutationInFlight){event.preventDefault();event.returnValue='';}});
     perform(start);
