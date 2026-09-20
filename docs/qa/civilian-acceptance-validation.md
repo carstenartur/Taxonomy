@@ -45,7 +45,7 @@ executed checks from pending visual/product acceptance.
   an integration-test reference and records incomplete F3/F4 and F5/A1 contracts.
   It does not approve a deployed flood-warning architecture.
 - LibreOffice Writer and Draw independently open the actual DOCX/VSDX exports.
-  `.github/scripts/civilian-document-qa.py` checks all report rationale text and all
+  `taxonomy-tooling check-civilian-documents` checks all report rationale text and all
   diagram labels, empty page bodies, page count and file/PDF hashes. CI preserves
   every rendered page for visual inspection. The full Visio graph remains dense,
   with overlapping/reversed edge labels in Draw; this is a semantic interchange

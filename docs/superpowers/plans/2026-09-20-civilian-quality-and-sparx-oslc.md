@@ -118,3 +118,7 @@ integration identities, previews, reconciliation, journal and checkpoints.
   deployment would lack required account, delivery and operational contracts.
 - The review did not assume pending build/browser success. Both are required
   execution steps; no review findings or unexecuted product checks are hidden.
+- The first full gate caught the existing #673 Python inventory ratchet. Ported
+  the new independent renderer checks into the dependency-free Java tooling CLI;
+  the ratchet remains unchanged. Added content-loss, continued-paragraph,
+  header-only-page, excessive-pagination and hardened-XML regression checks.

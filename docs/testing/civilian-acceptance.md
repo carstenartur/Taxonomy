@@ -140,7 +140,8 @@ das Sparx-Profil v1 kann davon 8 liefern. Diese Grenze ist ein geprüftes Ergebn
 Die CI rendert die tatsächlichen Dateien zusätzlich mit:
 
 ```bash
-python3 .github/scripts/civilian-document-qa.py taxonomy-app/target/civilian-acceptance
+./mvnw -B -ntp -pl taxonomy-tooling -am compile -DskipTests
+java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-civilian-documents --artifacts taxonomy-app/target/civilian-acceptance
 ```
 
 Dafür werden LibreOffice Writer/Draw und Poppler benötigt. `document-qa/` enthält

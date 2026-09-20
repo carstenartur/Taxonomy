@@ -69,6 +69,8 @@ public final class TaxonomyTooling {
                     commandArguments, workingDirectory, output, error);
             case "check-codeql-sarif" -> CodeQlSarifGate.run(
                     commandArguments, workingDirectory, output, error);
+            case "check-civilian-documents" -> CivilianDocumentQa.run(
+                    commandArguments, workingDirectory, output, error);
             default -> {
                 error.println("Unknown taxonomy-tooling command: " + command);
                 yield 2;
@@ -275,7 +277,7 @@ public final class TaxonomyTooling {
         }
     }
 
-    private static final class Arguments {
+    static final class Arguments {
         private static final Set<String> FLAGS = Set.of("stdin", "release");
 
         private final Map<String, String> values;
