@@ -211,6 +211,12 @@ public class ReformulationService {
         for(var question:questions.values()) {
             if(!statements.keySet().containsAll(question.affectedStatementIds()) || !questions.keySet().containsAll(question.prerequisites())
                     || !questions.keySet().containsAll(question.dependentQuestionIds())) return false;
+            for(var condition:question.answerSchema().applicability()) {
+                var prerequisite=questions.get(condition.questionId());
+                if(prerequisite==null || prerequisite.id().equals(question.id()) || !question.prerequisites().contains(condition.questionId()) || condition.anyOf().isEmpty())return false;
+                var allowed=prerequisite.answerSchema().kind()==DecisionQuestion.AnswerSchema.Kind.BOOLEAN?List.of("true","false"):prerequisite.answerSchema().options();
+                if(!allowed.containsAll(condition.anyOf()))return false;
+            }
         }
         for(var section:document.sections()) {
             if(!sections.containsAll(section.children()) || !statements.keySet().containsAll(section.statementIds())

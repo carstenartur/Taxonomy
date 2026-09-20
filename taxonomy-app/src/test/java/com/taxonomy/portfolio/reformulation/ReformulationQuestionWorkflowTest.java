@@ -43,6 +43,9 @@ class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
         answer(p.id(),5,"number","ANSWER",List.of("NaN"),"",422);
         answer(p.id(),5,"number","ANSWER",List.of("61"),"",422);
         answer(p.id(),5,"boolean","ANSWER",List.of("yes"),"",422);
+        mvc.perform(post(base()+"/"+p.id()+"/answers").with(csrf()).header("If-Match","\"5\"").contentType(MediaType.APPLICATION_JSON)
+            .content("{\"questionId\":\"channel\",\"action\":\"ANSWER\",\"values\":[null],\"rationale\":\"Invalid choice\"}"))
+            .andExpect(status().is(422));
     }
     @Test void localImpactIncludesAncestorButIndependentBranchStaysStableAndGlobalBroadens() throws Exception {
         var p=seed();var result=answer(p.id(),2,"channel","ANSWER",List.of("Terminal"),"",201);
@@ -101,6 +104,11 @@ class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
         assertThat(changed.at("/currentRevision/answers").size()).isEqualTo(3);
         assertThat(changed.at("/currentRevision/validation/findings").toString()).contains("STALE_FOLLOW_UP_CONTEXT");
         assertThat(changed.at("/currentRevision/questions/7/discoveries").size()).isEqualTo(1);
+        answer(p.id(),5,"channel","ANSWER",List.of("Terminal"),"",201);
+        var notApplicable=answer(p.id(),6,"offline","NOT_APPLICABLE",List.of(),"",201);
+        assertThat(notApplicable.at("/currentRevision/questions/7/state").asText()).isEqualTo("NOT_APPLICABLE");
+        var unrelated=answer(p.id(),7,"global","ANSWER",List.of("Global wording"),"",201);
+        assertThat(unrelated.at("/currentRevision/questions/7/state").asText()).isEqualTo("NOT_APPLICABLE");
     }
     @Test void typedOtherOpenAndIncompatibleMultiselectDoNotDependOnTranslatedLabels() throws Exception {
         questionTransform=qs->{var all=new ArrayList<>(qs);var q=all.get(1);
@@ -144,6 +152,16 @@ class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
         var run=reformulations.beginRun(project.id(),requirement.id(),p.id(),3,"TEST","test","v1","v1","frozen","architect",context);
         reformulations.finishRun(project.id(),requirement.id(),p.id(),run.id(),new com.taxonomy.reformulation.ReformulationDocument("Reopened by model",previous.sections(),previous.statements(),questions,previous.validation(),List.of()),null,"architect",context);
         assertThat(reformulations.get(project.id(),requirement.id(),p.id(),"architect",context).currentRevision()).isEqualTo(previous);
+        assertThat(reformulations.runs(project.id(),requirement.id(),p.id(),"architect",context).getLast().failureCode()).isEqualTo("INVALID_REFERENCE_CLOSURE");
+    }
+    @Test void publicationRejectsDanglingTypedApplicabilityReference() throws Exception {
+        var p=seed();var previous=p.currentRevision();var q=question("offline","BOOLEAN",List.of(),"BP-1");
+        var schema=new com.taxonomy.reformulation.DecisionQuestion.AnswerSchema(q.answerSchema().kind(),List.of(),null,null,null,Map.of(),List.of(),
+            List.of(new com.taxonomy.reformulation.DecisionQuestion.AnswerSchema.AnswerCondition("ghost",List.of("Terminal"))));
+        var questions=new ArrayList<>(previous.questions());questions.add(new com.taxonomy.reformulation.DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),schema,List.of(),List.of(),q.consequences(),q.state()));
+        var run=reformulations.beginRun(project.id(),requirement.id(),p.id(),2,"TEST","test","v2","v2","frozen","architect",context);
+        reformulations.finishRun(project.id(),requirement.id(),p.id(),run.id(),new com.taxonomy.reformulation.ReformulationDocument("Dangling applicability",previous.sections(),previous.statements(),questions,previous.validation(),List.of()),null,"architect",context);
+        assertThat(reformulations.get(project.id(),requirement.id(),p.id(),"architect",context).currentRevision().number()).isEqualTo(2);
         assertThat(reformulations.runs(project.id(),requirement.id(),p.id(),"architect",context).getLast().failureCode()).isEqualTo("INVALID_REFERENCE_CLOSURE");
     }
 }

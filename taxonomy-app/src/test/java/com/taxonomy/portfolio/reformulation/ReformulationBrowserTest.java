@@ -103,20 +103,40 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
         } catch(Throwable failure) {
             Path output=Path.of("target/civilian-acceptance/reformulation-browser");Files.createDirectories(output);
             Files.write(output.resolve("failure.png"),driver.getScreenshotAs(OutputType.BYTES));
-            Files.writeString(output.resolve("failure-page.html"),driver.getPageSource());throw failure;
+            Files.writeString(output.resolve("failure-page.html"),driver.getPageSource());
+            Files.writeString(output.resolve("failure-geometry.json"),String.valueOf(driver.executeScript("return JSON.stringify(window.__reformulationClickGeometry || {})")));throw failure;
         } finally {driver.quit();if(container!=null)container.close();}
     }
     private static WebElement questionButton(RemoteWebDriver driver,String id,String text) {
         var button=driver.findElement(By.id("question-"+id)).findElement(By.xpath(".//button[normalize-space()='"+text+"']"));
-        driver.executeScript("arguments[0].scrollIntoView({block:'center'})",button);return button;
+        awaitNativeClickTarget(driver,button);return button;
     }
     private static void submit(RemoteWebDriver driver,WebDriverWait wait,String id) {
         var box=driver.findElement(By.id("question-"+id));questionButton(driver,id,"Antwort speichern").click();
         wait.until(ExpectedConditions.stalenessOf(box));
         wait.until(d->d.findElement(By.cssSelector("[data-reformulation-status]")).getText().contains("Gespeichert"));
     }
+    private static void awaitNativeClickTarget(RemoteWebDriver driver,WebElement element) {
+        driver.executeScript("arguments[0].scrollIntoView({block:'center'})",element);
+        String[] previous = {""};
+        new WebDriverWait(driver,Duration.ofSeconds(20)).until(d -> {
+            @SuppressWarnings("unchecked") var geometry=(Map<String,Object>)driver.executeScript("""
+                const el=arguments[0], r=el.getBoundingClientRect();
+                const x=r.left+r.width/2, y=r.top+r.height/2, hit=document.elementFromPoint(x,y);
+                const g={scrollX,scrollY,width:innerWidth,height:innerHeight,
+                  rect:{x:r.x,y:r.y,width:r.width,height:r.height},
+                  scrollBehavior:getComputedStyle(document.documentElement).scrollBehavior,
+                  target:el.outerHTML.slice(0,500),hit:hit?.outerHTML.slice(0,500),
+                  ready:x>=0 && x<innerWidth && y>=0 && y<innerHeight && !!hit && (hit===el || el.contains(hit))};
+                window.__reformulationClickGeometry=g; return g;
+                """,element);
+            String position=geometry.get("rect").toString()+geometry.get("scrollY");
+            boolean stable=position.equals(previous[0]);previous[0]=position;
+            return stable && Boolean.TRUE.equals(geometry.get("ready")) && element.isEnabled();
+        });
+    }
     private static void click(RemoteWebDriver driver,By selector) {
         var element=new WebDriverWait(driver,Duration.ofSeconds(20)).until(ExpectedConditions.elementToBeClickable(selector));
-        driver.executeScript("arguments[0].scrollIntoView({block:'center'})",element);element.click();
+        awaitNativeClickTarget(driver,element);element.click();
     }
 }

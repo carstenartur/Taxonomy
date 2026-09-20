@@ -18,6 +18,7 @@ public final class ReformulationQuestionService {
         var question = prior.questions().stream().filter(q -> q.referenceIds().contains(request.questionId()))
                 .findFirst().orElseThrow(() -> invalid("Unknown question"));
         var values = request.values() == null ? List.<String>of() : request.values();
+        if(values.stream().anyMatch(Objects::isNull))throw invalid("Answer values cannot be null");
         String action = request.action();
         if (!Set.of("ANSWER", "DEFER", "NOT_APPLICABLE").contains(Objects.toString(action, ""))) throw invalid("Invalid answer action");
         boolean open = values.size() == 1 && meaning(question.answerSchema(), values.getFirst()) == DecisionQuestion.AnswerSchema.OptionMeaning.OPEN;
@@ -51,13 +52,15 @@ public final class ReformulationQuestionService {
             var follow = questions.get(i);
             if (follow.answerSchema().applicability().isEmpty() && follow.prerequisites().isEmpty()) continue;
             boolean applicable = applicable(follow, questions, answers);
-            boolean hasAnswer = DecisionAnswer.active(answers).stream().anyMatch(a -> follow.referenceIds().contains(a.questionId()) && a.state()==DecisionQuestion.State.ANSWERED);
+            var activeDecisions = DecisionAnswer.active(answers).stream().filter(a -> follow.referenceIds().contains(a.questionId())).toList();
+            boolean hasAnswer = !follow.sourceResolutions().isEmpty() || activeDecisions.stream().anyMatch(a -> a.state()==DecisionQuestion.State.ANSWERED);
+            boolean explicitDecision = !activeDecisions.isEmpty();
             if (!applicable && hasAnswer) {
                 questions.set(i, withState(follow, DecisionQuestion.State.CONFLICT));
                 findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT, "STALE_FOLLOW_UP_CONTEXT",
                         "Earlier follow-up answer belongs to an incompatible variant; retained for review",follow.affectedStatementIds(),List.of()));
-            } else if (!applicable) questions.set(i, withState(follow, DecisionQuestion.State.NOT_APPLICABLE));
-            else if (follow.state()==DecisionQuestion.State.NOT_APPLICABLE && !hasAnswer) questions.set(i, withState(follow,DecisionQuestion.State.OPEN));
+            } else if (!applicable && !explicitDecision) questions.set(i, withState(follow, DecisionQuestion.State.NOT_APPLICABLE));
+            else if (applicable && follow.state()==DecisionQuestion.State.NOT_APPLICABLE && !explicitDecision) questions.set(i, withState(follow,DecisionQuestion.State.OPEN));
         }
         return new Revision(prior.number() + 1, prior.number(), prior.text(), prior.sections(), prior.statements(), questions,
                 answers, new ValidationReport(findings), actor, answer.occurredAt(), request.rationale(),
@@ -133,6 +136,8 @@ public final class ReformulationQuestionService {
         var statements = new LinkedHashSet<>(prior.impact().statementIds()); statements.addAll(question.affectedStatementIds());
         var questions = new LinkedHashSet<>(prior.impact().questionIds());
         if(prior.questions().stream().anyMatch(q -> !Collections.disjoint(q.referenceIds(),question.referenceIds())))questions.addAll(question.referenceIds());
+        else prior.questions().stream().filter(q -> !Collections.disjoint(q.affectedStatementIds(),question.affectedStatementIds()))
+                .forEach(q -> questions.addAll(q.referenceIds()));
         boolean global = prior.impact().global() || Set.of("global", "@document", "*").contains(question.key().scope().toLowerCase(Locale.ROOT));
         boolean changed;
         do {
