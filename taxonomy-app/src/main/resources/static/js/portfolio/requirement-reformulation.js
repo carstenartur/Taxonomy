@@ -19,7 +19,7 @@
             candidate:'Änderungsvorschlag – geschützte Bearbeitung bleibt erhalten', current:'Aktuell gespeicherter Text', candidateText:'Neuer Kandidat',
             older:'Dieses Angebot basiert auf einer älteren Quellversion.', noQuestions:'Keine Fragen erfasst. Dies ist keine fachliche Freigabe.',
             loading:'Wird geladen…', working:'Wird verarbeitet…', dirty:'Ungespeicherte Bearbeitung bleibt erhalten.', failed:'Aktion fehlgeschlagen: ',
-            architecture:'Architekturbezug', findings:'Konflikte und Quellabdeckung', true:'Ja', false:'Nein', refresh:'Status aktualisieren',
+            referenceUnavailable:'Der Bezug ist im eingefrorenen Snapshot nicht vorhanden.', architecture:'Architekturbezug', findings:'Konflikte und Quellabdeckung', true:'Ja', false:'Nein', refresh:'Status aktualisieren',
             OPEN:'Offen', ANSWERED:'Beantwortet', DEFERRED:'Zurückgestellt', NOT_APPLICABLE:'Nicht anwendbar', CONFLICT:'Konflikt',
             MODEL_ADDITION:'Modellergänzung', ORIGINAL:'Original', CATALOGUE_INSPIRATION:'Kataloganregung', ARCHITECTURE_HYPOTHESIS:'Architekturhypothese', HUMAN_DECISION:'Menschliche Entscheidung',
             changeDecision:'Abweichende menschliche Entscheidung erfassen', applicable:'Bedingte Folgefrage', unavailable:'Erst bei passender Antwort auf die vorausgesetzte Frage beantworten.'},
@@ -35,13 +35,42 @@
             candidate:'Candidate change – protected edit remains in place', current:'Currently saved text', candidateText:'New candidate',
             older:'This offer is based on an older source version.', noQuestions:'No questions recorded. This does not mean expert approval.',
             loading:'Loading…', working:'Working…', dirty:'Unsaved edit has been preserved.', failed:'Action failed: ',
-            architecture:'Architecture reference', findings:'Conflicts and source coverage', true:'Yes', false:'No', refresh:'Refresh status',
+            referenceUnavailable:'This reference is not present in the frozen snapshot.', architecture:'Architecture reference', findings:'Conflicts and source coverage', true:'Yes', false:'No', refresh:'Refresh status',
             OPEN:'Open', ANSWERED:'Answered', DEFERRED:'Deferred', NOT_APPLICABLE:'Not applicable', CONFLICT:'Conflict',
             MODEL_ADDITION:'Model addition', ORIGINAL:'Original', CATALOGUE_INSPIRATION:'Catalogue inspiration', ARCHITECTURE_HYPOTHESIS:'Architecture hypothesis', HUMAN_DECISION:'Human decision',
             changeDecision:'Record a different human decision', applicable:'Conditional follow-up', unavailable:'Answer only after the prerequisite decision selects the relevant variant.'}
     };
     const t = key => words[lang][key] || key;
-    let offer, currentRequirement, offers = [], dirtyText = null, activeView = 'proposal', timer;
+    let offer, currentRequirement, offers = [], activeView = 'proposal', timer;
+    let mutationInFlight = false, readGeneration = 0;
+    // Each entry is one independently submitted form. Object identity is its edit generation.
+    // A response acknowledges only that exact generation, never input entered while awaiting it.
+    const drafts = new Map();
+    const hasDrafts = () => drafts.size > 0;
+    function trackDraft(key, controls, read, restore) {
+        if (drafts.has(key)) restore(drafts.get(key));
+        const remember = () => { drafts.set(key, read()); announce(t('dirty')); };
+        controls.forEach(control => {
+            control.addEventListener('input', remember);
+            control.addEventListener('change', remember);
+        });
+    }
+    function requireCleanTransition() {
+        if (hasDrafts()) throw new Error(t('dirty'));
+        if (mutationInFlight) throw new Error(t('working'));
+    }
+    async function transition(load) {
+        requireCleanTransition();
+        mutationInFlight = true; ++readGeneration;
+        try {
+            const next = await load();
+            if (!offers.some(p => p.id === next.id)) offers.unshift(next);
+            // The outgoing form remains editable while the request is in flight.
+            if (hasDrafts()) { render(); throw new Error(t('dirty')); }
+            offer = next; render();
+        } finally { mutationInFlight = false; ++readGeneration; }
+        await refreshRuns();
+    }
     const status = document.getElementById('reformulationStatus');
     const el = (tag, text, cls) => { const node=document.createElement(tag); if(text!==undefined)node.textContent=text; if(cls)node.className=cls; return node; };
     const button = (label, action, cls) => { const node=el('button',label,cls || 'btn btn-sm btn-outline-primary'); node.type='button'; node.addEventListener('click',()=>perform(action)); return node; };
@@ -59,14 +88,59 @@
                 || (parent.sourceResolutions || []).some(r=>r.values.some(v=>c.anyOf.includes(v)))); });
     }
     function architectureLink(id) {
-        const url=new URL('/architecture/workbench',location.origin);
-        url.searchParams.set('projectId',project); url.searchParams.set('snapshotId',offer.baseline.snapshotId); url.searchParams.set('lang',lang); url.searchParams.set('nodeId',id);
-        const a=el('a',t('architecture')+' '+id,'me-2');a.href=url.pathname+url.search;return a;
+        const baseline = offer.baseline;
+        const a = el('a', t('architecture')+' '+id, 'me-2');
+        a.href = '#reformulationArchitectureDetail';
+        a.addEventListener('click', event => {
+            event.preventDefault();
+            perform(() => showArchitectureDetail(id, baseline));
+        });
+        return a;
     }
-    async function update(operation,body) {
-        offer=await api.updateReformulation(project,requirement,offer.id,operation,offer.currentRevision.number,body);
-        render(); announce(t('saved')+(dirtyText!==null?' '+t('dirty'):''));
-        if(body.questionId){const q=offer.currentRevision.questions.find(q=>refs(q).includes(body.questionId));document.getElementById('question-'+q.id)?.focus();}
+    function showArchitectureDetail(id, baseline) {
+        // Never resolve a historical reference against the current catalogue or active snapshot.
+        const context = baseline.frozenContext || {};
+        const pending = [...JSON.parse(context.catalogue || '[]')];
+        let node;
+        while (pending.length) {
+            const candidate = pending.pop();
+            if (candidate.code === id) { node = candidate; break; }
+            pending.push(...(candidate.children || []));
+        }
+        const edge = JSON.parse(context.relationMappings || '[]').find(e => 'edge-'+e.id === id);
+        let detail = document.getElementById('reformulationArchitectureDetail');
+        if (!detail) {
+            detail = el('section', undefined, 'border rounded p-3 my-3 text-break');
+            detail.id = 'reformulationArchitectureDetail';
+            detail.dataset.reformulationArchitectureDetail = '';
+            detail.setAttribute('aria-label', t('architecture')); host.append(detail);
+        }
+        detail.dataset.snapshotId = baseline.snapshotId;
+        detail.replaceChildren(el('h3', t('architecture')+' '+id, 'h5'),
+            el('p', t('snapshot')+': '+baseline.snapshotId, 'small'));
+        if (node) {
+            detail.append(el('h4', (lang==='de'?node.nameDe:node.nameEn) || node.name || node.code, 'h6'),
+                pre((lang==='de'?node.descriptionDe:node.descriptionEn) || node.description || ''));
+        } else if (edge) {
+            detail.append(el('h4', edge.sourceCode+' → '+edge.targetCode, 'h6'),
+                pre([edge.relationType, edge.presenceReason, edge.reviewStatus].filter(v => v != null).join('\n')));
+        } else detail.append(el('p', t('referenceUnavailable'), 'alert alert-warning'));
+        detail.tabIndex = -1; detail.focus(); announce(t('architecture')+' '+id);
+    }
+    async function update(operation, body, draftKey) {
+        if (mutationInFlight) throw new Error(t('working'));
+        const submitted = drafts.get(draftKey);
+        mutationInFlight = true; ++readGeneration;
+        try {
+            const next = await api.updateReformulation(project, requirement, offer.id, operation, offer.currentRevision.number, body);
+            if (next.currentRevision.number >= offer.currentRevision.number) offer = next;
+            if (draftKey && drafts.get(draftKey) === submitted) drafts.delete(draftKey);
+            render(); announce(t('saved')+(hasDrafts()?' '+t('dirty'):''));
+            if (body.questionId) {
+                const q = offer.currentRevision.questions.find(q => refs(q).includes(body.questionId));
+                if (q) document.getElementById('question-'+q.id)?.focus();
+            }
+        } finally { mutationInFlight = false; ++readGeneration; }
     }
     function changeView(view,focus) {
         activeView=view;
@@ -80,7 +154,10 @@
         const selection=el('select',undefined,'form-select');selection.setAttribute('aria-label',t('proposal'));
         offers.forEach(p=>{const o=el('option',p.id.slice(0,8)+' · '+t('revision')+' '+p.currentRevision.number);o.value=p.id;selection.append(o);});
         if(!offers.some(p=>p.id===offer.id)){const o=el('option',offer.id.slice(0,8));o.value=offer.id;selection.append(o);}selection.value=offer.id;
-        selection.addEventListener('change',()=>perform(async()=>{if(dirtyText!==null){selection.value=offer.id;throw new Error(t('dirty'));}offer=await api.getReformulation(project,requirement,selection.value);render();await refreshRuns();announce(t('state'));}));
+        selection.addEventListener('change',()=>perform(async()=>{
+            const selected = selection.value; selection.value = offer.id;
+            await transition(() => api.getReformulation(project,requirement,selected));
+        }));
         host.append(selection,el('p',t('state'),'fw-semibold mt-3'),el('p',t('source')+' '+offer.baseline.sourceVersionId+' · '+t('revision')+' '+revision.number,'text-body-secondary'));
         if(currentRequirement && currentRequirement.currentVersionId!==offer.baseline.sourceVersionId)host.append(el('p',t('older'),'alert alert-warning'));
         if(revision.variantOrigin)host.append(el('p',t('variant')+': '+revision.variantOrigin.proposalId+' / '+revision.variantOrigin.revision,'text-break'));
@@ -89,19 +166,27 @@
         const grid=el('div',undefined,'reformulation-grid');
         const original=el('section',undefined,'reformulation-panel');original.dataset.panel='original';original.append(el('h3',t('original'),'h5'));const source=pre(offer.baseline.originalText);source.dataset.reformulationOriginal='';original.append(source);grid.append(original);
         const proposal=el('section',undefined,'reformulation-panel');proposal.dataset.panel='proposal';proposal.append(el('h3',t('proposal'),'h5'));
-        const editor=el('textarea',undefined,'form-control');editor.dataset.reformulationEditor='';editor.setAttribute('aria-label',t('proposal'));editor.value=dirtyText===null?revision.text:dirtyText;
-        editor.addEventListener('input',()=>{dirtyText=editor.value;announce(t('dirty'));});proposal.append(editor,el('p',t('review'),'small text-body-secondary mt-2'));
+        const editor=el('textarea',undefined,'form-control');editor.dataset.reformulationEditor='';editor.setAttribute('aria-label',t('proposal'));editor.value=revision.text;
+        proposal.append(editor,el('p',t('review'),'small text-body-secondary mt-2'));
         const reason=el('input',undefined,'form-control');reason.dataset.rationale='';reason.value=t('defaultRationale');proposal.append(field(t('rationale'),reason));
+        trackDraft('proposal', [editor,reason], () => ({text:editor.value,rationale:reason.value}),
+            draft => {editor.value=draft.text;reason.value=draft.rationale;});
         const controls=el('div',undefined,'reformulation-controls');
-        const save=button(t('save'),async()=>{const text=editor.value;await update('revisions',{text,rationale:reason.value});dirtyText=null;render();announce(t('saved'));host.querySelector('[data-reformulation-save]').focus();},'btn btn-primary');save.dataset.reformulationSave='';controls.append(save);
-        controls.append(button(t('variant'),async()=>{if(dirtyText!==null)throw new Error(t('dirty'));await update('variants',{rationale:reason.value});const url=new URL(location.href);url.searchParams.set('proposal',offer.id);history.replaceState(null,'',url);}),
+        const save=button(t('save'),async()=>{await update('revisions',{text:editor.value,rationale:reason.value},'proposal');host.querySelector('[data-reformulation-save]').focus();},'btn btn-primary');save.dataset.reformulationSave='';controls.append(save);
+        controls.append(button(t('variant'),async()=>{await transition(() => api.updateReformulation(project,requirement,offer.id,'variants',revision.number,{rationale:reason.value}));const url=new URL(location.href);url.searchParams.set('proposal',offer.id);history.replaceState(null,'',url);}),
             button(t('copy'),async()=>{const exact=await api.getReformulationRevision(project,requirement,offer.id,revision.number);await navigator.clipboard.writeText(exact.text);announce(t('copied'));}),
             button(t('compare'),async()=>{const old=revision.predecessor?await api.getReformulationRevision(project,requirement,offer.id,revision.predecessor):{text:offer.baseline.originalText};showComparison(old.text,revision.text,t('compare'));announce(t('compare'));}));
         proposal.append(controls);grid.append(proposal);
         const questions=el('section',undefined,'reformulation-panel reformulation-questions');questions.dataset.panel='questions';questions.append(el('h3',t('questions'),'h5'));
         if(!revision.questions.length)questions.append(el('p',t('noQuestions')));revision.questions.forEach(q=>questions.append(question(q)));grid.append(questions);host.append(grid);
         const impact=el('details');impact.open=true;impact.append(el('summary',t('impact')));impact.append(pre(revision.impact?.sectionIds.length ? [revision.impact.statementIds.join(', '),revision.impact.sectionIds.join(', '),revision.impact.boundaryEdgeIds.join(', ')].filter(Boolean).join('\n') : t('noImpact')));host.append(impact);
-        const actions=el('div',undefined,'reformulation-controls');actions.append(button(revision.impact?.sectionIds.length?t('synthesize'):t('generate'),async()=>{await api.updateReformulation(project,requirement,offer.id,'synthesis-runs',revision.number,{});announce(t('working'));await refreshRuns();}),button(t('refresh'),refreshRuns));host.append(actions);
+        const actions=el('div',undefined,'reformulation-controls');actions.append(button(revision.impact?.sectionIds.length?t('synthesize'):t('generate'),async()=>{
+            if(mutationInFlight)throw new Error(t('working'));
+            mutationInFlight=true;++readGeneration;
+            try {await api.updateReformulation(project,requirement,offer.id,'synthesis-runs',revision.number,{});}
+            finally {mutationInFlight=false;++readGeneration;}
+            await refreshRuns();
+        }),button(t('refresh'),refreshRuns));host.append(actions);
         const statements=el('details');statements.append(el('summary',t('additions')));revision.statements.forEach(s=>{
             const item=el('div',undefined,'border rounded p-3 my-2');item.id='statement-'+s.id;item.tabIndex=-1;
             item.append(el('strong',t(s.provenance)+(s.editingOrigin==='HUMAN'?' · '+t('HUMAN_DECISION'):'')),pre(s.wording));
@@ -109,7 +194,10 @@
             s.architectureLinks.forEach(id=>item.append(architectureLink(id)));
             s.questionDependencies.forEach(id=>{const a=el('a',t('questions')+' '+id,'me-2');a.href='#question-'+id;a.addEventListener('click',()=>changeView('questions',false));item.append(a);});
             const edit=el('textarea',undefined,'form-control my-2');edit.setAttribute('aria-label',t('edit')+' '+s.id);edit.value=s.wording;item.append(edit);
-            item.append(button(t('edit'),()=>update('statements/'+s.id,{action:'EDIT',text:edit.value,rationale:rationale()})));
+            const draftKey='statement:'+s.id;
+            trackDraft(draftKey,[edit],()=>({text:edit.value}),draft=>{edit.value=draft.text;});
+            if(drafts.has(draftKey))statements.open=true;
+            item.append(button(t('edit'),()=>update('statements/'+s.id,{action:'EDIT',text:edit.value,rationale:rationale()},draftKey)));
             if(s.provenance!=='ORIGINAL' && s.reviewState!=='REJECTED')item.append(button(t('reject'),()=>update('statements/'+s.id,{action:'REJECT',rationale:rationale()}),'btn btn-sm btn-outline-danger ms-2'));
             statements.append(item);
         });host.append(statements);
@@ -136,7 +224,14 @@
         const other=el('input',undefined,'form-control');other.dataset.otherAnswer='';other.value=last?.otherText || '';answerHost.append(field(t('other'),other));
         const reason=el('input',undefined,'form-control');reason.value=last?.rationale || t('defaultRationale');answerHost.append(field(t('rationale'),reason));
         const controls=el('div',undefined,'reformulation-controls');
-        const answer=button(t('answer'),()=>update('answers',{questionId:q.id,action:'ANSWER',values:inputs.filter(i=>!['radio','checkbox'].includes(i.type)||i.checked).map(i=>i.value),otherText:other.value,rationale:reason.value}));answer.disabled=!applicable(q);controls.append(answer);
+        const draftKey='question:'+q.id;
+        const readAnswer=()=>({values:inputs.filter(i=>!['radio','checkbox'].includes(i.type)||i.checked).map(i=>i.value),otherText:other.value,rationale:reason.value});
+        trackDraft(draftKey,inputs.concat(other,reason),readAnswer,draft=>{
+            inputs.forEach(input=>{if(['radio','checkbox'].includes(input.type))input.checked=draft.values.includes(input.value);else input.value=draft.values[0] ?? '';});
+            other.value=draft.otherText;reason.value=draft.rationale;
+        });
+        if(drafts.has(draftKey) && answerHost!==box)answerHost.open=true;
+        const answer=button(t('answer'),()=>update('answers',{questionId:q.id,action:'ANSWER',...readAnswer()},draftKey));answer.disabled=!applicable(q);controls.append(answer);
         ['DEFER','NOT_APPLICABLE'].forEach(action=>controls.append(button(t(action==='DEFER'?'defer':'na'),()=>update('answers',{questionId:q.id,action,values:[],otherText:'',rationale:reason.value}))));answerHost.append(controls);
         if(schema.applicability?.length)answerHost.append(el('p',t('applicable')+': '+schema.applicability.map(c=>c.questionId+' = '+c.anyOf.join(' / ')).join('; ')+(applicable(q)?'':' — '+t('unavailable')),'small'));
         const history=el('details');history.append(el('summary',t('history')));offer.currentRevision.answers.filter(a=>refs(q).includes(a.questionId)).forEach(a=>history.append(el('p',a.author+' · '+a.occurredAt+' · '+t(a.state)+' · '+a.values.join(', ')+' '+(a.otherText || '')+' — '+a.rationale)));box.append(history);return box;
@@ -146,18 +241,23 @@
         const grid=el('div',undefined,'reformulation-grid');[[t('current'),before],[t('candidateText'),after]].forEach(([label,text])=>{const col=el('div',undefined,'border rounded p-3');col.append(el('h4',label,'h6'),pre(text));grid.append(col);});target.append(grid);target.tabIndex=-1;target.focus();
     }
     async function refreshRuns() {
-        clearTimeout(timer);if(!offer)return;const selected=offer.id;
-        const runs=await api.listReformulationRuns(project,requirement,selected);if(offer.id!==selected)return;
+        clearTimeout(timer);if(!offer)return;
+        if(mutationInFlight){timer=setTimeout(()=>perform(refreshRuns),1500);return;}
+        const selected=offer.id, generation=++readGeneration;
+        const runs=await api.listReformulationRuns(project,requirement,selected);
+        if(offer.id!==selected || generation!==readGeneration)return;
         const previousVersion=currentRequirement?.currentVersionId;
         const [latest, active]=await Promise.all([api.getReformulation(project,requirement,selected),api.getRequirement(project,requirement)]);
-        if(offer.id!==selected)return;currentRequirement=active;
-        if(latest.currentRevision.number!==offer.currentRevision.number || previousVersion!==active.currentVersionId){offer=latest;render();}
+        if(offer.id!==selected || generation!==readGeneration)return;currentRequirement=active;
+        const advanced=latest.currentRevision.number>offer.currentRevision.number;
+        if(advanced)offer=latest;
+        if(advanced || previousVersion!==active.currentVersionId)render();
         const target=document.getElementById('reformulationRuns');target.replaceChildren();
         runs.slice(-3).forEach(run=>{target.append(el('p',run.status+(run.failureCode?' · '+run.failureCode:''),'small text-break'));
             if(run.status==='PARTIAL' && run.candidate){const candidate=el('section',undefined,'reformulation-candidate my-2');candidate.dataset.reformulationCandidate='';candidate.append(el('h3',t('candidate'),'h5'),button(t('compare'),()=>showComparison(offer.currentRevision.text,run.candidate.text,t('candidate'))));target.append(candidate);}
         });
         if(runs.some(r=>['QUEUED','RUNNING'].includes(r.status))){announce(t('working'));timer=setTimeout(()=>perform(refreshRuns),1500);}
-        else announce(t('state')+(dirtyText!==null?' '+t('dirty'):''));
+        else announce(t('state')+(hasDrafts()?' '+t('dirty'):''));
     }
     async function start() {
         document.getElementById('reformulationHeading').textContent=t('heading');announce(t('loading'));
@@ -165,9 +265,12 @@
         const start=document.getElementById('reformulationStart'),select=el('select',undefined,'form-select');select.id='reformulationSnapshot';
         snapshots.forEach(snapshot=>{const option=el('option','v'+snapshot.requirementVersionNumber+' · '+snapshot.id+' · '+snapshot.status);option.value=snapshot.id;select.append(option);});
         const requested=new URLSearchParams(location.search).get('snapshot');if(snapshots.some(s=>s.id===requested))select.value=requested;
-        start.append(field(t('snapshot'),select),button(t('create'),async()=>{const snapshot=snapshots.find(s=>s.id===select.value);if(!snapshot)throw new Error(t('noSnapshot'));offer=await api.createReformulation(project,requirement,{sourceVersionId:snapshot.requirementVersionId,snapshotId:snapshot.id,language:lang});offers.unshift(offer);dirtyText=null;render();await refreshRuns();}));
+        start.append(field(t('snapshot'),select),button(t('create'),()=>transition(()=>{
+            const snapshot=snapshots.find(s=>s.id===select.value);if(!snapshot)throw new Error(t('noSnapshot'));
+            return api.createReformulation(project,requirement,{sourceVersionId:snapshot.requirementVersionId,snapshotId:snapshot.id,language:lang});
+        })));
         offers=await api.listReformulations(project,requirement);offer=offers.find(p=>p.id===new URLSearchParams(location.search).get('proposal')) || offers[0];render();if(offer)await refreshRuns();else announce(t('empty'));
     }
-    window.addEventListener('beforeunload',event=>{if(dirtyText!==null){event.preventDefault();event.returnValue='';}});
+    window.addEventListener('beforeunload',event=>{if(hasDrafts() || mutationInFlight){event.preventDefault();event.returnValue='';}});
     perform(start);
 }());
