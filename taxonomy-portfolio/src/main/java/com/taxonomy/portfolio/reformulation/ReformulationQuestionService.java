@@ -21,7 +21,11 @@ public final class ReformulationQuestionService {
         if(values.stream().anyMatch(Objects::isNull))throw invalid("Answer values cannot be null");
         String action = request.action();
         if (!Set.of("ANSWER", "DEFER", "NOT_APPLICABLE").contains(Objects.toString(action, ""))) throw invalid("Invalid answer action");
-        boolean open = values.size() == 1 && meaning(question.answerSchema(), values.getFirst()) == DecisionQuestion.AnswerSchema.OptionMeaning.OPEN;
+        // OPEN is an option meaning, not a reserved word in a free-text answer.
+        boolean choice = question.answerSchema().kind() == DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE
+                || question.answerSchema().kind() == DecisionQuestion.AnswerSchema.Kind.MULTIPLE_CHOICE;
+        boolean open = choice && values.size() == 1
+                && meaning(question.answerSchema(), values.getFirst()) == DecisionQuestion.AnswerSchema.OptionMeaning.OPEN;
         var state = "DEFER".equals(action) || open ? DecisionQuestion.State.DEFERRED
                 : "NOT_APPLICABLE".equals(action) ? DecisionQuestion.State.NOT_APPLICABLE : DecisionQuestion.State.ANSWERED;
         if (state == DecisionQuestion.State.ANSWERED) {
