@@ -127,7 +127,7 @@ dass diese offenen Produktfunktionen bereits vorhanden sind.
 | Entscheidungsbericht HTML, DOCX, JSON | Anforderung und Snapshot erhalten; Word-Dokument mit echtem POI-Parser gelesen |
 | Diagrammadapter ArchiMate, Visio, Mermaid, Structurizr | Alle registrierten Adapter erhalten denselben erzeugten Graphen; Mermaid-Labels sowie offizieller Structurizr-Parser 6.2.3 und lokale Importparität |
 | Allgemeiner Bericht Markdown, HTML, DOCX, JSON | Echte REST-Endpunkte erhalten die erzeugten Scores; Dokumente lesbar und der Anforderung zugeordnet |
-| Unabhängiges Rendering | LibreOffice Writer/Draw öffnen DOCX/VSDX; Poppler prüft alle Begründungen und Knotenlabels, leere Seiten und Seitenumfang; PNGs für Sichtprüfung |
+| Unabhängiges Rendering | LibreOffice Writer/Draw öffnen DOCX/VSDX; Poppler prüft Begründungen, Knotenlabels und alle 44 Beziehungs-Schlüssel/Richtungen/Typen auf den nativen Detailseiten, leere Seiten und Seitenumfang; PNGs für Sichtprüfung |
 | Sparx-XMI über echte Integrations-API | Geprüfter ArchiMate-Import, natives Journal, Exportvorschau, Verlustentscheidungen, Dateiabruf und semantischer Vergleich der unterstützten Teilmenge |
 | ArchiMate-Integrationscodec | Tatsächlich exportierte Datei wird eingelesen, erneut geschrieben und mit gleichen Identitäten eingelesen |
 
@@ -152,7 +152,12 @@ java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling ch
 
 Dafür werden LibreOffice Writer/Draw und Poppler benötigt. `document-qa/` enthält
 PDFs, sämtliche Seiten-PNGs und `quality.json` mit Renderer-Version, Hashes und
-Textprüfungen. Dies ersetzt keine Abnahme mit Microsoft Visio oder Sparx EA.
+Textprüfungen einschließlich der Zuordnung jeder kanonischen Beziehung zu ihrer
+lesbaren Detailseite. Der aktuelle VSDX-Nachweis steht in
+[visio-graphical-quality.json](../qa/visio-graphical-quality.json). Mit dem optionalen
+Schalter `--visio-only` wird gezielt VSDX geprüft, wenn unveränderte Word-Nachweise
+bereits vorliegen; ohne Schalter bleibt die vollständige Dokumentprüfung aktiv.
+Dies ersetzt keine Abnahme mit Microsoft Visio oder Sparx EA.
 
 `quality.json` dokumentiert Prüfungen, Graphgrößen, isolierte Kategorien und Datei-Hashes.
 `run.json` benennt Szenario, Fixture-Hash, Snapshot und in der CI den Commit und Run.

@@ -155,3 +155,101 @@ Actual EA/PCS/SBPI acceptance remains **NOT_EXECUTED** in
 [sparx-compatibility.json](sparx-compatibility.json). These contract fixtures and
 native tests do not prove preservation by a proprietary tool. This entry makes no
 publication or VSDX completion claim.
+
+## Accepted foundations and conditional publication — 2026-09-20
+
+The historical pending native/Word gate statements above are superseded by the
+merged [Word PR 1088](https://github.com/carstenartur/Taxonomy/pull/1088) and
+[native PR 1089](https://github.com/carstenartur/Taxonomy/pull/1089). Their exact
+trees, actual final CI, complete Word visual acceptance and current accepted Visio
+source are indexed in [completion evidence](1075-completion-evidence.md).
+
+The test-only publication contract is `taxonomy-publication-contract-v1`, with
+real HTTP CAS and atomic durable resources/idempotency receipts. It is not PCS.
+Production Sparx writes still return `PUBLICATION_GUARANTEES_UNVERIFIED`.
+The bounded schema-1 API exposes saved directed review/scope/revision/fingerprint
+without exposing raw requests, credentials or leases. Missing exact state returns
+428, explicit mismatched branch 409, and the aggregate evidence preflight rejects
+oversized combinations with 422 before local/remote effects.
+
+| Focused Task 3 evidence | Result |
+|---|---|
+| API routes/reload/retry, exact-state reconciliation and non-file delivery | 3 passed |
+| Aggregate output budget, independent over-limit projection and zero effects | 1 passed |
+| Actual HTTP status/redirect/oversize/foreign/reflection/URI and authorization guards | 3 passed |
+| Existing actual native publication flow and partial-state regressions | 9 + 4 passed |
+| Real authenticated civilian fixture: partial/unknown, retry, explicit SKIP/PARTIAL and linked reconciliation | 1 passed |
+| Existing file delivery and checkpoint conflict | 1 + 1 passed |
+| Exact reviewed controller→workspace dependency count 5→6 | 22 ratchet tests passed after the sole baseline correction |
+| DOM review, default denial, failed direction change, predecessor link and connection reset | 7 passed |
+| Separate client/provider process-boundary matrix | 2 tests passed, 12 steps; 12 provider kills, 10 client kills, 2 normal verified client replays |
+
+The matrix uses actual independent application/provider JVMs with persistent HSQL,
+real native editor/Git, real HTTP and persisted provider keys. It stops only after
+observable real transactions or effects. Plan acceptance and local application
+share one transaction; the Push-plan and Sync-local scenarios do not invent a
+separate committed-plan/pre-local window. Receipt lookup after response loss,
+partial acknowledgement, Git-before-journal, finalization and completed replay
+retain identities and prevent duplicates/premature COMMON. See the
+[versioned machine-readable evidence](conditional-publication-contract-v1.json).
+
+Meaningful failures preceded the missing API/UI implementation, additive projection
+budget guard and final exact-state/default-denial/reload corrections. A discarded
+900-command setup and early matrix constructor/type/metadata-count mistakes were
+fixture failures, not product RED. The first branch assertion exposed an ignored
+explicit query parameter, not an unauthorized write. The initial final-covering
+run had all 23 functional tests pass but one dependency ratchet failure; the sole
+reviewed 5→6 update then passed all 22 ratchet tests. These outcomes are retained
+separately rather than relabeled as a wholly green earlier run.
+
+Actual civilian CI `35524367930` passed and produced ten new EN/DE images; nine were
+visually accepted. Corrected CI `35525893725` then passed and all fourteen images
+were visually accepted, including complete package controls and enabled actual
+reconciliation. [Exact image bytes and provenance](conditional-publication-browser.md)
+are committed. Document CI `35525893726` also passed with no CSS/layout fix and no
+overflow diagnostics; the earlier EN mobile failure's cause remains unproved.
+The final diagnostic guard asserts its frozen first measurement, preserving the
+original failure rather than allowing diagnostic time to change it. The URI-search
+review correction passed 35 policy/planner/receipt tests; the old 2,048-character
+bound remains, and no actual performance failure was reproduced. Final
+database/full-source CI and review remain mandatory. Actual EA/PCS/SBPI/MS Word/
+MS Visio remain `NOT_EXECUTED`.
+
+
+The accepted Task 2 correction's permanent [decision history](1075-completion-decisions.md#d44a--accepted-task-2-lookup-only-recovery-correction)
+records lookup-only recovery after movement, non-spinning NOT_FOUND, the shared
+wall-clock/monotonic budget, deterministic bounded Git with durable late completion
+and phase-aware stale callbacks. Independent review accepted 34 final tests at
+`55e21da4b2bf2021a2d87e43d6da0597c922ac73`; the first corrected R1 failure remains
+unexplained despite stronger controlled-clock/persisted-state evidence. No
+historical cause is inferred from a later pass. Task 3 fix review also preserves
+inherited HSQL/Flyway/dialect/Lucene/JDK warnings as nonblocking, not absent.
+
+The subsequent [C1/C2 service correction](1075-completion-decisions.md#d80--late-receipt-authority-and-joined-exact-checkpoint-proof)
+passed seven focused and 41 final covering tests after four actual behavioral REDs
+(the separate initial CLOB fixture error is not behavioral evidence). Real HTTP
+late no-effect/terminal receipts and actual Git-write/ORM-rollback exercise the
+existing journal and checkpoint guards; valid late terminal adoption remains
+supported. No schema, public API, module edge or lock-order change was required.
+Scoped correction review and final full-source CI, including PostgreSQL, Oracle
+and SQL Server, remain required; earlier candidate CI is not evidence for these
+new bytes. Actual EA/PCS/SBPI/MS Word/MS Visio remain `NOT_EXECUTED`.
+
+
+The final [I1–I3 correction](1075-completion-decisions.md#d81--final-i1i3-preservation-and-recovery-correction)
+preserves actual legacy-v1 nested occurrence export without granting v1 native
+package editing; records full validated 64/65/100-character receipt codes through
+real SEND and LOOKUP while bounding scalar diagnostics; and separates completed
+no-effect SEND proof from an older timed-out SEND that may still commit. After
+movement, the former permits an explicit successor and the latter retains its
+reservation and read-only recovery. Repeated nonterminal lookup is bounded; later
+terminal evidence yields one remote mutation without a stale-plan SEND or COMMON.
+
+Final covering validation passed 60 tests (14 interop, 46 app), including v2 and
+registered neutral package paths, with zero failures, errors or skips. Meaningful
+REDs and the exact restored production hashes are retained in the correction
+report. One intermediate strengthened run used stale test bytecode; it is excluded
+from that claim, its cause remains unknown, and affected generated outputs were
+cleared before confirmed RED and final GREEN. Existing warning debt remains.
+No new browser/Office/proprietary-host execution is claimed. The controller still
+owns fresh exact-source clean-root, required CI and the single scoped rereview.

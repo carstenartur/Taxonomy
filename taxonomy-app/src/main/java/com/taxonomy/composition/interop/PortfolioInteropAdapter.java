@@ -46,6 +46,11 @@ public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
     }
 
     @Override
+    public void refreshIntegrationRequirements(Long projectId, String username, WorkspaceContext context) {
+        portfolio(() -> { projects.refreshIntegrationRequirements(projectId, username, context); return null; });
+    }
+
+    @Override
     public List<RequirementData> listRequirements(Long projectId, String username, WorkspaceContext context) {
         return portfolio(() -> projects.listRequirements(projectId, username, context)).stream()
                 .map(PortfolioInteropAdapter::requirement).toList();

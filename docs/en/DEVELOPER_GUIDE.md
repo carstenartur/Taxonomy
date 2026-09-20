@@ -94,23 +94,27 @@ cd Taxonomy
 ./mvnw -pl taxonomy-app spring-boot:run
 ```
 
-Open <http://localhost:8080> to see the application. The reactor contains five
-shipped modules plus the aggregate-coverage and build-policy modules.
+Open <http://localhost:8080> to see the application. The reactor contains fifteen
+child modules; `taxonomy-app` is the only deployable Spring Boot application.
 
 ## Module Architecture
 
-The project is a multi-module Maven build with five shipped modules and two verification modules. See [Architecture](ARCHITECTURE.md#module-architecture) for the full module diagram and dependency graph.
+The current module inventory, ownership and dependency direction are maintained in
+[Module boundaries](MODULE_BOUNDARIES.md); see [Architecture](ARCHITECTURE.md#module-architecture)
+for the feature dependency graph and runtime/persistence views. Use those current
+references rather than the former five-module layout when choosing a change owner.
 
-| Module | Scope | Spring? |
-|---|---|---|
-| `taxonomy-domain` | Pure domain types (DTOs, enums) | No |
-| `taxonomy-dsl` | Architecture DSL (parser, model, validator, differ, provenance) | No |
-| `taxonomy-export` | Export services (ArchiMate, Visio, Mermaid, Diagram) | No |
-| `taxonomy-extension-api` | Internal extension SPI contracts + metadata | No |
-| `taxonomy-app` | Spring Boot application (controllers, services, JPA, search, storage) | Yes |
+There are four framework-free foundations (`taxonomy-domain`, `taxonomy-dsl`,
+`taxonomy-export`, `taxonomy-extension-api`), seven runtime feature libraries,
+one application composition root and three build/tooling modules. Feature
+libraries do not depend back on `taxonomy-app`. This is a modular monolith,
+not a set of independently deployed services.
 
-- `taxonomy-domain`, `taxonomy-dsl`, `taxonomy-export`, and `taxonomy-extension-api` have **no Spring dependencies** and can be tested independently.
-- The Spring Boot JAR is produced by `taxonomy-app`.
+The seven feature owners are `taxonomy-workspace`, `taxonomy-knowledge`,
+`taxonomy-templates`, `taxonomy-interop`, `taxonomy-architecture`,
+`taxonomy-analysis` and `taxonomy-portfolio`. Build/release tooling, aggregate
+coverage and repository-wide verification belong to `taxonomy-tooling`,
+`taxonomy-coverage` and `taxonomy-build`, not to runtime feature contexts.
 
 ---
 
@@ -152,24 +156,25 @@ Export services — framework-free, wired as Spring beans by `ExportConfig`:
 
 ### taxonomy-app
 
-The main Spring Boot application:
+The sole executable composition and deployment root, not the owner of all
+Spring-aware feature code. Feature controllers, services, entities, repositories
+and owned tests belong to the feature library identified in
+[Module boundaries](MODULE_BOUNDARIES.md). For example, catalogue/search belongs
+to `taxonomy-knowledge`; prompts and LLM analysis to `taxonomy-analysis`;
+versioning, editor history and JGit storage to `taxonomy-workspace`.
 
-| Directory | Contents |
+| Application-owned area | Responsibility |
 |---|---|
-| `controller/` | REST controllers |
-| `service/` | Service classes — LLM, search, architecture, graph, proposals, reports, etc. |
-| `model/` | JPA entities — `TaxonomyNode`, `TaxonomyRelation`, `RelationProposal`, `RelationHypothesis`, etc. |
-| `versioning/model/` | Workspace Git commit-history projection entity — `ArchitectureCommitIndex` |
-| `versioning/repository/` | Scoped Git commit-history projection repository — `ArchitectureCommitIndexRepository` |
-| `versioning/service/` | Git history indexing and search lifecycle — `CommitIndexService`, `CommitIndexSearchLifecycle`, `CommitIndexSearchRebuilder` |
-| `repository/` | Spring Data JPA repositories |
-| `config/` | Configuration classes — security, rate limiting, Hibernate Search analysers, OpenAPI, actuator |
-| `search/` | Hibernate Search configuration |
-| `workspace/storage/` | Workspace-owned JGit DFS adapters and Core schema configuration; persistence entities come from `jgit-storage-hibernate` |
-| `resources/data/` | Excel workbook, CSV fallback, JSON taxonomy |
-| `resources/prompts/` | LLM prompt templates (one per taxonomy sheet + defaults) |
-| `resources/static/js/` | JavaScript modules (UI logic) |
-| `resources/templates/` | Single Thymeleaf template (`index.html`) |
+| `com.taxonomy.composition` | Cross-context HTTP/UI orchestration and port adapters |
+| `com.taxonomy.security`, `com.taxonomy.observability`, `com.taxonomy.shared` | Application-wide security, observability and shared composition |
+| `com.taxonomy.provenance`, `com.taxonomy.preferences` | Supporting contexts deliberately retained in the application |
+| `src/main/resources/static/`, `src/main/resources/templates/` | Browser assets and Thymeleaf pages |
+| `src/main/resources/application.properties` | Application configuration |
+| Application database migrations | Application-owned schema composition; storage-library schema contracts remain separately owned |
+
+Java package names were generally retained during module extraction. A package
+such as `com.taxonomy.versioning` does not imply physical ownership by
+`taxonomy-app`; locate it in the owning Maven module before editing.
 
 ---
 
@@ -177,10 +182,10 @@ The main Spring Boot application:
 
 | I want to… | Where to look |
 |---|---|
-| Add a new taxonomy endpoint | `taxonomy-app/.../controller/` — create or extend a `@RestController` |
-| Add a new service | `taxonomy-app/.../service/` — create a `@Service` class |
+| Add a new taxonomy endpoint | `taxonomy-knowledge/.../catalog/` — create or extend the catalogue-owned controller; use application composition only for cross-context orchestration |
+| Add a new service | The owning feature library from [Module boundaries](MODULE_BOUNDARIES.md); use a framework-free type when Spring is unnecessary |
 | Add a new export format | `taxonomy-export/.../export/` — implement the exporter, register in `ExportConfig` |
-| Add a new JPA entity | `taxonomy-app/.../model/` — annotate with `@Entity` |
+| Add a new JPA entity | The owning feature library; keep application-wide migration composition in `taxonomy-app` |
 | Add a new DTO | `taxonomy-domain/.../dto/` — create a record or class |
 | Change the DSL grammar | `taxonomy-dsl/.../parser/TaxDslParser.java` |
 | Add a DSL validation rule | `taxonomy-dsl/.../validation/DslValidator.java` |
@@ -216,9 +221,9 @@ must not name Java tests or invoke Playwright/axe scripts directly.
 
 ## Adding a New REST Endpoint
 
-1. Create or extend a controller in `taxonomy-app/src/main/java/com/taxonomy/controller/`.
+1. Select the owning feature library using [Module boundaries](MODULE_BOUNDARIES.md), then create or extend its controller. Only cross-context HTTP orchestration belongs in `taxonomy-app/src/main/java/com/taxonomy/composition/`.
 2. If the endpoint returns a new DTO, add it to `taxonomy-domain/src/main/java/com/taxonomy/dto/`.
-3. If the endpoint needs a new service, add it to `taxonomy-app/src/main/java/com/taxonomy/service/`.
+3. Put the service and its owned tests in the same feature context; cross-context access uses its public API or an explicit port.
 4. Add tests (typically using `@SpringBootTest` + `@AutoConfigureMockMvc` + `@WithMockUser(roles = "ADMIN")`).
 5. If the endpoint is admin-only, add it under `/api/admin/` (protected by `ROLE_ADMIN` in `SecurityConfig`).
 6. If the endpoint modifies architecture data (relations, DSL), place it under `/api/relations/`, `/api/dsl/`, or `/api/git/` — write operations on these paths require `ROLE_ARCHITECT` or `ROLE_ADMIN`.
@@ -407,7 +412,7 @@ See [Architecture Principles](ARCHITECTURE.md#architecture-principles) for the f
 
 ### New Service Checklist
 
-1. Place in `taxonomy-app/.../service/`
+1. Place in the owning feature library from [Module boundaries](MODULE_BOUNDARIES.md), not automatically in `taxonomy-app`
 2. Annotate with `@Service`
 3. Accept `username` parameter if workspace-aware
 4. Add unit test with `@SpringBootTest`

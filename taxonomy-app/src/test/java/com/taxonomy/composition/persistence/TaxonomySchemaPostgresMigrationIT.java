@@ -150,7 +150,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23");
     }
 
     @Test
@@ -224,7 +224,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
     }
@@ -273,7 +273,7 @@ class TaxonomySchemaPostgresMigrationIT {
     }
 
     private static void assertIntegrationSchema(DataSource dataSource) throws SQLException {
-        for (String table : List.of("interop_connection", "interop_operation", "interop_identity", "interop_checkpoint", "interop_event")) {
+        for (String table : List.of("interop_connection", "interop_operation", "interop_identity", "interop_checkpoint", "interop_event", "interop_publication", "interop_publish_item", "interop_publish_attempt")) {
             assertThat(tableExists(dataSource, table)).as(table).isTrue();
             assertThat(columnExists(dataSource, table, "scope_id")).as(table + " exact scope").isTrue();
         }
@@ -281,6 +281,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(dataSource, "interop_operation", "review_fingerprint")).isTrue();
         assertThat(columnExists(dataSource, "interop_identity", "row_version")).isTrue();
         assertThat(columnExists(dataSource, "interop_checkpoint", "context_json")).isTrue();
+        assertThat(columnExists(dataSource, "interop_connection", "common_checkpoint_id")).isTrue();
+        assertThat(columnExists(dataSource, "interop_checkpoint", "kind")).isTrue();
+        assertThat(columnExists(dataSource, "interop_checkpoint", "baseline_json")).isTrue();
+        assertThat(columnExists(dataSource, "interop_checkpoint", "publication_completion_json")).isTrue();
+        assertThat(columnExists(dataSource, "interop_publish_item", "request_fingerprint")).isTrue();
+        assertThat(columnExists(dataSource, "interop_publish_attempt", "lease_epoch")).isTrue();
     }
 
     @Test
