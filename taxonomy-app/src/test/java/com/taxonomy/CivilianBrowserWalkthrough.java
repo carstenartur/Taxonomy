@@ -147,6 +147,7 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         driver.get(origin + "/projects/" + projectId + "/requirements/" + requirementId + "/architecture?lang=en");
         wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("architectureStatus"), "Loaded "));
         wait.until(browser -> browser.findElements(By.cssSelector(".architecture-node")).size() > 0);
+        assertThat(driver.findElement(By.id("architectureTitle")).getText()).isEqualTo("Architecture Impact View");
         assertThat(driver.findElement(By.id("architectureProvenance")).getText()).contains(snapshotId);
         click(By.id("fitArchitecture"));
         awaitFit();

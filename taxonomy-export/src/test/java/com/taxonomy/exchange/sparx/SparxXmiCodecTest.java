@@ -60,6 +60,58 @@ class SparxXmiCodecTest {
         assertNull(returned.placements().stream().filter(p -> p.artifactId().equals(A)).findFirst().orElseThrow().parentId());
     }
 
+    @Test void packageDependencyReferencesResolveToDeclaredUmlObjects() throws Exception {
+        var original = fixture();
+        for (boolean packageIsSource : List.of(true, false)) {
+            var relation = new Relation(R, "Dependency", packageIsSource ? P : A,
+                    packageIsSource ? A : P, Map.of(), Map.of("canonicalType", "DEPENDS_ON"));
+            var xml = com.taxonomy.exchange.ExchangeXml.parse(codec.write(copy(original,
+                    original.artifacts(), List.of(relation), original.placements())));
+            var declared = new HashSet<String>();
+            var nodes = xml.getElementsByTagName("*");
+            for (int i = 0; i < nodes.getLength(); i++) {
+                var node = (org.w3c.dom.Element) nodes.item(i);
+                if (node.hasAttributeNS(SparxMappingProfile.XMI, "id"))
+                    declared.add(node.getAttributeNS(SparxMappingProfile.XMI, "id"));
+            }
+            int dependencies = 0;
+            for (int i = 0; i < nodes.getLength(); i++) {
+                var node = (org.w3c.dom.Element) nodes.item(i);
+                if (!"uml:Dependency".equals(node.getAttributeNS(SparxMappingProfile.XMI, "type"))) continue;
+                dependencies++;
+                assertTrue(declared.contains(node.getAttribute("client")), "Unresolved UML client");
+                assertTrue(declared.contains(node.getAttribute("supplier")), "Unresolved UML supplier");
+            }
+            assertEquals(1, dependencies);
+        }
+    }
+
+    @Test void elementTransportTypeMustAgreeWithItsDeclaredCanonicalMeaning() throws Exception {
+        var original = fixture();
+        var changed = original.artifacts().stream().map(a -> a.id().equals(B)
+                ? new Artifact(a.id(), a.kind(), "Component", a.title(), a.text(), Map.of(),
+                        Map.of("canonicalType", "System")) : a).toList();
+        assertEquals("SPARX_ELEMENT_UNMAPPED", assertThrows(ExchangeFormatException.class,
+                () -> codec.write(copy(original, changed, original.relations(), original.placements()))).code());
+    }
+
+    @Test void explicitElementMappingPreservesCanonicalMeaningOnReturn() throws Exception {
+        var original = fixture();
+        var changed = original.artifacts().stream().map(a -> a.id().equals(B)
+                ? new Artifact(a.id(), a.kind(), "Component", a.title(), a.text(),
+                        Map.of("tag:taxonomy.elementType", "UserApplication"),
+                        Map.of("canonicalType", "UserApplication")) : a).toList();
+        var returned = codec.read(codec.write(copy(original, changed, original.relations(), original.placements())), "v2", true);
+        assertEquals("UserApplication", artifact(returned, B).extensions().get("canonicalType"));
+    }
+
+    @Test void relationTransportTypeCannotSilentlyChangeCanonicalMeaning() throws Exception {
+        var original = fixture();
+        var relation = new Relation(R, "Dependency", A, B, Map.of(), Map.of("canonicalType", "REALIZES"));
+        assertEquals("SPARX_RELATION_UNMAPPED", assertThrows(ExchangeFormatException.class,
+                () -> codec.write(copy(original, original.artifacts(), List.of(relation), original.placements()))).code());
+    }
+
     @Test void layoutChangesAreNotSemanticChanges() throws Exception {
         String xml = fixtureText();
         var first = codec.read(bytes(xml), "v1", true);

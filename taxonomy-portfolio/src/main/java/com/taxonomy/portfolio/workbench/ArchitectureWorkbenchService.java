@@ -96,10 +96,12 @@ public class ArchitectureWorkbenchService {
         String fallbackTitle = project.projectKey() + " / " + requirement.requirementKey()
                 + " — " + requirement.title();
         String persistedTitle = architectureView.getViewTitle();
+        String policyTitleKey = persistedTitle != null && persistedTitle.strip().startsWith("archview.policy.title.")
+                ? persistedTitle.strip() : null;
         // Policy keys are UI metadata, not human-readable document titles.
         // Standalone SVG/PDF/exchange files have no browser translation service.
         String title = persistedTitle == null || persistedTitle.isBlank()
-                || persistedTitle.strip().startsWith("archview.policy.title.")
+                || policyTitleKey != null
                 ? fallbackTitle
                 : persistedTitle.strip();
         DiagramModel diagram = PersistedDiagramProjection.project(
@@ -145,7 +147,7 @@ public class ArchitectureWorkbenchService {
                 snapshot.summary().commitSha(), diagram, scene, elements, relations,
                 new ArrayList<>(warnings), new ArchitectureWorkbenchDtos.SnapshotProvenance(
                         snapshot.summary().requirementVersionId(), snapshot.summary().taxonomyFingerprint(),
-                        context.repositoryId()));
+                        context.repositoryId()), policyTitleKey);
     }
 
     @Transactional(readOnly = true)

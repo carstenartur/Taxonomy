@@ -90,7 +90,8 @@ Browserabnahme und Dokumentationsbilder mit Docker/Selenium:
 Alternativ kann ein lokal installiertes zusammenpassendes Chrome/ChromeDriver-Paar
 mit `-Dwebdriver.chrome.driver=/absolute/path/chromedriver` und optional
 `-Dcivilian.chrome.binary=/absolute/path/chrome` verwendet werden.
-Screenshots werden ausschließlich bei explizitem `generateScreenshots=true` erstellt.
+Das Profil `civilian-acceptance` setzt `generateScreenshots=true` und aktiviert damit
+Browser und Screenshots. `-DgenerateScreenshots=false` schaltet beides aus.
 Es werden keine HTML-Inhalte, erfolgreichen Antworten oder Ergebniszustände injiziert.
 Der Container-Browser vertraut ausschließlich der dynamischen HTTP-Testadresse
 `host.testcontainers.internal:<port>`, wie die vorhandene Container-Testinfrastruktur.
