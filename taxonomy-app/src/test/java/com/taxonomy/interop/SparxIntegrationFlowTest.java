@@ -116,6 +116,21 @@ class SparxIntegrationFlowTest {
         assertThrows(IntegrationProblem.class, () -> integrations.overview(foreign, connection));
     }
 
+    @Test void unsupportedSparxRelationRemapHasActionableCodeWithoutMutation() {
+        var preview = integrations.preview(context, connection, request(true), file("Mapped", false, false));
+        var relation = preview.changes().stream().filter(c -> c.after() != null
+                && c.after().kind() == ArtifactKind.RELATION).findFirst().orElseThrow();
+        var accepted = accept(preview);
+        var review = new ReviewedChangeSet(preview.id(), preview.fingerprint(), accepted.decisions(),
+                "Reviewed relation remap", Map.of(relation.id(), new MappingOverride("SUPPORTS", null, null, null)));
+        var before = integrations.overview(context, connection).current();
+        var failure = assertThrows(IntegrationProblem.class, () -> integrations.apply(context, connection, review));
+        assertEquals("SPARX_TYPE_MAPPING", failure.code());
+        assertEquals(before, integrations.overview(context, connection).current());
+        assertTrue(integrations.identities(context, connection).isEmpty());
+        assertNull(journal.read(context));
+    }
+
     @Test void removingAnObjectRetainsItsUuidReservationAndRejectsAnotherGuidClaimingIt() {
         integrations.apply(context, connection, accept(integrations.preview(context, connection, request(true), file("Original", false, false))));
         String reserved = integrations.identities(context, connection).stream().filter(i -> i.externalId().equals("ELEMENT:" + A))

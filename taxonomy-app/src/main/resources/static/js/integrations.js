@@ -60,6 +60,9 @@
                 fields.forEach(function (field) {
                     var label = document.createElement('label'), mapping = document.createElement('select'); label.textContent = t('mapping.' + field); option(mapping, '', t('profileDefault'));
                     var values = field !== 'canonicalType' ? Object.keys(artifact.attributes) : artifact.kind === 'ELEMENT' ? ['Capability', 'Process', 'CoreService', 'COIService', 'CommunicationsService', 'UserApplication', 'InformationProduct', 'BusinessRole', 'System', 'Component'] : ['REALIZES', 'SUPPORTS', 'ASSIGNED_TO', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES', 'DEPENDS_ON'];
+                    if (field === 'canonicalType' && artifact.kind === 'RELATION' && operation.context.profile.startsWith('sparx-')) {
+                        values = ['REALIZES', 'COMMUNICATES_WITH', 'CONTAINS', 'RELATED_TO', 'CONSUMES', 'DEPENDS_ON'];
+                    }
                     values.forEach(function (key) { option(mapping, key, artifact.extensions['definition:' + key] || key); });
                     mapping.value = mappings[change.id] && mappings[change.id][field] || '';
                     mapping.addEventListener('change', function () { if (!mappings[change.id]) mappings[change.id] = {}; mappings[change.id][field] = mapping.value || null; });
@@ -143,7 +146,9 @@
     el('integrationFile').addEventListener('change', function () { pendingUpload = null; }); el('integrationComplete').addEventListener('change', function () { pendingUpload = null; });
     el('integrationImport').addEventListener('submit', function (event) { event.preventDefault(); run(async function () {
         if (!overview) throw new Error(t('choose')); var file = el('integrationFile').files[0]; if (!file) return;
-        if (!pendingUpload) pendingUpload = { operationId: crypto.randomUUID(), expected: overview.current, mediaType: selectedProfile().mediaTypes.includes('application/xml') ? 'application/xml' : selectedProfile().mediaTypes[0], completeScope: el('integrationComplete').checked };
+        var profile = selectedProfile();
+        if (!profile || !Array.isArray(profile.mediaTypes) || !profile.mediaTypes.length) throw new Error(t('profileUnavailable'));
+        if (!pendingUpload) pendingUpload = { operationId: crypto.randomUUID(), expected: overview.current, mediaType: profile.mediaTypes.includes('application/xml') ? 'application/xml' : profile.mediaTypes[0], completeScope: el('integrationComplete').checked };
         show(await api.upload(prefix() + '/previews', pendingUpload, file)); pendingUpload = null; await refresh(); el('integrationReview').focus();
     }); });
     el('integrationExport').addEventListener('click', function () { run(async function () {

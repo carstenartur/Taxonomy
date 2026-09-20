@@ -375,7 +375,8 @@ public class IntegrationService {
                 if (SparxSnapshots.isSparx(operation.context().profile()) && mapping != null && mapping.canonicalType() != null) {
                     String type = mapped.kind() == ArtifactKind.ELEMENT ? SparxMappingProfile.umlType(mapping.canonicalType())
                             : mapped.kind() == ArtifactKind.RELATION ? SparxMappingProfile.eaRelation(mapping.canonicalType()) : mapped.type();
-                    if (type == null) throw new IllegalArgumentException("Unsupported Sparx type mapping");
+                    if (type == null) throw new IntegrationProblem("SPARX_TYPE_MAPPING", 422,
+                            "The selected canonical relation type is not supported by this Sparx profile; choose a supported mapping or reject the change");
                     Map<String, String> tags = new TreeMap<>(mapped.attributes());
                     tags.put("tag:taxonomy." + (mapped.kind() == ArtifactKind.ELEMENT ? "elementType" : "relationType"), mapping.canonicalType());
                     mapped = new Artifact(mapped.id(), mapped.kind(), type, mapped.title(), mapped.text(), tags, mapped.extensions());
