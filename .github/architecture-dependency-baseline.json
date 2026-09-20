@@ -248,6 +248,48 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.reformulation",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.reformulation",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.controller",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.reformulation",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.dto",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.reformulation",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.reformulation",
+      "classDependencyCount": 7
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.reformulation",
+      "toContext": "portfolio",
+      "toPackage": "com.taxonomy.portfolio.service",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.reformulation",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 6
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.decision",
@@ -742,6 +784,13 @@
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.model",
       "classDependencyCount": 1
+    },
+    {
+      "fromContext": "portfolio",
+      "fromPackage": "com.taxonomy.portfolio.reformulation",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 2
     },
     {
       "fromContext": "portfolio",
