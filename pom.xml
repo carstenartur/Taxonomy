@@ -414,7 +414,7 @@
         <profile>
             <id>civilian-acceptance</id>
             <properties>
-                <test>CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest</test>
+                <test>CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationBrowserTest</test>
                 <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
                 <generateScreenshots>true</generateScreenshots>
             </properties>

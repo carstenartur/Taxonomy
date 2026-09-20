@@ -59,7 +59,7 @@ public class CrossTaxonomyReconciler {
         return replaceQuestions(doc,canonical);
     }
     private static DecisionQuestion withState(DecisionQuestion q,List<DecisionAnswer> answers,List<ValidationReport.Finding> findings) {
-        var relevant=answers.stream().filter(a->q.referenceIds().contains(a.questionId())).toList();
+        var relevant=DecisionAnswer.active(answers).stream().filter(a->q.referenceIds().contains(a.questionId())).toList();
         // Multiple origins of the same value are not independent evidence; only disagreement matters.
         var values=new HashSet<Set<?>>();relevant.stream().filter(a->a.state()==DecisionQuestion.State.ANSWERED).forEach(a->values.add(answerComparisonKey(q.answerSchema(),a.values())));
         q.sourceResolutions().forEach(r->values.add(answerComparisonKey(q.answerSchema(),r.values())));

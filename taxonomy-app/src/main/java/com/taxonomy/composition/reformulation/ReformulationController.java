@@ -43,8 +43,33 @@ public class ReformulationController {
         long revision;
         try {revision=Long.parseLong(expected.substring(1,expected.length()-1));}
         catch(NumberFormatException invalid){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid proposal revision");}
+        int operations=(request.text()!=null?1:0)+(request.answer()!=null?1:0)+(request.statement()!=null?1:0);
+        if(operations!=1)throw new com.taxonomy.portfolio.reformulation.ReformulationAnswerException("Exactly one revision operation is required");
+        if(request.answer()!=null)return changed(service.answer(projectId,requirementId,proposalId,revision,request.answer(),resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));
+        if(request.statement()!=null)return changed(service.statement(projectId,requirementId,proposalId,revision,request.statementId(),request.statement(),resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));
         var proposal=service.saveDraft(projectId,requirementId,proposalId,revision,request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());
         return ResponseEntity.status(HttpStatus.CREATED).eTag(Long.toString(proposal.currentRevision().number())).body(proposal);
+    }
+    @PostMapping("/{proposalId}/answers") public ResponseEntity<Proposal> answer(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId,
+            @RequestHeader(value="If-Match",required=false) String expected,@RequestBody AnswerRequest request) {
+        return changed(service.answer(projectId,requirementId,proposalId,expected(expected),request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));
+    }
+    @PostMapping("/{proposalId}/statements/{statementId}") public ResponseEntity<Proposal> statement(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId,@PathVariable String statementId,
+            @RequestHeader(value="If-Match",required=false) String expected,@RequestBody StatementRequest request) {
+        return changed(service.statement(projectId,requirementId,proposalId,expected(expected),statementId,request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));
+    }
+    @PostMapping("/{proposalId}/variants") public ResponseEntity<Proposal> variant(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId,
+            @RequestHeader(value="If-Match",required=false) String expected,@RequestBody VariantRequest request) {
+        return changed(service.variant(projectId,requirementId,proposalId,expected(expected),request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));
+    }
+    private static ResponseEntity<Proposal> changed(Proposal proposal) {
+        return ResponseEntity.status(HttpStatus.CREATED).eTag(Long.toString(proposal.currentRevision().number())).body(proposal);
+    }
+    private static long expected(String value) {
+        if(value==null)throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,"If-Match is required");
+        if(!value.matches("\\\"[1-9][0-9]*\\\""))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Expected a quoted proposal revision");
+        try {return Long.parseLong(value.substring(1,value.length()-1));}
+        catch(NumberFormatException failure){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid proposal revision");}
     }
     @PostMapping("/{proposalId}/synthesis-runs") public ResponseEntity<Run> synthesize(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId,
             @RequestHeader(value="If-Match",required=false) String expected) {
@@ -57,6 +82,10 @@ public class ReformulationController {
     }
     @GetMapping("/{proposalId}/synthesis-runs") public List<Run> runs(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId) {
         return service.runs(projectId,requirementId,proposalId,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());
+    }
+    @ExceptionHandler(com.taxonomy.portfolio.reformulation.ReformulationAnswerException.class)
+    public ResponseEntity<ProblemDetail> invalidAnswer(com.taxonomy.portfolio.reformulation.ReformulationAnswerException failure) {
+        return ResponseEntity.status(422).body(ProblemDetail.forStatusAndDetail(HttpStatus.UNPROCESSABLE_ENTITY,failure.getMessage()));
     }
     @ExceptionHandler(ReformulationPreconditionException.class) public ResponseEntity<ProblemDetail> stale(ReformulationPreconditionException failure) {
         return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(ProblemDetail.forStatusAndDetail(HttpStatus.PRECONDITION_FAILED,failure.getMessage()));

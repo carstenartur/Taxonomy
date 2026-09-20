@@ -124,6 +124,28 @@ window.TaxonomyPortfolioApi = (function () {
         listReformulations: function (projectId, requirementId) {
             return getJson(requirementPath(projectId, requirementId) + '/reformulations');
         },
+        getReformulation: function (projectId, requirementId, id) {
+            return getJson(requirementPath(projectId, requirementId) + '/reformulations/' + encodeURIComponent(id));
+        },
+        getReformulationRevision: function (projectId, requirementId, id, revision) {
+            return getJson(requirementPath(projectId, requirementId) + '/reformulations/' + encodeURIComponent(id) + '/revisions/' + revision);
+        },
+        listReformulationRuns: function (projectId, requirementId, id) {
+            return getJson(requirementPath(projectId, requirementId) + '/reformulations/' + encodeURIComponent(id) + '/synthesis-runs');
+        },
+        createReformulation: function (projectId, requirementId, body) {
+            return sendJson(requirementPath(projectId, requirementId) + '/reformulations', 'POST', body);
+        },
+        updateReformulation: async function (projectId, requirementId, id, operation, revision, body) {
+            const allowed = /^(answers|revisions|variants|synthesis-runs|statements\/[A-Za-z0-9_-]+)$/;
+            if (!allowed.test(operation)) throw new Error('Unknown reformulation operation');
+            return responsePayload(await requireOk(await fetch(requirementPath(projectId, requirementId)
+                + '/reformulations/' + encodeURIComponent(id) + '/' + operation, {
+                method: 'POST', credentials: 'same-origin',
+                headers: Object.assign({ Accept: 'application/json', 'Content-Type': 'application/json',
+                    'If-Match': '"' + revision + '"' }, csrfHeaders()), body: JSON.stringify(body || {})
+            })));
+        },
         listRequirementVersions: function (projectId, requirementId) {
             return getJson(requirementPath(projectId, requirementId) + '/versions');
         },

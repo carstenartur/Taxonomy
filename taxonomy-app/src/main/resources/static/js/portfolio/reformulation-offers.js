@@ -41,7 +41,8 @@
             [[labels.original, offer.baseline.originalText], [labels.proposal, offer.currentRevision.text]].forEach(function (entry) {
                 const column = element('div', undefined, 'col-12 col-lg-6');
                 column.append(element('h3', entry[0], 'h6'));
-                column.append(element('pre', entry[1], 'text-wrap text-break border rounded p-3'));
+                column.append(element('pre', entry[1], 'text-break border rounded p-3'));
+                column.querySelector('pre').style.whiteSpace = 'pre-wrap';
                 row.append(column);
             });
             details.append(row);

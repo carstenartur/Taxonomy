@@ -47,5 +47,6 @@ jobs:
             taxonomy-app/target/civilian-acceptance/**
             taxonomy-app/target/surefire-reports/*Civilian*
             taxonomy-app/target/surefire-reports/*ScenarioLlm*
+            taxonomy-app/target/surefire-reports/*ReformulationBrowser*
           if-no-files-found: error
           retention-days: 14

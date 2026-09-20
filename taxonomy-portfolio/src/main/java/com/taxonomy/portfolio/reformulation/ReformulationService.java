@@ -84,9 +84,56 @@ public class ReformulationService {
         statements.add(new Statement("human-"+UUID.randomUUID(),request.text(),List.of(),Statement.Provenance.HUMAN_DECISION,
                 List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,"UNREVIEWED"));
         var revision=new Revision(proposal.getCurrentRevision(),previous.number(),request.text(),previous.sections(),statements,
-                previous.questions(),previous.answers(),previous.validation(),PortfolioScope.username(actor,context),Instant.now(),request.rationale());
+                previous.questions(),previous.answers(),previous.validation(),PortfolioScope.username(actor,context),Instant.now(),request.rationale(),previous.impact(),previous.variantOrigin());
         revisions.save(new ReformulationRevision(proposal.getId(),proposal.getScopeKey(),revision.number(),json.write(revision)));
         return view(proposal);
+    }
+    @Transactional
+    public Proposal answer(Long projectId,Long requirementId,String id,long expected,AnswerRequest request,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);
+        if(proposal.getCurrentRevision()!=expected) throw new ReformulationPreconditionException();
+        var previous=readRevision(proposal,expected);
+        var next=ReformulationQuestionService.answer(id,previous,request,PortfolioScope.username(actor,context),json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));
+        proposal.advanceRevision();
+        revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),next.number(),json.write(next)));
+        return view(proposal);
+    }
+    @Transactional
+    public Proposal statement(Long projectId,Long requirementId,String id,long expected,String statementId,StatementRequest request,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);
+        if(proposal.getCurrentRevision()!=expected) throw new ReformulationPreconditionException();
+        if(request==null)throw PortfolioException.validation("Statement operation required");
+        ReformulationQuestionService.rationale(request.rationale());
+        var previous=readRevision(proposal,expected);
+        var old=previous.statements().stream().filter(s->s.id().equals(statementId)).findFirst().orElseThrow(()->PortfolioException.notFound("Statement not found"));
+        boolean reject="REJECT".equals(request.action());
+        if(!reject && !"EDIT".equals(request.action()))throw PortfolioException.validation("Invalid statement operation");
+        if(reject && old.provenance()==Statement.Provenance.ORIGINAL)throw PortfolioException.validation("Original source cannot be rejected");
+        if(!reject && (request.text()==null || request.text().isBlank()))throw PortfolioException.validation("Statement text required");
+        var updated=new Statement(old.id(),reject?old.wording():request.text(),old.sourceSpans(),old.provenance(),old.architectureLinks(),
+                old.questionDependencies(),old.conditionalValidity(),Statement.EditingOrigin.HUMAN,reject?"REJECTED":"UNREVIEWED");
+        var statements=previous.statements().stream().map(s->s.id().equals(statementId)?updated:s).toList();
+        var question=new DecisionQuestion("edit-"+statementId,new DecisionQuestion.Key(statementId,"edit","local"),"Human statement operation",List.of(),List.of(statementId),
+                new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),"Review affected architecture",DecisionQuestion.State.ANSWERED);
+        var impact=ReformulationQuestionService.impact(previous,question,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));
+        var next=new Revision(expected+1,expected,previous.text().replace(old.wording(),reject?"":request.text()),previous.sections(),statements,previous.questions(),previous.answers(),previous.validation(),
+                PortfolioScope.username(actor,context),Instant.now(),request.rationale(),impact,previous.variantOrigin());
+        proposal.advanceRevision();revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),next.number(),json.write(next)));
+        return view(proposal);
+    }
+    @Transactional
+    public Proposal variant(Long projectId,Long requirementId,String id,long expected,VariantRequest request,String actor,WorkspaceContext context) {
+        var original=require(projectId,requirementId,id,actor,context,true);
+        if(original.getCurrentRevision()!=expected)throw new ReformulationPreconditionException();
+        if(request==null)throw PortfolioException.validation("Variant rationale required");
+        ReformulationQuestionService.rationale(request.rationale());
+        var baseline=json.read(original.getBaselinePayload(),ReformulationBaseline.class);var previous=readRevision(original,expected);
+        String author=PortfolioScope.username(actor,context);var now=Instant.now();
+        var variant=new ReformulationProposal(UUID.randomUUID().toString(),original.getScopeKey(),projectId,requirementId,baseline.sourceVersionId(),baseline.snapshotId(),original.getBaselinePayload(),author,now);
+        proposals.saveAndFlush(variant);
+        var revision=new Revision(1,null,previous.text(),previous.sections(),previous.statements(),previous.questions(),previous.answers(),previous.validation(),author,now,request.rationale(),previous.impact(),new VariantOrigin(id,expected));
+        revisions.save(new ReformulationRevision(variant.getId(),variant.getScopeKey(),1,json.write(revision)));
+        return view(variant);
     }
     @Transactional
     public Run beginRun(Long projectId,Long requirementId,String id,long expectedRevision,String provider,String model,
