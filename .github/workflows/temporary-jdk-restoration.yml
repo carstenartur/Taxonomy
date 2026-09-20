@@ -1,0 +1,28 @@
+name: Temporary verified JDK restoration
+on:
+  push:
+    branches: [codex/1075-runtime-restore]
+permissions:
+  contents: read
+jobs:
+  restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Download and verify exact official Temurin archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --connect-timeout 20 --max-time 240 'https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.2%2B10/OpenJDK25U-jdk_x64_linux_hotspot_25.0.2_10.tar.gz' --output taxonomy-jdk-25.0.2-10.tar.gz
+          printf '%s  %s\n' '987387933b64b9833846dee373b640440d3e1fd48a04804ec01a6dbf718e8ab8' 'taxonomy-jdk-25.0.2-10.tar.gz' > taxonomy-jdk-25.0.2-10.sha256
+          sha256sum --check --strict taxonomy-jdk-25.0.2-10.sha256
+      - name: Retain verified development toolchain
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: taxonomy-jdk-25.0.2-10
+          path: |
+            taxonomy-jdk-25.0.2-10.tar.gz
+            taxonomy-jdk-25.0.2-10.sha256
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
