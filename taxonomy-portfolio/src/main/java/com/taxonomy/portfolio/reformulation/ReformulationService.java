@@ -83,8 +83,11 @@ public class ReformulationService {
         var statements=new ArrayList<>(previous.statements());
         statements.add(new Statement("human-"+UUID.randomUUID(),request.text(),List.of(),Statement.Provenance.HUMAN_DECISION,
                 List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,"UNREVIEWED"));
+        var editQuestion=new DecisionQuestion("document-edit",new DecisionQuestion.Key("document","edit","GLOBAL"),"Human document edit",List.of(),
+                previous.statements().stream().map(Statement::id).toList(),new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),"Recheck all sections",DecisionQuestion.State.ANSWERED);
+        var impact=ReformulationQuestionService.impact(previous,editQuestion,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));
         var revision=new Revision(proposal.getCurrentRevision(),previous.number(),request.text(),previous.sections(),statements,
-                previous.questions(),previous.answers(),previous.validation(),PortfolioScope.username(actor,context),Instant.now(),request.rationale(),previous.impact(),previous.variantOrigin());
+                previous.questions(),previous.answers(),previous.validation(),PortfolioScope.username(actor,context),Instant.now(),request.rationale(),impact,previous.variantOrigin());
         revisions.save(new ReformulationRevision(proposal.getId(),proposal.getScopeKey(),revision.number(),json.write(revision)));
         return view(proposal);
     }
@@ -179,7 +182,7 @@ public class ReformulationService {
         }
         proposal.advanceRevision();
         var revision=new Revision(proposal.getCurrentRevision(),previous.number(),document.text(),document.sections(),document.statements(),
-                document.questions(),previous.answers(),document.validation(),old.actor(),Instant.now(),"Generated requirement offer; not adopted or approved");
+                document.questions(),previous.answers(),document.validation(),old.actor(),Instant.now(),"Generated requirement offer; not adopted or approved",ReformulationImpact.empty(),previous.variantOrigin());
         revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),revision.number(),json.write(revision)));
         entity.setPayload(json.write(state(old,"COMPLETED",null,revision.number(),document)));
     }
@@ -229,6 +232,9 @@ public class ReformulationService {
             if(retained==null || !retained.retains(question)) return false;
             if(question.state()==DecisionQuestion.State.ANSWERED && retained.state()!=DecisionQuestion.State.ANSWERED && retained.state()!=DecisionQuestion.State.CONFLICT)return false;
             if(question.state()==DecisionQuestion.State.CONFLICT && retained.state()!=DecisionQuestion.State.CONFLICT)return false;
+            if(question.state()==DecisionQuestion.State.NOT_APPLICABLE && retained.state()!=DecisionQuestion.State.NOT_APPLICABLE && retained.state()!=DecisionQuestion.State.CONFLICT)return false;
+            if(question.state()==DecisionQuestion.State.DEFERRED && retained.state()!=DecisionQuestion.State.DEFERRED && retained.state()!=DecisionQuestion.State.CONFLICT
+                    && !(retained.state()==DecisionQuestion.State.ANSWERED && !retained.sourceResolutions().isEmpty()))return false;
             for(String id:question.affectedStatementIds()) {
                 var evidence=previousStatements.get(id);
                 if(evidence==null || !evidence.equals(statements.get(id))) return false;

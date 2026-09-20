@@ -17,6 +17,7 @@ class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
             .andExpect(status().is(status)).andReturn().getResponse().getContentAsString());
     }
     @Test void answersAllKindsAppendEvidenceAndKeepRequirementActive() throws Exception {
+        originalText="Arbeitszeiterfassung";requirement=createRequirement("TERSE");snapshot=snapshot(requirement);
         var p=seed(); var before=projects.getRequirement(project.id(),requirement.id(),"architect",context);long n=2;
         for(var item:Map.of("channel",List.of("Terminal"),"multiple",List.of("Browser","Terminal"),"text",List.of("Text <b>data</b>"),"number",List.of("2.0"),"boolean",List.of("true"),"correction",List.of("Not needed")).entrySet()) {
             var result=answer(p.id(),n++,item.getKey(),"ANSWER",item.getValue(),"",201);
@@ -25,6 +26,7 @@ class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
         }
         assertThat(projects.getRequirement(project.id(),requirement.id(),"architect",context)).isEqualTo(before);
         assertThat(projects.listRequirementVersions(project.id(),requirement.id(),"architect",context)).hasSize(1);
+        assertThat(projects.getRequirement(project.id(),requirement.id(),"architect",context).currentVersion().text()).isEqualTo("Arbeitszeiterfassung");
         assertThat(reformulations.revision(project.id(),requirement.id(),p.id(),2,"architect",context).answers()).isEmpty();
         answer(p.id(),2,"text","ANSWER",List.of("stale"),"",412);
     }
@@ -55,6 +57,7 @@ class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
             .contentType(MediaType.APPLICATION_JSON).content("{\"action\":\"EDIT\",\"text\":\"Human protected paragraph\",\"rationale\":\"Correction\"}"))
             .andExpect(status().isCreated()).andReturn().getResponse().getContentAsString());
         assertThat(saved.at("/currentRevision/text").asText()).contains("Human protected paragraph");
+        assertThat(saved.at("/currentRevision/impact/questionIds").toString()).doesNotContain("edit-capture");
         answer(p.id(),3,"channel","ANSWER",List.of("Terminal"),"",201);
         mvc.perform(post(base()+"/"+p.id()+"/statements/independent").with(csrf()).header("If-Match","\"4\"")
             .contentType(MediaType.APPLICATION_JSON).content("{\"action\":\"REJECT\",\"rationale\":\"Not requested\"}"))
@@ -72,16 +75,17 @@ class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
         assertThat(json.treeToValue(variant.at("/baseline"),com.taxonomy.reformulation.ReformulationBaseline.class)).isEqualTo(p.baseline());
     }
     @Test void aliasAnswerConflictingWithSourcePreservesBothKindsOfEvidence() throws Exception {
+        originalText="Ausschließlich Terminal, keine Browseroberfläche";requirement=createRequirement("SOURCE");snapshot=snapshot(requirement);
         questionTransform=qs->{var all=new ArrayList<>(qs);var q=all.getFirst();
             var alias=new com.taxonomy.reformulation.DecisionQuestion("old-channel",q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),q.answerSchema(),q.prerequisites(),q.dependentQuestionIds(),q.consequences(),q.state());
-            all.set(0,new com.taxonomy.reformulation.DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),q.answerSchema(),q.prerequisites(),q.dependentQuestionIds(),q.consequences(),com.taxonomy.reformulation.DecisionQuestion.State.ANSWERED,List.of("old-channel"),List.of(alias.origin()),List.of(new com.taxonomy.reformulation.DecisionQuestion.SourceResolution(List.of("Terminal"),List.of(new com.taxonomy.reformulation.Statement.SourceSpan(0,ORIGINAL.length(),ORIGINAL)),"Frozen source constraint"))));return all;};
+            all.set(0,new com.taxonomy.reformulation.DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),q.answerSchema(),q.prerequisites(),q.dependentQuestionIds(),q.consequences(),com.taxonomy.reformulation.DecisionQuestion.State.ANSWERED,List.of("old-channel"),List.of(alias.origin()),List.of(new com.taxonomy.reformulation.DecisionQuestion.SourceResolution(List.of("Terminal"),List.of(new com.taxonomy.reformulation.Statement.SourceSpan(0,originalText.length(),originalText)),"Frozen source constraint"))));return all;};
         var p=seed();assertThat(p.currentRevision().answers()).isEmpty();
         var result=answer(p.id(),2,"old-channel","ANSWER",List.of("Browser"),"",201);
         assertThat(result.at("/currentRevision/questions/0/state").asText()).isEqualTo("CONFLICT");
         assertThat(result.at("/currentRevision/questions/0/sourceResolutions/0/values/0").asText()).isEqualTo("Terminal");
         assertThat(result.at("/currentRevision/answers/0/questionId").asText()).isEqualTo("old-channel");
         assertThat(result.at("/currentRevision/validation/findings").toString()).contains("SOURCE_ANSWER_CONFLICT");
-        assertThat(result.at("/baseline/originalText").asText()).isEqualTo(ORIGINAL);
+        assertThat(result.at("/baseline/originalText").asText()).isEqualTo(originalText);
     }
     @Test void conditionalOfflineQuestionRetainsHistoryWhenSelectedVariantChanges() throws Exception {
         questionTransform=qs->{var all=new ArrayList<>(qs);var q=question("offline","BOOLEAN",List.of(),"BP-1");
@@ -117,5 +121,29 @@ class ReformulationQuestionWorkflowTest extends ReformulationWorkflowFixture {
         mvc.perform(post(base()+"/"+p.id()+"/revisions").with(csrf()).header("If-Match","\"3\"").contentType(MediaType.APPLICATION_JSON)
             .content("{\"statementId\":\"capture\",\"statement\":{\"action\":\"EDIT\",\"text\":\"Human paragraph\",\"rationale\":\"Precise wording\"}}"))
             .andExpect(status().isCreated()).andExpect(jsonPath("$.currentRevision.statements[0].editingOrigin").value("HUMAN"));
+    }
+    @Test void successfulSynthesisRetainsVariantLineage() throws Exception {
+        var p=seed();
+        var variant=reformulations.variant(project.id(),requirement.id(),p.id(),2,new ReformulationDtos.VariantRequest("Separate choice"),"architect",context);
+        var run=reformulations.beginRun(project.id(),requirement.id(),variant.id(),1,"TEST","test","v1","v1","frozen","architect",context);
+        reformulations.finishRun(project.id(),requirement.id(),variant.id(),run.id(),new com.taxonomy.reformulation.ReformulationDocument("Generated variant",variant.currentRevision().sections(),variant.currentRevision().statements(),variant.currentRevision().questions(),variant.currentRevision().validation(),List.of()),null,"architect",context);
+        var generated=reformulations.get(project.id(),requirement.id(),variant.id(),"architect",context).currentRevision();
+        assertThat(generated.variantOrigin()).isEqualTo(new ReformulationDtos.VariantOrigin(p.id(),2));
+    }
+    @Test void fullDocumentEditInvalidatesEverySection() throws Exception {
+        var p=seed();
+        var saved=reformulations.saveDraft(project.id(),requirement.id(),p.id(),2,new ReformulationDtos.SaveDraftRequest("Human document revision","Deliberate edit"),"architect",context);
+        assertThat(saved.currentRevision().impact().sectionIds()).containsExactlyInAnyOrder("BP","BP-1","BP-2");
+        assertThat(saved.currentRevision().impact().global()).isTrue();
+        assertThat(saved.currentRevision().impact().questionIds()).allMatch(id->p.currentRevision().questions().stream().anyMatch(q->q.referenceIds().contains(id)));
+    }
+    @Test void modelCannotReopenAnExplicitNotApplicableDecision() throws Exception {
+        var p=seed();var answered=reformulations.answer(project.id(),requirement.id(),p.id(),2,new ReformulationDtos.AnswerRequest("correction","NOT_APPLICABLE",List.of(),"","Explicit human decision"),"architect",context);
+        var previous=answered.currentRevision();var questions=new ArrayList<>(previous.questions());var q=questions.get(5);var origins=new ArrayList<>(q.origins());origins.add(q.origin());
+        questions.set(5,new com.taxonomy.reformulation.DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),q.answerSchema(),q.prerequisites(),q.dependentQuestionIds(),q.consequences(),com.taxonomy.reformulation.DecisionQuestion.State.OPEN,q.aliases(),origins,q.sourceResolutions()));
+        var run=reformulations.beginRun(project.id(),requirement.id(),p.id(),3,"TEST","test","v1","v1","frozen","architect",context);
+        reformulations.finishRun(project.id(),requirement.id(),p.id(),run.id(),new com.taxonomy.reformulation.ReformulationDocument("Reopened by model",previous.sections(),previous.statements(),questions,previous.validation(),List.of()),null,"architect",context);
+        assertThat(reformulations.get(project.id(),requirement.id(),p.id(),"architect",context).currentRevision()).isEqualTo(previous);
+        assertThat(reformulations.runs(project.id(),requirement.id(),p.id(),"architect",context).getLast().failureCode()).isEqualTo("INVALID_REFERENCE_CLOSURE");
     }
 }

@@ -41,6 +41,7 @@ abstract class ReformulationWorkflowFixture {
     ProjectView project;
     RequirementView requirement;
     String snapshot;
+    String originalText=ORIGINAL;
     static final String ORIGINAL = "Arbeitszeiterfassung\n  <img src=x onerror=alert(1)>";
 
     @BeforeEach void fixture() {
@@ -61,7 +62,7 @@ abstract class ReformulationWorkflowFixture {
                 : RepositoryContext.workspace(selected.repositoryId(),selected.workspaceId(),selected.currentBranch(),"architect"));
     }
     RequirementView createRequirement(String key) {
-        return projects.createRequirement(project.id(), new CreateRequirementRequest(key,"Capture time",ORIGINAL,
+        return projects.createRequirement(project.id(), new CreateRequirementRequest(key,"Capture time",originalText,
                 RequirementStatus.APPROVED,50,Criticality.HIGH,RequirementType.FUNCTIONAL,ReviewStatus.CONFIRMED,
                 "architect","original",null),"architect",context);
     }

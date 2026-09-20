@@ -22,7 +22,7 @@
             architecture:'Architekturbezug', findings:'Konflikte und Quellabdeckung', true:'Ja', false:'Nein', refresh:'Status aktualisieren',
             OPEN:'Offen', ANSWERED:'Beantwortet', DEFERRED:'Zurückgestellt', NOT_APPLICABLE:'Nicht anwendbar', CONFLICT:'Konflikt',
             MODEL_ADDITION:'Modellergänzung', ORIGINAL:'Original', CATALOGUE_INSPIRATION:'Kataloganregung', ARCHITECTURE_HYPOTHESIS:'Architekturhypothese', HUMAN_DECISION:'Menschliche Entscheidung',
-            applicable:'Bedingte Folgefrage', unavailable:'Erst bei passender Antwort auf die vorausgesetzte Frage beantworten.'},
+            changeDecision:'Abweichende menschliche Entscheidung erfassen', applicable:'Bedingte Folgefrage', unavailable:'Erst bei passender Antwort auf die vorausgesetzte Frage beantworten.'},
         en: {heading:'Reformulation offers', create:'Propose reformulation', snapshot:'Existing analysis snapshot', source:'Source version', revision:'Draft revision',
             state:'Reformulation offer – not adopted', original:'Original', proposal:'Proposal', questions:'Questions', empty:'No offer yet.',
             noSnapshot:'Select an existing analysis snapshot first.', save:'Save draft', saved:'Saved. The active requirement is unchanged.',
@@ -38,7 +38,7 @@
             architecture:'Architecture reference', findings:'Conflicts and source coverage', true:'Yes', false:'No', refresh:'Refresh status',
             OPEN:'Open', ANSWERED:'Answered', DEFERRED:'Deferred', NOT_APPLICABLE:'Not applicable', CONFLICT:'Conflict',
             MODEL_ADDITION:'Model addition', ORIGINAL:'Original', CATALOGUE_INSPIRATION:'Catalogue inspiration', ARCHITECTURE_HYPOTHESIS:'Architecture hypothesis', HUMAN_DECISION:'Human decision',
-            applicable:'Conditional follow-up', unavailable:'Answer only after the prerequisite decision selects the relevant variant.'}
+            changeDecision:'Record a different human decision', applicable:'Conditional follow-up', unavailable:'Answer only after the prerequisite decision selects the relevant variant.'}
     };
     const t = key => words[lang][key] || key;
     let offer, currentRequirement, offers = [], dirtyText = null, activeView = 'proposal', timer;
@@ -66,6 +66,7 @@
     async function update(operation,body) {
         offer=await api.updateReformulation(project,requirement,offer.id,operation,offer.currentRevision.number,body);
         render(); announce(t('saved')+(dirtyText!==null?' '+t('dirty'):''));
+        if(body.questionId){const q=offer.currentRevision.questions.find(q=>refs(q).includes(body.questionId));document.getElementById('question-'+q.id)?.focus();}
     }
     function changeView(view,focus) {
         activeView=view;
@@ -123,19 +124,21 @@
         const evidence=el('details');evidence.append(el('summary',t('architecture')));
         q.discoveries.forEach(d=>{evidence.append(el('p',d.rationale),el('p',d.context,'small text-break'));d.nodeIds.concat(d.edgeIds).forEach(id=>evidence.append(architectureLink(id)));d.sourceSpans.forEach(span=>evidence.append(pre(span.exactText)));});
         q.affectedStatementIds.forEach(id=>{const a=el('a',id,'me-2');a.href='#statement-'+id;a.addEventListener('click',()=>{const item=document.getElementById('statement-'+id);if(item)item.parentElement.open=true;});evidence.append(a);});box.append(evidence,el('p',q.consequences));
+        let answerHost=box;
+        if((q.sourceResolutions || []).length){answerHost=el('details');answerHost.append(el('summary',t('changeDecision')));box.append(answerHost);}
         const schema=q.answerSchema, inputs=[];
         const last=activeAnswers().filter(a=>refs(q).includes(a.questionId())).at(-1);
         if(['SINGLE_CHOICE','MULTIPLE_CHOICE'].includes(schema.kind))schema.options.forEach(option=>{
-            const input=el('input');input.type=schema.kind==='MULTIPLE_CHOICE'?'checkbox':'radio';input.name='question-'+q.id;input.value=option;input.className='form-check-input me-2';input.checked=!!last?.values.includes(option);inputs.push(input);const label=el('label',undefined,'d-block my-1');label.append(input,document.createTextNode(option));box.append(label);
+            const input=el('input');input.type=schema.kind==='MULTIPLE_CHOICE'?'checkbox':'radio';input.name='question-'+q.id;input.value=option;input.className='form-check-input me-2';input.checked=!!last?.values.includes(option);inputs.push(input);const label=el('label',undefined,'d-block my-1');label.append(input,document.createTextNode(option));answerHost.append(label);
         });
-        else if(schema.kind==='BOOLEAN'){const input=el('select',undefined,'form-select');input.setAttribute('aria-label',q.wording);['','true','false'].forEach(value=>{const option=el('option',value?t(value):'—');option.value=value;input.append(option);});input.value=last?.values[0] || '';inputs.push(input);box.append(input);}
-        else {const input=el(schema.kind==='TEXT'?'textarea':'input',undefined,'form-control');input.setAttribute('aria-label',q.wording);if(schema.kind==='NUMBER'){input.type='number';input.step='any';if(schema.minimum!==null)input.min=schema.minimum;if(schema.maximum!==null)input.max=schema.maximum;}input.value=last?.values[0] || '';inputs.push(input);box.append(input);if(schema.unit)box.append(el('small',schema.unit));}
-        const other=el('input',undefined,'form-control');other.value=last?.otherText || '';box.append(field(t('other'),other));
-        const reason=el('input',undefined,'form-control');reason.value=last?.rationale || t('defaultRationale');box.append(field(t('rationale'),reason));
+        else if(schema.kind==='BOOLEAN'){const input=el('select',undefined,'form-select');input.setAttribute('aria-label',q.wording);['','true','false'].forEach(value=>{const option=el('option',value?t(value):'—');option.value=value;input.append(option);});input.value=last?.values[0] || '';inputs.push(input);answerHost.append(input);}
+        else {const input=el(schema.kind==='TEXT'?'textarea':'input',undefined,'form-control');input.setAttribute('aria-label',q.wording);if(schema.kind==='NUMBER'){input.type='number';input.step='any';if(schema.minimum!==null)input.min=schema.minimum;if(schema.maximum!==null)input.max=schema.maximum;}input.value=last?.values[0] || '';inputs.push(input);answerHost.append(input);if(schema.unit)answerHost.append(el('small',schema.unit));}
+        const other=el('input',undefined,'form-control');other.dataset.otherAnswer='';other.value=last?.otherText || '';answerHost.append(field(t('other'),other));
+        const reason=el('input',undefined,'form-control');reason.value=last?.rationale || t('defaultRationale');answerHost.append(field(t('rationale'),reason));
         const controls=el('div',undefined,'reformulation-controls');
         const answer=button(t('answer'),()=>update('answers',{questionId:q.id,action:'ANSWER',values:inputs.filter(i=>!['radio','checkbox'].includes(i.type)||i.checked).map(i=>i.value),otherText:other.value,rationale:reason.value}));answer.disabled=!applicable(q);controls.append(answer);
-        ['DEFER','NOT_APPLICABLE'].forEach(action=>controls.append(button(t(action==='DEFER'?'defer':'na'),()=>update('answers',{questionId:q.id,action,values:[],otherText:'',rationale:reason.value}))));box.append(controls);
-        if(schema.applicability?.length)box.append(el('p',t('applicable')+': '+schema.applicability.map(c=>c.questionId+' = '+c.anyOf.join(' / ')).join('; ')+(applicable(q)?'':' — '+t('unavailable')),'small'));
+        ['DEFER','NOT_APPLICABLE'].forEach(action=>controls.append(button(t(action==='DEFER'?'defer':'na'),()=>update('answers',{questionId:q.id,action,values:[],otherText:'',rationale:reason.value}))));answerHost.append(controls);
+        if(schema.applicability?.length)answerHost.append(el('p',t('applicable')+': '+schema.applicability.map(c=>c.questionId+' = '+c.anyOf.join(' / ')).join('; ')+(applicable(q)?'':' — '+t('unavailable')),'small'));
         const history=el('details');history.append(el('summary',t('history')));offer.currentRevision.answers.filter(a=>refs(q).includes(a.questionId)).forEach(a=>history.append(el('p',a.author+' · '+a.occurredAt+' · '+t(a.state)+' · '+a.values.join(', ')+' '+(a.otherText || '')+' — '+a.rationale)));box.append(history);return box;
     }
     function showComparison(before,after,title) {
@@ -145,11 +148,13 @@
     async function refreshRuns() {
         clearTimeout(timer);if(!offer)return;const selected=offer.id;
         const runs=await api.listReformulationRuns(project,requirement,selected);if(offer.id!==selected)return;
-        const latest=await api.getReformulation(project,requirement,selected);
-        if(latest.currentRevision.number!==offer.currentRevision.number){offer=latest;render();}
+        const previousVersion=currentRequirement?.currentVersionId;
+        const [latest, active]=await Promise.all([api.getReformulation(project,requirement,selected),api.getRequirement(project,requirement)]);
+        if(offer.id!==selected)return;currentRequirement=active;
+        if(latest.currentRevision.number!==offer.currentRevision.number || previousVersion!==active.currentVersionId){offer=latest;render();}
         const target=document.getElementById('reformulationRuns');target.replaceChildren();
         runs.slice(-3).forEach(run=>{target.append(el('p',run.status+(run.failureCode?' · '+run.failureCode:''),'small text-break'));
-            if(run.status==='PARTIAL' && run.candidate){const candidate=el('section',undefined,'reformulation-candidate my-2');candidate.append(el('h3',t('candidate'),'h5'),button(t('compare'),()=>showComparison(offer.currentRevision.text,run.candidate.text,t('candidate'))));target.append(candidate);}
+            if(run.status==='PARTIAL' && run.candidate){const candidate=el('section',undefined,'reformulation-candidate my-2');candidate.dataset.reformulationCandidate='';candidate.append(el('h3',t('candidate'),'h5'),button(t('compare'),()=>showComparison(offer.currentRevision.text,run.candidate.text,t('candidate'))));target.append(candidate);}
         });
         if(runs.some(r=>['QUEUED','RUNNING'].includes(r.status))){announce(t('working'));timer=setTimeout(()=>perform(refreshRuns),1500);}
         else announce(t('state')+(dirtyText!==null?' '+t('dirty'):''));

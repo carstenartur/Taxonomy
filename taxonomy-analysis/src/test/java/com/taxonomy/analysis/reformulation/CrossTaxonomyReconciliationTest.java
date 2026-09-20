@@ -216,4 +216,17 @@ class CrossTaxonomyReconciliationTest {
         return new DecisionQuestion.SourceResolution(List.of(value),List.of(new Statement.SourceSpan(0,original.length(),original)),"Original deadline evidence");
     }
 
+    @Test void distinctOtherFreeTextRemainsAConflictingHumanDecisionAfterQuestionMerge() {
+        var schema=new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE,List.of("Terminal","Other"),null,null,null);
+        var qs=new ArrayList<DecisionQuestion>();
+        for(String node:List.of("BP","AP")) {
+            var q=question("q-"+node,node,"shared");
+            qs.add(new DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),schema,List.of(),List.of(),q.consequences(),q.state()));
+        }
+        var first=new DecisionAnswer("a-one","q-BP","offer",2,List.of("Other"),DecisionQuestion.State.ANSWERED,"architect",Instant.EPOCH,"Choice","Paper card","ANSWER",List.of());
+        var second=new DecisionAnswer("a-two","q-AP","offer",3,List.of("Other"),DecisionQuestion.State.ANSWERED,"architect",Instant.EPOCH,"Choice","Telephone entry","ANSWER",List.of());
+        var result=reconciler().reconcile(baseline(),draft(qs),List.of(first,second),List.of());
+        assertThat(result.questions().getFirst().state()).isEqualTo(DecisionQuestion.State.CONFLICT);
+        assertThat(result.text()).contains("Paper card","Telephone entry");
+    }
 }

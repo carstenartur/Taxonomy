@@ -131,7 +131,8 @@ public final class ReformulationQuestionService {
     }
     public static ReformulationImpact impact(Revision prior, DecisionQuestion question, ReformulationBaseline baseline) {
         var statements = new LinkedHashSet<>(prior.impact().statementIds()); statements.addAll(question.affectedStatementIds());
-        var questions = new LinkedHashSet<>(prior.impact().questionIds()); questions.addAll(question.referenceIds());
+        var questions = new LinkedHashSet<>(prior.impact().questionIds());
+        if(prior.questions().stream().anyMatch(q -> !Collections.disjoint(q.referenceIds(),question.referenceIds())))questions.addAll(question.referenceIds());
         boolean global = prior.impact().global() || Set.of("global", "@document", "*").contains(question.key().scope().toLowerCase(Locale.ROOT));
         boolean changed;
         do {
@@ -143,14 +144,15 @@ public final class ReformulationQuestionService {
             for (var s : prior.statements()) if (global || !Collections.disjoint(s.questionDependencies(), questions)) statements.add(s.id());
             changed = size != questions.size() + statements.size();
         } while (changed);
-        var sections = new LinkedHashSet<>(prior.impact().sectionIds());
+        var sections = new LinkedHashSet<String>();
         for (var section : prior.sections()) if (global || !Collections.disjoint(section.statementIds(), statements)
                 || !Collections.disjoint(section.questionIds(), questions)) sections.add(section.id());
         var edges = new LinkedHashSet<>(prior.impact().boundaryEdgeIds());
+        var directlyAffected = Set.copyOf(sections);
         var json = new tools.jackson.databind.ObjectMapper();
         for (var edge : json.readTree(baseline.frozenContext().getOrDefault("relationMappings", "[]"))) {
             String source = edge.path("sourceCode").asText(), target = edge.path("targetCode").asText();
-            if (global || sections.contains(source) || sections.contains(target)) {
+            if (global || directlyAffected.contains(source) || directlyAffected.contains(target)) {
                 edges.add("edge-" + edge.path("id").asText());
                 for (var section : prior.sections()) if (section.id().equals(source) || section.id().equals(target)) sections.add(section.id());
             }
@@ -160,6 +162,7 @@ public final class ReformulationQuestionService {
             for (var section : prior.sections()) if (!Collections.disjoint(section.children(), sections)) sections.add(section.id());
             changed = size != sections.size();
         } while (changed);
+        sections.addAll(prior.impact().sectionIds());
         return new ReformulationImpact(List.copyOf(statements), List.copyOf(sections), List.copyOf(questions), List.copyOf(edges), global);
     }
     private static ReformulationAnswerException invalid(String message) { return new ReformulationAnswerException(message); }

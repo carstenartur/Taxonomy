@@ -61,7 +61,7 @@ public class CrossTaxonomyReconciler {
     private static DecisionQuestion withState(DecisionQuestion q,List<DecisionAnswer> answers,List<ValidationReport.Finding> findings) {
         var relevant=DecisionAnswer.active(answers).stream().filter(a->q.referenceIds().contains(a.questionId())).toList();
         // Multiple origins of the same value are not independent evidence; only disagreement matters.
-        var values=new HashSet<Set<?>>();relevant.stream().filter(a->a.state()==DecisionQuestion.State.ANSWERED).forEach(a->values.add(answerComparisonKey(q.answerSchema(),a.values())));
+        var values=new HashSet<Set<?>>();relevant.stream().filter(a->a.state()==DecisionQuestion.State.ANSWERED).forEach(a->values.add(humanAnswerComparisonKey(q.answerSchema(),a)));
         q.sourceResolutions().forEach(r->values.add(answerComparisonKey(q.answerSchema(),r.values())));
         boolean conflict=values.size()>1 || q.state()==DecisionQuestion.State.CONFLICT || relevant.stream().anyMatch(a->a.state()==DecisionQuestion.State.CONFLICT);
         var state=conflict?DecisionQuestion.State.CONFLICT:!q.sourceResolutions().isEmpty()?DecisionQuestion.State.ANSWERED:
@@ -70,6 +70,11 @@ public class CrossTaxonomyReconciler {
         if(state==q.state())return q;
         var origins=new ArrayList<>(q.origins());origins.add(q.origin());
         return new DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),q.answerSchema(),q.prerequisites(),q.dependentQuestionIds(),q.consequences(),state,q.aliases(),distinct(origins),q.sourceResolutions());
+    }
+    private static Set<?> humanAnswerComparisonKey(DecisionQuestion.AnswerSchema schema,DecisionAnswer answer) {
+        var key=new HashSet<Object>(answerComparisonKey(schema,answer.values()));
+        if(answer.otherText()!=null && !answer.otherText().isBlank())key.add(List.of("OTHER_TEXT",answer.otherText()));
+        return Set.copyOf(key);
     }
     /** Normalize comparison keys only: stored human/source strings and provenance stay exact. */
     private static Set<?> answerComparisonKey(DecisionQuestion.AnswerSchema schema,List<String> values) {
@@ -185,7 +190,7 @@ public class CrossTaxonomyReconciler {
             text.append("[").append(q.state()).append("] ").append(q.wording());
             if(q.state()==DecisionQuestion.State.OPEN)text.append(" — ").append(String.join(" / ",q.answerSchema().options()));
             for(var resolution:q.sourceResolutions())text.append(" — Original: ").append(String.join(", ",resolution.values())).append(" (").append(resolution.rationale()).append(")");
-            answers.stream().filter(a->q.referenceIds().contains(a.questionId())).forEach(a->text.append(" — Human decision: ").append(String.join(", ",a.values())));
+            answers.stream().filter(a->q.referenceIds().contains(a.questionId())).forEach(a->text.append(" — Human decision: ").append(String.join(", ",a.values())).append(a.otherText()==null?"":" — "+a.otherText()));
             text.append("\n");
         }
         findings.stream().filter(f->f.kind()==ValidationReport.Kind.CONFLICT).distinct().forEach(f->text.append("[CONFLICT] ").append(f.message()).append("\n"));
