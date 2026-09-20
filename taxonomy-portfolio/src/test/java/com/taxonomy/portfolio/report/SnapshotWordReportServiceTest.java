@@ -124,6 +124,8 @@ class SnapshotWordReportServiceTest {
         var second = service.load(41L, "snapshot-1", "auditor", CONTEXT, Locale.ENGLISH);
         assertThat(first.architecture()).isSameAs(first.decision().architecture());
         assertThat(first.architecture()).isEqualTo(second.architecture());
+        assertThat(first.architecture().title()).isEqualTo("Architecture report");
+        assertThat(first.architecture().evidence().snapshotId()).isEqualTo("snapshot-1");
         assertThat(first.architecture().requirement()).isEqualTo("Saved requirement");
         assertThat(first.architecture().evidence().requirementVersionId()).isEqualTo(43L);
         assertThat(first.architecture().evidence().commit()).isEqualTo("commit-a");

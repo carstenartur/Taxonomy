@@ -74,13 +74,17 @@ public final class WordDocumentWriter {
     public void contents(Map<String, String> sections) {
         heading(labels.contents(), 1, null);
         var p = document.createParagraph();
+        p.getCTP().addNewPPr();
         var field = p.getCTP().addNewFldSimple();
         field.setInstr("TOC \\o \"1-3\" \\h \\z \\u");
-        field.addNewR().addNewT().setStringValue(labels.contents());
+        p.setKeepNext(true);
+        field.addNewR().addNewT().setStringValue("");
         var settings = document.getSettings().getCTSettings();
         (settings.isSetUpdateFields() ? settings.getUpdateFields() : settings.addNewUpdateFields())
                 .setVal(true);
         var table = table(List.of(labels.titleLabel(), labels.openChapter()), List.of());
+        table.getRow(0).getTableCells().forEach(c ->
+                c.getParagraphs().forEach(paragraph -> paragraph.setKeepNext(true)));
         sections.forEach(
                 (anchor, title) -> {
                     var row = table.createRow();
@@ -316,6 +320,8 @@ public final class WordDocumentWriter {
         stories.add(document.getDocument());
         document.getHeaderList().forEach(header -> stories.add(header._getHdrFtr()));
         document.getFooterList().forEach(footer -> stories.add(footer._getHdrFtr()));
+        document.getFootnotes().forEach(note -> stories.add(note.getCTFtnEdn()));
+        document.getEndnotes().forEach(note -> stories.add(note.getCTFtnEdn()));
         var policy = document.getHeaderFooterPolicy();
         if (policy != null) {
             for (var story :

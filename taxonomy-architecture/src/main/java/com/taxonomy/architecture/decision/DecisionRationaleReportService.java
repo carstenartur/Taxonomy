@@ -174,6 +174,7 @@ public class DecisionRationaleReportService {
 
         Locale effectiveLocale = locale == null ? Locale.ENGLISH : locale;
         boolean german = "de".equalsIgnoreCase(effectiveLocale.getLanguage());
+        var labels = new DecisionReportLabels(effectiveLocale.toLanguageTag());
         Map<String, Integer> scores = sanitizeScores(input.scores());
         Map<String, String> reasons = sanitizeReasons(input.reasons());
 
@@ -245,14 +246,13 @@ public class DecisionRationaleReportService {
                         + snapshotValue(input, AnalysisSnapshotProvenance::snapshotId, "unknown")
                 : catalogue.filename();
         String dataVersion = immutableSnapshot
-                ? "snapshot fingerprint " + abbreviateHash(recordedTaxonomyFingerprint)
+                ? labels.snapshotFingerprint(abbreviateHash(recordedTaxonomyFingerprint))
                 : catalogue.version();
         String catalogueResourceFingerprint = immutableSnapshot
-                ? "not persisted separately in the historical snapshot"
+                ? labels.historicalResourceNotRecorded()
                 : catalogue.sha256();
         String dataSource = immutableSnapshot
-                ? (german ? "Unveränderlicher Anforderungs-Analysesnapshot"
-                        : "Immutable requirement analysis snapshot")
+                ? labels.immutableSnapshotSource()
                 : catalogue.source();
 
         ReportMetadata metadata = new ReportMetadata(

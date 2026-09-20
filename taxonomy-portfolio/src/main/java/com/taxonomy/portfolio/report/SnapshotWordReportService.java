@@ -93,7 +93,7 @@ public class SnapshotWordReportService {
         var labels = new DecisionReportLabels(locale.toLanguageTag());
         // Explicit saved titles are evidence, including values that collide with a live fallback.
         // Policy keys and missing titles use a stable localized snapshot title.
-        String title = labels.architectureTitle() + " · " + snapshotId;
+        String title = labels.architectureTitle();
         String graphTitle =
                 p.persistedViewTitle() != null
                                 && !p.persistedViewTitle().isBlank()

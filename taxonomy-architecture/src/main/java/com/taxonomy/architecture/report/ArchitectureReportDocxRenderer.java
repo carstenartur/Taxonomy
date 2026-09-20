@@ -20,6 +20,11 @@ public final class ArchitectureReportDocxRenderer {
             page(document);
             var labels = new DecisionReportLabels(report.languageTag());
             var writer = new WordDocumentWriter(document, labels);
+            String snapshot = report.evidence().snapshotId();
+            String shortSnapshot = snapshot == null ? labels.unknown()
+                    : snapshot.substring(0, Math.min(12, snapshot.length()));
+            runningIdentity(document, labels, labels.architectureTitle() + " · " + shortSnapshot
+                    + " · " + labels.requirementVersion() + " " + report.evidence().requirementVersionNumber());
             document.getProperties().getCoreProperties().setTitle(report.title());
             document.getProperties().getCoreProperties().setSubjectProperty(report.requirement());
             writer.heading(report.title(), 0, null);
@@ -46,6 +51,7 @@ public final class ArchitectureReportDocxRenderer {
             page(document);
             var labels = new DecisionReportLabels("en");
             var w = new WordDocumentWriter(document, labels);
+            runningIdentity(document, labels, labels.architectureTitle());
             w.heading(labels.architectureTitle(), 0, null);
             w.heading(labels.requirement(), 1, null);
             w.paragraph(report.getBusinessText());
@@ -245,7 +251,32 @@ public final class ArchitectureReportDocxRenderer {
         return String.format(Locale.ROOT, "%.0f%%", value * 100);
     }
 
+    private static void runningIdentity(XWPFDocument document, DecisionReportLabels labels, String identity) {
+        var header = document.createHeader(org.apache.poi.wp.usermodel.HeaderFooterType.DEFAULT);
+        var headerParagraph = header.createParagraph();
+        var run = headerParagraph.createRun();
+        run.setFontSize(9);
+        run.setText(identity);
+        var footer = document.createFooter(org.apache.poi.wp.usermodel.HeaderFooterType.DEFAULT);
+        var paragraph = footer.createParagraph();
+        paragraph.setAlignment(org.apache.poi.xwpf.usermodel.ParagraphAlignment.RIGHT);
+        paragraph.createRun().setText(labels.page() + " ");
+        paragraph.getCTP().addNewFldSimple().setInstr("PAGE");
+        paragraph.createRun().setText(" " + labels.of() + " ");
+        paragraph.getCTP().addNewFldSimple().setInstr("NUMPAGES");
+        paragraph.getRuns().forEach(r -> r.setFontSize(9));
+    }
+
     private static void page(XWPFDocument document) {
+        // Only fresh standalone documents reach this setup; custom DOTX styles stay authoritative.
+        var styles = document.createStyles();
+        var fonts = org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts.Factory.newInstance();
+        fonts.setAscii("Aptos");
+        fonts.setHAnsi("Aptos");
+        fonts.setCs("Aptos");
+        fonts.setEastAsia("Aptos");
+        styles.setDefaultFonts(fonts);
+        styles.getDefaultRunStyle().getRPr().addNewSz().setVal(BigInteger.valueOf(20));
         var section = document.getDocument().getBody().addNewSectPr();
         var size = section.addNewPgSz();
         size.setW(BigInteger.valueOf(11906));
@@ -255,5 +286,7 @@ public final class ArchitectureReportDocxRenderer {
         margin.setRight(BigInteger.valueOf(1050));
         margin.setTop(BigInteger.valueOf(1020));
         margin.setBottom(BigInteger.valueOf(1160));
+        margin.setHeader(BigInteger.valueOf(420));
+        margin.setFooter(BigInteger.valueOf(560));
     }
 }

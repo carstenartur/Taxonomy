@@ -50,6 +50,9 @@ public final class DecisionReportLabels {
     public String hierarchyEvidence() { return german ? "Hierarchiequelle" : "Hierarchy evidence"; }
     public String frozenHierarchy() { return german ? "Im Analysesnapshot eingefrorene Taxonomiehierarchie" : "Taxonomy hierarchy frozen in the analysis snapshot"; }
     public String liveHierarchy() { return german ? "Aktuell geladene Taxonomiehierarchie" : "Currently loaded taxonomy hierarchy"; }
+    public String snapshotFingerprint(String hash) { return (german ? "Snapshot-Fingerabdruck " : "snapshot fingerprint ") + hash; }
+    public String historicalResourceNotRecorded() { return german ? "Im historischen Snapshot nicht separat gespeichert" : "not persisted separately in the historical snapshot"; }
+    public String immutableSnapshotSource() { return german ? "Unveränderlicher Anforderungs-Analysesnapshot" : "Immutable requirement analysis snapshot"; }
     public String completeness() { return german ? "Vollständigkeit" : "Completeness"; }
     public String executiveSummary() { return german ? "Kurzfassung" : "Executive summary"; }
     public String leadingLeaf() { return german ? "Führender Blattknoten nach effektiver Relevanz" : "Leading leaf by effective relevance"; }

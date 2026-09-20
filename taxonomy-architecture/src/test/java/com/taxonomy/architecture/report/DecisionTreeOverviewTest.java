@@ -76,6 +76,25 @@ class DecisionTreeOverviewTest {
         assertThat(tree.warnings()).isNotEmpty();
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.NullSource
+    @org.junit.jupiter.params.provider.ValueSource(ints = {0, 100})
+    void rejectsLeafParentDisagreementRegardlessOfScoreAndChapterOrder(Integer score) {
+        var leaf = new ChildDecision("B", "B", "", score, null, null, false,
+                score == null ? Disposition.NOT_EVALUATED : score == 0 ? Disposition.REJECTED
+                        : Disposition.LEAF_CANDIDATE, "Saved reason", ReasonSource.AI_SCORING, true);
+        var parent = new DecisionChapter(2, "B", "B", "", score, 1, true, "", "",
+                List.of(child("C", 100)), List.of());
+        var root = chapter(1, "A", 0, leaf);
+        for (var chapters : List.of(List.of(root, parent), List.of(parent, root))) {
+            assertThatThrownBy(() -> DecisionTreeOverview.from(chapters))
+                    .hasMessageContaining("Contradictory decision node B");
+        }
+        var validLeaf = DecisionTreeOverview.from(List.of(root)).rows().getLast();
+        assertThat(validLeaf.score()).isEqualTo(score);
+        assertThat(validLeaf.disposition()).isEqualTo(leaf.disposition());
+    }
+
     @Test
     void deepHierarchyRetainsEveryDepthAndUniqueChapterLink() {
         var chapters = new ArrayList<DecisionChapter>();

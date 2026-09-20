@@ -20,7 +20,7 @@ public record DecisionTreeOverview(List<DecisionTreeRow> rows, List<String> warn
             Integer chapterNumber,
             String bookmark) {}
 
-    private record Node(String code, String title, Integer score, Disposition disposition) {}
+    private record Node(String code, String title, Integer score, boolean leaf, Disposition disposition) {}
 
     public static String bookmark(DecisionChapter chapter) {
         String code = chapter.parentCode().replaceAll("[^A-Za-z0-9_]", "_");
@@ -48,6 +48,7 @@ public record DecisionTreeOverview(List<DecisionTreeRow> rows, List<String> warn
                             chapter.parentCode(),
                             chapter.parentTitle(),
                             chapter.parentScore(),
+                            false,
                             disposition(chapter.parentScore(), false)));
             List<String> direct = new ArrayList<>();
             for (var child : chapter.children()) {
@@ -57,6 +58,7 @@ public record DecisionTreeOverview(List<DecisionTreeRow> rows, List<String> warn
                                 child.code(),
                                 child.title(),
                                 child.absoluteScore(),
+                                child.leaf(),
                                 disposition(child.absoluteScore(), child.leaf())));
                 String previous = parentOf.putIfAbsent(child.code(), chapter.parentCode());
                 if (previous != null && !previous.equals(chapter.parentCode()))
@@ -86,7 +88,8 @@ public record DecisionTreeOverview(List<DecisionTreeRow> rows, List<String> warn
         Node previous = nodes.putIfAbsent(node.code(), node);
         if (previous != null
                 && (!Objects.equals(previous.title(), node.title())
-                        || !Objects.equals(previous.score(), node.score())))
+                        || !Objects.equals(previous.score(), node.score())
+                        || previous.leaf() != node.leaf()))
             throw new IllegalArgumentException("Contradictory decision node " + node.code());
     }
 

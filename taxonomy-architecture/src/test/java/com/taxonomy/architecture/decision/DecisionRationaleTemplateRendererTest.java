@@ -174,14 +174,28 @@ class DecisionRationaleTemplateRendererTest {
     }
 
     @org.junit.jupiter.params.ParameterizedTest
-    @org.junit.jupiter.params.provider.ValueSource(strings={"en","de","too-small"})
+    @org.junit.jupiter.params.provider.ValueSource(strings={"en","de","too-small","note-collision"})
     void enrichedBodyPreservesCustomStylesLogoStoriesAndDecisionIdentity(String language) throws Exception {
         byte[] logo;
         var image=new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB);
         try(var output=new java.io.ByteArrayOutputStream()){javax.imageio.ImageIO.write(image,"png",output);logo=output.toByteArray();}
         byte[] template;
         try(var doc=new org.apache.poi.xwpf.usermodel.XWPFDocument();var output=new java.io.ByteArrayOutputStream()) {
-            var styles=doc.createStyles();var style=org.openxmlformats.schemas.wordprocessingml.x2006.main.CTStyle.Factory.newInstance();
+            var styles=doc.createStyles();
+            var defaultFonts=org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts.Factory.newInstance();
+            defaultFonts.setAscii("Georgia");defaultFonts.setHAnsi("Georgia");styles.setDefaultFonts(defaultFonts);
+            var footnote=doc.createFootnote();var fp=footnote.createParagraph();
+            fp.createRun().setText("Administrator footnote");
+            var fb=fp.getCTP().addNewBookmarkStart();fb.setId(java.math.BigInteger.ZERO);
+            fb.setName(language.equals("note-collision")?"decision_tree":"administrator_footnote");
+            fp.getCTP().addNewBookmarkEnd().setId(java.math.BigInteger.ZERO);
+            var endnote=doc.createEndnote();var ep=endnote.createParagraph();ep.createRun().setText("Administrator endnote");
+            var eb=ep.getCTP().addNewBookmarkStart();eb.setId(java.math.BigInteger.ONE);eb.setName("administrator_endnote");
+            ep.getCTP().addNewBookmarkEnd().setId(java.math.BigInteger.ONE);
+            var noteLink=fp.getCTP().addNewHyperlink();noteLink.setAnchor("administrator_endnote");noteLink.addNewR().addNewT().setStringValue("See saved endnote");
+            var references=doc.createParagraph();references.createRun().setText("Administrator note references");
+            references.addFootnoteReference(footnote);references.createRun().getCTR().addNewEndnoteReference().setId(endnote.getId());
+            var style=org.openxmlformats.schemas.wordprocessingml.x2006.main.CTStyle.Factory.newInstance();
             style.setStyleId("Heading1");style.addNewName().setVal("Custom Heading");style.addNewRPr().addNewColor().setVal("AA22BB");
             styles.addStyle(new org.apache.poi.xwpf.usermodel.XWPFStyle(style));
             doc.createParagraph().createRun().setText(DecisionRationaleTemplateContract.TITLE_TOKEN);
@@ -212,6 +226,11 @@ class DecisionRationaleTemplateRendererTest {
         var evidence=new com.taxonomy.architecture.report.ArchitectureReportDocument.SnapshotEvidence(1L,2L,3L,4,"snapshot","repository","workspace","main","based-on-commit","MOCK","model","fingerprint",com.taxonomy.architecture.report.ArchitectureReportDocument.graphSha256(graph));
         var architecture=com.taxonomy.architecture.report.ArchitectureReportDocument.from("Architecture title",language,decision.requirement(),"Saved scope","Saved recommendation",List.of(),graph,new com.taxonomy.export.LayeredDiagramLayoutService().layout(graph),com.taxonomy.architecture.report.DecisionTreeOverview.from(decision.chapters()),evidence);
         var renderer=new DecisionRationaleTemplateRenderer(templates,new DecisionRationaleTemplateContract());
+        if(language.equals("note-collision")) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(()->renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture)))
+                    .hasStackTraceContaining("Duplicate Word bookmark: decision_tree");
+            return;
+        }
         if(language.equals("too-small")) {
             org.assertj.core.api.Assertions.assertThatThrownBy(()->renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture)))
                 .isInstanceOf(com.taxonomy.architecture.report.WordReportLayoutException.class).hasMessageContaining("8pt");
@@ -219,6 +238,22 @@ class DecisionRationaleTemplateRendererTest {
         }
         byte[] result=renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture));
         try(var doc=new org.apache.poi.xwpf.usermodel.XWPFDocument(new ByteArrayInputStream(result))) {
+            var ids=new java.util.HashSet<String>();var names=new java.util.HashSet<String>();
+            var stories=new java.util.ArrayList<org.apache.xmlbeans.XmlObject>();stories.add(doc.getDocument());
+            doc.getHeaderList().forEach(h->stories.add(h._getHdrFtr()));doc.getFooterList().forEach(f->stories.add(f._getHdrFtr()));
+            doc.getFootnotes().forEach(n->stories.add(n.getCTFtnEdn()));doc.getEndnotes().forEach(n->stories.add(n.getCTFtnEdn()));
+            for(var story:stories)for(var bookmark:story.selectPath("declare namespace w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'; .//w:bookmarkStart")){
+                var attrs=bookmark.getDomNode().getAttributes();
+                assertThat(ids.add(attrs.getNamedItemNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main","id").getNodeValue())).isTrue();
+                assertThat(names.add(attrs.getNamedItemNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main","name").getNodeValue())).isTrue();
+            }
+            assertThat(names).contains("administrator_footnote","administrator_endnote","decision_chapter_1_BP");
+            assertThat(text(unzip(result),"word/footnotes.xml")).contains("Administrator footnote","administrator_endnote","See saved endnote");
+            assertThat(text(unzip(result),"word/endnotes.xml")).contains("Administrator endnote");
+            assertThat(text(unzip(result),"word/styles.xml")).contains("Georgia");
+            assertThat(doc.getDocument().xmlText()).contains("w:anchor=\"decision_chapter_1_BP\"");
+            java.nio.file.Path qa=java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/final-word-review"));
+            java.nio.file.Files.write(qa.resolve("custom-notes-"+language+".docx"),result);
             assertThat(doc.getHeaderList().getFirst().getText()).contains("Administrator header");
             assertThat(doc.getFooterList().getFirst().getText()).contains("Administrator footer");
             assertThat(unzip(result).values()).anyMatch(bytes->java.util.Arrays.equals(logo,bytes));
