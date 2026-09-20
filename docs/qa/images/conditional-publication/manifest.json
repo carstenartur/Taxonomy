@@ -1,0 +1,97 @@
+{
+  "recordedAt": "2026-09-20T17:37:23.030208+00:00",
+  "run": 35525893725,
+  "source": "ca2e28dba4b258cf33db3261aa8449e832ebfb2f",
+  "tree": "7c1ecbbf6aa564013f7469aff061d2305fbd7c69",
+  "artifactId": 10610101827,
+  "zipSha256": "efa6fc1afd77579462c519f04c9d511b78370e1523471d0b1f79cc01d3263eed",
+  "snapshotId": "eaed0ee4-abcf-4387-a0fe-c9572aa6f5ce",
+  "testOnly": true,
+  "images": {
+    "78-native-package-en.png": {
+      "sha256": "f99e29c1cd23cebbcb2258946bd6d2d56e2ac3dab06418b861c86b8b254b0fda",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/78-native-package-en.png"
+    },
+    "79-native-package-de.png": {
+      "sha256": "9d7f7cc04f19c5f27644488a85378431b8d9daa0abc9c81597ed3bfb7817623c",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/79-native-package-de.png"
+    },
+    "80-native-endpoint-review-de.png": {
+      "sha256": "ccb57d7eb0cd5ac7f879987dc69623b95c5a553a435b76ed22d1ab38886092b8",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/80-native-endpoint-review-de.png"
+    },
+    "80-native-endpoint-review-en.png": {
+      "sha256": "88c16701c3cfb2c92a5d82c8d350dd8092976fa2670ac2ffa01518a9a63186ba",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/80-native-endpoint-review-en.png"
+    },
+    "81-publication-review-de.png": {
+      "sha256": "0950d433f19346d3cd0e1ababa06f3e5ad4c028cf9354b7f1519a82ffba57d1e",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/81-publication-review-de.png"
+    },
+    "81-publication-review-en.png": {
+      "sha256": "390c52fcf11ca4d389f2ec474e1d498ee2944014eb8d2ceeafdb96128b0fdb0d",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/81-publication-review-en.png"
+    },
+    "82-publication-partial-de.png": {
+      "sha256": "5ee76e6e91491f6046d8c3daab01a35d051f8818879eb9e8c024042ac79d93e0",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/82-publication-partial-de.png"
+    },
+    "82-publication-partial-en.png": {
+      "sha256": "7e4f7afd412ef53f4bf82dd47d3c3dd17d35f15eedaf977abdc3b655b6b1710e",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/82-publication-partial-en.png"
+    },
+    "83-publication-recovery-de.png": {
+      "sha256": "343924850428198fd076871d588b241e99343f1627231e50a6d2cbb2e6ddfd69",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/83-publication-recovery-de.png"
+    },
+    "83-publication-recovery-en.png": {
+      "sha256": "fb21df509c8f48472fd06c2c97e6ce20921132c15fa60fbf936161ffaa7e6f89",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/83-publication-recovery-en.png"
+    },
+    "84-publication-reconciliation-ready-de.png": {
+      "sha256": "63b5c5ba7e838e5ed6984ca476b26edff524e286bf0c78ba76de1c5bcdb2c810",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/84-publication-reconciliation-ready-de.png"
+    },
+    "84-publication-reconciliation-ready-en.png": {
+      "sha256": "b5a84208b28fefe57e4e19edc2dc69962ac31d55a2083278b567436ec2f0dd12",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/84-publication-reconciliation-ready-en.png"
+    },
+    "85-publication-reconciliation-preview-de.png": {
+      "sha256": "3aa764c9af63a30480249e35063aabf17acdb0eaf4332f61a98e542ce5348dfb",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/85-publication-reconciliation-preview-de.png"
+    },
+    "85-publication-reconciliation-preview-en.png": {
+      "sha256": "b563e84fe03a799109b8aced3485fda62da55f6ae268a72501b59e0caad65bbc",
+      "visuallyApproved": true,
+      "path": "docs/qa/images/conditional-publication/85-publication-reconciliation-preview-en.png"
+    }
+  },
+  "controls": {
+    "reconciliationKeyboard": true,
+    "languages": [
+      "en",
+      "de"
+    ],
+    "productCompatibility": "NOT_EXECUTED",
+    "unknownReload": true,
+    "frozenRetry": true,
+    "requestInterception": false,
+    "keyboardDecisions": true,
+    "testOnly": true,
+    "provider": "taxonomy-publication-contract-v1"
+  },
+  "visualReview": "Controller inspected all 14 actual images and approved package controls, native endpoints, publication review, partial UNKNOWN, recovery, enabled reconciliation and successor preview with predecessor link."
+}

@@ -1,0 +1,508 @@
+{
+  "schemaVersion": 1,
+  "status": "AUTOMATED_AND_REPRESENTATIVE_VISUAL_CHECKS_PASSED_AWAITING_INDEPENDENT_REVIEW",
+  "source": {
+    "startBase": "fce0a58cd25159ddf5d5e4235557c60e51745ab9",
+    "sourceFilesSha256": {
+      "taxonomy-export/src/main/java/com/taxonomy/export/VisioDiagramService.java": "16d31262531a29e0b1a4cf56552b4faf7fa569527ec317cc18c9c22d97b57c59",
+      "taxonomy-export/src/main/java/com/taxonomy/export/VisioPackageBuilder.java": "6a75d28209dbb0553895fe21519e782090aeadfea2b7e27dddf51863d094d706",
+      "taxonomy-export/src/main/java/com/taxonomy/export/VisioPackageValidator.java": "b34084b9e90eecd8fbeb0e07175ed947ec7099de025b8433fc1fd01415518b76",
+      "taxonomy-export/src/main/java/com/taxonomy/export/VisioPresentation.java": "7d2385f02ad693aee384cd7d847524647b3e5ea9945370fc5284c22f775ddc19",
+      "taxonomy-export/src/main/java/com/taxonomy/visio/VisioConnect.java": "13c751af38c9efacaafada0af66d1038083015ffc8c4efe821e3ece136d9c884",
+      "taxonomy-export/src/main/java/com/taxonomy/visio/VisioPage.java": "8cd5cf08418f65ce2b0327de86a5aee195011cef95c6643fc6af15f8cf68b6fa",
+      "taxonomy-export/src/main/java/com/taxonomy/visio/VisioTextBox.java": "c17a873c2e3fefe1bde7d9044cbf9d81d2e93cb55e06fba4c68ef6a6f9580eab",
+      "taxonomy-export/src/main/java/com/taxonomy/visio/converter/VisioPageContentsConverter.java": "9ff98fce1fc085a714c3618d09255f9ccb0ba68b51a8c893c7dc6c9e58b22712",
+      "taxonomy-export/src/main/java/com/taxonomy/visio/converter/VisioPagesConverter.java": "6a701fada9ae82886b0258d31af5a68fb10baf7726fa29348271508d19268966",
+      "taxonomy-export/src/main/resources/visio/handoff-profile-v2.json": "94f049ce88a2aa850c7df998b7fe516caba25eace92b64cdf87987705a41a5a3",
+      "taxonomy-export/src/test/java/com/taxonomy/export/VisioGraphicalQualityTest.java": "87151f49c1b65a51f8a4dd198e62dad1d3ad5c7405dd07dba1cf8522e5a6f0b3",
+      "taxonomy-export/src/test/java/com/taxonomy/export/VisioHandoffContractTest.java": "d89360a6d30d21bc1efa3c8e6ea0609cfc09ad9928b9670b9831e1ee23cfbd8f",
+      "taxonomy-tooling/src/main/java/com/taxonomy/tooling/CivilianDocumentQa.java": "036787fb99b0ad568ce57075bc84dacb0b440142c103065d9e0115259d208376",
+      "taxonomy-tooling/src/main/java/com/taxonomy/tooling/TaxonomyTooling.java": "01ef8a66a24d4db5c60aa4c60d4715f5fe175b0e58049bffa2c918778070d7fc",
+      "taxonomy-tooling/src/test/java/com/taxonomy/tooling/CivilianDocumentQaTest.java": "dd9719bf3ed3e9b1e943b9ad2a50425e2caffa071f5ab639611632500ef61bc6"
+    },
+    "sourceSetSha256": "71537c29855909588bbd774fa25aa7534c15a31987f5a9fad50ec68e97c16328"
+  },
+  "actualHttp": {
+    "test": "CivilianArchitectureAcceptanceTest",
+    "snapshotId": "8e04afc0-63a2-4fbb-83c7-7ffc655f87eb",
+    "artifact": "architecture.vsdx",
+    "artifactSha256": "ea30d3fd3e4d5901422f76959de0c0dfc7554f723b60e27441ab4bd0a317b7bd",
+    "bundleSha256": "a58453e0ce218ae750ab4b86797117e910512b69ec9a8b15a6bb1d8acfd1e8f1"
+  },
+  "before": {
+    "ciRun": 35515329213,
+    "artifactId": 10605884941,
+    "vsdxSha256": "2dd7727ab8cdd7c3a19b75740fb854627a7375974a212588a1c5afa26b479856",
+    "graphicalDisposition": "Known failing one-page graphical reference; superseded by this follow-up."
+  },
+  "sourceParity": {
+    "nodes": {
+      "before": 38,
+      "after": 38,
+      "differentIds": []
+    },
+    "edges": {
+      "before": 44,
+      "after": 44,
+      "differentIds": []
+    },
+    "nativeGraphSha256": "34b8b59029008c8954d71013f974f4be5ccf02bb89ff498fffb034311541691a",
+    "frozenWordGraphSha256": "5365c5d5fcae616a37e84ed3be15f3c62a2ad658a35e60c0bf2568dfc7f7c191",
+    "titleDisposition": "Run-specific project key differs; canonical nodes and edges are exactly equal by id."
+  },
+  "verification": {
+    "finalFocusedTests": 76,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "logSha256": "d170c94164809ab285ae34d2189b0645f5be9912d5e17bca2a3f89e72163968e",
+    "java": "JDK25.0.2+10, release21",
+    "command": "python /workspace/scratch/dae1667028d4/verify-repo.py -pl taxonomy-app,taxonomy-tooling -am test -Dtest=CivilianArchitectureAcceptanceTest,VisioGraphicalQualityTest,VisioDynamicGlueContractTest,VisioPackageContractTest,VisioPackagePoiCompatibilityTest,VisioPackageBuilderTest,VisioHandoffContractTest,ArchitectureVisioHandoffAcceptanceTest,CivilianDocumentQaTest -DgenerateScreenshots=false -Dsurefire.failIfNoSpecifiedTests=false"
+  },
+  "rendering": {
+    "renderer": "LibreOfficeDev 26.8.0.0.alpha0 2c87e51eeaa2b413ff4ae097b2705eea1995d8e5",
+    "documents": {
+      "architecture.vsdx": {
+        "pages": 11,
+        "emptyBodyPages": [],
+        "contentAssertions": 38,
+        "relationshipCoverage": {
+          "relationships": {
+            "e1": {
+              "targetId": "CR-1097",
+              "key": "R1",
+              "sourceId": "CP-1041",
+              "type": "REALIZES",
+              "page": 2
+            },
+            "e10": {
+              "targetId": "BP-1017",
+              "key": "R2",
+              "sourceId": "CO-1048",
+              "type": "SUPPORTS",
+              "page": 2
+            },
+            "e11": {
+              "targetId": "CR-1097",
+              "key": "R3",
+              "sourceId": "CO-1048",
+              "type": "SUPPORTS",
+              "page": 2
+            },
+            "e12": {
+              "targetId": "CP-1041",
+              "key": "R4",
+              "sourceId": "CR-1097",
+              "type": "FULFILLS",
+              "page": 2
+            },
+            "e13": {
+              "targetId": "CP-1041",
+              "key": "R5",
+              "sourceId": "CI-1052",
+              "type": "FULFILLS",
+              "page": 2
+            },
+            "e14": {
+              "targetId": "CR-1097",
+              "key": "R6",
+              "sourceId": "BP-1017",
+              "type": "USES",
+              "page": 2
+            },
+            "e15": {
+              "targetId": "CI-1052",
+              "key": "R7",
+              "sourceId": "BP-1017",
+              "type": "USES",
+              "page": 3
+            },
+            "e16": {
+              "targetId": "IP-1116",
+              "key": "R8",
+              "sourceId": "BR-1223",
+              "type": "USES",
+              "page": 3
+            },
+            "e17": {
+              "targetId": "CR-1097",
+              "key": "R9",
+              "sourceId": "UA-1580",
+              "type": "USES",
+              "page": 3
+            },
+            "e18": {
+              "targetId": "CI-1052",
+              "key": "R10",
+              "sourceId": "UA-1580",
+              "type": "USES",
+              "page": 3
+            },
+            "e19": {
+              "targetId": "CO-1048",
+              "key": "R11",
+              "sourceId": "UA-1580",
+              "type": "USES",
+              "page": 4
+            },
+            "e2": {
+              "targetId": "CI-1052",
+              "key": "R12",
+              "sourceId": "CP-1041",
+              "type": "REALIZES",
+              "page": 4
+            },
+            "e20": {
+              "targetId": "CI-1052",
+              "key": "R13",
+              "sourceId": "CR-1097",
+              "type": "DEPENDS_ON",
+              "page": 4
+            },
+            "e21": {
+              "targetId": "CR-1097",
+              "key": "R14",
+              "sourceId": "CI-1052",
+              "type": "DEPENDS_ON",
+              "page": 4
+            },
+            "e22": {
+              "targetId": "CR-1097",
+              "key": "R15",
+              "sourceId": "CO-1048",
+              "type": "DEPENDS_ON",
+              "page": 4
+            },
+            "e23": {
+              "targetId": "CR",
+              "key": "R16",
+              "sourceId": "CP",
+              "type": "REALIZES",
+              "page": 5
+            },
+            "e24": {
+              "targetId": "CI",
+              "key": "R17",
+              "sourceId": "CP",
+              "type": "REALIZES",
+              "page": 5
+            },
+            "e25": {
+              "targetId": "CO",
+              "key": "R18",
+              "sourceId": "CP",
+              "type": "REALIZES",
+              "page": 5
+            },
+            "e26": {
+              "targetId": "BP",
+              "key": "R19",
+              "sourceId": "CR",
+              "type": "SUPPORTS",
+              "page": 5
+            },
+            "e27": {
+              "targetId": "BR",
+              "key": "R20",
+              "sourceId": "CR",
+              "type": "SUPPORTS",
+              "page": 5
+            },
+            "e28": {
+              "targetId": "UA",
+              "key": "R21",
+              "sourceId": "CR",
+              "type": "SUPPORTS",
+              "page": 6
+            },
+            "e29": {
+              "targetId": "BP",
+              "key": "R22",
+              "sourceId": "CI",
+              "type": "SUPPORTS",
+              "page": 6
+            },
+            "e3": {
+              "targetId": "CO-1048",
+              "key": "R23",
+              "sourceId": "CP-1041",
+              "type": "REALIZES",
+              "page": 6
+            },
+            "e30": {
+              "targetId": "BR",
+              "key": "R24",
+              "sourceId": "CI",
+              "type": "SUPPORTS",
+              "page": 7
+            },
+            "e31": {
+              "targetId": "BP",
+              "key": "R25",
+              "sourceId": "UA",
+              "type": "SUPPORTS",
+              "page": 7
+            },
+            "e32": {
+              "targetId": "BP",
+              "key": "R26",
+              "sourceId": "CO",
+              "type": "SUPPORTS",
+              "page": 7
+            },
+            "e33": {
+              "targetId": "CR",
+              "key": "R27",
+              "sourceId": "CO",
+              "type": "SUPPORTS",
+              "page": 7
+            },
+            "e34": {
+              "targetId": "CP",
+              "key": "R28",
+              "sourceId": "CR",
+              "type": "FULFILLS",
+              "page": 8
+            },
+            "e35": {
+              "targetId": "CP",
+              "key": "R29",
+              "sourceId": "CI",
+              "type": "FULFILLS",
+              "page": 8
+            },
+            "e36": {
+              "targetId": "CR",
+              "key": "R30",
+              "sourceId": "BP",
+              "type": "USES",
+              "page": 8
+            },
+            "e37": {
+              "targetId": "CI",
+              "key": "R31",
+              "sourceId": "BP",
+              "type": "USES",
+              "page": 8
+            },
+            "e38": {
+              "targetId": "IP",
+              "key": "R32",
+              "sourceId": "BR",
+              "type": "USES",
+              "page": 8
+            },
+            "e39": {
+              "targetId": "CR",
+              "key": "R33",
+              "sourceId": "UA",
+              "type": "USES",
+              "page": 9
+            },
+            "e4": {
+              "targetId": "BP-1017",
+              "key": "R34",
+              "sourceId": "CR-1097",
+              "type": "SUPPORTS",
+              "page": 9
+            },
+            "e40": {
+              "targetId": "CI",
+              "key": "R35",
+              "sourceId": "UA",
+              "type": "USES",
+              "page": 9
+            },
+            "e41": {
+              "targetId": "CO",
+              "key": "R36",
+              "sourceId": "UA",
+              "type": "USES",
+              "page": 9
+            },
+            "e42": {
+              "targetId": "CI",
+              "key": "R37",
+              "sourceId": "CR",
+              "type": "DEPENDS_ON",
+              "page": 9
+            },
+            "e43": {
+              "targetId": "CR",
+              "key": "R38",
+              "sourceId": "CI",
+              "type": "DEPENDS_ON",
+              "page": 9
+            },
+            "e44": {
+              "targetId": "CR",
+              "key": "R39",
+              "sourceId": "CO",
+              "type": "DEPENDS_ON",
+              "page": 10
+            },
+            "e5": {
+              "targetId": "BR-1223",
+              "key": "R40",
+              "sourceId": "CR-1097",
+              "type": "SUPPORTS",
+              "page": 10
+            },
+            "e6": {
+              "targetId": "UA-1580",
+              "key": "R41",
+              "sourceId": "CR-1097",
+              "type": "SUPPORTS",
+              "page": 10
+            },
+            "e7": {
+              "targetId": "BP-1017",
+              "key": "R42",
+              "sourceId": "CI-1052",
+              "type": "SUPPORTS",
+              "page": 11
+            },
+            "e8": {
+              "targetId": "BR-1223",
+              "key": "R43",
+              "sourceId": "CI-1052",
+              "type": "SUPPORTS",
+              "page": 11
+            },
+            "e9": {
+              "targetId": "BP-1017",
+              "key": "R44",
+              "sourceId": "UA-1580",
+              "type": "SUPPORTS",
+              "page": 11
+            }
+          },
+          "canonicalRelationships": 44,
+          "renderedRelationships": 44
+        },
+        "sourceSha256": "ea30d3fd3e4d5901422f76959de0c0dfc7554f723b60e27441ab4bd0a317b7bd",
+        "architectureSourceSha256": "1cbbf4d7a3a04fa2d1e61e71f8bcc753038f2239744b81ce500686d64db27b42",
+        "pageImagesSha256": {
+          "architecture-07.png": "2daf43bf98c929ab53f3cc0fdb860ea8709684cf2378c02deb286abdfe7d9497",
+          "architecture-10.png": "292fafe8e2affcdf365baa8023a369cdc81147a0287179b24bacdd44c6f872bf",
+          "architecture-08.png": "05c6c962ac30432d0b6496ec7e39306ba888b8e8d784069696a5724c00d7f180",
+          "architecture-04.png": "77047df03a995820a361cc89870421cfe9a58b7f4791a19ea52f3286cde27077",
+          "architecture-11.png": "b366b5d2900a67c1673af1905a2e6ea278e80261fea8bed2e2bf317f325add1a",
+          "architecture-03.png": "f2d3328bed18eb3a40756e31f1d48a07747266ff733812375d6b7d76f9e7ff85",
+          "architecture-01.png": "962b09c97a06339107593f9daf551cbf01264ee32335fcb769f803fbef9fae3a",
+          "architecture-06.png": "49a7f875e015e1b9b3a18332f31a76f142be42919e9e1209085dd2be0049f228",
+          "architecture-09.png": "a05811513b82e60a7742d532d230d6cf3f2688d063e1139caf1ca8a6ae64f38a",
+          "architecture-02.png": "cc09de440d1dcc6335bb92618b4efdccdce53153f8525ffa408b299edc7cf792",
+          "architecture-05.png": "0dd76ba5845c7b1827a666727a2df6d5e23655e7487e47ffe1476e3aaae6ce84"
+        },
+        "renderedPdfSha256": "9b42641b5f3bf37c7c254e4b670aa73d1a432e68df5aed0cc2928d372e9221bf"
+      }
+    }
+  },
+  "popplerVersion": "24.02.0",
+  "pageMembership": [
+    {
+      "page": 1,
+      "name": "CIV-FLOOD-D7850609 / CIV-FLOOD-001 — Civilian flood information and subscriptions",
+      "nodeOccurrences": 38,
+      "relationshipOccurrences": 44
+    },
+    {
+      "page": 2,
+      "name": "Relationships R1–R6",
+      "nodeOccurrences": 5,
+      "relationshipOccurrences": 6
+    },
+    {
+      "page": 3,
+      "name": "Relationships R7–R10",
+      "nodeOccurrences": 6,
+      "relationshipOccurrences": 4
+    },
+    {
+      "page": 4,
+      "name": "Relationships R11–R15",
+      "nodeOccurrences": 5,
+      "relationshipOccurrences": 5
+    },
+    {
+      "page": 5,
+      "name": "Relationships R16–R20",
+      "nodeOccurrences": 6,
+      "relationshipOccurrences": 5
+    },
+    {
+      "page": 6,
+      "name": "Relationships R21–R23",
+      "nodeOccurrences": 6,
+      "relationshipOccurrences": 3
+    },
+    {
+      "page": 7,
+      "name": "Relationships R24–R27",
+      "nodeOccurrences": 6,
+      "relationshipOccurrences": 4
+    },
+    {
+      "page": 8,
+      "name": "Relationships R28–R32",
+      "nodeOccurrences": 6,
+      "relationshipOccurrences": 5
+    },
+    {
+      "page": 9,
+      "name": "Relationships R33–R38",
+      "nodeOccurrences": 6,
+      "relationshipOccurrences": 6
+    },
+    {
+      "page": 10,
+      "name": "Relationships R39–R41",
+      "nodeOccurrences": 5,
+      "relationshipOccurrences": 3
+    },
+    {
+      "page": 11,
+      "name": "Relationships R42–R44",
+      "nodeOccurrences": 4,
+      "relationshipOccurrences": 3
+    }
+  ],
+  "presentationLosses": [
+    {
+      "scope": "document",
+      "id": "",
+      "field": "overviewCaptions",
+      "kind": "OMITTED",
+      "rationale": "8 overview captions could not be placed without collision. Native connectors/data remain; consult relationship details."
+    },
+    {
+      "scope": "document",
+      "id": "",
+      "field": "relationshipDetailCoverage",
+      "kind": "MAPPED",
+      "rationale": "Native relationship detail coverage 44/44; covered keys R1–R44. All relationships have a detail caption (long types explicitly marked if shortened)."
+    }
+  ],
+  "visualReview": {
+    "implementerInspectedPages": [
+      1,
+      2,
+      7,
+      11
+    ],
+    "independentAllPageInspection": "PENDING_CONTROLLER",
+    "observations": "Inspected pages have upright separated captions and no strokes over node labels. Dense overview is a compact-key view; all44 relations have native readable detail captions. Arrowheads in Draw can be hidden by opaque endpoint bodies; explicit source→target detail captions retain readable direction."
+  },
+  "productAcceptance": {
+    "microsoftVisio": "NOT_EXECUTED",
+    "sparxEaPcs": "NOT_EXECUTED"
+  },
+  "evidenceDirectory": ".superpowers/sdd/2026-09-20-visio-quality/final-http",
+  "notes": [
+    "Every changed page PNG, PDF, extracted text and bbox is retained with hashes.",
+    "Final source tests/Draw use actual HTTP saved-snapshot VSDX, not the preliminary direct-projection diagnostic.",
+    "No unchanged Word visual suite was repeated.",
+    "Optional details share existing32page/20kshape/60kconnector/32MiBpackage limits. Complete base pages stay intact; detail coverage is explicitly truncated at capacity."
+  ]
+}

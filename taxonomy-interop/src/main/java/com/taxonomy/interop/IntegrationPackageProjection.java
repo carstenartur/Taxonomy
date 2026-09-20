@@ -92,8 +92,8 @@ final class IntegrationPackageProjection {
                 && Set.of(ArtifactKind.ELEMENT, ArtifactKind.SPECIFICATION).contains(mapping.internal().kind()))
             external.put(mapping.businessIdentity(), mapping.internal().id());
         if (includeNew) {
-            model.getElements().forEach(e -> external.putIfAbsent(e.getId(), com.taxonomy.exchange.sparx.SparxMappingProfile.externalId(connection.id(), "export-element:" + e.getId())));
-            model.getPackages().forEach(p -> external.putIfAbsent(p.id(), com.taxonomy.exchange.sparx.SparxMappingProfile.externalId(connection.id(), "export-package:" + p.id())));
+            model.getElements().forEach(e -> external.putIfAbsent(e.getId(), IntegrationDomainAdapter.externalId(connection, "export-element:" + e.getId())));
+            model.getPackages().forEach(p -> external.putIfAbsent(p.id(), IntegrationDomainAdapter.externalId(connection, "export-package:" + p.id())));
         }
         Set<String> existingPackages = model.getPackages().stream().map(ArchitecturePackage::id).collect(java.util.stream.Collectors.toSet());
         for (Identity mapping : mappings) if (mapping.internal() != null && mapping.internal().kind() == ArtifactKind.SPECIFICATION && !existingPackages.contains(mapping.businessIdentity()))
@@ -107,7 +107,7 @@ final class IntegrationPackageProjection {
         Map<String, Artifact> occurrences = new HashMap<>();
         for (Artifact a : items.values()) if (a.kind() == ArtifactKind.PLACEMENT) occurrences.put(a.extensions().get("artifact"), a);
         Map<String, String> placementIds = new HashMap<>();
-        external.forEach((nativeId, id) -> placementIds.put(nativeId, occurrences.containsKey(id) ? occurrences.get(id).id() : "placement:" + id));
+        external.forEach((nativeId, id) -> placementIds.put(nativeId, occurrences.containsKey(id) ? occurrences.get(id).id() : (com.taxonomy.interop.sparx.SparxSnapshots.isSparx(connection.connectorId()) ? "placement:" + id : IntegrationDomainAdapter.externalId(connection, "export-placement:" + nativeId))));
         List<PackagePlacement> members = new ArrayList<>();
         model.getPackages().forEach(p -> members.add(new PackagePlacement(PackageMemberKind.PACKAGE, p.id(), p.parentId(), p.position())));
         model.getElements().forEach(e -> {

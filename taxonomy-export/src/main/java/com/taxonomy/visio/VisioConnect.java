@@ -7,6 +7,7 @@ public class VisioConnect {
     private final String fromShape;
     private final String toShape;
     private final String relationType;
+    private VisioTextBox textBox;
     private final Map<String, VisioProperty> properties = new TreeMap<>();
 
     public VisioConnect(String fromShape, String toShape, String relationType) {
@@ -14,6 +15,9 @@ public class VisioConnect {
         this.toShape = toShape;
         this.relationType = relationType;
     }
+
+    public VisioTextBox getTextBox() { return textBox; }
+    public void setTextBox(VisioTextBox textBox) { this.textBox = textBox; }
 
     public String getFromShape() { return fromShape; }
     public String getToShape() { return toShape; }
