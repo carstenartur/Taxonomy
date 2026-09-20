@@ -83,22 +83,32 @@ public final class SparxOslcAmCodec {
                     continue;
                 }
                 String type = literal(resource, DCT + "type", true);
-                String stereotype = literal(resource, SS + "stereotype", false);
+                Stereotypes stereotypes = stereotypes(resource);
+                String stereotype = stereotypes.unsupported() || stereotypes.names().isEmpty() ? "" : stereotypes.names().getFirst();
                 boolean pkg = prefixed.startsWith("pk_");
                 if (pkg && !type.equals("Package")) throw invalid("SPARX_AM_TYPE");
                 boolean requirement = type.equals("Requirement");
                 ArtifactKind kind = pkg ? ArtifactKind.SPECIFICATION : requirement ? ArtifactKind.REQUIREMENT : ArtifactKind.ELEMENT;
                 Map<String, String> attributes = new TreeMap<>(), extensions = new TreeMap<>();
                 extensions.put("uri", uri.toString());
-                if (!stereotype.isBlank()) extensions.put("stereotype", stereotype);
-                String canonical = SparxMappingProfile.elementType(type, stereotype, null);
+                if (!stereotype.isBlank()) {
+                    extensions.put("stereotype", stereotype);
+                    attributes.put(SS + "stereotype", stereotype);
+                }
+                if (stereotypes.unsupported()) {
+                    for (int i = 0; i < stereotypes.names().size(); i++)
+                        attributes.put("stereotype:" + i, stereotypes.names().get(i));
+                    losses.add(loss(guid, "stereotype", "SPARX_AM_STEREOTYPE_UNMAPPED",
+                            "Multiple or unrecognized structured stereotypes need explicit review/remapping"));
+                }
+                String canonical = stereotypes.unsupported() ? null : SparxMappingProfile.elementType(type, stereotype, null);
                 if (kind == ArtifactKind.ELEMENT) {
                     if (canonical == null) losses.add(loss(guid, "type", "SPARX_ELEMENT_UNMAPPED", "Reject or explicitly map this EA element type"));
                     else extensions.put("canonicalType", canonical);
                 }
                 for (Statement statement : resource.listProperties().toList()) {
                     String property = statement.getPredicate().getURI();
-                    if (Set.of(RDF.type.getURI(), DCT + "title", DCT + "description", DCT + "type", DCT + "identifier", SS + "parentresourceidentifier").contains(property)) continue;
+                    if (Set.of(RDF.type.getURI(), DCT + "title", DCT + "description", DCT + "type", DCT + "identifier", SS + "parentresourceidentifier", SS + "stereotype").contains(property)) continue;
                     if (statement.getObject().isLiteral()) {
                         if (attributes.putIfAbsent(property, statement.getString()) != null) throw invalid("SPARX_AM_PROPERTY");
                     } else losses.add(loss(guid, property, "SPARX_AM_FEATURE_NOT_MAPPED", "Linked or structured feature is not imported by this profile"));
@@ -134,6 +144,29 @@ public final class SparxOslcAmCodec {
         return new ExchangeDocument(PROFILE, VERSION, ReqifExchangeCodec.digest(versions.toString().getBytes(StandardCharsets.UTF_8)),
                 false, "", List.copyOf(artifacts.values()), List.of(), placements,
                 Map.of("identifier", modelId, "resource", base.toString(), "collectionEvidence", "EXHAUSTED_PAGES_NOT_AUTHORITATIVE"), losses);
+    }
+
+    private record Stereotypes(List<String> names, boolean unsupported) {}
+    private static Stereotypes stereotypes(Resource resource) {
+        // PCS uses <ss:stereotype><ss:stereotypename><ss:name>...</ss:name>
+        // </ss:stereotypename></ss:stereotype>. In RDF this is a property pointing
+        // to a typed node with a direct ss:name property, not a scalar literal.
+        Set<String> names = new TreeSet<>();
+        boolean unsupported = false;
+        for (Statement statement : resource.listProperties(resource.getModel().createProperty(SS + "stereotype")).toList()) {
+            if (statement.getObject().isLiteral()) {
+                if (!statement.getString().isBlank()) names.add(statement.getString());
+            } else {
+                var values = statement.getResource().listProperties(resource.getModel().createProperty(SS + "name")).toList();
+                if (values.isEmpty()) unsupported = true;
+                for (Statement name : values) {
+                    if (!name.getObject().isLiteral() || name.getString().isBlank()) unsupported = true;
+                    else names.add(name.getString());
+                }
+            }
+            if (names.size() > 32) throw invalid("SPARX_AM_PROPERTY_LIMIT");
+        }
+        return new Stereotypes(List.copyOf(names), unsupported || names.size() > 1);
     }
 
     private static Model parse(byte[] content, URI base) {

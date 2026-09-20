@@ -157,7 +157,11 @@ Inhalte und ETags. Dies garantiert **keinen atomaren PCS-Modellstand**. Vollstä
 Durchlaufen der Seiten erlaubt niemals das Löschen fehlender Objekte.
 
 Version 1 übernimmt Paket- und Elementeigenschaften, Beschreibungen, GUIDs und
-Pakethierarchie einschließlich Anforderungselementen. Beziehungen, Tags, Attribute,
+Pakethierarchie einschließlich Anforderungselementen. Ein einzelner eingebetteter
+Stereotyp wird aus der dokumentierten RDF-Struktur `ss:stereotypename/ss:name`
+gelesen. Mehrere oder unbekannte strukturierte Stereotypen erzeugen einen Verlust;
+ein Element benötigt dann eine ausdrückliche Typzuordnung vor dem Anwenden.
+Beziehungen, Tags, Attribute,
 Operationen und Diagramme werden nicht nachgeladen; der Verlustbericht benennt
 diese Grenzen. XMI bleibt der umfassendere semantische Austauschweg. Das AM-Profil
 bietet weder Dateiexport noch Live-Schreiben an; die Prüfung einer Auswahl ist

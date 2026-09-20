@@ -155,7 +155,10 @@ it is **not an atomic PCS snapshot or conditional remote write guarantee**. Page
 exhaustion never authorizes deletion of missing objects.
 
 Version 1 imports package/element properties, descriptions, GUIDs and package
-hierarchy, including requirement elements. Connectors, tags, attributes, operations
+hierarchy, including requirement elements. A single inline stereotype is read
+from the documented nested `ss:stereotypename/ss:name` RDF shape. Multiple or
+unrecognized structured stereotypes produce a loss and require explicit remapping
+before an element can be applied; no arbitrary canonical type is chosen. Connectors, tags, attributes, operations
 and diagrams are not fetched; these exclusions appear in the loss report. XMI
 remains the broader semantic exchange route. AM advertises no file export or live
 write capability, and its selection validator is independent of publication.

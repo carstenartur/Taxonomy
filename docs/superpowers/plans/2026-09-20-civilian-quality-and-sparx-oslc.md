@@ -90,3 +90,31 @@ integration identities, previews, reconciliation, journal and checkpoints.
   reflected credentials, paging loops and later-page failure contracts. The Spring
   workflow separately checks persisted failure/retry, native journal apply, replay
   without refetch and changed remote content before apply.
+
+- Native document QA GREEN: 55 Word pages, 261 preserved text assertions, no empty
+  body pages; all 55 pages visually inspected, with selected pages at full size.
+  Draw opens the VSDX and all 38 semantic labels are present. Detailed hashes and
+  source/run identity are in docs/qa/civilian-quality-followup.json.
+- Whole-branch independent review (0b2a8ca3..7236df7): no Critical findings, one
+  Important PCS contract defect, no established Minors. Structured stereotypes
+  were incorrectly treated as literals. Official oslc_select_param and
+  oslc_quick_ref documentation plus a runtime reproduction confirm the defect.
+- Final: fixed nested PCS stereotype handling — documented typed RDF fixture
+  readsDocumentedNestedStereotypeAndReportsAmbiguousMultipleNames RED→GREEN;
+  HTTP reader also exercises nested stereotypes. 20 codec/XMI/HTTP tests GREEN.
+  Multiple/unknown structures are explicit losses requiring a type decision;
+  no arbitrary canonical type is selected. Full suite remains the final gate.
+- Final: Ruling: actual EA/PCS/Visio compatibility stays NOT_EXECUTED because no
+  product is available; contract and Draw results cannot establish it. Cost if
+  treated otherwise: users could rely on untested interoperability.
+- Final: Ruling: remote reads use observed collection evidence, not an atomic
+  provider snapshot or conditional write. No write capability is advertised.
+  Cost if misunderstood: remote changes after observation cannot be prevented.
+- Final: Ruling: dense Visio captions/crossings remain disclosed as layout work;
+  the fixture tests semantic handoff and its focused browser view, not graphical
+  approval of a 38-node poster. Cost: manual rearrangement for presentation.
+- Final: Ruling: the sourced flood case is accepted only as an integration-test
+  reference, with F3/F4/F5/A1 coverage obligations retained. Cost if misused:
+  deployment would lack required account, delivery and operational contracts.
+- The review did not assume pending build/browser success. Both are required
+  execution steps; no review findings or unexecuted product checks are hidden.

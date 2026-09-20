@@ -57,6 +57,24 @@ class SparxOslcAmCodecTest {
                 .isInstanceOf(ExchangeFormatException.class).hasMessageNotContaining("secret");
     }
 
+    @Test void readsDocumentedNestedStereotypeAndReportsAmbiguousMultipleNames() {
+        String xml = new String(resource(new OslcRdf(), "el_" + E, "Class", "Oversight", "").xml(),
+                java.nio.charset.StandardCharsets.UTF_8);
+        String nested = "<ss:stereotype xmlns:ss=\"" + SparxOslcAmCodec.SS + "\">"
+                + "<ss:stereotypename><ss:name>BusinessRole</ss:name>"
+                + "</ss:stereotypename></ss:stereotype>";
+        xml = xml.replace("</rdf:Description>", nested + "</rdf:Description>");
+        var document = codec.read(List.of(new SparxOslcAmCodec.Page(BASE.resolve("qc/"), null,
+                xml.getBytes(java.nio.charset.StandardCharsets.UTF_8))), BASE);
+        assertThat(document.artifacts().getFirst().extensions()).containsEntry("stereotype", "BusinessRole")
+                .containsEntry("canonicalType", "BusinessRole");
+        String multiple = xml.replace(nested, nested + nested.replace("BusinessRole", "Component"));
+        document = codec.read(List.of(new SparxOslcAmCodec.Page(BASE.resolve("qc/"), null,
+                multiple.getBytes(java.nio.charset.StandardCharsets.UTF_8))), BASE);
+        assertThat(document.artifacts().getFirst().extensions()).doesNotContainKey("canonicalType");
+        assertThat(document.losses()).extracting(l -> l.code()).contains("SPARX_AM_STEREOTYPE_UNMAPPED");
+    }
+
     private static OslcRdf resource(OslcRdf rdf, String id, String type, String title, String description) {
         return rdf.type(uri(id), SparxOslcAmCodec.AM + "Resource")
                 .literal(uri(id), OslcRdf.DCT + "identifier", id).literal(uri(id), OslcRdf.DCT + "type", type)

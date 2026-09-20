@@ -104,3 +104,14 @@ remain unexecuted. Official Structurizr grammar validation and the documented
 integration-reference review are now part of the follow-up. The counts and browser
 run above describe the earlier baseline; follow-up gate/CI evidence is recorded
 separately so historical results are not attributed to new code.
+
+## Quality follow-up (2026-09-20)
+
+[Machine-readable follow-up evidence](civilian-quality-followup.json) records a
+55-page Word render, no empty page bodies, 261 preserved text assertions and all
+38 Visio element labels. All 55 Word pages were inspected in contact sheets with
+selected full-size pages. The slight increase from the interim 53-page render
+keeps chapter headings and picture captions with their content. The original
+87-page defect is closed; no source requirement, alternative or reason was removed.
+The selected implementation checks passed: 29 tests, zero failures/errors, 3m19s.
+The final full gate and new browser run will be recorded with their own revisions.

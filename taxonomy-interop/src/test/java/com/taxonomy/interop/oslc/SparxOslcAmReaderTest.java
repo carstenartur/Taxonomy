@@ -46,10 +46,15 @@ class SparxOslcAmReaderTest {
     @AfterEach void stop() { transport.close(); server.stop(0); }
 
     @Test void realHttpUsesPcsTokenAndReturnsOnlySanitizedDurableEvidence() {
-        serve("qc/", resource("Observation reader"), 200);
+        String xml = new String(resource("Observation reader"), StandardCharsets.UTF_8)
+                .replace("</rdf:Description>", "<ss:stereotype xmlns:ss=\"" + SparxOslcAmCodec.SS + "\">"
+                        + "<ss:stereotypename><ss:name>CoreService</ss:name></ss:stereotypename>"
+                        + "</ss:stereotype></rdf:Description>");
+        serve("qc/", xml.getBytes(StandardCharsets.UTF_8), 200);
         var result = reader.read(context, connection(), base.resolve("sp/").toString(), null);
         assertEquals(2, calls.get()); assertEquals(1, result.artifacts().size());
         assertFalse(result.completeScope());
+        assertEquals("CoreService", result.artifacts().getFirst().extensions().get("canonicalType"));
         assertFalse(result.toString().contains(TOKEN));
         assertFalse(result.toString().contains("useridentifier"));
     }
