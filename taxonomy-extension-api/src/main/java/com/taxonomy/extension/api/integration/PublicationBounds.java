@@ -3,6 +3,7 @@ package com.taxonomy.extension.api.integration;
 import java.lang.reflect.RecordComponent;
 import java.net.URI;
 import java.util.*;
+import java.util.regex.Pattern;
 
 /** Finite transport budgets shared by adapters and the journal. No payload appears in diagnostics. */
 public final class PublicationBounds {
@@ -12,6 +13,7 @@ public final class PublicationBounds {
     public static final int MAX_DOCUMENT_BYTES = 16 * 1024 * 1024, MAX_ITEM_BYTES = 1024 * 1024;
     public static final int MAX_ATTEMPTS = 100;
     public static final long INVOCATION_SECONDS = 30, CLAIM_LEASE_SECONDS = 30;
+    private static final Pattern ENCODED_DELIMITER = Pattern.compile("%(?:2e|2f|5c|40|3f|23|25)", Pattern.CASE_INSENSITIVE);
     private PublicationBounds() {}
     public static void schema(int value) { if (value != SCHEMA_VERSION) throw invalid(); }
     public static void attempt(int value) { if (value < 1 || value > MAX_ATTEMPTS) throw invalid(); }
@@ -26,7 +28,7 @@ public final class PublicationBounds {
     }
     public static String resource(String value) {
         text(value);
-        if (value.toLowerCase(Locale.ROOT).matches(".*%(?:2e|2f|5c|40|3f|23|25).*")) throw invalid();
+        if (ENCODED_DELIMITER.matcher(value).find()) throw invalid();
         try {
             URI uri = URI.create(value);
             if (uri.getRawUserInfo() != null || uri.getRawQuery() != null || uri.getRawFragment() != null || value.contains("\\")

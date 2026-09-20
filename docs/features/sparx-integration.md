@@ -177,9 +177,10 @@ including token transport in GET query parameters or POST RDF. These differ from
 the generic OSLC RM transport. The reviewed vendor update documentation does not
 establish atomic expected-version writes or safe idempotent creation. A preflight
 GET followed by unconditional POST cannot provide the issue's concurrency guarantee.
-Live create/update/delete, item-level partial publication recovery and full
-Push/Synchronize therefore remain open pending a proven PCS contract or a
-Sparx-side conditional adapter. The optional SBPI plugin is also not implemented.
+The shared conditional publication, item-level recovery and Push/Synchronize engine
+is implemented and tested with a genuine test-only HTTP contract. Actual PCS
+create/update/delete remain disabled pending a proven PCS contract or a Sparx-side
+conditional adapter. The optional SBPI client design below is not an executed plugin.
 
 Real EA acceptance must test native export → EA import → rename/move/tag/connector
 edit → EA export → reviewed Taxonomy apply, including diagram preservation. Record
@@ -282,3 +283,122 @@ The application and browser walkthrough uses contract fixtures; EA/PCS product
 compatibility remains **NOT_EXECUTED**.
 
 Endpoint choices confirm the exact normalized connector ends. Even same-kind retargeting to another native object is rejected with `SPARX_ENDPOINT_KIND_UNMAPPED`; projection/type choices remain supported. This keeps native meaning aligned with retained and exported endpoint evidence.
+
+### Native package and endpoint controls
+
+The native editor's package panel uses the existing preview, rationale and apply
+workflow; a button does not bypass review. The empty package selection starts a
+new package. Reload restores saved native package state.
+
+| English control | German control | Behavior |
+|---|---|---|
+| Preview change | Änderung vorschauen | Previews package creation or title/description edits. |
+| Preview deletion | Löschung vorschauen | Previews deletion of the selected package; native structural constraints still apply. |
+| Move selected package | Ausgewähltes Paket verschieben | Previews placement under the selected parent at the requested sibling position. |
+| Place selected element | Ausgewähltes Element zuordnen | Previews placing the selected native element under the selected parent package. |
+| Detach selected element | Ausgewähltes Element lösen | Previews removal of package membership, retaining the element itself. |
+
+In integration review, **Native endpoint projection / Native Endpunktprojektion**
+and the source/target selects choose the supported native representation and exact
+normalized identities. They are review fields, not immediate writes. Requirement
+mapping and preserve-only rules are described above; changing a selection cannot
+retarget an imported connector to an unrelated native object.
+
+## Conditional publication and recovery
+
+The shared application now supports reviewed **Push** (Taxonomy → external tool)
+and **Synchronize** (reviewed changes in both directions). Availability is decided
+by the server for the exact connector/profile version, provider configuration and
+model/package scope. The production Sparx adapter remains disabled for writes
+with `PUBLICATION_GUARANTEES_UNVERIFIED`. Filling in a scope or advertising a
+capability cannot enable it. The genuine HTTP acceptance provider
+`taxonomy-publication-contract-v1` is installed only by test configuration; its
+screenshots and results are explicitly **TEST ONLY**, not PCS certification.
+
+Select the model/package resource identity, the provider-defined subset and its
+exact expected remote revision. The subset follows the adapter contract (the
+fixture uses `all`); it is not an invented digest that the user must calculate.
+Preview also freezes the current local revision/checkpoint. Missing exact state
+is rejected; an explicitly different branch is rejected before publication effects.
+
+| English control | German control | Behavior |
+|---|---|---|
+| Check publication availability | Veröffentlichungsmöglichkeit prüfen | Checks the selected scope against server-owned guarantees and authority; displays the concrete denial reason. |
+| Preview Push to external tool | Push zum externen Werkzeug prüfen | Creates a directional preview; does not publish. |
+| Preview Synchronize | Synchronisierung prüfen | Previews both directions against the frozen local and remote state. |
+| Merge independent changes | Unabhängige Änderungen zusammenführen | Uses the merged proposal only when independent changes can be combined safely. |
+| Keep local; publish to external tool | Lokal behalten; extern veröffentlichen | Chooses local content for the external target. |
+| Take remote into Taxonomy | Externen Stand in Taxonomy übernehmen | Chooses remote content for the local target; available for Synchronize. |
+| Skip; leave divergence visible | Überspringen; Abweichung bleibt sichtbar | Makes an explicit exclusion; does not claim complete convergence. |
+| Merge visible independent changes | Sichtbare unabhängige Änderungen zusammenführen | Selects merge only for visible, nonconflicting items present on both sides; dependent/deletion choices still require review. |
+| Skip visible changes | Sichtbare Änderungen überspringen | Explicitly skips the visible changes. |
+| Publish reviewed decisions | Geprüfte Entscheidungen veröffentlichen | Accepts a complete directed review with rationale and freezes its plan before any effect. |
+| Resume durable operation | Dauerhaften Vorgang fortsetzen | Resumes the same operation and exact saved requests; edited form values cannot replace the frozen plan. |
+| Create linked reconciliation preview | Verknüpfte Abgleichvorschau erstellen | Creates a new linked review from current exact state only after unknown effects are resolved and the server permits it. |
+| Cancel preview | Vorschau abbrechen | Cancels only when the server allows cancellation before effects. |
+| Open predecessor operation | Vorgängervorgang öffnen | Opens the authorized original operation from a linked reconciliation preview. |
+
+The review displays BASE local/remote values, LOCAL, REMOTE, the MERGED proposal,
+changed fields, conflicts, dependencies and deletion requirements. Every changed
+item needs an explicit decision; deletion needs a rationale. Requirement and
+endpoint controls retain the existing exact normalized-identity/mapping rules.
+Keyboard users can reach the labeled selects, review rationale and action buttons.
+The operation URL can be reloaded to restore saved decisions, scope, expected
+external revision, request fingerprint and item outcomes.
+
+A partial or ambiguous HTTP outcome is not a success. The page separately shows
+acknowledged, unknown, remaining, stale, unattempted and proven-no-effect items.
+Retry resolves unknown outcomes using durable receipt lookup and the same key;
+it never starts a fresh operation silently. All selected writes can be acknowledged
+while skipped divergence still prevents full synchronization. The local Git
+checkpoint, last pull OBSERVATION and verified COMMON checkpoint are distinct.
+COMMON is recorded only after full-scope remote verification, acknowledged effects,
+completed local Git and an unchanged exact local state.
+
+### Authenticated API and optional SBPI client design
+
+All paths below are under `/api/integrations/{connection}` and use the existing
+authorized repository/workspace context and CSRF protection for session writes.
+No credential belongs in a deep link. GET `/operations/{operation}` supplies the
+original authorized local context; GET `/operations/{operation}/publication`
+supplies bounded durable review, scope, expected revision and recovery state.
+These schema-1 fields are additive; raw dispatch requests, claim leases and
+credentials are not exposed. Publication does not use `/files` or inbound `/apply`.
+
+| Proposed action from the EA user's viewpoint | Taxonomy direction and actual route |
+|---|---|
+| Pull from Taxonomy | Taxonomy **Push**: POST `/publication-previews` with mode `PUSH`, review, then POST `/publish`. Requires a server-verified remote provider; unavailable for current PCS. File export remains a separate reviewed download. |
+| Push to Taxonomy | Taxonomy **Pull**: POST `/remote-previews` for configured AM retrieval, or multipart POST `/previews` for XMI, followed by explicit reviewed POST `/apply`. |
+| Synchronize | POST `/publication-previews` with `SYNCHRONIZE`, then explicit reviewed POST `/publish`. |
+| Preview / open conflicts | Open `/integrations?repositoryId=…&workspaceId=…&branch=…&connection=…&operation=…`; review in the existing UI. |
+| Resume / reconcile | POST `/operations/{operation}/retry`; when permitted, POST `/operations/{operation}/reconciliation-previews` with new identity and exact state. |
+| Open provenance | Authorized operation GET and GET `/operations/{operation}/events`, or the same integration deep link. |
+
+This table is an optional client workflow design, not a compiled or executed SBPI
+plugin. Taxonomy works without that plugin. Sparx documents custom integration
+plugins and the optional SBPI Examples interfaces; their actual host/SDK must be
+used for a real implementation. `GetMenuList` describes navigation, while
+`GenericRequest` is reserved: neither establishes an arbitrary menu-action callback.
+Notifications must not bypass explicit Taxonomy preview/review.
+[Custom integration plugins](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/pcs_integration_plugins_custom_write.html),
+[SBPI interface](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/sbpi_integration_plugin_interface.html).
+
+Sparx OSLC supports write operations in principle. Its documented EA update flow
+uses RDF/XML **POST** to a dedicated update URL. The existence of those endpoints
+does not establish the atomic scope CAS, atomic create absence, durable same-key
+idempotency and receipt lookup required here; that is the reason for Taxonomy's
+current default denial. No speculative PUT/If-Match implementation is presented
+as verified PCS support.
+[OSLC AM operations](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/info_accessed_via_oslcam.html),
+[EA resource updates](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_upd_resources.html).
+
+See [completion evidence](../qa/1075-completion-evidence.md) and the separate
+[real-product matrix](../qa/sparx-compatibility.json) for executed and unexecuted gates.
+
+### Actual bilingual browser examples
+
+[Open the seven EN/DE capture pairs](../qa/conditional-publication-browser.md) for
+native package controls, endpoint projection, directed review, partial UNKNOWN,
+durable recovery and enabled reconciliation with a linked successor. These are
+controller-inspected bytes from actual CI, explicitly **TEST ONLY**, with exact
+source and artifact hashes. They are not EA/PCS product acceptance.

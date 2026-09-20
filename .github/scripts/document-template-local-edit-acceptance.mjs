@@ -401,7 +401,8 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
   }
 
   async function capture(target, directory, name) {
-    if (!(await target.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2))) {
+    const fitsViewport = await target.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2);
+    if (!fitsViewport) {
       const layout = await target.evaluate(() => ({
         viewport: { width: innerWidth, height: innerHeight }, scrollWidth: document.documentElement.scrollWidth,
         overflowing: Array.from(document.querySelectorAll('body *')).filter(element => {
@@ -420,7 +421,7 @@ export async function verifyLocalEditing({ baseUrl, outputDir, username, passwor
       await writeFile(path.join(directory, name + '-overflow.json'), JSON.stringify(layout, null, 2) + '\n');
       await target.screenshot({ path: path.join(directory, name + '-overflow.png'), fullPage: true });
     }
-    assert.ok(await target.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 2),
+    assert.ok(fitsViewport,
       'Local-edit workflow must not require horizontal page scrolling');
     for (const selector of ['#localTemplateDownload', '#localTemplateSave', '#localTemplateHistory']) {
       const control = target.locator(selector);

@@ -1,8 +1,8 @@
 # Word export and #1075 completion review
 
-Word assessment updated 2026-09-20 for the frozen-report completion and final
-quality fixes. The native/publication assessment below is retained for its owning
-workstream. Structural tests and LibreOffice output do not establish Microsoft
+Assessment updated 2026-09-20 for the accepted frozen Word/native foundations,
+Visio graphical completion and implemented conditional publication. Current exact
+source/CI and remaining release gates are recorded in [completion evidence](1075-completion-evidence.md). Structural tests and LibreOffice output do not establish Microsoft
 Word or Sparx product compatibility.
 
 ## What the Word files contain
@@ -41,32 +41,45 @@ Evidence must be read at its recorded source revision:
   LibreOfficeDev 26.8 output has 71 decision pages and 11 standalone pages,
   344/85 semantic assertions, no empty body pages, and paired snapshot
   `02127c46-192d-4ca4-acbd-688bff037708`. Exact source/tree and artifact hashes
-  are retained in the final-quality implementation handoff. Full-page visual
-  acceptance and final external CI remain release gates; earlier page counts
-  are not substituted for these checks. Microsoft Word execution remains separate.
+  are retained in the final-quality implementation handoff. That Word slice was
+  subsequently accepted and merged in [PR 1088](https://github.com/carstenartur/Taxonomy/pull/1088)
+  at `085f620a5141de8fc26140137010b59414ddead1`, tree
+  `b17e05137e761bc379e8d3c96856ab5b29d764b5`. All 116 local pages, all 79 final
+  CI pages and five browser images were visually inspected. Final
+  [CI 35507510981](https://github.com/carstenartur/Taxonomy/actions/runs/35507510981)
+  has 68 decision + 11 standalone pages and 344/85 checks with no empty body pages.
+  Microsoft Word execution remains separate.
 
 The civilian example still retains the domain/reference-case gaps documented in
 [civilian-reference-review.md](civilian-reference-review.md). Complete report
-transport does not establish complete architecture subject matter. Dense Visio
-connector layout is a separate graphical-quality finding and is not approved by
-Word semantic or image checks. The Word completion should not be presented as
-unqualified product compatibility or as proof that all #1075 work is complete.
+transport does not establish complete architecture subject matter. The Visio graphical finding has its own accepted overview/detail implementation:
+all 11 actual HTTP/Draw pages and all 44 relation direction/type captions were
+visually inspected. Source `9e0fb1b8a5d7a6612a16fa9bf5e88ed46b403c0a` plus the
+accepted byte-budget fix `d3a1a272cc6fe87c52eee9e206a3ac64cfef9c26` retains the
+same 38 nodes/44 relations. Dense overview omissions are explicit and covered by
+detail pages. Current CI LibreOffice 24.2 pages were also reviewed. This is not
+Microsoft Visio certification; see [Visio evidence](visio-graphical-quality.json).
 
-## What remains from #1075 without requiring a Sparx installation
+## Feasible #1075 slices now implemented
 
-The current delivery implements the common review/identity/checkpoint machinery,
-the documented XMI subset and a bounded PCS AM package/element read/pull profile.
-It does **not** exhaust the parts of [#1075](https://github.com/carstenartur/Taxonomy/issues/1075)
-that can be developed without the proprietary products.
+The merged native foundation [PR 1089](https://github.com/carstenartur/Taxonomy/pull/1089)
+at `b45711981d8e1bdaf38642b4c3469ae28bd76a12` passed its required final CI.
+Conditional publication and the optional client contract are implemented in
+[PR 1094](https://github.com/carstenartur/Taxonomy/pull/1094); its final combined
+review/CI remain release gates. All fourteen corrected actual EN/DE native/publication
+images from civilian CI 35525893725 were visually accepted and are retained in the
+[image gallery](conditional-publication-browser.md).
 
-| Remaining slice | Work possible without EA/PCS | Evidence still requiring the product |
+| Slice | Implemented without proprietary execution | Product acceptance still unexecuted |
 |---|---|---|
-| AM connectors and tagged values | Parse documented feature representations, preserve direction/identity/properties, fetch within aggregate limits, and cover paginated/partial/stale responses with HTTP contract tests. | Verify actual resource shapes, token handling and supported provider versions. |
-| AM attributes and operations | Define the bounded supported extension/loss representation and test feature retrieval and round-trip meaning where a canonical mapping exists. | Verify actual EA/PCS representations and behavior. |
-| Push/Synchronize and partial publication | Implement and test the shared item-result journal, retry/recovery state machine and a conditional publication contract, including rejection of providers without the required capabilities. | Demonstrate atomic expected-state checks and safe creation/retry semantics before enabling PCS writes. |
-| Package editing / additional native endpoint mappings | Extend native commands and review/remap UI where the domain semantics can be represented faithfully; test them through the application. | Verify return imports and preservation of EA-specific content/layout. |
-| Optional SBPI integration | Design the optional protocol and test Taxonomy-side contracts after publication semantics are stable. | Compile/run and accept the actual Sparx-side plugin. |
-| Compatibility matrix | Maintain the runnable acceptance scenario and evidence schema. | Execute EA import/edit/export and PCS operations; synthetic tests cannot fill this column. |
+| AM connectors/tags/attributes/operations | Shared bounded v2 feature semantics, explicit losses, complete scoped traversal and HTTP contract tests. | Actual versioned EA/PCS representations, token handling and round trips. |
+| Native packages and mappings | Typed package/placement operations, explicit normalized endpoints and requirement mappings, real application/Git and cross-JVM replay. | EA-specific layout/content preservation on return import. |
+| Push/Synchronize | Directed review, atomic local staging, durable item receipts, independent provider/client restart matrix, frozen retry and explicit linked reconciliation. API/UI fail closed for unverified adapters. | Live PCS CAS, atomic creation, durable key/receipt recovery before enabling writes. |
+| Optional SBPI | Authenticated action/API/deep-link client design using the shared protocol and UI. Taxonomy works without a plugin. | Compile and execute the proprietary host/SDK plugin if desired. |
+| Compatibility matrix | Runnable contract acceptance and versioned evidence with honest test-only provider identity. | Actual EA/PCS/MS Word/MS Visio execution. |
+
+See [completion evidence and decisions](1075-completion-evidence.md) for exact
+source trees, test counts, real images, failed attempts and pending release checks.
 
 The feasibility assessment follows Sparx's documented
 [read endpoints for connectors, tags, attributes and operations](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/ret_res_feat.html).
@@ -75,5 +88,5 @@ describes POST updates but does not establish the atomic expected-version and
 idempotent-create guarantees required by #1075. A preflight read followed by an
 unconditional write does not satisfy those guarantees.
 
-Consequently #1075 stays open. The status in [sparx-compatibility.json](sparx-compatibility.json)
+Actual product-compatibility claims remain open; implemented contract coverage does not fill them. The status in [sparx-compatibility.json](sparx-compatibility.json)
 must remain `NOT_EXECUTED` for real-product compatibility until actual evidence exists.

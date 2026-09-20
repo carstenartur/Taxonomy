@@ -8,6 +8,22 @@ import static com.taxonomy.interop.publication.PublicationFixtures.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PublicationPolicyTest {
+    @Test void resourceDelimiterSearchPreservesCasePositionAndLengthBounds() {
+        for (String code : List.of("2e", "2f", "5c", "40", "3f", "23", "25")) {
+            for (String spelling : new LinkedHashSet<>(List.of(code.toLowerCase(Locale.ROOT), code.toUpperCase(Locale.ROOT)))) {
+                for (String resource : List.of("%" + spelling + "path", "https://host/a%" + spelling + "b",
+                        "a".repeat(2045) + "%" + spelling)) {
+                    assertThrows(IllegalArgumentException.class, () -> PublicationBounds.resource(resource), resource);
+                }
+            }
+        }
+        for (String resource : List.of("https://host/a%20b", "urn:example:resource", "a".repeat(2048)))
+            assertEquals(resource, PublicationBounds.resource(resource));
+        assertThrows(IllegalArgumentException.class, () -> PublicationBounds.resource("a".repeat(2049)));
+        for (String resource : List.of("https://user:secret@host/path", "https://host/path?secret", "https://host/path#secret",
+                "https://host/../secret", "https://host/\\secret"))
+            assertThrows(IllegalArgumentException.class, () -> PublicationBounds.resource(resource));
+    }
     @Test void selfReportedGuaranteesNeverEnableWrites() {
         assertThrows(IntegrationProblem.class, () -> new PublicationPolicy(List.of()).requireVerified(CONTEXT, capabilities()));
         assertDoesNotThrow(() -> policy().requireVerified(CONTEXT, capabilities()));

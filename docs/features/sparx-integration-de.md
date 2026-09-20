@@ -182,10 +182,11 @@ Sparx beschreibt eigene POST-Endpunkte und einen Modell-Login-Token, der bei GET
 als Abfrageparameter und bei POST im RDF übertragen wird. Aus der geprüften
 Anbieterdokumentation ergibt sich keine belegte atomare Versionsvorbedingung und
 keine abgesicherte idempotente Anlage. Ein GET vor einem unbedingten POST verhindert
-keine zwischenzeitliche Änderung. Live-Anlage/-Änderung/-Löschung, teilweise
-Veröffentlichung und vollständiges Push/Synchronize bleiben daher bis zu
-einem nachgewiesenen PCS-Vertrag oder bedingten Sparx-Adapter offen. Das optionale
-SBPI-Plugin ist ebenfalls nicht umgesetzt.
+keine zwischenzeitliche Änderung. Die gemeinsame bedingte Veröffentlichung samt
+Teilresultaten, Wiederaufnahme und Push/Synchronize ist mit einem echten HTTP-Testvertrag
+umgesetzt und geprüft. Produktive PCS-Anlage/-Änderung/-Löschung bleibt bis zu einem
+nachgewiesenen Vertrag gesperrt. Der unten beschriebene optionale SBPI-Cliententwurf
+ist kein ausgeführtes Plugin.
 
 Die reale EA-Abnahme muss Export → EA-Import → Umbenennung/Verschiebung/Tag- und
 Beziehungsänderung → EA-Export → geprüfte Übernahme einschließlich Erhalt des
@@ -282,3 +283,107 @@ weglassen. Anwendungs- und Browsertests verwenden Vertragsfixtures; die tatsäch
 EA/PCS-Produktkompatibilität bleibt **NOT_EXECUTED**.
 
 Endpunktauswahl bestätigt die exakten normalisierten Verbinderendpunkte. Auch das Umleiten auf ein anderes natives Objekt desselben Typs wird mit `SPARX_ENDPOINT_KIND_UNMAPPED` abgelehnt; Projektions-/Typauswahl bleibt möglich. Dadurch stimmen native Bedeutung und bewahrte/exportierte Endpunktnachweise überein.
+
+### Native Paket- und Endpunktbedienung
+
+Im Paketpanel prüft **Änderung vorschauen** Anlage oder Umbenennung/Beschreibung;
+**Löschung vorschauen** prüft die Entfernung unter den vorhandenen Strukturregeln.
+**Ausgewähltes Paket verschieben** verwendet das gewählte Elternpaket und die
+Geschwisterposition. **Ausgewähltes Element zuordnen** prüft dessen Mitgliedschaft
+im gewählten Elternpaket; **Ausgewähltes Element lösen** entfernt nur die Zuordnung,
+nicht das Element. Alle Aktionen bleiben im bestehenden Vorschau-/Begründungs-/
+Übernahmeablauf. Ein leeres Paket-Auswahlfeld beginnt eine Neuanlage; Neuladen
+stellt den gespeicherten Stand wieder her.
+
+Die native Endpunktprojektion und Quell-/Zielauswahl sind Prüfentscheidungen,
+keine sofortigen Schreibaktionen. Sie behalten die oben beschriebenen exakten
+normalisierten Identitäten und Anforderungsregeln. Die vollständige
+[zweisprachige Bedientabelle](sparx-integration.md#native-package-and-endpoint-controls)
+erläutert alle fünf Paketknöpfe.
+
+## Bedingte Veröffentlichung und Wiederaufnahme
+
+Die gemeinsame Anwendung unterstützt jetzt geprüftes **Push** (Taxonomy → externes
+Werkzeug) und **Synchronisieren** (geprüfte Änderungen in beiden Richtungen).
+Der Server entscheidet anhand der exakten Adapter-/Profilversion,
+Anbieterkonfiguration und des Modell-/Paketumfangs. Beim produktiven Sparx-Adapter
+bleibt Schreiben mit `PUBLICATION_GUARANTEES_UNVERIFIED` gesperrt. Ein ausgefüllter
+Umfang oder ein gemeldetes Fähigkeitsmerkmal hebt diese Sperre nicht auf.
+Der echte HTTP-Vertragsanbieter `taxonomy-publication-contract-v1` wird ausschließlich
+in Tests eingebunden. Seine Ergebnisse und Bilder sind **TEST ONLY / NUR TEST**,
+keine PCS-Produktabnahme.
+
+Wählen Sie Modell-/Paketidentität, den vom Anbieter definierten Teilumfang und den
+exakten erwarteten externen Stand. Der Teilumfang folgt dem Adaptervertrag
+(im Test `all`); Benutzer müssen keinen erfundenen Digest berechnen. Die Vorschau
+friert außerdem den lokalen Stand ein. Ein explizit abweichender Branch wird vor
+Veröffentlichungseffekten abgelehnt.
+
+Die Verfügbarkeitsprüfung erklärt die konkrete Freigabe oder Sperre. **Push zum externen Werkzeug prüfen**
+und **Synchronisierung prüfen** erzeugen nur eine Vorschau. Die Prüfung zeigt
+BASE lokal/extern, LOCAL, REMOTE, den MERGED-Vorschlag, geänderte Felder, Konflikte,
+Abhängigkeiten und Löschanforderungen. Wählen Sie für jedes geänderte Objekt
+**unabhängig zusammenführen**, **lokal behalten und extern veröffentlichen**,
+**extern übernehmen** (nur Synchronisieren) oder **überspringen**. Löschungen
+benötigen eine ausdrückliche Wahl und Begründung. Die Sammelaktionen gelten nur
+für sichtbare Zeilen; automatisches Zusammenführen beschränkt sich auf konfliktfreie
+Objekte, die auf beiden Seiten vorhanden sind. Bestehende Anforderungs- und
+Endpunktzuordnungen behalten ihre exakten Identitätsregeln.
+
+**Geprüfte Entscheidungen veröffentlichen** friert den vollständigen geprüften
+Plan vor Effekten ein. **Dauerhaften Vorgang fortsetzen** setzt denselben gespeicherten Vorgang
+mit denselben Schlüsseln und Requests fort; nachträgliche Formularänderungen
+ändern ihn nicht. **Verknüpfte Abgleichvorschau erstellen** erzeugt einen neuen,
+mit dem Vorgänger verknüpften Vorgang erst nach Auflösung unbekannter Ergebnisse
+und nur bei Serverfreigabe. **Vorgängervorgang öffnen** führt zum berechtigten
+ursprünglichen Vorgang. **Vorschau abbrechen** steht nur vor Effekten zur Verfügung.
+Beschriftete Auswahlfelder, Begründung und Schaltflächen sind per Tastatur bedienbar.
+Beim Neuladen der Vorgangs-URL werden gespeicherte Entscheidungen, Umfang,
+erwarteter externer Stand, Request-Fingerprint und Einzelzustände wiederhergestellt.
+
+Bestätigte, unbekannte, verbleibende, veraltete, noch nicht versuchte und nachweislich
+effektlose Einzelaktionen werden getrennt angezeigt. Ein Teilresultat oder eine
+unterbrochene HTTP-Antwort ist kein Gesamterfolg. Übersprungene Abweichungen verhindern
+auch bei bestätigten ausgewählten Aktionen einen gemeinsamen Prüfpunkt. Lokaler
+Git-Prüfpunkt, letzte Pull-Beobachtung (OBSERVATION) und verifizierter gemeinsamer
+Stand (COMMON) sind getrennt. COMMON setzt vollständige externe Prüfung, bestätigte
+Effekte, abgeschlossenen lokalen Git-Stand und unveränderten lokalen Inhalt voraus.
+
+### API und optionaler SBPI-Cliententwurf
+
+Die authentifizierten Routen stehen unter `/api/integrations/{connection}`:
+POST `/publication-previews`, POST `/publish`, GET `/operations/{operation}/publication`,
+POST `/operations/{operation}/retry` und POST `/operations/{operation}/reconciliation-previews`.
+Das bestehende Operation-GET liefert den autorisierten ursprünglichen Kontext;
+die zusätzliche Schema-1-Projektion liefert begrenzte gespeicherte Review-/Umfangsdaten,
+keine Leases, Rohrequests oder Zugangsdaten. Veröffentlichung verwendet weder
+Dateiausgabe `/files` noch die eingehende Übernahme `/apply`.
+
+Aus EA-Sicht bedeutet „Pull from Taxonomy“ Taxonomy-Push; „Push to Taxonomy“ bedeutet
+Taxonomy-Pull über Remote-/XMI-Vorschau und geprüfte Übernahme. Die konkrete
+[Aktion-/API-/Deep-Link-Tabelle](sparx-integration.md#authenticated-api-and-optional-sbpi-client-design)
+beschreibt einen optionalen Cliententwurf. Es wurde kein proprietäres SDK-Plugin
+kompiliert oder im Host ausgeführt. Taxonomy funktioniert ohne Plugin. Bestehende
+Anmeldung, Berechtigung und CSRF-Prüfung gelten weiter; Deep Links enthalten keine
+Zugangsdaten. Sparx beschreibt `GetMenuList` für Navigation und reserviert
+`GenericRequest`; daraus folgt kein frei erfundener Menü-Callback.
+[SBPI-Schnittstelle](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/sbpi_integration_plugin_interface.html).
+
+Sparx OSLC unterstützt grundsätzlich Schreiboperationen. Dokumentierte EA-Updates
+verwenden RDF/XML-POST an eine Update-URL. Diese Endpunkte beweisen jedoch nicht
+den hier erforderlichen atomaren Umfangsvergleich, abgesicherte Anlage,
+dauerhafte Idempotenz und Belegabfrage. Deshalb bleibt unser PCS-Schreiben gesperrt.
+[OSLC AM](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/info_accessed_via_oslcam.html),
+[EA-Updates](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_upd_resources.html).
+
+Aktuelle [Umsetzungsnachweise](../qa/1075-completion-evidence.md) und
+[offene Produktabnahme](../qa/sparx-compatibility.json) bleiben getrennt dokumentiert.
+
+### Echte zweisprachige Browserbeispiele
+
+[Die sieben EN/DE-Bildpaare](../qa/conditional-publication-browser.md) zeigen
+Paketknöpfe, Endpunktprojektion, gerichtete Prüfung, Teilresultat mit UNKNOWN,
+Wiederaufnahme und freigegebenen Abgleich samt verknüpfter Folge-Vorschau.
+Die unveränderten Bilder stammen aus echter CI und wurden vollständig visuell
+geprüft; Quelle und Artefakthashes sind dokumentiert. **NUR TEST / TEST ONLY**,
+keine EA-/PCS-Produktabnahme.
