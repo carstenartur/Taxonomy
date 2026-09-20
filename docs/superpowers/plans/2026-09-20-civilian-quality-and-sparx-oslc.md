@@ -122,3 +122,15 @@ integration identities, previews, reconciliation, journal and checkpoints.
   the new independent renderer checks into the dependency-free Java tooling CLI;
   the ratchet remains unchanged. Added content-loss, continued-paragraph,
   header-only-page, excessive-pagination and hardened-XML regression checks.
+- CI run 35486639404 passed the real browser flow and native Java renderer QA.
+  Visual inspection of all 52 LibreOffice 24 pages exposed split rationale-box
+  labels (pages 4 and 36), despite the earlier LibreOffice 26 layout. Added failing
+  XML and rendered-body regressions; keep the rationale row and its label with
+  the explanation. The PDF gate now rejects an orphan rationale label explicitly.
+  Interrupted the in-progress full gate to include this correction in a fresh run.
+- Pagination correction GREEN: both Word checks and the actual civilian HTTP
+  acceptance passed (3 tests, 2m55s); all 8 renderer/policy tooling checks passed.
+  The fresh native render retains 55 pages and 261 text assertions, with no empty
+  body or orphan rationale heading. The final full gate and CI run follow.
+- A previous full-gate attempt hit temporary transfer leftovers in compiled test
+  outputs. Maven clean removed them; no application code or test exclusions changed.

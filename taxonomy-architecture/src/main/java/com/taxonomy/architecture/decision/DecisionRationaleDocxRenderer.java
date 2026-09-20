@@ -738,6 +738,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             String fill) {
         XWPFTable table = document.createTable(1, 1);
         table.setWidth("100%");
+        table.getRow(0).setCantSplitRow(true);
         removeTableBorders(table);
         XWPFTableCell cell = table.getRow(0).getCell(0);
         shade(cell, fill);
@@ -746,6 +747,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         clearCell(cell);
         XWPFParagraph headingParagraph = cell.addParagraph();
         headingParagraph.setSpacingAfter(50);
+        headingParagraph.setKeepNext(true);
         XWPFRun headingRun = headingParagraph.createRun();
         headingRun.setText(heading);
         headingRun.setFontFamily(FONT);

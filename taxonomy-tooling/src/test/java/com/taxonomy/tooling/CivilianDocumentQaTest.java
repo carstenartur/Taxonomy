@@ -28,6 +28,13 @@ class CivilianDocumentQaTest {
     }
 
     @Test
+    void rejectsRationaleLabelsSeparatedFromTheirExplanation() {
+        assertThatThrownBy(() -> CivilianDocumentQa.checkText("decision.docx",
+                xml(page("Other text Comparative rationale") + page("Explanation")), "",
+                List.of("Explanation"), true)).hasMessageContaining("orphan rationale heading on page 1");
+    }
+
+    @Test
     void checksDrawLabelsInReadingOrderAndRejectsForeignDoctype() throws Exception {
         assertThat(CivilianDocumentQa.checkText("architecture.vsdx", xml(page("mixed label order")),
                 "Public warning service", List.of("Public warning service"), false))

@@ -39,6 +39,15 @@ class DecisionRationaleDocxLayoutTest {
                     .flatMap(r -> r.getTableCells().stream()).map(c -> c.getText()))
                     .noneMatch(t -> t.contains(reason));
             assertThat(document.getParagraphs()).noneMatch(p -> p.getText().isBlank() && p.isPageBreak());
+            var rationaleRows = document.getTables().stream().flatMap(t -> t.getRows().stream())
+                    .filter(r -> r.getTableCells().size() == 1)
+                    .filter(r -> r.getCell(0).getText().startsWith("Decision result")
+                            || r.getCell(0).getText().startsWith("Comparative rationale")).toList();
+            assertThat(rationaleRows).hasSize(2).allSatisfy(row -> {
+                assertThat(row.isCantSplitRow()).as("rationale box stays on one page").isTrue();
+                assertThat(row.getCell(0).getParagraphs().getFirst().isKeepNext())
+                        .as("rationale label stays with its explanation").isTrue();
+            });
         }
     }
 }

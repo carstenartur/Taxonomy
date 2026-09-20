@@ -106,6 +106,12 @@ final class CivilianDocumentQa {
                             && Double.parseDouble(w.getAttribute("yMax")) < bottom)
                     .map(Element::getTextContent).filter(t -> !t.isBlank()).toList();
             if (body.isEmpty()) empty.add(index + 1);
+            if (word) {
+                String pageText = normalized(String.join(" ", body));
+                require(!pageText.endsWith(normalized("Comparative rationale"))
+                                && !pageText.endsWith(normalized("Decision result")),
+                        name + ": orphan rationale heading on page " + (index + 1));
+            }
             bodyText.append(String.join(" ", body)).append(' ');
         }
         require(empty.isEmpty(), name + ": empty page bodies " + empty);
