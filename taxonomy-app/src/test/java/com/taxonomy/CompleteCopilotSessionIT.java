@@ -462,15 +462,17 @@ class CompleteCopilotSessionIT {
         List<WebElement> controls = driver.findElements(By.cssSelector("[data-session-control]"));
         for (WebElement control : controls) {
             if (!control.isDisplayed() || !control.isEnabled()) continue;
-            javascript().executeScript(
-                    "arguments[0].scrollIntoView({block:'center',inline:'nearest'});", control);
+            // Bootstrap enables smooth scrolling. Measure the final position, not an animation frame.
             Boolean unobscured = (Boolean) javascript().executeScript("""
                     const element = arguments[0];
+                    element.focus({preventScroll: true});
+                    element.scrollIntoView({behavior:'instant',block:'center',inline:'nearest'});
                     const rect = element.getBoundingClientRect();
                     const hit = document.elementFromPoint(
                         rect.left + rect.width / 2,
                         rect.top + rect.height / 2);
-                    return hit === element || element.contains(hit);
+                    return document.activeElement === element
+                        && (hit === element || element.contains(hit));
                     """, control);
             assertThat(unobscured)
                     .as("session control %s is actionable when focused",
