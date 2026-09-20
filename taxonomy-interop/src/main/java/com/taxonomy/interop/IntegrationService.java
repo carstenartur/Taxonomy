@@ -51,7 +51,13 @@ public class IntegrationService {
         this.workspaceAccess = workspaceAccess;
     }
     public record CreateConnection(UUID id, String name, String connectorId, AuthorityMode authority,
-                                   ExternalScope externalScope, Long projectId, String remoteProfile) {}
+                                   ExternalScope externalScope, Long projectId, String remoteProfile, String profileVersion) {
+        public CreateConnection { profileVersion = profileVersion == null ? "1" : profileVersion; }
+        public CreateConnection(UUID id, String name, String connectorId, AuthorityMode authority,
+                                ExternalScope externalScope, Long projectId, String remoteProfile) {
+            this(id, name, connectorId, authority, externalScope, projectId, remoteProfile, "1");
+        }
+    }
     public record PreviewRequest(UUID operationId, InternalState expected, String mediaType, boolean completeScope) {}
     public record ExportRequest(UUID operationId, InternalState expected, String expectedExternalVersion) {}
     public record RemoteRequest(UUID operationId, InternalState expected, String resource, String expectedExternalVersion) {}
@@ -66,7 +72,7 @@ public class IntegrationService {
             throw new IllegalArgumentException("Connection identity, connector, authority and external scope are required");
         if (request.name() == null || request.name().isBlank() || request.name().length() > 160)
             throw new IllegalArgumentException("Connection name must have 1–160 characters");
-        var descriptor = connectors.require(request.connectorId()).descriptor();
+        var descriptor = connectors.require(request.connectorId(), request.profileVersion()).descriptor();
         if (!Set.of(AuthorityMode.LINK_ONLY, AuthorityMode.PUBLISH_TARGET).contains(request.authority())
                 && !descriptor.capabilities().contains(Capability.FILE_IMPORT) && !descriptor.capabilities().contains(Capability.READ_LINK))
             throw new IllegalArgumentException("Profile has no inbound capability");
@@ -110,7 +116,7 @@ public class IntegrationService {
         if (content.length > ExchangeXml.MAX_BYTES) throw new IntegrationProblem("PAYLOAD_LIMIT", 413, "Exchange exceeds 16 MiB");
         Connection connection = store.read(context, connectionId); requireProfile(connection);
         if (connection.authority() == AuthorityMode.PUBLISH_TARGET) throw new IntegrationProblem("AUTHORITY_MODE", 409, "Publish targets cannot import");
-        var connector = connectors.require(connection.connectorId());
+        var connector = connectors.require(connection.connectorId(), connection.profileVersion());
         if (request.mediaType() == null || request.mediaType().isBlank()
                 || !connector.descriptor().capabilities().contains(Capability.FILE_IMPORT)
                 || !connector.descriptor().mediaTypes().contains(request.mediaType()))
@@ -129,6 +135,24 @@ public class IntegrationService {
             return session.preview(request.operationId(), authority, "INBOUND", fingerprint, document,
                     diff.compare(document, connection.authority(), session.identities(), state.items()));
         });
+    }
+
+    /** Read-only, exact-state native identities for explicit endpoint review controls. */
+    public IntegrationDomainAdapter.EndpointIndex endpointOptions(RepositoryContext context, UUID connectionId, UUID operationId) {
+        authorize(context, false);
+        Connection connection = store.read(context, connectionId);
+        Operation operation = store.operation(context, connectionId, operationId);
+        requireActor(context, operation); requireProfile(connection);
+        return store.locked(context, connectionId, session -> workspace(context, before -> {
+            var mappings = session.identities();
+            var current = domain.snapshot(context, connection, mappings, before);
+            expect(operation.context().internalState(), current.state());
+            Map<String, Artifact> candidates = new TreeMap<>(current.items());
+            candidates.putAll(ExchangeItems.flatten(operation.document()));
+            var plans = IntegrationDomainAdapter.nativePackages(connection)
+                    ? domain.planRequirements(context, connection, candidates, mappings, before.dsl()) : Map.<String, IntegrationPortfolioPort.RequirementApplyPlan>of();
+            return domain.indexEndpoints(connection, candidates, mappings, plans);
+        }));
     }
 
     public Operation apply(RepositoryContext context, UUID connectionId, ReviewedChangeSet review) {
@@ -163,12 +187,18 @@ public class IntegrationService {
             boolean linked = connection.authority() == AuthorityMode.LINK_ONLY;
             boolean changed = !semanticItems(current.items()).equals(semanticItems(selected));
             // Validate the reviewed dependency closure and schema before mutating any canonical data.
-            if (!linked && changed) connectors.require(connection.connectorId()).validateInboundSelection(new OutboundRequest(operation.context(), resultDocument, operation.document().externalVersion()));
+            if (!linked && changed) connectors.require(connection.connectorId(), connection.profileVersion()).validateInboundSelection(new OutboundRequest(operation.context(), resultDocument, operation.document().externalVersion()));
+            String planningDsl = !linked && changed && IntegrationDomainAdapter.nativePackages(connection) && connection.projectId() != null
+                    ? domain.portfolioContribution(context).apply(before.dsl()) : before.dsl();
+            Map<String, IntegrationPortfolioPort.RequirementApplyPlan> requirementPlans = !linked && IntegrationDomainAdapter.nativePackages(connection)
+                    ? domain.planRequirements(context, connection, selected, mappings, planningDsl) : Map.of();
+            var endpointIndex = domain.indexEndpoints(connection, selected, mappings, requirementPlans);
+            // Selection already contains accepted endpoint choices and retained local approval.
+            // Raw review entries must not independently affect rejected/kept connectors.
             List<ArchitectureCommand> commands = new ArrayList<>();
-            if (!linked && changed && connectors.require(connection.connectorId()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL)) {
-                commands.addAll(domain.architectureCommands(connection, before.dsl(), current.items(), selected, mappings));
-                String preview = before.dsl();
-                for (ArchitectureCommand command : commands) preview = new ArchitectureDslCommands().apply(preview, command).dsl();
+            if (!linked && changed && connectors.require(connection.connectorId(), connection.profileVersion()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL)) {
+                commands.addAll(domain.architectureCommands(connection, planningDsl, current.items(), selected, mappings, endpointIndex, Map.of(), review.rationale()));
+                domain.validateCompletePlan(planningDsl, commands, requirementPlans);
             }
             session.beginReview(review);
             for (IntegrationChange change : operation.changes()) {
@@ -185,8 +215,8 @@ public class IntegrationService {
                 if (!linked && (value != null ? value.kind() == ArtifactKind.REQUIREMENT : previous != null && previous.internal().kind() == ArtifactKind.REQUIREMENT)) {
                     var applied = domain.applyRequirement(context, connection, value, previous, review.rationale());
                     business = applied.businessIdentity(); requirementId = applied.requirementId();
-                } else if (!linked && value != null && value.kind() == ArtifactKind.RELATION && connectors.require(connection.connectorId()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL))
-                    business = domain.relationBusinessId(value, connection, selected, mappings);
+                } else if (!linked && value != null && value.kind() == ArtifactKind.RELATION && connectors.require(connection.connectorId(), connection.profileVersion()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL))
+                    business = domain.relationBusinessId(value, endpointIndex, null);
                 session.mapping(operation.id(), change.externalId(), business, requirementId, operation.document().externalVersion(), change.after(), value, value == null);
             }
             State resultContext = before.state();
@@ -318,7 +348,7 @@ public class IntegrationService {
             Connection connection = session.connection(); requireProfile(connection);
             if (Set.of(AuthorityMode.LINK_ONLY, AuthorityMode.MIRROR_READ).contains(connection.authority()))
                 throw new IntegrationProblem("AUTHORITY_MODE", 409, "This authority mode does not permit publication");
-            var connector = connectors.require(connection.connectorId());
+            var connector = connectors.require(connection.connectorId(), connection.profileVersion());
             if (!connector.descriptor().capabilities().contains(Capability.FILE_EXPORT)) throw new IntegrationProblem("CAPABILITY_UNAVAILABLE", 409, "Profile has no file export capability");
             String fingerprint = json.fingerprint(Arrays.asList(connectionId, context.username(), request));
             Operation prior = session.find(request.operationId()); if (prior != null) return replay(prior, fingerprint);
@@ -363,7 +393,7 @@ public class IntegrationService {
             ExchangeDocument result = ExchangeItems.expand(operation.document(), selected);
             boolean complete = selected.size() == operation.changes().size();
             result = new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), complete, result.source(), result.artifacts(), result.relations(), result.placements(), result.metadata(), result.losses());
-            ExchangeFile file = connectors.require(operation.context().profile()).previewOutbound(new OutboundRequest(operation.context(), result, result.externalVersion()));
+            ExchangeFile file = connectors.require(operation.context().profile(), operation.context().profileVersion()).previewOutbound(new OutboundRequest(operation.context(), result, result.externalVersion()));
             session.beginReview(review); session.applied(operation.id(), operation.context().internalState(), result, false);
             Map<String, IntegrationDomainAdapter.AppliedRequirement> bindings = domain.exportBindings(session.connection(), current, before, selected);
             Set<String> existing = known.stream().map(Identity::externalId).collect(java.util.stream.Collectors.toSet());
@@ -387,6 +417,9 @@ public class IntegrationService {
         Map<String, Artifact> selected = new TreeMap<>(current);
         Set<String> ids = new HashSet<>(); operation.changes().forEach(c -> ids.add(c.id()));
         if (!ids.containsAll(review.decisions().keySet())) throw new IllegalArgumentException("Review contains unknown change identities");
+        if (!review.decisions().keySet().containsAll(review.endpoints().keySet())) throw new IllegalArgumentException("Endpoint mappings require an explicit item decision");
+        if (!review.endpoints().isEmpty() && (!"2".equals(operation.context().profileVersion()) || !SparxSnapshots.isSparx(operation.context().profile())))
+            throw new IllegalArgumentException("Typed endpoint review requires Sparx version 2");
         if (!review.decisions().keySet().containsAll(review.mappings().keySet())) throw new IllegalArgumentException("Mappings require an explicit item decision");
         if (operation.context().authority() != AuthorityMode.LINK_ONLY && review.mappings().values().stream().anyMatch(m -> m.internalIdentity() != null))
             throw new IllegalArgumentException("Internal trace targets require LINK_ONLY authority");
@@ -401,8 +434,38 @@ public class IntegrationService {
                 Identity previous = known.get(change.externalId());
                 Artifact baseline = previous == null ? null : previous.external() == null ? previous.internal() : previous.external();
                 Artifact selectedValue = ExchangeItems.merge(baseline, current.get(change.externalId()), change.after());
+                if ("INBOUND".equals(operation.direction()) && selectedValue.kind() == ArtifactKind.RELATION) {
+                    selectedValue = reviewedEndpointAuthority(selectedValue, current.get(change.externalId()));
+                }
                 MappingOverride mapping = review.mappings().get(change.id());
                 Artifact mapped = remap(selectedValue, mapping);
+                EndpointOverride endpoint = review.endpoints().get(change.id());
+                if (endpoint != null) {
+                    if (mapped.kind() != ArtifactKind.RELATION || endpoint.projection() == null)
+                        throw new IntegrationProblem("SPARX_ENDPOINT_MAPPING_REQUIRED", 422, "Endpoint projection requires a relation and an explicit choice");
+                    if (mapping != null && mapping.canonicalType() != null && endpoint.canonicalType() != null
+                            && !mapping.canonicalType().equals(endpoint.canonicalType()))
+                        throw new IntegrationProblem("SPARX_ENDPOINT_MAPPING_REQUIRED", 422, "Relation type and endpoint review must agree");
+                    Map<String, String> extensions = new TreeMap<>(mapped.extensions());
+                    for (String key : List.of("nativeSource", "nativeTarget", "nativeType")) extensions.remove(key);
+                    extensions.put("nativeProjection", endpoint.projection().name());
+                    if (endpoint.sourceInternalIdentity() != null) extensions.put("nativeSource", endpoint.sourceInternalIdentity());
+                    if (endpoint.targetInternalIdentity() != null) extensions.put("nativeTarget", endpoint.targetInternalIdentity());
+                    mapped = new Artifact(mapped.id(), mapped.kind(), mapped.type(), mapped.title(), mapped.text(), mapped.attributes(), extensions);
+                    if (endpoint.projection() == RelationProjection.ARCHITECTURE_RELATION && endpoint.canonicalType() != null) {
+                        mapping = new MappingOverride(endpoint.canonicalType(), null, null, null);
+                        mapped = remap(mapped, mapping);
+                    }
+                }
+                if (mapped.kind() == ArtifactKind.RELATION && mapped.extensions().containsKey("nativeProjection")) {
+                    // Persist the same effective type used by canonical planning and exchange export.
+                    Map<String, String> extensions = new TreeMap<>(mapped.extensions());
+                    extensions.remove("nativeType");
+                    if (RelationProjection.ARCHITECTURE_RELATION.name().equals(extensions.get("nativeProjection"))
+                            && extensions.get("canonicalType") != null)
+                        extensions.put("nativeType", extensions.get("canonicalType"));
+                    mapped = new Artifact(mapped.id(), mapped.kind(), mapped.type(), mapped.title(), mapped.text(), mapped.attributes(), extensions);
+                }
                 if (SparxSnapshots.isSparx(operation.context().profile()) && mapping != null && mapping.canonicalType() != null) {
                     String type = mapped.kind() == ArtifactKind.ELEMENT ? SparxMappingProfile.umlType(mapping.canonicalType())
                             : mapped.kind() == ArtifactKind.RELATION ? SparxMappingProfile.eaRelation(mapping.canonicalType()) : mapped.type();
@@ -410,6 +473,9 @@ public class IntegrationService {
                             "The selected canonical relation type is not supported by this Sparx profile; choose a supported mapping or reject the change");
                     Map<String, String> tags = new TreeMap<>(mapped.attributes());
                     tags.put("tag:taxonomy." + (mapped.kind() == ArtifactKind.ELEMENT ? "elementType" : "relationType"), mapping.canonicalType());
+                    // V2 retains the scalar tag emitted for the generic taxonomy:RelationType extension.
+                    if ("2".equals(operation.context().profileVersion()) && mapped.kind() == ArtifactKind.RELATION)
+                        tags.put("tag:taxonomy.RelationType", mapping.canonicalType());
                     mapped = new Artifact(mapped.id(), mapped.kind(), type, mapped.title(), mapped.text(), tags, mapped.extensions());
                 }
                 if (operation.direction().equals("OUTBOUND") && operation.context().profile().equals(ArchiMateExchangeCodec.PROFILE)
@@ -425,6 +491,16 @@ public class IntegrationService {
             throw new IntegrationProblem("REVIEW_DEPENDENCY_REQUIRED", 422, "Accepted exchange objects require their reviewed type and package metadata");
         return selected;
     }
+    /** Retain only locally accepted approval; incoming evidence cannot grant or clear it. */
+    static Artifact reviewedEndpointAuthority(Artifact incoming, Artifact accepted) {
+        Map<String, String> extensions = new TreeMap<>(incoming.extensions());
+        for (String key : List.of("nativeProjection", "nativeSource", "nativeTarget", "nativeType")) {
+            extensions.remove(key);
+            if (accepted != null && accepted.extensions().containsKey(key)) extensions.put(key, accepted.extensions().get(key));
+        }
+        return new Artifact(incoming.id(), incoming.kind(), incoming.type(), incoming.title(), incoming.text(), incoming.attributes(), extensions);
+    }
+
     private static Artifact remap(Artifact artifact, MappingOverride mapping) {
         if (mapping == null) return artifact;
         Map<String, String> extensions = new TreeMap<>(artifact.extensions()); String title = artifact.title(), text = artifact.text();
@@ -458,7 +534,13 @@ public class IntegrationService {
         return new IntegrationContext(connection.id(), connection.authority(), connection.externalScope(), state, context.username(), connection.connectorId(), connection.profileVersion());
     }
     private void requireProfile(Connection connection) {
-        if (!connectors.require(connection.connectorId()).descriptor().version().equals(connection.profileVersion())) throw IntegrationProblem.conflict("PROFILE_VERSION_CHANGED");
+        try {
+            if (!connectors.require(connection.connectorId(), connection.profileVersion()).descriptor().version().equals(connection.profileVersion()))
+                throw IntegrationProblem.conflict("PROFILE_VERSION_CHANGED");
+        } catch (IntegrationProblem failure) {
+            if ("UNKNOWN_CONNECTOR".equals(failure.code())) throw IntegrationProblem.conflict("PROFILE_VERSION_CHANGED");
+            throw failure;
+        }
     }
     private WorkspaceDocument read(RepositoryContext context) {
         try { return editor.read(context, null); } catch (IOException failure) { throw new IntegrationProblem("VERSION_UNAVAILABLE", 503, "Architecture state is temporarily unavailable"); }

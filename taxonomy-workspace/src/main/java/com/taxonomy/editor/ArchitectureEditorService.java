@@ -138,8 +138,8 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
             try { verifyVersion(context, session.state()); }
             catch (IOException failure) { throw new java.io.UncheckedIOException(failure); }
             String before = session.state().dsl(), next = before;
-            for (var command : commands) next = transformer.apply(next, command).dsl();
             if (portfolioContribution != null) next = portfolioContribution.apply(next);
+            for (var command : commands) next = transformer.apply(next, command).dsl();
             if (!next.equals(before)) session.append(metadata, context.username(), "VERSION_IMPORT", null, fingerprint, next,
                     new ArrayList<>(affected(ArchitectureSemanticPatch.between(before, next))));
             Context result = Context.of(context, session.state().checkpointCommit(), session.state().revision());
@@ -402,6 +402,15 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
         parts.add(Long.toString(command.context().revision()));
         if (command.operation() instanceof SemanticCommand semantic) {
             switch (semantic.command()) {
+                case CreateArchitecturePackage p -> { parts.add(p.id()); properties(parts, p.properties()); }
+                case UpdateArchitecturePackage p -> { parts.add(p.id()); properties(parts, p.properties()); }
+                case DeleteArchitecturePackage p -> parts.add(p.id());
+                case SetArchitecturePackagePlacements p -> {
+                    p.placements().forEach(v -> { parts.add(v.kind().name()); parts.add(v.memberId()); parts.add(v.parentPackageId()); parts.add(Integer.toString(v.position())); });
+                    parts.addAll(p.completeParentScopes().stream().sorted().toList());
+                }
+                case UpsertRequirementMapping m -> { parts.add(m.requirementIdentity()); parts.add(m.elementId()); parts.add(m.rationale()); properties(parts, m.exchangeProperties()); }
+                case DeleteRequirementMapping m -> { parts.add(m.requirementIdentity()); parts.add(m.elementId()); }
                 case CreateArchitectureElement e -> { parts.add(e.id()); parts.add(e.type()); properties(parts, e.properties()); }
                 case UpdateArchitectureElement e -> { parts.add(e.id()); parts.add(e.type()); properties(parts, e.properties()); }
                 case DeleteArchitectureElement e -> parts.add(e.id());

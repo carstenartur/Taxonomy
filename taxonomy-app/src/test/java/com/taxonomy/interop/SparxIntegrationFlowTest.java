@@ -28,7 +28,10 @@ class SparxIntegrationFlowTest {
     @Autowired RepositoryWorkspaceService workspaces;
     @Autowired DslGitRepositoryFactory git;
     @Autowired EditorJournal journal;
+    @Autowired com.taxonomy.editor.ArchitectureEditorService nativeEditor;
     @Autowired ProjectPortfolioService projects;
+    @Autowired IntegrationPortfolioPort portfolioPort;
+    @Autowired com.taxonomy.portfolio.service.PortfolioGitService portfolioGit;
     @Autowired com.taxonomy.interop.oslc.OslcRemoteProfiles remoteProfiles;
     private RepositoryContext context;
     private UUID connection;
@@ -36,13 +39,17 @@ class SparxIntegrationFlowTest {
     private static final String B = "{22222222-2222-4222-8222-222222222222}";
     private static final String P = "{33333333-3333-4333-8333-333333333333}";
 
-    @Test void pcsReadRetriesDurablyAndRejectsRemoteChangesBeforeReviewedPull() throws Exception {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"1", "2"})
+    void pcsReadRetriesDurablyAndRejectsRemoteChangesBeforeReviewedPull(String profileVersion) throws Exception {
         var server = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
         server.start();
         var base = java.net.URI.create("http://127.0.0.1:" + server.getAddress().getPort() + "/model/oslc/am/");
         String resource = base + "resource/el_" + A.replace("{", "%7B").replace("}", "%7D") + "/";
         var title = new java.util.concurrent.atomic.AtomicReference<>("Flood observation reader");
         var unauthorized = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var tagValue = new java.util.concurrent.atomic.AtomicReference<>("first");
+        var featureFailure = new java.util.concurrent.atomic.AtomicBoolean(false);
         var calls = new java.util.concurrent.atomic.AtomicInteger();
         var oldProfiles = remoteProfiles.getRemotes();
         String credential = "SPARX_CONTRACT_TOKEN";
@@ -60,19 +67,25 @@ class SparxIntegrationFlowTest {
                 if (exchange.getRequestURI().getPath().endsWith("sp/")) {
                     rdf.link(base + "query", com.taxonomy.exchange.OslcRdf.OSLC + "resourceType", SparxOslcAmCodec.AM + "Resource")
                             .link(base + "query", com.taxonomy.exchange.OslcRdf.OSLC + "queryBase", base + "qc/");
-                } else {
+                } else if (exchange.getRequestURI().getPath().endsWith("qc/")) {
                     rdf.type(resource, SparxOslcAmCodec.AM + "Resource")
                             .literal(resource, com.taxonomy.exchange.OslcRdf.DCT + "identifier", "el_" + A)
                             .literal(resource, com.taxonomy.exchange.OslcRdf.DCT + "type", "Component")
                             .literal(resource, com.taxonomy.exchange.OslcRdf.DCT + "title", title.get())
                             .literal(resource, com.taxonomy.exchange.OslcRdf.DCT + "description", "Published observations with source and time");
                 }
+                if (profileVersion.equals("2") && exchange.getRequestURI().getPath().contains("/taggedvalues/")) {
+                    if (featureFailure.get()) { exchange.sendResponseHeaders(503, -1); exchange.close(); return; }
+                    rdf.literal(base + "tag", com.taxonomy.exchange.OslcRdf.DCT + "identifier", "tv_{55555555-5555-4555-8555-555555555555}")
+                            .literal(base + "tag", com.taxonomy.exchange.OslcRdf.DCT + "title", "owner")
+                            .literal(base + "tag", SparxOslcAmCodec.SS + "value", tagValue.get());
+                }
                 byte[] body = rdf.xml(); exchange.getResponseHeaders().set("Content-Type", "application/rdf+xml");
                 exchange.sendResponseHeaders(200, body.length); exchange.getResponseBody().write(body); exchange.close();
             });
             UUID pcs = UUID.randomUUID();
             integrations.create(context, new CreateConnection(pcs, "PCS contract", SparxOslcAmCodec.PROFILE,
-                    AuthorityMode.IMPORT_COPY, new ExternalScope("SPARX", base.toString(), null), null, "pcs-contract"));
+                    AuthorityMode.IMPORT_COPY, new ExternalScope("SPARX", base.toString(), null), null, "pcs-contract", profileVersion));
             UUID id = UUID.randomUUID();
             var request = new RemoteRequest(id, integrations.overview(context, pcs).current(), base + "sp/", null);
             assertEquals("REMOTE_UNAUTHORIZED", assertThrows(IntegrationProblem.class,
@@ -91,11 +104,24 @@ class SparxIntegrationFlowTest {
             assertEquals(after, calls.get(), "Replay must not refetch or mutate an already accepted operation");
             var next = integrations.previewRemote(context, pcs, new RemoteRequest(UUID.randomUUID(),
                     integrations.overview(context, pcs).current(), base + "sp/", null));
-            title.set("Changed while the reviewer was reading");
+            if (profileVersion.equals("2")) tagValue.set("Changed while the reviewer was reading");
+            else title.set("Changed while the reviewer was reading");
             assertEquals("REMOTE_STALE", assertThrows(IntegrationProblem.class, () -> integrations.apply(context, pcs, accept(next))).code());
             assertEquals(1, journal.read(context).operations().size());
             assertFalse(integrations.operation(context, pcs, id).toString().contains("useridentifier"));
             integrations.cancel(context, pcs, next.id(), "Remote state changed; request a fresh preview");
+            assertEquals(profileVersion, integrations.overview(context, pcs).connection().profileVersion());
+            if (profileVersion.equals("2")) {
+                var state = integrations.overview(context, pcs).current();
+                featureFailure.set(true); UUID failed = UUID.randomUUID();
+                assertEquals("REMOTE_UNAVAILABLE", assertThrows(IntegrationProblem.class, () -> integrations.previewRemote(context, pcs,
+                        new RemoteRequest(failed, state, base + "sp/", null))).code());
+                assertEquals(OperationStatus.FETCH_FAILED, integrations.operation(context, pcs, failed).status());
+                assertEquals(state, integrations.overview(context, pcs).current());
+                assertEquals(1, journal.read(context).operations().size());
+                assertFalse(integrations.operation(context, pcs, failed).toString().contains(B));
+                assertFalse(integrations.events(context, pcs, failed).toString().contains(B));
+            }
         } finally {
             server.stop(0); remoteProfiles.setRemotes(oldProfiles);
             if (oldToken == null) System.clearProperty(credential); else System.setProperty(credential, oldToken);
@@ -221,6 +247,206 @@ class SparxIntegrationFlowTest {
         assertEquals("IDENTITY_REMAP_REQUIRED", assertThrows(IntegrationProblem.class, () -> integrations.apply(context, connection,
                 new ReviewedChangeSet(preview.id(), preview.fingerprint(), decisions, "Cannot override identity ownership"))).code());
         assertEquals(before, integrations.overview(context, connection).current());
+    }
+
+    @Test void v2RequirementPlanIsAtomicAndContributesRealCanonicalMappingWithNativePackage() throws Exception {
+        Long project = projects.createProject(new CreateProjectRequest("V2-PROJECT", "Requirements", null, ProjectStatus.ACTIVE, null, null, null, null),
+                context.username(), IntegrationDomainAdapter.workspace(context)).id();
+        connection = integrations.create(context, new CreateConnection(UUID.randomUUID(), "V2 native", SparxMappingProfile.PROFILE,
+                AuthorityMode.BIDIRECTIONAL, new ExternalScope("SPARX", "v2-contract", null), project, null, "2")).id();
+        var base = model("Native", false, true);
+        String req = base.artifacts().stream().filter(a -> a.kind() == ArtifactKind.REQUIREMENT).findFirst().orElseThrow().id();
+        String connector = "{66666666-6666-4666-8666-666666666666}";
+        var relations = new ArrayList<>(base.relations());
+        relations.add(new Relation(connector, "Dependency", req, A, Map.of(), Map.of("canonicalType", "DEPENDS_ON", "direction", "Source -> Destination")));
+        var doc = new ExchangeDocument(base.profile(), "2", "v2", true, "", base.artifacts(), relations, base.placements(), base.metadata(), List.of());
+        byte[] fixture = new SparxXmiCodec("2").write(doc);
+        var preview = integrations.preview(context, connection, request(true), fixture);
+        var before = integrations.overview(context, connection).current();
+        assertEquals("SPARX_ENDPOINT_MAPPING_REQUIRED", assertThrows(IntegrationProblem.class,
+                () -> integrations.apply(context, connection, accept(preview))).code());
+        assertEquals(before, integrations.overview(context, connection).current());
+        assertTrue(projects.listRequirements(project, context.username(), IntegrationDomainAdapter.workspace(context)).isEmpty());
+        assertNull(journal.read(context));
+        var endpoints = integrations.endpointOptions(context, connection, preview.id());
+        assertTrue(journal.read(context).operations().isEmpty());
+        assertNull(integrations.overview(context, connection).checkpoint());
+        assertNull(integrations.operation(context, connection, preview.id()).reviewFingerprint());
+        assertTrue(projects.listRequirements(project, context.username(), IntegrationDomainAdapter.workspace(context)).isEmpty());
+        String requirementIdentity = endpoints.external().get(req).businessIdentity();
+        String elementIdentity = endpoints.external().get(A).businessIdentity();
+        String changeId = preview.changes().stream().filter(c -> c.externalId().equals("RELATION:" + connector)).findFirst().orElseThrow().id();
+        var review = new ReviewedChangeSet(preview.id(), preview.fingerprint(), accept(preview).decisions(), "Reviewed requirement endpoint",
+                Map.of(), Map.of(changeId, new EndpointOverride(requirementIdentity, elementIdentity, RelationProjection.REQUIREMENT_MAPPING, null)));
+        integrations.apply(context, connection, review);
+        var blocks = ArchitectureSemanticPatch.index(git.resolveRepository(context).getDslAtHead(context.branch()));
+        assertNotNull(blocks.get("mapping:" + requirementIdentity + " -> " + elementIdentity));
+        assertEquals("V2-PROJECT", blocks.get("requirement:" + requirementIdentity).property("x-project-key"));
+        assertEquals(1, blocks.values().stream().filter(b -> b.getKind().equals("requirement")).count());
+        assertEquals(1, blocks.values().stream().filter(b -> b.getKind().equals("package")).count());
+        assertEquals(2, blocks.values().stream().filter(b -> b.getKind().equals("element")).count());
+        for (int i = 0; i < 2; i++) {
+            var repeat = integrations.preview(context, connection, request(true), fixture);
+            integrations.apply(context, connection, accept(repeat));
+        }
+        assertEquals(1, journal.read(context).operations().size());
+        var retargeted = new ArrayList<>(relations);
+        retargeted.set(retargeted.size() - 1, new Relation(connector, "Dependency", req, B, Map.of(), Map.of("canonicalType", "DEPENDS_ON", "direction", "Source -> Destination")));
+        var changedEnds = new ExchangeDocument(base.profile(), "2", "changed", true, "", base.artifacts(), retargeted, base.placements(), base.metadata(), List.of());
+        var changedPreview = integrations.preview(context, connection, request(true), new SparxXmiCodec("2").write(changedEnds));
+        assertEquals("SPARX_ENDPOINT_KIND_UNMAPPED", assertThrows(IntegrationProblem.class,
+                () -> integrations.apply(context, connection, accept(changedPreview))).code());
+        assertEquals(1, journal.read(context).operations().size());
+        integrations.cancel(context, connection, changedPreview.id(), "Changed connector ends require fresh explicit projection review");
+        String nativeCommand = UUID.randomUUID().toString();
+        nativeEditor.execute(context, new com.taxonomy.editor.ArchitectureCommandPort.Command(nativeEditor.read(context, null).context(),
+                new com.taxonomy.editor.ArchitectureCommandPort.Metadata(nativeCommand, nativeCommand, nativeCommand, "Reviewed native mapping"),
+                new com.taxonomy.editor.ArchitectureCommandPort.SemanticCommand(new com.taxonomy.dsl.command.ArchitectureCommand.UpsertRequirementMapping(
+                        requirementIdentity, endpoints.external().get(B).businessIdentity(), "Native mapping addition", Map.of()))));
+        var overview = integrations.overview(context, connection);
+        var outgoing = integrations.previewExport(context, connection, new ExportRequest(UUID.randomUUID(), overview.current(), overview.checkpoint().externalVersion()));
+        integrations.prepareFile(context, connection, accept(outgoing));
+        var returned = new SparxXmiCodec("2").read(integrations.file(context, connection, outgoing.id()).content(), "export", true);
+        assertEquals(1, returned.artifacts().stream().filter(a -> a.kind() == ArtifactKind.SPECIFICATION).count());
+        assertTrue(returned.relations().stream().anyMatch(r -> r.id().equals(connector)));
+        assertEquals(2, returned.relations().stream().filter(r -> r.source().equals(req)).count());
+        byte[] delivered = integrations.file(context, connection, outgoing.id()).content();
+        var reimport = integrations.preview(context, connection, request(true), delivered);
+        integrations.apply(context, connection, accept(reimport));
+        assertEquals(2, new com.taxonomy.dsl.command.ArchitectureDslCommands().model(nativeEditor.read(context, null).dsl()).getMappings().size());
+        UUID otherConnection = integrations.create(context, new CreateConnection(UUID.randomUUID(), "Another review authority", SparxMappingProfile.PROFILE,
+                AuthorityMode.BIDIRECTIONAL, new ExternalScope("SPARX", "separate-v2-contract", null), project, null, "2")).id();
+        var otherPreview = integrations.preview(context, otherConnection, new PreviewRequest(UUID.randomUUID(), integrations.overview(context, otherConnection).current(), "application/xmi+xml", true), delivered);
+        int requirementsBefore = projects.listRequirements(project, context.username(), IntegrationDomainAdapter.workspace(context)).size();
+        assertEquals("SPARX_ENDPOINT_MAPPING_REQUIRED", assertThrows(IntegrationProblem.class,
+                () -> integrations.apply(context, otherConnection, accept(otherPreview))).code());
+        assertEquals(requirementsBefore, projects.listRequirements(project, context.username(), IntegrationDomainAdapter.workspace(context)).size());
+        assertTrue(integrations.identities(context, otherConnection).isEmpty());
+    }
+
+    @Test void exactRequirementPairsPreserveLegacyIdsAndRejectSanitizerCollisions() {
+        var workspace = IntegrationDomainAdapter.workspace(context);
+        Long first = projects.createProject(new CreateProjectRequest("A__B", "First", null, ProjectStatus.ACTIVE, null, null, null, null), context.username(), workspace).id();
+        Long second = projects.createProject(new CreateProjectRequest("A", "Second", null, ProjectStatus.ACTIVE, null, null, null, null), context.username(), workspace).id();
+        portfolioPort.createRequirement(first, new IntegrationPortfolioPort.ImportedRequirement("C", "First requirement", "Text", "reviewed", new IntegrationPortfolioPort.ImportProvenance("test", "Text")), context.username(), workspace);
+        String contributed = portfolioGit.contributeTo("", context.username(), workspace);
+        String legacy = contributed.replace("requirement A__B__C", "requirement LEGACY");
+        assertEquals("LEGACY", portfolioPort.planRequirementApply(first, "C", legacy, context.username(), workspace).canonicalIdentity());
+        assertTrue(portfolioGit.contributeTo(legacy, context.username(), workspace).contains("requirement LEGACY"));
+        assertNotEquals(portfolioPort.planRequirementApply(first, "SHARED", "", context.username(), workspace).canonicalIdentity(),
+                portfolioPort.planRequirementApply(second, "SHARED", "", context.username(), workspace).canonicalIdentity());
+        assertEquals("REQUIREMENT_IDENTITY_MISMATCH", assertThrows(IntegrationProblem.class,
+                () -> portfolioPort.planRequirementApply(second, "B__C", contributed, context.username(), workspace)).code());
+        assertTrue(projects.listRequirements(second, context.username(), workspace).isEmpty());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value = Decision.class, names = {"REJECT", "KEEP_INTERNAL"})
+    void rejectedEndpointReviewsCannotDeleteRelationsOrMappingsBesideAcceptedEdits(Decision decision) throws Exception {
+        Long project = projects.createProject(new CreateProjectRequest("SELECTION", "Selection", null, ProjectStatus.ACTIVE, null, null, null, null),
+                context.username(), IntegrationDomainAdapter.workspace(context)).id();
+        createV2(project);
+        var fixture = v2Model("Before", true);
+        var initial = integrations.preview(context, connection, request(true), new SparxXmiCodec("2").write(fixture));
+        var ends = integrations.endpointOptions(context, connection, initial.id());
+        String requirement = fixture.artifacts().stream().filter(a -> a.kind() == ArtifactKind.REQUIREMENT).findFirst().orElseThrow().id();
+        String requirementConnector = fixture.relations().getLast().id();
+        integrations.apply(context, connection, new ReviewedChangeSet(initial.id(), initial.fingerprint(), accept(initial).decisions(), "Approve mapping",
+                Map.of(), Map.of(changeId(initial, requirementConnector), new EndpointOverride(ends.external().get(requirement).businessIdentity(),
+                ends.external().get(A).businessIdentity(), RelationProjection.REQUIREMENT_MAPPING, null))));
+        String relationKey = "relation:" + ends.external().get(A).businessIdentity() + " DEPENDS_ON " + ends.external().get(B).businessIdentity();
+        String mappingKey = "mapping:" + ends.external().get(requirement).businessIdentity() + " -> " + ends.external().get(A).businessIdentity();
+        var before = ArchitectureSemanticPatch.index(git.resolveRepository(context).getDslAtHead(context.branch()));
+        assertNotNull(before.get(relationKey)); assertNotNull(before.get(mappingKey));
+        var edit = integrations.preview(context, connection, request(true), new SparxXmiCodec("2").write(v2Model("Accepted unrelated rename", true)));
+        var decisions = new TreeMap<>(accept(edit).decisions());
+        Map<String, EndpointOverride> endpoints = new TreeMap<>();
+        for (var relation : fixture.relations()) {
+            String id = changeId(edit, relation.id());
+            decisions.put(id, decision);
+            endpoints.put(id, new EndpointOverride(null, null, RelationProjection.PRESERVE_ONLY, null));
+        }
+        integrations.apply(context, connection, new ReviewedChangeSet(edit.id(), edit.fingerprint(), decisions, "Keep connectors and accept rename", Map.of(), endpoints));
+        var after = ArchitectureSemanticPatch.index(git.resolveRepository(context).getDslAtHead(context.branch()));
+        assertNotNull(after.get(relationKey), "Rejected endpoint review must retain the architecture relation");
+        assertNotNull(after.get(mappingKey), "Rejected endpoint review must retain the requirement mapping");
+        assertEquals("Accepted unrelated rename", after.get("element:" + ends.external().get(A).businessIdentity()).property("title"));
+        assertEquals(2, journal.read(context).operations().size());
+    }
+
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(booleans = {false, true})
+    void laterTypeReviewReplacesPriorEndpointTypeAndSurvivesExportReimport(boolean freshEndpointWithoutType) throws Exception {
+        createV2(null);
+        var initial = integrations.preview(context, connection, request(true), new SparxXmiCodec("2").write(v2Model("Before", false)));
+        var ends = integrations.endpointOptions(context, connection, initial.id());
+        String connector = initial.document().relations().getFirst().id();
+        String source = ends.external().get(A).businessIdentity(), target = ends.external().get(B).businessIdentity();
+        integrations.apply(context, connection, new ReviewedChangeSet(initial.id(), initial.fingerprint(), accept(initial).decisions(), "Approve related relation",
+                Map.of(), Map.of(changeId(initial, connector), new EndpointOverride(source, target, RelationProjection.ARCHITECTURE_RELATION, "RELATED_TO"))));
+        assertNotNull(ArchitectureSemanticPatch.index(git.resolveRepository(context).getDslAtHead(context.branch())).get("relation:" + source + " RELATED_TO " + target));
+        var next = integrations.preview(context, connection, request(true), new SparxXmiCodec("2").write(v2Model("After", false)));
+        String change = changeId(next, connector);
+        Map<String, EndpointOverride> endpoints = freshEndpointWithoutType
+                ? Map.of(change, new EndpointOverride(source, target, RelationProjection.ARCHITECTURE_RELATION, null)) : Map.of();
+        integrations.apply(context, connection, new ReviewedChangeSet(next.id(), next.fingerprint(), accept(next).decisions(), "Review new dependency type",
+                Map.of(change, new MappingOverride("DEPENDS_ON", null, null, null)), endpoints));
+        assertEffectiveDependency(source, target, connector);
+        var overview = integrations.overview(context, connection);
+        var outgoing = integrations.previewExport(context, connection, new ExportRequest(UUID.randomUUID(), overview.current(), overview.checkpoint().externalVersion()));
+        integrations.prepareFile(context, connection, accept(outgoing));
+        byte[] delivered = integrations.file(context, connection, outgoing.id()).content();
+        var returned = new SparxXmiCodec("2").read(delivered, "returned", true);
+        assertEquals("DEPENDS_ON", returned.relations().stream().filter(r -> r.id().equals(connector)).findFirst().orElseThrow().extensions().get("canonicalType"));
+        int operations = journal.read(context).operations().size();
+        var reimport = integrations.preview(context, connection, request(true), delivered);
+        integrations.apply(context, connection, accept(reimport));
+        assertEffectiveDependency(source, target, connector);
+        assertEquals(operations, journal.read(context).operations().size(), "Reimport must preserve the reviewed native type without another semantic operation");
+    }
+
+    @Test void incompatibleExplicitRelationTypesFailBeforeAnyWrite() {
+        createV2(null);
+        var preview = integrations.preview(context, connection, request(true), new SparxXmiCodec("2").write(v2Model("Before", false)));
+        var ends = integrations.endpointOptions(context, connection, preview.id());
+        var before = integrations.overview(context, connection);
+        String change = changeId(preview, preview.document().relations().getFirst().id());
+        assertEquals("SPARX_ENDPOINT_MAPPING_REQUIRED", assertThrows(IntegrationProblem.class, () -> integrations.apply(context, connection,
+                new ReviewedChangeSet(preview.id(), preview.fingerprint(), accept(preview).decisions(), "Conflicting types",
+                        Map.of(change, new MappingOverride("DEPENDS_ON", null, null, null)),
+                        Map.of(change, new EndpointOverride(ends.external().get(A).businessIdentity(), ends.external().get(B).businessIdentity(),
+                                RelationProjection.ARCHITECTURE_RELATION, "RELATED_TO"))))).code());
+        assertEquals(before.current(), integrations.overview(context, connection).current());
+        assertNull(integrations.overview(context, connection).checkpoint());
+        assertTrue(integrations.identities(context, connection).isEmpty());
+        assertTrue(journal.read(context).operations().isEmpty());
+        assertNull(integrations.operation(context, connection, preview.id()).reviewFingerprint());
+    }
+
+    private void assertEffectiveDependency(String source, String target, String connector) throws Exception {
+        var blocks = ArchitectureSemanticPatch.index(git.resolveRepository(context).getDslAtHead(context.branch()));
+        assertNotNull(blocks.get("relation:" + source + " DEPENDS_ON " + target));
+        assertNull(blocks.get("relation:" + source + " RELATED_TO " + target));
+        var relation = integrations.identities(context, connection).stream().filter(i -> i.externalId().equals("RELATION:" + connector)).findFirst().orElseThrow();
+        assertEquals("DEPENDS_ON", relation.internal().extensions().get("canonicalType"));
+        assertEquals("DEPENDS_ON", relation.internal().extensions().get("nativeType"));
+        assertEquals("DEPENDS_ON", relation.internal().attributes().get("tag:taxonomy.relationType"));
+        assertEquals("DEPENDS_ON", relation.internal().attributes().get("tag:taxonomy.RelationType"));
+    }
+    private void createV2(Long project) {
+        connection = integrations.create(context, new CreateConnection(UUID.randomUUID(), "V2 review", SparxMappingProfile.PROFILE,
+                AuthorityMode.BIDIRECTIONAL, new ExternalScope("SPARX", "v2-review", null), project, null, "2")).id();
+    }
+    private static String changeId(Operation operation, String connector) {
+        return operation.changes().stream().filter(c -> c.externalId().equals("RELATION:" + connector)).findFirst().orElseThrow().id();
+    }
+    private static ExchangeDocument v2Model(String title, boolean requirement) {
+        var base = model(title, false, requirement);
+        var relations = new ArrayList<>(base.relations());
+        if (requirement) relations.add(new Relation("{66666666-6666-4666-8666-666666666666}", "Dependency",
+                base.artifacts().stream().filter(a -> a.kind() == ArtifactKind.REQUIREMENT).findFirst().orElseThrow().id(), A,
+                Map.of(), Map.of("canonicalType", "DEPENDS_ON", "direction", "Source -> Destination")));
+        return new ExchangeDocument(base.profile(), "2", "v2", true, "", base.artifacts(), relations, base.placements(), base.metadata(), List.of());
     }
 
     private UUID create(Long project) {

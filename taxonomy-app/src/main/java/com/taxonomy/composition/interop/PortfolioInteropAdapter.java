@@ -26,13 +26,13 @@ public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
     @Override
     public List<ProjectData> listProjects(String username, WorkspaceContext context) {
         return portfolio(() -> projects.listProjects(username, context)).stream()
-                .map(p -> new ProjectData(p.id(), p.title())).toList();
+                .map(p -> new ProjectData(p.id(), p.title(), p.projectKey())).toList();
     }
 
     @Override
     public ProjectData getProject(Long projectId, String username, WorkspaceContext context) {
         var project = portfolio(() -> projects.getProject(projectId, username, context));
-        return new ProjectData(project.id(), project.title());
+        return new ProjectData(project.id(), project.title(), project.projectKey());
     }
 
     @Override
@@ -96,6 +96,14 @@ public class PortfolioInteropAdapter implements IntegrationPortfolioPort {
                                       ImportProvenance source, String username, WorkspaceContext context) {
         portfolio(() -> projects.addRequirementVersion(projectId, requirementId,
                 new CreateRequirementVersionRequest(text, rationale, provenance(source)), username, context));
+    }
+
+    @Override
+    public RequirementApplyPlan planRequirementApply(Long projectId, String requirementKey, String dsl,
+                                                     String username, WorkspaceContext context) {
+        var project = portfolio(() -> projects.getProject(projectId, username, context));
+        String canonical = portfolio(() -> portfolio.planRequirementIdentity(project.projectKey(), requirementKey, dsl, username, context));
+        return new RequirementApplyPlan(project.projectKey(), requirementKey, canonical);
     }
 
     @Override

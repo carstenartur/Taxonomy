@@ -216,7 +216,7 @@
       "fromPackage": "com.taxonomy.composition.interop",
       "toContext": "interop",
       "toPackage": "com.taxonomy.interop",
-      "classDependencyCount": 8
+      "classDependencyCount": 9
     },
     {
       "fromContext": "app-composition",

@@ -77,6 +77,22 @@
                     </div>
                 </fieldset>
             </form>
+            <section aria-labelledby="editorPackagesHeading">
+                <h2 id="editorPackagesHeading" data-i18n="editor.packages">Packages</h2>
+                <fieldset id="editorPackageFields" disabled>
+                    <label for="editorPackage" data-i18n="editor.packageSelect">Package (empty for new)</label><select id="editorPackage"></select>
+                    <label for="editorPackageTitle" data-i18n="editor.name">Name</label><input id="editorPackageTitle" maxlength="8000"/>
+                    <label for="editorPackageDescription" data-i18n="editor.description">Description</label><textarea id="editorPackageDescription" maxlength="8000"></textarea>
+                    <button id="editorSavePackage" type="button" data-i18n="editor.preview">Preview change</button>
+                    <button id="editorDeletePackage" type="button" data-i18n="editor.delete">Preview deletion</button>
+                    <label for="editorPackageParent" data-i18n="editor.packageParent">Parent package</label><select id="editorPackageParent"></select>
+                    <label for="editorPackagePosition" data-i18n="editor.packagePosition">Sibling position (from zero)</label><input id="editorPackagePosition" type="number" min="0" value="0"/>
+                    <button id="editorMovePackage" type="button" data-i18n="editor.packageMove">Move selected package</button>
+                    <button id="editorPlaceElement" type="button" data-i18n="editor.packagePlace">Place selected element</button>
+                    <button id="editorDetachElement" type="button" data-i18n="editor.packageDetach">Detach selected element</button>
+                </fieldset>
+                <ul id="editorPackages" aria-label="Packages" data-i18n-aria-label="editor.packages"></ul>
+            </section>
             <h2 data-i18n="editor.relations">Relations and containment</h2>
             <form id="editorRelationForm">
                 <fieldset id="editorRelationFields" disabled>

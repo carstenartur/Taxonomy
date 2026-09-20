@@ -71,11 +71,13 @@ Remapping gehen. `Component` mit kanonischem Typ `System` braucht den passenden
 Stereotyp oder das Tag `taxonomy.elementType`. Widersprüchliche Beziehungs- und
 kanonische Typen werden vor dem Export abgewiesen.
 
-Pakete und ihre Hierarchie werden dauerhaft als Austauschsemantik gespeichert.
-Der native Editor bietet bislang keine Paketbearbeitung. Beziehungen zwischen
-Anforderungen und Architekturelementen sowie unzulässige Endpunkttypen erfordern
-Ablehnung oder unterstütztes Remapping vor dem Anwenden. Nicht jede EA-Beziehung
-ist damit in Taxonomy bearbeitbar.
+Version 1 bewahrt Pakete und ihre Hierarchie als Austauschnachweise. Der aktuelle
+native Editor unterstützt transportneutrales Anlegen, Umbenennen und Platzieren
+von Paketen; das ändert die eingefrorene Austauschsemantik von Version 1 nicht.
+Version 2 ergänzt native Paketprojektion und explizite Anforderungszuordnungen in
+der [nativen Prüfung](#native-prüfung-mit-version-2). Andere Endpunktkombinationen
+erfordern weiterhin eine erlaubte Projektion oder Ablehnung. Nicht jede
+EA-Beziehung ist damit bearbeitbar.
 
 ## Identität, Konflikte und Historie
 
@@ -196,3 +198,87 @@ Quellen: [XMI-Austausch](https://sparxsystems.com/enterprise_architect_user_guid
 [Update-Protokoll](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_upd_resources.html),
 [Authentifizierung](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_user_cred.html),
 [GUID-Präfixe](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/guid_prefix_tables.html).
+
+## Explizite Version 2 und semantische Features
+
+Neue Verbindungen können `sparx-xmi-2.1@2` oder `sparx-oslc-am-2.0@2` wählen.
+Die Profil-ID bleibt gleich; die Version ist ein eigener unveränderlicher Wert.
+Ohne `profileVersion` wählt die API Version 1. Bestehende Verbindungen und bereits
+geprüfte Vorgänge behalten ihre genaue Profilversion.
+
+AM und XMI verwenden in Version 2 dieselbe semantische Zuordnung. Die Beispiele
+sind **synthetische Vertragsfixtures, keine EA-Exporte oder PCS-Aufzeichnungen**.
+Native Paketbearbeitung und explizite Anforderungs-Endpunktzuordnung stehen in der
+[nativen Prüfung](#native-prüfung-mit-version-2) zur Verfügung. UML-Features bleiben
+überprüfbare Austauschdaten; Live-Schreiben ist nicht verfügbar. Reale
+EA/PCS-Kompatibilität bleibt ungeprüft (`NOT_EXECUTED`).
+
+| Konstrukt | Austauschdarstellung | Verhalten |
+|---|---|---|
+| Tags (`tv_`, `attv_`, `optv_`) | `FEATURE`, `tagged-value`, GUID und Eigentümer | Doppelte Namen bleiben getrennt; kein Wert gewinnt. Nur eindeutige Namen erhalten zusätzlich `tag:<name>`. |
+| Attribute (`at_`) | `FEATURE`, `attribute` | Element-Eigentümer, optionale Position, Datentyp/Sichtbarkeit/Standardwert/Multiplizität |
+| Operationen (`op_`) | `FEATURE`, `operation` | Element-Eigentümer, Position und Operationsfelder |
+| Parameter (`pr_`) | `FEATURE`, `parameter` | Operations-Eigentümer, Position, Richtung und Datentyp |
+| AM-Beziehung (`lt_`) | Gleiche gerichtete `Relation` wie XMI | Identische Mehrfachmeldungen werden zusammengeführt; widersprüchliche GUIDs scheitern. |
+| Endpunkt außerhalb der gelesenen Wurzeln | `FEATURE`, `external-connector` | Expliziter Verlustbericht, nur erhaltene Evidenz; keine native Beziehung oder Löschannahme |
+| Unbekanntes RDF-Feld | `attribute:<Prädikat>` oder `extensions.rdf:<Prädikat>` | Begrenzte erhaltene Evidenz mit `PRESERVED_EXTENSION`; Links werden nicht verfolgt. |
+
+Der XMI-Schreiber überträgt die unterstützten Attribute, Operationen, Parameter
+und GUID-basierten Tags. Eine deklarierte `evidence`-Erweiterung bewahrt weitere
+kanonische Felder innerhalb dieses Fixture-Profils. EA-Erhaltung solcher
+Erweiterungen ist nicht bestätigt. Nicht semantisch verarbeitete Feature-Eigenschaften,
+einschließlich Stereotypen, bleiben als begrenzte Evidenz mit `PRESERVED_EXTENSION`
+erhalten. Nicht unterstützte Feature-Kinder und externe Beziehungen müssen vor
+einer sonst verlustbehafteten XMI-Ausgabe abgelehnt werden. Nicht geschriebene
+Attribute und Teilbäume an Verbinderendpunkten erhalten vor der Ausgabe explizite
+Verlustmeldungen mit Verbinder-ID und Feldpfad. Quell-/Zielidentität und Richtung
+behalten ihre bisherige Bedeutung.
+
+AM Version 2 liest jede Sammlungsseite für Wurzeln, Beziehungen, Tags, Attribute,
+Operationen, Attribut-/Operations-Tags und Parameter. Ein gemeinsames Budget gilt
+für Discovery und alle Folgeseiten: 250 angereicherte Wurzeln, 20 Seiten pro
+Sammlung, 1.024 Antworten, 16 MiB, 100.000 RDF-Aussagen, 10.000 Objekte,
+128 Eigenschaften je Objekt, 32 Stereotypen und 30 Sekunden für einen erfolgreichen
+Lesevorgang. Fehler oder Grenzüberschreitungen liefern keine Teilvorschau.
+
+Alle Seiten verwenden denselben geschützten PCS-Transport. Endpunktpfade entstehen
+aus geprüften IDs; beliebige RDF-Links werden nicht abgerufen. Der Fingerabdruck
+erfasst Sammlungstyp, Eigentümer, bereinigte URI, ETag und Inhalt jeder Antwort.
+Die Übernahme liest alles erneut; auch reine Feature-Änderungen führen zu
+`REMOTE_STALE`. Vollständig gelesene Sammlungen sind kein atomarer Snapshot und
+keine Löschfreigabe: `completeScope` bleibt in AM Version 2 immer `false`.
+
+## Native Prüfung mit Version 2
+
+Version 2 übernimmt Pakete als neutrale native Pakete mit stabilen IDs und
+EA-GUID-Zuordnungen. Lokales Umbenennen, Verschieben und Platzieren erscheint in der
+XMI-Ausgabe; Version-1-Verbindungen behalten ihre bisherige Paketnachweis-Semantik.
+Unvollständige Eingangsbereiche bewahren nicht erwähnte native Geschwister.
+Paketzuordnungen von Anforderungen bleiben Nachweise
+(`SPARX_REQUIREMENT_PACKAGE_PRESERVED_ONLY`).
+
+Die **Native Endpunktprojektion** wählt `ARCHITECTURE_RELATION`,
+`REQUIREMENT_MAPPING` oder `PRESERVE_ONLY`. Quell-/Ziellisten enthalten dauerhafte
+native Identitäten aus der API für den exakten Prüfzustand, nach Normalisierung der
+Richtung. Anforderungszuordnungen erfordern eine explizite Auswahl. Paketendpunkte,
+Anforderungspaare und bidirektionale Verbinder werden nur als Nachweis erhalten oder
+abgelehnt. Ungültige Zuordnungen melden vor nativen Schreibvorgängen
+`SPARX_ENDPOINT_KIND_UNMAPPED`, `SPARX_ENDPOINT_MAPPING_REQUIRED` oder
+`SPARX_DIRECTION_UNMAPPED`.
+
+Beispiel für einen Prüfentscheid:
+
+```json
+{"endpoints":{"change-id":{"sourceInternalIdentity":"PROJECT__REQ-1","targetInternalIdentity":"arch-reader","projection":"REQUIREMENT_MAPPING","canonicalType":null}}}
+```
+
+Der reine Gesamtplan löst das exakte Paar `x-project-key`/`x-requirement-key` auf,
+bewahrt bestehende kanonische IDs und lehnt Sanitizer-Kollisionen mit
+`REQUIREMENT_IDENTITY_MISMATCH` ab. Anforderungsschreibvorgänge, echter
+Portfoliobeitrag, typisierte Zuordnung und lokales semantisches Journal bleiben in
+derselben Transaktion. Analysezuordnungen sind durch
+`REQUIREMENT_MAPPING_OWNERSHIP_CONFLICT` geschützt. Altes Prüf-JSON darf `endpoints`
+weglassen. Anwendungs- und Browsertests verwenden Vertragsfixtures; die tatsächliche
+EA/PCS-Produktkompatibilität bleibt **NOT_EXECUTED**.
+
+Endpunktauswahl bestätigt die exakten normalisierten Verbinderendpunkte. Auch das Umleiten auf ein anderes natives Objekt desselben Typs wird mit `SPARX_ENDPOINT_KIND_UNMAPPED` abgelehnt; Projektions-/Typauswahl bleibt möglich. Dadurch stimmen native Bedeutung und bewahrte/exportierte Endpunktnachweise überein.

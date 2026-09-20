@@ -27,17 +27,24 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
     measurements.readOnly = true;
   } else {
     assert.equal(initial.status(), 200, await initial.text());
+    const expectedProfile = { id: 'archimate-3.1', version: '1' };
+    const registeredProfiles = await initial.json();
+    assert.equal(registeredProfiles.filter(profile => profile.id === expectedProfile.id && profile.version === expectedProfile.version).length, 1,
+      'The exact Archi fixture profile must be registered');
     await page.waitForFunction(() => !document.getElementById('integrationRefresh').disabled);
     await page.locator('#integrationCreate').locator('..').locator('summary').click();
     await page.locator('#connectionName').fill(`Archi browser ${role}`);
-    await page.locator('#connectionProfile').selectOption('archimate-3.1');
+    await page.locator('#connectionProfile').selectOption(`${expectedProfile.id}@${expectedProfile.version}`);
     await page.locator('#connectionAuthority').selectOption('BIDIRECTIONAL');
     await page.locator('#externalSystem').fill('Archi reference fixture');
     await page.locator('#externalRepository').fill('archi-model-browser');
     const creation = page.waitForResponse(r => new URL(r.url()).pathname.endsWith('/api/integrations') && r.request().method() === 'POST');
     await page.locator('#integrationCreate button[type=submit]').click();
     const created = await creation; assert.equal(created.status(), 200, await created.text());
-    const connection = (await created.json()).id;
+    const createdConnection = await created.json();
+    assert.equal(createdConnection.connectorId, expectedProfile.id);
+    assert.equal(createdConnection.profileVersion, expectedProfile.version);
+    const connection = createdConnection.id;
     await page.waitForFunction(id => document.getElementById('integrationConnection').value === id && !document.getElementById('integrationRefresh').disabled, connection);
     const content = await readFile('taxonomy-export/src/test/resources/interoperability/archi-sample.xml');
     await page.locator('#integrationFile').setInputFiles({ name: 'archi-sample.xml', mimeType: 'application/xml', buffer: content });
@@ -60,7 +67,13 @@ export async function runIntegrationAcceptance({ page, role, baseUrl, evidence, 
     await page.waitForFunction(() => !document.getElementById('integrationRefresh').disabled);
     const replay = await page.evaluate(async ({ connection, review }) => window.IntegrationApi.write(`/${connection}/apply`, review), { connection, review: applied.review });
     assert.equal(replay.id, applied.id); assert.equal(replay.resultCommit, applied.resultCommit);
+    const restoredConnection = page.waitForResponse(r => new URL(r.url()).pathname.endsWith(`/api/integrations/${connection}`) && r.request().method() === 'GET');
     await page.reload();
+    const restored = await restoredConnection; assert.equal(restored.status(), 200, await restored.text());
+    const persistedConnection = (await restored.json()).connection;
+    assert.equal(persistedConnection.connectorId, expectedProfile.id);
+    assert.equal(persistedConnection.profileVersion, expectedProfile.version);
+    measurements.profile = { connectorId: persistedConnection.connectorId, profileVersion: persistedConnection.profileVersion };
     await page.waitForFunction(id => document.getElementById('integrationOperation').textContent.includes(id) && !document.getElementById('integrationRefresh').disabled, applied.id);
     assert.ok((await page.locator('#integrationHistory').innerText()).includes(applied.id));
     assert.equal(await page.locator('#integrationApply').isDisabled(), true);

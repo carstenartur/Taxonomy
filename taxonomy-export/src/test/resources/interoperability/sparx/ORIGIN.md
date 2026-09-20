@@ -8,3 +8,22 @@ specific EA version is established by this fixture.
 It exercises packages, typed elements, a requirement, tagged values, a dependency
 and excluded diagram geometry. Product-generated fixtures may be added only with
 documented source, product version, export settings and redistribution permission.
+
+## Semantic version 2 contract fixtures
+
+`semantic-v2.xmi` is handwritten for the bounded v2 codec: two nested packages,
+two components, a directed dependency, duplicate owner tags, an attribute,
+an operation and a parameter. `SparxOslcAmCodecTest.contractV2` constructs its
+matching RDF collections, including the `rdf:ID`/reified connector shape from
+Sparx's official update examples. These test documents are NOT EA exports and
+NOT PCS captures. Local HTTP tests generate collection paging and failure variants.
+
+Vocabulary references (consulted 2026-09-20):
+- https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/ret_res_feat.html
+- https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_upd_resources.html
+- https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/guid_prefix_tables.html
+
+The v2 XMI `evidence` child preserves canonical attribute/extension fields only
+within this declared contract dialect. A tag marked `projection="true"` is a
+legacy scalar projection, not a second GUID-bearing tag. No actual product
+retention or import behavior is asserted by the deterministic round trip.

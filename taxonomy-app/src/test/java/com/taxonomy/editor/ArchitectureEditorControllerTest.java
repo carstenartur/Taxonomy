@@ -68,6 +68,20 @@ class ArchitectureEditorControllerTest {
         verifyNoInteractions(service);
     }
 
+    @Test void packageWireUsesTypedCommandAndExactRevision() throws Exception {
+        var base = wire();
+        var packageWire = new ArchitectureEditorController.WireCommand(base.context(), base.metadata(), "CREATE_PACKAGE",
+                null, null, Map.of("title", "Package"), null, null, null, null, null, null);
+        when(resolver.resolveCurrentRepositoryContext()).thenReturn(scope);
+        when(service.preview(eq(scope), any())).thenThrow(new CommandProblem("DISPATCHED", "", "dispatched", java.util.List.of()));
+        assertThatThrownBy(() -> controller.preview(packageWire, "\"workspace-revision-0\"", null))
+                .isInstanceOfSatisfying(CommandProblem.class, p -> assertThat(p.code()).isEqualTo("DISPATCHED"));
+        var argument = org.mockito.ArgumentCaptor.forClass(Command.class);
+        verify(service).preview(eq(scope), argument.capture());
+        assertThat(((SemanticCommand) argument.getValue().operation()).command())
+                .isInstanceOf(com.taxonomy.dsl.command.ArchitectureCommand.CreateArchitecturePackage.class);
+    }
+
     private ArchitectureEditorController.WireCommand wire() {
         String id = UUID.randomUUID().toString();
         return new ArchitectureEditorController.WireCommand(

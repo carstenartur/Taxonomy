@@ -25,7 +25,10 @@ public class ArchitectureEditorProjection {
     public record Schema(List<String> elementTypes, List<String> elementProperties,
                          List<String> relationTypes, List<String> relationStatuses,
                          Map<String, Map<String, java.util.Set<String>>> relationRules,
-                         Map<String, String> typeRoots, Map<String, PropertyRule> properties, String layoutMode) {}
+                         Map<String, String> typeRoots, Map<String, PropertyRule> properties, String layoutMode) {
+        public List<String> getPackageProperties() { return List.of("title", "description"); }
+        public List<String> getPackageCommands() { return List.of("CREATE_PACKAGE", "UPDATE_PACKAGE", "SET_PACKAGE_PLACEMENTS", "DELETE_PACKAGE"); }
+    }
     public record PropertyRule(boolean required, boolean readOnly, boolean derived,
                                List<String> values, String labelKey) {}
     public record SearchEntry(String id, String text) {}

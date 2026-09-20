@@ -13,17 +13,21 @@ import java.util.Set;
 /** One registry and capability contract for standards profiles and optional injected vendor adapters. */
 @Component
 public class ExchangeConnectorRegistry {
-    private final Map<String, LifecycleIntegrationConnector> connectors;
+    private final Map<ProfileKey, LifecycleIntegrationConnector> connectors;
+    private record ProfileKey(String id, String version) {}
     public ExchangeConnectorRegistry(List<LifecycleIntegrationConnector> extensions) {
-        var values = new java.util.TreeMap<String, LifecycleIntegrationConnector>();
-        for (LifecycleIntegrationConnector connector : List.of(new Reqif(), new ArchiMate())) values.put(connector.descriptor().id(), connector);
-        for (LifecycleIntegrationConnector extension : extensions) if (values.putIfAbsent(extension.descriptor().id(), extension) != null)
-            throw new IllegalStateException("Duplicate integration connector id");
+        var values = new java.util.HashMap<ProfileKey, LifecycleIntegrationConnector>();
+        for (LifecycleIntegrationConnector connector : List.of(new Reqif(), new ArchiMate())) values.put(new ProfileKey(connector.descriptor().id(), connector.descriptor().version()), connector);
+        for (LifecycleIntegrationConnector extension : extensions) if (values.putIfAbsent(new ProfileKey(extension.descriptor().id(), extension.descriptor().version()), extension) != null)
+            throw new IllegalStateException("Duplicate integration connector id and version");
         connectors = Map.copyOf(values);
     }
-    public List<IntegrationDescriptor> descriptors() { return connectors.values().stream().map(LifecycleIntegrationConnector::descriptor).sorted(java.util.Comparator.comparing(IntegrationDescriptor::id)).toList(); }
+    public List<IntegrationDescriptor> descriptors() { return connectors.values().stream().map(LifecycleIntegrationConnector::descriptor).sorted(java.util.Comparator.comparing(IntegrationDescriptor::id).thenComparing(IntegrationDescriptor::version)).toList(); }
     public LifecycleIntegrationConnector require(String id) {
-        var connector = connectors.get(id); if (connector == null) throw new IntegrationProblem("UNKNOWN_CONNECTOR", 400, "Choose a supported integration profile"); return connector;
+        return require(id, "1");
+    }
+    public LifecycleIntegrationConnector require(String id, String version) {
+        var connector = connectors.get(new ProfileKey(id, version)); if (connector == null) throw new IntegrationProblem("UNKNOWN_CONNECTOR", 400, "Choose a supported integration profile"); return connector;
     }
     private static final class Reqif implements LifecycleIntegrationConnector {
         private final ReqifExchangeCodec codec = new ReqifExchangeCodec();

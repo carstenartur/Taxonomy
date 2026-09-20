@@ -1,8 +1,10 @@
 package com.taxonomy;
 
+import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.catalog.service.SearchService;
 import com.taxonomy.catalog.service.TaxonomyService;
+import org.mockito.MockedStatic;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -14,6 +16,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mockStatic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -90,14 +93,39 @@ class TaxonomyApplicationTests {
     @Test
     void analyzeEndpointReturnsResultForValidText() throws Exception {
         // Gemini API key will be empty in CI, so scores default to 0 — but structure is correct
-        mockMvc.perform(post("/api/analyze")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"businessText\":\"Manage satellite communications for deployed forces\"}"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.scores").exists())
-                .andExpect(jsonPath("$.tree").isArray())
-                .andExpect(jsonPath("$.tree.length()").value(8))
-                .andExpect(jsonPath("$.status").exists());
+        try (MockedStatic<AnalysisMemoryGuard> memory = mockStatic(AnalysisMemoryGuard.class)) {
+            memory.when(AnalysisMemoryGuard::heapSample)
+                    .thenReturn(new AnalysisMemoryGuard.Sample(256L * 1024 * 1024, 1024L * 1024 * 1024));
+            mockMvc.perform(post("/api/analyze")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"businessText\":\"Manage satellite communications for deployed forces\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.scores").exists())
+                    .andExpect(jsonPath("$.tree").isArray())
+                    .andExpect(jsonPath("$.tree.length()").value(8))
+                    .andExpect(jsonPath("$.status").exists())
+                    .andExpect(jsonPath("$.warnings", org.hamcrest.Matchers.not(
+                            org.hamcrest.Matchers.hasItem(
+                                    org.hamcrest.Matchers.containsString("MEMORY_PRESSURE")))));
+        }
+    }
+
+    @Test
+    void analyzeEndpointReturnsPartialResultUnderEmergencyMemoryPressure() throws Exception {
+        try (MockedStatic<AnalysisMemoryGuard> memory = mockStatic(AnalysisMemoryGuard.class)) {
+            memory.when(AnalysisMemoryGuard::heapSample)
+                    .thenReturn(new AnalysisMemoryGuard.Sample(99L * 1024 * 1024, 100L * 1024 * 1024));
+            mockMvc.perform(post("/api/analyze")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"businessText\":\"Manage satellite communications for deployed forces\"}"))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.status").value("PARTIAL"))
+                    .andExpect(jsonPath("$.tree").isArray())
+                    .andExpect(jsonPath("$.tree.length()").value(0))
+                    .andExpect(jsonPath("$.errorMessage", org.hamcrest.Matchers.containsString("MEMORY_PRESSURE")))
+                    .andExpect(jsonPath("$.warnings", org.hamcrest.Matchers.hasItem(
+                            org.hamcrest.Matchers.containsString("MEMORY_PRESSURE"))));
+        }
     }
 
     @Test

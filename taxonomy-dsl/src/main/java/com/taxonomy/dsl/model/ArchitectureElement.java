@@ -15,6 +15,12 @@ public class ArchitectureElement {
     private String title;
     private String description;
     private String taxonomy;
+    private String packageId;
+    private int packagePosition = -1;
+    public String getPackageId() { return packageId; }
+    public void setPackageId(String value) { packageId = value; }
+    public int getPackagePosition() { return packagePosition; }
+    public void setPackagePosition(int value) { packagePosition = value; }
     private Map<String, String> extensions = new LinkedHashMap<>();
 
     public ArchitectureElement() {}

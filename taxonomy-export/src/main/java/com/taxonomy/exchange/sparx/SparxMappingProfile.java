@@ -23,6 +23,11 @@ public final class SparxMappingProfile {
             "InformationFlow", "COMMUNICATES_WITH", "Association", "RELATED_TO", "Usage", "CONSUMES",
             "Composition", "CONTAINS");
 
+    static final Set<String> FEATURE_SCALARS = Set.of("scope", "classifierName", "defaultValue", "lowerBound", "upperBound",
+            "paramDirection", "alias", "containment", "isStatic", "isCollection", "isOrdered", "isConst", "allowDuplicates",
+            "concurrency", "isAbstract", "isReturnArray", "isQuery", "isSynchronized", "isPure", "behavior", "status",
+            "complexity", "phase", "version", "language");
+
     private SparxMappingProfile() {}
 
     public static String guid(String value) {
@@ -33,6 +38,21 @@ public final class SparxMappingProfile {
         if (!uuid.matches("[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}"))
             throw ExchangeXml.invalid("SPARX_GUID_REQUIRED", "The object identity is not a supported EA GUID");
         return "{" + UUID.fromString(uuid).toString().toUpperCase(Locale.ROOT) + "}";
+    }
+
+    /** Strip exactly one allowed PCS kind prefix; generic GUID parsing intentionally stays unchanged. */
+    public static String prefixedGuid(String value, Set<String> allowedPrefixes) {
+        if (value != null) for (String prefix : allowedPrefixes) {
+            if (value.startsWith(prefix) && value.substring(prefix.length()).matches("\\{[0-9a-fA-F-]{36}}"))
+                return guid(value.substring(prefix.length()));
+        }
+        throw ExchangeXml.invalid("SPARX_GUID_REQUIRED", "Identity prefix does not match the expected Sparx feature kind");
+    }
+
+    public static String version(String version) {
+        if (!Set.of("1", "2").contains(version))
+            throw ExchangeXml.invalid("PROFILE_VERSION_CHANGED", "Select a supported immutable Sparx profile version");
+        return version;
     }
 
     public static String xmiId(String guid, boolean packageId) {

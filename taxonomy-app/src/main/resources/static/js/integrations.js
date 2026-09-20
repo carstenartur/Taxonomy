@@ -1,14 +1,14 @@
 (function () {
     'use strict';
     var api = window.IntegrationApi, overview = null, operation = null, profiles = [], decisions = {}, page = 0, busy = false, generation = 0;
-    var pendingUpload = null, pendingExport = null, pendingCreation = null, pendingRemote = null, mappings = {};
+    var pendingUpload = null, pendingExport = null, pendingCreation = null, pendingRemote = null, mappings = {}, endpoints = {}, endpointOptions = {};
     var mayWrite = document.body.dataset.mayWrite === 'true';
     function el(id) { return document.getElementById(id); }
     function t(key) { return window.TaxonomyI18n.t('integration.' + key); }
     function option(select, value, text) { var node = document.createElement('option'); node.value = value; node.textContent = text; select.append(node); }
     function connection() { return el('integrationConnection').value; }
     function prefix() { return '/' + encodeURIComponent(connection()); }
-    function selectedProfile() { return overview && profiles.find(function (profile) { return profile.id === overview.connection.connectorId; }); }
+    function selectedProfile() { return overview && profiles.find(function (profile) { return profile.id === overview.connection.connectorId && profile.version === overview.connection.profileVersion; }); }
     function report(error) { var body = error.responseBody || {}; el('integrationError').textContent = (body.code ? body.code + ': ' : '') + (body.message || error.message); el('integrationError').hidden = false; }
     async function run(action) {
         if (busy) return; busy = true; el('integrationError').hidden = true; controls();
@@ -29,7 +29,7 @@
         el('integrationExport').disabled = busy || !mayWrite || !capabilities.includes('FILE_EXPORT');
         el('integrationSparxNotice').hidden = !overview || overview.connection.connectorId !== 'sparx-xmi-2.1';
         el('integrationPcsNotice').hidden = !overview || overview.connection.connectorId !== 'sparx-oslc-am-2.0';
-        var creating = profiles.find(function (candidate) { return candidate.id === el('connectionProfile').value; });
+        var creating = profiles.find(function (candidate) { return candidate.id + '@' + candidate.version === el('connectionProfile').value; });
         var readOnly = creating && creating.capabilities.includes('READ_LINK') && !creating.capabilities.includes('FILE_EXPORT');
         Array.from(el('connectionAuthority').options).forEach(function (choice) {
             choice.disabled = !!readOnly && ['BIDIRECTIONAL', 'PUBLISH_TARGET'].includes(choice.value);
@@ -82,6 +82,42 @@
                     target.addEventListener('input', function () { if (!mappings[change.id]) mappings[change.id] = {}; mappings[change.id].internalIdentity = target.value.trim() || null; });
                     targetLabel.append(target); advanced.append(targetLabel); fields.push('internalIdentity');
                 }
+                if (artifact.kind === 'RELATION' && operation.context.profileVersion === '2' && operation.context.profile.startsWith('sparx-')) {
+                    var endpointLabel = document.createElement('label'), projection = document.createElement('select');
+                    endpointLabel.textContent = t('endpointProjection'); option(projection, '', t('choose'));
+                    ['ARCHITECTURE_RELATION', 'REQUIREMENT_MAPPING', 'PRESERVE_ONLY'].forEach(function (value) { option(projection, value, t('projection.' + value)); });
+                    projection.value = endpoints[change.id] && endpoints[change.id].projection || '';
+                    projection.addEventListener('change', function () {
+                        if (!projection.value) { delete endpoints[change.id]; return; }
+                        if (!endpoints[change.id]) endpoints[change.id] = {};
+                        endpoints[change.id].projection = projection.value;
+                        ['source', 'target'].forEach(function (side) {
+                            var externalSide = artifact.extensions.direction === 'Destination -> Source' ? (side === 'source' ? 'target' : 'source') : side;
+                            var candidate = endpointOptions[artifact.extensions[externalSide]];
+                            if (candidate && !endpoints[change.id][side + 'InternalIdentity']) endpoints[change.id][side + 'InternalIdentity'] = candidate.businessIdentity;
+                        });
+                        renderChanges();
+                    });
+                    endpointLabel.append(projection); advanced.append(endpointLabel);
+                    ['sourceInternalIdentity', 'targetInternalIdentity'].forEach(function (field) {
+                        var label = document.createElement('label'), select = document.createElement('select');
+                        label.textContent = t('endpoint.' + field); option(select, '', t('choose'));
+                        var side = field === 'sourceInternalIdentity' ? 'source' : 'target';
+                        if (artifact.extensions.direction === 'Destination -> Source') side = side === 'source' ? 'target' : 'source';
+                        var candidate = endpointOptions[artifact.extensions[side]];
+                        if (candidate) option(select, candidate.businessIdentity, candidate.kind + ' · ' + candidate.businessIdentity);
+                        select.value = endpoints[change.id] && endpoints[change.id][field] || '';
+                        select.addEventListener('change', function () { if (!endpoints[change.id]) endpoints[change.id] = {}; endpoints[change.id][field] = select.value || null; });
+                        label.append(select); advanced.append(label);
+                    });
+                    var sourceEndpoint = endpointOptions[artifact.extensions.source], targetEndpoint = endpointOptions[artifact.extensions.target];
+                    var endpointCode = artifact.extensions.direction === 'Bi-Directional' ? 'SPARX_DIRECTION_UNMAPPED'
+                        : !sourceEndpoint || !targetEndpoint || sourceEndpoint.kind === 'PACKAGE' || targetEndpoint.kind === 'PACKAGE'
+                            || sourceEndpoint.kind === 'REQUIREMENT' && targetEndpoint.kind === 'REQUIREMENT' ? 'SPARX_ENDPOINT_KIND_UNMAPPED'
+                        : sourceEndpoint.kind === 'REQUIREMENT' || targetEndpoint.kind === 'REQUIREMENT' ? 'SPARX_ENDPOINT_MAPPING_REQUIRED' : '';
+                    var endpointHint = document.createElement('p'); endpointHint.textContent = (endpointCode ? endpointCode + ': ' : '') + t('endpointHint'); advanced.append(endpointHint);
+                    fields.push('endpoints');
+                }
                 if (fields.length) decision.append(advanced);
             }
             row.append(id, kind, value, decision); el('integrationChanges').append(row);
@@ -94,7 +130,11 @@
         if (operationId) url.searchParams.set('operation', operationId); else url.searchParams.delete('operation'); history.replaceState(null, '', url);
     }
     function show(value) {
-        operation = value; decisions = Object.assign({}, value.review ? value.review.decisions : {}); mappings = Object.assign({}, value.review ? value.review.mappings : {}); page = 0;
+        operation = value; endpoints = Object.assign({}, value.review ? value.review.endpoints : {}); endpointOptions = {};
+        if (value.status === 'PREVIEWED' && value.context.profileVersion === '2' && value.context.profile.startsWith('sparx-')) {
+            api.read(prefix() + '/operations/' + value.id + '/endpoint-options').then(function (result) { if (operation && operation.id === value.id) { endpointOptions = result.external; renderChanges(); } }).catch(report);
+        }
+        decisions = Object.assign({}, value.review ? value.review.decisions : {}); mappings = Object.assign({}, value.review ? value.review.mappings : {}); page = 0;
         el('integrationRationale').value = value.review ? value.review.rationale : '';
         el('integrationOperation').textContent = value.id + ' · ' + t('status.' + value.status) + (value.failureCode ? ' · ' + value.failureCode : '');
         el('integrationProvenance').textContent = JSON.stringify(value.context, null, 2);
@@ -127,7 +167,7 @@
     }
     async function connections(selected) {
         var values = await api.read(''); el('integrationConnection').replaceChildren(); option(el('integrationConnection'), '', t('choose'));
-        values.forEach(function (value) { option(el('integrationConnection'), value.id, value.displayName + ' · ' + value.connectorId); });
+        values.forEach(function (value) { option(el('integrationConnection'), value.id, value.displayName + ' · ' + value.connectorId + '@' + value.profileVersion); });
         if (selected) el('integrationConnection').value = selected; else if (values.length) el('integrationConnection').value = values[0].id;
         await refresh();
     }
@@ -138,7 +178,7 @@
     });
     el('integrationRefresh').addEventListener('click', function () { run(async function () { await refresh(); if (operation) await loadOperation(operation.id); }); });
     el('integrationCreate').addEventListener('submit', function (event) { event.preventDefault(); run(async function () {
-        if (!pendingCreation) pendingCreation = { id: crypto.randomUUID(), name: el('connectionName').value, connectorId: el('connectionProfile').value, authority: el('connectionAuthority').value,
+        if (!pendingCreation) pendingCreation = { id: crypto.randomUUID(), name: el('connectionName').value, connectorId: el('connectionProfile').value.split('@')[0], profileVersion: el('connectionProfile').value.split('@')[1], authority: el('connectionAuthority').value,
             projectId: el('connectionProject').value ? Number(el('connectionProject').value) : null, remoteProfile: el('connectionRemote').value || null, externalScope: { systemType: el('externalSystem').value, repository: el('externalRepository').value, configuration: el('externalConfiguration').value || null } };
         var created = await api.write('', pendingCreation); pendingCreation = null; await connections(created.id); link(null);
     }); });
@@ -168,13 +208,13 @@
     el('integrationAccept').addEventListener('click', function () { visible().forEach(function (c) { if (c.kind !== 'CONFLICT' && c.kind !== 'REMOVE_CANDIDATE') decisions[c.id] = 'ACCEPT'; }); renderChanges(); });
     el('integrationReject').addEventListener('click', function () { visible().forEach(function (c) { decisions[c.id] = 'REJECT'; }); renderChanges(); });
     el('integrationApply').addEventListener('click', function () { run(async function () {
-        var review = operation.review || { operationId: operation.id, previewFingerprint: operation.fingerprint, decisions: Object.assign({}, decisions), rationale: el('integrationRationale').value.trim(), mappings: Object.assign({}, mappings) };
+        var review = operation.review || { operationId: operation.id, previewFingerprint: operation.fingerprint, decisions: Object.assign({}, decisions), rationale: el('integrationRationale').value.trim(), mappings: Object.assign({}, mappings), endpoints: Object.assign({}, endpoints) };
         var id = operation.id;
         try { show(await api.write(prefix() + (operation.direction === 'OUTBOUND' ? '/files' : '/apply'), review)); }
         finally {
             await refresh(); await loadOperation(id);
             if (operation.status === 'PREVIEWED' && operation.fingerprint === review.previewFingerprint) {
-                decisions = Object.assign({}, review.decisions); mappings = Object.assign({}, review.mappings);
+                decisions = Object.assign({}, review.decisions); mappings = Object.assign({}, review.mappings); endpoints = Object.assign({}, review.endpoints);
                 el('integrationRationale').value = review.rationale; renderChanges();
             }
         }
@@ -183,7 +223,7 @@
     el('integrationRetry').addEventListener('click', function () { run(async function () { show(await api.write(prefix() + '/operations/' + operation.id + '/retry', {})); await refresh(); await loadOperation(operation.id); }); });
     window.TaxonomyI18n.ready().then(function () { return run(async function () {
         document.querySelectorAll('[data-i18n]').forEach(function (node) { node.textContent = window.TaxonomyI18n.t(node.getAttribute('data-i18n')); });
-        profiles = await api.read('/profiles'); profiles.forEach(function (profile) { option(el('connectionProfile'), profile.id, profile.title); });
+        profiles = await api.read('/profiles'); profiles.forEach(function (profile) { option(el('connectionProfile'), profile.id + '@' + profile.version, profile.title + ' · ' + profile.id + '@' + profile.version); });
         var params = new URLSearchParams(location.search); await connections(params.get('connection')); if (params.get('operation') && connection()) await loadOperation(params.get('operation'));
     }); }).catch(report);
 }());

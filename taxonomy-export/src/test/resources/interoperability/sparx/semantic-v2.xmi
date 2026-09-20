@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Synthetic v2 contract fixture, not an EA export or PCS capture. -->
+<xmi:XMI xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:uml="http://schema.omg.org/spec/UML/2.1" xmi:version="2.1">
+ <uml:Model xmi:id="{00000000-0000-4000-8000-000000000000}" name="Contract">
+  <packagedElement xmi:type="uml:Package" xmi:id="{33333333-3333-4333-8333-333333333333}" name="Outer">
+   <packagedElement xmi:type="uml:Package" xmi:id="{33333333-3333-4333-8333-333333333334}" name="Inner">
+    <packagedElement xmi:type="uml:Component" xmi:id="{11111111-1111-4111-8111-111111111111}" name="First">
+     <ownedAttribute xmi:id="{55555555-5555-4555-8555-555555555551}" name="count" scope="private" classifierName="Integer" position="0"/>
+     <ownedOperation xmi:id="{55555555-5555-4555-8555-555555555552}" name="read" scope="public" position="0">
+      <ownedParameter xmi:id="{55555555-5555-4555-8555-555555555553}" name="limit" paramDirection="in" position="0"/>
+     </ownedOperation>
+    </packagedElement>
+    <packagedElement xmi:type="uml:Component" xmi:id="{22222222-2222-4222-8222-222222222222}" name="Second"/>
+   </packagedElement>
+  </packagedElement>
+  <packagedElement xmi:type="uml:Dependency" xmi:id="{44444444-4444-4444-8444-444444444444}" client="{11111111-1111-4111-8111-111111111111}" supplier="{22222222-2222-4222-8222-222222222222}"/>
+ </uml:Model>
+ <xmi:Extension extender="Enterprise Architect"><elements>
+  <element xmi:idref="{11111111-1111-4111-8111-111111111111}"><tags>
+   <tag xmi:id="{66666666-6666-4666-8666-666666666661}" name="owner" value="Alice"/>
+   <tag xmi:id="{66666666-6666-4666-8666-666666666662}" name="owner" value="Bob"/>
+  </tags></element>
+ </elements></xmi:Extension>
+</xmi:XMI>

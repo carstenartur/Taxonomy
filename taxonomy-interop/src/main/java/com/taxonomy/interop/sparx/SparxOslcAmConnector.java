@@ -9,9 +9,12 @@ import java.util.Set;
 
 /** PCS read/pull profile; remote retrieval is orchestrated by the durable integration service. */
 @Component
-public final class SparxOslcAmConnector implements LifecycleIntegrationConnector {
+public class SparxOslcAmConnector implements LifecycleIntegrationConnector {
+    private final String version;
+    public SparxOslcAmConnector() { this("1"); }
+    protected SparxOslcAmConnector(String version) { this.version = version; }
     @Override public IntegrationDescriptor descriptor() {
-        return new IntegrationDescriptor(SparxOslcAmCodec.PROFILE, SparxOslcAmCodec.VERSION,
+        return new IntegrationDescriptor(SparxOslcAmCodec.PROFILE, version,
                 "Sparx PCS OSLC AM 2.0 read/pull (experimental)",
                 Set.of(Capability.DISCOVERY, Capability.READ_LINK, Capability.ARCHITECTURE_MODEL),
                 Set.of("application/rdf+xml"));

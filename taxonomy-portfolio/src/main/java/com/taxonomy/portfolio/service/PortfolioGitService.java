@@ -110,12 +110,51 @@ public class PortfolioGitService {
         for (BlockAst block : existing.getBlocks()) {
             if (!isPortfolioManaged(block)) blocks.add(block);
         }
-        blocks.addAll(portfolioBlocks(username, context));
+        List<BlockAst> contributed = portfolioBlocks(username, context);
+        Map<String, String> identities = new LinkedHashMap<>();
+        for (BlockAst block : contributed) if ("requirement".equals(block.getKind())) {
+            String identity = resolveRequirementIdentity(block.property("x-project-key"), block.property("x-requirement-key"), existing.getBlocks(), contributed);
+            identities.put(block.getHeaderTokens().getFirst(), identity);
+        }
+        for (BlockAst block : contributed) {
+            if (Set.of("requirement", "mapping").contains(block.getKind())) {
+                List<String> header = new ArrayList<>(block.getHeaderTokens());
+                header.set(0, identities.getOrDefault(header.getFirst(), header.getFirst()));
+                block = new BlockAst(block.getKind(), header, block.getProperties(), block.getChildren(), block.getExtensions(), null);
+            }
+            blocks.add(block);
+        }
         MetaAst meta = existing.getMeta() != null
                 ? existing.getMeta()
                 : new MetaAst(MetaAst.LANGUAGE_ID, MetaAst.CURRENT_VERSION,
                         "default", GENERATED);
         return serializer.serialize(new DocumentAst(meta, blocks));
+    }
+
+    /** Resolve exact business identity without mutating storage or migrating canonical references. */
+    @Transactional(readOnly = true)
+    public String planRequirementIdentity(String projectKey, String requirementKey, String dsl,
+                                          String username, WorkspaceContext context) {
+        return resolveRequirementIdentity(projectKey, requirementKey, parseOrEmpty(dsl).getBlocks(), portfolioBlocks(username, context));
+    }
+
+    private static String resolveRequirementIdentity(String projectKey, String requirementKey,
+                                                      List<BlockAst> existing, List<BlockAst> contributed) {
+        List<BlockAst> matching = existing.stream().filter(b -> "requirement".equals(b.getKind())
+                && projectKey.equals(b.property("x-project-key")) && requirementKey.equals(b.property("x-requirement-key"))).toList();
+        if (matching.size() > 1) throw identityMismatch();
+        String id = matching.isEmpty() ? canonicalRequirementId(projectKey, requirementKey) : matching.getFirst().getHeaderTokens().getFirst();
+        for (BlockAst block : java.util.stream.Stream.concat(existing.stream(), contributed.stream()).toList()) {
+            if (!"requirement".equals(block.getKind())) continue;
+            boolean same = projectKey.equals(block.property("x-project-key")) && requirementKey.equals(block.property("x-requirement-key"));
+            if (!same && (id.equals(block.getHeaderTokens().getFirst())
+                    || canonicalRequirementId(projectKey, requirementKey).equals(block.getHeaderTokens().getFirst()))) throw identityMismatch();
+        }
+        return id;
+    }
+    private static PortfolioException identityMismatch() {
+        return new PortfolioException(PortfolioException.Kind.CONFLICT, "REQUIREMENT_IDENTITY_MISMATCH",
+                "Canonical requirement identity is ambiguous; resolve the exact project and requirement keys before importing", null);
     }
 
     /** Commit the complete current portfolio projection to a branch. */

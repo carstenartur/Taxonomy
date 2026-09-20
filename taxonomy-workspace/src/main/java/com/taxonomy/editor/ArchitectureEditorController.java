@@ -81,19 +81,34 @@ public class ArchitectureEditorController {
     /** A bounded wire union is converted immediately to typed application/domain commands. No full graph payload exists. */
     public record WireCommand(Context context, Metadata metadata, String kind, String id, String type,
                               Map<String, String> properties, String sourceId, String relationType, String targetId,
-                              String status, String parentId, String targetOperationId) {
+                              String status, String parentId, String targetOperationId,
+                              List<PackagePlacement> placements, java.util.Set<String> completeParentScopes) {
+        public WireCommand(Context context, Metadata metadata, String kind, String id, String type,
+                           Map<String, String> properties, String sourceId, String relationType, String targetId,
+                           String status, String parentId, String targetOperationId) {
+            this(context, metadata, kind, id, type, properties, sourceId, relationType, targetId,
+                    status, parentId, targetOperationId, List.of(), java.util.Set.of());
+        }
         public WireCommand {
             if (context == null || metadata == null || kind == null) throw new IllegalArgumentException("Context, metadata and kind are required");
             if (properties != null && properties.values().stream().anyMatch(Objects::isNull)) {
                 throw new IllegalArgumentException("Property values must be strings");
             }
             properties = properties == null ? Map.of() : Map.copyOf(properties);
+            placements = placements == null ? List.of() : List.copyOf(placements);
+            completeParentScopes = completeParentScopes == null ? java.util.Set.of() : java.util.Set.copyOf(completeParentScopes);
         }
     }
 
     private static Command command(WireCommand body, String ifMatch, String ifNoneMatch) {
         requireRevision(body.context(), ifMatch, ifNoneMatch);
         Operation operation = switch (body.kind()) {
+            case "CREATE_PACKAGE" -> new SemanticCommand(new CreateArchitecturePackage("pkg-" + body.metadata().commandId(), body.properties()));
+            case "UPDATE_PACKAGE" -> new SemanticCommand(new UpdateArchitecturePackage(body.id(), body.properties()));
+            case "DELETE_PACKAGE" -> new SemanticCommand(new DeleteArchitecturePackage(body.id()));
+            case "SET_PACKAGE_PLACEMENTS" -> new SemanticCommand(new SetArchitecturePackagePlacements(body.placements(), body.completeParentScopes()));
+            case "UPSERT_REQUIREMENT_MAPPING" -> new SemanticCommand(new UpsertRequirementMapping(body.sourceId(), body.targetId(), body.metadata().rationale(), body.properties()));
+            case "DELETE_REQUIREMENT_MAPPING" -> new SemanticCommand(new DeleteRequirementMapping(body.sourceId(), body.targetId()));
             case "CREATE_ELEMENT" -> new SemanticCommand(new CreateArchitectureElement("arch-" + body.metadata().commandId(), body.type(), body.properties()));
             case "UPDATE_ELEMENT" -> new SemanticCommand(new UpdateArchitectureElement(body.id(), body.type(), body.properties()));
             case "DELETE_ELEMENT" -> new SemanticCommand(new DeleteArchitectureElement(body.id()));

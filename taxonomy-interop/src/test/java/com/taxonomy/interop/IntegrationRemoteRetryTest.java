@@ -89,7 +89,7 @@ class IntegrationRemoteRetryTest {
         when(memberships.canContribute(repository, context.username())).thenReturn(true);
         when(store.read(context, connectionId)).thenReturn(connection);
         LifecycleIntegrationConnector connector = mock(LifecycleIntegrationConnector.class);
-        when(connectors.require(OslcRequirementsCodec.PROFILE)).thenReturn(connector);
+        when(connectors.require(OslcRequirementsCodec.PROFILE, "1")).thenReturn(connector);
         when(connector.descriptor()).thenReturn(new IntegrationDescriptor(
                 OslcRequirementsCodec.PROFILE, "1", "OSLC", Set.of(), Set.of()));
         when(remote.validate(context, connection, "requirement-1"))
@@ -177,7 +177,7 @@ class IntegrationRemoteRetryTest {
         assertEquals(
                 "Connection identity, connector, authority and external scope are required",
                 failure.getMessage());
-        verify(connectors, never()).require(any());
+        verify(connectors, never()).require(any(), any());
         verify(store, never()).create(any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
@@ -214,7 +214,7 @@ class IntegrationRemoteRetryTest {
         when(repositories.getRepository(context.repositoryId())).thenReturn(repository);
         when(memberships.canContribute(repository, context.username())).thenReturn(true);
         when(store.read(context, connectionId)).thenReturn(connection);
-        when(connectors.require("reqif-1.2")).thenReturn(connector);
+        when(connectors.require("reqif-1.2", "1")).thenReturn(connector);
         when(connector.descriptor()).thenReturn(new IntegrationDescriptor(
                 "reqif-1.2", "1", "ReqIF",
                 Set.of(com.taxonomy.extension.api.integration.IntegrationContracts.Capability.FILE_IMPORT),
@@ -266,9 +266,8 @@ class IntegrationRemoteRetryTest {
         when(repositories.getRepository(context.repositoryId())).thenReturn(repository);
         when(memberships.canContribute(repository, context.username())).thenReturn(true);
         when(store.read(context, connectionId)).thenReturn(stale);
-        when(connectors.require(OslcRequirementsCodec.PROFILE)).thenReturn(connector);
-        when(connector.descriptor()).thenReturn(new IntegrationDescriptor(
-                OslcRequirementsCodec.PROFILE, "1", "OSLC", Set.of(), Set.of()));
+        when(connectors.require(OslcRequirementsCodec.PROFILE, "0")).thenThrow(new IntegrationProblem("UNKNOWN_CONNECTOR", 400, "Unavailable frozen profile"));
+
 
         IntegrationProblem failure = assertThrows(
                 IntegrationProblem.class,
@@ -315,7 +314,7 @@ class IntegrationRemoteRetryTest {
         when(repositories.getRepository(context.repositoryId())).thenReturn(repository);
         when(memberships.canContribute(repository, context.username())).thenReturn(true);
         when(store.read(context, connectionId)).thenReturn(connection);
-        when(connectors.require(OslcRequirementsCodec.PROFILE)).thenReturn(connector);
+        when(connectors.require(OslcRequirementsCodec.PROFILE, "1")).thenReturn(connector);
         when(connector.descriptor()).thenReturn(new IntegrationDescriptor(
                 OslcRequirementsCodec.PROFILE, "1", "OSLC", Set.of(), Set.of()));
 

@@ -21,6 +21,10 @@ public class AstToModelMapper {
 
         for (BlockAst block : document.getBlocks()) {
             switch (block.getKind()) {
+                case "package" -> model.getPackages().add(new ArchitecturePackage(
+                        block.getHeaderTokens().isEmpty() ? null : block.getHeaderTokens().getFirst(),
+                        block.property("title"), block.property("description"), block.property("parent"),
+                        position(block.property("position")), block.getExtensions()));
                 case "element" -> mapElement(block, model);
                 case "relation" -> mapRelation(block, model);
                 case "requirement" -> mapRequirement(block, model);
@@ -36,6 +40,10 @@ public class AstToModelMapper {
         }
 
         return model;
+    }
+
+    private static int position(String value) {
+        try { return Integer.parseInt(value); } catch (NumberFormatException ignored) { return -1; }
     }
 
     private void mapElement(BlockAst block, CanonicalArchitectureModel model) {
@@ -55,6 +63,8 @@ public class AstToModelMapper {
         el.setTitle(block.property("title"));
         el.setDescription(block.property("description"));
         el.setTaxonomy(block.property("taxonomy"));
+        el.setPackageId(block.property("package"));
+        el.setPackagePosition(position(block.property("position")));
         el.setExtensions(block.getExtensions());
 
         model.getElements().add(el);

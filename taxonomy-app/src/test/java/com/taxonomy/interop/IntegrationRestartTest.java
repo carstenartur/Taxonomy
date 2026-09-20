@@ -29,6 +29,26 @@ class IntegrationRestartTest {
             assertEquals(0, process.exitValue(), Files.readString(log));
         }
     }
+    @Test void nativeRequirementMappingApplyAndRetrySurviveCompleteApplicationRestart() throws Exception {
+        for (String phase : List.of("apply", "retry")) {
+            Path log = directory.resolve("native-" + phase + ".log");
+            Process process = new ProcessBuilder(Path.of(System.getProperty("java.home"), "bin", "java").toString(),
+                    "-Xmx768m", "-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
+                    NativeRequirementMappingRestartDriver.class.getName(), directory.toString(), phase)
+                    .redirectErrorStream(true).redirectOutput(log.toFile()).start();
+            boolean finished = process.waitFor(150, TimeUnit.SECONDS);
+            if (!finished) {
+                process.destroyForcibly();
+            }
+            String output = Files.readString(log);
+            assertTrue(finished, "Native recovery process did not finish: " + phase + "\n" + output);
+            assertEquals(0, process.exitValue(), output);
+            String marker = "NATIVE_REQUIREMENT_MAPPING_RESTART_OK " + phase;
+            assertTrue(output.contains(marker), output);
+            System.out.println(marker + " log=" + log);
+        }
+    }
+
     public static final class RecoveryApplication {
         private static final RepositoryContext CONTEXT = RepositoryContext.workspace("repo-restart", "workspace-restart", "draft", "alice");
         private static final UUID CONNECTION = UUID.fromString("1502e67c-2941-4991-92ef-000000000001"), OPERATION = UUID.fromString("1502e67c-2941-4991-92ef-000000000002"),
@@ -57,7 +77,10 @@ class IntegrationRestartTest {
                             s.beginReview(review(OPERATION));
                             try {
                                 Context next = fixture.service.acceptIntegration(CONTEXT, context, metadata(OPERATION), "review",
-                                        List.of(new CreateArchitectureElement("arch-restart-import", "System", Map.of("title", "Recovered import"))), null, metadata(CHECKPOINT));
+                                        List.of(new CreateArchitectureElement("arch-restart-import", "System", Map.of("title", "Recovered import")),
+                                                new CreateArchitecturePackage("pkg-restart", Map.of("title", "Recovered package")),
+                                                new SetArchitecturePackagePlacements(List.of(new PackagePlacement(PackageMemberKind.ELEMENT,
+                                                        "arch-restart-import", "pkg-restart", 0)), Set.of("pkg-restart"))), null, metadata(CHECKPOINT));
                                 var artifact = new Artifact("external-1", ArtifactKind.ELEMENT, "ApplicationComponent", "Recovered import", "", Map.of(), Map.of("canonicalType", "System"));
                                 s.mapping(OPERATION, "ELEMENT:external-1", "arch-restart-import", null, "v1", artifact, artifact, false);
                                 s.applied(OPERATION, new InternalState(next.repositoryId(), next.workspaceScopeKey(), next.branch(), next.commit(), next.revision(), null, "none"), document, true);
@@ -89,6 +112,9 @@ class IntegrationRestartTest {
                         check(fixture.repositories.resolveRepository(CONTEXT).getCommitCount("draft") == 1);
                         check(new String(store.operation(CONTEXT, CONNECTION, EXPORT).resultFile().content(), java.nio.charset.StandardCharsets.UTF_8).equals("durable-file"));
                         check(store.checkpoint(CONTEXT, CONNECTION).operationId().equals(OPERATION));
+                        var nativeModel = new com.taxonomy.dsl.command.ArchitectureDslCommands().model(fixture.repositories.resolveRepository(CONTEXT).getDslAtHead("draft"));
+                        check(nativeModel.getPackages().getFirst().id().equals("pkg-restart"));
+                        check(nativeModel.findElement("arch-restart-import").orElseThrow().getPackageId().equals("pkg-restart"));
                     }
                     default -> throw new IllegalArgumentException(args[1]);
                 }

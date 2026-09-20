@@ -3,6 +3,7 @@ package com.taxonomy;
 import com.taxonomy.exchange.ArchiMateExchangeCodec;
 import com.taxonomy.exchange.sparx.SparxMappingProfile;
 import com.taxonomy.exchange.sparx.SparxXmiCodec;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
 import tools.jackson.databind.JsonNode;
 
 import java.net.URI;
@@ -98,6 +99,100 @@ final class CivilianIntegrationWalkthrough {
         // A delivered file is not a remote acknowledgement and must not advance a checkpoint.
         assertThat(app.get(outgoing + scope).path("checkpoint").isNull()).isTrue();
         app.save("integration-sparx-delivery.json", delivered);
+        verifyNativeV2(app, scope);
+    }
+
+    /** Contract fixture at the remote boundary; all application APIs and persistence remain real. */
+    private static void verifyNativeV2(CivilianArchitectureAcceptanceTest app, String ignoredScope) throws Exception {
+        var repository = app.post("/api/repositories", Map.of("displayName", "Native V2 contract", "slug", "native-v2-" + UUID.randomUUID(),
+                "description", "Isolated contract fixture", "visibility", "PRIVATE", "defaultBranch", "draft"), 200);
+        var workspace = app.post("/api/repositories/" + repository.path("repositoryId").asText() + "/workspaces",
+                Map.of("displayName", "Native V2", "description", "", "sourceBranch", "draft"), 200);
+        String scope = "?workspaceId=" + workspace.path("workspaceId").asText();
+        long project = app.post("/api/projects" + scope, Map.of("projectKey", "NATIVE-" + UUID.randomUUID().toString().substring(0, 8),
+                "title", "Native exchange requirements", "status", "ACTIVE"), 201).path("id").asLong();
+        UUID connection = UUID.randomUUID(); String path = "/api/integrations/" + connection;
+        app.post("/api/integrations" + scope, Map.of("id", connection, "name", "Native V2 contract", "connectorId", SparxMappingProfile.PROFILE,
+                "profileVersion", "2", "authority", "BIDIRECTIONAL", "projectId", project,
+                "externalScope", Map.of("systemType", "Contract fixture", "repository", "urn:native-contract:" + connection)), 200);
+        String root = "{10000000-0000-4000-8000-000000000000}", pkg = "{10000000-0000-4000-8000-000000000001}",
+                element = "{10000000-0000-4000-8000-000000000002}", req = "{10000000-0000-4000-8000-000000000003}", rel = "{10000000-0000-4000-8000-000000000004}";
+        var document = new ExchangeDocument(SparxMappingProfile.PROFILE, "2", "contract-v2", true, "",
+                List.of(new Artifact(pkg, ArtifactKind.SPECIFICATION, "Package", "Flood package", "Contract fixture", Map.of(), Map.of()),
+                        new Artifact(element, ArtifactKind.ELEMENT, "Component", "Flood reader", "", Map.of(), Map.of("canonicalType", "Component")),
+                        new Artifact(req, ArtifactKind.REQUIREMENT, "Class", "Flood requirement", "Publish traceable observations", Map.of(), Map.of())),
+                List.of(new Relation(rel, "Dependency", req, element, Map.of(), Map.of("canonicalType", "DEPENDS_ON", "direction", "Source -> Destination"))),
+                List.of(new Placement("placement:" + pkg, root, null, pkg, 0, Map.of()), new Placement("placement:" + element, root, "placement:" + pkg, element, 0, Map.of()),
+                        new Placement("placement:" + req, root, "placement:" + pkg, req, 1, Map.of())), Map.of("identifier", root, "title", "Contract fixture"), List.of());
+        byte[] fixture = new SparxXmiCodec("2").write(document);
+        JsonNode preview = uploadXmi(app, path, scope, fixture);
+        var choices = app.get(path + "/operations/" + preview.path("id").asText() + "/endpoint-options" + scope).path("external");
+        var decision = new TreeMap<String, String>(); String connectorChange = null;
+        for (var change : preview.path("changes")) { decision.put(change.path("id").asText(), "ACCEPT"); if (change.path("externalId").asText().equals("RELATION:" + rel)) connectorChange = change.path("id").asText(); }
+        Map<String, Object> review = Map.of("operationId", preview.path("id").asText(), "previewFingerprint", preview.path("fingerprint").asText(), "decisions", decision,
+                "rationale", "Contract fixture: explicitly map the requirement connector", "endpoints", Map.of(connectorChange, Map.of("projection", "REQUIREMENT_MAPPING",
+                        "sourceInternalIdentity", choices.path(req).path("businessIdentity").asText(), "targetInternalIdentity", choices.path(element).path("businessIdentity").asText())));
+        app.post(path + "/apply" + scope, review, 200);
+        JsonNode editor = app.get("/api/architecture/editor" + scope);
+        String packageId = choices.path(pkg).path("businessIdentity").asText();
+        String commandId = UUID.randomUUID().toString();
+        var command = Map.of("context", editor.path("document").path("context"), "metadata", Map.of("commandId", commandId, "correlationId", commandId, "causationId", commandId, "rationale", "Rename native package"),
+                "kind", "UPDATE_PACKAGE", "id", packageId, "properties", Map.of("title", "Reviewed flood package"));
+        editorRequest(app, "/api/architecture/editor/preview" + scope, command, editor.path("document").path("context").path("revision").asLong());
+        editorRequest(app, "/api/architecture/editor/commands" + scope, command, editor.path("document").path("context").path("revision").asLong());
+        editor = app.get("/api/architecture/editor" + scope);
+        String parentCommand = UUID.randomUUID().toString(), parentId = "pkg-" + parentCommand;
+        var createParent = Map.of("context", editor.path("document").path("context"), "metadata", Map.of("commandId", parentCommand, "correlationId", parentCommand, "causationId", parentCommand, "rationale", "Create native parent package"),
+                "kind", "CREATE_PACKAGE", "properties", Map.of("title", "Flood programme"));
+        editorRequest(app, "/api/architecture/editor/commands" + scope, createParent, editor.path("document").path("context").path("revision").asLong());
+        editor = app.get("/api/architecture/editor" + scope);
+        String moveCommand = UUID.randomUUID().toString();
+        var movePackage = Map.of("context", editor.path("document").path("context"), "metadata", Map.of("commandId", moveCommand, "correlationId", moveCommand, "causationId", moveCommand, "rationale", "Move native package atomically"),
+                "kind", "SET_PACKAGE_PLACEMENTS", "completeParentScopes", List.of("", parentId), "placements", List.of(
+                        Map.of("kind", "PACKAGE", "memberId", parentId, "parentPackageId", "", "position", 0),
+                        Map.of("kind", "PACKAGE", "memberId", packageId, "parentPackageId", parentId, "position", 0)));
+        editorRequest(app, "/api/architecture/editor/preview" + scope, movePackage, editor.path("document").path("context").path("revision").asLong());
+        editorRequest(app, "/api/architecture/editor/commands" + scope, movePackage, editor.path("document").path("context").path("revision").asLong());
+        var overview = app.get(path + scope);
+        var export = app.post(path + "/export-previews" + scope, Map.of("operationId", UUID.randomUUID(), "expected", overview.path("current"), "expectedExternalVersion", overview.path("checkpoint").path("externalVersion").asText()), 200);
+        var exportDecisions = new TreeMap<String, String>(); export.path("changes").forEach(c -> exportDecisions.put(c.path("id").asText(), "ACCEPT"));
+        app.post(path + "/files" + scope, Map.of("operationId", export.path("id").asText(), "previewFingerprint", export.path("fingerprint").asText(), "decisions", exportDecisions, "rationale", "Deliver reviewed package and mapping"), 200);
+        byte[] delivered = app.request("GET", path + "/operations/" + export.path("id").asText() + "/file" + scope, null, 200).body();
+        assertThat(new SparxXmiCodec("2").read(delivered, "delivery", true).artifacts()).anyMatch(a -> a.id().equals(pkg) && a.title().equals("Reviewed flood package"));
+        long firstReturnRevision = -1;
+        for (int i = 0; i < 2; i++) {
+            var returned = uploadXmi(app, path, scope, delivered); var decisions = new TreeMap<String, String>(); returned.path("changes").forEach(c -> decisions.put(c.path("id").asText(), "ACCEPT"));
+            app.post(path + "/apply" + scope, Map.of("operationId", returned.path("id").asText(), "previewFingerprint", returned.path("fingerprint").asText(), "decisions", decisions, "rationale", "Reviewed native round trip"), 200);
+            long revision = app.get(path + scope).path("current").path("semanticRevision").asLong();
+            if (i == 0) firstReturnRevision = revision;
+            else assertThat(revision).as("Second native import must not append a semantic operation").isEqualTo(firstReturnRevision);
+        }
+        var finalEditor = app.get("/api/architecture/editor" + scope);
+        assertThat(finalEditor.path("model").path("mappings")).isNotEmpty();
+        assertThat(finalEditor.path("model").path("packages").toString()).contains(packageId, "Reviewed flood package");
+        app.save("integration-native-context.json", app.json.valueToTree(Map.of("scope", scope, "editorContext", finalEditor.path("document").path("context"),
+                "connection", connection.toString(), "packageId", packageId, "productCompatibility", "NOT_EXECUTED", "fixture", "contract")));
+        app.save("integration-native-review.json", app.json.valueToTree(review));
+    }
+    private static JsonNode editorRequest(CivilianArchitectureAcceptanceTest app, String path, Object body, long revision) throws Exception {
+        var response = app.http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port + path)).timeout(Duration.ofSeconds(30))
+                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + CivilianArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
+                .header("Content-Type", "application/json").header("If-Match", "\"workspace-revision-" + revision + "\"")
+                .POST(HttpRequest.BodyPublishers.ofString(app.json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(response.statusCode()).as(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo(200);
+        return app.json.readTree(response.body());
+    }
+    private static JsonNode uploadXmi(CivilianArchitectureAcceptanceTest app, String path, String scope, byte[] file) throws Exception {
+        String boundary = "native-" + UUID.randomUUID();
+        var request = Map.of("operationId", UUID.randomUUID(), "expected", app.get(path + scope).path("current"), "mediaType", "application/xmi+xml", "completeScope", true);
+        var body = new java.io.ByteArrayOutputStream();
+        body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"request\"\r\nContent-Type: application/json\r\n\r\n" + app.json.writeValueAsString(request)
+                + "\r\n--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"contract.xmi\"\r\nContent-Type: application/xmi+xml\r\n\r\n").getBytes(StandardCharsets.UTF_8));
+        body.write(file); body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
+        var response = app.http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port + path + "/previews" + scope))
+                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + CivilianArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
+                .header("Content-Type", "multipart/form-data; boundary=" + boundary).POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(response.statusCode()).as(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo(200); return app.json.readTree(response.body());
     }
 
     private static String create(CivilianArchitectureAcceptanceTest app, String name, String profile, String authority, String scope) throws Exception {

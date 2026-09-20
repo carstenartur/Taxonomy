@@ -11,24 +11,33 @@ import static com.taxonomy.exchange.sparx.SparxMappingProfile.*;
 
 /** Writes only frozen, reviewed semantic values; raw source/layout XML is never replayed. */
 final class SparxXmiWriter {
+    private final String version;
+    SparxXmiWriter() { this("1"); }
+    SparxXmiWriter(String version) { this.version = version; }
     byte[] write(ExchangeDocument source) {
-        if (!PROFILE.equals(source.profile()) || !VERSION.equals(source.profileVersion()))
+        if (!PROFILE.equals(source.profile()) || !version.equals(source.profileVersion()))
             throw ExchangeXml.invalid("PROFILE_VERSION_CHANGED", "Sparx output needs the exact supported mapping profile");
         var validated = SparxModelValidator.model(source);
         var objects = validated.objects();
+        if (version.equals("2")) for (MappingLoss loss : source.losses()) {
+            Artifact feature = loss.artifactId() == null ? null : objects.get(loss.artifactId());
+            if (feature != null && feature.kind() == ArtifactKind.FEATURE && loss.disposition() == LossDisposition.UNSUPPORTED)
+                throw ExchangeXml.invalid("SPARX_FEATURE_EXPORT_UNSUPPORTED", "Reviewed feature contains unsupported content; reject it before lossy delivery");
+        }
         var modelId = validated.modelId();
         var byId = validated.byId();
         var byObject = validated.byObject();
         var document = ExchangeXml.parse(("<xmi:XMI xmlns:xmi=\"" + XMI + "\" xmlns:uml=\"" + UML + "\" xmi:version=\"2.1\"/>").getBytes(StandardCharsets.UTF_8));
         Element root = document.getDocumentElement();
         Element documentation = ExchangeXml.append(root, XMI, "xmi:Documentation");
-        documentation.setAttribute("exporter", "Taxonomy"); documentation.setAttribute("exporterVersion", PROFILE + "@" + VERSION);
+        documentation.setAttribute("exporter", "Taxonomy"); documentation.setAttribute("exporterVersion", PROFILE + "@" + version);
         Element model = ExchangeXml.append(root, UML, "uml:Model"); model.setAttributeNS(XMI, "xmi:id", xmiId(modelId, true));
         model.setAttribute("name", source.metadata().getOrDefault("title", "Taxonomy"));
         Element extension = ExchangeXml.append(root, XMI, "xmi:Extension"); extension.setAttribute("extender", "Enterprise Architect");
         Element elements = ExchangeXml.append(extension, null, "elements"), connectors = ExchangeXml.append(extension, null, "connectors");
         Map<String, Element> nodes = new HashMap<>();
         for (Artifact artifact : objects.values()) {
+            if (artifact.kind() == ArtifactKind.FEATURE) continue;
             Element node = document.createElement("packagedElement"); nodes.put(artifact.id(), node);
             boolean pkg = artifact.kind() == ArtifactKind.SPECIFICATION;
             node.setAttributeNS(XMI, "xmi:id", xmiId(artifact.id(), pkg));
@@ -45,14 +54,16 @@ final class SparxXmiWriter {
             if (artifact.extensions().containsKey("stereotype")) properties.setAttribute("stereotype", artifact.extensions().get("stereotype"));
             if (artifact.kind() == ArtifactKind.REQUIREMENT) properties.setAttribute("sType", "Requirement");
             tags(detail, artifact.attributes(), artifact.extensions());
+            if (version.equals("2")) evidence(detail, artifact.attributes(), artifact.extensions());
         }
         // Create every node before attaching children, so parent order cannot affect the result.
-        objects.values().stream().sorted(Comparator.comparingInt((Artifact a) -> byObject.containsKey(a.id()) ? byObject.get(a.id()).position() : Integer.MAX_VALUE)
+        objects.values().stream().filter(a -> a.kind() != ArtifactKind.FEATURE).sorted(Comparator.comparingInt((Artifact a) -> byObject.containsKey(a.id()) ? byObject.get(a.id()).position() : Integer.MAX_VALUE)
                 .thenComparing(Artifact::id)).forEach(artifact -> {
             Placement p = byObject.get(artifact.id());
             Element parent = p == null || p.parentId() == null ? model : nodes.get(byId.get(p.parentId()).artifactId());
             parent.appendChild(nodes.get(artifact.id()));
         });
+        if (version.equals("2")) writeFeatures(source, elements, nodes);
         for (Relation relation : source.relations().stream().sorted(Comparator.comparing(Relation::id)).toList()) {
             Element node = ExchangeXml.append(model, null, "packagedElement");
             node.setAttributeNS(XMI, "xmi:id", xmiId(relation.id(), false));
@@ -79,11 +90,81 @@ final class SparxXmiWriter {
             if (relation.extensions().containsKey("stereotype")) properties.setAttribute("stereotype", relation.extensions().get("stereotype"));
             if (relation.attributes().containsKey("description")) properties.setAttribute("documentation", relation.attributes().get("description"));
             tags(detail, relation.attributes(), relation.extensions());
+            if (version.equals("2")) evidence(detail, relation.attributes(), relation.extensions());
         }
         byte[] output = ExchangeXml.write(document);
         // Reparse with the same security and identity checks before any file can be delivered.
-        new SparxXmiReader().read(output, source.externalVersion(), source.completeScope());
+        new SparxXmiCodec(version).read(output, source.externalVersion(), source.completeScope());
         return output;
+    }
+
+    private static void evidence(Element parent, Map<String,String> attributes, Map<String,String> extensions) {
+        Element evidence = ExchangeXml.append(parent, null, "evidence");
+        new TreeMap<>(attributes).forEach((key,value) -> field(evidence,"attribute",key,value));
+        new TreeMap<>(extensions).forEach((key,value) -> field(evidence,"extension",key,value));
+    }
+    private static void field(Element parent,String type,String key,String value) {
+        Element field=ExchangeXml.append(parent,null,type); field.setAttribute("key",key); field.setAttribute("value",value);
+    }
+    private static void writeFeatures(ExchangeDocument source, Element elements, Map<String, Element> nodes) {
+        Map<String, Element> details = new HashMap<>();
+        for (Element detail : ExchangeXml.children(elements)) {
+            details.put(guid(detail.getAttributeNS(XMI, "idref")), detail);
+        }
+        var features = source.artifacts().stream().filter(a -> a.kind() == ArtifactKind.FEATURE)
+                .sorted(Comparator.comparingInt((Artifact a) -> Integer.parseInt(a.extensions().getOrDefault("position", "9999")))
+                        .thenComparing(Artifact::id)).toList();
+        for (Artifact feature : features) {
+            if (feature.type().equals("tagged-value")) {
+                continue;
+            }
+            if (feature.type().equals("external-connector")) {
+                throw ExchangeXml.invalid("SPARX_FEATURE_EXPORT_UNSUPPORTED",
+                        "External connectors are preserved-only evidence; exclude from XMI delivery");
+            }
+            String nodeName = switch (feature.type()) {
+                case "attribute" -> "ownedAttribute";
+                case "operation" -> "ownedOperation";
+                case "parameter" -> "ownedParameter";
+                default -> throw ExchangeXml.invalid("SPARX_FEATURE_EXPORT_UNSUPPORTED", "Unsupported feature output");
+            };
+            Element node = elements.getOwnerDocument().createElement(nodeName);
+            node.setAttributeNS(XMI, "xmi:id", xmiId(feature.id(), false));
+            node.setAttribute("name", feature.title());
+            if (feature.extensions().containsKey("position")) {
+                node.setAttribute("position", feature.extensions().get("position"));
+            }
+            if (feature.extensions().containsKey("classifier")) {
+                node.setAttribute("classifier", feature.extensions().get("classifier"));
+            }
+            feature.attributes().forEach((key, value) -> {
+                if (key.startsWith("ea:")) {
+                    node.setAttribute(key.substring(3), value);
+                }
+            });
+            Element detail = detail(elements, "feature", feature.id(), false);
+            details.put(feature.id(), detail);
+            properties(detail, feature.attributes()).setAttribute("documentation", feature.text());
+            // Non-consumed properties remain in evidence; they are not authored as native UML scalars.
+            evidence(detail, feature.attributes(), feature.extensions());
+            nodes.put(feature.id(), node);
+        }
+        for (Artifact feature : features) {
+            Element owner = details.get(feature.extensions().get("owner"));
+            if (feature.type().equals("tagged-value")) {
+                Element tags = ExchangeXml.child(owner, "tags");
+                if (tags == null) {
+                    tags = ExchangeXml.append(owner, null, "tags");
+                }
+                Element tag = ExchangeXml.append(tags, null, "tag");
+                tag.setAttributeNS(XMI, "xmi:id", xmiId(feature.id(), false));
+                tag.setAttribute("name", feature.title());
+                tag.setAttribute("value", feature.text());
+                evidence(tag, feature.attributes(), feature.extensions());
+            } else {
+                nodes.get(feature.extensions().get("owner")).appendChild(nodes.get(feature.id()));
+            }
+        }
     }
 
     private static Element detail(Element parent, String name, String id, boolean pkg) {
@@ -94,12 +175,12 @@ final class SparxXmiWriter {
         new TreeMap<>(attributes).forEach((key, value) -> { if (key.startsWith("ea:")) result.setAttribute(key.substring(3), value); });
         return result;
     }
-    private static void tags(Element parent, Map<String, String> attributes, Map<String, String> extensions) {
+    private void tags(Element parent, Map<String, String> attributes, Map<String, String> extensions) {
         Element tags = ExchangeXml.append(parent, null, "tags");
         Map<String, String> values = new TreeMap<>(attributes);
         extensions.forEach((key, value) -> { if (key.startsWith("taxonomy:")) values.put("tag:taxonomy." + key.substring(9), value); });
         values.forEach((key, value) -> {
-            if (key.startsWith("tag:")) { Element tag = ExchangeXml.append(tags, null, "tag"); tag.setAttribute("name", key.substring(4)); tag.setAttribute("value", value); }
+            if (key.startsWith("tag:")) { Element tag = ExchangeXml.append(tags, null, "tag"); if (version.equals("2")) tag.setAttribute("projection", "true"); tag.setAttribute("name", key.substring(4)); tag.setAttribute("value", value); }
         });
     }
 }

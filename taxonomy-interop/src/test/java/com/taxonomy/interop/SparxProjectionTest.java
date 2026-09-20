@@ -112,5 +112,98 @@ class SparxProjectionTest {
         assertTrue(changes.stream().noneMatch(c -> c.kind() == ChangeKind.CONFLICT), () -> changes.toString());
     }
 
+    @Test void v2PackagesAreNativeAndV1RetainsEvidenceOnly() {
+        var pkg = new Artifact("pkg", ArtifactKind.SPECIFICATION, "Package", "Package", "Notes", Map.of(), Map.of());
+        var selected = Map.of(ExchangeItems.key(pkg), pkg);
+        assertTrue(domain.architectureCommands(connection, "", Map.of(), selected, List.of()).isEmpty());
+        var v2 = new Connection(connection.id(), connection.organizationId(), connection.displayName(), connection.connectorId(), "2",
+                connection.authority(), connection.externalScope(), null, null, 0, null, null, "alice");
+        var planned = domain.architectureCommands(v2, "", Map.of(), selected, List.of());
+        assertTrue(planned.stream().anyMatch(c -> c instanceof CreateArchitecturePackage));
+    }
+
+    @Test void requirementEndpointsRequireExplicitTypedProjectionAndRespectDirection() {
+        var requirement = new Artifact("r", ArtifactKind.REQUIREMENT, "Class", "Need", "Body", Map.of(), Map.of());
+        var element = new Artifact("e", ArtifactKind.ELEMENT, "Component", "E", "", Map.of(), Map.of("canonicalType", "Component"));
+        var relation = new Artifact("c", ArtifactKind.RELATION, "Dependency", "", "", Map.of(), Map.of("source", "r", "target", "e", "direction", "Source -> Destination"));
+        var selected = Map.of(ExchangeItems.key(requirement), requirement, ExchangeItems.key(element), element, ExchangeItems.key(relation), relation);
+        var plans = Map.of("REQUIREMENT:r", new IntegrationPortfolioPort.RequirementApplyPlan("P", "R", "P__R"));
+        var endpoints = domain.indexEndpoints(connection, selected, List.of(), plans);
+        assertEquals("SPARX_ENDPOINT_MAPPING_REQUIRED", assertThrows(IntegrationProblem.class,
+                () -> domain.architectureCommands(connection, "", Map.of(), selected, List.of(), endpoints, Map.of())).code());
+        String elementId = domain.businessId(connection, null, element);
+        var choice = new EndpointOverride("P__R", elementId, RelationProjection.REQUIREMENT_MAPPING, null);
+        var planned = domain.architectureCommands(connection, "", Map.of(), selected, List.of(), endpoints, Map.of("RELATION:c", choice));
+        assertTrue(planned.stream().anyMatch(c -> c instanceof UpsertRequirementMapping));
+        assertFalse(planned.stream().anyMatch(c -> c instanceof CreateArchitectureRelation));
+        var preserved = domain.architectureCommands(connection, "", Map.of(), selected, List.of(), endpoints,
+                Map.of("RELATION:c", new EndpointOverride(null, null, RelationProjection.PRESERVE_ONLY, null)));
+        assertFalse(preserved.stream().anyMatch(c -> c instanceof UpsertRequirementMapping || c instanceof CreateArchitectureRelation));
+    }
+
+    @Test void oldReviewJsonAndConstructorKeepAnEmptyEndpointMap() {
+        var json = new IntegrationJson(JsonMapper.builder().build());
+        var old = new ReviewedChangeSet(UUID.randomUUID(), "fp", Map.of(), "Reviewed");
+        assertTrue(old.endpoints().isEmpty());
+        String legacy = "{\"operationId\":\"" + old.operationId() + "\",\"previewFingerprint\":\"fp\",\"decisions\":{},\"rationale\":\"Reviewed\"}";
+        assertTrue(json.read(legacy, ReviewedChangeSet.class).endpoints().isEmpty());
+    }
+
+    @Test void finalPlanRejectsOwnedMappingsBeforeAnyPortfolioMutation() {
+        var domain = new IntegrationDomainAdapter(org.mockito.Mockito.mock(IntegrationPortfolioPort.class), new IntegrationJson(JsonMapper.builder().build()));
+        String dsl = "element e type Component {\n title: \"E\";\n}\nrequirement r {\n title: \"R\";\n}\nmapping r -> e {\n source: \"analysis-snapshot\";\n x-portfolio-managed: \"true\";\n}\n";
+        assertEquals("REQUIREMENT_MAPPING_OWNERSHIP_CONFLICT", assertThrows(IntegrationProblem.class,
+                () -> domain.validateCompletePlan(dsl, List.of(new UpsertRequirementMapping("r", "e", "external", Map.of("x-exchange-id", "c"))), Map.of())).code());
+    }
+
+    @Test void endpointKindsCannotBeCoercedAndReverseAndBidirectionalRequireCorrectReview() {
+        var index = new IntegrationDomainAdapter.EndpointIndex(Map.of(
+                "r", new IntegrationDomainAdapter.EndpointRef(IntegrationDomainAdapter.EndpointKind.REQUIREMENT, "req", null),
+                "e", new IntegrationDomainAdapter.EndpointRef(IntegrationDomainAdapter.EndpointKind.ARCHITECTURE_ELEMENT, "element", null),
+                "e2", new IntegrationDomainAdapter.EndpointRef(IntegrationDomainAdapter.EndpointKind.ARCHITECTURE_ELEMENT, "other", null),
+                "p", new IntegrationDomainAdapter.EndpointRef(IntegrationDomainAdapter.EndpointKind.PACKAGE, "package", null)));
+        var relation = new Artifact("c", ArtifactKind.RELATION, "Dependency", "", "", Map.of(), Map.of("source", "r", "target", "e", "direction", "Destination -> Source"));
+        assertEquals("SPARX_ENDPOINT_KIND_UNMAPPED", assertThrows(IntegrationProblem.class, () -> domain.relationBusinessId(relation, index,
+                new EndpointOverride("req", "element", RelationProjection.REQUIREMENT_MAPPING, null))).code());
+        var validReverse = new Artifact("c", ArtifactKind.RELATION, "Dependency", "", "", Map.of(), Map.of("source", "e", "target", "r", "direction", "Destination -> Source"));
+        assertEquals("req -> element", domain.relationBusinessId(validReverse, index, new EndpointOverride("req", "element", RelationProjection.REQUIREMENT_MAPPING, null)));
+        assertEquals("SPARX_ENDPOINT_KIND_UNMAPPED", assertThrows(IntegrationProblem.class, () -> domain.relationBusinessId(validReverse, index,
+                new EndpointOverride("req", "other", RelationProjection.REQUIREMENT_MAPPING, null))).code());
+        var packageRelation = new Artifact("c", ArtifactKind.RELATION, "Dependency", "", "", Map.of(), Map.of("source", "p", "target", "e"));
+        assertEquals("SPARX_ENDPOINT_KIND_UNMAPPED", assertThrows(IntegrationProblem.class, () -> domain.relationBusinessId(packageRelation, index,
+                new EndpointOverride("element", "element", RelationProjection.ARCHITECTURE_RELATION, "RELATED_TO"))).code());
+        var requirementPair = new Artifact("c", ArtifactKind.RELATION, "Dependency", "", "", Map.of(), Map.of("source", "r", "target", "r"));
+        assertEquals("SPARX_ENDPOINT_KIND_UNMAPPED", assertThrows(IntegrationProblem.class, () -> domain.relationBusinessId(requirementPair, index,
+                new EndpointOverride("req", "req", RelationProjection.REQUIREMENT_MAPPING, null))).code());
+        var both = new Artifact("c", ArtifactKind.RELATION, "Dependency", "", "", Map.of(), Map.of("source", "r", "target", "e", "direction", "Bi-Directional"));
+        assertEquals("SPARX_DIRECTION_UNMAPPED", assertThrows(IntegrationProblem.class, () -> domain.relationBusinessId(both, index,
+                new EndpointOverride("req", "element", RelationProjection.REQUIREMENT_MAPPING, null))).code());
+        assertEquals("preserved:c", domain.relationBusinessId(both, index, new EndpointOverride(null, null, RelationProjection.PRESERVE_ONLY, null)));
+    }
+
+    @Test void incomingProjectionEvidenceCannotGrantOrClearLocalApproval() {
+        var asserted = new Artifact("r", ArtifactKind.RELATION, "Dependency", "", "", Map.of(), Map.of(
+                "source", "r", "target", "e", "nativeProjection", "REQUIREMENT_MAPPING", "nativeSource", "req", "nativeTarget", "element"));
+        var unapproved = IntegrationService.reviewedEndpointAuthority(asserted, null);
+        assertFalse(unapproved.extensions().containsKey("nativeProjection"));
+        var incoming = new Artifact("r", ArtifactKind.RELATION, "Dependency", "", "", Map.of(), Map.of("source", "r", "target", "e"));
+        var retained = IntegrationService.reviewedEndpointAuthority(incoming, asserted);
+        assertEquals("REQUIREMENT_MAPPING", retained.extensions().get("nativeProjection"));
+        assertEquals("req", retained.extensions().get("nativeSource"));
+        assertEquals("element", retained.extensions().get("nativeTarget"));
+    }
+
+    @Test void canonicalRelationTypeIsTheEffectiveTypeAfterRetainedEndpointApproval() {
+        var index = new IntegrationDomainAdapter.EndpointIndex(Map.of(
+                "a", new IntegrationDomainAdapter.EndpointRef(IntegrationDomainAdapter.EndpointKind.ARCHITECTURE_ELEMENT, "native-a", null),
+                "b", new IntegrationDomainAdapter.EndpointRef(IntegrationDomainAdapter.EndpointKind.ARCHITECTURE_ELEMENT, "native-b", null)));
+        var remapped = new Artifact("c", ArtifactKind.RELATION, "Dependency", "", "", Map.of(), Map.of(
+                "source", "a", "target", "b", "canonicalType", "DEPENDS_ON",
+                "nativeProjection", "ARCHITECTURE_RELATION", "nativeSource", "native-a", "nativeTarget", "native-b", "nativeType", "RELATED_TO"));
+        assertEquals("native-a DEPENDS_ON native-b", domain.relationBusinessId(remapped, index, null));
+        assertEquals("native-a DEPENDS_ON native-b", domain.relationBusinessId(remapped, index,
+                new EndpointOverride("native-a", "native-b", RelationProjection.ARCHITECTURE_RELATION, null)));
+    }
+
     private WorkspaceDocument document(String dsl) { return new WorkspaceDocument(new State("scope", "head", 1), dsl); }
 }
