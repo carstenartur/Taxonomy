@@ -145,11 +145,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(dataSource, "editor_operation", "before_dsl")).isTrue();
         assertThat(columnExists(dataSource, "editor_operation", "target_operation_id")).isTrue();
         assertIntegrationSchema(dataSource);
+        assertReformulationSchema(dataSource);
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22");
     }
 
     @Test
@@ -223,8 +224,46 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22");
         assertIntegrationSchema(dataSource);
+        assertReformulationSchema(dataSource);
+    }
+
+    private static void assertReformulationSchema(DataSource dataSource) throws SQLException {
+        assertThat(tableExists(dataSource, "reformulation_proposal")).isTrue();
+        assertThat(tableExists(dataSource, "reformulation_revision")).isTrue();
+        for (String column : List.of("scope_key", "project_id", "requirement_id", "source_version_id",
+                "snapshot_id", "baseline_payload", "current_revision", "row_version")) {
+            assertThat(columnExists(dataSource, "reformulation_proposal", column)).as("proposal " + column).isTrue();
+        }
+        for (String column : List.of("proposal_id", "scope_key", "revision_number", "revision_payload")) {
+            assertThat(columnExists(dataSource, "reformulation_revision", column)).as("revision " + column).isTrue();
+        }
+        assertThat(foreignKeyBindings(dataSource, "reformulation_proposal", "fk_reform_source"))
+                .containsExactly("source_version_id->project_req_version.id",
+                        "requirement_id->project_req_version.requirement_id", "scope_key->project_req_version.scope_key");
+        assertThat(foreignKeyBindings(dataSource, "reformulation_proposal", "fk_reform_snapshot"))
+                .containsExactly("snapshot_id->req_analysis_snapshot.id",
+                        "source_version_id->req_analysis_snapshot.requirement_version_id",
+                        "requirement_id->req_analysis_snapshot.requirement_id", "project_id->req_analysis_snapshot.project_id",
+                        "scope_key->req_analysis_snapshot.scope_key");
+        assertThat(foreignKeyBindings(dataSource, "reformulation_revision", "fk_reform_revision_proposal"))
+                .containsExactly("proposal_id->reformulation_proposal.id", "scope_key->reformulation_proposal.scope_key");
+    }
+
+    private static List<String> foreignKeyBindings(DataSource dataSource, String table, String constraint) throws SQLException {
+        var bindings = new java.util.TreeMap<Integer, String>();
+        try (Connection connection = dataSource.getConnection();
+             ResultSet keys = connection.getMetaData().getImportedKeys(
+                     connection.getCatalog(), connection.getSchema(), table)) {
+            while (keys.next()) {
+                if (constraint.equals(keys.getString("FK_NAME"))) {
+                    bindings.put(keys.getInt("KEY_SEQ"), keys.getString("FKCOLUMN_NAME") + "->"
+                            + keys.getString("PKTABLE_NAME") + "." + keys.getString("PKCOLUMN_NAME"));
+                }
+            }
+        }
+        return List.copyOf(bindings.values());
     }
 
     private static void assertIntegrationSchema(DataSource dataSource) throws SQLException {

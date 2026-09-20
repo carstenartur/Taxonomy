@@ -36,6 +36,7 @@ import java.util.Objects;
         @Index(name = "idx_snap_scope", columnList = "scope_key")
 }, uniqueConstraints = {
         @UniqueConstraint(name = "uq_snap_id_scope", columnNames = {"id", "scope_key"}),
+        @UniqueConstraint(name = "uq_snap_source_scope", columnNames = {"id", "requirement_version_id", "requirement_id", "project_id", "scope_key"}),
         @UniqueConstraint(name = "uq_snap_req_proj_scope",
                 columnNames = {"id", "requirement_id", "project_id", "scope_key"}),
         @UniqueConstraint(name = "uq_snap_item_scope",
