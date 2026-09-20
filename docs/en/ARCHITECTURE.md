@@ -140,7 +140,7 @@ split does not invent separate services or promise additional completed extracti
 
 Exact package ownership is recorded in [the context map](../../.github/architecture-contexts.json).
 Historical dependency counts are evidence about their named migration step, not current
-runtime measurements; see [the extraction history](MODULE_BOUNDARIES_HISTORY.md).
+runtime measurements; see [the extraction history](../internal/MODULE_BOUNDARIES_HISTORY_EN.md).
 
 ## Architecture View Generation Pipeline
 
@@ -261,6 +261,18 @@ application composition and feature-specific write/read guards. Deployment contr
 secrets, reverse-proxy TLS, and external transport restrictions are described in
 [Security](SECURITY.md) and [Deployment guide](DEPLOYMENT_GUIDE.md).
 
+The incoming LLM quota runs after `AuthorizationFilter`. Its default is
+10 admitted requests per stable authenticated identity per minute. Local accounts
+use their canonical authenticated username; Keycloak browser and bearer requests
+share the immutable `iss`/`sub` pair, not `preferred_username` or a peer address.
+Rejected authentication/authorization requests do not allocate or consume quota state.
+The bounded in-memory counters are per application instance: a multi-replica deployment multiplies the aggregate allowance.
+Use an outer distributed quota when a cluster-wide allowance is required.
+HTTP `429` responses include `Retry-After` and `Cache-Control: no-store`.
+`TAXONOMY_RATE_LIMIT_PER_MINUTE=0` disables the limiter; negative values fail closed
+to one admitted request per minute. See [Configuration reference](CONFIGURATION_REFERENCE.md)
+and [Preferences](PREFERENCES.md) for configuration and identity semantics.
+
 The modular monolith does not provide network isolation between feature libraries.
 Sensitive cross-context behavior requires integration/recovery tests in addition to
 compile-time boundaries. Source documents, prompts, and exports also have their own
@@ -290,7 +302,8 @@ profiles and native editor capabilities are not implied by this overview.
 |---|---|
 | Mermaid / neutral diagrams | Text or diagram projections of the explicitly selected source model. The README showcase is a generated model example, not this application's module graph. |
 | Reports, including Word | Report generation belongs to architecture; template lifecycle belongs to templates, and cross-context HTTP/preferences wiring belongs to the application. Available template features depend on the concrete report path. |
-| ArchiMate / Visio | Bounded format implementations with identity/mapping/loss contracts. A generated file or automated package check is not broad independent-tool certification. |
+| Experimental bounded ArchiMate 3.1 subset | Schema-validated output with identity, mapping and loss contracts; general independent-tool acceptance must not be inferred from file generation or package checks. |
+| Experimental bounded Visio 2012 VSDX subset | Bounded package and handoff/loss contracts; Microsoft Visio desktop certification remains pending. |
 | Reviewed external exchange | Connector- and profile-specific semantics with explicit review and compatibility limits, not an unrestricted bidirectional model editor. |
 
 [The feature matrix](FEATURE_MATRIX.md) defines support boundaries. Detailed connector

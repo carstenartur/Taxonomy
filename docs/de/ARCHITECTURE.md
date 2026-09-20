@@ -144,7 +144,7 @@ Die Aufteilung erfindet keine separaten Dienste oder zusätzlich abgeschlossenen
 
 Die genaue Package-Zuordnung steht in der [Kontextdatei](../../.github/architecture-contexts.json).
 Historische Abhängigkeitszahlen belegen ihren jeweiligen Umbauzustand, keine aktuelle
-Laufzeitmessung; siehe [Extraktionshistorie](MODULE_BOUNDARIES_HISTORY.md).
+Laufzeitmessung; siehe [Extraktionshistorie](../internal/MODULE_BOUNDARIES_HISTORY_DE.md).
 
 ## Pipeline zur Generierung der Architekturansicht
 
@@ -266,6 +266,19 @@ Anwendungskomposition und fachspezifische Lese-/Schreibprüfungen umgesetzt.
 Betriebsmaßnahmen, Geheimnisse, Reverse-Proxy-TLS und Transportbeschränkungen beschreibt
 [Sicherheit](SECURITY.md) zusammen mit dem [Deployment-Leitfaden](DEPLOYMENT_GUIDE.md).
 
+Das eingehende LLM-Kontingent wird nach dem `AuthorizationFilter` geprüft. Standard sind
+10 zugelassene Aufrufe je stabiler authentifizierter Identität und Minute. Lokale Konten
+verwenden ihren kanonischen authentifizierten Benutzernamen; Keycloak-Browser- und
+Bearer-Anfragen teilen das unveränderliche Paar `iss`/`sub`, nicht `preferred_username`
+oder eine Peer-Adresse. Wegen Authentifizierung oder Autorisierung abgewiesene Anfragen
+erzeugen und verbrauchen keinen Kontingentzustand. Die begrenzten In-Memory-Zähler gelten
+je Anwendungsinstanz. Mehrere Replikate vervielfachen das Gesamtkontingent.
+Für ein clusterweites Budget ist ein verteilter äußerer Begrenzer erforderlich.
+HTTP-`429`-Antworten enthalten `Retry-After` und `Cache-Control: no-store`.
+`TAXONOMY_RATE_LIMIT_PER_MINUTE=0` deaktiviert den Begrenzer; negative Werte begrenzen
+fehlersicher auf einen zugelassenen Aufruf je Minute. Konfiguration und Identitätsregeln
+stehen in [Konfigurationsreferenz](CONFIGURATION_REFERENCE.md) und [Einstellungen](PREFERENCES.md).
+
 Der modulare Monolith schafft keine Netzwerkisolation zwischen Fachbibliotheken.
 Sensible kontextübergreifende Funktionen benötigen Integrations-/Wiederanlauftests
 zusätzlich zu Compile-Zeit-Grenzen. Quelldokumente, Prompts und Exporte haben eigene
@@ -296,10 +309,11 @@ Profile oder native Editorfähigkeiten sind damit nicht vorweggenommen.
 |---|---|
 | Mermaid / neutrale Diagramme | Text-/Diagrammprojektionen des ausdrücklich ausgewählten Modells; das README-Beispiel ist ein erzeugtes Fachmodell, nicht der Modulgraph dieser Anwendung. |
 | Berichte einschließlich Word | Berichtserzeugung gehört zur Architektur, Vorlagenlebenszyklus zum Vorlagenmodul und kontextübergreifende HTTP-/Einstellungsverdrahtung zur Anwendung. Verfügbare Vorlagenfunktionen hängen vom konkreten Berichtspfad ab. |
-| ArchiMate / Visio | Begrenzte Formatimplementierungen mit Identitäts-, Mapping- und Verlustverträgen; erzeugte Dateien oder Paketprüfungen sind keine allgemeine unabhängige Werkzeugzertifizierung. |
+| Experimentelle begrenzte ArchiMate-3.1-Teilmenge | Schema-validierte Ausgabe mit Identitäts-, Mapping- und Verlustverträgen; eine allgemeine Fremdwerkzeug-Abnahme darf nicht aus Dateierzeugung oder Paketprüfungen abgeleitet werden. |
+| Experimentelle begrenzte Visio-2012-VSDX-Teilmenge | Begrenzte Paket- und Übergabe-/Verlustverträge; Microsoft-Visio-Desktop-Zertifizierung ausstehend. |
 | Geprüfter externer Austausch | Konnektor-/profilspezifische Semantik mit ausdrücklicher Prüfung und Kompatibilitätsgrenzen, kein uneingeschränkter bidirektionaler Modelleditor. |
 
-Die [Funktionsmatrix](FEATURE_MATRIX.md) definiert Unterstützungsgrenzen. Detaillierte
+Die [Funktionsmatrix](FEATURE_MATRIX.md#unterstützungsgrenze-der-architekturexporte) definiert Unterstützungsgrenzen. Detaillierte
 Konnektor- und Editorleitfäden beschreiben die weiterentwickelte Semantik. Die Übersicht
 übernimmt keine Versprechen aus offenen PRs und macht ein geschlossenes Issue nicht zum
 Kompatibilitätsnachweis.

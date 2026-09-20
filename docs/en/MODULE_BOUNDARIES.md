@@ -3,7 +3,7 @@
 This is the **current implementation inventory**, not a list of planned extractions.
 Taxonomy remains a modular monolith with one deployable Spring Boot application.
 The seven feature libraries listed below have already been extracted. The former
-step-by-step account is retained separately as [historical extraction evidence](MODULE_BOUNDARIES_HISTORY.md).
+step-by-step account is retained separately as [historical extraction evidence](../internal/MODULE_BOUNDARIES_HISTORY_EN.md).
 Its intermediate blockers, counts, and issue status describe past checkpoints, not today's backlog.
 
 ## Current Maven reactor
@@ -114,7 +114,7 @@ structural consistency, not proof of every prose statement or runtime behavior.
 
 ## Historical extraction evidence
 
-The [former detailed account](MODULE_BOUNDARIES_HISTORY.md) is preserved byte-for-byte
+The [former detailed account](../internal/MODULE_BOUNDARIES_HISTORY_EN.md) is preserved byte-for-byte
 from the pre-reorganization version so that individual migration evidence is not lost.
 Treat its “planned” headings, changing class-pair counts, and completion statements
 as historical. The current ownership summary above takes precedence for orientation.

@@ -4,7 +4,7 @@ Dies ist das **Inventar der heutigen Implementierung**, keine Liste geplanter
 Extraktionen. Taxonomy bleibt ein modularer Monolith mit einer deploybaren
 Spring-Boot-Anwendung. Die sieben unten genannten Fachbibliotheken sind bereits
 extrahiert. Die frühere schrittweise Beschreibung bleibt als
-[historischer Extraktionsnachweis](MODULE_BOUNDARIES_HISTORY.md) erhalten.
+[historischer Extraktionsnachweis](../internal/MODULE_BOUNDARIES_HISTORY_DE.md) erhalten.
 Deren Zwischenblocker, Zählstände und Issue-Status beschreiben frühere Checkpoints,
 nicht den heutigen offenen Arbeitsbestand.
 
@@ -117,7 +117,7 @@ Fachmodulgraphen. Das belegt strukturelle Konsistenz, nicht jede Textaussage ode
 
 ## Historische Extraktionsnachweise
 
-Die [frühere ausführliche Beschreibung](MODULE_BOUNDARIES_HISTORY.md) ist bytegetreu
+Die [frühere ausführliche Beschreibung](../internal/MODULE_BOUNDARIES_HISTORY_DE.md) ist bytegetreu
 vom Stand vor dieser Neuordnung erhalten, damit Einzelnachweise nicht verloren gehen.
 „Geplant“-Überschriften, wechselnde Klassenpaarzahlen und Abschlusshinweise darin sind
 historisch zu lesen. Zur Orientierung gilt die aktuelle Zuständigkeitsbeschreibung oben.
