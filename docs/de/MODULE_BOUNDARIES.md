@@ -1,353 +1,127 @@
 # Modul- und Bounded-Context-Grenzen
 
-Dieses Dokument beschreibt das schrittweise Ziel für die Zerlegung von `taxonomy-app`, ohne das Deployment-Modell von Taxonomy zu verändern. Taxonomy bleibt ein **modularer Monolith** und eine einzelne Spring-Boot-Anwendung. Ziel ist, Maven-Grenzen an fachlicher Zuständigkeit und Abhängigkeitsrichtung auszurichten – nicht das System in Microservices oder ein Modul pro Package aufzuteilen.
-
-Die maschinenlesbare Quelle für die geplanten Extraktionskontexte ist `.github/architecture-contexts.json`. Befristete Architekturausnahmen bleiben in `.github/architecture-exceptions.json`; die geprüften aktuellen Cross-Context-Abhängigkeiten werden in `.github/architecture-dependency-baseline.json` festgeschrieben.
+Dies ist das **Inventar der heutigen Implementierung**, keine Liste geplanter
+Extraktionen. Taxonomy bleibt ein modularer Monolith mit einer deploybaren
+Spring-Boot-Anwendung. Die sieben unten genannten Fachbibliotheken sind bereits
+extrahiert. Die frühere schrittweise Beschreibung bleibt als
+[historischer Extraktionsnachweis](../internal/MODULE_BOUNDARIES_HISTORY_DE.md) erhalten.
+Deren Zwischenblocker, Zählstände und Issue-Status beschreiben frühere Checkpoints,
+nicht den heutigen offenen Arbeitsbestand.
 
 ## Aktueller Maven-Reactor
 
-Der Root-Reactor enthält derzeit fünfzehn Module mit unterschiedlichen Aufgaben:
+| Modul | Gruppe | Aktuelle Zuständigkeit |
+|---|---|---|
+| `taxonomy-domain` | Grundlage | Frameworkfreie gemeinsame Architektur-/Analyseverträge |
+| `taxonomy-dsl` | Grundlage | Frameworkfreie TaxDSL-Syntax, Modell, Validierung, Mapping, Diff und Befehle |
+| `taxonomy-export` | Grundlage | Frameworkfreie Exportverträge, Codecs und neutrales Rendering |
+| `taxonomy-extension-api` | Grundlage | Frameworkfreie Erweiterungsverträge und Metadaten |
+| `taxonomy-workspace` | Fachmodul | Workspace-/Repository-Identität, Editorjournal, Undo/Redo, Git-Checkpoints und Speicher |
+| `taxonomy-knowledge` | Fachmodul | Katalog/Seeds, Relationen/Hypothesen, Suche, Indizes und lokale Embeddings |
+| `taxonomy-templates` | Fachmodul | Vorlagenversionen, OOXML-Validierung, Materialisierung, WebDAV und Administration |
+| `taxonomy-interop` | Fachmodul | Geprüfter Austausch, Zuordnungen, Konnektorsteuerung und Synchronisationscheckpoints |
+| `taxonomy-architecture` | Fachmodul | Ableitung, Scoring, Lücken, Muster, Empfehlungen, Diagramme und Berichte |
+| `taxonomy-analysis` | Fachmodul | Anforderungs-/LLM-Analyse, Anbieterregeln, Prompts, Parsing und Sitzungen |
+| `taxonomy-portfolio` | Fachmodul | Projekte, versionierte Anforderungen, Jobs/Ergebnisse/Reviews, Wiederanlauf und Snapshots |
+| `taxonomy-app` | Komposition | Einzige ausführbare Anwendung: Verdrahtung, Kontextadapter, Sicherheit, Migrationen und Packaging |
+| `taxonomy-tooling` | Build/Werkzeuge | Build- und Release-Werkzeuge; keine Laufzeit-Fachbibliothek |
+| `taxonomy-coverage` | Build/Werkzeuge | Reactor-weite Coverage-Aggregation; keine Laufzeit-Fachbibliothek |
+| `taxonomy-build` | Build/Werkzeuge | Reactor-weite Qualitätsprüfungen und Browser-/Verifikationsverträge |
 
-| Modul | Aktuelle Aufgabe |
-|---|---|
-| `taxonomy-tooling` | Abhängigkeitsfreie Build- und Repository-Werkzeuge |
-| `taxonomy-domain` | Frameworkfreie gemeinsame Domain-Verträge |
-| `taxonomy-dsl` | Frameworkfreier TaxDSL-Parser, Modell, Validierung, Differ und Command-Logik |
-| `taxonomy-export` | Frameworkfreie Diagramm-/Export-Verträge und Implementierungen |
-| `taxonomy-extension-api` | Frameworkfreie gemeinsame Extension-Verträge |
-| `taxonomy-workspace` | Workspace-Zuständigkeit, Versionierung, semantische Editor-Historie und JGit-Speicher |
-| `taxonomy-templates` | Dokumentvorlagen-Git-Speicher, OOXML-Validierung und WebDAV |
-| `taxonomy-interop` | Geprüfte externe Werkzeuganbindung, Mappings, Checkpoints und OSLC; Portfoliozugriff über einen expliziten Port |
-| `taxonomy-knowledge` | Katalog- und Seed-Ressourcen, Relationen, Hibernate-Search-Mappings und lokale semantische Embeddings |
-| `taxonomy-architecture` | Architekturableitung, Scoring, Empfehlungen, Diagramme und Berichte; aktuelle Berichtseinstellungen über einen anwendungseigenen Adapter |
-| `taxonomy-analysis` | Anforderungs-/LLM-Analyse, Prompts, Provider-Regeln und Sitzungen |
-| `taxonomy-portfolio` | Projektportfolio, Analysejobs, Snapshots, Reviews und Wiederanlauf |
-| `taxonomy-app` | Einzige ausführbare Anwendung, Komposition/Deployment, Sicherheit und unterstützende Anwendungsadapter |
-| `taxonomy-coverage` | Reactor-weite Coverage-Aggregation |
-| `taxonomy-build` | Build-Policy sowie Browser-/Verifikationsverträge |
-
-Die ausgelieferten Anwendungsmodule sind damit nur ein Teil des Reactors. `taxonomy-tooling`, `taxonomy-coverage` und `taxonomy-build` erfüllen Build- und Verifikationsaufgaben und sind keine Runtime-Bounded-Contexts.
-
-## Warum `taxonomy-app` zerlegt wird
-
-In `taxonomy-app` haben sich mehrere eigenständig kohärente Bereiche angesammelt: Katalog/Suche, Architekturableitung, Anforderungsanalyse, Workspace-/Versionszustand, semantisches Editor-Journal und Git-Checkpoints, Projekt-/Portfolio-Workflows, externe Interoperabilität, Dokument-Templates/WebDAV, Provenance/Dokument-Ingestion, Preferences, Security und Observability. Wenn sämtlicher Spring-basierter Feature-Code im ausführbaren Modul bleibt, wird die Abhängigkeitsrichtung schwächer und Maven kann Cross-Feature-Kopplung nicht verhindern.
-
-Die Zerlegung folgt deshalb **Zuständigkeit und Bounded Contexts**, nicht mechanisch der heutigen Package-Hierarchie.
+Der Root-Aggregator ist kein weiteres Untermodul. Die fünfzehn Untermodule bestehen
+aus vier Grundlagen, sieben Fachmodulen, dem Kompositionsmodul und drei Build-/Werkzeugmodulen.
+Nur `taxonomy-app` ist eine ausführbare Anwendung. Die Build-Gruppe bildet keine
+Laufzeitdienste. Siehe [geprüften Fachmodulgraphen](ARCHITECTURE.md#modularchitektur)
+und [Laufzeit-/Persistenzdarstellungen](ARCHITECTURE.md).
 
 ## Fachmodule und Zuständigkeiten
 
 ### `taxonomy-knowledge`
 
-Physisch als Maven-Bibliothek ausgelagert. Katalog-Initialisierungszustand, Embedding-Lebenszyklus, Vektorkonvertierung und Suchanalysatoren gehören hierher. Die fünf materialisierenden Framework-Importadapter liegen in `taxonomy-app` unter `com.taxonomy.composition.importer`; ihre Parser und die Import-Registry verbleiben im Knowledge-Modul. Spring-Bean-Namen und Classpath-Ressourcennamen bleiben unverändert.
-
-Besitzt `catalog`, `relations` und `search`. Deren heutige gegenseitige Abhängigkeiten werden zunächst als interne Implementierungskopplung eines Knowledge-Kontexts behandelt, während die öffentlichen Verträge verengt werden. Search-Mappings und Binder gehören zur Persistenzseite dieses Kontexts und nicht als allgemeine Anwendungsabhängigkeit in die App.
+Besitzt Katalog, Relationen und Suche einschließlich Seeds, Suchmappings/-analyzern
+und Embedding-Lebenszyklus. Framework-Importparser und Registry gehören zum Wissensmodul;
+kontextübergreifende Materialisierungsadapter zur Anwendungskomposition. Interne
+Package-Kopplungen rechtfertigen keine Rückabhängigkeit auf die ausführbare Anwendung.
 
 ### `taxonomy-workspace`
 
-Besitzt `workspace`, `versioning` und `editor`. Diese Packages kontrollieren gemeinsam den editierbaren und versionierten Zustand, einschließlich dauerhaftem semantischem Operationsjournal, Undo/Redo, Checkpoint-Vorbereitung/-Publikation, Repository-Kontext und JGit/Hibernate-basierter DSL-Speicherung. Sie werden zunächst zusammengehalten, damit ein Maven-Split die heutige Package-Kopplung nicht lediglich in einen Modulzyklus verwandelt.
-
-Die mit dem Editor-Umbau eingeführte Invariante bleibt unverändert: **akzeptierte semantische Operationen sind dauerhaft gespeicherte Revisionen; Git-Commits sind explizite stabile Checkpoints und nicht das Operationslog.**
+Besitzt Workspace-, Versions- und Editorzustand gemeinsam: dauerhaftes semantisches
+Operationsjournal, Undo/Redo, Checkpoint-Vorbereitung/-Veröffentlichung, Repository-Kontext
+und JGit-/Hibernate-Speicher. **Übernommene semantische Operationen sind dauerhafte
+Revisionen; Git-Commits sind explizite stabile Checkpoints, nicht das Operationsprotokoll.**
 
 ### `taxonomy-architecture`
 
-Physisch als Maven-Bibliothek mit ihren eigenen Unit-Tests ausgelagert. Berichtseinstellungen bleiben anwendungseigen und werden über `ArchitectureReportMetadataPort` für jeden Bericht neu aufgelöst. Java-Paketnamen, Endpunktverhalten und Datenbankmigrationen bleiben unverändert; `taxonomy-app` bleibt die einzige ausführbare Anwendung. Der Report-HTTP-Adapter und seine Repository-/Workspace-Auflösung bleiben in der Anwendungskomposition unter `com.taxonomy.composition.report`; die Architektur-Bibliothek darf nicht von `WorkspaceResolver` abhängen.
-
-Besitzt Architekturableitung, Scoring, Gaps, Patterns, Empfehlungen, Architektur-View-/Domain-Modelle und neutrale Diagrammvorbereitung. Repository-/Workspace-Auflösung und Cross-Context-HTTP-Orchestrierung gehören nicht in dieses Modul.
+Besitzt Architekturableitung, Bewertungen, Lücken, Muster, Empfehlungen, Diagrammvorbereitung
+und Berichte. Aktuelle Berichtseinstellungen kommen über `ArchitectureReportMetadataPort`.
+HTTP-Berichtskomposition und Repository-/Workspace-Auflösung bleiben anwendungseigen;
+die Bibliothek darf nicht von einem anwendungseigenen `WorkspaceResolver` abhängen.
 
 ### `taxonomy-analysis`
 
-Physisch mit eigenen Tests und Ressourcen ausgelagert; übergreifende Abnahmetests verbleiben in der Anwendung. Siehe [Abschlusskriterien](../dev/MODULE_EXTRACTION_COMPLETION.md).
-
-Besitzt Anforderungs- und LLM-Analyse, Provider-/Gateway-Auswahl, Response-Parsing, Prompt-/Policy-Logik, Analysesitzungen und lokale Inferenzabstraktionen. Zustandsbehafteter Repository- oder Hypothesen-Zugriff erfolgt über explizite Ports.
+Besitzt Anforderungs-/LLM-Analyse, Prompts, Anbieterregeln, Antwort-Parsing, Sitzungen
+und Analyseabstraktionen. Zustandsbehaftete Fremdzugriffe verwenden explizite Ports.
+Eigene Unit-Tests und Fachressourcen gehören zur Bibliothek, nicht zu `taxonomy-app`.
 
 ### `taxonomy-portfolio`
 
-Physisch mit eigenen Tests und Ressourcen ausgelagert; übergreifende Abnahmetests verbleiben in der Anwendung. Siehe [Abschlusskriterien](../dev/MODULE_EXTRACTION_COMPLETION.md).
-
-Besitzt Projekt-/Portfolio-Zustand und Orchestrierung: versionierte Anforderungen, persistierte Analysejobs/-ergebnisse/-Reviews, Queue/Recovery, Workbench-Snapshots und projektbezogene Workflows. Analysis-, Architecture- und Workspace-Fähigkeiten werden über deren APIs koordiniert; fremde Repositories werden nicht direkt angesprochen.
+Besitzt Projekte, versionierte Anforderungen, dauerhafte Analysearbeit/-ergebnisse/-reviews,
+Warteschlangen/Wiederanlauf und Workbench-Snapshots. Die Koordination verwendet Fach-APIs,
+nicht fremde Repositories. Kontextübergreifende Abnahmetests bleiben anwendungseigen.
 
 ### `taxonomy-interop`
 
-Besitzt geprüfte Interoperabilität mit externen Werkzeugen, einschließlich dauerhafter Integrationsoperationen, Mappings/Checkpoints/Events, Connector-Orchestrierung und OSLC-/ReqIF-/ArchiMate-Anwendungsintegration. Das Modul konsumiert schmale Ports und darf nicht von konkreten Editor-Services abhängen.
+Besitzt geprüfte externe Werkzeugoperationen, Zuordnungen, Checkpoints/Ereignisse und
+Konnektorsteuerung. Portfoliozugriff läuft über einen expliziten Port mit Anwendungsadapter;
+Interop darf nicht von der Portfolioimplementierung oder konkreten Editordiensten abhängen.
 
 ### `taxonomy-templates`
 
-Besitzt das Dokument-Template-Subsystem: Template-Git-Repository, OOXML-Package-Codec und Sicherheitsvalidierung, Materialisierung/Cache, WebDAV-Projektion/Locking sowie Template-Administration und Health-Verträge.
+Besitzt das separate Vorlagen-Git-Repository, OOXML-Sicherheit/-Validierung,
+Materialisierung, WebDAV-Projektion/-Sperren sowie Administrations-/Health-Verträge.
+Es hängt von keiner anderen Taxonomy-Fachbibliothek ab. Vorlagenspeicher ist nicht
+das semantische Operationsjournal des Editors.
 
-## Restkontexte, die bewusst noch keine Module sind
+## Bewusst noch nicht extrahierte Kontexte
 
-`provenance` und `preferences` werden explizit klassifiziert, damit ihre Abhängigkeiten im Ratchet sichtbar sind; sie besitzen aber noch kein Ziel-Maven-Modul.
-
-- `provenance` ist ein echtes Subsystem mit Dokument-Parsing/Chunking, Provenance-Persistenz und KI-gestützter Dokumentanalyse. Es überschreitet heute die Grenzen zu Analysis, Knowledge und Shared-Services; eine sofortige Extraktion würde daher eine noch unklare Abhängigkeitsrichtung festschreiben.
-- `preferences` bleibt zunächst in der Anwendung, bis Zuständigkeit und Persistenzabhängigkeiten eine eigene Feature-Grenze rechtfertigen.
-
-Beide Bereiche werden erneut bewertet, nachdem die stärkeren Context-APIs existieren. So entstehen keine kleinen Module nur zur Erhöhung der Modulzahl.
-
-## Übergangsweise Adapter-Kontexte
-
-`com.taxonomy.dsl.export..` sowie die Spring-basierten Packages `com.taxonomy.export.service..` / `com.taxonomy.export.controller..` bleiben explizite Übergangskontexte, bis ihre besitzenden Ports stabil sind. JGit Storage wird durch den bestehenden Kontext `com.taxonomy.workspace..` klassifiziert.
-
-Sie sind **nicht** der Anfang eines generischen `taxonomy-adapters`-Moduls. Jeder Adapter soll letztlich bei dem Bounded Context liegen, dessen Port er implementiert. Die frameworkfreien Module lehnen weiterhin Spring-, JPA- und Anwendungsmodul-Abhängigkeiten ab.
+Provenance/Dokumentimport und Preferences bleiben anwendungslokal. Ihre Zuständigkeiten
+sind im Kontextmodell sichtbar; separate Module werden nicht behauptet. Übergangsadapter
+für DSL/Export bleiben explizit klassifiziert, bis ihre fachlichen Ports feststehen.
+Ein generisches Sammelmodul für Adapter wird nicht eingeführt.
 
 ## Zielrolle von `taxonomy-app`
 
-Nach der Extraktion der Feature-Kontexte bleibt `taxonomy-app` der ausführbare Composition Root. Die Context-Map klassifiziert derzeit `composition`, `observability`, `security` und `shared` als `app-composition`; auch die Root-Klassen `AppConfig` und `TaxonomyApplication` sind Composition-Klassen.
+Die Anwendung ist der **bereits vorhandene** Kompositions-/Deployment-Einstieg. Sie
+besitzt Verdrahtung, Sicherheit/Anfrageidentität, Observability, globale Konfiguration
+und Fehlerbehandlung, kontextübergreifende HTTP-/UI-Adapter, Migrationskomposition und
+abschließendes Packaging. Provenance und Preferences liegen weiterhin hier. Das ist
+eine dokumentierte Grenze, keine Behauptung, die Anwendung enthalte schon ausschließlich Verdrahtung.
 
-Langfristig sollen dort nur tatsächlich anwendungsweite Verantwortlichkeiten verbleiben, insbesondere:
+## Fitness-Funktionen für Abhängigkeiten
 
-- Spring-Boot-Assembly und Cross-Context-Wiring;
-- globale Security/Authentifizierung/Request-Identity;
-- Top-Level-Konfiguration;
-- globales Exception-Handling sowie Observability-/Health-Aggregation;
-- echte Cross-Context-MVC-Orchestrierung ohne einzelnen Feature-Eigentümer;
-- finales Packaging und Anwendungsressourcen.
+Maßgebliche maschinenlesbare Eingaben bleiben [Kontextmodell](../../.github/architecture-contexts.json),
+[Ausnahmen](../../.github/architecture-exceptions.json) und
+[Abhängigkeitsbaseline](../../.github/architecture-dependency-baseline.json) zusammen
+mit tatsächlichen POMs und produktiven Klassen. Die Dokumentation führt keine zweite
+Architekturrichtlinie ein und erzeugt die Baseline nicht neu.
 
-Ein Package namens `shared` ist nicht automatisch eine Modulgrenze. Gemeinsame Klassen müssen zum niedrigsten stabilen Eigentümer verschoben werden oder als Composition-Belange verbleiben, wenn sie tatsächlich anwendungsweit sind.
+`taxonomy-build` besitzt die bestehenden Modulgraph-/Extraktionsprüfungen. Maven-Grenzregeln
+und Packaging-Prüfungen sichern Abhängigkeitsrichtung, eindeutige Laufzeitklassen/-ressourcen
+und anwendungseigene Migrationen. Fachliche Unit-Tests liegen bei den Bibliotheken;
+kontextübergreifende, Datenbank-, Sicherheits- und Wiederanlauftests bei der Anwendung.
 
-## Architektur-Fitnessfunktionen
+`ArchitectureDocumentationTest` verwendet im normalen Gesamt-Reactor-Test die
+Reactor-Erkennung und den produktiven POM-Leser des bestehenden Gates. Geprüft werden
+dieses Inventar, die englische Fassung, das README-Inventar und beide markierten
+Fachmodulgraphen. Das belegt strukturelle Konsistenz, nicht jede Textaussage oder das Laufzeitverhalten.
 
-### Hypothesen-Zuständigkeit (C2 von #1043)
+## Historische Extraktionsnachweise
 
-Hypothesen-Lebenszyklus, Git-autoritative Reviews, Review-Zustand und die
-HTTP-Adapter unter `/api/dsl/hypotheses/**` gehören zu `relations`. Der verbleibende
-`DslApiController` ruft keine Hypothesen-Services auf. Historische
-`WorkspaceContext`-Argumente übersetzt der Workspace-eigene
-`WorkspaceRepositoryContextPort`: Eine explizite Repository-Auswahl bleibt
-erhalten, widersprüchliche Workspace-Herkunft scheitert vor Review oder
-Branch-Zugriff, und zentrale Kontexte bleiben schreibgeschützt.
+Die [frühere ausführliche Beschreibung](../internal/MODULE_BOUNDARIES_HISTORY_DE.md) ist bytegetreu
+vom Stand vor dieser Neuordnung erhalten, damit Einzelnachweise nicht verloren gehen.
+„Geplant“-Überschriften, wechselnde Klassenpaarzahlen und Abschlusshinweise darin sind
+historisch zu lesen. Zur Orientierung gilt die aktuelle Zuständigkeitsbeschreibung oben.
+Der [Abschlussvertrag der Modulextraktion](../dev/MODULE_EXTRACTION_COMPLETION.md) und die
+[Gate-Dokumentation](../dev/MODULE_EXTRACTION_GATE.md) behalten ihre detaillierten Nachweise.
 
-Hypothesen-Services nutzen Workspace-APIs für Repository-Kontext, exakte
-Git-Lese-/Schreiboperationen und die Publikation erzeugter DSL-Snapshots. Sie
-hängen weder von Workspace-Entities/-Repositories noch von konkretem DSL-Speicher
-oder JGit ab. Fachliche Reviews und Transaktions-Callbacks bleiben bei Relations;
-Snapshot-Publikation bleibt von Expected-Head-Commands und Editor-Checkpoints
-getrennt.
-
-C2 reduzierte kontextübergreifende Klassenpaare von 559 auf 540.
-`versioning.service -> catalog/relations` und
-`versioning.controller -> relations` sind jetzt null. Keine Zyklusausnahme wurde
-hinzugefügt oder erweitert.
-
-### Entscheidungsberichte in der Composition (D1 von #1043)
-
-`DecisionRationaleReportController` gehört jetzt zu
-`com.taxonomy.composition.report` in `taxonomy-app`. Er kombiniert
-Berichtserzeugung/-darstellung aus Architecture, Katalog-Scores aus Knowledge und
-Workspace-Herkunft. Die Versioning-HTTP-Adapter hängen über diesen Controller
-nicht mehr von Architecture-Decision-/Report- oder Katalog-Services ab.
-
-Der D1-Schritt erfasste **543 kontextübergreifende Klassenpaare** gegenüber 540
-nach C2. Diese historische Änderung von **540 auf 543** machte drei
-Workspace-API-Referenzen sichtbar, die zuvor innerhalb des Workspace-Kontexts
-lagen; es entstand keine zusätzliche Runtime-Abhängigkeit.
-`ArchitectureDecisionReportBoundaryTest` sichert den Composition-Eigentümer und
-die Versioning-HTTP-Grenze ab.
-
-### Git-Commit-Historie unter Workspace-Zuständigkeit (D2 von #1043)
-
-Die historische D2-Baseline enthielt **537 kontextübergreifende Klassenpaare**,
-gegenüber **543** nach D1. Diese Änderung von **543 auf 537** ordnete die Projektion
-der Git-Commit-Historie der Workspace-Versionierung zu:
-
-| Typen | Zuständiges Package |
-|---|---|
-| `ArchitectureCommitIndex` | `com.taxonomy.versioning.model` |
-| `ArchitectureCommitIndexRepository` | `com.taxonomy.versioning.repository` |
-| `CommitIndexService`, `CommitIndexSearchLifecycle`, `CommitIndexSearchRebuilder` | `com.taxonomy.versioning.service` |
-
-Der Git-Index trägt nicht mehr zu Workspace-zu-Architecture-Abhängigkeiten bei.
-Entity-, Tabellen-, Suchindex- und Analyzer-Namen sowie Mandanten-/Branch-Scope
-und Recovery-Verhalten bleiben unverändert. `ArchitectureCommitHistoryOwnershipTest`
-verlangt, dass alle fünf Projektionstypen bei ihren Versioning-Eigentümern bleiben.
-
-Bei D2 betrafen die **vier verbleibenden Workspace-zu-Architecture-Klassenpaare**
-das importierte `ArchitectureDslDocument`-Archiv und dessen Repository, auf die
-damals DSL-Controller und Operations-Fassaden zugriffen. Dies ist historische
-D2-Evidenz; D3 entfernt diese vier Paare wie unten beschrieben. Das Archiv bleibt
-bei seinem bestehenden Eigentümer; keiner der beiden Schritte schließt eine
-physische Modulextraktion ab.
-
-### DSL-Dokument-Komposition (D3 von #1043)
-
-`DslDocumentApiController` in `com.taxonomy.composition.dsl.controller` besitzt
-Export/Current, Materialisierung und inkrementelle Materialisierung,
-archivangereicherten Verlauf, strukturellen/semantischen Vergleich sowie
-Dokumentlisten unter `/api/dsl`. `DslDocumentOperationsFacade` in
-`com.taxonomy.composition.dsl.service` kombiniert Knowledge-Export/-Materialisierung,
-das Architecture-Archiv und die von Spring ausgewählte Workspace-Fassade
-`DslOperationsFacade`. Parsing, Validierung, Formatierung, Text-Diff,
-Git-/Workspace-Kommandos und Historienindexierung/-suche bleiben bei
-`DslApiController`. Beide Workspace-DSL-Fassaden hängen nicht mehr vom
-Architecture-Archiv oder von Dokumentexport-Adaptern ab.
-
-Beide Controller nutzen denselben Workspace-eigenen HTTP-Resolver
-`DslReadWorkspaceContextResolver`. Er erhält die historische Abfolge von
-Provisionierung und Read-Kontextauflösung sowie den Shared-Kontext-Fallback.
-Request-Pre-Resolution-Interceptor und Git-Fassade bleiben bei Fehlern der
-Repository-Auswahl Fail-Closed. Git bleibt die Autorität für versionierte Inhalte;
-numerische Dokumentvergleiche erhalten die Archivkompatibilität ohne Git-Auflösung.
-`ArchitectureDslDocument` und sein Repository bleiben Architecture-eigen.
-Archivpolitik und globale Abfragen, URLs, Security, Repository-Identität,
-Checkpoint-/Journal-/Lock-Verhalten und Schreibumfang der Materialisierung bleiben
-unverändert.
-
-Die historische, aus frischem Production-Bytecode gemessene D3-Baseline enthält
-**539 kontextübergreifende Klassenpaare über 147 Package-Kanten** gegenüber der
-historischen D2-Baseline mit **537 Paaren über 141 Package-Kanten**. Alle vier
-früheren Workspace-zu-Architecture-Archivpaare entfallen. Drei
-Composition-zu-Architecture-Archivpaare übernehmen diese Orchestrierung, zwei
-Adapterpaare entfallen und fünf Composition-zu-Workspace-API-Paare werden sichtbar,
-weil die Aufrufe zuvor innerhalb des Workspace-Kontexts lagen:
-**537 - 4 + 3 - 2 + 5 = 539**. Der Anstieg um zwei gemessene Klassenpaare macht die
-Composition-Zuständigkeit sichtbar. Es entsteht keine Maven-Abhängigkeit oder
-zusätzliche Abhängigkeit zwischen Feature-Kontexten.
-
-Bei D3 bestanden die **47 ausgehenden Workspace-Klassenpaare** aus **44
-DSL-Storage-Adapterpaaren**, **einem Bootstrap-Export-Paar** und **zwei
-Application-Readiness-Paaren**. Die **117 Knowledge-zu-Workspace-Paare** benötigen
-eine separate Prüfung. Bei diesem Stand blockierten Bootstrap-, Storage- und Knowledge-Kopplung
-weiterhin die physische Feature-Extraktion; D3 schließt weder diese Extraktion
-noch die Parent-Issues #628/#1043 ab. Context-Map und Zyklusausnahmen-Ledger bleiben
-unverändert. Siehe [DSL-Dokument-Komposition](../dev/DSL_DOCUMENT_COMPOSITION.md).
-
-### Git-Startlogik in der Composition (D4 von #1043)
-
-`GitRepositoryBootstrap` gehört jetzt zu `com.taxonomy.composition.dsl.service`.
-Nur das Package wurde geändert: Application-Readiness, standardmäßige Aktivierung,
-System-Repository-Auswahl, einmalige Initialisierung und Wiederholung nach Fehlern
-bleiben erhalten. Über die Startlogik hängt Workspace nicht mehr direkt von
-Application-Readiness oder Knowledge-Export ab.
-
-Die D4-Baseline erfasste **537 kontextübergreifende Klassenpaare
-über 146 Package-Kanten**, gegenüber **539 / 147** bei D3. Die zwei Readiness-Paare
-liegen nun innerhalb der Composition; das Bootstrap-Export-Paar und seine zwei
-Storage-Paare behalten ihre bisherigen Ziele unter dem neuen Composition-Eigentümer.
-Die **42 verbleibenden ausgehenden Workspace-Paare zeigen alle auf DSL-Storage-Adapter**.
-Die **117 Knowledge-zu-Workspace-Paare** bleiben unverändert und benötigen eine
-separate Prüfung. Storage-Zuständigkeit und der übrige Graph begrenzen weiterhin
-die Extraktion; D4 erzeugt kein Maven-Modul und schließt #628/#1043 nicht ab.
-Context-Map, Zyklusausnahmen und Coverage-Mindestwerte bleiben unverändert. Siehe
-[Git-Bootstrap-Komposition](../dev/GIT_BOOTSTRAP_COMPOSITION.md).
-
-### Anwendungsschema in der Composition (D5a von #1043)
-
-`TaxonomySchemaMigrationConfig` gehört jetzt zu
-`com.taxonomy.composition.persistence`. Die primäre Flyway-Strategie ruft zuerst
-die exakt qualifizierte `jgitStorageFlywayMigrationStrategy` und danach die
-Anwendungsmigration auf. Ein Core-Fehler verhindert jede Anwendungsarbeit; Core
-behält seine bestehende Legacy-Adoption-Property und die package-private
-Migrationsimplementierung.
-
-Die frische Bytecode-Messung bleibt bei **537 kontextübergreifenden Klassenpaaren
-über 146 Package-Kanten**. Keine erfasste Package-Kante ändert sich: Der bisherige
-direkte Aufruf lag innerhalb von DSL Storage; die neue Composition hängt vom
-Flyway-Strategie-Interface ab. Die **42 Workspace-zu-DSL-Storage-Paare** und **117
-Knowledge-zu-Workspace-Paare** bleiben unverändert. Baseline, Context-Map und
-Zyklusausnahmen ändern sich nicht.
-
-Zehn PostgreSQL-Integrationstests des Anwendungsschemas folgen ihrem Eigentümer;
-alle bestehenden Assertions und SQL-Ressourcen bleiben erhalten. Storage und
-Composition-Persistence haben jeweils einen eigenständigen Mindestwert von
-**87% Line- / 71% Branch-Coverage**. Die Storage-Adapter werden in einem separaten
-Schritt verschoben; D5a erzeugt kein Maven-Modul und schließt #628/#1043 nicht ab.
-Siehe [Anwendungsschema-Komposition](../dev/APPLICATION_SCHEMA_COMPOSITION.md).
-
-### Workspace-Storage-Zuständigkeit (D5b von #1043)
-
-Die elf JGit-Storage-Typen und ihre siebzehn Test-/Support-Eigentümer gehören
-jetzt zu `com.taxonomy.workspace.storage`. Repository-Identität, Routing zwischen
-System- und ausgewähltem Repository, Exact-Head-Konflikte, die Trennung von
-semantischen Operationen und Checkpoints, Recovery, Merge/Diff/Version sowie SQL-
-und Migrationsverhalten bleiben unverändert.
-
-Die frische Production-Bytecode-Messung reduziert den geprüften Graphen von
-**537 auf 472 kontextübergreifende Klassenpaare** und von **146 auf 140
-Package-Kanten**. Die **42 Workspace-zu-Storage-Paare** und **23
-Storage-zu-Workspace-Paare** liegen nun innerhalb des Workspace-Kontexts; damit
-entfallen sechs kontextübergreifende Package-Kanten und 65 Klassenpaare.
-Workspace hat jetzt **keine ausgehenden Klassenpaare zu anderen verwalteten
-Anwendungskontexten**. Eingehende Kanten werden auf Workspace Storage umgebogen:
-Composition-DSL-Controller (1 Paar), Composition-DSL-Service (2 Paare) und
-Portfolio-Service (5 Paare). Der gemessene Graph entspricht exakt der reinen
-Namespace-Projektion der alten Baseline; es gibt keine unerklärte Kantenänderung.
-
-Die **117 Knowledge-zu-Workspace-Paare** bleiben bestehen; ein unabhängiges
-Inventar fand kein Knowledge-zu-ehemaligem-Storage-Paar. Abhängigkeiten auf
-Foundation-Module bestehen außerhalb des verwalteten Anwendungskontext-Graphen
-weiter, und die Knowledge-Kopplung benötigt eine separate Prüfung. D5b erzeugt
-kein Maven-Modul und schließt #628/#1043 nicht ab. Siehe
-[Workspace-Storage-Zuständigkeit](../dev/WORKSPACE_STORAGE_OWNERSHIP.md).
-
-Die Migration wird durch sich ergänzende Schutzmechanismen abgesichert:
-
-1. `ArchitectureCycleBoundaryTest` verhindert undokumentierte Package-Zyklen. Temporäre Ausnahmen müssen in `.github/architecture-exceptions.json` stehen und ein Ablaufdatum besitzen.
-2. `ArchitectureContextDependencyRatchetTest` zählt eindeutige direkte Class-to-Class-Abhängigkeiten zwischen geplanten, verbleibenden und übergangsweisen Kontexten je Package-Paar. Neue Kanten oder steigende Zähler schlagen fehl. Entfernt ein Refactoring Abhängigkeiten, muss die niedrigere Baseline im selben Change festgeschrieben werden, damit die Verbesserung später nicht unbemerkt zurückgeht.
-
-3. `ArchitectureDecisionReportBoundaryTest` verhindert Berichtsorchestrierung in Versioning-HTTP-Adaptern und verlangt, dass der Bericht-Controller in `composition.report` bleibt.
-4. `ArchitectureCommitHistoryOwnershipTest` verlangt, dass Entity, Repository und die drei Projektions-Services der Git-Commit-Historie in ihren Versioning-Owner-Packages bleiben.
-5. `ArchitectureDslCompositionBoundaryTest` verlangt Dokument-Controller/-Fassade und gemeinsamen HTTP-Kontextresolver in ihren Owner-Packages, prüft die exklusive Zuständigkeit für die acht Dokumentrouten und verhindert Architecture-/Knowledge-/Dokumentexport-Abhängigkeiten aus Workspace-Controllern und beiden Workspace-DSL-Fassaden.
-6. `ArchitectureWorkspaceAuthorityBoundaryTest` verlangt den Composition-Eigentümer der Startlogik und verhindert direkte Workspace-/Versioning-/Editor-Abhängigkeiten auf Application-Composition-, Knowledge-, Architecture-, Portfolio- und Dokumentexport-Implementierungen; repräsentative Eigentümer verhindern einen leeren Prüfbereich.
-7. `ArchitectureApplicationSchemaCompositionTest` verlangt den Anwendungsschema-Eigentümer in der Composition, erhält den Core-Storage-Eigentümer und verhindert direkte Abhängigkeiten der Anwendungskonfiguration auf Core-Implementierungsklassen.
-8. `ArchitectureWorkspaceStorageOwnershipTest` verlangt alle elf JGit-Storage-Typen unter `com.taxonomy.workspace.storage` und verhindert verbliebene Production-Typen unter `com.taxonomy.dsl.storage`.
-
-Das fokussierte Architekturprofil wird vom Repository-Root über den vollständigen
-Reactor ausgeführt, damit die Production-Outputs aller Module aktuell sind:
-
-```bash
-./mvnw test -Parchitecture-tests -Dsurefire.failIfNoSpecifiedTests=false
-```
-
-Das Profil enthält alle sechs Ownership-Guards für Entscheidungsberichte,
-Commit-Historie, DSL-Dokument-Komposition, Workspace-Autorität, Anwendungsschema-Komposition und Workspace Storage sowohl in `pom.xml` als auch in
-`.mvn/verification-suites.json`. Die 17 ausgewählten Testklassen sind zwischen
-POM und Katalog synchronisiert. Zusätzlich zu den elf bestehenden Guards prüfen
-`ArchitectureModuleGraphTest`, `ArchitectureModuleExtractionTest` und
-`ArchitectureSelectorSynchronizationTest` den Modulgraphen, die Extraktionsreife
-und die exakte Synchronisierung der Selektoren. Für jeden ausgewählten Guard muss
-die Quelldatei im zuständigen Reactor-Modul innerhalb des Checkouts vorhanden sein.
-Der Build-Owner-Vertrag ruft die Synchronisierungsprüfung ebenfalls auf, damit
-sie nicht durch das Löschen ihrer Testklasse unbemerkt entfällt. Auch die Modul-Guards (`ArchitectureWorkspaceModuleTest`, `ArchitectureTemplatesModuleTest`, `ArchitectureInteropModuleTest`) sind enthalten.
-Die vollständige CI-Verifikation bleibt `./mvnw -B verify -Pci`.
-
-Der Ratchet durchläuft `taxonomy-app/src/main/java/com/taxonomy`, `taxonomy-workspace/src/main/java/com/taxonomy`, `taxonomy-templates/src/main/java/com/taxonomy`, `taxonomy-interop/src/main/java/com/taxonomy`: Jedes Production-Java-Package unterhalb dieser Wurzeln muss in `.github/architecture-contexts.json` klassifiziert sein. Nur `taxonomy-app` darf Java-Dateien im Root-Package enthalten; seine Composition-Dateien müssen exakt der expliziten Allowlist entsprechen. Ausgelagerte Fachmodule weisen jede Java-Datei im Root-Package zurück, auch kopierte Composition-Klassennamen oder `package-info.java`.
-
-Der Ratchet ist bewusst eine **Ist-Baseline und keine Allowlist idealer Abhängigkeitsrichtungen**. Die gewünschte Architektur wird durch explizite Port-/Refactoring-PRs verbessert und anschließend monoton abgesichert.
-
-## Migrationsreihenfolge
-
-Issue #628 bleibt die übergeordnete Implementierungsaufgabe. Die Auslagerung folgt den tatsächlichen Abhängigkeiten des jeweiligen Kandidaten; Zyklen anderer Kontexte blockieren keine unabhängige Bibliothek. Der folgende Status beschreibt den Code dieser Revision, nicht den Merge-Status eines Pull Requests.
-
-1. Context-Map und Dependency-Ratchet — implementiert.
-2. Workspace-Autorität und Storage-Zuständigkeit — von der Anwendungsorchestrierung getrennt.
-3. `taxonomy-workspace` — in dieser Revision physisch ausgelagert.
-4. `taxonomy-templates` — in dieser Revision physisch ausgelagert.
-5. `taxonomy-interop` — in dieser Revision über einen gescopten Portfolio-Port physisch ausgelagert.
-6. `taxonomy-knowledge` — offen; eigene APIs stabilisieren und blockierende Implementierungsabhängigkeiten entfernen.
-7. `taxonomy-architecture`, `taxonomy-analysis` und `taxonomy-portfolio` — offen; verbleibende Zyklen vor der jeweiligen Auslagerung auflösen.
-8. `provenance` und `preferences` nach Stabilisierung dieser Grenzen erneut bewerten.
-
-Jede ausgelagerte Fachbibliothek bleibt unabhängig von `taxonomy-app`; nur die Anwendung übernimmt Deployment und Komposition.
-
-## Physisches Workspace-Modul
-
-`taxonomy-workspace` enthält die Production-Packages für Workspace, Versionierung
-und Editor. `taxonomy-app` bindet das normale JAR ein; Anwendungskonfiguration und
-SQL-Migrationen bleiben in der Anwendung. Java-Packages und Laufzeitverträge sind unverändert.
-`ArchitectureWorkspaceModuleTest` ist in beiden Architektur-Selektoren enthalten und
-prüft die physische Source- und Klassen-Zuordnung. Maven verbietet Rückabhängigkeiten
-auf die Anwendung. Nach der folgenden Templates- und Interoperabilitätsauslagerung sind noch vier geplante Fachmodule auszulagern.
-
-## Physisches Templates-Modul
-
-`taxonomy-templates` enthält alle 21 Produktionsklassen für Dokumentvorlagen
-und die mitgelieferte Ressource `document-templates/decision-rationale-report.dotx`.
-Classpath-Name und Inhalt bleiben unverändert. Die Bibliothek hängt weder von
-einem anderen Taxonomy-Fachmodul noch von der Boot-Anwendung ab. 21 Unit-Testklassen
-folgen der Implementierung; Anwendungs-/HTTP-, Security- und UI-Ressourcenverträge
-bleiben in `taxonomy-app`. Globale Konfiguration, Migrationen und Darstellungsressourcen
-bleiben bei der Anwendungszusammensetzung.
-
-
-## Physisches Interoperabilitätsmodul
-
-`taxonomy-interop` enthält jetzt alle produktiven Interoperabilitätspakete. Es hängt von den bestehenden Grundlagen und Workspace ab, nicht von Anwendung oder Portfolioimplementierung. `IntegrationPortfolioPort` stellt nur die benötigten gescopten Projekt-/Anforderungsoperationen und neutralen Werte bereit. `PortfolioInteropAdapter` in der Anwendungskomposition delegiert einschließlich Zugriffsprüfung und Sperren an die unveränderten Portfoliodienste. Importentscheidungen, Provenienz und Checkpoint-Reihenfolge bleiben in der Interoperabilität. Anwendungsweite Ablauf-, Journal- und Neustarttests bleiben in `taxonomy-app`; acht bestehende Unit-Testklassen ziehen mit der Bibliothek um. Nach Workspace, Templates und Interoperabilität fehlen noch vier geplante Fachmodule. Die physische Zuständigkeit beschreibt diesen Quellstand, nicht den Merge-Status.
+[Architektur](ARCHITECTURE.md) · [English](../en/MODULE_BOUNDARIES.md)

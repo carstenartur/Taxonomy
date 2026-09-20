@@ -190,6 +190,77 @@ approve narrow portfolio-owned flush+refresh under actual scoped project/integra
 
 Schedule the independent Visio implementation while Publication Task 2 receives read-only review, before PublicationTask 3. Native/Word/frozen civilian graph inputs are already accepted; Visio does not consume conditional-publication state/API. Exactly one source/Maven owner remains (Visio), Task 2 reviewer is read-only. This removes idle time without weakening any gate or changing semantic scope. Cost if wrong: an unforeseen shared source dependency could invalidate a review; keep the Task 2 immutable diff, give Visio only its export/QA/docs scope, and serialize any subsequent Task 2 fix until Visio releases. Task 3 still consumes only accepted publication code.
 
+## D44a — Accepted Task 2 lookup-only recovery correction
+
+Accepted correction `55e21da4b2bf2021a2d87e43d6da0597c922ac73` makes UNKNOWN in
+RECONCILIATION_REQUIRED use read-only receipt LOOKUP even when an earlier NOT_FOUND
+allowed resubmission. Local movement must prevent a new SEND without preventing
+later discovery of the original effect. A lookup-only NOT_FOUND ends that
+invocation, retaining UNKNOWN and its reservation; it must not spin through the
+100-attempt quota. FOUND can adopt the original receipt and expose reconciliation
+once all uncertainty resolves. Reason: preserve recovery after real source movement
+without inventing a new request/key or COMMON checkpoint. Risk: a missed guard
+could resend into moved state, release the reservation too early or exhaust the
+quota. Actual provider-latch, movement, persisted lease/attempt and one-effect
+assertions cover those boundaries; normal valid-source resend and EXPIRED refusal
+remain unchanged.
+
+## D44b — Accepted Task 2 shared deadline and durable late Git result
+
+The same accepted correction allocates one invocation budget at each public
+preview/publish/retry/reconciliation entry and carries it through private
+delegation. Remaining time is bounded by both wall-clock deadline and monotonic
+elapsed time. Authorization and real local staging consume it; delegation cannot
+grant a fresh 30 seconds, and expiry prevents scheduling new Git/HTTP effects.
+Reason: a finite invocation contract must cover the whole call. Risk: inconsistent
+clocks or renewed private budgets can extend execution or schedule effects late;
+controlled-clock staging, accepted-plan and fetch-retry regressions verify it.
+
+The existing deterministic editor checkpoint runs with explicit immutable
+repository context, exact state and command metadata. Caller timeout neither
+cancels nor joins the continuing writer; nonblocking executor cleanup preserves
+the deadline. The editor's durable prepare/write/complete protocol retains late
+completion, and later retry uses that same checkpoint identity. Old success or
+deferred-failure adoption rechecks the current durable publication phase under
+the connection transaction and cannot downgrade concurrent progress. Reason:
+return within budget without abandoning a real Git effect. Risk: an asynchronous
+writer could duplicate commits, lose context or overwrite newer progress; blocked
+Git, durable late completion and overlapping stale-failure tests cover those
+cases. No shared owner API, migration or dependency-baseline change was needed.
+
+## D44c — Accepted fixture composition and warning disposition
+
+Task 2's correction explicitly supplies application and test-configuration classes
+instead of ambiguous inherited Spring default discovery. The named configuration
+warning disappears without suppressing diagnostics. Reason: make the genuine
+application/provider fixture composition deterministic. Existing HSQL/Flyway,
+explicit-dialect, Lucene/JDK, bootstrap credential-path and immutable-relationship
+warnings remain inherited and nonblocking; no connected correction failure was
+established. Passing tests do not imply warning-free output. Risk: broad warning
+suppression or unrelated cleanup would hide evidence or expand scope, so neither
+was done.
+
+## D44d — Accepted correction evidence and unresolved R1 history
+
+Independent scoped spec/quality review approved R1, R2 and the fixture correction
+at `55e21da4b2bf2021a2d87e43d6da0597c922ac73`; 34 final tests passed with no failures,
+errors or skips (flow 9, recovery 19, partial 4, concurrency 1, actual two-client-JVM
+restart 1). Four source and twenty evidence hashes were controller-verified.
+The old restart provider lived inside the client process; Task 3's separate
+provider/client matrix is additional evidence, not a retroactive description.
+
+The first corrected six-test run had one R1 assertion failure, followed by an
+isolated diagnostic pass on unchanged production source. Prints executed after
+the recovered result cannot explain the pass; earlier compiled bytes and durable
+lease/phase detail were not captured. **That original failure remains unexplained.**
+A single controlled clock then replaced mixed artificial-future and system-clock
+assumptions, with explicit persisted lease clearing, UNKNOWN/resubmit state and
+exact attempts. The final passing tests and current control flow support
+acceptance; they do not establish the historical cause. Reason: preserve both
+accepted evidence and uncertainty before temporary logs are removed. Risk:
+retelling a later pass as an explained fix would conceal a remaining historical
+blind spot. The original separately recorded TDD deviation (D69) also remains.
+
 ## D45 — Conditional publication
 
 Task 3 may add bounded sanitized accepted PublicationReview/resolutions, frozen PublicationScope, expectedExternalRevision and requestFingerprint to the public PublicationOperation projection, with source-compatible constructor and explicit additive schema1 meaning. Project only the existing authorized persisted review/request; retain existing limits and omit leases/raw requests/credentials. Existing authorized generic Operation GET supplies original InternalState/context. Retry remains operation-ID-only and never accepts edited form values into an existing frozen request. Reason: the current projection cannot restore directed decisions or model/package scope after reload, especially failed-fetch preview=null. Cost if wrong: accidental authority/secret exposure or compatibility break; route/reload/security/bounds tests and independent review are mandatory.
@@ -312,7 +383,7 @@ permit Task 3's fresh implementer to perform read-only preflight while Task 2 fi
 
 ## D75 — Cross-slice clarification
 
-All eleven current CI Visio pages from LibreOffice 24.2.7.2 were inspected: all 44 direction/type captions remain readable, with dense-overview, centered-arrowhead and whitespace limits explicit. No new render was run. The Word graph remains 5365c5d5fcae616a37e84ed3be15f3c62a2ad658a35e60c0bf2568dfc7f7c191, with 68+11 pages, 344/85 checks, no empty body pages and zero extra LLM calls. Seventeen export and 90 page-image hashes were checked; unchanged Word visual acceptance is reused with its honest source.
+All eleven Visio pages from CI 35524367930, rendered by LibreOffice 24.2.7.2, were inspected: all 44 direction/type captions remain readable, with dense-overview, centered-arrowhead and whitespace limits explicit. No new render was run. The Word graph remains 5365c5d5fcae616a37e84ed3be15f3c62a2ad658a35e60c0bf2568dfc7f7c191, with 68+11 pages, 344/85 checks, no empty body pages and zero extra LLM calls. Seventeen export and 90 page-image hashes were checked; unchanged Word visual acceptance is reused with its honest source.
 
 ## Final capture publication and CI disposition
 
@@ -364,3 +435,42 @@ and missing-reconciliation findings as historical evidence. Reason: screenshots
 must prove real completed actions at a named source, not just a green browser run.
 Risk: later UI changes could invalidate them; final exact-tree CI remains required,
 and changed capture inputs require new relevant visual review.
+
+## D79 — Editable review versus ambiguous publication submission
+
+Task 3 review found that a cached rejected review survived bulk/rationale edits and
+could target a different displayed preview. Keep only ephemeral pending submissions
+bound to connection, operation and request/preview fingerprints. A missing POST
+response or failed status read is not rejection: freeze all review choices and
+publication until the existing authorized status GET resolves uncertainty. A
+confirmed unaccepted PREVIEWED operation with REVIEW/PUBLISH becomes editable and
+the next submission uses its current visible decisions; accepted review comes from
+the server and retry stays operation-ID-only. Operation/connection selection guards
+ignore late unrelated responses. Reason: the submitted directed review must match
+the visible review without replacing possibly accepted keys. Risk: premature
+invalidation could alter an ambiguous operation, while indefinite stale caching
+rejects corrected intent; focused rejected/bulk/rationale/switch/ambiguous/accepted
+and asynchronous-response DOM paths cover both. No server or journal change and no
+new durable browser authority is introduced.
+
+## D80 — Late receipt authority and joined exact-checkpoint proof
+
+PR 1094's service review exposed narrower defects than a blanket stale-lease ban:
+old nonterminal no-effect evidence could resolve a newer SEND, and newer uncertainty
+callbacks could erase a validated terminal rejection. Retain obsolete nonterminal
+receipts only in their attempt history; preserve terminal receipt authority across
+leases while retaining exact request/sequence checks and owner/epoch lease release.
+Reason: NOT_FOUND cannot fence an overlapping invocation, so lost-response recovery
+must still LOOKUP without losing legitimate late APPLIED or rejection evidence.
+Risk: discarding all historical receipts would prevent safe recovery; real HTTP
+and durable-lease tests cover both rejection preservation and late APPLIED adoption.
+
+The public exact-checkpoint helper now samples authoritative Git HEAD after its
+existing joined workspace row lock. The live publication caller already held that
+lock; no live-publication bypass is claimed. A real concurrent version Git commit
+followed by ORM rollback reproduces the direct helper's former stale true result.
+No new lock order, REQUIRES_NEW, schema, port or external-Git fence is introduced.
+Four new failure regressions reached meaningful RED before correction; one initial
+CLOB fixture error is retained separately. Seven focused tests and the final 41-test
+Flow/Partial/Concurrency/Recovery/editor selection passed with no failures or skips.
+Independent service-fix review and new-source final CI remain pending.

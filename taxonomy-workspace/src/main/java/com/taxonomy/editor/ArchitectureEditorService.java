@@ -163,15 +163,24 @@ public class ArchitectureEditorService implements ArchitectureCommandPort, Works
     public boolean integrationCheckpointMatches(RepositoryContext context, Context expected) throws IOException {
         requireContext(context, expected);
         requireWritable(context);
-        String actualHead = head(repositories.resolveRepository(context), context.branch());
-        return journal.joinedLocked(context, seed(context), session -> {
-            State persisted = session.state();
-            Context actual = Context.of(context, persisted.checkpointCommit(), persisted.revision());
-            return actual.equals(expected) && persisted.pendingCheckpoint() == null
-                    && persisted.checkpointRevision() == persisted.revision()
-                    && persisted.checkpointCommit() != null
-                    && Objects.equals(actualHead, persisted.checkpointCommit());
-        });
+        try {
+            return journal.joinedLocked(context, seed(context), session -> {
+                State persisted = session.state();
+                Context actual = Context.of(context, persisted.checkpointCommit(), persisted.revision());
+                try {
+                    // The seed is initialization only; observe authoritative HEAD after the row lock.
+                    String actualHead = head(repositories.resolveRepository(context), context.branch());
+                    return actual.equals(expected) && persisted.pendingCheckpoint() == null
+                            && persisted.checkpointRevision() == persisted.revision()
+                            && persisted.checkpointCommit() != null
+                            && Objects.equals(actualHead, persisted.checkpointCommit());
+                } catch (IOException failure) {
+                    throw new java.io.UncheckedIOException(failure);
+                }
+            });
+        } catch (java.io.UncheckedIOException failure) {
+            throw failure.getCause();
+        }
     }
 
     private static Accepted accepted(RepositoryContext context, State state, Entry entry, boolean replayed) {

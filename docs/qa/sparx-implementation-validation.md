@@ -214,3 +214,23 @@ review correction passed 35 policy/planner/receipt tests; the old 2,048-characte
 bound remains, and no actual performance failure was reproduced. Final
 database/full-source CI and review remain mandatory. Actual EA/PCS/SBPI/MS Word/
 MS Visio remain `NOT_EXECUTED`.
+
+
+The accepted Task 2 correction's permanent [decision history](1075-completion-decisions.md#d44a--accepted-task-2-lookup-only-recovery-correction)
+records lookup-only recovery after movement, non-spinning NOT_FOUND, the shared
+wall-clock/monotonic budget, deterministic bounded Git with durable late completion
+and phase-aware stale callbacks. Independent review accepted 34 final tests at
+`55e21da4b2bf2021a2d87e43d6da0597c922ac73`; the first corrected R1 failure remains
+unexplained despite stronger controlled-clock/persisted-state evidence. No
+historical cause is inferred from a later pass. Task 3 fix review also preserves
+inherited HSQL/Flyway/dialect/Lucene/JDK warnings as nonblocking, not absent.
+
+The subsequent [C1/C2 service correction](1075-completion-decisions.md#d80--late-receipt-authority-and-joined-exact-checkpoint-proof)
+passed seven focused and 41 final covering tests after four actual behavioral REDs
+(the separate initial CLOB fixture error is not behavioral evidence). Real HTTP
+late no-effect/terminal receipts and actual Git-write/ORM-rollback exercise the
+existing journal and checkpoint guards; valid late terminal adoption remains
+supported. No schema, public API, module edge or lock-order change was required.
+Scoped correction review and final full-source CI, including PostgreSQL, Oracle
+and SQL Server, remain required; earlier candidate CI is not evidence for these
+new bytes. Actual EA/PCS/SBPI/MS Word/MS Visio remain `NOT_EXECUTED`.

@@ -346,6 +346,13 @@ Keyboard users can reach the labeled selects, review rationale and action button
 The operation URL can be reloaded to restore saved decisions, scope, expected
 external revision, request fingerprint and item outcomes.
 
+If a publication response or status reload is lost, review controls remain frozen
+and the publish button says **Publication status unknown — reload status before
+editing**. Use the existing **Refresh / Aktualisieren** button to read the saved
+operation. Only a confirmed unaccepted preview allows revised bulk choices or
+rationale; an accepted operation retains its saved review and uses **Resume durable
+operation**. Opening another preview never submits the first preview's review.
+
 A partial or ambiguous HTTP outcome is not a success. The page separately shows
 acknowledged, unknown, remaining, stale, unattempted and proven-no-effect items.
 Retry resolves unknown outcomes using durable receipt lookup and the same key;

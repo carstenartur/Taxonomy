@@ -57,7 +57,8 @@ all 11 actual HTTP/Draw pages and all 44 relation direction/type captions were
 visually inspected. Source `9e0fb1b8a5d7a6612a16fa9bf5e88ed46b403c0a` plus the
 accepted byte-budget fix `d3a1a272cc6fe87c52eee9e206a3ac64cfef9c26` retains the
 same 38 nodes/44 relations. Dense overview omissions are explicit and covered by
-detail pages. Current CI LibreOffice 24.2 pages were also reviewed. This is not
+detail pages. LibreOffice 24.2 pages from CI 35524367930 were also reviewed; the 35525893725
+page hashes were checked with unchanged-dependency visual evidence reused. This is not
 Microsoft Visio certification; see [Visio evidence](visio-graphical-quality.json).
 
 ## Feasible #1075 slices now implemented

@@ -16,6 +16,13 @@ choices, rationale, risks and superseded decisions.
 | Publication API/UI/security | Browser-ready source `4c761f74f170a326cf55f6026fb2f22c1b01236c`, tree `7b941bc55f5bb5e7220e5345d61fec6232a3a7fd`: seven JVM and three DOM tests passed. Corrected source `dfc0de97f9b43089ada325c9b1a191134b9b7876`, tree `7c1ecbbf6aa564013f7469aff061d2305fbd7c69`: 23 functional covering tests passed; the sole intentional dependency-count mismatch was then corrected with 22 ratchet tests passing. Seven DOM regressions passed. Exact-state/branch guards, frozen reload/retry, output budget before effects, no file-route bypass, wrong actor/scope/provider, credential reflection, redirect/URI/size faults and generic 401/429/500 ambiguity are covered. |
 | Independent process recovery | `IntegrationPublicationBoundaryRestartTest`: two tests, 12 observed steps, 12 forcibly terminated provider JVMs, 10 forcibly terminated client JVMs and two normally completed verified client replays. Genuine HTTP, persistent HSQL/Git and atomic provider resource/key/receipt storage; no domain-success mock, production crash hook or fabricated accepted journal. [Versioned evidence](conditional-publication-contract-v1.json). |
 
+The accepted Task 2 correction's [lookup-only recovery, shared invocation budget,
+durable late Git handling and evidence limitations](1075-completion-decisions.md#d44a--accepted-task-2-lookup-only-recovery-correction)
+are retained permanently. Its final 34-test result and independent approval do not
+explain the earlier corrected R1 failure; that historical cause remains unproved.
+Inherited HSQL/Flyway/dialect and Lucene/JDK warnings are nonblocking, with no
+connected Task 3 failure; verification output is not claimed warning-free.
+
 ## Process boundary matrix
 
 | Boundary | Real observation and invariant |
@@ -46,7 +53,7 @@ passed at CI source `33444cca584abce11e8e73ae7504ceb7596934f6`, exact tree
 `ce85bcc450b18e5edf3920b2f1099d1a3c9300f3cf73eaf4b813aca9fd8f7cdb`.
 All 17 export and 90 rendered-page hashes were checked. Word retained graph
 `5365c5d5fcae616a37e84ed3be15f3c62a2ad658a35e60c0bf2568dfc7f7c191`,
-68 + 11 pages and zero extra LLM calls. All 11 current LibreOffice 24.2 Visio pages
+68 + 11 pages and zero extra LLM calls. All 11 LibreOffice 24.2 Visio pages from **35524367930**
 were also visually inspected; all 44 direction/type captions remain readable.
 
 All ten initial new browser images were inspected. Nine show the intended native
@@ -59,7 +66,10 @@ EN/DE captures and keyboard action. All 14 corrected images passed actual [civil
 and controller visual inspection at source `ca2e28dba4b258cf33db3261aa8449e832ebfb2f`,
 exact tree `7c1ecbbf6aa564013f7469aff061d2305fbd7c69`. Artifact `10610101827`
 SHA-256 `efa6fc1afd77579462c519f04c9d511b78370e1523471d0b1f79cc01d3263eed`
-retains 78 LLM calls, 17 verified exports and 90 verified page images.
+retains 78 LLM calls, 17 verified exports and 90 verified page images. The new
+79 Word/11 Visio page images were hashed, not freshly viewed: unchanged render
+dependencies permit reuse of complete prior Word acceptance and the Visio visual
+review from 35524367930.
 [The committed images and byte manifest](conditional-publication-browser.md) show
 all package buttons, native endpoints, directed review, partial UNKNOWN, recovery,
 enabled reconciliation and the actual linked successor in both languages.
@@ -104,3 +114,19 @@ The authoritative [Sparx product matrix](sparx-compatibility.json) remains
 `NOT_EXECUTED`. The civilian example still has the recorded
 [domain/reference-case gaps](civilian-reference-review.md); complete transport and
 rendering do not certify an operational flood-management architecture.
+
+## Bounded service review correction after the UI fix
+
+Against base `f082a5725ca615ce09672b590e968ba118dba3cd`, the
+[D80 correction](1075-completion-decisions.md#d80--late-receipt-authority-and-joined-exact-checkpoint-proof)
+retains obsolete nonterminal attempt evidence without resolving a newer SEND,
+protects terminal receipts from uncertainty callbacks, and moves the direct editor
+helper's authoritative HEAD observation inside its existing joined lock. Actual
+HTTP receipts, persisted claims and Git/ORM rollback produced four behavioral REDs;
+the initial CLOB test error is not counted as one. Seven focused tests and 41 final
+covering tests passed (23 recovery, 9 flow, 4 partial, 1 concurrency, 4 editor), with
+zero failures/errors/skips. The shared journal/checkpoint guards are covered through
+real Push/Sync and rollback recovery; no broad suite or external-product execution
+is claimed. The separate Task 3 UI fix review is approved; independent review and
+final full-source CI for this service correction remain open. Earlier unexplained
+failures and inherited warning qualifications above remain unchanged.

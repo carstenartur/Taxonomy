@@ -597,6 +597,160 @@ class IntegrationPublicationRecoveryTest extends PublicationIntegrationFixture {
         }
     }
 
+    @Test
+    void obsoleteNoEffectDoesNotResolveNewerSendAndExpiryStillLooksUpLostCommit() throws Exception {
+        edit(new CreateArchitectureElement("obsolete-no-effect", "System", Map.of("title", "Uncertain retry")));
+        var clock = new MutableClock();
+        var original = initialDispatchClaim(clock);
+        UUID id = original.operationId();
+        clock.advance(31);
+        var lookup = store.locked(context, connection, session -> session.publications().claimPublicationAttempt(id, clock.instant()));
+        assertEquals(AttemptKind.LOOKUP, lookup.attemptKind());
+        var absent = lookupReceipt(lookup);
+        assertEquals(LookupState.NOT_FOUND, absent.state());
+        store.locked(context, connection, session -> {
+            session.publications().recordPublicationLookup(lookup, absent);
+            return null;
+        });
+        var newer = store.locked(context, connection, session -> session.publications().claimPublicationAttempt(id, clock.instant()));
+        assertEquals(AttemptKind.SEND, newer.attemptKind());
+        assertEquals(original.frozenRequest(), newer.frozenRequest());
+        provider.noEffectAt = 1;
+        var lateNoEffect = connector.publishItem(null, original.frozenRequest());
+        assertEquals(ReceiptState.RETRYABLE_NO_EFFECT, lateNoEffect.state());
+        store.locked(context, connection, session -> {
+            session.publications().recordPublicationReceipt(original, lateNoEffect);
+            return null;
+        });
+        var afterLate = publication.publication(context, connection, id);
+        assertEquals(PublicationPhase.PUBLISH_PENDING, afterLate.phase());
+        assertNull(afterLate.items().getFirst().receipt(), "A's receipt belongs only to its obsolete attempt");
+        assertNull(afterLate.commonCheckpointId());
+        try (var em = entityManagerFactory.createEntityManager()) {
+            Object[] row = (Object[]) em.createNativeQuery("select p.lease_owner,p.lease_epoch,a.receipt_json from interop_publication p join interop_publish_attempt a on a.operation_id=p.id where p.id=:id and p.connection_id=:connection and a.id=:attempt").setParameter("id", id.toString()).setParameter("connection", connection.toString()).setParameter("attempt", original.attemptId().toString()).getSingleResult();
+            assertEquals(newer.attemptId().toString(), row[0]);
+            assertEquals(newer.leaseEpoch(), ((Number) row[1]).longValue());
+            var storedReceipt = (java.sql.Clob) row[2];
+            String receiptJson = storedReceipt.getSubString(1, Math.toIntExact(storedReceipt.length()));
+            assertEquals(lateNoEffect, json.read(receiptJson, PublicationReceipt.class), "Obsolete evidence remains in its own attempt");
+        }
+        provider.noEffectAt = 0;
+        provider.closeAt = 2;
+        assertThrows(IllegalStateException.class, () -> connector.publishItem(null, newer.frozenRequest()));
+        assertEquals(1, provider.mutationCount(newer.frozenRequest().item().resourceId()));
+        clock.advance(31);
+        var recovery = store.locked(context, connection, session -> session.publications().claimPublicationAttempt(id, clock.instant()));
+        assertAll(() -> assertEquals(ItemState.IN_FLIGHT, afterLate.items().getFirst().state(), "A's no-effect does not resolve B"), () -> assertEquals(AttemptKind.LOOKUP, recovery.attemptKind(), "Expired unresolved B requires read-only recovery"), () -> assertEquals(newer.frozenRequest(), recovery.frozenRequest()));
+        var found = lookupReceipt(recovery);
+        assertEquals(LookupState.FOUND, found.state());
+        assertEquals(ReceiptState.APPLIED, found.receipt().state());
+        assertEquals(2, found.receipt().receiptSequence());
+        store.locked(context, connection, session -> {
+            session.publications().recordPublicationLookup(recovery, found);
+            return null;
+        });
+        var completed = publication.retryPublication(context, connection, id);
+        assertEquals(PublicationPhase.COMPLETED, completed.phase());
+        assertEquals(2, provider.writes.get(), "Only original A and B reached the provider");
+        assertEquals(2, provider.lookups.get());
+        assertEquals(1, provider.mutationCount(newer.frozenRequest().item().resourceId()));
+    }
+
+    @Test
+    void lateTerminalRejectionSurvivesNewerTimeout() throws Exception {
+        assertTerminalRejectionSurvivesUncertainty(false);
+    }
+
+    @Test
+    void lateTerminalRejectionSurvivesNewerUnavailableLookup() throws Exception {
+        assertTerminalRejectionSurvivesUncertainty(true);
+    }
+
+    @Test
+    void lateAppliedReceiptRemainsAuthoritativeWhileNewerLookupOwnsLease() throws Exception {
+        edit(new CreateArchitectureElement("late-applied", "System", Map.of("title", "Applied")));
+        var clock = new MutableClock();
+        var original = initialDispatchClaim(clock);
+        clock.advance(31);
+        var newer = store.locked(context, connection, session -> session.publications().claimPublicationAttempt(original.operationId(), clock.instant()));
+        assertEquals(AttemptKind.LOOKUP, newer.attemptKind());
+        var applied = connector.publishItem(null, original.frozenRequest());
+        assertEquals(ReceiptState.APPLIED, applied.state());
+        store.locked(context, connection, session -> {
+            session.publications().recordPublicationReceipt(original, applied);
+            session.publications().recordPublicationUnknown(newer, "PUBLICATION_DEADLINE");
+            return null;
+        });
+        provider.lookupState = LookupState.UNAVAILABLE;
+        var unavailable = lookupReceipt(newer);
+        assertEquals(LookupState.UNAVAILABLE, unavailable.state());
+        store.locked(context, connection, session -> {
+            session.publications().recordPublicationLookup(newer, unavailable);
+            return null;
+        });
+        var actual = publication.publication(context, connection, original.operationId());
+        assertEquals(ItemState.ACKNOWLEDGED, actual.items().getFirst().state());
+        assertEquals(applied, actual.items().getFirst().receipt());
+        assertEquals(PublicationPhase.VERIFY_PENDING, actual.phase());
+        provider.lookupState = null;
+        var completed = publication.retryPublication(context, connection, original.operationId());
+        assertEquals(PublicationPhase.COMPLETED, completed.phase());
+        assertNotNull(completed.commonCheckpointId());
+        assertEquals(1, provider.writes.get());
+        assertEquals(1, provider.mutationCount(original.frozenRequest().item().resourceId()));
+    }
+
+    private void assertTerminalRejectionSurvivesUncertainty(boolean lookupResult) throws Exception {
+        edit(new CreateArchitectureElement("terminal-rejection", "System", Map.of("title", "Rejected")));
+        var clock = new MutableClock();
+        var original = initialDispatchClaim(clock);
+        clock.advance(31);
+        var newer = store.locked(context, connection, session -> session.publications().claimPublicationAttempt(original.operationId(), clock.instant()));
+        assertEquals(AttemptKind.LOOKUP, newer.attemptKind());
+        provider.staleAt = 1;
+        var rejection = connector.publishItem(null, original.frozenRequest());
+        assertTrue(rejection.terminal());
+        assertEquals(ReceiptState.REJECTED_STALE, rejection.state());
+        store.locked(context, connection, session -> {
+            session.publications().recordPublicationReceipt(original, rejection);
+            return null;
+        });
+        if (lookupResult) {
+            provider.lookupState = LookupState.UNAVAILABLE;
+            var unavailable = lookupReceipt(newer);
+            assertEquals(LookupState.UNAVAILABLE, unavailable.state());
+            store.locked(context, connection, session -> {
+                session.publications().recordPublicationLookup(newer, unavailable);
+                return null;
+            });
+        } else {
+            clock.advance(31);
+            store.locked(context, connection, session -> {
+                session.publications().recordPublicationUnknown(newer, "PUBLICATION_DEADLINE");
+                return null;
+            });
+        }
+        var actual = publication.publication(context, connection, original.operationId());
+        assertAll(() -> assertEquals(ItemState.REJECTED_STALE, actual.items().getFirst().state()), () -> assertEquals(rejection, actual.items().getFirst().receipt()), () -> assertEquals(PublicationPhase.PARTIAL, actual.phase()), () -> assertTrue(actual.allowedActions().contains(PublicationAction.RECONCILE)), () -> assertNull(actual.commonCheckpointId()), () -> assertEquals(1, provider.writes.get()), () -> assertEquals(0, provider.mutationCount(original.frozenRequest().item().resourceId())));
+    }
+
+    private PublicationClaim initialDispatchClaim(MutableClock clock) throws Exception {
+        var review = review(preview(PublicationMode.PUSH));
+        var operation = checkpointPending(review);
+        var state = operation.localCheckpoint();
+        var checkpoint = editor.checkpoint(context, new com.taxonomy.workspace.service.WorkspaceArchitectureIntegrationPort.State(state.workspaceScopeKey(), state.commitId(), state.semanticRevision()), checkpointMetadata(operation.operationId(), review));
+        var result = new InternalState(state.repositoryId(), state.workspaceScopeKey(), state.branch(), checkpoint.state().commitId(), checkpoint.state().semanticRevision(), state.projectId(), state.projectFingerprint());
+        return store.locked(context, connection, session -> {
+            session.publications().publicationLocalCheckpointed(operation.operationId(), result);
+            return session.publications().claimPublicationAttempt(operation.operationId(), clock.instant());
+        });
+    }
+
+    private PublicationReceiptLookup lookupReceipt(PublicationClaim claim) {
+        var request = claim.frozenRequest();
+        return connector.lookupPublicationReceipt(null, new PublicationReceiptQuery(request.provider(), request.scope(), claim.operationId(), request.item().itemId(), request.item().idempotencyKey(), request.requestFingerprint()));
+    }
+
     @org.springframework.beans.factory.annotation.Autowired
     jakarta.persistence.EntityManagerFactory entityManagerFactory;
 

@@ -343,6 +343,11 @@ public final class PublicationJournalSession {
             return;
         }
         finishAttempt(attempt, receipt.state().name(), receipt);
+        // A historical no-effect response cannot resolve a newer invocation of the same request.
+        // Validated terminal receipts remain authoritative regardless of the current lease.
+        if (!receipt.terminal() && !ownsLease(publicationEntity, claim)) {
+            return;
+        }
         item.receiptJson = json.write(receipt);
         item.failureCode = receipt.failureCode();
         item.state = switch(receipt.state()) {
@@ -371,7 +376,7 @@ public final class PublicationJournalSession {
         var publicationEntity = require(claim.operationId());
         var a = attempt(publicationEntity, claim);
         var item = em.find(IntegrationPublishItemEntity.class, a.itemId);
-        if (item.state.equals(ItemState.ACKNOWLEDGED.name()) || !Objects.equals(publicationEntity.leaseOwner, claim.attemptId().toString()) || publicationEntity.leaseEpoch != claim.leaseEpoch()) {
+        if (hasTerminalReceipt(item) || !ownsLease(publicationEntity, claim)) {
             return;
         }
         finishAttempt(a, code, null);
@@ -394,11 +399,11 @@ public final class PublicationJournalSession {
             recordPublicationReceipt(claim, lookup.receipt());
             return;
         }
-        if (!Objects.equals(publicationEntity.leaseOwner, a.id)) {
+        if (!ownsLease(publicationEntity, claim)) {
             return;
         }
         var item = em.find(IntegrationPublishItemEntity.class, a.itemId);
-        if (item.state.equals(ItemState.ACKNOWLEDGED.name())) {
+        if (hasTerminalReceipt(item)) {
             return;
         }
         finishAttempt(a, "LOOKUP_" + lookup.state().name(), null);
@@ -627,8 +632,17 @@ public final class PublicationJournalSession {
         }
     }
 
+    private boolean hasTerminalReceipt(IntegrationPublishItemEntity item) {
+        var receipt = json.read(item.receiptJson, PublicationReceipt.class);
+        return receipt != null && receipt.terminal();
+    }
+
+    private boolean ownsLease(IntegrationPublicationEntity publicationEntity, PublicationClaim claim) {
+        return publicationEntity.leaseEpoch == claim.leaseEpoch() && Objects.equals(publicationEntity.leaseOwner, claim.attemptId().toString());
+    }
+
     private void releaseLease(IntegrationPublicationEntity publicationEntity, PublicationClaim c) {
-        if (publicationEntity.leaseEpoch == c.leaseEpoch() && Objects.equals(publicationEntity.leaseOwner, c.attemptId().toString())) {
+        if (ownsLease(publicationEntity, c)) {
             publicationEntity.leaseOwner = null;
             publicationEntity.leaseUntil = null;
         }

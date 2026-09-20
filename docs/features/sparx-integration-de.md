@@ -341,6 +341,14 @@ Beschriftete Auswahlfelder, Begründung und Schaltflächen sind per Tastatur bed
 Beim Neuladen der Vorgangs-URL werden gespeicherte Entscheidungen, Umfang,
 erwarteter externer Stand, Request-Fingerprint und Einzelzustände wiederhergestellt.
 
+Geht die Veröffentlichungsantwort oder Statusabfrage verloren, bleibt die Prüfung
+gesperrt. Der Veröffentlichungsbutton zeigt **Veröffentlichungsstatus unklar — vor
+Änderungen Status neu laden**. **Aktualisieren** liest den gespeicherten Vorgang.
+Erst eine bestätigt unangenommene Vorschau erlaubt korrigierte Sammelentscheidungen
+oder Begründungen. Ein angenommener Vorgang behält seine gespeicherte Prüfung und
+wird über **Dauerhaften Vorgang fortsetzen** wiederaufgenommen. Ein anderer
+geöffneter Vorgang übernimmt niemals die ausstehende Prüfung des ersten.
+
 Bestätigte, unbekannte, verbleibende, veraltete, noch nicht versuchte und nachweislich
 effektlose Einzelaktionen werden getrennt angezeigt. Ein Teilresultat oder eine
 unterbrochene HTTP-Antwort ist kein Gesamterfolg. Übersprungene Abweichungen verhindern

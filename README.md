@@ -24,7 +24,7 @@ By externalizing taxonomy paths, scores, relations, provenance, and history, the
 | Hierarchical analysis trace | Scores catalogue roots, intermediate nodes, and leaves while preserving the paths and rationales behind the result |
 | Architecture views | Builds cross-layer views from selected elements and typed relations |
 | Traceable source import | Extracts bounded candidates from PDF and DOCX sources and links accepted requirements to source versions and fragments |
-| Versioned architecture DSL | Stores architecture changes in JGit with branches, history, semantic diffs, merges, reverts, and selective transfer |
+| Versioned architecture DSL | Keeps explicit DSL checkpoints in JGit and durable semantic editor revisions in a separate operation journal; supports branches, diffs, merges, reverts, and selective transfer |
 | Search | Provides full-text search and optional local ONNX vector search through Hibernate Search and Lucene |
 | Multi-user workspaces | Separates personal workspaces from the shared architecture repository |
 | Export | Produces machine-readable and presentation-oriented architecture outputs |
@@ -207,6 +207,32 @@ Taxonomy is a **modular monolith with one deployable Spring Boot application**.
 The Maven reactor contains fifteen child modules: four framework-free foundations,
 seven runtime feature libraries, the application composition root, and three build/tooling modules.
 
+### How the application fits together
+
+This is **Taxonomy's own application architecture**, not an architecture model
+produced by the workbench. Arrows describe logical collaboration, not a complete
+Maven dependency graph. All internal groups run in the same Spring Boot application.
+
+```mermaid
+flowchart TB
+    Browser["Browser / REST client"] --> App["Application composition<br/>HTTP, security, scope resolution"]
+    App --> Portfolio["Portfolio and analysis<br/>Requirements, jobs, review snapshots"]
+    Portfolio --> Knowledge["Knowledge<br/>Catalogue, relations, search"]
+    Portfolio --> Architecture["Architecture<br/>Derivation, diagrams, reports"]
+    App --> Workspace["Workspace and editor<br/>Semantic journal, explicit Git checkpoints"]
+    App --> Interop["Interoperability<br/>Reviewed external exchanges"]
+    Interop --> Workspace
+    Architecture --> Delivery["Templates and export<br/>Validated templates, neutral codecs"]
+    Portfolio -.->|optional provider calls| AI["External LLM provider"]
+```
+
+The [architecture guide](docs/en/ARCHITECTURE.md) ([Deutsch](docs/de/ARCHITECTURE.md))
+separates feature-module dependencies, the requirement workflow, and persistence
+responsibilities. It distinguishes immutable analysis snapshots, editable workspace
+revisions, the durable semantic journal, and explicit Git checkpoints.
+
+### Module inventory
+
 | Module | Responsibility |
 |---|---|
 | `taxonomy-domain` | Framework-free shared architecture and analysis types |
@@ -255,6 +281,11 @@ Important implementation choices:
 See [Architecture](docs/en/ARCHITECTURE.md) for component boundaries and [Repository topology](docs/en/REPOSITORY_TOPOLOGY.md) for workspace and shared-repository behavior.
 
 ## Architecture history and collaboration
+
+Accepted semantic editor operations are durable revisions with their own audit
+and undo/redo history. They are **not one Git commit per operation**. A Git commit
+is an explicit, stable checkpoint; an immutable analysis/workbench snapshot is a
+separate result selected for review or snapshot-bound export.
 
 Architecture content is stored as a purpose-built textual DSL rather than as opaque serialized UI state. This enables:
 
