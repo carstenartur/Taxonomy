@@ -1,41 +1,56 @@
 # Word export and #1075 completion review
 
-Assessment: 2026-09-20, after the Copilot corrections for #1084–#1087.
-Green tests establish the documented contract. They do not establish that every
-requested report feature is present or that Sparx compatibility has been proven.
+Word assessment updated 2026-09-20 for the frozen-report completion and final
+quality fixes. The native/publication assessment below is retained for its owning
+workstream. Structural tests and LibreOffice output do not establish Microsoft
+Word or Sparx product compatibility.
 
-## What the Word files actually contain
+## What the Word files contain
 
-The inspected artifacts are the genuine civilian acceptance outputs from
-[run 35487419613](https://github.com/carstenartur/Taxonomy/actions/runs/35487419613),
-with the hashes and renderer evidence in [civilian-quality-followup.json](civilian-quality-followup.json).
-The review corrections do not change either Word renderer.
+Both snapshot DOCX routes now use one saved analysis: the decision hierarchy and
+persisted architecture graph are composed at matching project, requirement,
+version, workspace, branch and commit coordinates. They do not regenerate the
+architecture from current catalogue, preferences or pending proposals.
 
-| Output / feature | Observed implementation and evidence |
+| Output / feature | Implemented behavior and evidence |
 |---|---|
-| Decision report, `decision.docx` | 30 decision chapters; 43 embedded decision-diagram panels, with rationale, score, alternatives and provenance. |
-| Decision tree | Parent/child decisions are illustrated within chapters. There is no consolidated navigable whole-tree overview. |
-| Architecture graph in the decision report | Absent. The report model/renderer does not embed the persisted architecture scene. The architecture SVG/PDF/Visio downloads are separate files. |
-| Legacy analysis report, `report.docx` | No embedded image or diagram. `ArchitectureReportService.renderDocx` converts Markdown into paragraphs; table rows become tab-separated text. It is not equivalent to the decision report. |
-| Pagination of the decision report | 52 pages with LibreOffice 24, 55 with LibreOffice 26, compared with the previous 87. No empty body pages or isolated rationale-box headings; 261 text assertions pass. |
-| Actual Microsoft Word acceptance | Not established by LibreOffice rendering. Existing Word/template acceptance work remains separate. |
-| Overall publication quality | Improved and suitable for technical review, but not approved as a complete, polished architecture deliverable. Dense overall graph layouts and the legacy Word path remain open. |
+| Snapshot decision report, `decision.docx` | Complete decision chapters plus the frozen architecture overview, bounded readable detail panels, legend, native element/relation inventories, requirement, recommendation, gaps and provenance. |
+| Decision tree | Consolidated whole-tree table retains alternatives and distinct missing/zero scores, with internal links to every chapter; cycles, inconsistent parents and leaf/parent contradictions are rejected. |
+| Snapshot architecture report, `report.docx` | Standalone rendering of the same frozen graph/evidence, with semantic headings, native tables, captions, accessible image descriptions, TOC/static links and graph/snapshot properties. Localized running identity and page fields accompany an explicit body font. |
+| Legacy live `/api/report/docx` | Structured native Word tables and the supplied `RequirementArchitectureView` graph; it remains an ad-hoc live report and does not invent immutable decision evidence. Pattern percentages retain their 0–100 semantics and bounded finite output. |
+| Custom decision DOTX | Existing cover, header/footer, logos and body defaults remain administrator-controlled. Body/header/footer/footnote/endnote bookmark identities are reserved; conflicting generated anchor names are rejected rather than renaming administrator links. |
+| Generated language | English/German labels include service-generated frozen provenance phrases. Saved source labels/reasons and administrator-authored template prose are preserved. |
+| Actual Microsoft Word acceptance | **NOT_EXECUTED**. POI structure and LibreOffice rendering are useful evidence, not representative Microsoft Word execution or accessibility certification. |
 
-The output should therefore **not be described as state of the art**. The next
-report slice should produce one coherent document from the same frozen snapshot:
+Evidence must be read at its recorded source revision:
 
-1. A concise requirement, scope, recommendation and explicitly unresolved gaps.
-2. An architecture overview plus readable detail views, with consistent legend,
-   captions, element identifiers and references to the relevant decisions.
-3. A navigable decision-tree overview linked to the complete chapter evidence.
-4. Real Word tables, headings, contents/navigation, consistent language and
-   accessible image descriptions across the supported Word export paths.
-5. Semantic completeness checks and visual acceptance at normal reading scale,
-   including a representative Microsoft Word execution when available.
+- The older [run 35487419613](https://github.com/carstenartur/Taxonomy/actions/runs/35487419613)
+  and [civilian-quality-followup.json](civilian-quality-followup.json) describe the
+  earlier 52/55-page decision-only renderer. They do not describe the completed
+  frozen Word implementation.
+- Corrected [civilian run 35501208857](https://github.com/carstenartur/Taxonomy/actions/runs/35501208857)
+  exercised both real browser Word downloads and the saved-source mutation
+  regression. Its retained LibreOffice 24.2 evidence has 68 decision pages and
+  10 standalone pages, with 344/85 semantic assertions and no empty body pages.
+  Those counts belong to that pre-final-quality run, not the later font,
+  footer, navigation and note-bookmark changes.
+- Final-quality regressions cover materialized custom-note bookmarks and links,
+  score-independent tree structure, generated German metadata and Word text,
+  standalone furniture/defaults, native TOC/navigation and accepted controller
+  locale variants. The selected local covering run passed 68 tests. Its refreshed
+  LibreOfficeDev 26.8 output has 71 decision pages and 11 standalone pages,
+  344/85 semantic assertions, no empty body pages, and paired snapshot
+  `02127c46-192d-4ca4-acbd-688bff037708`. Exact source/tree and artifact hashes
+  are retained in the final-quality implementation handoff. Full-page visual
+  acceptance and final external CI remain release gates; earlier page counts
+  are not substituted for these checks. Microsoft Word execution remains separate.
 
-This remains implementation work, not a reason to withhold the independently
-useful and verified review fixes. The civilian example also retains the domain
-coverage gaps documented in [civilian-reference-review.md](civilian-reference-review.md).
+The civilian example still retains the domain/reference-case gaps documented in
+[civilian-reference-review.md](civilian-reference-review.md). Complete report
+transport does not establish complete architecture subject matter. Dense Visio
+connector layout is a separate graphical-quality finding and is not approved by
+Word semantic or image checks. The Word completion should not be presented as
+unqualified product compatibility or as proof that all #1075 work is complete.
 
 ## What remains from #1075 without requiring a Sparx installation
 

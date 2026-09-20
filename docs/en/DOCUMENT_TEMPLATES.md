@@ -148,3 +148,7 @@ case-colliding package parts, malformed XML, external non-hyperlink relationship
 missing internal relationship targets, packages without exactly one root
 `officeDocument` relationship to `word/document.xml`, and OOXML parts named
 `template.json`, which is reserved for Taxonomy's internal manifest.
+
+## Frozen architecture content
+
+Snapshot decision DOCX downloads retain this template pipeline and append the shared frozen architecture sections plus the complete linked decision tree. Existing `Title`, `Heading1`–`Heading3` and `Caption` styles are preserved; missing styles receive fallbacks. Static custom cover text is not translated or overwritten. A data-free template preview remains valid without an architecture graph. See [snapshot Word report routes and limits](DECISION_RATIONALE_REPORT.md#frozen-snapshot-word-reports).

@@ -39,7 +39,20 @@ window.ArchitectureWorkbenchApi = (function () {
         return window.TaxonomyI18n?.resolveUrl?.(path) || path;
     }
 
+    function wordUrl(projectId, snapshotId, report) {
+        const path = '/api/projects/' + positiveInteger(projectId, 'projectId')
+            + '/snapshots/' + snapshot(snapshotId) + '/' + report + '/docx';
+        const url = window.TaxonomyI18n?.resolveUrl?.(path) || path;
+        return url + '?language=' + encodeURIComponent(document.documentElement.lang || 'en');
+    }
+
     return {
+        architectureWordUrl: function (projectId, snapshotId) {
+            return wordUrl(projectId, snapshotId, 'architecture-report');
+        },
+        decisionWordUrl: function (projectId, snapshotId) {
+            return wordUrl(projectId, snapshotId, 'decision-report');
+        },
         load: function (projectId, snapshotId) {
             return getJson(base(projectId, snapshotId));
         },

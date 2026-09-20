@@ -110,6 +110,8 @@ public final class DecisionRationaleTemplateRenderer {
             document.write(output);
             return new ReportRenderResult(
                     output.toByteArray(), provenance.artifactMetadata());
+        } catch (com.taxonomy.architecture.report.WordReportLayoutException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw unavailable(
                     "Could not materialize template commit " + template.commitId()

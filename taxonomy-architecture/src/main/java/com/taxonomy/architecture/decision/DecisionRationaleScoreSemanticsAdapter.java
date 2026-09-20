@@ -99,7 +99,7 @@ public class DecisionRationaleScoreSemanticsAdapter {
                 report.productCoverageGaps(),
                 report.discrepancies(),
                 report.viewContext(),
-                details);
+                details, report.architecture());
     }
 
     private DecisionChapter adaptChapter(

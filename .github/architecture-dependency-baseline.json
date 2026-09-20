@@ -305,6 +305,13 @@
     {
       "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.shared.config",
+      "toContext": "architecture",
+      "toPackage": "com.taxonomy.architecture.report",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.shared.config",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.service",
       "classDependencyCount": 1
@@ -741,21 +748,21 @@
       "fromPackage": "com.taxonomy.portfolio.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.decision",
-      "classDependencyCount": 8
+      "classDependencyCount": 15
     },
     {
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.report",
       "toContext": "architecture",
       "toPackage": "com.taxonomy.architecture.report",
-      "classDependencyCount": 1
+      "classDependencyCount": 11
     },
     {
       "fromContext": "portfolio",
       "fromPackage": "com.taxonomy.portfolio.report",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 2
+      "classDependencyCount": 4
     },
     {
       "fromContext": "portfolio",

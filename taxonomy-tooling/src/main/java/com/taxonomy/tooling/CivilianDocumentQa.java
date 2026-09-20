@@ -54,8 +54,10 @@ final class CivilianDocumentQa {
         report.put("documents", documents);
         var decision = FlatJson.parseObject(Files.readString(root.resolve("decision.json")));
         var architecture = FlatJson.parseObject(Files.readString(root.resolve("architecture.json")));
-        for (String name : List.of("decision.docx", "architecture.vsdx")) {
+        String wordGraphHash=null;
+        for (String name : List.of("decision.docx", "report.docx", "architecture.vsdx")) {
             boolean word = name.endsWith(".docx");
+            if(word)wordGraphHash=checkFrozenWordSource(name,unzip(root.resolve(name)),architecture,wordGraphHash);
             String stem = name.substring(0, name.lastIndexOf('.'));
             Path pdf = output.resolve(stem + ".pdf");
             Path temporary = Files.createTempDirectory("civilian-lo-");
@@ -72,13 +74,20 @@ final class CivilianDocumentQa {
             }
             String text = command("pdftotext", "-raw", pdf.toString(), "-");
             String bbox = command("pdftotext", "-bbox", pdf.toString(), "-");
-            List<String> expected = word ? expectedDecisionText(decision) : expectedDiagramText(architecture);
+            List<String> expected = new ArrayList<>(name.equals("decision.docx") ? expectedDecisionText(decision)
+                    : name.equals("report.docx") ? List.of(text(architecture,"requirementText"),text(architecture,"snapshotId"))
+                    : expectedDiagramText(architecture));
+            if(word) {
+                expected.add(wordGraphHash);
+                for(String collection:List.of("nodes","edges"))for(Object value:array(object(architecture.get("diagram")).get(collection)))expected.add(text(object(value),"id"));
+            }
             var document = checkText(name, bbox, text, expected, word);
             try (var files = Files.newDirectoryStream(output, stem + "-*.png")) {
                 for (Path old : files) Files.delete(old);
             }
             command("pdftoppm", "-scale-to", "1400", "-png", pdf.toString(), output.resolve(stem).toString());
             document.put("sourceSha256", sha256(root.resolve(name)));
+            if(word){document.put("snapshotId",text(architecture,"snapshotId"));document.put("graphSha256",wordGraphHash);}
             document.put("renderedPdfSha256", sha256(pdf));
             documents.put(name, document);
         }
@@ -115,8 +124,10 @@ final class CivilianDocumentQa {
             bodyText.append(String.join(" ", body)).append(' ');
         }
         require(empty.isEmpty(), name + ": empty page bodies " + empty);
-        // Thirty complete chapters need space; reject the former 87-page regression.
-        require(!word || pages.size() <= 65, "Report grew to " + pages.size() + " pages");
+        // Complete frozen fixture: decision71 pages (48 chapter pages), architecture10.
+        // Allow3/2 pages for renderer variance; content, empty-body and orphan gates remain.
+        int pageLimit = name.equals("decision.docx") ? 74 : 12;
+        require(!word || pages.size() <= pageLimit, name + ": report grew to " + pages.size() + " pages (limit " + pageLimit + ")");
         // Join body paragraphs across pages. Draw's coordinate order interleaves
         // crossing edges and labels, so its label checks use Poppler's raw order.
         String actual = normalized(word ? bodyText.toString() : rawText);
@@ -130,6 +141,33 @@ final class CivilianDocumentQa {
         result.put("emptyBodyPages", empty);
         result.put("contentAssertions", expected.size());
         return result;
+    }
+
+    static String checkFrozenWordSource(String name,Map<String,byte[]> parts,Map<String,Object> architecture,
+                                         String previousHash) throws IOException {
+        require(parts.containsKey("docProps/custom.xml") && parts.containsKey("word/document.xml"),name+": missing Word source properties");
+        var properties=XmlSupport.parse(new ByteArrayInputStream(parts.get("docProps/custom.xml")));
+        var values=new LinkedHashMap<String,String>();
+        for(var property:XmlSupport.descendants(properties.getDocumentElement(),"property"))values.put(property.getAttribute("name"),property.getTextContent());
+        require(text(architecture,"snapshotId").equals(values.get("taxonomy.snapshot.id")),name+": frozen snapshot identity mismatch");
+        String hash=values.get("taxonomy.graph.sha256");
+        require(hash!=null && hash.matches("[a-f0-9]{64}") && (previousHash==null || previousHash.equals(hash)),name+": frozen graph hash mismatch");
+        var body=XmlSupport.parse(new ByteArrayInputStream(parts.get("word/document.xml"))).getDocumentElement();
+        String text=body.getTextContent();
+        for(String collection:List.of("nodes","edges"))for(Object value:array(object(architecture.get("diagram")).get(collection))) {
+            String id=text(object(value),"id");require(text.contains(id),name+": missing graph evidence "+id);
+        }
+        return hash;
+    }
+
+    private static Map<String,byte[]> unzip(Path path) throws IOException {
+        var parts=new LinkedHashMap<String,byte[]>();
+        try(var input=new java.util.zip.ZipInputStream(Files.newInputStream(path))) {
+            for(var entry=input.getNextEntry();entry!=null;entry=input.getNextEntry()) {
+                if(entry.getName().equals("word/document.xml") || entry.getName().equals("docProps/custom.xml"))parts.put(entry.getName(),input.readAllBytes());
+            }
+        }
+        return parts;
     }
 
     private static List<String> expectedDecisionText(Map<String, Object> decision) {

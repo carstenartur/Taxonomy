@@ -10,6 +10,7 @@ import com.taxonomy.dto.ArchitectureReport;
 import com.taxonomy.dto.DetectedPattern;
 import com.taxonomy.dto.PatternDetectionView;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.junit.jupiter.api.Test;
 
 import javax.tools.JavaCompiler;
@@ -23,7 +24,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
-import java.util.stream.Collectors;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -44,14 +45,18 @@ class ArchitectureReportPercentageTest {
                 pattern("Partial", 100.0 / 3.0, true),
                 pattern("Zero", 0.0, true)));
 
-        for (String output : renderedPlainText(report(patterns))) {
-            assertThat(output)
+        for (var output : renderedTextFormats(report(patterns)).entrySet()) {
+            assertThat(output.getValue()).as(output.getKey())
                     .contains("Pattern Coverage: 33.3%")
                     .contains("Complete — 100% complete")
                     .contains("Partial — 33% complete")
                     .contains("Zero — 0% complete")
                     .doesNotContain("10000%", "3333%");
         }
+        assertDocxPercentages(report(patterns), "33.3%", List.of(
+                List.of("Complete", "100%", ""),
+                List.of("Partial", "33%", "step"),
+                List.of("Zero", "0%", "step")));
     }
 
     @Test
@@ -63,14 +68,18 @@ class ArchitectureReportPercentageTest {
                 pattern("Negative", -10.0, true),
                 pattern("Not a number", Double.NaN, true)));
 
-        for (String output : renderedPlainText(report(patterns))) {
-            assertThat(output)
+        for (var output : renderedTextFormats(report(patterns)).entrySet()) {
+            assertThat(output.getValue()).as(output.getKey())
                     .contains("Pattern Coverage: 0.0%")
                     .contains("Too high — 100% complete")
                     .contains("Negative — 0% complete")
                     .contains("Not a number — 0% complete")
                     .doesNotContain("150%", "-10%", "NaN%", "Infinity%");
         }
+        assertDocxPercentages(report(patterns), "0.0%", List.of(
+                List.of("Too high", "100%", ""),
+                List.of("Negative", "0%", "step"),
+                List.of("Not a number", "0%", "step")));
     }
 
     @Test
@@ -125,11 +134,29 @@ class ArchitectureReportPercentageTest {
         return found[0];
     }
 
-    private List<String> renderedPlainText(ArchitectureReport report) throws IOException {
-        return List.of(
-                plainText(reportService.renderMarkdown(report)),
-                plainText(reportService.renderHtml(report)),
-                plainText(docxText(reportService.renderDocx(report))));
+    private Map<String,String> renderedTextFormats(ArchitectureReport report) {
+        return Map.of(
+                "Markdown", plainText(reportService.renderMarkdown(report)),
+                "HTML", plainText(reportService.renderHtml(report)));
+    }
+
+    private void assertDocxPercentages(ArchitectureReport report, String coverage,
+                                      List<List<String>> expectedRows) throws IOException {
+        try (var document = new XWPFDocument(new ByteArrayInputStream(reportService.renderDocx(report)));
+             var extractor = new XWPFWordExtractor(document)) {
+            assertThat(plainText(extractor.getText())).as("DOCX including native tables")
+                    .contains("Pattern Coverage: " + coverage)
+                    .doesNotContain("10000%", "3333%", "150%", "-10%", "NaN%", "Infinity%");
+            var table = document.getTables().stream()
+                    .filter(candidate -> candidate.getRow(0).getTableCells().stream()
+                            .map(cell -> cell.getText()).toList()
+                            .equals(List.of("Title", "Completeness", "Unresolved gaps and reservations")))
+                    .findFirst().orElseThrow(() -> new AssertionError("Missing native pattern table"));
+            assertThat(table.getRows().stream().skip(1)
+                    .map(row -> row.getTableCells().stream().map(cell -> cell.getText()).toList()).toList())
+                    .as("DOCX pattern names, bounded completeness and missing steps")
+                    .containsExactlyElementsOf(expectedRows);
+        }
     }
 
     private static ArchitectureReport report(PatternDetectionView patterns) {
@@ -147,14 +174,6 @@ class ArchitectureReportPercentageTest {
                 incomplete ? List.of() : List.of("step"),
                 incomplete ? List.of("step") : List.of(),
                 completeness);
-    }
-
-    private static String docxText(byte[] bytes) throws IOException {
-        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(bytes))) {
-            return document.getParagraphs().stream()
-                    .map(paragraph -> paragraph.getText())
-                    .collect(Collectors.joining("\n"));
-        }
     }
 
     private static String plainText(String text) {

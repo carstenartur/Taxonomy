@@ -38,6 +38,12 @@ class DecisionChapterDiagramRendererAccessibilityTest {
         assertThat(documentIds).hasSize(panelCount * 2);
     }
 
+    @Test
+    void germanPanelDescriptionsUseGermanNavigationLabels() {
+        var panels=new DecisionChapterDiagramRenderer().render(chapter(1,"P",13),"de");
+        assertThat(panels).allSatisfy(panel->assertThat(panel.altText()).contains("Teil", "von").doesNotContain("panel", " of "));
+    }
+
     private int assertUniqueIds(
             List<DiagramPanel> panels,
             int chapterNumber,

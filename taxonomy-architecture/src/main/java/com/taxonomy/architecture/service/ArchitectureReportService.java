@@ -343,65 +343,7 @@ public class ArchitectureReportService {
      * Uses Apache POI which is already a project dependency.
      */
     public byte[] renderDocx(ArchitectureReport report) {
-        String markdown = renderMarkdown(report);
-
-        try (org.apache.poi.xwpf.usermodel.XWPFDocument doc =
-                     new org.apache.poi.xwpf.usermodel.XWPFDocument()) {
-
-            // Title
-            org.apache.poi.xwpf.usermodel.XWPFParagraph title = doc.createParagraph();
-            title.setStyle("Title");
-            org.apache.poi.xwpf.usermodel.XWPFRun titleRun = title.createRun();
-            titleRun.setText("Architecture Analysis Report");
-            titleRun.setBold(true);
-            titleRun.setFontSize(18);
-
-            // Parse markdown lines and add as paragraphs
-            for (String line : markdown.split("\n")) {
-                if (line.startsWith("# ") && !line.startsWith("# Architecture")) {
-                    // Skip duplicate title
-                    continue;
-                }
-
-                org.apache.poi.xwpf.usermodel.XWPFParagraph para = doc.createParagraph();
-                org.apache.poi.xwpf.usermodel.XWPFRun run = para.createRun();
-
-                if (line.startsWith("## ")) {
-                    run.setText(line.substring(3));
-                    run.setBold(true);
-                    run.setFontSize(14);
-                } else if (line.startsWith("### ")) {
-                    run.setText(line.substring(4));
-                    run.setBold(true);
-                    run.setFontSize(12);
-                } else if (line.startsWith("**") && line.contains(":**")) {
-                    // Bold label
-                    String text = line.replaceAll("\\*\\*", "");
-                    run.setText(text);
-                    run.setBold(true);
-                } else if (line.startsWith("| ") && !line.startsWith("|---")) {
-                    // Table row rendered as tab-separated line
-                    String text = line.replaceAll("\\|", "\t").replaceAll("`", "").trim();
-                    run.setText(text);
-                    run.setFontSize(9);
-                } else if (line.startsWith("- **")) {
-                    String text = line.replaceAll("\\*\\*", "").substring(2);
-                    run.setText(text);
-                } else if (line.startsWith("```") || line.startsWith("---") || line.startsWith("|---")) {
-                    // Skip formatting lines
-                    continue;
-                } else {
-                    run.setText(line.replaceAll("`", "").replaceAll("\\*", ""));
-                }
-            }
-
-            java.io.ByteArrayOutputStream baos = new java.io.ByteArrayOutputStream();
-            doc.write(baos);
-            return baos.toByteArray();
-        } catch (Exception e) {
-            log.error("DOCX generation failed: {}", e.getMessage(), e);
-            throw new RuntimeException("Failed to generate DOCX report", e);
-        }
+        return new com.taxonomy.architecture.report.ArchitectureReportDocxRenderer().render(report);
     }
 
     // ── Internal helpers ──────────────────────────────────────────────────────

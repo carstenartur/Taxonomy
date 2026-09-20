@@ -1,6 +1,7 @@
 package com.taxonomy.architecture.decision;
 
 import com.taxonomy.architecture.decision.DecisionChapterDiagramRenderer.DiagramPanel;
+import com.taxonomy.architecture.report.*;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.ChildDecision;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.DecisionChapter;
 import com.taxonomy.architecture.decision.DecisionRationaleReport.LeafCandidate;
@@ -117,11 +118,14 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         try (XWPFDocument document = new XWPFDocument();
              ByteArrayOutputStream output = new ByteArrayOutputStream()) {
             configurePage(document);
+            WordDocumentWriter.ensureStyles(document);
             addHeaderAndFooter(document, report, labels);
             renderTitlePage(document, report, labels);
             writeReportBody(document, report, labels);
             document.write(output);
             return output.toByteArray();
+        } catch (com.taxonomy.architecture.report.WordReportLayoutException exception) {
+            throw exception;
         } catch (Exception exception) {
             throw new IllegalStateException("Could not generate decision rationale DOCX", exception);
         }
@@ -138,8 +142,19 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             XWPFDocument document,
             DecisionRationaleReport report,
             DecisionReportLabels labels) throws Exception {
+        WordDocumentWriter writer = new WordDocumentWriter(document, labels);
         configureCoreProperties(document, report);
+        var navigation = new LinkedHashMap<String,String>();
+        navigation.put("decision_summary",labels.executiveSummary());
+        if(report.architecture()!=null)navigation.put("architecture_figures",labels.architectureOverview());
+        navigation.put("decision_tree",labels.treeOverview());
+        navigation.put("decision_chapters",labels.decisionChapters());
+        navigation.put("decision_evidence",labels.appendix());
+        writer.contents(navigation);
         renderExecutiveSummary(document, report, labels);
+        if(report.architecture()!=null)new ArchitectureWordSectionRenderer().write(document,report.architecture());
+        new DecisionTreeWordSectionRenderer().write(document,
+                report.architecture()==null?DecisionTreeOverview.from(report.chapters()):report.architecture().decisionTree(),report.languageTag());
         renderChapters(document, report, labels);
         renderAppendix(document, report, labels);
     }
@@ -238,7 +253,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         XWPFParagraph eyebrow = document.createParagraph();
         eyebrow.setSpacingAfter(120);
         XWPFRun eyebrowRun = eyebrow.createRun();
-        eyebrowRun.setText("TAXONOMY · DECISION EVIDENCE");
+        eyebrowRun.setText(labels.evidenceEyebrow());
         eyebrowRun.setFontFamily(FONT);
         eyebrowRun.setFontSize(10);
         eyebrowRun.setBold(true);
@@ -246,6 +261,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         eyebrowRun.setCharacterSpacing(25);
 
         XWPFParagraph title = document.createParagraph();
+        title.setStyle("Title");
         title.setSpacingBefore(0);
         title.setSpacingAfter(120);
         XWPFRun titleRun = title.createRun();
@@ -345,6 +361,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             DecisionRationaleReport report,
             DecisionReportLabels labels) {
         addSectionHeading(document, "01", labels.executiveSummary());
+        new WordDocumentWriter(document,labels).bookmark(document.getParagraphs().getLast(),"decision_summary");
         addLeadParagraph(document, report.executiveSummary().conciseConclusion());
 
         LeafCandidate leading = report.executiveSummary().leadingLeaf();
@@ -415,6 +432,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             DecisionRationaleReport report,
             DecisionReportLabels labels) throws Exception {
         addSectionHeading(document, "02", labels.decisionChapters());
+        new WordDocumentWriter(document,labels).bookmark(document.getParagraphs().getLast(),"decision_chapters");
         addBodyParagraph(document, labels.german()
                 ? "Jedes folgende Kapitel entspricht genau einem Vaterknoten, dessen direkte Kindknoten mindestens einen von Null verschiedenen Bewertungswert enthalten. Sämtliche direkten Kinder bleiben als geprüfte oder noch ungeprüfte Alternativen sichtbar."
                 : "Each following chapter corresponds to one parent whose direct children contain at least one non-zero score. All direct children remain visible as evaluated or unevaluated alternatives.", false);
@@ -428,31 +446,11 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
 
             List<DiagramPanel> panels = diagramRenderer.render(chapter, report.languageTag());
             for (DiagramPanel panel : panels) {
-                XWPFParagraph imageParagraph = document.createParagraph();
-                imageParagraph.setAlignment(ParagraphAlignment.CENTER);
-                imageParagraph.setSpacingBefore(100);
-                imageParagraph.setSpacingAfter(60);
-                imageParagraph.setKeepNext(true);
-                XWPFRun imageRun = imageParagraph.createRun();
-                imageRun.addPicture(
-                        new ByteArrayInputStream(panel.png()),
-                        Document.PICTURE_TYPE_PNG,
-                        "decision-" + chapter.parentCode() + "-" + panel.panelNumber() + ".png",
-                        Units.toEMU(6.45 * 72),
-                        Units.toEMU(6.45 * 72 * javax.imageio.ImageIO.read(
-                                new ByteArrayInputStream(panel.png())).getHeight() / DecisionChapterDiagramRenderer.WIDTH));
-                setLastPictureAltText(imageRun, panel.altText());
-                XWPFParagraph caption = document.createParagraph();
-                caption.setAlignment(ParagraphAlignment.RIGHT);
-                caption.setSpacingAfter(120);
-                XWPFRun captionRun = caption.createRun();
-                captionRun.setFontFamily(FONT);
-                captionRun.setFontSize(7);
-                captionRun.setItalic(true);
-                captionRun.setColor(MUTED);
-                captionRun.setText(labels.parentNode() + " " + chapter.parentCode()
-                        + (panel.panelCount() > 1
-                        ? " · " + panel.panelNumber() + "/" + panel.panelCount() : ""));
+                var writer = new WordDocumentWriter(document,labels);
+                var image = javax.imageio.ImageIO.read(new ByteArrayInputStream(panel.png()));
+                String caption=labels.parentNode()+" "+chapter.parentCode()+" · "+panel.panelNumber()+"/"+panel.panelCount();
+                writer.picture(panel.png(),"decision-"+chapter.number()+"-"+panel.panelNumber(),caption,panel.altText(),image.getWidth(),image.getHeight(),false);
+                writer.caption(caption,true);
             }
 
             addRationaleBox(document, labels.decisionResult(), chapter.decisionSummary(), PALE_BLUE);
@@ -475,6 +473,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             DecisionRationaleReport report,
             DecisionReportLabels labels) {
         addSectionHeading(document, "03", labels.appendix());
+        new WordDocumentWriter(document,labels).bookmark(document.getParagraphs().getLast(),"decision_evidence");
         addHeading(document, labels.leadingLeaves(), 2, false);
         XWPFTable leafTable = document.createTable(1, 5);
         RationaleIndex reasons = new RationaleIndex();
@@ -545,48 +544,9 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             XWPFDocument document,
             DecisionChapter chapter,
             DecisionReportLabels labels) {
-        XWPFParagraph number = document.createParagraph();
-        number.setSpacingAfter(20);
-        number.setSpacingBefore(240);
-        number.setKeepNext(true);
-        XWPFRun numberRun = number.createRun();
-        numberRun.setText(labels.chapter().toUpperCase(Locale.ROOT) + " " + chapter.number());
-        numberRun.setFontFamily(FONT);
-        numberRun.setFontSize(9);
-        numberRun.setBold(true);
-        numberRun.setColor(TEAL);
-
-        XWPFTable heading = document.createTable(1, 2);
-        heading.setWidth("100%");
-        removeTableBorders(heading);
-        XWPFTableCell titleCell = heading.getRow(0).getCell(0);
-        XWPFTableCell scoreCell = heading.getRow(0).getCell(1);
-        clearCell(titleCell);
-        XWPFParagraph title = titleCell.addParagraph();
-        title.setSpacingAfter(80);
-        XWPFRun code = title.createRun();
-        code.setText(chapter.parentCode());
-        code.setFontFamily(MONO_FONT);
-        code.setFontSize(19);
-        code.setBold(true);
-        code.setColor(TEAL);
-        XWPFRun name = title.createRun();
-        name.setText(" · " + chapter.parentTitle());
-        name.setFontFamily(FONT);
-        name.setFontSize(19);
-        name.setBold(true);
-        name.setColor(NAVY);
-        setBottomBorder(title, NAVY, 16);
-        shade(scoreCell, TEAL);
-        setCellText(scoreCell, score(chapter.parentScore()), 18, true, "FFFFFF",
-                ParagraphAlignment.CENTER);
-        scoreCell.setVerticalAlignment(XWPFTableCell.XWPFVertAlign.CENTER);
-        for (XWPFTableCell cell : heading.getRow(0).getTableCells()) {
-            for (XWPFParagraph paragraph : cell.getParagraphs()) {
-                if (paragraph.getCTP().getPPr() == null) paragraph.getCTP().addNewPPr();
-                paragraph.setKeepNext(true);
-            }
-        }
+        var writer=new WordDocumentWriter(document,labels);
+        writer.heading(labels.chapter()+" "+chapter.number()+" · "+chapter.parentCode()+" · "+chapter.parentTitle(),2,DecisionTreeOverview.bookmark(chapter));
+        writer.paragraph(labels.parentScore()+": "+(chapter.parentScore()==null?labels.notEvaluated():score(chapter.parentScore())));
     }
 
     private void addChildTable(
@@ -659,6 +619,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         kickerRun.setBold(true);
         kickerRun.setColor(TEAL);
         XWPFParagraph heading = document.createParagraph();
+        heading.setStyle("Heading1");
         heading.setSpacingBefore(0);
         heading.setKeepNext(true);
         heading.setSpacingAfter(220);
@@ -677,6 +638,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
             int level,
             boolean pageBreakBefore) {
         XWPFParagraph paragraph = document.createParagraph();
+        paragraph.setStyle("Heading"+level);
         paragraph.setPageBreak(pageBreakBefore);
         if (paragraph.getCTP().getPPr() == null) {
             paragraph.getCTP().addNewPPr();
@@ -857,6 +819,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
     }
 
     private void styleDataRow(XWPFTableRow row, String fill) {
+        row.setCantSplitRow(true);
         for (XWPFTableCell cell : row.getTableCells()) {
             shade(cell, fill);
             setCellMargins(cell, 70, 70, 70, 70);
@@ -983,20 +946,6 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         properties.addNewSz().setVal(BigInteger.valueOf(fontSize * 2L));
         CTText text = runXml.addNewT();
         text.setStringValue(fallback);
-    }
-
-    private void setLastPictureAltText(XWPFRun run, String altText) {
-        try {
-            var pictures = run.getEmbeddedPictures();
-            if (!pictures.isEmpty()) {
-                var nonVisual = pictures.get(pictures.size() - 1)
-                        .getCTPicture().getNvPicPr().getCNvPr();
-                nonVisual.setDescr(altText);
-                nonVisual.setName("Decision diagram");
-            }
-        } catch (Exception ignored) {
-            // The image remains visible if a particular POI schema build cannot set alt text.
-        }
     }
 
     private void addBullet(XWPFDocument document, String text) {

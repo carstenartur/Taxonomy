@@ -157,3 +157,22 @@ git.commit.id=${GIT_COMMIT:${GITHUB_SHA:unknown}}
 ```
 
 For released builds, `BuildProperties` supplies the application version and `GitProperties` or `git.commit.id` supplies the build commit. Unknown metadata is displayed as `unknown`; it is never silently replaced with a misleading value.
+
+## Frozen snapshot Word reports
+
+The architecture workbench offers **Architecture Word** and **Decision Word** for the selected saved analysis:
+
+- `GET /api/projects/{projectId}/snapshots/{snapshotId}/architecture-report/docx?language=en`
+- `GET /api/projects/{projectId}/snapshots/{snapshotId}/decision-report/docx?language=en`
+
+Both use the saved requirement version, decision evidence and persisted architecture graph. They do not recalculate the graph using current catalogue selections, preferences or proposals. Both contain the architecture overview, bounded detail figures, complete element/relation inventories, recommendation, recorded gaps and provenance. Decision Word also includes every parent/alternative in a linked tree overview and the complete decision chapters; missing scores remain “Not evaluated”, while zero means evaluated and rejected.
+
+`X-Taxonomy-Snapshot-Id` and `X-Taxonomy-Graph-SHA256` identify the common source. The same values are embedded as `taxonomy.snapshot.id` and `taxonomy.graph.sha256` custom properties. The graph digest includes all frozen node/relation semantics and container metadata; it excludes mutable display titles and is distinct from the exchange formats’ semantic-only digest.
+
+Word headings, TOC fields, static internal navigation, repeating table headers, numbered captions and image descriptions are native OOXML structures. Details cover every graph node and relation, with at most 12 nodes and 18 relations per panel, and a minimum 8pt node-label reading scale. The document policy rejects more than 500 nodes, 1,000 relations or 250 detail panels with HTTP 409; it never silently truncates a graph. Unsupported or conflicting frozen evidence also returns 409.
+
+Use `language=de` for generated German labels. Saved evidence and administrator-authored template text remain unchanged. The decision DOCX continues through the current versioned DOTX body-marker/decorator path; existing custom styles, headers, footers, logos and template identity are preserved. `/api/report/docx` remains the typed, structured **ad-hoc/live** report endpoint and does not assert frozen snapshot provenance.
+
+The civilian acceptance pipeline checks source parity and semantic completeness, and renders both Word artifacts with LibreOffice/Poppler. This is not Microsoft Word product certification.
+
+The complete civilian fixture renders 71 decision pages (48 pages of decision chapters) and 10 standalone architecture pages. The render QA ceilings are 74 and 12 respectively, allowing 3/2 pages for renderer variance while retaining semantic coverage, reading-scale, empty-page and orphan-heading checks. Compact edge IDs may be omitted where they would cover nodes; native relation keys and inventories preserve every edge ID, source, target and type.

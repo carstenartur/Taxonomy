@@ -363,7 +363,7 @@ public class DecisionChapterDiagramRenderer {
                 .append(chapter.parentScore() == null ? labels.notEvaluated()
                         : chapter.parentScore() + "%");
         if (panelCount > 1) {
-            text.append(", panel ").append(panelNumber).append(" of ").append(panelCount);
+            text.append(", ").append(labels.panel()).append(" ").append(panelNumber).append(" ").append(labels.of()).append(" ").append(panelCount);
         }
         for (ChildDecision child : children) {
             text.append("; ").append(child.code()).append(' ').append(child.title())

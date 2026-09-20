@@ -147,7 +147,7 @@ public class ArchitectureWorkbenchService {
                 snapshot.summary().commitSha(), diagram, scene, elements, relations,
                 new ArrayList<>(warnings), new ArchitectureWorkbenchDtos.SnapshotProvenance(
                         snapshot.summary().requirementVersionId(), snapshot.summary().taxonomyFingerprint(),
-                        context.repositoryId()), policyTitleKey);
+                        context.repositoryId()), policyTitleKey, persistedTitle);
     }
 
     @Transactional(readOnly = true)

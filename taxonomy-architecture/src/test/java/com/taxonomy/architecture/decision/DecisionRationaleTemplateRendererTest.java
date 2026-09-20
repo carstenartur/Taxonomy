@@ -173,6 +173,101 @@ class DecisionRationaleTemplateRendererTest {
                         .doesNotContain("{{taxonomy."));
     }
 
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings={"en","de","too-small","note-collision"})
+    void enrichedBodyPreservesCustomStylesLogoStoriesAndDecisionIdentity(String language) throws Exception {
+        byte[] logo;
+        var image=new java.awt.image.BufferedImage(2,2,java.awt.image.BufferedImage.TYPE_INT_RGB);
+        try(var output=new java.io.ByteArrayOutputStream()){javax.imageio.ImageIO.write(image,"png",output);logo=output.toByteArray();}
+        byte[] template;
+        try(var doc=new org.apache.poi.xwpf.usermodel.XWPFDocument();var output=new java.io.ByteArrayOutputStream()) {
+            var styles=doc.createStyles();
+            var defaultFonts=org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts.Factory.newInstance();
+            defaultFonts.setAscii("Georgia");defaultFonts.setHAnsi("Georgia");styles.setDefaultFonts(defaultFonts);
+            var footnote=doc.createFootnote();var fp=footnote.createParagraph();
+            fp.createRun().setText("Administrator footnote");
+            var fb=fp.getCTP().addNewBookmarkStart();fb.setId(java.math.BigInteger.ZERO);
+            fb.setName(language.equals("note-collision")?"decision_tree":"administrator_footnote");
+            fp.getCTP().addNewBookmarkEnd().setId(java.math.BigInteger.ZERO);
+            var endnote=doc.createEndnote();var ep=endnote.createParagraph();ep.createRun().setText("Administrator endnote");
+            var eb=ep.getCTP().addNewBookmarkStart();eb.setId(java.math.BigInteger.ONE);eb.setName("administrator_endnote");
+            ep.getCTP().addNewBookmarkEnd().setId(java.math.BigInteger.ONE);
+            var noteLink=fp.getCTP().addNewHyperlink();noteLink.setAnchor("administrator_endnote");noteLink.addNewR().addNewT().setStringValue("See saved endnote");
+            var references=doc.createParagraph();references.createRun().setText("Administrator note references");
+            references.addFootnoteReference(footnote);references.createRun().getCTR().addNewEndnoteReference().setId(endnote.getId());
+            var style=org.openxmlformats.schemas.wordprocessingml.x2006.main.CTStyle.Factory.newInstance();
+            style.setStyleId("Heading1");style.addNewName().setVal("Custom Heading");style.addNewRPr().addNewColor().setVal("AA22BB");
+            styles.addStyle(new org.apache.poi.xwpf.usermodel.XWPFStyle(style));
+            doc.createParagraph().createRun().setText(DecisionRationaleTemplateContract.TITLE_TOKEN);
+            doc.createParagraph().createRun().setText(DecisionRationaleTemplateContract.REQUIREMENT_TOKEN);
+            doc.createParagraph().createRun().setText(DecisionRationaleTemplateContract.BODY_MARKER);
+            var header=doc.createHeader(org.apache.poi.wp.usermodel.HeaderFooterType.DEFAULT);
+            var run=header.createParagraph().createRun();run.setText("Administrator header");
+            run.addPicture(new ByteArrayInputStream(logo),org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_PNG,"logo.png",100000,100000);
+            doc.createFooter(org.apache.poi.wp.usermodel.HeaderFooterType.DEFAULT).createParagraph().createRun().setText("Administrator footer");
+            if(language.equals("too-small")) {
+                var section=doc.getDocument().getBody().getSectPr();if(section==null)section=doc.getDocument().getBody().addNewSectPr();
+                var size=section.isSetPgSz()?section.getPgSz():section.addNewPgSz();size.setW(java.math.BigInteger.valueOf(15840));size.setH(java.math.BigInteger.valueOf(4320));
+                var margins=section.isSetPgMar()?section.getPgMar():section.addNewPgMar();margins.setTop(java.math.BigInteger.valueOf(1440));margins.setBottom(java.math.BigInteger.valueOf(1440));margins.setLeft(java.math.BigInteger.valueOf(1440));margins.setRight(java.math.BigInteger.valueOf(1440));
+            }
+            doc.write(output);template=output.toByteArray();
+        }
+        var codec=new OoxmlTemplatePackageCodec();var parts=new LinkedHashMap<>(unzip(template));
+        parts.put("[Content_Types].xml",new String(parts.get("[Content_Types].xml"),StandardCharsets.UTF_8)
+                .replace("wordprocessingml.document.main+xml","wordprocessingml.template.main+xml").getBytes(StandardCharsets.UTF_8));
+        template=codec.pack(parts);
+        var manifest=new TemplateManifest(1,DecisionRationaleTemplateContract.TEMPLATE_ID,"Custom","custom.dotx",OoxmlTemplatePackageCodec.DOTX_MEDIA_TYPE,"2026-08-22T16:00:00Z","administrator",template.length,parts.size(),TEMPLATE_SHA256);
+        when(templates.downloadCurrentValidated(DecisionRationaleTemplateContract.TEMPLATE_ID))
+                .thenReturn(new TemplateFile(manifest,TEMPLATE_COMMIT,template,Instant.EPOCH));
+        var base=report();
+        var chapter=new DecisionRationaleReport.DecisionChapter(1,"BP","Saved parent","",100,0,true,"Saved decision","Saved comparison",List.of(),List.of());
+        var decision=new DecisionRationaleReport(base.title(),language,base.requirement(),base.status(),base.metadata(),base.executiveSummary(),List.of(chapter),List.of(),List.of(),List.of(),List.of(),null);
+        var graph=new com.taxonomy.diagram.DiagramModel("Saved graph",List.of(new com.taxonomy.diagram.DiagramNode("A","Saved A","Capability",1,true,0),new com.taxonomy.diagram.DiagramNode("B","Saved B","Service",.5,false,1)),List.of(new com.taxonomy.diagram.DiagramEdge("E1","A","B","serves",.5)),null);
+        var evidence=new com.taxonomy.architecture.report.ArchitectureReportDocument.SnapshotEvidence(1L,2L,3L,4,"snapshot","repository","workspace","main","based-on-commit","MOCK","model","fingerprint",com.taxonomy.architecture.report.ArchitectureReportDocument.graphSha256(graph));
+        var architecture=com.taxonomy.architecture.report.ArchitectureReportDocument.from("Architecture title",language,decision.requirement(),"Saved scope","Saved recommendation",List.of(),graph,new com.taxonomy.export.LayeredDiagramLayoutService().layout(graph),com.taxonomy.architecture.report.DecisionTreeOverview.from(decision.chapters()),evidence);
+        var renderer=new DecisionRationaleTemplateRenderer(templates,new DecisionRationaleTemplateContract());
+        if(language.equals("note-collision")) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(()->renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture)))
+                    .hasStackTraceContaining("Duplicate Word bookmark: decision_tree");
+            return;
+        }
+        if(language.equals("too-small")) {
+            org.assertj.core.api.Assertions.assertThatThrownBy(()->renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture)))
+                .isInstanceOf(com.taxonomy.architecture.report.WordReportLayoutException.class).hasMessageContaining("8pt");
+            return;
+        }
+        byte[] result=renderer.render(new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()),decision.withArchitecture(architecture));
+        try(var doc=new org.apache.poi.xwpf.usermodel.XWPFDocument(new ByteArrayInputStream(result))) {
+            var ids=new java.util.HashSet<String>();var names=new java.util.HashSet<String>();
+            var stories=new java.util.ArrayList<org.apache.xmlbeans.XmlObject>();stories.add(doc.getDocument());
+            doc.getHeaderList().forEach(h->stories.add(h._getHdrFtr()));doc.getFooterList().forEach(f->stories.add(f._getHdrFtr()));
+            doc.getFootnotes().forEach(n->stories.add(n.getCTFtnEdn()));doc.getEndnotes().forEach(n->stories.add(n.getCTFtnEdn()));
+            for(var story:stories)for(var bookmark:story.selectPath("declare namespace w='http://schemas.openxmlformats.org/wordprocessingml/2006/main'; .//w:bookmarkStart")){
+                var attrs=bookmark.getDomNode().getAttributes();
+                assertThat(ids.add(attrs.getNamedItemNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main","id").getNodeValue())).isTrue();
+                assertThat(names.add(attrs.getNamedItemNS("http://schemas.openxmlformats.org/wordprocessingml/2006/main","name").getNodeValue())).isTrue();
+            }
+            assertThat(names).contains("administrator_footnote","administrator_endnote","decision_chapter_1_BP");
+            assertThat(text(unzip(result),"word/footnotes.xml")).contains("Administrator footnote","administrator_endnote","See saved endnote");
+            assertThat(text(unzip(result),"word/endnotes.xml")).contains("Administrator endnote");
+            assertThat(text(unzip(result),"word/styles.xml")).contains("Georgia");
+            assertThat(doc.getDocument().xmlText()).contains("w:anchor=\"decision_chapter_1_BP\"");
+            java.nio.file.Path qa=java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/final-word-review"));
+            java.nio.file.Files.write(qa.resolve("custom-notes-"+language+".docx"),result);
+            assertThat(doc.getHeaderList().getFirst().getText()).contains("Administrator header");
+            assertThat(doc.getFooterList().getFirst().getText()).contains("Administrator footer");
+            assertThat(unzip(result).values()).anyMatch(bytes->java.util.Arrays.equals(logo,bytes));
+            assertThat(doc.getStyles().getStyle("Heading1").getCTStyle().xmlText()).contains("AA22BB");
+            assertThat(doc.getProperties().getCoreProperties().getTitle()).isEqualTo(decision.title());
+            assertThat(doc.getProperties().getCustomProperties().getProperty("Taxonomy.Template.Commit").getLpwstr()).isEqualTo(TEMPLATE_COMMIT);
+            assertThat(doc.getProperties().getCustomProperties().getProperty("taxonomy.graph.sha256").getLpwstr()).isEqualTo(evidence.graphSha256());
+            String text=new org.apache.poi.xwpf.extractor.XWPFWordExtractor(doc).getText();
+            assertThat(text).contains("Saved A","Saved B","E1","Saved parent","Saved decision","Saved recommendation");
+            assertThat(text).contains(language.equals("de")?"Vollständiger Entscheidungsbaum":"Complete decision tree");
+            assertThat(doc.getDocument().xmlText()).contains("decision_chapter_1_BP","architecture-detail-1");
+        }
+    }
+
     private static final class RecordingDecisionRationaleDocxRenderer
             extends DecisionRationaleDocxRenderer {
 

@@ -14,6 +14,9 @@
         });
     }
 
+    bind('downloadArchitectureWord', ArchitectureWorkbenchApi.architectureWordUrl);
+    bind('downloadDecisionWord', ArchitectureWorkbenchApi.decisionWordUrl);
+
     bind(
         'downloadArchitectureArchiMate',
         ArchitectureWorkbenchApi.archiMateBundleUrl);

@@ -32,6 +32,11 @@ class DecisionRationaleDocxLayoutTest {
             new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer())
                     .writeReportBody(document, report, new DecisionReportLabels("en"));
             String text = new XWPFWordExtractor(document).getText();
+            assertThat(document.getDocument().xmlText()).contains("Heading1", "TOC ", "decision_chapter_1_BP", "SEQ Figure");
+            assertThat(document.getTables().stream().flatMap(t -> t.getRows().stream()).flatMap(r -> r.getTableCells().stream())
+                    .flatMap(c -> c.getParagraphs().stream()).flatMap(p -> p.getCTP().getHyperlinkList().stream()).map(h -> h.getAnchor()))
+                    .contains("decision_chapter_1_BP");
+            assertThat(document.getSettings().getCTSettings().xmlText()).contains("updateFields");
             assertThat(text).contains("BP-A", "BP-B", "BP-C", "BP-D", "100 %", "0 %", "Not evaluated");
             // Equal prose with different provenance remains separate evidence.
             assertThat(text.split(java.util.regex.Pattern.quote(reason), -1)).hasSize(3);
