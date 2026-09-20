@@ -17,9 +17,12 @@ import java.util.List;
 public class ReformulationController {
     private final ReformulationService service;
     private final WorkspaceResolver resolver;
-    public ReformulationController(ReformulationService service,WorkspaceResolver resolver){this.service=service;this.resolver=resolver;}
+    private final ReformulationExecutionService execution;
+    public ReformulationController(ReformulationService service,WorkspaceResolver resolver,ReformulationExecutionService execution){this.service=service;this.resolver=resolver;this.execution=execution;}
     @PostMapping public ResponseEntity<Proposal> create(@PathVariable Long projectId,@PathVariable Long requirementId,@RequestBody CreateRequest request) {
-        var proposal=service.create(projectId,requirementId,request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());
+        var actor=resolver.resolveCurrentUsername();var context=resolver.resolveCurrentContext();
+        var proposal=service.create(projectId,requirementId,request,actor,context);
+        execution.start(projectId,requirementId,proposal.id(),proposal.currentRevision().number(),actor,context);
         return ResponseEntity.accepted().location(URI.create("/api/projects/"+projectId+"/requirements/"+requirementId+"/reformulations/"+proposal.id()))
                 .eTag(Long.toString(proposal.currentRevision().number())).body(proposal);
     }
@@ -42,6 +45,18 @@ public class ReformulationController {
         catch(NumberFormatException invalid){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid proposal revision");}
         var proposal=service.saveDraft(projectId,requirementId,proposalId,revision,request,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());
         return ResponseEntity.status(HttpStatus.CREATED).eTag(Long.toString(proposal.currentRevision().number())).body(proposal);
+    }
+    @PostMapping("/{proposalId}/synthesis-runs") public ResponseEntity<Run> synthesize(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId,
+            @RequestHeader(value="If-Match",required=false) String expected) {
+        if(expected==null) throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,"If-Match is required");
+        if(!expected.matches("\"[1-9][0-9]*\"")) throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Expected a quoted proposal revision");
+        long revision;
+        try {revision=Long.parseLong(expected.substring(1,expected.length()-1));}
+        catch(NumberFormatException invalid){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid proposal revision");}
+        return ResponseEntity.accepted().body(execution.start(projectId,requirementId,proposalId,revision,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));
+    }
+    @GetMapping("/{proposalId}/synthesis-runs") public List<Run> runs(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId) {
+        return service.runs(projectId,requirementId,proposalId,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());
     }
     @ExceptionHandler(ReformulationPreconditionException.class) public ResponseEntity<ProblemDetail> stale(ReformulationPreconditionException failure) {
         return ResponseEntity.status(HttpStatus.PRECONDITION_FAILED).body(ProblemDetail.forStatusAndDetail(HttpStatus.PRECONDITION_FAILED,failure.getMessage()));

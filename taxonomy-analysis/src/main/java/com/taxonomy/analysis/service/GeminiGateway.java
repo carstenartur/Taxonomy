@@ -113,10 +113,9 @@ public class GeminiGateway implements LlmGateway {
                 } catch (HttpClientErrorException e) {
                     if (e.getStatusCode().value() == 429) {
                         throw new LlmRateLimitException(
-                                "Gemini rate limit (HTTP 429): " + e.getResponseBodyAsString(), e);
+                                "Gemini rate limit (HTTP 429)", e);
                     }
-                    throw new RuntimeException("Gemini API error " + e.getStatusCode() + ": " +
-                            e.getResponseBodyAsString(), e);
+                    throw new RuntimeException("Gemini API error " + e.getStatusCode(), e);
                 } catch (HttpServerErrorException e) {
                     if (attempt < maxRetries) {
                         attempt++;
@@ -126,8 +125,7 @@ public class GeminiGateway implements LlmGateway {
                         AnalysisRunControl.pause("RETRY_WAIT", backoffMs);
                         continue;
                     }
-                    throw new RuntimeException("Gemini API server error " + e.getStatusCode() + ": " +
-                            e.getResponseBodyAsString(), e);
+                    throw new RuntimeException("Gemini API server error " + e.getStatusCode(), e);
                 } catch (ResourceAccessException e) {
                     if (e.getCause() instanceof SocketTimeoutException) {
                         int timeoutSeconds = preferencesService != null
@@ -150,16 +148,15 @@ public class GeminiGateway implements LlmGateway {
                 String responseBody = response.getBody();
 
                 if (responseBody != null && responseBody.contains("RESOURCE_EXHAUSTED")) {
-                    throw new LlmRateLimitException("Gemini quota exhausted: " + responseBody);
+                    throw new LlmRateLimitException("Gemini quota exhausted (RESOURCE_EXHAUSTED)");
                 }
                 if (responseBody != null && responseBody.contains("\"error\"")) {
-                    log.error("Gemini API returned error in body: {}", responseBody);
+                    log.error("Gemini API returned an error envelope ({} characters)", responseBody.length());
                     return null;
                 }
 
                 if (response.getStatusCode().is2xxSuccessful() && responseBody != null) {
-                    log.info("LLM Response [GEMINI] — raw response (first 500 chars): {}",
-                            responseBody.substring(0, Math.min(responseBody.length(), 500)));
+                    log.info("LLM Response [GEMINI] received ({} characters)", responseBody.length());
 
                     // RECORD: persist prompt + response for future replay.
                     if (recordReplayService != null && recordReplayService.isRecordMode()) {
@@ -176,7 +173,7 @@ public class GeminiGateway implements LlmGateway {
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
-            log.error("Error calling Gemini API", e);
+            log.error("Error calling Gemini API (exception type {})", e.getClass().getSimpleName());
             return null;
         }
     }

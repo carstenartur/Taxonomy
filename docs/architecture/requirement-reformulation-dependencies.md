@@ -27,3 +27,17 @@ and prompt context. It cannot change workspace state, source text or requirement
 version pointers. Portfolio lifecycle keeps its existing downward workspace
 context dependency. Question synthesis and adoption will require separate review
 of any additional relationships they introduce.
+
+Package 2 adds the app-owned asynchronous formulation composition. The controller
+inspected its imports and authorized exactly these four further class-pair deltas:
+
+| From package | To package | Count change | Reason |
+| --- | --- | ---: | --- |
+| composition.reformulation | analysis.reformulation | 0 → 3 | Freeze prompt content in baseline and run; invoke the frozen-input formulation engine. |
+| composition.reformulation | analysis.service | 1 → 7 | Capture provider/model readiness; set/clear the existing provider thread override; classify existing rate-limit, timeout and configuration failures. |
+| composition.reformulation | portfolio.reformulation | 7 → 13 | Guard expected revision and start/publish scoped persisted runs and consume proposal/run contracts through portfolio transactions. |
+| composition.reformulation | workspace.service | 6 → 7 | Capture the already authorized WorkspaceContext and pass it explicitly to the bounded worker. |
+
+No Maven dependencies, reverse edges, ratchet tests or broad allowances change.
+Model calls run outside transactions, via the existing LlmGatewayRegistry budget
+and provider transport. Independent package review checks these exact additions.
