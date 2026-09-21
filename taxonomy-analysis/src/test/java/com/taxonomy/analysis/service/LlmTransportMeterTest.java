@@ -24,7 +24,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.response.MockRestResponseCreators.*;
 
 class LlmTransportMeterTest {
-    private static final String URL = "https://meter.invalid/chat";
+    private static final String URL = "https://meter.invalid/v1/chat/completions";
     private static final String PROMPT = "PRIVATE_REQUIREMENT";
     private static final String KEY = "fixture-secret";
     private static final String USAGE = "\"usage\":{\"prompt_tokens\":42,\"completion_tokens\":15,\"total_tokens\":57,"
@@ -115,7 +115,8 @@ class LlmTransportMeterTest {
         server.expect(requestTo(URL)).andRespond(withSuccess(envelope(valid), MediaType.APPLICATION_JSON));
         var config = mock(LlmProviderConfig.class); when(config.getActiveProvider()).thenReturn(LlmProvider.CUSTOM_OPENAI);
         when(config.isProviderConfigured(LlmProvider.CUSTOM_OPENAI)).thenReturn(true); when(config.getApiKey(LlmProvider.CUSTOM_OPENAI)).thenReturn(KEY);
-        var registry = mock(LlmGatewayRegistry.class); when(registry.getGateway(LlmProvider.CUSTOM_OPENAI)).thenReturn(gateway(http, null));
+        var transport = gateway(http, null);
+        var registry = mock(LlmGatewayRegistry.class); when(registry.getGateway(LlmProvider.CUSTOM_OPENAI)).thenReturn(transport);
         var scope = new ReformulationBaseline.Scope("repository", "workspace", "draft", 1L, 1L);
         var baseline = ReformulationBaseline.freeze(new ReformulationBaseline.Source(scope, 1L, PROMPT),
                 new ReformulationBaseline.Snapshot(scope, "snapshot", 1L, "{}"), Map.of(), "en", "test");

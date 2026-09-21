@@ -1,22 +1,17 @@
 name: Reformulation usage contract
 
-# Supplemental, fast feedback on this incremental branch. Does not replace any
-# canonical verification, database, coverage, or security gate.
+# Supplemental feedback; canonical verification and all its gates stay required.
 on:
-  push:
-    branches: [feature/requirement-reformulation-05-usage]
   pull_request:
     paths:
-      - 'taxonomy-analysis/**/LlmTransport*'
-      - 'taxonomy-analysis/**/OpenAiCompatibleGateway.java'
-      - 'taxonomy-analysis/**/GeminiGateway.java'
+      - 'taxonomy-analysis/**'
       - '.github/workflows/reformulation-usage-contract.yml'
 
 permissions:
   contents: read
 
 concurrency:
-  group: usage-contract-${{ github.event.pull_request.number || github.ref }}
+  group: usage-contract-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
@@ -36,19 +31,23 @@ jobs:
       - name: Execute actual transport contract tests
         run: >-
           ./mvnw -B -ntp -pl taxonomy-analysis -am test
-          -Dtest=LlmTransportMeterTest
+          -Dtest=LlmTransportMeterTest,ParallelReformulationMeterTest
           -Dsurefire.failIfNoSpecifiedTests=false
-      - name: Require the intended suite to have executed
+      - name: Require the intended suites to have executed
         if: always()
         run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           from pathlib import Path
-          report = Path('taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.LlmTransportMeterTest.xml')
-          root = ET.parse(report).getroot()
-          tests = int(root.attrib['tests'])
-          failures = int(root.attrib.get('failures', '0')) + int(root.attrib.get('errors', '0'))
-          skipped = int(root.attrib.get('skipped', '0'))
-          print(f'Transport contract: {tests} tests, {failures} failures/errors, {skipped} skipped')
-          assert tests >= 8 and failures == 0 and skipped == 0
+          suites = {'service.LlmTransportMeterTest': 8, 'reformulation.ParallelReformulationMeterTest': 1}
+          errors = 0
+          for name, minimum in suites.items():
+              report = Path(f'taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.{name}.xml')
+              root = ET.parse(report).getroot()
+              tests = int(root.attrib['tests'])
+              failed = int(root.attrib.get('failures', '0')) + int(root.attrib.get('errors', '0'))
+              skipped = int(root.attrib.get('skipped', '0'))
+              print(f'{name}: {tests} tests, {failed} failures/errors, {skipped} skipped')
+              errors += int(tests < minimum or failed != 0 or skipped != 0)
+          assert errors == 0
           PY
