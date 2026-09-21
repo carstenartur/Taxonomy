@@ -17,6 +17,9 @@ public class FrozenReformulationEngine {
     }
     /** Existing statements remain evidence for retained questions until deliberate reconciliation. */
     public ReformulationDocument synthesize(ReformulationBaseline baseline,List<Statement> priorStatements,List<DecisionAnswer> answers,List<DecisionQuestion> openDecisions) {
+        return synthesize(baseline,priorStatements,answers,openDecisions,ReformulationStepExecutor.direct());
+    }
+    public ReformulationDocument synthesize(ReformulationBaseline baseline,List<Statement> priorStatements,List<DecisionAnswer> answers,List<DecisionQuestion> openDecisions,ReformulationStepExecutor steps) {
         var catalogue=json.readTree(baseline.frozenContext().getOrDefault("catalogue","[]"));
         if(!catalogue.isArray()) throw new IllegalArgumentException("Malformed frozen catalogue");
         var descriptions=new TreeMap<String,String>();var parents=new TreeMap<String,Set<String>>();
@@ -46,7 +49,7 @@ public class FrozenReformulationEngine {
             var data=new LinkedHashMap<String,Object>();data.put("current",node==null?"Synthetic source-based document root":node);
             data.put("terminalContributions",step.terminalIds().stream().map(byId::get).toList());data.put("directParentContributions",step.directNodeIds().stream().map(byId::get).toList());
             var input=new NodeSynthesisInput(baseline,step.nodeId(),node==null || node.parentIds().isEmpty()?null:node.parentIds().getFirst(),json.writeValueAsString(data),sourceSpans,retainedStatements,children,boundariesFor(step,node,children,boundary),answers,openDecisions,"Preserve all original anchors and child IDs verbatim; additions are unreviewed.");
-            var result=nodes.synthesize(input);
+            var result=steps.execute("NODE",input,NodeSynthesisResult.class,()->nodes.synthesize(input));
             var carriedStatements=new LinkedHashMap<String,Statement>();var carriedQuestions=new LinkedHashMap<String,DecisionQuestion>();
             retainedStatements.forEach(s->carriedStatements.put(s.id(),s));openDecisions.forEach(q->carriedQuestions.put(q.id(),q));
             children.forEach(c->{c.statementProposals().forEach(s->carriedStatements.put(s.id(),s));c.questionProposals().forEach(q->carriedQuestions.put(q.id(),q));});
@@ -67,6 +70,10 @@ public class FrozenReformulationEngine {
     /** Reword only invalidated sections, bottom-up. Independent section records remain byte-stable. */
     public ReformulationDocument synthesizeAffected(ReformulationBaseline baseline, ReformulationDocument before,
             List<DecisionAnswer> answers, ReformulationImpact impact) {
+        return synthesizeAffected(baseline,before,answers,impact,ReformulationStepExecutor.direct());
+    }
+    public ReformulationDocument synthesizeAffected(ReformulationBaseline baseline, ReformulationDocument before,
+            List<DecisionAnswer> answers, ReformulationImpact impact, ReformulationStepExecutor steps) {
         var descriptions=new TreeMap<String,String>();var parents=new TreeMap<String,Set<String>>();
         collect(json.readTree(baseline.frozenContext().getOrDefault("catalogue","[]")),null,descriptions,parents,new LinkedHashSet<>());
         var sections=new LinkedHashMap<String,Section>();before.sections().forEach(s->sections.put(s.id(),s));
@@ -77,7 +84,7 @@ public class FrozenReformulationEngine {
         var results=new LinkedHashMap<String,NodeSynthesisResult>();
         var findings=new ArrayList<>(before.validation().findings());
         var visiting=new HashSet<String>();
-        for(var section:before.sections()) rewordSection(section.id(),baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting);
+        for(var section:before.sections()) rewordSection(section.id(),baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting,steps);
         StringBuilder text=new StringBuilder();var rendered=new HashSet<String>();
         for(var section:sections.values()) {
             text.append(section.title()).append("\n").append(section.summary()).append("\n\n");
@@ -96,12 +103,12 @@ public class FrozenReformulationEngine {
     private NodeSynthesisResult rewordSection(String id,ReformulationBaseline baseline,Map<String,Section> sections,
             Map<String,Statement> statements,Map<String,DecisionQuestion> questions,Map<String,String> descriptions,
             Map<String,Set<String>> parents,Map<String,String> boundaries,List<DecisionAnswer> answers,ReformulationImpact impact,
-            Map<String,NodeSynthesisResult> results,List<ValidationReport.Finding> findings,Set<String> visiting) {
+            Map<String,NodeSynthesisResult> results,List<ValidationReport.Finding> findings,Set<String> visiting,ReformulationStepExecutor steps) {
         if(results.containsKey(id))return results.get(id);
         if(!visiting.add(id))throw new IllegalArgumentException("Section cycle: "+id);
         var section=sections.get(id);if(section==null)throw new IllegalArgumentException("Unknown section: "+id);
         var children=new ArrayList<NodeSynthesisResult>();
-        for(String child:section.children())children.add(rewordSection(child,baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting));
+        for(String child:section.children())children.add(rewordSection(child,baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting,steps));
         var localStatementIds=new LinkedHashSet<>(section.statementIds());
         var localQuestions=questions.values().stream().filter(q->section.questionIds().contains(q.id()) || q.key().scope().equals(id)
                 || Set.of("global","@document","*").contains(q.key().scope().toLowerCase(Locale.ROOT))
@@ -122,7 +129,7 @@ public class FrozenReformulationEngine {
             var input=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(metadata),anchors(baseline.originalText()),direct,children,localBoundary,
                     answers.stream().filter(a->localQIds.contains(a.questionId())).toList(),localQuestions,
                     "Only reword this affected section. Preserve human wording and all retained evidence. REJECTED additions must not be reintroduced or paraphrased. Independent branch records stay unchanged.");
-            var generated=nodes.synthesize(input);
+            var generated=steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input));
             var rejected=statements.values().stream().filter(s->"REJECTED".equals(s.reviewState())).map(s->s.wording().strip()).collect(java.util.stream.Collectors.toSet());
             var additions=new ArrayList<Statement>();
             for(var statement:generated.statementProposals()) {

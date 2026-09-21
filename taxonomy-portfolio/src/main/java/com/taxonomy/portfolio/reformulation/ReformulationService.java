@@ -22,6 +22,7 @@ public class ReformulationService {
     private final ReformulationRevisionRepository revisions;
     private final PortfolioJsonCodec json;
     private final ReformulationRunRepository runs;
+    private final ReformulationCheckpointStore checkpoints;
     public ReformulationService(ProjectPortfolioService projects,
             ProjectRequirementVersionRepository versions,
             RequirementAnalysisSnapshotRepository snapshots,
@@ -30,7 +31,8 @@ public class ReformulationService {
             ReformulationProposalRepository proposals,
             ReformulationRevisionRepository revisions,
             PortfolioJsonCodec json,
-            ReformulationRunRepository runs) {
+            ReformulationRunRepository runs,
+            ReformulationCheckpointStore checkpoints) {
         this.projects = projects;
         this.versions = versions;
         this.snapshots = snapshots;
@@ -40,6 +42,7 @@ public class ReformulationService {
         this.revisions = revisions;
         this.json = json;
         this.runs = runs;
+        this.checkpoints = checkpoints;
     }
     @Transactional
     public Proposal create(Long projectId,Long requirementId,CreateRequest request,String actor,WorkspaceContext context) {
@@ -180,6 +183,9 @@ public class ReformulationService {
             String promptVersion,String schemaVersion,String promptContent,Map<String,String> reconcileContext,String actor,WorkspaceContext context) {
         var proposal=require(projectId,requirementId,id,actor,context,true);
         if(proposal.getCurrentRevision()!=expectedRevision) throw new ReformulationPreconditionException();
+        boolean active=runs.findByProposalIdAndScopeKey(id,proposal.getScopeKey()).stream()
+                .map(r->json.read(r.getPayload(),Run.class)).anyMatch(r->Set.of("QUEUED","RUNNING").contains(r.status()));
+        if(active) throw PortfolioException.conflict("Cancel the active synthesis run before starting another run");
         var run=new Run(UUID.randomUUID().toString(),id,expectedRevision,"QUEUED",provider,model,promptVersion,schemaVersion,promptContent,
                 null,null,null,PortfolioScope.username(actor,context),Instant.now(),reconcileContext);
         runs.saveAndFlush(new ReformulationRun(run.id(),id,proposal.getScopeKey(),json.write(run)));
@@ -197,6 +203,34 @@ public class ReformulationService {
         var old=json.read(entity.getPayload(),Run.class);
         if(!old.status().equals("QUEUED")) throw PortfolioException.conflict("Run is not queued");
         entity.setPayload(json.write(state(old,"RUNNING",null,null,null)));
+    }
+    /** Active-run authority is checked even on cache hits; no provider calls enter this transaction. */
+    @Transactional
+    public Optional<String> checkpoint(Long projectId,Long requirementId,String id,String runId,String kind,String fingerprint,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);
+        requireActiveRun(proposal,runId);
+        return checkpoints.lookup(proposal,kind,fingerprint);
+    }
+    @Transactional
+    public String completeCheckpoint(Long projectId,Long requirementId,String id,String runId,String kind,String fingerprint,String payload,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);
+        requireActiveRun(proposal,runId);
+        return checkpoints.complete(proposal,runId,kind,fingerprint,payload);
+    }
+    private void requireActiveRun(ReformulationProposal proposal,String runId) {
+        if(!"RUNNING".equals(json.read(run(proposal,runId).getPayload(),Run.class).status()))
+            throw PortfolioException.conflict("REFORMULATION_RUN_NOT_ACTIVE");
+    }
+    /** Cancellation is explicit and idempotent. Late workers cannot publish or persist more checkpoints. */
+    @Transactional
+    public Run cancelRun(Long projectId,Long requirementId,String id,String runId,long expectedRevision,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);
+        if(proposal.getCurrentRevision()!=expectedRevision) throw new ReformulationPreconditionException();
+        var entity=run(proposal,runId);var old=json.read(entity.getPayload(),Run.class);
+        if(!Set.of("QUEUED","RUNNING").contains(old.status())) return old;
+        var cancelled=state(old,"CANCELLED",null,null,null);
+        entity.recordCancellation(PortfolioScope.username(actor,context),Instant.now());
+        entity.setPayload(json.write(cancelled));return cancelled;
     }
     @Transactional
     public void finishRun(Long projectId,Long requirementId,String id,String runId,ReformulationDocument document,String failureCode,String actor,WorkspaceContext context) {

@@ -11,7 +11,8 @@
             state:'Neuformulierungsangebot – nicht übernommen', original:'Original', proposal:'Vorschlag', questions:'Fragen', empty:'Noch kein Angebot vorhanden.',
             noSnapshot:'Zuerst einen vorhandenen Analyse-Snapshot auswählen.', save:'Entwurf speichern', saved:'Gespeichert. Die aktive Anforderung bleibt unverändert.',
             variant:'Variante speichern', copy:'Gespeicherte Revision kopieren', copied:'Gespeicherte Revision kopiert.', compare:'Mit Vorgänger vergleichen',
-            synthesize:'Betroffene Abschnitte neu formulieren', generate:'Neuen Formulierungslauf starten', rationale:'Begründung', defaultRationale:'Bewusste Bearbeitung des Angebots',
+            synthesize:'Betroffene Abschnitte neu formulieren', generate:'Neuen Formulierungslauf starten', cancelRun:'Lauf abbrechen',
+            retryHint:'Gespeicherte Teilergebnisse bleiben erhalten. Ein neuer Lauf verwendet passende Ergebnisse erneut; eine bereits laufende Modellanfrage kann noch enden, aber nichts mehr veröffentlichen.', rationale:'Begründung', defaultRationale:'Bewusste Bearbeitung des Angebots',
             answer:'Antwort speichern', defer:'Noch offen / zurückstellen', na:'Nicht anwendbar', other:'Andere Auswahl erläutern', history:'Entscheidungsverlauf',
             impact:'Betroffene Aussagen / Abschnitte / Schnittstellen', noImpact:'Noch keine Antwortänderungen.', review:'Alle Ergänzungen bleiben fachlich ungeprüft.',
             additions:'Aussagen, Ergänzungen und Herkunft', edit:'Absatz bearbeiten', reject:'Ergänzung ablehnen', rejected:'Abgelehnt – bleibt als Beleg erhalten',
@@ -27,7 +28,8 @@
             state:'Reformulation offer – not adopted', original:'Original', proposal:'Proposal', questions:'Questions', empty:'No offer yet.',
             noSnapshot:'Select an existing analysis snapshot first.', save:'Save draft', saved:'Saved. The active requirement is unchanged.',
             variant:'Save variant', copy:'Copy saved revision', copied:'Saved revision copied.', compare:'Compare with predecessor',
-            synthesize:'Reword affected sections', generate:'Start new wording run', rationale:'Rationale', defaultRationale:'Deliberate proposal edit',
+            synthesize:'Reword affected sections', generate:'Start new wording run', cancelRun:'Cancel run',
+            retryHint:'Saved step results remain available for an explicit retry. An in-flight model request may still finish, but cannot publish after cancellation.', rationale:'Rationale', defaultRationale:'Deliberate proposal edit',
             answer:'Save answer', defer:'Still open / defer', na:'Not applicable', other:'Describe other choice', history:'Decision history',
             impact:'Affected statements / sections / interfaces', noImpact:'No answer changes yet.', review:'All additions still require expert review.',
             additions:'Statements, additions and provenance', edit:'Edit paragraph', reject:'Reject addition', rejected:'Rejected – retained as evidence',
@@ -180,13 +182,13 @@
         const questions=el('section',undefined,'reformulation-panel reformulation-questions');questions.dataset.panel='questions';questions.append(el('h3',t('questions'),'h5'));
         if(!revision.questions.length)questions.append(el('p',t('noQuestions')));revision.questions.forEach(q=>questions.append(question(q)));grid.append(questions);host.append(grid);
         const impact=el('details');impact.open=true;impact.append(el('summary',t('impact')));impact.append(pre(revision.impact?.sectionIds.length ? [revision.impact.statementIds.join(', '),revision.impact.sectionIds.join(', '),revision.impact.boundaryEdgeIds.join(', ')].filter(Boolean).join('\n') : t('noImpact')));host.append(impact);
-        const actions=el('div',undefined,'reformulation-controls');actions.append(button(revision.impact?.sectionIds.length?t('synthesize'):t('generate'),async()=>{
+        const actions=el('div',undefined,'reformulation-controls');const generate=button(revision.impact?.sectionIds.length?t('synthesize'):t('generate'),async()=>{
             if(mutationInFlight)throw new Error(t('working'));
             mutationInFlight=true;++readGeneration;
             try {await api.updateReformulation(project,requirement,offer.id,'synthesis-runs',revision.number,{});}
             finally {mutationInFlight=false;++readGeneration;}
             await refreshRuns();
-        }),button(t('refresh'),refreshRuns));host.append(actions);
+        });generate.id='reformulationStartRun';generate.disabled=true;actions.append(generate,button(t('refresh'),refreshRuns));host.append(actions);
         const statements=el('details');statements.append(el('summary',t('additions')));revision.statements.forEach(s=>{
             const item=el('div',undefined,'border rounded p-3 my-2');item.id='statement-'+s.id;item.tabIndex=-1;
             item.append(el('strong',t(s.provenance)+(s.editingOrigin==='HUMAN'?' · '+t('HUMAN_DECISION'):'')),pre(s.wording));
@@ -253,10 +255,24 @@
         if(advanced)offer=latest;
         if(advanced || previousVersion!==active.currentVersionId)render();
         const target=document.getElementById('reformulationRuns');target.replaceChildren();
-        runs.slice(-3).forEach(run=>{target.append(el('p',run.status+(run.failureCode?' · '+run.failureCode:''),'small text-break'));
+        const activeRun = run => ['QUEUED','RUNNING'].includes(run.status);
+        const generate = document.getElementById('reformulationStartRun');
+        if(generate)generate.disabled=runs.some(activeRun);
+        // Older releases allowed concurrent runs. Keep all active runs reachable, not just the latest three.
+        runs.filter((run,index)=>activeRun(run) || index>=runs.length-3).forEach(run=>{
+            target.append(el('p',run.status+(run.failureCode?' · '+run.failureCode:''),'small text-break'));
+            if(activeRun(run))target.append(button(t('cancelRun'),async()=>{
+                if(mutationInFlight)throw new Error(t('working'));
+                mutationInFlight=true;++readGeneration;
+                try {await api.updateReformulation(project,requirement,selected,'synthesis-runs/'+encodeURIComponent(run.id)+'/cancel',offer.currentRevision.number,{});}
+                finally {mutationInFlight=false;++readGeneration;}
+                await refreshRuns();
+            },'btn btn-sm btn-outline-danger'));
+
             if(run.status==='PARTIAL' && run.candidate){const candidate=el('section',undefined,'reformulation-candidate my-2');candidate.dataset.reformulationCandidate='';candidate.append(el('h3',t('candidate'),'h5'),button(t('compare'),()=>showComparison(offer.currentRevision.text,run.candidate.text,t('candidate'))));target.append(candidate);}
         });
-        if(runs.some(r=>['QUEUED','RUNNING'].includes(r.status))){announce(t('working'));timer=setTimeout(()=>perform(refreshRuns),1500);}
+        if(runs.length)target.append(el('p',t('retryHint'),'small'));
+        if(runs.some(activeRun)){announce(t('working'));timer=setTimeout(()=>perform(refreshRuns),1500);}
         else announce(t('state')+(hasDrafts()?' '+t('dirty'):''));
     }
     async function start() {
