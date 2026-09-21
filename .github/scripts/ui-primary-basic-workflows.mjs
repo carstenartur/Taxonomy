@@ -50,14 +50,51 @@ export async function runBasicWorkflows({ page, role, evidence }) {
     `Unexpected export filename: ${download.suggestedFilename()}`);
   passed('CSV export download');
 
-  await page.route('**/api/diagram/visio', route => route.fulfill({
-    status: 503,
-    contentType: 'application/json',
-    body: JSON.stringify({ error: 'EXPORT_PROVIDER_UNAVAILABLE', message: 'Diagram service unavailable' })
-  }), { times: 1 });
-  await page.evaluate(() => window.TaxonomyExport.exportVisio('QA export failure requirement'));
-  await waitForText('#operationToastBody', text =>
-    text.toLowerCase().includes('unavailable') || text.includes('503'));
+  // Export an existing view, not just text. The current-view route must actually
+  // receive the request; a preflight "missing architecture" error is not this test.
+  const fixture = {
+    viewTitle: 'QA existing architecture',
+    includedElements: [{ nodeCode: 'BP', title: 'Business Processes',
+      taxonomySheet: 'BP', relevance: .91, anchor: true, taxonomyDepth: 0 }],
+    includedRelationships: []
+  };
+  const exportRequests = [];
+  const exportRoute = '**/api/diagram/current/visio';
+  const failExport = route => {
+    exportRequests.push(route.request().postDataJSON());
+    return route.fulfill({
+      status: 503,
+      contentType: 'application/json',
+      body: JSON.stringify({ error: 'EXPORT_SERVICE_UNAVAILABLE' })
+    });
+  };
+  await page.route(exportRoute, failExport);
+  try {
+    const outcome = await page.evaluate(async view => {
+      const state = window.TaxonomyState;
+      const previousView = state.currentArchView;
+      const previousText = state.lastAnalyzedText;
+      const text = 'QA export failure requirement';
+      state.currentArchView = view;
+      state.lastAnalyzedText = text;
+      const before = JSON.stringify(state.currentArchView);
+      try {
+        const exported = await window.TaxonomyExport.exportVisio(text);
+        return { exported, preserved: before === JSON.stringify(state.currentArchView) };
+      } finally {
+        state.currentArchView = previousView;
+        state.lastAnalyzedText = previousText;
+      }
+    }, fixture);
+    assert(outcome.exported === false, 'Failed backend export must not report success');
+    assert(outcome.preserved, 'Failed export changed the existing architecture');
+    assert(exportRequests.length === 1, `Expected one current-view export, got ${exportRequests.length}`);
+    assert(JSON.stringify(exportRequests[0]) === JSON.stringify(fixture),
+      'Export did not send the frozen existing architecture');
+    await waitForText('#operationToastBody', text => text.includes('EXPORT_SERVICE_UNAVAILABLE'));
+  } finally {
+    await page.unroute(exportRoute, failExport);
+  }
   await page.waitForFunction(() => {
     const toast = document.getElementById('operationToast');
     if (!toast || toast.dataset.toastVisible !== 'true') return false;

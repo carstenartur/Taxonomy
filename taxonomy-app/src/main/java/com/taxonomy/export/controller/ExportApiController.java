@@ -2,6 +2,7 @@ package com.taxonomy.export.controller;
 
 import com.taxonomy.diagram.DiagramModel;
 import com.taxonomy.dto.SavedAnalysis;
+import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.export.MermaidLabels;
 import com.taxonomy.export.service.ExportFacade;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
@@ -168,6 +169,36 @@ public class ExportApiController {
         } catch (UncheckedIOException e) {
             log.error("Export failed for format '{}': {}", formatId, e.getMessage(), e);
             return ResponseEntity.internalServerError().build();
+        }
+    }
+
+    @Operation(summary = "Export the existing architecture without AI analysis",
+            description = "Serializes a client-provided working-view snapshot. No re-scoring, second node selection, or persistence occurs. Use project snapshot exports for historical provenance.")
+    @ApiResponse(responseCode = "200", description = "Diagram file returned as attachment")
+    @ApiResponse(responseCode = "400", description = "Missing, malformed or oversized architecture view")
+    @PostMapping("/diagram/current/{formatId}")
+    public ResponseEntity<?> exportCurrentDiagram(@PathVariable("formatId") String formatId,
+            @RequestBody RequirementArchitectureView view) {
+        Optional<ExportFormatExtension> extensionOpt = exportFormatRegistry.findByFormatId(formatId);
+        if (extensionOpt.isEmpty()) {
+            return ResponseEntity.notFound().build();
+        }
+        try {
+            DiagramModel diagram = exportFacade.buildCurrentDiagram(view);
+            ExportFormatExtension extension = extensionOpt.get();
+            ExportFormatDescriptor descriptor = extension.descriptor();
+            ExportResult result = extension.export(new ExportContext(diagram, Map.of()));
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"requirement-architecture." + descriptor.fileExtension() + "\"")
+                    .header(HttpHeaders.CONTENT_TYPE, descriptor.contentType())
+                    .body(result.bytes());
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().body(Map.of("error", e.getMessage()));
+        } catch (UncheckedIOException e) {
+            log.error("Current architecture export failed for format '{}'", formatId, e);
+            return ResponseEntity.internalServerError()
+                    .body(Map.of("error", "The architecture file could not be created. The working state was not changed."));
         }
     }
 
