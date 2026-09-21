@@ -21,6 +21,7 @@ public class ReformulationService {
     private final ReformulationProposalRepository proposals;
     private final ReformulationRevisionRepository revisions;
     private final PortfolioJsonCodec json;
+    private final ReformulationRunRepository runs;
 
     public ReformulationService(ProjectPortfolioService projects,
             ProjectRequirementVersionRepository versions,
@@ -29,7 +30,8 @@ public class ReformulationService {
             ReformulationBaselineContextPort contextPort,
             ReformulationProposalRepository proposals,
             ReformulationRevisionRepository revisions,
-            PortfolioJsonCodec json) {
+            PortfolioJsonCodec json,
+            ReformulationRunRepository runs) {
         this.projects = projects;
         this.versions = versions;
         this.snapshots = snapshots;
@@ -38,6 +40,7 @@ public class ReformulationService {
         this.proposals = proposals;
         this.revisions = revisions;
         this.json = json;
+        this.runs = runs;
     }
     @Transactional
     public Proposal create(Long projectId,Long requirementId,CreateRequest request,String actor,WorkspaceContext context) {
@@ -88,9 +91,100 @@ public class ReformulationService {
         if(request==null || request.text()==null || request.text().isBlank() || request.rationale()==null || request.rationale().isBlank())
             throw PortfolioException.validation("Draft text and rationale are required");
         if(request.rationale().length()>1000) throw PortfolioException.validation("Rationale exceeds 1000 characters");
+        var previous=readRevision(proposal,proposal.getCurrentRevision());
         proposal.advanceRevision();
-        saveRevision(proposal,request.text(),request.rationale(),PortfolioScope.username(actor,context),Instant.now());
+        var statements=new ArrayList<>(previous.statements());
+        statements.add(new Statement("human-"+UUID.randomUUID(),request.text(),List.of(),Statement.Provenance.HUMAN_DECISION,
+                List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,"UNREVIEWED"));
+        var revision=new Revision(proposal.getCurrentRevision(),previous.number(),request.text(),previous.sections(),statements,
+                previous.questions(),previous.answers(),previous.validation(),PortfolioScope.username(actor,context),Instant.now(),request.rationale());
+        revisions.save(new ReformulationRevision(proposal.getId(),proposal.getScopeKey(),revision.number(),json.write(revision)));
         return view(proposal);
+    }
+    @Transactional
+    public Run beginRun(Long projectId,Long requirementId,String id,long expectedRevision,String provider,String model,
+            String promptVersion,String schemaVersion,String promptContent,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);
+        if(proposal.getCurrentRevision()!=expectedRevision) throw new ReformulationPreconditionException();
+        var run=new Run(UUID.randomUUID().toString(),id,expectedRevision,"QUEUED",provider,model,promptVersion,schemaVersion,promptContent,
+                null,null,null,PortfolioScope.username(actor,context),Instant.now());
+        runs.saveAndFlush(new ReformulationRun(run.id(),id,proposal.getScopeKey(),json.write(run)));
+        return run;
+    }
+    @Transactional(readOnly=true)
+    public List<Run> runs(Long projectId,Long requirementId,String id,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,false);
+        return runs.findByProposalIdAndScopeKey(id,proposal.getScopeKey()).stream().map(r->json.read(r.getPayload(),Run.class))
+                .sorted(Comparator.comparing(Run::createdAt)).toList();
+    }
+    @Transactional
+    public void running(Long projectId,Long requirementId,String id,String runId,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);var entity=run(proposal,runId);
+        var old=json.read(entity.getPayload(),Run.class);
+        if(!old.status().equals("QUEUED")) throw PortfolioException.conflict("Run is not queued");
+        entity.setPayload(json.write(state(old,"RUNNING",null,null,null)));
+    }
+    @Transactional
+    public void finishRun(Long projectId,Long requirementId,String id,String runId,ReformulationDocument document,String failureCode,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);var entity=run(proposal,runId);
+        var old=json.read(entity.getPayload(),Run.class);
+        if(!old.status().equals("RUNNING") && !old.status().equals("QUEUED")) return;
+        if(document==null) {entity.setPayload(json.write(state(old,"FAILED",failureCode,null,null)));return;}
+        var previous=readRevision(proposal,proposal.getCurrentRevision());
+        boolean human=previous.statements().stream().anyMatch(s->s.editingOrigin()==Statement.EditingOrigin.HUMAN);
+        if(previous.number()!=old.sourceRevision() || human) {
+            entity.setPayload(json.write(state(old,"PARTIAL",human?"MANUAL_DRAFT_PROTECTED":"PROPOSAL_REVISION_CHANGED",null,document)));return;
+        }
+        if(!hasClosedReferences(document,previous)) {
+            entity.setPayload(json.write(state(old,"PARTIAL","INVALID_REFERENCE_CLOSURE",null,document)));return;
+        }
+        proposal.advanceRevision();
+        var revision=new Revision(proposal.getCurrentRevision(),previous.number(),document.text(),document.sections(),document.statements(),
+                document.questions(),previous.answers(),document.validation(),old.actor(),Instant.now(),"Generated requirement offer; not adopted or approved");
+        revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),revision.number(),json.write(revision)));
+        entity.setPayload(json.write(state(old,"COMPLETED",null,revision.number(),document)));
+    }
+    /** Publication boundary: references resolve within this exact immutable candidate revision. */
+    private static boolean hasClosedReferences(ReformulationDocument document,Revision previous) {
+        var statements=new HashMap<String,Statement>();
+        for(var statement:document.statements()) if(statements.put(statement.id(),statement)!=null) return false;
+        var questions=new HashMap<String,DecisionQuestion>();
+        for(var question:document.questions()) if(question.id()==null || question.id().isBlank() || questions.put(question.id(),question)!=null) return false;
+        var sections=new HashSet<String>();
+        for(var section:document.sections()) if(section.id()==null || section.id().isBlank() || !sections.add(section.id())) return false;
+        for(var statement:statements.values()) if(!questions.keySet().containsAll(statement.questionDependencies())) return false;
+        for(var question:questions.values()) {
+            if(!statements.keySet().containsAll(question.affectedStatementIds()) || !questions.keySet().containsAll(question.prerequisites())
+                    || !questions.keySet().containsAll(question.dependentQuestionIds())) return false;
+        }
+        for(var section:document.sections()) {
+            if(!sections.containsAll(section.children()) || !statements.keySet().containsAll(section.statementIds())
+                    || !questions.keySet().containsAll(section.questionIds())) return false;
+        }
+        for(var answer:previous.answers()) if(!questions.containsKey(answer.questionId())) return false;
+        for(var finding:document.validation().findings()) if(!statements.keySet().containsAll(finding.statementIds())) return false;
+        for(var node:document.nodeResults()) {
+            if(!statements.keySet().containsAll(node.preservedStatementIds()) || !questions.keySet().containsAll(node.preservedQuestionIds())) return false;
+            for(var statement:node.statementProposals()) if(!statement.equals(statements.get(statement.id()))) return false;
+            for(var question:node.questionProposals()) if(!question.equals(questions.get(question.id()))) return false;
+            for(var finding:node.conflictCandidates()) if(!statements.keySet().containsAll(finding.statementIds())) return false;
+        }
+        // A retained question cannot silently change meaning or point at rewritten old evidence.
+        var previousStatements=new HashMap<String,Statement>();previous.statements().forEach(s->previousStatements.put(s.id(),s));
+        for(var question:previous.questions()) if(questions.containsKey(question.id())) {
+            if(!question.equals(questions.get(question.id()))) return false;
+            for(String id:question.affectedStatementIds()) {
+                var evidence=previousStatements.get(id);
+                if(evidence==null || !evidence.equals(statements.get(id))) return false;
+            }
+        }
+        return true;
+    }
+    private ReformulationRun run(ReformulationProposal proposal,String runId) {
+        return runs.lockScoped(runId,proposal.getId(),proposal.getScopeKey()).orElseThrow(()->PortfolioException.notFound("Synthesis run not found"));
+    }
+    private static Run state(Run old,String status,String failure,Long revision,ReformulationDocument candidate) {
+        return new Run(old.id(),old.proposalId(),old.sourceRevision(),status,old.provider(),old.model(),old.promptVersion(),old.schemaVersion(),old.promptContent(),failure,revision,candidate,old.actor(),old.createdAt());
     }
     private void saveRevision(ReformulationProposal proposal,String text,String rationale,String actor,Instant now) {
         long number=proposal.getCurrentRevision();

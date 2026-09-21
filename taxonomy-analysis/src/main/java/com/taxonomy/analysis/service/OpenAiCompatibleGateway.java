@@ -111,8 +111,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                     int status = exception.getStatusCode().value();
                     if (status == 429) {
                         throw new LlmRateLimitException(
-                                provider + " rate limit (HTTP 429): "
-                                        + exception.getResponseBodyAsString(), exception);
+                                provider + " rate limit (HTTP 429)", exception);
                     }
                     if (status == 401 || status == 403) {
                         String authenticationMessage = provider == LlmProvider.CUSTOM_OPENAI
@@ -126,8 +125,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                     }
                     throw new LlmProviderException(
                             LlmProviderException.Reason.REQUEST_REJECTED,
-                            provider + " endpoint rejected the request (HTTP " + status + "): "
-                                    + exception.getResponseBodyAsString(), exception);
+                            provider + " endpoint rejected the request (HTTP " + status + ")", exception);
                 } catch (HttpServerErrorException exception) {
                     if (attempt < maxRetries) {
                         attempt++;
@@ -140,8 +138,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                     throw new LlmProviderException(
                             LlmProviderException.Reason.REQUEST_REJECTED,
                             provider + " endpoint returned a server error "
-                                    + exception.getStatusCode() + ": "
-                                    + exception.getResponseBodyAsString(), exception);
+                                    + exception.getStatusCode(), exception);
                 } catch (ResourceAccessException exception) {
                     if (exception.getCause() instanceof SocketTimeoutException) {
                         int timeoutSeconds = preferencesService != null
@@ -169,9 +166,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                 }
 
                 if (response.getStatusCode().is2xxSuccessful() && response.getBody() != null) {
-                    log.info("LLM Response [{}] — raw response (first 500 chars): {}",
-                            provider, response.getBody().substring(0,
-                                    Math.min(response.getBody().length(), 500)));
+                    log.info("LLM Response [{}] received ({} characters)", provider, response.getBody().length());
                     if (recordReplayService != null && recordReplayService.isRecordMode()) {
                         recordReplayService.record(prompt, response.getBody(), provider.name(), null);
                     }
@@ -185,7 +180,7 @@ public class OpenAiCompatibleGateway implements LlmGateway {
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception exception) {
-            log.error("Error calling {} API", provider, exception);
+            log.error("Error calling {} API (exception type {})", provider, exception.getClass().getSimpleName());
             return null;
         }
     }

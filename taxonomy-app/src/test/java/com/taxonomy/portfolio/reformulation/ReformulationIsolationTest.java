@@ -88,6 +88,13 @@ class ReformulationIsolationTest {
                 .andExpect(status().isAccepted()).andExpect(header().string("ETag","\"1\""))
                 .andReturn().getResponse().getContentAsString());
     }
+    @Test void missingProviderPersistsHonestFailedRunWithoutChangingOriginalDraft() throws Exception {
+        String id=create().path("id").asText();
+        mvc.perform(get(base()+"/"+id+"/synthesis-runs")).andExpect(status().isOk())
+            .andExpect(jsonPath("$[0].status").value("FAILED"))
+            .andExpect(jsonPath("$[0].failureCode").value("PROVIDER_NOT_CONFIGURED"));
+        mvc.perform(get(base()+"/"+id)).andExpect(status().isOk()).andExpect(jsonPath("$.currentRevision.number").value(1));
+    }
     @Test void savesTwoImmutableRevisionsWithoutChangingRequirementOrAnalysis() throws Exception {
         var before = projects.getRequirement(project.id(),requirement.id(),"architect",context);
         var repositoryContext = resolver.resolveCurrentRepositoryContext();

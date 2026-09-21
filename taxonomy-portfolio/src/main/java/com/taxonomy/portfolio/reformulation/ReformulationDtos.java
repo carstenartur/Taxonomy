@@ -11,5 +11,8 @@ public final class ReformulationDtos {
             String actor,Instant createdAt,String rationale) {
         public Revision { sections=List.copyOf(sections);statements=List.copyOf(statements);questions=List.copyOf(questions);answers=List.copyOf(answers); }
     }
+    public record Run(String id,String proposalId,long sourceRevision,String status,String provider,String model,
+            String promptVersion,String schemaVersion,String promptContent,String failureCode,Long resultRevision,ReformulationDocument candidate,
+            String actor,Instant createdAt) {}
     public record Proposal(String id,ReformulationBaseline baseline,String creator,Instant createdAt,String status,Revision currentRevision) {}
 }
