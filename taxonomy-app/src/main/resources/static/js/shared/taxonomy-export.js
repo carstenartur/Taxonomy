@@ -241,6 +241,9 @@
         status.setAttribute('aria-busy', String(busy));
         document.getElementById('diagramExportSpinner').hidden = !busy;
         document.getElementById('diagramExportStatusText').textContent = message;
+        // Keep errors visible even when the export panel is collapsed or on another tab.
+        // The established alert bridge supplies persistent, accessible global feedback.
+        if (failed) alert(message);
     }
 
     function diagramDownload(url, businessText, filename, responseType) {
@@ -252,9 +255,10 @@
                 'Keine vorhandene Architekturansicht verfügbar. Es wurde keine neue Analyse gestartet.'), false, true);
             return Promise.resolve(false);
         }
-        if (typeof state.lastAnalyzedText === 'string' && businessText !== state.lastAnalyzedText) {
-            diagramStatus(exportMessage('The requirement has changed. Restore the analysed text or select the matching architecture before exporting.',
-                'Der Anforderungstext wurde geändert. Stellen Sie den analysierten Text wieder her oder wählen Sie die passende Architektur.'), false, true);
+        if (typeof state.lastAnalyzedText !== 'string' || !state.lastAnalyzedText.trim()
+                || businessText !== state.lastAnalyzedText) {
+            diagramStatus(exportMessage('The analysed text baseline is missing or the requirement has changed. Load the matching analysis before exporting.',
+                'Der analysierte Anforderungstext fehlt oder wurde geändert. Laden Sie vor dem Export die passende Analyse.'), false, true);
             return Promise.resolve(false);
         }
         var body;

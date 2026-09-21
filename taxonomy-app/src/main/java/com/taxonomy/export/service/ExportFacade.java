@@ -129,14 +129,16 @@ public class ExportFacade {
         var codes = new java.util.HashSet<String>();
         for (var element : view.getIncludedElements()) {
             if (element == null || element.getNodeCode() == null || element.getNodeCode().isBlank()
-                    || !codes.add(element.getNodeCode()) || !Double.isFinite(element.getRelevance())) {
+                    || !codes.add(element.getNodeCode()) || !Double.isFinite(element.getRelevance())
+                    || element.getRelevance() < 0 || element.getRelevance() > 1) {
                 throw new IllegalArgumentException("Architecture contains invalid or duplicate nodes.");
             }
         }
         for (var relation : view.getIncludedRelationships()) {
             if (relation == null || !codes.contains(relation.getSourceCode())
                     || !codes.contains(relation.getTargetCode()) || relation.getRelationType() == null
-                    || relation.getRelationType().isBlank() || !Double.isFinite(relation.getPropagatedRelevance())) {
+                    || relation.getRelationType().isBlank() || !Double.isFinite(relation.getPropagatedRelevance())
+                    || relation.getPropagatedRelevance() < 0 || relation.getPropagatedRelevance() > 1) {
                 throw new IllegalArgumentException("Architecture contains invalid relationships or missing endpoints.");
             }
         }

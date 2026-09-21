@@ -157,7 +157,9 @@ public class DiagramProjectionService {
         for (RequirementElementView el : elements) {
             String hp = el.getHierarchyPath();
             if (hp == null || hp.isEmpty()) continue;
-            String[] parts = hp.split("\\s*>\\s*");
+            // Split only on the literal separator; trim candidates below.
+            // Optional whitespace in the regex makes long untrusted prefixes quadratic.
+            String[] parts = hp.split(">");
             // Walk backwards from the element's position to find the nearest ancestor in the model
             for (int i = parts.length - 2; i >= 0; i--) {
                 String candidate = parts[i].trim();

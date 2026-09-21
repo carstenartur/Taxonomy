@@ -70,6 +70,35 @@ final class CurrentDiagramExportRegression {
         var oversized = view(1);oversized.setIncludedElements(Collections.nCopies(10_001, oversized.getIncludedElements().getFirst()));
         check(c.exportCurrentDiagram("visio", oversized).getStatusCode().value() == 400, "Oversized view accepted");
         check(c.exportCurrentDiagram("unknown", view(1)).getStatusCode().value() == 404, "Unknown format accepted");
+        // Validate at the shared facade, before any format-specific exporter can
+        // hide the error. Finite numbers outside [0,1] are invalid too.
+        for (double score : new double[]{-.01, 1.01, 2, Double.NaN,
+                Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY}) {
+            var badNode = view(2);
+            badNode.getIncludedElements().getFirst().setRelevance(score);
+            expectInvalidScore(badNode, "Node score accepted: " + score);
+            var badEdge = view(2);
+            badEdge.getIncludedRelationships().getFirst().setPropagatedRelevance(score);
+            expectInvalidScore(badEdge, "Relationship score accepted: " + score);
+        }
+        for (double score : new double[]{0, 1}) {
+            var boundary = view(2);
+            boundary.getIncludedElements().getFirst().setRelevance(score);
+            boundary.getIncludedRelationships().getFirst().setPropagatedRelevance(score);
+            var diagram = facade().buildCurrentDiagram(boundary);
+            check(diagram.nodes().getFirst().relevance() == score, "Valid node boundary changed");
+            check(diagram.edges().getFirst().relevance() == score, "Valid edge boundary changed");
+        }
+
+    }
+
+    private static void expectInvalidScore(RequirementArchitectureView view, String message) {
+        try {
+            facade().buildCurrentDiagram(view);
+            throw new AssertionError(message);
+        } catch (IllegalArgumentException expected) {
+            // The common boundary must reject this before a format adapter runs.
+        }
     }
 
     private static RequirementArchitectureView view(int size) {
@@ -98,6 +127,6 @@ final class CurrentDiagramExportRegression {
     public static void main(String[] args) throws Exception {
         exportsAllCurrentNodesWithoutScoring();
         rejectsInvalidSnapshotsWithoutScoring();
-        System.out.println("PASS: complete 50/150-node VSDX exports without LLM/derivation; seven invalid requests rejected");
+        System.out.println("PASS: complete 50/150-node VSDX exports without LLM/derivation; invalid inputs and normalized score ranges checked");
     }
 }
