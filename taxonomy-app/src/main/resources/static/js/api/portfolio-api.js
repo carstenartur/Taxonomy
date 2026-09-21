@@ -133,6 +133,16 @@ window.TaxonomyPortfolioApi = (function () {
         listReformulationRuns: function (projectId, requirementId, id) {
             return getJson(requirementPath(projectId, requirementId) + '/reformulations/' + encodeURIComponent(id) + '/synthesis-runs');
         },
+        getReformulationProgress: function (projectId, requirementId, id, runId, after) {
+            const query = new URLSearchParams({limit: '20'});
+            if (after) query.set('after', after);
+            return getJson(requirementPath(projectId, requirementId) + '/reformulations/' + encodeURIComponent(id)
+                + '/synthesis-runs/' + encodeURIComponent(runId) + '/progress?' + query);
+        },
+        getReformulationPartial: function (projectId, requirementId, id, runId, checkpointId) {
+            return getJson(requirementPath(projectId, requirementId) + '/reformulations/' + encodeURIComponent(id)
+                + '/synthesis-runs/' + encodeURIComponent(runId) + '/progress/checkpoints/' + encodeURIComponent(checkpointId));
+        },
         createReformulation: function (projectId, requirementId, body) {
             return sendJson(requirementPath(projectId, requirementId) + '/reformulations', 'POST', body);
         },

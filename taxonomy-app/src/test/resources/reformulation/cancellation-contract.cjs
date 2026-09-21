@@ -24,6 +24,7 @@ async function verify(language) {
         document: {getElementById: id => id==='reformulationRuns' ? target : generate},
         clearTimeout() {}, setTimeout() {}, hasDrafts: () => true, t: key => key,
         el: element, button: (label, action) => Object.assign(element('button',label),{action}),
+        refreshProgress: async () => {}, // Progress reads have their own real-adapter contract.
         announce() {}, perform: fn => fn(), render: () => assert.fail('Cancelling a run must not re-render away unsaved text'),
         api: {
             async listReformulationRuns() {return runs;},
