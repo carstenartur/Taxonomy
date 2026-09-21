@@ -4,6 +4,9 @@ name: Reformulation usage contract
 on:
   pull_request:
     paths:
+      - 'pom.xml'
+      - '.mvn/verification-suites.json'
+      - 'taxonomy-domain/**'
       - 'taxonomy-tooling/**'
       - 'taxonomy-analysis/**'
       - 'taxonomy-portfolio/**'
@@ -55,9 +58,7 @@ jobs:
       - name: Verify durable per-run accounting and existing architecture boundaries
         run: |
           set +e
-          ./mvnw -B -ntp -pl taxonomy-app -am test \
-            -Dtest=ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ReformulationEncodingTest,ArchitectureContextDependencyRatchetTest \
-            -Dsurefire.failIfNoSpecifiedTests=false > usage-persistence-tests.log 2>&1
+          ./mvnw -B -ntp -pl taxonomy-tooling,taxonomy-app -am test -Preformulation-usage-tests > usage-persistence-tests.log 2>&1
           result=$?
           tail -n 100 usage-persistence-tests.log
           exit "$result"
@@ -70,7 +71,10 @@ jobs:
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest.xml 2 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureContextDependencyRatchetTest.xml 1 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest.xml 2 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationEncodingTest.xml 1
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationEncodingTest.xml 1 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.build.WorkflowTestAuthorityPolicyTest.xml 7 \
+            taxonomy-tooling/target/surefire-reports/TEST-com.taxonomy.tooling.PythonSourceRatchetRepositoryTest.xml 4 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.build.ReformulationVerificationProfileTest.xml 1
       - name: Archive the tested public source tree
         if: always()
         run: git archive --format=zip -o usage-source.zip HEAD

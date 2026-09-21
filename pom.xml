@@ -411,6 +411,14 @@
             <id>archimate-import-tests</id>
             <properties><test>ArchiMateWorkspaceImportTests,ArchiMateIdentityImportTest,ArchitectureArchiMateExchangeAcceptanceTest,CatalogFacadeTest</test></properties>
         </profile>
+        <!-- Focused follow-up lane; the canonical ci profile remains authoritative. -->
+        <profile>
+            <id>reformulation-usage-tests</id>
+            <properties>
+                <test>ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ReformulationEncodingTest,ArchitectureContextDependencyRatchetTest,WorkflowTestAuthorityPolicyTest,PythonSourceRatchetRepositoryTest,ReformulationVerificationProfileTest</test>
+                <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
+            </properties>
+        </profile>
         <profile>
             <id>civilian-acceptance</id>
             <properties>
