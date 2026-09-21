@@ -5,6 +5,6 @@ import org.springframework.core.annotation.Order;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
 /** Reuse portfolio problem semantics for this app-owned composition controller. */
-@RestControllerAdvice(assignableTypes=ReformulationController.class)
+@RestControllerAdvice(assignableTypes={ReformulationController.class, ReformulationProgressController.class})
 @Order(0)
 public class ReformulationExceptionHandler extends PortfolioExceptionHandler {}

@@ -17,7 +17,40 @@ public class NodeReformulationService {
     public NodeReformulationService(LlmGatewayRegistry registry,LlmProviderConfig config,ObjectMapper json) {
         this.json=json;this.registry=registry;this.config=config;this.prompts=new ReformulationPromptBuilder(json);this.parser=new ReformulationResponseParser(json);
     }
+    /** Prepare on the run thread; execute only on dedicated child threads and always clear their override. */
+    <T> java.util.function.Supplier<T> captureProvider(java.util.function.Supplier<T> work) {
+        var provider = java.util.Objects.requireNonNull(config.getActiveProvider(), "Missing captured provider");
+        return () -> {
+            config.setRequestProvider(provider);
+            try { return work.get(); }
+            finally { config.clearRequestProvider(); }
+        };
+    }
     public NodeSynthesisResult synthesize(NodeSynthesisInput input) {
+        return synthesize(input, ReformulationStepExecutor.direct());
+    }
+    public NodeSynthesisResult synthesize(NodeSynthesisInput input, ReformulationStepExecutor steps) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException("LLM_CALL_INSIDE_TRANSACTION");
+        var provider = config.getActiveProvider();
+        if (provider == LlmProvider.LOCAL_ONNX || !config.isProviderConfigured(provider) || config.isMockMode())
+            throw new IllegalStateException("PROVIDER_NOT_CONFIGURED: Generative provider required");
+        var gateway = registry.getGateway(provider);
+        java.util.function.Predicate<NodeSynthesisInput> fits = candidate -> {
+            try { gateway.validatePromptBudget(prompts.build(candidate, null)); return true; }
+            catch (PromptBudgetExceededException tooLarge) { return false; }
+        };
+        if (fits.test(input)) return single(input);
+        var grouping = new BoundedNodeSynthesis(json);
+        var plan = grouping.partition(input, fits); // Check every group before any provider call.
+        var results = new java.util.ArrayList<NodeSynthesisResult>();
+        for (var group : plan)
+            results.add(steps.execute("NODE_GROUP", group, NodeSynthesisResult.class, () -> single(group)));
+        var aggregate = grouping.aggregate(input, results);
+        if (!fits.test(aggregate)) throw new IllegalStateException("INPUT_TOO_LARGE_FOR_PROVIDER: complete aggregate decisions exceed budget");
+        var summary = steps.execute("NODE_AGGREGATE", aggregate, NodeSynthesisResult.class, () -> single(aggregate));
+        return grouping.combine(input, results, summary);
+    }
+    private NodeSynthesisResult single(NodeSynthesisInput input) {
         return call(errors->prompts.build(input,errors),raw->parser.parse(raw,input));
     }
     public ReconciliationResult reconcile(ReconciliationInput input) {

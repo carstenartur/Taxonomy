@@ -1,0 +1,42 @@
+[
+  {
+    "children": [
+      {
+        "children": [
+          {
+            "children": [
+              {
+                "children": [],
+                "code": "BP-1060",
+                "nameEn": "Analytical Support",
+                "parentCode": "BP-1327"
+              }
+            ],
+            "code": "BP-1327",
+            "nameEn": "Enable",
+            "parentCode": "BP-1000"
+          },
+          {
+            "children": [
+              {
+                "children": [],
+                "code": "BP-1111",
+                "nameEn": "Capability Development",
+                "parentCode": "BP-1481"
+              }
+            ],
+            "code": "BP-1481",
+            "nameEn": "Generate",
+            "parentCode": "BP-1000"
+          }
+        ],
+        "code": "BP-1000",
+        "nameEn": "Business Processes",
+        "parentCode": "BP"
+      }
+    ],
+    "code": "BP",
+    "nameEn": "Business Processes",
+    "parentCode": null
+  }
+]

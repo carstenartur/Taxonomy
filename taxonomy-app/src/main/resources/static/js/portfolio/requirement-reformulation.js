@@ -7,11 +7,17 @@
     const api = window.TaxonomyPortfolioApi, project = Number(route[1]), requirement = Number(route[2]);
     const lang = (new URLSearchParams(location.search).get('lang') || document.documentElement.lang || 'en').startsWith('de') ? 'de' : 'en';
     const words = {
-        de: {heading:'Neuformulierungsangebote', create:'Neuformulierung vorschlagen', snapshot:'Vorhandener Analyse-Snapshot', source:'Quellversion', revision:'Entwurfsrevision',
+        de: {progress:'Gespeicherte Teilergebnisse', storedRun:'In diesem Lauf neu gespeicherte Teilschritte', storedOffer:'Im gesamten Angebot gespeicherte Teilschritte',
+            partialWarning:'Ungeprüftes Teilergebnis – kein vollständiger Vorschlag und nicht übernommen. Fragen und Aussagen können noch Abgleiche benötigen.',
+            countWarning:'Diese Zähler sind weder Modellaufrufe noch ein Vollständigkeitsmaß. Wiederverwendung, Reparaturaufrufe und Tokenkosten werden hier nicht gezählt.',
+            moreResults:'Weitere Teilergebnisse', noResults:'Noch kein Teilergebnis dauerhaft gespeichert.', inspect:'Teilergebnis ansehen', closeProgress:'Teilergebnisse schließen',
+            createdAt:'Lauf angelegt', lastCheckpoint:'Letztes neu gespeichertes Ergebnis', retained:'Verweise auf erhaltene Aussagen / Fragen',
+            heading:'Neuformulierungsangebote', create:'Neuformulierung vorschlagen', snapshot:'Vorhandener Analyse-Snapshot', source:'Quellversion', revision:'Entwurfsrevision',
             state:'Neuformulierungsangebot – nicht übernommen', original:'Original', proposal:'Vorschlag', questions:'Fragen', empty:'Noch kein Angebot vorhanden.',
             noSnapshot:'Zuerst einen vorhandenen Analyse-Snapshot auswählen.', save:'Entwurf speichern', saved:'Gespeichert. Die aktive Anforderung bleibt unverändert.',
             variant:'Variante speichern', copy:'Gespeicherte Revision kopieren', copied:'Gespeicherte Revision kopiert.', compare:'Mit Vorgänger vergleichen',
-            synthesize:'Betroffene Abschnitte neu formulieren', generate:'Neuen Formulierungslauf starten', rationale:'Begründung', defaultRationale:'Bewusste Bearbeitung des Angebots',
+            synthesize:'Betroffene Abschnitte neu formulieren', generate:'Neuen Formulierungslauf starten', cancelRun:'Lauf abbrechen',
+            retryHint:'Gespeicherte Teilergebnisse bleiben erhalten. Ein neuer Lauf verwendet passende Ergebnisse erneut; eine bereits laufende Modellanfrage kann noch enden, aber nichts mehr veröffentlichen.', rationale:'Begründung', defaultRationale:'Bewusste Bearbeitung des Angebots',
             answer:'Antwort speichern', defer:'Noch offen / zurückstellen', na:'Nicht anwendbar', other:'Andere Auswahl erläutern', history:'Entscheidungsverlauf',
             impact:'Betroffene Aussagen / Abschnitte / Schnittstellen', noImpact:'Noch keine Antwortänderungen.', review:'Alle Ergänzungen bleiben fachlich ungeprüft.',
             additions:'Aussagen, Ergänzungen und Herkunft', edit:'Absatz bearbeiten', reject:'Ergänzung ablehnen', rejected:'Abgelehnt – bleibt als Beleg erhalten',
@@ -23,11 +29,17 @@
             OPEN:'Offen', ANSWERED:'Beantwortet', DEFERRED:'Zurückgestellt', NOT_APPLICABLE:'Nicht anwendbar', CONFLICT:'Konflikt',
             MODEL_ADDITION:'Modellergänzung', ORIGINAL:'Original', CATALOGUE_INSPIRATION:'Kataloganregung', ARCHITECTURE_HYPOTHESIS:'Architekturhypothese', HUMAN_DECISION:'Menschliche Entscheidung',
             changeDecision:'Abweichende menschliche Entscheidung erfassen', applicable:'Bedingte Folgefrage', unavailable:'Erst bei passender Antwort auf die vorausgesetzte Frage beantworten.'},
-        en: {heading:'Reformulation offers', create:'Propose reformulation', snapshot:'Existing analysis snapshot', source:'Source version', revision:'Draft revision',
+        en: {progress:'Saved partial results', storedRun:'Steps newly saved in this run', storedOffer:'Steps saved across this offer',
+            partialWarning:'Unreviewed partial result – not a complete proposal and not adopted. Statements and questions may still need reconciliation.',
+            countWarning:'These counts are neither model calls nor a completeness measure. Reuse, repair requests and token costs are not counted here.',
+            moreResults:'More partial results', noResults:'No partial result has been durably saved yet.', inspect:'Inspect partial result', closeProgress:'Close partial results',
+            createdAt:'Run created', lastCheckpoint:'Last newly saved result', retained:'References to preserved statements / questions',
+            heading:'Reformulation offers', create:'Propose reformulation', snapshot:'Existing analysis snapshot', source:'Source version', revision:'Draft revision',
             state:'Reformulation offer – not adopted', original:'Original', proposal:'Proposal', questions:'Questions', empty:'No offer yet.',
             noSnapshot:'Select an existing analysis snapshot first.', save:'Save draft', saved:'Saved. The active requirement is unchanged.',
             variant:'Save variant', copy:'Copy saved revision', copied:'Saved revision copied.', compare:'Compare with predecessor',
-            synthesize:'Reword affected sections', generate:'Start new wording run', rationale:'Rationale', defaultRationale:'Deliberate proposal edit',
+            synthesize:'Reword affected sections', generate:'Start new wording run', cancelRun:'Cancel run',
+            retryHint:'Saved step results remain available for an explicit retry. An in-flight model request may still finish, but cannot publish after cancellation.', rationale:'Rationale', defaultRationale:'Deliberate proposal edit',
             answer:'Save answer', defer:'Still open / defer', na:'Not applicable', other:'Describe other choice', history:'Decision history',
             impact:'Affected statements / sections / interfaces', noImpact:'No answer changes yet.', review:'All additions still require expert review.',
             additions:'Statements, additions and provenance', edit:'Edit paragraph', reject:'Reject addition', rejected:'Rejected – retained as evidence',
@@ -149,7 +161,7 @@
         if(focus){ const panel=host.querySelector('[data-panel="'+view+'"]'); panel.tabIndex=-1; panel.focus(); }
     }
     function render() {
-        host.replaceChildren(); if(!offer){host.append(el('p',t('empty')));return;}
+        host.replaceChildren(); if(progressView && progressView.offerId!==offer?.id){progressView=null;++progressGeneration;} if(!offer){host.append(el('p',t('empty')));return;}
         const revision=offer.currentRevision;
         const selection=el('select',undefined,'form-select');selection.setAttribute('aria-label',t('proposal'));
         offers.forEach(p=>{const o=el('option',p.id.slice(0,8)+' · '+t('revision')+' '+(p.id===offer.id ? revision.number : p.currentRevision));o.value=p.id;selection.append(o);});
@@ -180,13 +192,13 @@
         const questions=el('section',undefined,'reformulation-panel reformulation-questions');questions.dataset.panel='questions';questions.append(el('h3',t('questions'),'h5'));
         if(!revision.questions.length)questions.append(el('p',t('noQuestions')));revision.questions.forEach(q=>questions.append(question(q)));grid.append(questions);host.append(grid);
         const impact=el('details');impact.open=true;impact.append(el('summary',t('impact')));impact.append(pre(revision.impact?.sectionIds.length ? [revision.impact.statementIds.join(', '),revision.impact.sectionIds.join(', '),revision.impact.boundaryEdgeIds.join(', ')].filter(Boolean).join('\n') : t('noImpact')));host.append(impact);
-        const actions=el('div',undefined,'reformulation-controls');actions.append(button(revision.impact?.sectionIds.length?t('synthesize'):t('generate'),async()=>{
+        const actions=el('div',undefined,'reformulation-controls');const generate=button(revision.impact?.sectionIds.length?t('synthesize'):t('generate'),async()=>{
             if(mutationInFlight)throw new Error(t('working'));
             mutationInFlight=true;++readGeneration;
             try {await api.updateReformulation(project,requirement,offer.id,'synthesis-runs',revision.number,{});}
             finally {mutationInFlight=false;++readGeneration;}
             await refreshRuns();
-        }),button(t('refresh'),refreshRuns));host.append(actions);
+        });generate.id='reformulationStartRun';generate.disabled=true;actions.append(generate,button(t('refresh'),refreshRuns));host.append(actions);
         const statements=el('details');statements.append(el('summary',t('additions')));revision.statements.forEach(s=>{
             const item=el('div',undefined,'border rounded p-3 my-2');item.id='statement-'+s.id;item.tabIndex=-1;
             item.append(el('strong',t(s.provenance)+(s.editingOrigin==='HUMAN'?' · '+t('HUMAN_DECISION'):'')),pre(s.wording));
@@ -202,7 +214,7 @@
             statements.append(item);
         });host.append(statements);
         const findings=el('details');findings.append(el('summary',t('findings')));revision.validation.findings.forEach(f=>findings.append(el('p',f.code+': '+f.message,'text-break')));host.append(findings);
-        const runs=el('div');runs.id='reformulationRuns';host.append(runs);const comparison=el('div');comparison.id='reformulationComparison';host.append(comparison);changeView(activeView,false);
+        const runs=el('div');runs.id='reformulationRuns';host.append(runs);const comparison=el('div');comparison.id='reformulationComparison';host.append(comparison);renderProgress();changeView(activeView,false);
     }
     function question(q) {
         const box=el('section',undefined,'reformulation-question');box.id='question-'+q.id;box.tabIndex=-1;
@@ -240,6 +252,105 @@
         const target=document.getElementById('reformulationComparison');target.replaceChildren(el('h3',title,'h5 mt-3'));
         const grid=el('div',undefined,'reformulation-grid');[[t('current'),before],[t('candidateText'),after]].forEach(([label,text])=>{const col=el('div',undefined,'border rounded p-3');col.append(el('h4',label,'h6'),pre(text));grid.append(col);});target.append(grid);target.tabIndex=-1;target.focus();
     }
+    // Read-only progress state is independent of editable proposal/question drafts.
+    let progressView = null, progressGeneration = 0;
+    const progressCurrent = (view, generation) => progressView===view && progressGeneration===generation && offer?.id===view.offerId;
+    async function showProgress(runId) {
+        progressView = {offerId:offer.id, runId, items:new Map(), data:null, detail:null, detailGeneration:0, loading:false};
+        ++progressGeneration;const selectedView=progressView;renderProgress();
+        await refreshProgress();
+        if(progressView!==selectedView || offer?.id!==selectedView.offerId)return;
+        announce(t('progress')+(hasDrafts()?' '+t('dirty'):''));
+        const panel=document.getElementById('reformulationProgress');
+        if(panel){panel.tabIndex=-1;panel.focus();}
+    }
+    async function refreshProgress(after) {
+        const view=progressView, generation=progressGeneration;
+        if(!view || view.offerId!==offer?.id || view.loading)return;
+        view.loading=true;let changed=false;
+        try {
+            const data=await api.getReformulationProgress(project,requirement,view.offerId,view.runId,after);
+            if(!progressCurrent(view,generation))return;
+            if(data.runId!==view.runId)throw new Error('Unexpected progress run');
+            changed=JSON.stringify(view.data)!==JSON.stringify(data) || !!view.error;
+            view.data=data;
+            data.items.forEach(item=>view.items.set(item.checkpointId,item));
+            view.error=null;
+        } catch(error) {
+            if(progressCurrent(view,generation)){changed=true;view.error=error.message;}
+        } finally {
+            view.loading=false;
+            if(progressCurrent(view,generation) && changed)renderProgress();
+        }
+    }
+    async function showPartial(checkpointId) {
+        const view=progressView, generation=progressGeneration;
+        if(!view)return;
+        const detailGeneration=++view.detailGeneration;
+        view.detail=null;view.detailLoading=true;view.error=null;renderProgress();
+        try {
+            const result=await api.getReformulationPartial(project,requirement,view.offerId,view.runId,checkpointId);
+            if(!progressCurrent(view,generation) || view.detailGeneration!==detailGeneration)return;
+            if(result.runId!==view.runId || result.checkpointId!==checkpointId)throw new Error('Unexpected partial result');
+            view.detail=result;
+        } catch(error) {
+            if(progressCurrent(view,generation) && view.detailGeneration===detailGeneration)view.error=error.message;
+        } finally {
+            if(progressCurrent(view,generation) && view.detailGeneration===detailGeneration){view.detailLoading=false;renderProgress();announce(t('progress')+(hasDrafts()?' '+t('dirty'):''));}
+        }
+    }
+    function renderProgress() {
+        let panel=document.getElementById('reformulationProgress');
+        if(!progressView || progressView.offerId!==offer?.id){if(panel)panel.remove();return;}
+        if(!panel){panel=el('section',undefined,'border rounded p-3 my-3 text-break');panel.id='reformulationProgress';host.append(panel);}
+        const view=progressView, data=view.data;
+        panel.setAttribute('aria-label',t('progress'));
+        panel.replaceChildren(el('h3',t('progress'),'h5'),el('p',t('partialWarning'),'alert alert-warning'));
+        if(data){
+            panel.append(el('p',t('source')+': '+data.sourceVersionId+' · '+t('revision')+': '+data.sourceRevision+' · '+data.status,'small'),
+                el('p',t('storedRun')+': '+data.runCheckpointCount+' · '+t('storedOffer')+': '+data.proposalCheckpointCount),
+                el('p',t('countWarning'),'small text-body-secondary'),
+                el('p',t('createdAt')+': '+data.createdAt+(data.lastCheckpointAt?' · '+t('lastCheckpoint')+': '+data.lastCheckpointAt:''),'small text-break'));
+        }
+        const controls=el('div',undefined,'reformulation-controls');
+        controls.append(button(t('refresh'),async()=>{await refreshProgress();announce(t('progress')+(hasDrafts()?' '+t('dirty'):''));}),button(t('closeProgress'),()=>{progressView=null;++progressGeneration;renderProgress();announce(t('state')+(hasDrafts()?' '+t('dirty'):''));}));
+        panel.append(controls);
+        if(view.error){const error=el('p',t('failed')+view.error,'alert alert-danger');error.setAttribute('role','alert');panel.append(error);}
+        const items=[...view.items.values()].sort((a,b)=>a.createdAt.localeCompare(b.createdAt) || a.checkpointId.localeCompare(b.checkpointId));
+        const list=el('ol');
+        for(const item of items){
+            const row=el('li',undefined,'my-1');
+            const open=button(t('inspect')+' · '+item.kind+' · '+item.createdAt,()=>showPartial(item.checkpointId));
+            open.dataset.progressCheckpoint=item.checkpointId;row.append(open);list.append(row);
+        }
+        panel.append(list);
+        if(!items.length && !view.error)panel.append(el('p',!data || view.loading?t('loading'):t('noResults')));
+        if(data && items.length<data.runCheckpointCount){
+            const more=button(t('moreResults'),()=>refreshProgress(items.at(-1)?.checkpointId));more.disabled=view.loading;panel.append(more);
+        }
+        if(view.detailLoading)panel.append(el('p',t('loading')));
+        const detail=view.detail;
+        if(!detail)return;
+        const result=el('section',undefined,'border rounded p-3 mt-3');result.dataset.partialCheckpoint=detail.checkpointId;
+        result.append(el('h4',t('inspect')+' · '+detail.kind,'h6'),el('p',t('partialWarning'),'small'));
+        const wrapped=text=>{const p=pre(text);p.style.whiteSpace='pre-wrap';p.style.overflowWrap='anywhere';return p;};
+        if(detail.node){
+            const node=detail.node;
+            result.append(el('p',node.nodeId,'fw-semibold'),wrapped(node.summary));
+            node.statementProposals.forEach(s=>result.append(el('strong',t(s.provenance)),wrapped(s.wording)));
+            node.questionProposals.forEach(q=>{
+                const question=el('section',undefined,'border rounded p-2 my-2');question.append(el('h5',q.wording,'h6'),el('p',t(q.state)),
+                    el('p',q.answerSchema.options.join(' / ')));
+                const evidence=el('details');evidence.append(el('summary',t('architecture')),wrapped(JSON.stringify(q,null,2)));question.append(evidence);result.append(question);
+            });
+            const retained=el('details');retained.append(el('summary',t('retained')),wrapped(node.preservedStatementIds.concat(node.preservedQuestionIds).join('\n')));result.append(retained);
+            node.conflictCandidates.forEach(f=>result.append(el('p',f.code+': '+f.message,'text-danger')));
+            node.uncoveredSourceRefs.forEach(span=>result.append(wrapped(span.exactText)));
+        } else if(detail.reconciliation){
+            result.append(wrapped(JSON.stringify(detail.reconciliation,null,2)));
+        }
+        panel.append(result);
+    }
     async function refreshRuns() {
         clearTimeout(timer);if(!offer)return;
         if(mutationInFlight){timer=setTimeout(()=>perform(refreshRuns),1500);return;}
@@ -253,10 +364,27 @@
         if(advanced)offer=latest;
         if(advanced || previousVersion!==active.currentVersionId)render();
         const target=document.getElementById('reformulationRuns');target.replaceChildren();
-        runs.slice(-3).forEach(run=>{target.append(el('p',run.status+(run.failureCode?' · '+run.failureCode:''),'small text-break'));
+        const activeRun = run => ['QUEUED','RUNNING'].includes(run.status);
+        const generate = document.getElementById('reformulationStartRun');
+        if(generate)generate.disabled=runs.some(activeRun);
+        // Older releases allowed concurrent runs. Keep all active runs reachable, not just the latest three.
+        runs.filter((run,index)=>activeRun(run) || index>=runs.length-3).forEach(run=>{
+            target.append(el('p',run.status+(run.failureCode?' · '+run.failureCode:''),'small text-break'));
+            const inspect=button(t('progress'),()=>showProgress(run.id));inspect.dataset.reformulationProgressOpen=run.id;target.append(inspect);
+            if(activeRun(run))target.append(button(t('cancelRun'),async()=>{
+                if(mutationInFlight)throw new Error(t('working'));
+                mutationInFlight=true;++readGeneration;
+                try {await api.updateReformulation(project,requirement,selected,'synthesis-runs/'+encodeURIComponent(run.id)+'/cancel',offer.currentRevision.number,{});}
+                finally {mutationInFlight=false;++readGeneration;}
+                await refreshRuns();
+            },'btn btn-sm btn-outline-danger'));
+
             if(run.status==='PARTIAL' && run.candidate){const candidate=el('section',undefined,'reformulation-candidate my-2');candidate.dataset.reformulationCandidate='';candidate.append(el('h3',t('candidate'),'h5'),button(t('compare'),()=>showComparison(offer.currentRevision.text,run.candidate.text,t('candidate'))));target.append(candidate);}
         });
-        if(runs.some(r=>['QUEUED','RUNNING'].includes(r.status))){announce(t('working'));timer=setTimeout(()=>perform(refreshRuns),1500);}
+        await refreshProgress();
+        if(offer.id!==selected || generation!==readGeneration)return;
+        if(runs.length)target.append(el('p',t('retryHint'),'small'));
+        if(runs.some(activeRun)){announce(t('working'));timer=setTimeout(()=>perform(refreshRuns),1500);}
         else announce(t('state')+(hasDrafts()?' '+t('dirty'):''));
     }
     async function start() {

@@ -45,7 +45,9 @@ class FrozenReformulationEngineTest {
                 List.of(statement.id()),new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),
                 List.of(),List.of(),"Impacts prior detail",DecisionQuestion.State.OPEN);
         var service=mock(NodeReformulationService.class);
-        when(service.synthesize(any())).thenAnswer(call->{
+        // The engine delegates through the checkpoint-aware overload, including
+        // the bounded-parent path. Keep the same preservation assertions below.
+        when(service.synthesize(any(NodeSynthesisInput.class),any(ReformulationStepExecutor.class))).thenAnswer(call->{
             NodeSynthesisInput input=call.getArgument(0);
             return new NodeSynthesisResult(input.nodeId(),"Second summary",List.of(),input.directContributions().stream().map(Statement::id).toList(),
                     List.of(),input.openDecisions().stream().map(DecisionQuestion::id).toList(),List.of(),List.of());

@@ -82,6 +82,10 @@ public class ReformulationController {
         catch(NumberFormatException invalid){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,"Invalid proposal revision");}
         return ResponseEntity.accepted().body(execution.start(projectId,requirementId,proposalId,revision,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));
     }
+    @PostMapping("/{proposalId}/synthesis-runs/{runId}/cancel") public Run cancel(@PathVariable Long projectId,@PathVariable Long requirementId,
+            @PathVariable String proposalId,@PathVariable String runId,@RequestHeader(value="If-Match",required=false) String expected) {
+        return service.cancelRun(projectId,requirementId,proposalId,runId,expected(expected),resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());
+    }
     @GetMapping("/{proposalId}/synthesis-runs") public List<Run> runs(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId) {
         return service.runs(projectId,requirementId,proposalId,resolver.resolveCurrentUsername(),resolver.resolveCurrentContext());
     }

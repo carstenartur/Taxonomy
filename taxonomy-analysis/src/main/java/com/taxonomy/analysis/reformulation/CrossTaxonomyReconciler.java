@@ -14,6 +14,9 @@ public class CrossTaxonomyReconciler {
     private final ObjectMapper json;
     public CrossTaxonomyReconciler(NodeReformulationService nodes,ObjectMapper json){this.nodes=nodes;this.json=json;}
     public ReformulationDocument reconcile(ReformulationBaseline baseline,ReformulationDocument phaseA,List<DecisionAnswer> answers,List<DecisionQuestion> priorQuestions) {
+        return reconcile(baseline,phaseA,answers,priorQuestions,ReformulationStepExecutor.direct());
+    }
+    public ReformulationDocument reconcile(ReformulationBaseline baseline,ReformulationDocument phaseA,List<DecisionAnswer> answers,List<DecisionQuestion> priorQuestions,ReformulationStepExecutor steps) {
         // Standalone callers freeze once here; production dispatch persists these bytes before Phase A.
         var context=new TreeMap<>(baseline.frozenContext());context.putAll(ReconcilePromptBuilder.freeze(context));
         baseline=new ReformulationBaseline(baseline.scope(),baseline.sourceVersionId(),baseline.originalText(),baseline.originalTextHash(),baseline.snapshotId(),baseline.snapshotPayload(),context,baseline.language(),baseline.algorithmVersion());
@@ -23,10 +26,10 @@ public class CrossTaxonomyReconciler {
         var boundary=boundaries(baseline,current);
         for(int round=1;round<=2;round++) {
             rounds=round;var input=input(baseline,round,current,answers,boundary);
-            var review=nodes.reconcile(input);findings.addAll(review.findings());
+            var review=steps.execute("RECONCILE",input,ReconciliationResult.class,()->nodes.reconcile(input));findings.addAll(review.findings());
             current=resolve(current,review.sourceResolutions(),answers,findings);
             if(review.affectedSectionIds().isEmpty())break;
-            current=reword(baseline,current,review,answers,boundary,touched);
+            current=reword(baseline,current,review,answers,boundary,touched,steps);
             current.nodeResults().forEach(n->{findings.addAll(n.conflictCandidates());n.uncoveredSourceRefs().forEach(span->findings.add(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,"RECONCILED_UNCOVERED","Original remains visible for review",List.of(),List.of(span))));});
             current=canonicalize(current,answers,priorQuestions,findings);
             if(round==2)findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT,"RECONCILIATION_LIMIT","Two reconciliation rounds exhausted; proposed changes and residual differences require human review",List.of(),List.of()));
@@ -123,7 +126,7 @@ public class CrossTaxonomyReconciler {
         return new ReconciliationInput(b,round,d.sections(),d.statements(),d.questions(),answers,boundaries,shared,
             d.statements().stream().filter(s->s.provenance()==Statement.Provenance.ORIGINAL).map(Statement::id).toList());
     }
-    private ReformulationDocument reword(ReformulationBaseline baseline,ReformulationDocument before,ReconciliationResult review,List<DecisionAnswer> answers,Map<String,String> boundary,Set<String> touched) {
+    private ReformulationDocument reword(ReformulationBaseline baseline,ReformulationDocument before,ReconciliationResult review,List<DecisionAnswer> answers,Map<String,String> boundary,Set<String> touched,ReformulationStepExecutor steps) {
         var affected=new LinkedHashSet<>(review.affectedSectionIds());boolean changed;
         do {changed=false;for(var s:before.sections())if(s.children().stream().anyMatch(affected::contains))changed|=affected.add(s.id());}while(changed);
         touched.addAll(affected);
@@ -148,7 +151,7 @@ public class CrossTaxonomyReconciler {
                 if(selected.contains(e.path("sourceCode").asText()) || selected.contains(e.path("targetCode").asText()) || selected.contains(k))localEdges.put(k,v);});
             var frozenContext=new ReconcilePromptBuilder(json).scopedContext(baseline,selected);
             var in=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(Map.of("section",section,"frozenNodeContext",frozenContext,"reconciliationFindings",review.findings().stream().filter(f->f.statementIds().isEmpty() || !Collections.disjoint(f.statementIds(),section.statementIds())).toList())),sourceSpans(baseline),localStatements,children,localEdges,localAnswers,localQuestions,"Preserve exact original and prior evidence. Re-synthesize only this affected section, keeping peer outputs frozen within the round; summarize completed child details. Resolve findings visibly; do not overwrite human/source wording.");
-            var result=nodes.synthesize(in);result.statementProposals().forEach(s->statements.putIfAbsent(s.id(),s));result.questionProposals().forEach(q->questions.putIfAbsent(q.id(),q));
+            var result=steps.execute("REWORD",in,NodeSynthesisResult.class,()->nodes.synthesize(in,steps));result.statementProposals().forEach(s->statements.putIfAbsent(s.id(),s));result.questionProposals().forEach(q->questions.putIfAbsent(q.id(),q));
             var sids=new ArrayList<>(section.statementIds());sids.addAll(result.preservedStatementIds());result.statementProposals().forEach(s->sids.add(s.id()));
             var qids=new ArrayList<>(section.questionIds());qids.addAll(result.preservedQuestionIds());result.questionProposals().forEach(q->qids.add(q.id()));
             sections.put(id,new Section(id,section.taxonomyCode(),section.title(),result.summary(),section.children(),distinct(sids),distinct(qids)));
