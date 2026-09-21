@@ -17,6 +17,15 @@ public class NodeReformulationService {
     public NodeReformulationService(LlmGatewayRegistry registry,LlmProviderConfig config,ObjectMapper json) {
         this.json=json;this.registry=registry;this.config=config;this.prompts=new ReformulationPromptBuilder(json);this.parser=new ReformulationResponseParser(json);
     }
+    /** Prepare on the run thread; execute only on dedicated child threads and always clear their override. */
+    <T> java.util.function.Supplier<T> captureProvider(java.util.function.Supplier<T> work) {
+        var provider = java.util.Objects.requireNonNull(config.getActiveProvider(), "Missing captured provider");
+        return () -> {
+            config.setRequestProvider(provider);
+            try { return work.get(); }
+            finally { config.clearRequestProvider(); }
+        };
+    }
     public NodeSynthesisResult synthesize(NodeSynthesisInput input) {
         return synthesize(input, ReformulationStepExecutor.direct());
     }
