@@ -32,8 +32,10 @@ final class WalkUpShutdownChecks {
                             if (node.nodeId().equals("parent")) { parentCalled.set(true); return "unexpected"; }
                             entered.countDown();
                             try {
-                                await(entered, 3);
-                                if (!interruptCaller && node.nodeId().equals("failing")) throw new IllegalStateException("EXPECTED_FAILURE");
+                                if (!interruptCaller && node.nodeId().equals("failing")) {
+                                    await(entered, 3);
+                                    throw new IllegalStateException("EXPECTED_FAILURE");
+                                }
                                 // Model arbitrary in-flight code which does not promptly honor interruption.
                                 while (release.getCount() != 0) {
                                     try { release.await(); }
