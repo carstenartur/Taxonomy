@@ -1,6 +1,6 @@
 name: Reformulation usage contract
 
-# Supplemental feedback; canonical verification and all its gates stay required.
+# Supplemental regression verification; canonical full-reactor gates stay required.
 on:
   pull_request:
     paths:
@@ -17,7 +17,7 @@ concurrency:
 jobs:
   transport-contract:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -28,18 +28,21 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
-      - name: Execute actual transport contract tests
-        run: >-
-          ./mvnw -B -ntp -pl taxonomy-analysis -am test
-          -Dtest=LlmTransportMeterTest,ParallelReformulationMeterTest
-          -Dsurefire.failIfNoSpecifiedTests=false
+      - name: Run all analysis and upstream unit tests
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-analysis -am test > usage-tests.log 2>&1
+          result=$?
+          tail -n 100 usage-tests.log
+          exit "$result"
       - name: Require the intended suites to have executed
         if: always()
         run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           from pathlib import Path
-          suites = {'service.LlmTransportMeterTest': 8, 'reformulation.ParallelReformulationMeterTest': 1}
+          suites = {'service.LlmTransportMeterTest': 8, 'service.LlmTransportMeterBoundaryTest': 6,
+                    'reformulation.ParallelReformulationMeterTest': 1}
           errors = 0
           for name, minimum in suites.items():
               report = Path(f'taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.{name}.xml')
@@ -51,3 +54,17 @@ jobs:
               errors += int(tests < minimum or failed != 0 or skipped != 0)
           assert errors == 0
           PY
+      - name: Archive the tested public source tree
+        if: always()
+        run: git archive --format=zip -o usage-source.zip HEAD
+      - name: Preserve actual reports and source identity
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: usage-contract-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            usage-tests.log
+            usage-source.zip
+            taxonomy-*/target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
