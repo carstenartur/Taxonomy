@@ -150,7 +150,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25");
     }
 
     @Test
@@ -184,7 +184,8 @@ class TaxonomySchemaPostgresMigrationIT {
                 .isTrue();
         assertThat(columnExists(dataSource, "user_workspace", "source_repository_id"))
                 .isTrue();
-        assertThat(columnExists(dataSource, "user_workspace", "source_branch")).isTrue();
+        assertThat(columnExists(dataSource, "user_workspace", "source_branch"))
+                .isTrue();
         assertThat(columnExists(dataSource, "taxonomy_relation", "repository_id")).isTrue();
         assertThat(columnExists(dataSource, "relation_proposal", "repository_id")).isTrue();
         assertThat(columnExists(dataSource, "relation_hypothesis", "repository_id")).isTrue();
@@ -224,12 +225,18 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
     }
 
     private static void assertReformulationSchema(DataSource dataSource) throws SQLException {
+        assertThat(tableExists(dataSource, "reformulation_recovery_lease")).isTrue();
+        for (String column : List.of("run_id", "dispatch_payload", "owner_id", "lease_epoch", "lease_until", "active", "row_version")) {
+            assertThat(columnExists(dataSource, "reformulation_recovery_lease", column)).as("recovery " + column).isTrue();
+        }
+        assertThat(foreignKeyBindings(dataSource, "reformulation_recovery_lease", "fk_reform_recovery_run"))
+                .containsExactly("run_id->reformulation_run.id");
         assertThat(tableExists(dataSource, "reformulation_proposal")).isTrue();
         assertThat(tableExists(dataSource, "reformulation_revision")).isTrue();
         assertThat(tableExists(dataSource, "reformulation_run")).isTrue();

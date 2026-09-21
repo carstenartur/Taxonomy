@@ -104,7 +104,7 @@ public final class ReformulationDispatchClaimDriver {
                 check(dispatched.compareAndSet(null, command), "Unexpected additional dispatch");
             };
             var service = new ReformulationExecutionService(proposals, app.getBean(FrozenReformulationEngine.class),
-                    app.getBean(CrossTaxonomyReconciler.class), app.getBean(LlmProviderConfig.class), executor, app.getBean(ObjectMapper.class));
+                    app.getBean(CrossTaxonomyReconciler.class), app.getBean(LlmProviderConfig.class), executor, app.getBean(ObjectMapper.class), app.getBean(ReformulationRecoveryService.class));
             var run = service.start(project.id(), requirement.id(), proposal.id(), 1, "architect", context);
             Runnable work = Objects.requireNonNull(dispatched.get());
             Future<?> first = workers.submit(work);
