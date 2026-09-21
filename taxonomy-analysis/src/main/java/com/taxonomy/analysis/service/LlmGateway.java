@@ -28,6 +28,14 @@ public interface LlmGateway {
     String sendHttpRequest(String prompt, String apiKey);
 
     /**
+     * Validates a fully assembled prompt without I/O, quota consumption or recording.
+     * Production gateways override this at their existing final-budget boundary;
+     * sending still validates again. Unbounded transports retain the default.
+     */
+    default void validatePromptBudget(String prompt) { }
+
+
+    /**
      * Extracts the usable text content from the provider-specific raw response body.
      *
      * @param rawResponseBody the raw JSON response body from the provider API

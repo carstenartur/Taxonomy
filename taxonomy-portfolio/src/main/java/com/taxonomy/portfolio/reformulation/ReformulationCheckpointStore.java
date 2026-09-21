@@ -39,7 +39,7 @@ class ReformulationCheckpointStore {
         return StableIdentityHash.sha256(json.write(List.of(proposal.getScopeKey(), proposal.getId(), kind, fingerprint)));
     }
     private static void validate(String kind, String fingerprint) {
-        if (kind == null || !Set.of("NODE", "RECONCILE", "REWORD").contains(kind)
+        if (kind == null || !Set.of("NODE", "RECONCILE", "REWORD", "NODE_GROUP", "NODE_AGGREGATE").contains(kind)
                 || fingerprint == null || !fingerprint.matches("[0-9a-f]{64}"))
             throw PortfolioException.validation("Invalid reformulation checkpoint identity");
     }

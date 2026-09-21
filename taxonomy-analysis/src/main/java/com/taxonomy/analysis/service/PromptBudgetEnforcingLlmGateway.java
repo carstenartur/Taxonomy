@@ -25,8 +25,13 @@ final class PromptBudgetEnforcingLlmGateway implements LlmGateway {
 
     @Override
     public String sendHttpRequest(String prompt, String apiKey) {
-        promptBudgetPolicy.requireWithinBudget(prompt, delegate.providerName());
+        validatePromptBudget(prompt);
         return delegate.sendHttpRequest(prompt, apiKey);
+    }
+
+    @Override
+    public void validatePromptBudget(String prompt) {
+        promptBudgetPolicy.requireWithinBudget(prompt, delegate.providerName());
     }
 
     @Override

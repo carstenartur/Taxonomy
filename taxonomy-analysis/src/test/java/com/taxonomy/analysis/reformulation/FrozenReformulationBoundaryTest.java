@@ -32,7 +32,7 @@ class FrozenReformulationBoundaryTest {
         var json = JsonMapper.builder().build();
         Map<String, NodeSynthesisInput> seen = new LinkedHashMap<>();
         var provider = new NodeReformulationService(null, null, json) {
-            @Override public NodeSynthesisResult synthesize(NodeSynthesisInput input) {
+            @Override public NodeSynthesisResult synthesize(NodeSynthesisInput input, ReformulationStepExecutor steps) {
                 seen.put(input.nodeId(), input);
                 return new NodeSynthesisResult(input.nodeId(), "Summary", List.of(),
                         input.directContributions().stream().map(Statement::id).toList(),

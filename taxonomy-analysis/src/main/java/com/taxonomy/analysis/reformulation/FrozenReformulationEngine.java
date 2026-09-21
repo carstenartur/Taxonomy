@@ -49,7 +49,7 @@ public class FrozenReformulationEngine {
             var data=new LinkedHashMap<String,Object>();data.put("current",node==null?"Synthetic source-based document root":node);
             data.put("terminalContributions",step.terminalIds().stream().map(byId::get).toList());data.put("directParentContributions",step.directNodeIds().stream().map(byId::get).toList());
             var input=new NodeSynthesisInput(baseline,step.nodeId(),node==null || node.parentIds().isEmpty()?null:node.parentIds().getFirst(),json.writeValueAsString(data),sourceSpans,retainedStatements,children,boundariesFor(step,node,children,boundary),answers,openDecisions,"Preserve all original anchors and child IDs verbatim; additions are unreviewed.");
-            var result=steps.execute("NODE",input,NodeSynthesisResult.class,()->nodes.synthesize(input));
+            var result=steps.execute("NODE",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps));
             var carriedStatements=new LinkedHashMap<String,Statement>();var carriedQuestions=new LinkedHashMap<String,DecisionQuestion>();
             retainedStatements.forEach(s->carriedStatements.put(s.id(),s));openDecisions.forEach(q->carriedQuestions.put(q.id(),q));
             children.forEach(c->{c.statementProposals().forEach(s->carriedStatements.put(s.id(),s));c.questionProposals().forEach(q->carriedQuestions.put(q.id(),q));});
@@ -129,7 +129,7 @@ public class FrozenReformulationEngine {
             var input=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(metadata),anchors(baseline.originalText()),direct,children,localBoundary,
                     answers.stream().filter(a->localQIds.contains(a.questionId())).toList(),localQuestions,
                     "Only reword this affected section. Preserve human wording and all retained evidence. REJECTED additions must not be reintroduced or paraphrased. Independent branch records stay unchanged.");
-            var generated=steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input));
+            var generated=steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps));
             var rejected=statements.values().stream().filter(s->"REJECTED".equals(s.reviewState())).map(s->s.wording().strip()).collect(java.util.stream.Collectors.toSet());
             var additions=new ArrayList<Statement>();
             for(var statement:generated.statementProposals()) {
