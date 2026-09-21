@@ -54,8 +54,10 @@ public class ReformulationExecutionService {
     }
     private void execute(Long projectId,Long requirementId,Proposal proposal,Run run,LlmProvider provider,String actor,WorkspaceContext context) {
         providers.setRequestProvider(provider);
+        boolean claimed = false;
         try {
             proposals.running(projectId,requirementId,proposal.id(),run.id(),actor,context);
+            claimed = true;
             var baseline=proposal.baseline();var captured=new java.util.TreeMap<>(baseline.frozenContext());
             captured.put("reformulationPrompt",run.promptContent());
             captured.putAll(run.reconcileContext());
@@ -77,6 +79,9 @@ public class ReformulationExecutionService {
             }
             proposals.finishRun(projectId,requirementId,proposal.id(),run.id(),reconciled,null,actor,context);
         } catch(RuntimeException failure) {
+            // A failed claim belongs to another (or already completed) worker. It
+            // must never fail that worker's RUNNING envelope through finishRun.
+            if (!claimed) throw failure;
             proposals.finishRun(projectId,requirementId,proposal.id(),run.id(),null,failureCode(failure),actor,context);
         } finally {providers.clearRequestProvider();}
     }
