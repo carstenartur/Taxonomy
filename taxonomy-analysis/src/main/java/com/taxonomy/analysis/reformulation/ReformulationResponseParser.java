@@ -94,7 +94,7 @@ public class ReformulationResponseParser {
     private static List<String> refs(JsonNode node,String key,Set<String> allowed) {var result=strings(node,key);if(!allowed.containsAll(result))throw invalid("Unknown reference: "+key);return result;}
     private static List<Statement.SourceSpan> spans(JsonNode node,String key,NodeSynthesisInput input) {
         var result=new ArrayList<Statement.SourceSpan>();for(var item:array(node,key)) {
-            fields(item,"start","end","exactText");if(!item.get("start").isIntegralNumber() || !item.get("end").isIntegralNumber())throw invalid("Invalid span offsets");
+            fields(item,"start","end","exactText");if(!item.get("start").isIntegralNumber() || !item.get("end").isIntegralNumber() || !item.get("start").canConvertToInt() || !item.get("end").canConvertToInt())throw invalid("Invalid span offsets");
             var span=new Statement.SourceSpan(item.get("start").asInt(),item.get("end").asInt(),text(item,"exactText"));if(!span.matches(input.baseline().originalText()))throw invalid("Fabricated source span");result.add(span);
         }return List.copyOf(result);
     }

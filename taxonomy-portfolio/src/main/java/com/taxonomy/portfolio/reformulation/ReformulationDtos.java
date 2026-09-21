@@ -13,6 +13,8 @@ public final class ReformulationDtos {
     }
     public record Run(String id,String proposalId,long sourceRevision,String status,String provider,String model,
             String promptVersion,String schemaVersion,String promptContent,String failureCode,Long resultRevision,ReformulationDocument candidate,
-            String actor,Instant createdAt) {}
+            String actor,Instant createdAt,java.util.Map<String,String> reconcileContext) {
+        public Run {reconcileContext=reconcileContext==null?java.util.Map.of():java.util.Map.copyOf(reconcileContext);}
+    }
     public record Proposal(String id,ReformulationBaseline baseline,String creator,Instant createdAt,String status,Revision currentRevision) {}
 }

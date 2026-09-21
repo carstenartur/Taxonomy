@@ -14,11 +14,12 @@ import org.springframework.stereotype.Service;
 public class ReformulationExecutionService {
     private final ReformulationService proposals;
     private final FrozenReformulationEngine engine;
+    private final CrossTaxonomyReconciler reconciler;
     private final LlmProviderConfig providers;
     private final AsyncTaskExecutor executor;
-    public ReformulationExecutionService(ReformulationService proposals,FrozenReformulationEngine engine,LlmProviderConfig providers,
+    public ReformulationExecutionService(ReformulationService proposals,FrozenReformulationEngine engine,CrossTaxonomyReconciler reconciler,LlmProviderConfig providers,
             @Qualifier("portfolioAnalysisExecutor") AsyncTaskExecutor executor) {
-        this.proposals=proposals;this.engine=engine;this.providers=providers;this.executor=executor;
+        this.proposals=proposals;this.engine=engine;this.reconciler=reconciler;this.providers=providers;this.executor=executor;
     }
     public Run start(Long projectId,Long requirementId,String proposalId,long expectedRevision,String actor,WorkspaceContext context) {
         var proposal=proposals.get(projectId,requirementId,proposalId,actor,context);
@@ -30,7 +31,7 @@ public class ReformulationExecutionService {
         String prompt=frozen.getOrDefault("reformulationPrompt",ReformulationPromptBuilder.template());
         var run=proposals.beginRun(projectId,requirementId,proposalId,expectedRevision,provider.name(),model,
                 frozen.getOrDefault("reformulationPromptVersion",ReformulationPromptBuilder.PROMPT_VERSION),
-                frozen.getOrDefault("reformulationSchemaVersion",ReformulationPromptBuilder.SCHEMA_VERSION),prompt,actor,context);
+                frozen.getOrDefault("reformulationSchemaVersion",ReformulationPromptBuilder.SCHEMA_VERSION),prompt,ReconcilePromptBuilder.freeze(frozen),actor,context);
         String configurationError=providers.getProviderConfigurationError(provider);
         if(provider==LlmProvider.LOCAL_ONNX || !providers.isProviderConfigured(provider) || configurationError!=null || providers.isMockMode()) {
             proposals.finishRun(projectId,requirementId,proposalId,run.id(),null,"PROVIDER_NOT_CONFIGURED",actor,context);
@@ -48,11 +49,13 @@ public class ReformulationExecutionService {
             proposals.running(projectId,requirementId,proposal.id(),run.id(),actor,context);
             var baseline=proposal.baseline();var captured=new java.util.TreeMap<>(baseline.frozenContext());
             captured.put("reformulationPrompt",run.promptContent());
+            captured.putAll(run.reconcileContext());
             captured.put("reformulationPromptVersion",run.promptVersion());captured.put("reformulationSchemaVersion",run.schemaVersion());
             var runBaseline=new com.taxonomy.reformulation.ReformulationBaseline(baseline.scope(),baseline.sourceVersionId(),baseline.originalText(),
                     baseline.originalTextHash(),baseline.snapshotId(),baseline.snapshotPayload(),captured,baseline.language(),baseline.algorithmVersion());
             var result=engine.synthesize(runBaseline,proposal.currentRevision().statements(),proposal.currentRevision().answers(),proposal.currentRevision().questions());
-            proposals.finishRun(projectId,requirementId,proposal.id(),run.id(),result,null,actor,context);
+            var reconciled=reconciler.reconcile(runBaseline,result,proposal.currentRevision().answers(),proposal.currentRevision().questions());
+            proposals.finishRun(projectId,requirementId,proposal.id(),run.id(),reconciled,null,actor,context);
         } catch(RuntimeException failure) {
             proposals.finishRun(projectId,requirementId,proposal.id(),run.id(),null,failureCode(failure),actor,context);
         } finally {providers.clearRequestProvider();}
