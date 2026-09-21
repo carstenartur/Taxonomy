@@ -3,6 +3,7 @@ import path from 'node:path';
 import { ROLE_ACCOUNTS, openRoleSession } from './ui-role-fixtures.mjs';
 import { createEvidence } from './ui-primary-evidence.mjs';
 import { captureFailureEvidence } from './ui-evidence-policy.mjs';
+import { runVersionComparisonWorkflow } from './ui-primary-version-workflow.mjs';
 import { runBasicWorkflows } from './ui-primary-basic-workflows.mjs';
 import { runAnalysisSessionWorkflow } from './ui-primary-session-workflow.mjs';
 import { runProposalWorkflows } from './ui-primary-proposal-workflows.mjs';
@@ -89,6 +90,7 @@ try {
   if (role === 'USER') await runAnalysisSessionWorkflow(workflow);
 
   await runBasicWorkflows(workflow);
+  await runVersionComparisonWorkflow(workflow);
   if (role === 'ARCHITECT' || role === 'ADMIN') {
     await runProposalWorkflows(workflow);
     await runRelationWorkflows(workflow);
