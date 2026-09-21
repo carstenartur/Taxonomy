@@ -2,9 +2,9 @@
 
 Plan: `docs/superpowers/plans/2026-09-20-requirement-reformulation.md`, task 5.
 Initial base: `759de0483d6ca17e5e92a0f7d200de6b7a23e3c2` (PR #1098).
-This incremental PR #1101 is stacked on #1098. Its corrected dependency inventory
-and documentation from `c5a3ba56363cb3d02564c749883ed52ad3116a2a` are integrated;
-no application behavior was changed by that synchronization.
+PR #1101 originally stacked on #1098 and now targets main after that PR was
+squash-merged. The earlier base synchronization preserved its corrected dependency
+inventory and documentation without changing application behavior.
 
 ## Implemented foundation
 
@@ -76,24 +76,25 @@ real gateways/retry/parser code execute. The parallel test uses the existing rea
 loopback gateway/engine fixture. No cloud LLM is called. Test token numbers and
 requirements are authored fixtures, not live-model quality evidence.
 
-## Remaining integration and limits
+## Integration status and limits
 
-This first slice is the transport observation foundation, NOT persistent per-run
-accounting or a new UI counter. No application run is subscribed by default yet.
-The next integration must bind observations to the exact run/lease, record started
-attempts before provider work, handle unknown outcomes after process death and retain
-late usage evidence without allowing a stale worker to publish a proposal. Only then
-can the UI expose measured counts with explicit completeness and replay/cache meaning.
-Checkpoint counters keep their existing, different meaning.
+The transport-only foundation described above is historical: the current PR now
+installs the durable journal in the real reformulation worker, persists run-owned
+attempt starts and receipts, exposes the authenticated `/usage` endpoint, and
+renders DE/EN counters. See `reformulation-usage-persistence.md` for current
+recording, crash/unknown-outcome, late-receipt and UI semantics and tests. The
+original observation consumer remains optional; it is not a replacement for the
+worker's durable journal. Checkpoint counts retain their different meaning.
 
-All original requirement versions, active architecture, proposal text and decisions
-remain unchanged. Retention, large reconciliation-review inputs, explicit adoption
-and final civilian acceptance remain separate plan items. This slice adds no Maven
-dependency, database migration or broad policy exception. The synchronized base
-correction lowers one measured dependency count from nine to eight; no gate is relaxed.
+Original requirement versions, active architecture, user proposal text and
+answers remain unchanged by accounting. Retention, large reconciliation inputs,
+explicit adoption and final acceptance remain separate plan items. The historical
+transport foundation introduced no migration; durable recording subsequently
+added V26 as documented in the persistence report.
 
-The canonical `./mvnw verify -DexcludedGroups='real-llm'` remains required before
-merge. Passing this unit-test job is not full-reactor/database/browser/coverage
-approval. Author self-review checked retry placement, response preservation,
-unknown/replayed usage, sensitive-data exclusion and explicit thread-scope cleanup;
-it is not an independent approval. The predecessor #1098 has its own exact-head gates.
+The canonical `./mvnw -B verify -Pci` remains required before merge. Focused
+unit-test evidence is not full-reactor/database/browser/coverage approval. The
+supplemental Maven profile writes to its own report directory, and both phases
+are archived separately. Reports from the first phase cannot satisfy the second
+phase's checks.
+Author self-review is not independent approval.

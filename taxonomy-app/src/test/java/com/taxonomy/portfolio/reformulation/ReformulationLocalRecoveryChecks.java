@@ -14,6 +14,8 @@ import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.*;
 import com.taxonomy.workspace.service.*;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.aop.framework.ProxyFactory;
+import org.aopalliance.intercept.MethodInterceptor;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.jdbc.core.JdbcTemplate;
 import tools.jackson.databind.ObjectMapper;
@@ -33,6 +35,10 @@ public final class ReformulationLocalRecoveryChecks {
 
     public static void main(String[] args) throws Exception {
         boolean shutdown = args.length > 0 && args[0].equals("shutdown");
+        boolean finalizationRace = args.length > 0 && args[0].equals("finalization-race");
+        boolean finalizationAdmitted = args.length > 0 && args[0].equals("finalization-admitted");
+        var permitObserved = new AtomicBoolean();
+        var finishEntered = new CountDownLatch(1); var releaseFinish = new CountDownLatch(1);
         var firstEntered = new CountDownLatch(1); var releaseFirst = new CountDownLatch(1);
         var secondEntered = new CountDownLatch(1); var releaseSecond = new CountDownLatch(1);
         var calls = new AtomicInteger(); var remoteFailure = new AtomicReference<Throwable>();
@@ -92,14 +98,52 @@ public final class ReformulationLocalRecoveryChecks {
             var offer = proposals.create(project.id(), r.id(), new ReformulationDtos.CreateRequest(r.currentVersionId(), snapshot, "de"), "architect", context);
             var queued = new CopyOnWriteArrayList<Runnable>();
             AsyncTaskExecutor executor = queued::add;
+            var recovery = app.getBean(ReformulationRecoveryService.class);
+            if (finalizationRace || finalizationAdmitted) {
+                // Hold the actual transactional call before it acquires DB locks, after
+                // the worker's old local retired check. A driver can consume interruption.
+                var proxy = new ProxyFactory(recovery); proxy.setProxyTargetClass(true);
+                proxy.addAdvice((MethodInterceptor) invocation -> {
+                    if (invocation.getMethod().getName().equals("finish")) {
+                        if (finalizationAdmitted && invocation.getArguments().length == 4) {
+                            var original = (java.util.function.BooleanSupplier) invocation.getArguments()[3];
+                            invocation.getArguments()[3] = (java.util.function.BooleanSupplier) () -> {
+                                boolean accepted = original.getAsBoolean();
+                                permitObserved.set(accepted); finishEntered.countDown();
+                                holdFinalization(releaseFinish);
+                                return accepted;
+                            };
+                        } else {
+                            finishEntered.countDown(); holdFinalization(releaseFinish);
+                        }
+                    }
+                    return invocation.proceed();
+                });
+                recovery = (ReformulationRecoveryService) proxy.getProxy();
+                releaseFirst.countDown(); releaseSecond.countDown();
+            }
             var execution = new ReformulationExecutionService(proposals, app.getBean(FrozenReformulationEngine.class), app.getBean(CrossTaxonomyReconciler.class),
-                    app.getBean(LlmProviderConfig.class), executor, app.getBean(ObjectMapper.class), app.getBean(ReformulationRecoveryService.class), app.getBean(ReformulationUsageService.class));
+                    app.getBean(LlmProviderConfig.class), executor, app.getBean(ObjectMapper.class), recovery, app.getBean(ReformulationUsageService.class));
             var run = execution.start(project.id(), r.id(), offer.id(), 1, "architect", context);
             check(queued.size() == 1, "Initial dispatch absent");
             var workerFailure = new AtomicReference<Throwable>();
             Thread first = launch(queued.getFirst(), workerFailure); threads.add(first); await(firstEntered);
             var db = app.getBean(JdbcTemplate.class);
-            if (shutdown) {
+            if (finalizationRace || finalizationAdmitted) {
+                await(finishEntered);
+                if (finalizationAdmitted) check(permitObserved.get(), "Worker finalization has no lock-scoped permit");
+                execution.shutdown();
+                releaseFinish.countDown(); join(first);
+                var after = proposals.runs(project.id(), r.id(), offer.id(), "architect", context).getFirst();
+                check(after.status().equals(finalizationAdmitted ? "COMPLETED" : "RUNNING"),
+                        "Unexpected shutdown/finalization order: " + after.status());
+                check(proposals.get(project.id(), r.id(), offer.id(), "architect", context).currentRevision().number() == (finalizationAdmitted ? 2 : 1),
+                        "Finalization did not respect its single admission order");
+                check(db.queryForObject("select active from reformulation_recovery_lease where run_id=?", Boolean.class, run.id()) == !finalizationAdmitted,
+                        "Retired-before-finalization run is no longer recoverable");
+                check(calls.get() == 2, "Unexpected additional provider work");
+                System.out.println(finalizationAdmitted ? "REFORMULATION_FINALIZATION_ADMITTED_OK" : "REFORMULATION_FINALIZATION_RETIREMENT_OK");
+            } else if (shutdown) {
                 var coordinator = new ReformulationRecoveryCoordinator(execution, 1000, 1000, 120_000, 1);
                 coordinator.stop();
                 var extra = proposals.create(project.id(), r.id(), new ReformulationDtos.CreateRequest(r.currentVersionId(), snapshot, "de"), "architect", context);
@@ -143,10 +187,19 @@ public final class ReformulationLocalRecoveryChecks {
             check(projects.getRequirement(project.id(), r.id(), "architect", context).currentVersionId().equals(r.currentVersionId()), "Active requirement changed");
             check(projects.listRequirementVersions(project.id(), r.id(), "architect", context).size() == 1, "Additional requirement version created");
         } finally {
-            releaseFirst.countDown(); releaseSecond.countDown();
+            releaseFirst.countDown(); releaseSecond.countDown(); releaseFinish.countDown();
             for (Thread thread : threads) { thread.join(10_000); }
             remote.stop(0); httpWorkers.shutdownNow();
         }
+    }
+    private static void holdFinalization(CountDownLatch release) {
+        long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(15);
+        while (release.getCount() != 0) {
+            check(System.nanoTime() < deadline, "Finalization barrier timed out");
+            try { release.await(100, TimeUnit.MILLISECONDS); }
+            catch (InterruptedException ignored) { /* Model a driver consuming interruption. */ }
+        }
+        Thread.interrupted();
     }
     private static Thread launch(Runnable work, AtomicReference<Throwable> error) {
         return Thread.ofPlatform().daemon().start(() -> { try { work.run(); } catch (Throwable failure) { error.set(failure); } });

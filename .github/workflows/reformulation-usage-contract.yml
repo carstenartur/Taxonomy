@@ -66,15 +66,15 @@ jobs:
         if: always()
         run: |
           java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
-            taxonomy-portfolio/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageBoundaryTest.xml 3 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageTest.xml 1 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest.xml 2 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureContextDependencyRatchetTest.xml 1 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest.xml 2 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationEncodingTest.xml 1 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.build.WorkflowTestAuthorityPolicyTest.xml 7 \
-            taxonomy-tooling/target/surefire-reports/TEST-com.taxonomy.tooling.PythonSourceRatchetRepositoryTest.xml 4 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.build.ReformulationVerificationProfileTest.xml 1
+            taxonomy-portfolio/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageBoundaryTest.xml 3 \
+            taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageTest.xml 1 \
+            taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest.xml 2 \
+            taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.ArchitectureContextDependencyRatchetTest.xml 1 \
+            taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest.xml 4 \
+            taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.portfolio.reformulation.ReformulationEncodingTest.xml 1 \
+            taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.build.WorkflowTestAuthorityPolicyTest.xml 7 \
+            taxonomy-tooling/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.tooling.PythonSourceRatchetRepositoryTest.xml 4 \
+            taxonomy-app/target/surefire-reports-reformulation-usage/TEST-com.taxonomy.build.ReformulationVerificationProfileTest.xml 1
       - name: Archive the tested public source tree
         if: always()
         run: git archive --format=zip -o usage-source.zip HEAD
@@ -88,5 +88,6 @@ jobs:
             usage-persistence-tests.log
             usage-source.zip
             taxonomy-*/target/surefire-reports/TEST-*.xml
+            taxonomy-*/target/surefire-reports-reformulation-usage/TEST-*.xml
           if-no-files-found: error
           retention-days: 7

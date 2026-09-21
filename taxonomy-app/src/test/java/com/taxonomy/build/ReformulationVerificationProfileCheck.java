@@ -51,6 +51,20 @@ final class ReformulationVerificationProfileCheck {
                 "Workflow must be classified in the catalogue");
         require(runs.contains("-pl taxonomy-tooling,taxonomy-analysis -am test"),
                 "Keep the existing complete analysis/upstream unit run");
+        var locations = selected.getElementsByTagName("reportsDirectory");
+        require(locations.getLength() == 1 && locations.item(0).getTextContent().equals(
+                        "${project.build.directory}/surefire-reports-reformulation-usage"),
+                "Each Maven phase must use a separate report directory");
+        int verifySecond = workflow.indexOf("name: Require persistence suites and positive test counts");
+        int archive = workflow.indexOf("name: Archive the tested public source tree", verifySecond);
+        require(verifySecond >= 0 && archive > verifySecond, "Missing second-phase report verification");
+        String secondReports = workflow.substring(verifySecond, archive);
+        require(secondReports.contains("/target/surefire-reports-reformulation-usage/TEST-")
+                        && !secondReports.contains("/target/surefire-reports/TEST-"),
+                "Second-phase verifier must not accept first-phase reports");
+        require(workflow.contains("taxonomy-*/target/surefire-reports/TEST-*.xml")
+                        && workflow.contains("taxonomy-*/target/surefire-reports-reformulation-usage/TEST-*.xml"),
+                "Archive both phases without overwriting their separate evidence");
         require(runs.contains("TEST-com.taxonomy.build.WorkflowTestAuthorityPolicyTest.xml 7")
                         && runs.contains("TEST-com.taxonomy.tooling.PythonSourceRatchetRepositoryTest.xml 4")
                         && runs.contains("TEST-com.taxonomy.build.ReformulationVerificationProfileTest.xml 1"),

@@ -107,6 +107,7 @@ public class ReformulationExecutionService {
         private Claim claim;
         private boolean entered;
         private boolean retired;
+        private boolean finalizing;
         synchronized boolean enter() {
             if (entered || retired) return false;
             entered = true; runner = Thread.currentThread(); return true;
@@ -114,11 +115,19 @@ public class ReformulationExecutionService {
         synchronized boolean attach(Claim token) { claim = token; return !retired; }
         synchronized Claim claim() { return claim; }
         synchronized boolean retired() { return retired; }
+        /** Called only after database authorization/lease locks, immediately before publication. */
+        synchronized boolean beginFinalization() {
+            if (retired || finalizing) return false;
+            finalizing = true;
+            return true;
+        }
         synchronized void retire() {
             retired = true;
             // Interrupt while holding the local monitor: finish cannot detach and
             // return this thread to a shared executor between lookup and interrupt.
-            if (runner != null) runner.interrupt();
+            // Finalization that already won under the DB locks is allowed to commit.
+            // Shutdown never waits on network/DB I/O and must not interrupt that commit.
+            if (runner != null && !finalizing) runner.interrupt();
         }
         synchronized void finished() { runner = null; }
     }
@@ -157,13 +166,13 @@ public class ReformulationExecutionService {
                     var result=engine.synthesize(runBaseline,revision.statements(),revision.answers(),revision.questions(),steps);
                     reconciled=reconciler.reconcile(runBaseline,result,revision.answers(),revision.questions(),steps);
                 }
-                if (!local.retired()) recovery.finish(token,reconciled,null);
+                recovery.finish(token,reconciled,null,local::beginFinalization);
             }
         } catch(RuntimeException failure) {
             // An unclaimed delivery cannot fail another worker. Expired owners also
             // cannot publish failures because finish verifies the exact epoch again.
             if(token==null)throw failure;
-            if (!local.retired()) recovery.finish(token,null,failureCode(failure));
+            recovery.finish(token,null,failureCode(failure),local::beginFinalization);
         } finally {
             providers.clearRequestProvider();
             local.finished();

@@ -117,8 +117,20 @@ public class ReformulationRecoveryService {
     }
     @Transactional
     public boolean finish(Claim token, ReformulationDocument document, String failure) {
+        return finish(token, document, failure, () -> true);
+    }
+
+    /**
+     * Admit finalization only after acquiring authoritative DB locks. The caller's
+     * nonblocking, one-shot permit serializes this decision with local retirement;
+     * it is never evaluated while still waiting for those locks.
+     */
+    @Transactional
+    public boolean finish(Claim token, ReformulationDocument document, String failure,
+            java.util.function.BooleanSupplier admitFinalization) {
+        java.util.Objects.requireNonNull(admitFinalization, "Finalization permit is required");
         var locked = lock(token.dispatch());
-        if (!valid(locked, token)) return false;
+        if (!valid(locked, token) || !admitFinalization.getAsBoolean()) return false;
         var d = token.dispatch();
         proposals.finishRun(d.projectId(), d.requirementId(), d.proposalId(), d.run().id(), document, failure, d.actor(), d.context());
         locked.lease().retire(); return true;

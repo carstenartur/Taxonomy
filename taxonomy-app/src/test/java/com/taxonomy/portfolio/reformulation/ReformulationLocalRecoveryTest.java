@@ -20,6 +20,12 @@ class ReformulationLocalRecoveryTest {
     @Test void gracefulStopPreventsNewWorkWithoutDestroyingRecovery() throws Exception {
         run("shutdown", "REFORMULATION_GRACEFUL_STOP_OK");
     }
+    @Test void retirementBeforeDatabaseFinalizationKeepsTheRunRecoverable() throws Exception {
+        run("finalization-race", "REFORMULATION_FINALIZATION_RETIREMENT_OK");
+    }
+    @Test void alreadyAdmittedFinalizationFinishesWithoutBlockingShutdown() throws Exception {
+        run("finalization-admitted", "REFORMULATION_FINALIZATION_ADMITTED_OK");
+    }
     private void run(String mode, String marker) throws Exception {
         var command = new ArrayList<String>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
