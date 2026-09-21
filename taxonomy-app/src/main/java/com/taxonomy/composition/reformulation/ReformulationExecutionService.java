@@ -201,7 +201,7 @@ public class ReformulationExecutionService {
             if(TransactionSynchronizationManager.isActualTransactionActive())throw new IllegalStateException("CHECKPOINT_EXECUTION_INSIDE_TRANSACTION");
             if(!run.model().equals(model(provider)) || !endpoint.equals(endpoint(provider)))throw new IllegalStateException("MODEL_CONFIGURATION_CHANGED");
             String fingerprint=StableIdentityHash.sha256(checkpointJson.writeValueAsString(Map.ofEntries(
-                    Map.entry("format","reformulation-step-v1"),Map.entry("provider",provider.name()),Map.entry("model",run.model()),
+                    Map.entry("format","reformulation-step-v1"),Map.entry("inputEncoding",ReformulationPromptBuilder.INPUT_ENCODING_VERSION),Map.entry("provider",provider.name()),Map.entry("model",run.model()),
                     Map.entry("endpointHash",StableIdentityHash.sha256(endpoint)),Map.entry("prompt",run.promptContent()),
                     Map.entry("promptVersion",run.promptVersion()),Map.entry("schemaVersion",run.schemaVersion()),
                     Map.entry("reconciliation",run.reconcileContext()),Map.entry("resultType",type.getName()),Map.entry("input",input))));

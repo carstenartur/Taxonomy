@@ -76,7 +76,19 @@ public final class BoundedNodeSynthesisDriver {
             var node = new NodeSynthesisInput(base.baseline(),base.nodeId(),base.parentId(),
                     JSON.writeValueAsString(Map.of("current", "Parent", "directParentContributions",List.of("parent contribution"),"terminalContributions",terminals)),
                     base.sourceAnchors(),base.directContributions(),List.of(),base.boundaryEdges(),base.answers(),base.openDecisions(),base.preservationContract());
-            var result = f.nodes.synthesize(node);
+            var parts = new ArrayList<NodeSynthesisResult>();
+            var steps = ReformulationStepExecutor.of((kind, request, type, action) -> {
+                Object part = action.get();
+                if ("NODE_GROUP".equals(kind)) parts.add((NodeSynthesisResult) part);
+                return part;
+            });
+            try {
+                f.nodes.synthesize(node, steps);
+                throw new AssertionError("Unique terminal contexts exceeded the budget but aggregate was accepted");
+            } catch (IllegalStateException expected) {
+                check(expected.getMessage().startsWith("INPUT_TOO_LARGE_FOR_PROVIDER"), "Wrong aggregate failure");
+            }
+            check(parts.size() == 2 && f.prompts.size() == 2, "Keep complete groups; do not send an oversized aggregate");
             var seen = new HashSet<String>();
             for (String prompt : f.prompts) {
                 var description = JSON.readTree(data(prompt).path("nodeDescription").asText());
@@ -87,8 +99,9 @@ public final class BoundedNodeSynthesisDriver {
                 check(description.path("directParentContributions").size()==1,"Direct parent contribution dropped");
             }
             check(seen.size()==6,"Terminal contribution lost");
-            check(!result.questionProposals().isEmpty(),"Discovered decisions lost");
-            check(result.questionProposals().stream().flatMap(q->q.discoveries().stream()).anyMatch(d->d.context().contains("z".repeat(2800))),
+            check(parts.stream().allMatch(p -> !p.questionProposals().isEmpty()), "Discovered decisions lost");
+            check(parts.stream().flatMap(p -> p.questionProposals().stream()).flatMap(q -> q.discoveries().stream())
+                    .allMatch(d -> d.context().contains("z".repeat(2800))),
                     "Stored question discovery was replaced by its prompt projection");
             System.out.println("TERMINAL_GROUPS_OK calls="+f.prompts.size());
         }

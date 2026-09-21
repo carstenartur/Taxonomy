@@ -50,12 +50,13 @@ jobs:
             taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.LlmTransportMeterTest.xml 8 \
             taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.LlmTransportMeterBoundaryTest.xml 6 \
             taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.LlmDurableTransportTest.xml 3 \
-            taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.reformulation.ParallelReformulationMeterTest.xml 1
+            taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.reformulation.ParallelReformulationMeterTest.xml 1 \
+            taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.reformulation.GroupedEvidenceFidelityTest.xml 6
       - name: Verify durable per-run accounting and existing architecture boundaries
         run: |
           set +e
           ./mvnw -B -ntp -pl taxonomy-app -am test \
-            -Dtest=ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ArchitectureContextDependencyRatchetTest \
+            -Dtest=ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ReformulationEncodingTest,ArchitectureContextDependencyRatchetTest \
             -Dsurefire.failIfNoSpecifiedTests=false > usage-persistence-tests.log 2>&1
           result=$?
           tail -n 100 usage-persistence-tests.log
@@ -68,7 +69,8 @@ jobs:
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageTest.xml 1 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest.xml 2 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureContextDependencyRatchetTest.xml 1 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest.xml 2
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest.xml 2 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationEncodingTest.xml 1
       - name: Archive the tested public source tree
         if: always()
         run: git archive --format=zip -o usage-source.zip HEAD
