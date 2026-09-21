@@ -137,7 +137,7 @@ window.TaxonomyPortfolioApi = (function () {
             return sendJson(requirementPath(projectId, requirementId) + '/reformulations', 'POST', body);
         },
         updateReformulation: async function (projectId, requirementId, id, operation, revision, body) {
-            const allowed = /^(answers|revisions|variants|synthesis-runs|statements\/[A-Za-z0-9_-]+)$/;
+            const allowed = /^(answers|revisions|variants|synthesis-runs(?:\/[A-Za-z0-9_-]+\/cancel)?|statements\/[A-Za-z0-9_-]+)$/;
             if (!allowed.test(operation)) throw new Error('Unknown reformulation operation');
             return responsePayload(await requireOk(await fetch(requirementPath(projectId, requirementId)
                 + '/reformulations/' + encodeURIComponent(id) + '/' + operation, {

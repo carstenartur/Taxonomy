@@ -1,13 +1,18 @@
 package com.taxonomy.portfolio.reformulation;
 
 import com.taxonomy.workspace.service.WorkspaceContext;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.security.test.context.support.WithMockUser;
+import org.springframework.test.web.servlet.setup.MockMvcBuilders;
+import org.springframework.web.context.WebApplicationContext;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
+import static org.springframework.security.test.web.servlet.setup.SecurityMockMvcConfigurers.springSecurity;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -16,6 +21,15 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @AutoConfigureMockMvc
 @WithMockUser(username = "architect", roles = "ARCHITECT")
 class ReformulationCancellationApiTest extends ReformulationWorkflowFixture {
+    @Autowired WebApplicationContext webContext;
+
+    @BeforeEach
+    void useBrowserRequestsWithoutAutomaticCsrfTokens() {
+        // TestSecuritySupport supplies a default CSRF token to Boot's shared MockMvc.
+        // This security contract needs the real filter chain, but no default request.
+        mvc = MockMvcBuilders.webAppContextSetup(webContext).apply(springSecurity()).build();
+    }
+
     @Test void cancellationRequiresCsrfAndCurrentRevisionAndDoesNotEditTheProposal() throws Exception {
         var proposal = seed();
         var before = projects.getRequirement(project.id(), requirement.id(), "architect", context);
@@ -23,6 +37,8 @@ class ReformulationCancellationApiTest extends ReformulationWorkflowFixture {
                 "TEST", "test", "p", "s", "frozen", "architect", context);
         String url = base() + "/" + proposal.id() + "/synthesis-runs/" + run.id() + "/cancel";
         mvc.perform(post(url).header("If-Match", "\"2\"")).andExpect(status().isForbidden());
+        mvc.perform(post(url).with(csrf().useInvalidToken()).header("If-Match", "\"2\""))
+                .andExpect(status().isForbidden());
         mvc.perform(post(url).with(csrf())).andExpect(status().isPreconditionRequired());
         mvc.perform(post(url).with(csrf()).header("If-Match", "2")).andExpect(status().isBadRequest());
         mvc.perform(post(url).with(csrf()).header("If-Match", "\"1\"")).andExpect(status().isPreconditionFailed());
