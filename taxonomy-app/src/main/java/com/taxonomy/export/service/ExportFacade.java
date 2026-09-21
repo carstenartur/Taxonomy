@@ -111,6 +111,40 @@ public class ExportFacade {
         return analyzeAndProject(businessText);
     }
 
+    /**
+     * Exports the supplied working-view snapshot without scoring, fetching current
+     * taxonomy data, applying a second selection policy, or persisting changes.
+     * This is client-provided working data, not a certified historical snapshot.
+     */
+    public DiagramModel buildCurrentDiagram(RequirementArchitectureView view) {
+        if (view == null || view.getIncludedElements() == null
+                || view.getIncludedElements().isEmpty()) {
+            throw new IllegalArgumentException("An existing architecture view is required; no analysis was started.");
+        }
+        if (view.getIncludedElements().size() > 10_000
+                || view.getIncludedRelationships() == null
+                || view.getIncludedRelationships().size() > 30_000) {
+            throw new IllegalArgumentException("Architecture exceeds export capacity or has no relationship list.");
+        }
+        var codes = new java.util.HashSet<String>();
+        for (var element : view.getIncludedElements()) {
+            if (element == null || element.getNodeCode() == null || element.getNodeCode().isBlank()
+                    || !codes.add(element.getNodeCode()) || !Double.isFinite(element.getRelevance())) {
+                throw new IllegalArgumentException("Architecture contains invalid or duplicate nodes.");
+            }
+        }
+        for (var relation : view.getIncludedRelationships()) {
+            if (relation == null || !codes.contains(relation.getSourceCode())
+                    || !codes.contains(relation.getTargetCode()) || relation.getRelationType() == null
+                    || relation.getRelationType().isBlank() || !Double.isFinite(relation.getPropagatedRelevance())) {
+                throw new IllegalArgumentException("Architecture contains invalid relationships or missing endpoints.");
+            }
+        }
+        String title = view.getViewTitle();
+        return diagramProjectionService.projectRaw(view,
+                title == null || title.isBlank() ? "Requirement architecture" : title);
+    }
+
     private DiagramModel analyzeAndProject(String businessText) {
         AnalysisResult result = llmService.analyzeWithBudget(businessText);
         RequirementArchitectureView view = architectureViewService.build(

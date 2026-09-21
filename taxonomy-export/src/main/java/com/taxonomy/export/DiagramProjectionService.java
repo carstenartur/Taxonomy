@@ -99,7 +99,7 @@ public class DiagramProjectionService {
      * @param title diagram title
      * @return a raw diagram model with all projected nodes and edges
      */
-    DiagramModel projectRaw(RequirementArchitectureView view, String title) {
+    public DiagramModel projectRaw(RequirementArchitectureView view, String title) {
         if (view == null) {
             return new DiagramModel(title, List.of(), List.of(),
                     new DiagramLayout("LR", true));

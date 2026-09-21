@@ -182,10 +182,21 @@ final class VisioPresentation {
         void add(Box box) { visit(box, (x, y) -> { buckets.computeIfAbsent(bucket(x, y), ignored -> new ArrayList<>()).add(box); return false; }); }
         boolean intersects(Box box) { return visit(box, (x, y) -> buckets.getOrDefault(bucket(x, y), List.of()).stream().anyMatch(box::intersects)); }
         private boolean visit(Box box, CellVisitor visitor) {
-            for (int x = (int)Math.floor(box.left() - .1); x <= Math.floor(box.x + box.width / 2 + .1); x++)
-                for (int y = (int)Math.floor(box.bottom() - .1); y <= Math.floor(box.y + box.height / 2 + .1); y++)
-                    if (visitor.visit(x, y)) return true;
+            int minX = cell(box.left() - .1), maxX = cell(box.x + box.width / 2 + .1);
+            int minY = cell(box.bottom() - .1), maxY = cell(box.y + box.height / 2 + .1);
+            // Widen the counters, not the bounds: incrementing Integer.MAX_VALUE
+            // must terminate rather than wrap. Reject invalid geometry before use.
+            for (long x = minX; x <= maxX; x++)
+                for (long y = minY; y <= maxY; y++)
+                    if (visitor.visit((int) x, (int) y)) return true;
             return false;
+        }
+        private int cell(double coordinate) {
+            double floored = Math.floor(coordinate);
+            if (!Double.isFinite(floored) || floored < Integer.MIN_VALUE || floored > Integer.MAX_VALUE) {
+                throw new IllegalArgumentException("Visio coordinates must be finite and within the integer grid");
+            }
+            return (int) floored;
         }
         private long bucket(int x, int y) { return ((long)x << 32) ^ (y & 0xffffffffL); }
         private interface CellVisitor { boolean visit(int x, int y); }

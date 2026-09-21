@@ -195,40 +195,112 @@
 
     function exportVisio(text) {
         return diagramDownload('/api/diagram/visio', text, 'requirement-architecture.vsdx',
-            'export.visio.no.text', 'export.visio.failed', 'blob');
+            'blob');
     }
 
     function exportArchiMate(text) {
         return diagramDownload('/api/diagram/archimate', text, 'requirement-architecture.xml',
-            'export.archimate.no.text', 'export.archimate.failed', 'blob');
+            'blob');
     }
 
     function exportMermaid(text) {
         return diagramDownload('/api/diagram/mermaid', text, 'requirement-architecture.mmd',
-            'export.mermaid.no.text', 'export.mermaid.failed', 'text');
+            'text');
     }
 
     function exportStructurizrDsl(text) {
         return diagramDownload('/api/diagram/structurizr', text, 'workspace.dsl',
-            'export.structurizr.no.text', 'export.structurizr.failed', 'blob');
+            'blob');
     }
 
-    function diagramDownload(url, businessText, filename, missingKey, failedKey, responseType) {
-        if (!businessText || !businessText.trim()) return unavailable(missingKey);
-        return fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            credentials: 'same-origin',
-            body: JSON.stringify({ businessText: businessText })
-        }).then(requireOk).then(function (response) {
+    var diagramExportBusy = false;
+    var diagramButtons = ['exportVisio', 'exportArchiMate', 'exportMermaid', 'exportStructurizr'];
+
+    function exportMessage(english, german) {
+        return (document.documentElement.lang || '').toLowerCase().startsWith('de') ? german : english;
+    }
+
+    function diagramStatus(message, busy, failed) {
+        var status = document.getElementById('diagramExportStatus');
+        if (!status) {
+            status = document.createElement('div');
+            status.id = 'diagramExportStatus';
+            status.setAttribute('role', 'status');
+            status.setAttribute('aria-live', 'polite');
+            var spinner = document.createElement('span');
+            spinner.id = 'diagramExportSpinner';
+            spinner.className = 'spinner-border spinner-border-sm me-2';
+            spinner.setAttribute('aria-hidden', 'true');
+            status.appendChild(spinner);
+            var label = document.createElement('span');
+            label.id = 'diagramExportStatusText';
+            status.appendChild(label);
+            (document.getElementById('exportGroup') || document.body).appendChild(status);
+        }
+        status.className = 'alert w-100 mt-2 mb-0 ' + (failed ? 'alert-danger' : busy ? 'alert-info' : 'alert-success');
+        status.setAttribute('aria-busy', String(busy));
+        document.getElementById('diagramExportSpinner').hidden = !busy;
+        document.getElementById('diagramExportStatusText').textContent = message;
+    }
+
+    function diagramDownload(url, businessText, filename, responseType) {
+        if (diagramExportBusy) return Promise.resolve(false);
+        var state = window.TaxonomyState;
+        if (!state || !state.currentArchView || !Array.isArray(state.currentArchView.includedElements)
+                || !state.currentArchView.includedElements.length) {
+            diagramStatus(exportMessage('No existing architecture view is available. No new analysis was started.',
+                'Keine vorhandene Architekturansicht verfügbar. Es wurde keine neue Analyse gestartet.'), false, true);
+            return Promise.resolve(false);
+        }
+        if (typeof state.lastAnalyzedText === 'string' && businessText !== state.lastAnalyzedText) {
+            diagramStatus(exportMessage('The requirement has changed. Restore the analysed text or select the matching architecture before exporting.',
+                'Der Anforderungstext wurde geändert. Stellen Sie den analysierten Text wieder her oder wählen Sie die passende Architektur.'), false, true);
+            return Promise.resolve(false);
+        }
+        var body;
+        try {
+            // Freeze exactly the current view at the click, not a later mutable state.
+            body = JSON.stringify(state.currentArchView);
+        } catch (error) {
+            diagramStatus(exportMessage('The architecture could not be serialized.',
+                'Die Architektur konnte nicht serialisiert werden.'), false, true);
+            return Promise.resolve(false);
+        }
+        var controls = diagramButtons.map(function (id) { return document.getElementById(id); })
+            .filter(Boolean).map(function (button) { return { button: button, disabled: button.disabled }; });
+        controls.forEach(function (control) { control.button.disabled = true; });
+        diagramExportBusy = true;
+        diagramStatus(exportMessage('Creating file from the existing architecture — no AI analysis…',
+            'Datei wird aus der vorhandenen Architektur erstellt — ohne KI-Analyse…'), true, false);
+        var headers = { 'Content-Type': 'application/json' };
+        var csrf = document.querySelector('meta[name="_csrf"]');
+        var csrfHeader = document.querySelector('meta[name="_csrf_header"]');
+        if (csrf && csrfHeader) headers[csrfHeader.content] = csrf.content;
+        // Keep base-path/workspace routing through the established fetch wrapper.
+        return Promise.resolve().then(function () {
+            return fetch(url.replace('/api/diagram/', '/api/diagram/current/'), {
+                method: 'POST', headers: headers, credentials: 'same-origin', body: body
+            });
+        }).then(function (response) {
+            if (!response.ok) {
+                return response.json().catch(function () { return {}; }).then(function (problem) {
+                    throw new Error(problem.error || problem.detail || 'HTTP ' + response.status);
+                });
+            }
+            diagramStatus(exportMessage('Receiving architecture file…', 'Architekturdatei wird übertragen…'), true, false);
             return responseType === 'text' ? response.text() : response.blob();
         }).then(function (content) {
-            var blob = content instanceof Blob
-                ? content
-                : new Blob([content], { type: 'text/plain;charset=utf-8' });
+            var blob = content instanceof Blob ? content : new Blob([content], { type: 'text/plain;charset=utf-8' });
             downloadBlob(blob, filename);
+            diagramStatus(exportMessage('Download ready. The architecture was kept unchanged.',
+                'Download bereitgestellt. Die Architektur blieb unverändert.'), false, false);
+            return true;
         }).catch(function (error) {
-            unavailable(failedKey, error.message);
+            diagramStatus(exportMessage('Export failed: ', 'Export fehlgeschlagen: ') + error.message, false, true);
+            return false;
+        }).finally(function () {
+            controls.forEach(function (control) { control.button.disabled = control.disabled; });
+            diagramExportBusy = false;
         });
     }
 
