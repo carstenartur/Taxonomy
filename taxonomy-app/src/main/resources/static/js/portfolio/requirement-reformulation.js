@@ -8,7 +8,7 @@
     const lang = (new URLSearchParams(location.search).get('lang') || document.documentElement.lang || 'en').startsWith('de') ? 'de' : 'en';
     const words = {
         de: {usage:'Erfasste Anfrageversuche', usageUnrecorded:'Für diesen Lauf wurde noch keine Verbrauchserfassung gestartet.',
-            httpAttempts:'Vorgemerkte HTTP-Versuche', replays:'Wiedergaben ohne HTTP', pendingAttempts:'Versuche ohne gespeicherten Ausgang', retries:'Transportwiederholungen',
+            httpAttempts:'Vorgemerkte HTTP-Versuche', replays:'Wiedergaben ohne HTTP', pendingAttempts:'Versuche ohne gespeicherten Ausgang', retries:'Transportwiederholungen', httpErrors:'HTTP-Fehlerantworten', transportErrors:'Transportfehler', invalidUsage:'Ungültige Verbrauchsangaben',
             inputTokens:'Gemeldete Eingabetokens', outputTokens:'Gemeldete Ausgabetokens', totalTokens:'Gemeldete Gesamttokens', cachedInputTokens:'Gemeldete Cache-Tokens', reasoningTokens:'Gemeldete Reasoning-Tokens',
             unknownUsage:'ohne Angabe', reports:'Meldungen', usageLate:'Die Erfassung begann erst bei einer Wiederaufnahme. Frühere Anfragen sind nicht enthalten.',usageWarning:'Beginn ist kein Beleg für Empfang oder Abrechnung. Offene Ausgänge können noch laufend oder durch Absturz oder Speicherfehler ungeklärt sein. Fehlende Tokenangaben sind nicht null Verbrauch; es werden keine Kosten errechnet.',
             progress:'Gespeicherte Teilergebnisse', storedRun:'In diesem Lauf neu gespeicherte Teilschritte', storedOffer:'Im gesamten Angebot gespeicherte Teilschritte',
@@ -34,7 +34,7 @@
             MODEL_ADDITION:'Modellergänzung', ORIGINAL:'Original', CATALOGUE_INSPIRATION:'Kataloganregung', ARCHITECTURE_HYPOTHESIS:'Architekturhypothese', HUMAN_DECISION:'Menschliche Entscheidung',
             changeDecision:'Abweichende menschliche Entscheidung erfassen', applicable:'Bedingte Folgefrage', unavailable:'Erst bei passender Antwort auf die vorausgesetzte Frage beantworten.'},
         en: {usage:'Recorded request attempts', usageUnrecorded:'Usage recording has not been started for this run.',
-            httpAttempts:'Admitted HTTP attempts', replays:'Replays without HTTP', pendingAttempts:'Attempts without a recorded outcome', retries:'Transport retries',
+            httpAttempts:'Admitted HTTP attempts', replays:'Replays without HTTP', pendingAttempts:'Attempts without a recorded outcome', retries:'Transport retries', httpErrors:'HTTP error responses', transportErrors:'Transport errors', invalidUsage:'Invalid usage metadata',
             inputTokens:'Reported input tokens', outputTokens:'Reported output tokens', totalTokens:'Reported total tokens', cachedInputTokens:'Reported cached tokens', reasoningTokens:'Reported reasoning tokens',
             unknownUsage:'unreported', reports:'reports', usageLate:'Recording started on a later execution attempt. Earlier requests are not included.',usageWarning:'Admission is not proof of receipt or billing. Pending outcomes may be in flight or unresolved after a crash or recording error. Missing token counts do not mean zero usage; no monetary cost is inferred.',
             progress:'Saved partial results', storedRun:'Steps newly saved in this run', storedOffer:'Steps saved across this offer',
@@ -324,7 +324,7 @@
         if(!usage || !usage.recorded)box.append(el('p',usage?t('usageUnrecorded'):t('loading')));
         else {
             if(!usage.fromFirstAttempt)box.append(el('p',t('usageLate'),'alert alert-warning'));
-            for(const key of ['httpAttempts','replays','pendingAttempts','retries'])box.append(el('p',t(key)+': '+usage[key],'small mb-1'));
+            for(const key of ['httpAttempts','replays','pendingAttempts','retries','httpErrors','transportErrors','invalidUsage'])box.append(el('p',t(key)+': '+usage[key],'small mb-1'));
             const list=el('dl',undefined,'small');
             for(const key of ['inputTokens','outputTokens','totalTokens','cachedInputTokens','reasoningTokens']) {
                 const value=usage[key];

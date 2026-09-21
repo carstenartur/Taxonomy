@@ -31,7 +31,7 @@ const partial=(run,id)=>({runId:run,checkpointId:id,sourceRevision:1,sourceVersi
     node:{nodeId:'BP',summary:'Partial '+id[0]+' <img onerror=attack()>',statementProposals:[],preservedStatementIds:['original'],
         questionProposals:[{id:'question-'+id[0],wording:'Browser or terminal?',state:'OPEN',answerSchema:{options:['Browser','Terminal']},discoveries:[]}],
         preservedQuestionIds:[],conflictCandidates:[],uncoveredSourceRefs:[]}});
-const usage=run=>({runId:run,recorded:true,fromFirstAttempt:run!=='run-b',httpAttempts:4,replays:1,pendingAttempts:1,retries:1,httpErrors:1,transportErrors:0,invalidUsage:0,
+const usage=run=>({runId:run,recorded:true,fromFirstAttempt:run!=='run-b',httpAttempts:4,replays:1,pendingAttempts:1,retries:1,httpErrors:1,transportErrors:2,invalidUsage:3,
     inputTokens:{reported:'9223372036854775814',reports:2,unknown:2},outputTokens:{reported:'3',reports:1,unknown:3},
     totalTokens:{reported:'10',reports:1,unknown:3},cachedInputTokens:{reported:'0',reports:1,unknown:3},reasoningTokens:{reported:null,reports:0,unknown:4}});
 const document={getElementById:id=>all(host).find(n=>n.id===id),querySelector:()=>null};
@@ -58,6 +58,9 @@ vm.runInContext(source.slice(start,end)+'\nthis.actions={showProgress,refreshPro
     assert(fullText(panel).includes('httpAttempts: 4'),'Show actual attempt evidence separately from saved steps');
     assert(fullText(panel).includes('9223372036854775814'),'Preserve exact token totals without numeric coercion');
     assert(fullText(panel).includes('pendingAttempts: 1') && fullText(panel).includes('usageWarning'));
+    assert(fullText(panel).includes('httpErrors: 1'), 'HTTP error evidence must be visible');
+    assert(fullText(panel).includes('transportErrors: 2'), 'Network error evidence must be visible');
+    assert(fullText(panel).includes('invalidUsage: 3'), 'Invalid provider usage must be visible');
     const unchanged=panel.children[0];
     await sandbox.actions.refreshProgress();
     assert.equal(panel.children[0],unchanged,'Unchanged polling must preserve DOM focus and open details');
