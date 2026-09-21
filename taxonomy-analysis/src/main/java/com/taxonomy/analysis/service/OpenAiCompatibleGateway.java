@@ -182,6 +182,8 @@ public class OpenAiCompatibleGateway implements LlmGateway {
             }
         } catch (LlmRateLimitException | LlmTimeoutException | LlmProviderException exception) {
             throw exception;
+        } catch (LlmTransportMeter.JournalStartException unavailable) {
+            throw unavailable;
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception exception) {

@@ -31,6 +31,9 @@ const partial=(run,id)=>({runId:run,checkpointId:id,sourceRevision:1,sourceVersi
     node:{nodeId:'BP',summary:'Partial '+id[0]+' <img onerror=attack()>',statementProposals:[],preservedStatementIds:['original'],
         questionProposals:[{id:'question-'+id[0],wording:'Browser or terminal?',state:'OPEN',answerSchema:{options:['Browser','Terminal']},discoveries:[]}],
         preservedQuestionIds:[],conflictCandidates:[],uncoveredSourceRefs:[]}});
+const usage=run=>({runId:run,recorded:true,fromFirstAttempt:run!=='run-b',httpAttempts:4,replays:1,pendingAttempts:1,retries:1,httpErrors:1,transportErrors:0,invalidUsage:0,
+    inputTokens:{reported:'9223372036854775814',reports:2,unknown:2},outputTokens:{reported:'3',reports:1,unknown:3},
+    totalTokens:{reported:'10',reports:1,unknown:3},cachedInputTokens:{reported:'0',reports:1,unknown:3},reasoningTokens:{reported:null,reports:0,unknown:4}});
 const document={getElementById:id=>all(host).find(n=>n.id===id),querySelector:()=>null};
 const sandbox={window:{location:{pathname:'/'}},document,URLSearchParams,host,offer,project:7,requirement:11,
     t:key=>key,el:element,pre:text=>element('pre',text),hasDrafts:()=>true,announce(){},
@@ -40,7 +43,7 @@ const sandbox={window:{location:{pathname:'/'}},document,URLSearchParams,host,of
         const run=decodeURIComponent(parsed.pathname.match(/synthesis-runs\/([^/]+)/)[1]);
         const id=parsed.pathname.split('/checkpoints/')[1];
         if(id && id===holdId)return new Promise(resolve=>{held=()=>resolve({ok:true,status:200,json:async()=>partial(run,id)});});
-        return {ok:true,status:200,json:async()=>id?partial(run,id):page(run,parsed.searchParams.get('after'))};
+        return {ok:true,status:200,json:async()=>parsed.pathname.endsWith('/usage')?usage(run):id?partial(run,id):page(run,parsed.searchParams.get('after'))};
     }};
 vm.createContext(sandbox);
 vm.runInContext(apiSource,sandbox);
@@ -52,6 +55,9 @@ vm.runInContext(source.slice(start,end)+'\nthis.actions={showProgress,refreshPro
     assert(fullText(panel).includes('storedRun: 3'),'Show actual saved-step count, not current page size');
     assert(fullText(panel).includes('storedOffer: 7'));
     assert(fullText(panel).includes('partialWarning') && fullText(panel).includes('countWarning'));
+    assert(fullText(panel).includes('httpAttempts: 4'),'Show actual attempt evidence separately from saved steps');
+    assert(fullText(panel).includes('9223372036854775814'),'Preserve exact token totals without numeric coercion');
+    assert(fullText(panel).includes('pendingAttempts: 1') && fullText(panel).includes('usageWarning'));
     const unchanged=panel.children[0];
     await sandbox.actions.refreshProgress();
     assert.equal(panel.children[0],unchanged,'Unchanged polling must preserve DOM focus and open details');
@@ -71,6 +77,7 @@ vm.runInContext(source.slice(start,end)+'\nthis.actions={showProgress,refreshPro
     await sandbox.actions.showProgress('run-b');held();await oldAgain;
     panel=document.getElementById('reformulationProgress');
     assert(!all(panel).some(n=>n.dataset.partialCheckpoint),'Old run result must not leak into another selection');
+    assert(fullText(panel).includes('usageLate'),'A newly metered resumed run must not claim complete earlier usage');
     assert.equal(offer.currentRevision.text,'Saved proposal');
     assert.equal(offer.currentRevision.number,1);
     assert(calls.every(c=>!c.init.method || c.init.method==='GET'),'Progress actions must never mutate');

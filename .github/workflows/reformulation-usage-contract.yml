@@ -5,6 +5,8 @@ on:
   pull_request:
     paths:
       - 'taxonomy-analysis/**'
+      - 'taxonomy-portfolio/**'
+      - 'taxonomy-app/**'
       - '.github/workflows/reformulation-usage-contract.yml'
 
 permissions:
@@ -41,7 +43,7 @@ jobs:
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
           from pathlib import Path
-          suites = {'service.LlmTransportMeterTest': 8, 'service.LlmTransportMeterBoundaryTest': 6,
+          suites = {'service.LlmTransportMeterTest': 8, 'service.LlmTransportMeterBoundaryTest': 6, 'service.LlmDurableTransportTest': 3,
                     'reformulation.ParallelReformulationMeterTest': 1}
           errors = 0
           for name, minimum in suites.items():
@@ -54,6 +56,30 @@ jobs:
               errors += int(tests < minimum or failed != 0 or skipped != 0)
           assert errors == 0
           PY
+      - name: Verify durable per-run accounting and existing architecture boundaries
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-app -am test \
+            -Dtest=ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ArchitectureContextDependencyRatchetTest \
+            -Dsurefire.failIfNoSpecifiedTests=false > usage-persistence-tests.log 2>&1
+          result=$?
+          tail -n 100 usage-persistence-tests.log
+          exit "$result"
+      - name: Require persistence suites and positive test counts
+        if: always()
+        run: |
+          python3 - <<'PYTEST'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          suites = [('taxonomy-portfolio', 'com.taxonomy.portfolio.reformulation.ReformulationUsageBoundaryTest', 3),
+                    ('taxonomy-app', 'com.taxonomy.portfolio.reformulation.ReformulationUsageTest', 1),
+                    ('taxonomy-app', 'com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest', 2)]
+          for module, name, count in suites:
+              root = ET.parse(Path(module) / 'target/surefire-reports' / f'TEST-{name}.xml').getroot()
+              print(name, root.attrib)
+              assert int(root.attrib['tests']) >= count
+              assert all(int(root.attrib.get(key, '0')) == 0 for key in ('failures', 'errors', 'skipped'))
+          PYTEST
       - name: Archive the tested public source tree
         if: always()
         run: git archive --format=zip -o usage-source.zip HEAD
@@ -64,6 +90,7 @@ jobs:
           name: usage-contract-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
             usage-tests.log
+            usage-persistence-tests.log
             usage-source.zip
             taxonomy-*/target/surefire-reports/TEST-*.xml
           if-no-files-found: error

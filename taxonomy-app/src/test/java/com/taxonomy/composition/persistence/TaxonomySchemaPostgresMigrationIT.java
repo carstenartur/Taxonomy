@@ -150,7 +150,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26");
     }
 
     @Test
@@ -225,12 +225,20 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
     }
 
     private static void assertReformulationSchema(DataSource dataSource) throws SQLException {
+        for (String table : List.of("reformulation_usage_session", "reformulation_usage_attempt")) assertThat(tableExists(dataSource, table)).isTrue();
+        for (String column : List.of("run_id", "proposal_id", "scope_key", "created_at", "schema_version", "from_first_attempt"))
+            assertThat(columnExists(dataSource, "reformulation_usage_session", column)).as("usage session " + column).isTrue();
+        for (String column : List.of("id", "run_id", "owner_id", "lease_epoch", "invocation_id", "provider", "source_kind", "retry_index",
+                "started_at", "completed_at", "status_code", "outcome", "duration_millis", "input_tokens", "output_tokens", "total_tokens", "cached_input_tokens", "reasoning_tokens", "invalid_usage", "row_version"))
+            assertThat(columnExists(dataSource, "reformulation_usage_attempt", column)).as("usage attempt " + column).isTrue();
+        assertThat(foreignKeyBindings(dataSource, "reformulation_usage_session", "fk_reform_usage_run")).containsExactly("run_id->reformulation_run.id");
+        assertThat(foreignKeyBindings(dataSource, "reformulation_usage_attempt", "fk_reform_usage_attempt_session")).containsExactly("run_id->reformulation_usage_session.run_id");
         assertThat(tableExists(dataSource, "reformulation_recovery_lease")).isTrue();
         for (String column : List.of("run_id", "dispatch_payload", "owner_id", "lease_epoch", "lease_until", "active", "row_version")) {
             assertThat(columnExists(dataSource, "reformulation_recovery_lease", column)).as("recovery " + column).isTrue();

@@ -124,6 +124,10 @@ public class ReformulationRecoveryService {
         locked.lease().retire(); return true;
     }
 
+    /** Admission guard for run-owned side effects; joins the caller's short transaction. */
+    @Transactional
+    public void checkActive(Claim token) { require(token); }
+
     private void require(Claim token) {
         if (!valid(lock(token.dispatch()), token)) throw PortfolioException.conflict("REFORMULATION_LEASE_LOST");
     }
@@ -145,7 +149,7 @@ public class ReformulationRecoveryService {
             throw PortfolioException.conflict("REFORMULATION_DISPATCH_CHANGED");
         return new Locked(lease, json.read(run.getPayload(), Run.class));
     }
-    private Instant databaseTime(String runId) {
+    Instant databaseTime(String runId) {
         return em.unwrap(org.hibernate.Session.class).doReturningWork(connection -> {
             String product = connection.getMetaData().getDatabaseProductName();
             String sql = switch (product) {

@@ -30,6 +30,7 @@ public class ReformulationExecutionService {
     private final AsyncTaskExecutor executor;
     private final ObjectMapper checkpointJson;
     private final ReformulationRecoveryService recovery;
+    private final ReformulationUsageService usage;
     private final String owner = UUID.randomUUID().toString();
     private final java.util.Set<String> scheduled = ConcurrentHashMap.newKeySet();
     private final Map<String,Claim> claimed = new ConcurrentHashMap<>();
@@ -38,9 +39,9 @@ public class ReformulationExecutionService {
     public ReformulationExecutionService(ReformulationService proposals,FrozenReformulationEngine engine,
             CrossTaxonomyReconciler reconciler,LlmProviderConfig providers,
             @Qualifier("portfolioAnalysisExecutor") AsyncTaskExecutor executor,ObjectMapper json,
-            ReformulationRecoveryService recovery) {
+            ReformulationRecoveryService recovery, ReformulationUsageService usage) {
         this.proposals=proposals;this.engine=engine;this.reconciler=reconciler;this.providers=providers;this.executor=executor;
-        this.recovery=recovery;
+        this.recovery=recovery; this.usage=usage;
         this.checkpointJson=json.rebuild().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
     }
     public Run start(Long projectId,Long requirementId,String proposalId,long expectedRevision,String actor,WorkspaceContext context) {
@@ -103,18 +104,21 @@ public class ReformulationExecutionService {
                     baseline.originalTextHash(),baseline.snapshotId(),baseline.snapshotPayload(),captured,baseline.language(),baseline.algorithmVersion());
             var revision=proposal.currentRevision();
             var steps=checkpointExecutor(dispatch.projectId(),dispatch.requirementId(),proposal.id(),run,dispatch.actor(),dispatch.context(),token);
-            com.taxonomy.reformulation.ReformulationDocument reconciled;
-            if(!revision.impact().sectionIds().isEmpty()) {
-                var trace=proposals.runs(dispatch.projectId(),dispatch.requirementId(),proposal.id(),dispatch.actor(),dispatch.context()).stream()
-                        .filter(r->r.resultRevision()!=null && r.candidate()!=null && r.resultRevision()<=revision.number())
-                        .max(java.util.Comparator.comparingLong(Run::resultRevision)).map(r->r.candidate().reconciliation()).orElse(null);
-                var before=new com.taxonomy.reformulation.ReformulationDocument(revision.text(),revision.sections(),revision.statements(),revision.questions(),revision.validation(),java.util.List.of(),trace);
-                reconciled=engine.synthesizeAffected(runBaseline,before,revision.answers(),revision.impact(),steps);
-            } else {
-                var result=engine.synthesize(runBaseline,revision.statements(),revision.answers(),revision.questions(),steps);
-                reconciled=reconciler.reconcile(runBaseline,result,revision.answers(),revision.questions(),steps);
+            usage.activate(token);
+            try (var journal = LlmTransportMeter.openJournal(usageJournal(token))) {
+                com.taxonomy.reformulation.ReformulationDocument reconciled;
+                if(!revision.impact().sectionIds().isEmpty()) {
+                    var trace=proposals.runs(dispatch.projectId(),dispatch.requirementId(),proposal.id(),dispatch.actor(),dispatch.context()).stream()
+                            .filter(r->r.resultRevision()!=null && r.candidate()!=null && r.resultRevision()<=revision.number())
+                            .max(java.util.Comparator.comparingLong(Run::resultRevision)).map(r->r.candidate().reconciliation()).orElse(null);
+                    var before=new com.taxonomy.reformulation.ReformulationDocument(revision.text(),revision.sections(),revision.statements(),revision.questions(),revision.validation(),java.util.List.of(),trace);
+                    reconciled=engine.synthesizeAffected(runBaseline,before,revision.answers(),revision.impact(),steps);
+                } else {
+                    var result=engine.synthesize(runBaseline,revision.statements(),revision.answers(),revision.questions(),steps);
+                    reconciled=reconciler.reconcile(runBaseline,result,revision.answers(),revision.questions(),steps);
+                }
+                recovery.finish(token,reconciled,null);
             }
-            recovery.finish(token,reconciled,null);
         } catch(RuntimeException failure) {
             // An unclaimed delivery cannot fail another worker. Expired owners also
             // cannot publish failures because finish verifies the exact epoch again.
@@ -125,6 +129,20 @@ public class ReformulationExecutionService {
             if(token!=null)claimed.remove(dispatch.run().id(),token);
             if(!claimed.containsKey(dispatch.run().id()))scheduled.remove(dispatch.run().id());
         }
+    }
+    private LlmTransportMeter.Journal usageJournal(Claim token) {
+        return new LlmTransportMeter.Journal() {
+            @Override public void started(LlmTransportMeter.Attempt attempt) {
+                usage.start(token, new ReformulationUsageService.Start(attempt.id(), attempt.invocationId(),
+                        attempt.provider(), attempt.source().name(), attempt.retryIndex()));
+            }
+            @Override public void completed(LlmTransportMeter.Attempt attempt, LlmTransportMeter.Observation result) {
+                var values = result.usage();
+                usage.complete(token, attempt.id(), new ReformulationUsageService.Completion(result.statusCode(), result.outcome().name(),
+                        result.durationMillis(), values.inputTokens(), values.outputTokens(), values.totalTokens(),
+                        values.cachedInputTokens(), values.reasoningTokens(), values.invalid()));
+            }
+        };
     }
     /** Legacy direct runs retain explicit cancel/retry; new dispatched runs use the lease-bound overload. */
     public ReformulationStepExecutor checkpoints(Long projectId,Long requirementId,String proposalId,Run run,String actor,WorkspaceContext context) {
@@ -162,7 +180,7 @@ public class ReformulationExecutionService {
         if(failure instanceof LlmProviderException provider)return "PROVIDER_"+provider.getReason().name();
         if(failure instanceof IllegalArgumentException)return "INVALID_FROZEN_INPUT";
         String message=failure.getMessage();
-        for(String code:new String[]{"INPUT_TOO_LARGE_FOR_PROVIDER","INVALID_MODEL_RESPONSE","PROVIDER_NOT_CONFIGURED","PROVIDER_TRANSPORT_FAILED","MODEL_CONFIGURATION_CHANGED","CHECKPOINT_EXECUTION_INSIDE_TRANSACTION","CHECKPOINT_RESULT_TOO_LARGE_OR_EMPTY"})
+        for(String code:new String[]{"INPUT_TOO_LARGE_FOR_PROVIDER","INVALID_MODEL_RESPONSE","PROVIDER_NOT_CONFIGURED","PROVIDER_TRANSPORT_FAILED","MODEL_CONFIGURATION_CHANGED","CHECKPOINT_EXECUTION_INSIDE_TRANSACTION","CHECKPOINT_RESULT_TOO_LARGE_OR_EMPTY","USAGE_RECORDING_UNAVAILABLE"})
             if(message!=null && message.startsWith(code))return code;
         return "SYNTHESIS_FAILED";
     }

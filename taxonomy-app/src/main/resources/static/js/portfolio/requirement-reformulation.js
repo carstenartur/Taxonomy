@@ -7,7 +7,11 @@
     const api = window.TaxonomyPortfolioApi, project = Number(route[1]), requirement = Number(route[2]);
     const lang = (new URLSearchParams(location.search).get('lang') || document.documentElement.lang || 'en').startsWith('de') ? 'de' : 'en';
     const words = {
-        de: {progress:'Gespeicherte Teilergebnisse', storedRun:'In diesem Lauf neu gespeicherte Teilschritte', storedOffer:'Im gesamten Angebot gespeicherte Teilschritte',
+        de: {usage:'Erfasste Anfrageversuche', usageUnrecorded:'Für diesen Lauf wurde noch keine Verbrauchserfassung gestartet.',
+            httpAttempts:'Vorgemerkte HTTP-Versuche', replays:'Wiedergaben ohne HTTP', pendingAttempts:'Versuche ohne gespeicherten Ausgang', retries:'Transportwiederholungen',
+            inputTokens:'Gemeldete Eingabetokens', outputTokens:'Gemeldete Ausgabetokens', totalTokens:'Gemeldete Gesamttokens', cachedInputTokens:'Gemeldete Cache-Tokens', reasoningTokens:'Gemeldete Reasoning-Tokens',
+            unknownUsage:'ohne Angabe', reports:'Meldungen', usageLate:'Die Erfassung begann erst bei einer Wiederaufnahme. Frühere Anfragen sind nicht enthalten.',usageWarning:'Beginn ist kein Beleg für Empfang oder Abrechnung. Offene Ausgänge können noch laufend oder durch Absturz oder Speicherfehler ungeklärt sein. Fehlende Tokenangaben sind nicht null Verbrauch; es werden keine Kosten errechnet.',
+            progress:'Gespeicherte Teilergebnisse', storedRun:'In diesem Lauf neu gespeicherte Teilschritte', storedOffer:'Im gesamten Angebot gespeicherte Teilschritte',
             partialWarning:'Ungeprüftes Teilergebnis – kein vollständiger Vorschlag und nicht übernommen. Fragen und Aussagen können noch Abgleiche benötigen.',
             countWarning:'Diese Zähler sind weder Modellaufrufe noch ein Vollständigkeitsmaß. Wiederverwendung, Reparaturaufrufe und Tokenkosten werden hier nicht gezählt.',
             moreResults:'Weitere Teilergebnisse', noResults:'Noch kein Teilergebnis dauerhaft gespeichert.', inspect:'Teilergebnis ansehen', closeProgress:'Teilergebnisse schließen',
@@ -29,7 +33,11 @@
             OPEN:'Offen', ANSWERED:'Beantwortet', DEFERRED:'Zurückgestellt', NOT_APPLICABLE:'Nicht anwendbar', CONFLICT:'Konflikt',
             MODEL_ADDITION:'Modellergänzung', ORIGINAL:'Original', CATALOGUE_INSPIRATION:'Kataloganregung', ARCHITECTURE_HYPOTHESIS:'Architekturhypothese', HUMAN_DECISION:'Menschliche Entscheidung',
             changeDecision:'Abweichende menschliche Entscheidung erfassen', applicable:'Bedingte Folgefrage', unavailable:'Erst bei passender Antwort auf die vorausgesetzte Frage beantworten.'},
-        en: {progress:'Saved partial results', storedRun:'Steps newly saved in this run', storedOffer:'Steps saved across this offer',
+        en: {usage:'Recorded request attempts', usageUnrecorded:'Usage recording has not been started for this run.',
+            httpAttempts:'Admitted HTTP attempts', replays:'Replays without HTTP', pendingAttempts:'Attempts without a recorded outcome', retries:'Transport retries',
+            inputTokens:'Reported input tokens', outputTokens:'Reported output tokens', totalTokens:'Reported total tokens', cachedInputTokens:'Reported cached tokens', reasoningTokens:'Reported reasoning tokens',
+            unknownUsage:'unreported', reports:'reports', usageLate:'Recording started on a later execution attempt. Earlier requests are not included.',usageWarning:'Admission is not proof of receipt or billing. Pending outcomes may be in flight or unresolved after a crash or recording error. Missing token counts do not mean zero usage; no monetary cost is inferred.',
+            progress:'Saved partial results', storedRun:'Steps newly saved in this run', storedOffer:'Steps saved across this offer',
             partialWarning:'Unreviewed partial result – not a complete proposal and not adopted. Statements and questions may still need reconciliation.',
             countWarning:'These counts are neither model calls nor a completeness measure. Reuse, repair requests and token costs are not counted here.',
             moreResults:'More partial results', noResults:'No partial result has been durably saved yet.', inspect:'Inspect partial result', closeProgress:'Close partial results',
@@ -276,6 +284,15 @@
             view.data=data;
             data.items.forEach(item=>view.items.set(item.checkpointId,item));
             view.error=null;
+            try {
+                const usage=await api.getReformulationUsage(project,requirement,view.offerId,view.runId);
+                if(!progressCurrent(view,generation))return;
+                if(usage.runId!==view.runId)throw new Error('Unexpected usage run');
+                changed=changed || JSON.stringify(view.usage)!==JSON.stringify(usage) || !!view.usageError;
+                view.usage=usage;view.usageError=null;
+            } catch(error) {
+                if(progressCurrent(view,generation)){changed=true;view.usageError=error.message;}
+            }
         } catch(error) {
             if(progressCurrent(view,generation)){changed=true;view.error=error.message;}
         } finally {
@@ -299,6 +316,24 @@
             if(progressCurrent(view,generation) && view.detailGeneration===detailGeneration){view.detailLoading=false;renderProgress();announce(t('progress')+(hasDrafts()?' '+t('dirty'):''));}
         }
     }
+    function renderUsage(view,panel) {
+        const box=el('section',undefined,'border rounded p-2 my-2');box.dataset.reformulationUsage='';
+        box.append(el('h4',t('usage'),'h6'));
+        if(view.usageError)box.append(el('p',t('failed')+view.usageError,'text-danger'));
+        const usage=view.usage;
+        if(!usage || !usage.recorded)box.append(el('p',usage?t('usageUnrecorded'):t('loading')));
+        else {
+            if(!usage.fromFirstAttempt)box.append(el('p',t('usageLate'),'alert alert-warning'));
+            for(const key of ['httpAttempts','replays','pendingAttempts','retries'])box.append(el('p',t(key)+': '+usage[key],'small mb-1'));
+            const list=el('dl',undefined,'small');
+            for(const key of ['inputTokens','outputTokens','totalTokens','cachedInputTokens','reasoningTokens']) {
+                const value=usage[key];
+                list.append(el('dt',t(key)),el('dd',(value.reported===null?'—':value.reported)+' ('+value.reports+' '+t('reports')+', '+value.unknown+' '+t('unknownUsage')+')'));
+            }
+            box.append(list,el('p',t('usageWarning'),'small text-body-secondary'));
+        }
+        panel.append(box);
+    }
     function renderProgress() {
         let panel=document.getElementById('reformulationProgress');
         if(!progressView || progressView.offerId!==offer?.id){if(panel)panel.remove();return;}
@@ -312,6 +347,7 @@
                 el('p',t('countWarning'),'small text-body-secondary'),
                 el('p',t('createdAt')+': '+data.createdAt+(data.lastCheckpointAt?' · '+t('lastCheckpoint')+': '+data.lastCheckpointAt:''),'small text-break'));
         }
+        renderUsage(view,panel);
         const controls=el('div',undefined,'reformulation-controls');
         controls.append(button(t('refresh'),async()=>{await refreshProgress();announce(t('progress')+(hasDrafts()?' '+t('dirty'):''));}),button(t('closeProgress'),()=>{progressView=null;++progressGeneration;renderProgress();announce(t('state')+(hasDrafts()?' '+t('dirty'):''));}));
         panel.append(controls);

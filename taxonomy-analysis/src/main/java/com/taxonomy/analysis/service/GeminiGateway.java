@@ -175,6 +175,8 @@ public class GeminiGateway implements LlmGateway {
             }
         } catch (LlmRateLimitException | LlmTimeoutException e) {
             throw e;
+        } catch (LlmTransportMeter.JournalStartException unavailable) {
+            throw unavailable;
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
