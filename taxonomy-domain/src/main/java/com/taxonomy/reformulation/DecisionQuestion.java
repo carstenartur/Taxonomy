@@ -11,9 +11,22 @@ public record DecisionQuestion(String id, Key key, String wording, List<Discover
             List<String> nodeIds,List<String> edgeIds) {
         public Discovery { sourceSpans=List.copyOf(sourceSpans); nodeIds=List.copyOf(nodeIds); edgeIds=List.copyOf(edgeIds); }
     }
-    public record AnswerSchema(Kind kind,List<String> options,String unit,Double minimum,Double maximum) {
+    public record AnswerSchema(Kind kind,List<String> options,String unit,Double minimum,Double maximum,
+            Map<String,OptionMeaning> optionMeanings,List<List<String>> incompatibleOptions,List<AnswerCondition> applicability) {
         public enum Kind { SINGLE_CHOICE, MULTIPLE_CHOICE, TEXT, NUMBER, BOOLEAN }
-        public AnswerSchema { options=List.copyOf(options); Objects.requireNonNull(kind); }
+        public enum OptionMeaning { VALUE, OTHER, OPEN, NOT_NEEDED }
+        public record AnswerCondition(String questionId,List<String> anyOf) {
+            public AnswerCondition {anyOf=List.copyOf(anyOf);}
+        }
+        public AnswerSchema(Kind kind,List<String> options,String unit,Double minimum,Double maximum) {
+            this(kind,options,unit,minimum,maximum,Map.of(),List.of(),List.of());
+        }
+        public AnswerSchema {
+            options=List.copyOf(options); Objects.requireNonNull(kind);
+            optionMeanings=optionMeanings==null?Map.of():Map.copyOf(optionMeanings);
+            incompatibleOptions=incompatibleOptions==null?List.of():incompatibleOptions.stream().map(List::copyOf).toList();
+            applicability=applicability==null?List.of():List.copyOf(applicability);
+        }
     }
     /** Exact pre-merge identity and meaning, including all local references. Never a new vote. */
     public record Origin(String id,Key key,String wording,List<Discovery> discoveries,List<String> affectedStatementIds,
@@ -45,6 +58,7 @@ public record DecisionQuestion(String id, Key key, String wording, List<Discover
     }
     public static boolean compatible(AnswerSchema a,AnswerSchema b) {
         return a.kind()==b.kind() && new HashSet<>(a.options()).equals(new HashSet<>(b.options())) && Objects.equals(a.unit(),b.unit())
-            && Objects.equals(a.minimum(),b.minimum()) && Objects.equals(a.maximum(),b.maximum());
+            && Objects.equals(a.minimum(),b.minimum()) && Objects.equals(a.maximum(),b.maximum())
+            && a.optionMeanings().equals(b.optionMeanings()) && a.incompatibleOptions().equals(b.incompatibleOptions()) && a.applicability().equals(b.applicability());
     }
 }

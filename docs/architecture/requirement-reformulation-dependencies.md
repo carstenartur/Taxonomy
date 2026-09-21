@@ -51,3 +51,30 @@ Package 3 adds one further reviewed count change:
 The controller inspected and authorized these two pairs before the baseline edit.
 All other counts and dependency rules remain unchanged. Reconciliation uses the
 same node service, gateway registry, provider budgets and bounded executor.
+
+Package 4 adds one further reviewed count change:
+
+| From package | To package | Count change | Exact new class pairs |
+| --- | --- | ---: | --- |
+| composition.reformulation | portfolio.reformulation | 13 → 17 | ReformulationController → ReformulationDtos.AnswerRequest; ReformulationController → ReformulationDtos.StatementRequest; ReformulationController → ReformulationDtos.VariantRequest; ReformulationController → ReformulationAnswerException. |
+
+The controller inspected and authorized these four pairs before the baseline edit.
+They expose authenticated, scoped portfolio answer, statement and variant
+operations and their HTTP 422 validation responses over the established
+application-to-portfolio boundary. Portfolio retains append-only persistence and
+guarded publication; application composition retains asynchronous gateway
+coordination. No new Maven dependency, reverse edge, ratchet-test change or broader
+allowance is introduced. The strict 22-case dependency ratchet passes; independent
+package review must verify the exact four pairs.
+
+## Integrated metadata-list correction
+
+The corrected baseline package introduces the exact additional pair
+`ReformulationController → ProposalSummary` in the existing
+`composition.reformulation → portfolio.reformulation` direction. Combining it with
+package 4 changes that one count from **17 to 18**, not the unrelated edges. The
+list endpoint now returns the explicit metadata projection instead of loading
+frozen baseline/revision payloads. The interactive client fetches selected details
+separately. The compiled controller signature and actual authenticated HTTP output
+were checked before recording this pair. The unchanged strict ratchet remains the
+full integrated CI gate; no arbitrary allowance or test exclusion is introduced.

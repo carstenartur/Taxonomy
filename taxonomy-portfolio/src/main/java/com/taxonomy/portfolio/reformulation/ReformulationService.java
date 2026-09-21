@@ -22,7 +22,6 @@ public class ReformulationService {
     private final ReformulationRevisionRepository revisions;
     private final PortfolioJsonCodec json;
     private final ReformulationRunRepository runs;
-
     public ReformulationService(ProjectPortfolioService projects,
             ProjectRequirementVersionRepository versions,
             RequirementAnalysisSnapshotRepository snapshots,
@@ -96,10 +95,80 @@ public class ReformulationService {
         var statements=new ArrayList<>(previous.statements());
         statements.add(new Statement("human-"+UUID.randomUUID(),request.text(),List.of(),Statement.Provenance.HUMAN_DECISION,
                 List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,"UNREVIEWED"));
+        var editQuestion=new DecisionQuestion("document-edit",new DecisionQuestion.Key("document","edit","GLOBAL"),"Human document edit",List.of(),
+                previous.statements().stream().map(Statement::id).toList(),new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),"Recheck all sections",DecisionQuestion.State.ANSWERED);
+        var impact=ReformulationQuestionService.impact(previous,editQuestion,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));
         var revision=new Revision(proposal.getCurrentRevision(),previous.number(),request.text(),previous.sections(),statements,
-                previous.questions(),previous.answers(),previous.validation(),PortfolioScope.username(actor,context),Instant.now(),request.rationale());
+                previous.questions(),previous.answers(),previous.validation(),PortfolioScope.username(actor,context),Instant.now(),request.rationale(),impact,previous.variantOrigin());
         revisions.save(new ReformulationRevision(proposal.getId(),proposal.getScopeKey(),revision.number(),json.write(revision)));
         return view(proposal);
+    }
+    @Transactional
+    public Proposal answer(Long projectId,Long requirementId,String id,long expected,AnswerRequest request,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);
+        if(proposal.getCurrentRevision()!=expected) throw new ReformulationPreconditionException();
+        var previous=readRevision(proposal,expected);
+        var next=ReformulationQuestionService.answer(id,previous,request,PortfolioScope.username(actor,context),json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));
+        proposal.advanceRevision();
+        revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),next.number(),json.write(next)));
+        return view(proposal);
+    }
+    @Transactional
+    public Proposal statement(Long projectId,Long requirementId,String id,long expected,String statementId,StatementRequest request,String actor,WorkspaceContext context) {
+        var proposal=require(projectId,requirementId,id,actor,context,true);
+        if(proposal.getCurrentRevision()!=expected) throw new ReformulationPreconditionException();
+        if(request==null)throw PortfolioException.validation("Statement operation required");
+        ReformulationQuestionService.rationale(request.rationale());
+        var previous=readRevision(proposal,expected);
+        var old=previous.statements().stream().filter(s->s.id().equals(statementId)).findFirst().orElseThrow(()->PortfolioException.notFound("Statement not found"));
+        boolean reject="REJECT".equals(request.action());
+        if(!reject && !"EDIT".equals(request.action()))throw PortfolioException.validation("Invalid statement operation");
+        if(reject && old.provenance()==Statement.Provenance.ORIGINAL)throw PortfolioException.validation("Original source cannot be rejected");
+        if(!reject && (request.text()==null || request.text().isBlank()))throw PortfolioException.validation("Statement text required");
+        var updated=new Statement(old.id(),reject?old.wording():request.text(),old.sourceSpans(),old.provenance(),old.architectureLinks(),
+                old.questionDependencies(),old.conditionalValidity(),Statement.EditingOrigin.HUMAN,reject?"REJECTED":"UNREVIEWED");
+        var statements=previous.statements().stream().map(s->s.id().equals(statementId)?updated:s).toList();
+        var question=new DecisionQuestion("edit-"+statementId,new DecisionQuestion.Key(statementId,"edit","local"),"Human statement operation",List.of(),List.of(statementId),
+                new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),"Review affected architecture",DecisionQuestion.State.ANSWERED);
+        var impact=ReformulationQuestionService.impact(previous,question,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));
+        // Recompose by stable IDs only when the entire flat layout can be proven and the
+        // selected wording is unambiguous. Never replace matching substrings in manual prose.
+        String canonical = String.join("\n\n", previous.statements().stream()
+                .filter(s -> !"REJECTED".equals(s.reviewState())).map(Statement::wording).toList());
+        int first = previous.text().indexOf(old.wording());
+        boolean mapped = !"REJECTED".equals(old.reviewState()) && !old.wording().isEmpty()
+                && previous.text().equals(canonical) && first >= 0
+                && previous.text().indexOf(old.wording(), first + 1) < 0;
+        var findings = new ArrayList<>(previous.validation().findings());
+        findings.removeIf(f -> f.code().equals("STATEMENT_TEXT_CONFLICT")
+                && f.statementIds().equals(List.of(statementId)));
+        String text = previous.text();
+        if (mapped) {
+            text = String.join("\n\n", statements.stream()
+                    .filter(s -> !"REJECTED".equals(s.reviewState())).map(Statement::wording).toList());
+        } else {
+            findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT, "STATEMENT_TEXT_CONFLICT",
+                    "Statement changed by ID; document wording was retained because its mapping is ambiguous or manually edited",
+                    List.of(statementId), old.sourceSpans()));
+        }
+        var next=new Revision(expected+1,expected,text,previous.sections(),statements,previous.questions(),previous.answers(),new ValidationReport(findings),
+                PortfolioScope.username(actor,context),Instant.now(),request.rationale(),impact,previous.variantOrigin());
+        proposal.advanceRevision();revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),next.number(),json.write(next)));
+        return view(proposal);
+    }
+    @Transactional
+    public Proposal variant(Long projectId,Long requirementId,String id,long expected,VariantRequest request,String actor,WorkspaceContext context) {
+        var original=require(projectId,requirementId,id,actor,context,true);
+        if(original.getCurrentRevision()!=expected)throw new ReformulationPreconditionException();
+        if(request==null)throw PortfolioException.validation("Variant rationale required");
+        ReformulationQuestionService.rationale(request.rationale());
+        var baseline=json.read(original.getBaselinePayload(),ReformulationBaseline.class);var previous=readRevision(original,expected);
+        String author=PortfolioScope.username(actor,context);var now=Instant.now();
+        var variant=new ReformulationProposal(UUID.randomUUID().toString(),original.getScopeKey(),projectId,requirementId,baseline.sourceVersionId(),baseline.snapshotId(),original.getBaselinePayload(),author,now);
+        proposals.saveAndFlush(variant);
+        var revision=new Revision(1,null,previous.text(),previous.sections(),previous.statements(),previous.questions(),previous.answers(),previous.validation(),author,now,request.rationale(),previous.impact(),new VariantOrigin(id,expected));
+        revisions.save(new ReformulationRevision(variant.getId(),variant.getScopeKey(),1,json.write(revision)));
+        return view(variant);
     }
     @Transactional
     public Run beginRun(Long projectId,Long requirementId,String id,long expectedRevision,String provider,String model,
@@ -145,7 +214,7 @@ public class ReformulationService {
         }
         proposal.advanceRevision();
         var revision=new Revision(proposal.getCurrentRevision(),previous.number(),document.text(),document.sections(),document.statements(),
-                document.questions(),previous.answers(),document.validation(),old.actor(),Instant.now(),"Generated requirement offer; not adopted or approved");
+                document.questions(),previous.answers(),document.validation(),old.actor(),Instant.now(),"Generated requirement offer; not adopted or approved",ReformulationImpact.empty(),previous.variantOrigin());
         revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),revision.number(),json.write(revision)));
         entity.setPayload(json.write(state(old,"COMPLETED",null,revision.number(),document)));
     }
@@ -174,6 +243,12 @@ public class ReformulationService {
         for(var question:questions.values()) {
             if(!statements.keySet().containsAll(question.affectedStatementIds()) || !questions.keySet().containsAll(question.prerequisites())
                     || !questions.keySet().containsAll(question.dependentQuestionIds())) return false;
+            for(var condition:question.answerSchema().applicability()) {
+                var prerequisite=questions.get(condition.questionId());
+                if(prerequisite==null || prerequisite.id().equals(question.id()) || !question.prerequisites().contains(condition.questionId()) || condition.anyOf().isEmpty())return false;
+                var allowed=prerequisite.answerSchema().kind()==DecisionQuestion.AnswerSchema.Kind.BOOLEAN?List.of("true","false"):prerequisite.answerSchema().options();
+                if(!allowed.containsAll(condition.anyOf()))return false;
+            }
         }
         for(var section:document.sections()) {
             if(!sections.containsAll(section.children()) || !statements.keySet().containsAll(section.statementIds())
@@ -195,6 +270,9 @@ public class ReformulationService {
             if(retained==null || !retained.retains(question)) return false;
             if(question.state()==DecisionQuestion.State.ANSWERED && retained.state()!=DecisionQuestion.State.ANSWERED && retained.state()!=DecisionQuestion.State.CONFLICT)return false;
             if(question.state()==DecisionQuestion.State.CONFLICT && retained.state()!=DecisionQuestion.State.CONFLICT)return false;
+            if(question.state()==DecisionQuestion.State.NOT_APPLICABLE && retained.state()!=DecisionQuestion.State.NOT_APPLICABLE && retained.state()!=DecisionQuestion.State.CONFLICT)return false;
+            if(question.state()==DecisionQuestion.State.DEFERRED && retained.state()!=DecisionQuestion.State.DEFERRED && retained.state()!=DecisionQuestion.State.CONFLICT
+                    && !(retained.state()==DecisionQuestion.State.ANSWERED && !retained.sourceResolutions().isEmpty()))return false;
             for(String id:question.affectedStatementIds()) {
                 var evidence=previousStatements.get(id);
                 if(evidence==null || !evidence.equals(statements.get(id))) return false;

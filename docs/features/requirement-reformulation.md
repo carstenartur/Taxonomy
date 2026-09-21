@@ -1,9 +1,9 @@
 # Saved requirement reformulation offers
 
-A reformulation offer is a separate proposal journal. Creating an offer or saving a
-draft does not change requirement text, version history, the active version,
-architecture snapshot, or review status. The requirement detail page shows saved
-offers with their original text, source version, draft revision and questions.
+A reformulation offer is a separate proposal journal. Creating an offer, answering
+a question or saving a draft does not change requirement text, version history,
+the active version, architecture snapshot, or review status. The requirement detail
+page provides an English/German workspace for original text, proposal and questions.
 
 ## Synthesis and review boundary
 
@@ -31,9 +31,38 @@ The initial draft is explicitly marked as unevaluated. Synthesis can propose wor
 and decision questions, but it does not answer those questions for the user or adopt
 a new requirement version. An empty question list or a completed run is not approval.
 Structural validation and deterministic playback do not establish live-model language
-quality or semantic completeness. The detail surface in this package remains
-read-only and supports English and German; interactive decisions, recovery,
-confirmed adoption and historical export are separate packages.
+quality or semantic completeness. Durable node recovery/cache, separately confirmed
+adoption, historical export and live-model quality acceptance remain later packages.
+
+## Interactive proposal workspace
+
+Each proposal, question and statement form tracks its own unsaved edit generation.
+Saving one form does not clear another; a response acknowledges only the submitted
+generation, not newer typing during the request. Status refresh and late candidates
+retain these drafts. Switching offers, creating a new offer or saving a variant is
+blocked while a local form contains unsaved edits. A saved variant receives a new
+proposal ID and retains its source proposal/revision as evidence.
+
+Question controls support choices, multiple choices, booleans, numbers and free text,
+including explicit Other text, conditional follow-ups and separate deferral and
+not-applicable decisions. A NOT_APPLICABLE action must carry no answer values;
+combining it with an Open option is invalid, not an implicit deferral. Free text is
+not interpreted as an option label. A human decision conflicting with source evidence
+keeps both sources visible instead of silently overwriting the original.
+
+Statement operations address stable statement IDs. An unambiguous flat document
+whose complete layout matches its visible statements can be recomposed after an edit
+or rejection. Ambiguous occurrences or manually edited document text are retained,
+and a statement-bound `STATEMENT_TEXT_CONFLICT` finding records the divergence.
+Rejecting an addition retains its statement as evidence; original statements cannot
+be rejected. No global substring replacement is used. Targeted regeneration records
+affected statements, sections, ancestors and boundary edges; protected manual drafts
+remain candidates for review rather than being overwritten.
+
+Architecture links display the referenced node or directed relationship from the
+offer's frozen snapshot. They never resolve historical references against the active
+catalogue. External wording and evidence are rendered as text. The workspace supports
+application context paths through the existing routing bootstrap.
 
 ## API
 
@@ -45,11 +74,18 @@ Under `/api/projects/{projectId}/requirements/{requirementId}/reformulations`:
 - `GET`: list lightweight offer metadata for the exact selected requirement and
   workspace scope. Entries contain the offer ID, source version, snapshot, creator,
   creation time and numeric current revision, not frozen evidence or document text.
+  The workspace loads the selected offer through its detail endpoint.
 - `GET /{proposalId}`: read the immutable baseline and current draft revision.
-  The read-only offer card requests these details when opened.
 - `GET /{proposalId}/revisions/{revision}`: read an exact historical revision.
 - `POST /{proposalId}/revisions`: `{ "text": "...", "rationale": "..." }` with
-  `If-Match: "1"` appends a draft revision. Missing If-Match is 428; stale is 412.
+  `If-Match: "1"` appends a draft revision. It also accepts exactly one typed
+  answer or statement operation instead of text. Missing If-Match is 428; stale is 412.
+- `POST /{proposalId}/answers`: append a typed ANSWER, DEFER or NOT_APPLICABLE
+  decision with the expected quoted revision. Invalid answer combinations return 422.
+- `POST /{proposalId}/statements/{statementId}`: EDIT or REJECT one statement by ID,
+  with rationale and the expected quoted revision.
+- `POST /{proposalId}/variants`: create a separate proposal from the expected saved
+  revision, recording its origin and rationale.
 - `POST /{proposalId}/synthesis-runs` with the current quoted `If-Match` revision
   starts another synthesis run and returns 202 with the run record.
 - `GET /{proposalId}/synthesis-runs`: read the recorded runs and their outcomes.

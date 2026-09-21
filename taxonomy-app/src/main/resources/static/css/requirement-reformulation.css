@@ -1,0 +1,25 @@
+#reformulationOffers { min-width: 0; }
+#reformulationOffers pre, #reformulationOffers textarea { white-space: pre-wrap; overflow-wrap: anywhere; word-break: normal; }
+#reformulationOffers pre { font: inherit; margin: 0; }
+#reformulationOffers textarea { width: 100%; min-height: 14rem; }
+#reformulationOffers .reformulation-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 1.25rem; }
+#reformulationOffers .reformulation-panel { min-width: 0; border: 1px solid var(--bs-border-color); border-radius: .5rem; padding: 1rem; }
+#reformulationOffers .reformulation-questions { grid-column: 1/-1; }
+#reformulationOffers .reformulation-question { padding: 1rem; border: 1px solid var(--bs-border-color); border-radius: .5rem; margin: .75rem 0; }
+#reformulationOffers .reformulation-question textarea { min-height: 5rem; }
+#reformulationOffers .reformulation-controls { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }
+#reformulationOffers .reformulation-tabs { display: none; }
+#reformulationOffers .reformulation-evidence { border-left: 3px solid var(--bs-warning); padding-left: .75rem; }
+#reformulationOffers input, #reformulationOffers select { max-width: 100%; }
+#reformulationOffers .reformulation-candidate { border: 2px solid var(--bs-warning); border-radius: .5rem; padding: 1rem; }
+#reformulationOffers [data-reformulation-status] { margin: .5rem 0; }
+#reformulationOffers :focus-visible { outline: 3px solid var(--bs-primary); outline-offset: 3px; }
+@media (max-width: 767px) {
+    #reformulationOffers .reformulation-grid { display: block; }
+    #reformulationOffers .reformulation-tabs { display: flex; flex-wrap: wrap; gap: .5rem; margin-bottom: .75rem; }
+    #reformulationOffers .reformulation-panel { display: none; }
+    #reformulationOffers .reformulation-panel[data-active="true"] { display: block; }
+}
+
+#reformulationStart > label { flex: 1 1 18rem; min-width: 0; max-width: 100%; }
+#reformulationOffers, #reformulationOffers [id] { scroll-margin-top: 5rem; }

@@ -64,6 +64,92 @@ public class FrozenReformulationEngine {
         String text=String.join("\n\n",statements.values().stream().map(Statement::wording).toList());
         return new ReformulationDocument(text,sections,List.copyOf(statements.values()),List.copyOf(questions.values()),new ValidationReport(findings),List.copyOf(results.values()));
     }
+    /** Reword only invalidated sections, bottom-up. Independent section records remain byte-stable. */
+    public ReformulationDocument synthesizeAffected(ReformulationBaseline baseline, ReformulationDocument before,
+            List<DecisionAnswer> answers, ReformulationImpact impact) {
+        var descriptions=new TreeMap<String,String>();var parents=new TreeMap<String,Set<String>>();
+        collect(json.readTree(baseline.frozenContext().getOrDefault("catalogue","[]")),null,descriptions,parents,new LinkedHashSet<>());
+        var sections=new LinkedHashMap<String,Section>();before.sections().forEach(s->sections.put(s.id(),s));
+        var statements=new LinkedHashMap<String,Statement>();before.statements().forEach(s->statements.put(s.id(),s));
+        var questions=new LinkedHashMap<String,DecisionQuestion>();before.questions().forEach(q->questions.put(q.id(),q));
+        var boundaries=new TreeMap<String,String>();
+        for(var edge:json.readTree(baseline.frozenContext().getOrDefault("relationMappings","[]")))boundaries.put("edge-"+edge.path("id").asText(),edge.toString());
+        var results=new LinkedHashMap<String,NodeSynthesisResult>();
+        var findings=new ArrayList<>(before.validation().findings());
+        var visiting=new HashSet<String>();
+        for(var section:before.sections()) rewordSection(section.id(),baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting);
+        StringBuilder text=new StringBuilder();var rendered=new HashSet<String>();
+        for(var section:sections.values()) {
+            text.append(section.title()).append("\n").append(section.summary()).append("\n\n");
+            for(String id:section.statementIds()) {
+                var statement=statements.get(id);
+                if(statement!=null && !"REJECTED".equals(statement.reviewState()) && rendered.add(id))
+                    text.append(statement.wording()).append(" [").append(statement.provenance()).append("]\n\n");
+            }
+        }
+        for(var statement:statements.values())if(!"REJECTED".equals(statement.reviewState()) && rendered.add(statement.id()))
+            text.append(statement.wording()).append(" [").append(statement.provenance()).append("]\n\n");
+        text.append(baseline.language().equals("de")?"Original (unverändert)\n":"Original (unchanged)\n").append(baseline.originalText());
+        return new ReformulationDocument(text.toString(),List.copyOf(sections.values()),List.copyOf(statements.values()),List.copyOf(questions.values()),
+                new ValidationReport(findings),List.copyOf(results.values()),before.reconciliation());
+    }
+    private NodeSynthesisResult rewordSection(String id,ReformulationBaseline baseline,Map<String,Section> sections,
+            Map<String,Statement> statements,Map<String,DecisionQuestion> questions,Map<String,String> descriptions,
+            Map<String,Set<String>> parents,Map<String,String> boundaries,List<DecisionAnswer> answers,ReformulationImpact impact,
+            Map<String,NodeSynthesisResult> results,List<ValidationReport.Finding> findings,Set<String> visiting) {
+        if(results.containsKey(id))return results.get(id);
+        if(!visiting.add(id))throw new IllegalArgumentException("Section cycle: "+id);
+        var section=sections.get(id);if(section==null)throw new IllegalArgumentException("Unknown section: "+id);
+        var children=new ArrayList<NodeSynthesisResult>();
+        for(String child:section.children())children.add(rewordSection(child,baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting));
+        var localStatementIds=new LinkedHashSet<>(section.statementIds());
+        var localQuestions=questions.values().stream().filter(q->section.questionIds().contains(q.id()) || q.key().scope().equals(id)
+                || Set.of("global","@document","*").contains(q.key().scope().toLowerCase(Locale.ROOT))
+                || !Collections.disjoint(q.affectedStatementIds(),localStatementIds)).toList();
+        var localQIds=new LinkedHashSet<String>();localQuestions.forEach(q->localQIds.addAll(q.referenceIds()));
+        boolean changed;
+        do {int size=localQIds.size();for(var q:questions.values())if(!Collections.disjoint(q.referenceIds(),localQIds))localQIds.addAll(q.prerequisites());changed=size!=localQIds.size();}while(changed);
+        localQuestions=questions.values().stream().filter(q->!Collections.disjoint(q.referenceIds(),localQIds)).toList();
+        localQuestions.forEach(q->localStatementIds.addAll(q.affectedStatementIds()));
+        var direct=localStatementIds.stream().map(statements::get).filter(Objects::nonNull).toList();
+        var localBoundary=new TreeMap<String,String>();boundaries.forEach((edgeId,value)->{
+            var edge=json.readTree(value);if(id.equals(edge.path("sourceCode").asText()) || id.equals(edge.path("targetCode").asText()) || impact.boundaryEdgeIds().contains(edgeId))localBoundary.put(edgeId,value);
+        });
+        NodeSynthesisResult result;
+        if(impact.sectionIds().contains(id)) {
+            var metadata=new LinkedHashMap<String,Object>();metadata.put("section",section);metadata.put("frozenDescription",descriptions.getOrDefault(id,"Synthetic layout section"));
+            var parent=sections.values().stream().filter(s->s.children().contains(id)).map(Section::id).findFirst().orElse(null);
+            var input=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(metadata),anchors(baseline.originalText()),direct,children,localBoundary,
+                    answers.stream().filter(a->localQIds.contains(a.questionId())).toList(),localQuestions,
+                    "Only reword this affected section. Preserve human wording and all retained evidence. REJECTED additions must not be reintroduced or paraphrased. Independent branch records stay unchanged.");
+            var generated=nodes.synthesize(input);
+            var rejected=statements.values().stream().filter(s->"REJECTED".equals(s.reviewState())).map(s->s.wording().strip()).collect(java.util.stream.Collectors.toSet());
+            var additions=new ArrayList<Statement>();
+            for(var statement:generated.statementProposals()) {
+                if(rejected.contains(statement.wording().strip())) {
+                    statement=new Statement(statement.id(),statement.wording(),statement.sourceSpans(),statement.provenance(),statement.architectureLinks(),statement.questionDependencies(),
+                            statement.conditionalValidity(),statement.editingOrigin(),"REJECTED");
+                    findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT,"REJECTED_ADDITION_REINTRODUCED","Candidate repeated rejected wording; retained as rejected evidence",List.of(statement.id()),List.of()));
+                }
+                additions.add(statement);statements.put(statement.id(),statement);
+            }
+            generated.questionProposals().forEach(q->questions.put(q.id(),q));
+            var sectionStatements=new LinkedHashSet<>(section.statementIds());additions.forEach(s->sectionStatements.add(s.id()));
+            var sectionQuestions=new LinkedHashSet<>(section.questionIds());generated.questionProposals().forEach(q->sectionQuestions.add(q.id()));
+            String summary=generated.summary();
+            for(String wording:rejected)if(summary.contains(wording))summary=section.summary();
+            sections.put(id,new Section(section.id(),section.taxonomyCode(),section.title(),summary,section.children(),List.copyOf(sectionStatements),List.copyOf(sectionQuestions)));
+            findings.addAll(generated.conflictCandidates());
+            result=new NodeSynthesisResult(id,summary,additions,generated.preservedStatementIds(),generated.questionProposals(),generated.preservedQuestionIds(),generated.uncoveredSourceRefs(),generated.conflictCandidates());
+        } else result=new NodeSynthesisResult(id,section.summary(),direct,List.of(),localQuestions,List.of(),List.of(),List.of());
+        // Ancestors consume completed details including original preserved evidence, not only newly generated additions.
+        var allStatements=new LinkedHashMap<String,Statement>();direct.forEach(s->allStatements.put(s.id(),s));
+        children.forEach(c->c.statementProposals().forEach(s->allStatements.put(s.id(),s)));result.statementProposals().forEach(s->allStatements.put(s.id(),s));
+        var allQuestions=new LinkedHashMap<String,DecisionQuestion>();localQuestions.forEach(q->allQuestions.put(q.id(),q));
+        children.forEach(c->c.questionProposals().forEach(q->allQuestions.put(q.id(),q)));result.questionProposals().forEach(q->allQuestions.put(q.id(),q));
+        result=new NodeSynthesisResult(id,result.summary(),List.copyOf(allStatements.values()),result.preservedStatementIds(),List.copyOf(allQuestions.values()),result.preservedQuestionIds(),result.uncoveredSourceRefs(),result.conflictCandidates());
+        results.put(id,result);visiting.remove(id);return result;
+    }
     /** Include only directed edges touching this step, collapsed terminals or carried child evidence. */
     private Map<String,String> boundariesFor(WalkUpPlanner.Step step, WalkUpPlanner.Node node,
             List<NodeSynthesisResult> children, Map<String,String> boundary) {

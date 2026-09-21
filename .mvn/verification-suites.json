@@ -24,7 +24,7 @@
     },
     "civilian-acceptance": {
       "purpose": "Sourced civilian Copilot scenario with Spring remote LLM playback, export semantics and real browser screenshots",
-      "test": "CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest",
+      "test": "CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationBrowserTest",
       "systemProperty": "generateScreenshots",
       "requires": ["Java 21", "Docker"]
     },

@@ -21,9 +21,9 @@ public class ReformulationBaselineAdapter implements ReformulationBaselineContex
     @Override public Map<String,String> freeze(SnapshotDetail snapshot,String actor,WorkspaceContext context) {
         Map<String,String> result=new TreeMap<>();
         // Historical tree/descriptions and directed reviewed mappings come from this exact snapshot.
-        result.put("reformulationPrompt",com.taxonomy.analysis.reformulation.ReformulationPromptBuilder.template());
-        result.put("reformulationPromptVersion",com.taxonomy.analysis.reformulation.ReformulationPromptBuilder.PROMPT_VERSION);
-        result.put("reformulationSchemaVersion",com.taxonomy.analysis.reformulation.ReformulationPromptBuilder.SCHEMA_VERSION);
+        result.put("reformulationPrompt",com.taxonomy.analysis.reformulation.ReformulationPromptBuilder.interactiveTemplate());
+        result.put("reformulationPromptVersion",com.taxonomy.analysis.reformulation.ReformulationPromptBuilder.INTERACTIVE_PROMPT_VERSION);
+        result.put("reformulationSchemaVersion",com.taxonomy.analysis.reformulation.ReformulationPromptBuilder.INTERACTIVE_SCHEMA_VERSION);
         result.put("snapshotDetail",json.write(snapshot));
         result.put("catalogue",json.write(snapshot.analysis().getTree()==null?List.of():snapshot.analysis().getTree()));
         result.put("elementMappings",json.write(snapshot.elementMappings()));

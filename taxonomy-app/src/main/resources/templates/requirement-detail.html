@@ -10,6 +10,7 @@
     <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
     <link rel="stylesheet" th:href="@{/css/taxonomy-portfolio.css}"/>
+    <link rel="stylesheet" th:href="@{/css/requirement-reformulation.css}"/>
 </head>
 <body class="bg-body-tertiary">
 <a class="skip-link" href="#requirementMain">Skip to requirement detail</a>
@@ -55,10 +56,7 @@
         </div>
     </section>
 
-    <section id="reformulationOffers" class="card shadow-sm mb-3" aria-labelledby="reformulationHeading">
-        <div class="card-header"><h2 id="reformulationHeading" class="h5 mb-0">Reformulation offers</h2></div>
-        <div id="reformulationList" class="card-body" aria-live="polite"></div>
-    </section>
+    <section th:replace="~{fragments/requirement-reformulation :: workspace}"></section>
 
     <section id="openTasks" class="card shadow-sm mb-3" aria-labelledby="tasksHeading">
         <div class="card-header"><h2 id="tasksHeading" class="h5 mb-0">Open decisions</h2></div>
@@ -169,7 +167,7 @@
 <script th:src="@{/js/shared/taxonomy-utils.js}"></script>
 <script th:src="@{/js/api/portfolio-api.js}"></script>
 <script th:src="@{/js/portfolio/requirement-detail.js}"></script>
-<script th:src="@{/js/portfolio/reformulation-offers.js}"></script>
+<script th:src="@{/js/portfolio/requirement-reformulation.js}"></script>
 <script>
     (function () {
         var link = document.getElementById('architectureWorkbenchLink');

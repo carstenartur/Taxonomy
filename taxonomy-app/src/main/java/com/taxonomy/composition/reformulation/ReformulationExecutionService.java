@@ -53,8 +53,18 @@ public class ReformulationExecutionService {
             captured.put("reformulationPromptVersion",run.promptVersion());captured.put("reformulationSchemaVersion",run.schemaVersion());
             var runBaseline=new com.taxonomy.reformulation.ReformulationBaseline(baseline.scope(),baseline.sourceVersionId(),baseline.originalText(),
                     baseline.originalTextHash(),baseline.snapshotId(),baseline.snapshotPayload(),captured,baseline.language(),baseline.algorithmVersion());
-            var result=engine.synthesize(runBaseline,proposal.currentRevision().statements(),proposal.currentRevision().answers(),proposal.currentRevision().questions());
-            var reconciled=reconciler.reconcile(runBaseline,result,proposal.currentRevision().answers(),proposal.currentRevision().questions());
+            var revision=proposal.currentRevision();
+            com.taxonomy.reformulation.ReformulationDocument reconciled;
+            if(!revision.impact().sectionIds().isEmpty()) {
+                var trace=proposals.runs(projectId,requirementId,proposal.id(),actor,context).stream()
+                        .filter(r->r.resultRevision()!=null && r.candidate()!=null && r.resultRevision()<=revision.number())
+                        .max(java.util.Comparator.comparingLong(Run::resultRevision)).map(r->r.candidate().reconciliation()).orElse(null);
+                var before=new com.taxonomy.reformulation.ReformulationDocument(revision.text(),revision.sections(),revision.statements(),revision.questions(),revision.validation(),java.util.List.of(),trace);
+                reconciled=engine.synthesizeAffected(runBaseline,before,revision.answers(),revision.impact());
+            } else {
+                var result=engine.synthesize(runBaseline,revision.statements(),revision.answers(),revision.questions());
+                reconciled=reconciler.reconcile(runBaseline,result,revision.answers(),revision.questions());
+            }
             proposals.finishRun(projectId,requirementId,proposal.id(),run.id(),reconciled,null,actor,context);
         } catch(RuntimeException failure) {
             proposals.finishRun(projectId,requirementId,proposal.id(),run.id(),null,failureCode(failure),actor,context);

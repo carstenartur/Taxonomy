@@ -47,12 +47,30 @@ public class ReformulationResponseParser {
         var questions=new ArrayList<DecisionQuestion>();index=0;
         for(JsonNode node:array(root,"questionProposals")) {
             fields(node,"subject","dimension","scope","wording","rationale","affectedStatementIds","sourceSpans","nodeIds","edgeIds","answerSchema","prerequisites","consequences");
-            var schema=node.get("answerSchema");fields(schema,"kind","options","unit","minimum","maximum");
+            var schema=node.get("answerSchema");
+            boolean typed="reformulation-response-v2".equals(input.baseline().frozenContext().get("reformulationSchemaVersion"));
+            if(typed) {
+                var legacy=schema.deepCopy();
+                ((tools.jackson.databind.node.ObjectNode)legacy).remove("optionMeanings");
+                ((tools.jackson.databind.node.ObjectNode)legacy).remove("incompatibleOptions");
+                ((tools.jackson.databind.node.ObjectNode)legacy).remove("applicability");
+                fields(legacy,"kind","options","unit","minimum","maximum");
+            } else fields(schema,"kind","options","unit","minimum","maximum");
             var kind=DecisionQuestion.AnswerSchema.Kind.valueOf(text(schema,"kind"));var options=strings(schema,"options");
             if((kind==DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE || kind==DecisionQuestion.AnswerSchema.Kind.MULTIPLE_CHOICE) && options.size()<2) throw invalid("Choice question needs at least two options");
             Double min=number(schema,"minimum"),max=number(schema,"maximum");if(min!=null && max!=null && min>max) throw invalid("Invalid numeric range");
             var discovery=new DecisionQuestion.Discovery(input.nodeId(),input.nodeDescription(),text(node,"rationale"),spans(node,"sourceSpans",input),refs(node,"nodeIds",nodes),refs(node,"edgeIds",input.boundaryEdges().keySet()));
-            questions.add(new DecisionQuestion(id("q",input,index++,node),new DecisionQuestion.Key(text(node,"subject"),text(node,"dimension"),text(node,"scope")),text(node,"wording"),List.of(discovery),refs(node,"affectedStatementIds",statementRefs),new DecisionQuestion.AnswerSchema(kind,options,nullableText(schema,"unit"),min,max),refs(node,"prerequisites",questionRefs),List.of(),text(node,"consequences"),DecisionQuestion.State.OPEN));
+            questions.add(new DecisionQuestion(id("q",input,index++,node),new DecisionQuestion.Key(text(node,"subject"),text(node,"dimension"),text(node,"scope")),text(node,"wording"),List.of(discovery),refs(node,"affectedStatementIds",statementRefs),answerSchema(schema,kind,options,min,max,questionRefs),refs(node,"prerequisites",questionRefs),List.of(),text(node,"consequences"),DecisionQuestion.State.OPEN));
+        }
+        var contracts=new HashMap<String,DecisionQuestion>();
+        input.openDecisions().forEach(q->q.referenceIds().forEach(id->contracts.put(id,q)));
+        input.children().forEach(c->c.questionProposals().forEach(q->q.referenceIds().forEach(id->contracts.put(id,q))));
+        questions.forEach(q->contracts.put(q.id(),q));
+        for(var q:questions)for(var condition:q.answerSchema().applicability()) {
+            var prerequisite=contracts.get(condition.questionId());
+            if(prerequisite==null || prerequisite.id().equals(q.id()) || !q.prerequisites().contains(condition.questionId()))throw invalid("Invalid conditional prerequisite");
+            var allowed=prerequisite.answerSchema().kind()==DecisionQuestion.AnswerSchema.Kind.BOOLEAN?List.of("true","false"):prerequisite.answerSchema().options();
+            if(!allowed.containsAll(condition.anyOf()) || condition.anyOf().isEmpty())throw invalid("Unknown conditional choice");
         }
         var conflicts=new ArrayList<ValidationReport.Finding>();
         for(JsonNode node:array(root,"conflictCandidates")) {
@@ -60,6 +78,32 @@ public class ReformulationResponseParser {
             conflicts.add(new ValidationReport.Finding(ValidationReport.Kind.valueOf(text(node,"kind")),text(node,"code"),text(node,"message"),refs(node,"statementIds",statementRefs),spans(node,"sourceSpans",input)));
         }
         return new NodeSynthesisResult(input.nodeId(),text(root,"summary"),statements,preservedStatements,questions,preservedQuestions,spans(root,"uncoveredSourceRefs",input),conflicts);
+    }
+    private static DecisionQuestion.AnswerSchema answerSchema(JsonNode schema,DecisionQuestion.AnswerSchema.Kind kind,
+            List<String> options,Double min,Double max,Map<String,String> questionRefs) {
+        var meanings=new LinkedHashMap<String,DecisionQuestion.AnswerSchema.OptionMeaning>();
+        if(schema.has("optionMeanings")) {
+            if(!schema.path("optionMeanings").isObject())throw invalid("Expected option meanings object");
+            for(var entry:schema.path("optionMeanings").properties()) {
+                if(!options.contains(entry.getKey()) || !entry.getValue().isString())throw invalid("Unknown semantic option");
+                meanings.put(entry.getKey(),DecisionQuestion.AnswerSchema.OptionMeaning.valueOf(entry.getValue().asText()));
+            }
+        }
+        var incompatible=new ArrayList<List<String>>();
+        if(schema.has("incompatibleOptions"))for(var group:array(schema,"incompatibleOptions")) {
+            if(!group.isArray() || group.size()<2)throw invalid("Incompatibility requires at least two options");
+            var values=new ArrayList<String>();
+            for(var option:group)if(!option.isString() || !options.contains(option.asText()) || !values.add(option.asText()))throw invalid("Invalid incompatible option");
+            if(new HashSet<>(values).size()!=values.size())throw invalid("Duplicate incompatible option");
+            incompatible.add(List.copyOf(values));
+        }
+        var conditions=new ArrayList<DecisionQuestion.AnswerSchema.AnswerCondition>();
+        if(schema.has("applicability"))for(var condition:array(schema,"applicability")) {
+            fields(condition,"questionId","anyOf");String id=questionRefs.get(text(condition,"questionId"));
+            if(id==null)throw invalid("Unknown conditional question");
+            conditions.add(new DecisionQuestion.AnswerSchema.AnswerCondition(id,strings(condition,"anyOf")));
+        }
+        return new DecisionQuestion.AnswerSchema(kind,options,nullableText(schema,"unit"),min,max,meanings,incompatible,conditions);
     }
     private Map<String,String> localRefs(Set<String> existing,JsonNode root,String field,String prefix,String idPrefix,NodeSynthesisInput input) {
         var refs=new TreeMap<String,String>();existing.forEach(id->refs.put(id,id));int index=0;

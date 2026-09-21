@@ -8,10 +8,14 @@ import java.nio.charset.StandardCharsets;
 public class ReformulationPromptBuilder {
     public static final String PROMPT_VERSION="reformulation-node-v1";
     public static final String SCHEMA_VERSION="reformulation-response-v1";
+    public static final String INTERACTIVE_PROMPT_VERSION="reformulation-node-v2";
+    public static final String INTERACTIVE_SCHEMA_VERSION="reformulation-response-v2";
     private final ObjectMapper json;
     public ReformulationPromptBuilder(ObjectMapper json) { this.json=json; }
-    public static String template() {
-        try(var stream=ReformulationPromptBuilder.class.getResourceAsStream("/prompts/reformulation-node.txt")) {
+    public static String template() {return readTemplate("/prompts/reformulation-node.txt");}
+    public static String interactiveTemplate() {return readTemplate("/prompts/reformulation-node-v2.txt");}
+    private static String readTemplate(String path) {
+        try(var stream=ReformulationPromptBuilder.class.getResourceAsStream(path)) {
             if(stream==null) throw new IllegalStateException("Missing reformulation prompt");
             return new String(stream.readAllBytes(),StandardCharsets.UTF_8);
         } catch(IOException failure) { throw new IllegalStateException("Cannot read reformulation prompt",failure); }
