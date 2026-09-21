@@ -1,8 +1,10 @@
 # Provider transport usage observation
 
 Plan: `docs/superpowers/plans/2026-09-20-requirement-reformulation.md`, task 5.
-Base: `759de0483d6ca17e5e92a0f7d200de6b7a23e3c2` (PR #1098).
-This incremental branch is stacked on #1098 and does not mutate that branch.
+Initial base: `759de0483d6ca17e5e92a0f7d200de6b7a23e3c2` (PR #1098).
+This incremental PR #1101 is stacked on #1098. Its corrected dependency inventory
+and documentation from `c5a3ba56363cb3d02564c749883ed52ad3116a2a` are integrated;
+no application behavior was changed by that synchronization.
 
 ## Implemented foundation
 
@@ -45,16 +47,29 @@ subscriber, gateways do not parse token metadata or emit events.
   in Actions run 35627345947, including transport retry versus parser repair,
   Gemini/OpenAI metadata, replay separation, missing/invalid usage, observer failure
   isolation and four serial plus four parallel real-gateway calls.
-- Additional boundary checks cover network errors, ambiguous JSON, zero/long-limit
-  values, partial metadata, actual callback failure, empty capture and scope cleanup.
-  The supplemental workflow now runs ALL analysis and upstream unit tests, not just
-  the new tests. Its outcome must be read before reporting that regression run green.
+- `5000e08`: six further boundary tests and the broad analysis/upstream regression
+  run 35627839403 completed successfully. The 305 archived JUnit reports contain
+  **2,215 tests, zero failures, zero errors, zero skipped**, including all 15 new tests.
+  The executed command is `./mvnw -B -ntp -pl taxonomy-analysis -am test`.
+  The source archive identifies PR merge commit `592656a80c78b03ace835674f2fcfb85bd837614`.
+  Artifact 10652634949 contains the source, full Maven log and JUnit XML reports.
+  Artifact SHA-256: `cdc23a2d4141fdc30351fe7e153cab29fbcb3eaa8e86a26fae1bd646acf53563`.
+- Base synchronization changes only the existing architecture inventory and its
+  documentation, plus this ledger. Production and test code remain exactly those
+  exercised by the 2,215-test run; new-head CI is still evaluated separately.
 
-The initial local execution services were unavailable (TransportTimeoutError even
-for echo). They later recovered, but external source/dependency resolution still
-failed. The actual Maven execution evidence is GitHub Actions, not an invented local
-run. The workflow has read-only repository permissions, no provider secrets and no
-push/merge action. It preserves JUnit reports and the exact public source tree.
+Additional boundary checks cover network errors, ambiguous JSON, zero/long-limit
+values, partial metadata, actual callback failure, empty capture and scope cleanup.
+The broad unit-test job covers analysis, architecture, domain, DSL, export, knowledge,
+templates and workspace. It is not the complete application/build/coverage reactor.
+
+Initial local execution services returned TransportTimeoutError even for echo.
+After they recovered, the complete source was recovered from the verified CI archive.
+The local canonical verification attempt could not fetch Maven 3.9.16 from
+`downloads.apache.org` and exited 1 before compilation. Therefore the actual Maven
+execution evidence is GitHub Actions, not an invented local reactor run. The
+supplemental workflow has read-only repository permissions, no provider secrets
+and no push/merge action. It preserves JUnit reports and the exact public source.
 
 MockRestServiceServer replaces only HTTP responses in the transport contract tests;
 real gateways/retry/parser code execute. The parallel test uses the existing real
@@ -73,9 +88,12 @@ Checkpoint counters keep their existing, different meaning.
 
 All original requirement versions, active architecture, proposal text and decisions
 remain unchanged. Retention, large reconciliation-review inputs, explicit adoption
-and final civilian acceptance remain separate plan items. No new dependency, schema,
-coverage threshold or architecture-baseline exception is introduced by this slice.
+and final civilian acceptance remain separate plan items. This slice adds no Maven
+dependency, database migration or broad policy exception. The synchronized base
+correction lowers one measured dependency count from nine to eight; no gate is relaxed.
 
 The canonical `./mvnw verify -DexcludedGroups='real-llm'` remains required before
 merge. Passing this unit-test job is not full-reactor/database/browser/coverage
-approval. The predecessor #1098 still has its own independently evaluated gates.
+approval. Author self-review checked retry placement, response preservation,
+unknown/replayed usage, sensitive-data exclusion and explicit thread-scope cleanup;
+it is not an independent approval. The predecessor #1098 has its own exact-head gates.

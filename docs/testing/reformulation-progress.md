@@ -90,14 +90,18 @@ CI gates. Standalone evidence and author self-review do not replace independent 
 ## Reviewed dependency increment
 
 No Maven dependency, migration, execution guard or test threshold changes. Exactly
-six new cross-context class pairs extend three already permitted inventory entries:
+five new cross-context class pairs extend three already permitted inventory entries:
 
 | Package direction | Count | Added source/target pairs |
 | --- | --- | --- |
 | composition.reformulation -> portfolio.reformulation | 21 -> 24 | ProgressController -> ProgressService, ProgressService.Progress, ProgressService.Partial |
-| composition.reformulation -> workspace.service | 7 -> 9 | ProgressController -> WorkspaceResolver, WorkspaceContext |
+| composition.reformulation -> workspace.service | 7 -> 8 | ProgressController -> WorkspaceResolver |
 | portfolio.reformulation -> workspace.service | 4 -> 5 | ProgressService -> WorkspaceContext |
 
-Names in the table abbreviate their `Reformulation` prefix. Bytecode dependencies
-confirm these exact pairs. This records the intentional read composition; the
-ratchet itself, dependency directions and unrelated entries stay unchanged.
+Names in the table abbreviate their `Reformulation` prefix. The inventory follows
+ArchUnit direct class dependencies, not every type mentioned by a called method
+descriptor. CI on `759de04` measured 8 workspace pairs, not the initially recorded 9.
+The corrected baseline lowers that one counter and leaves every other byte intact;
+the full generated inventory in the failed ArchUnit report is its evidence. This
+tightens the ratchet rather than allowing dependency growth. The implementation,
+checker, dependency directions and unrelated entries stay unchanged.

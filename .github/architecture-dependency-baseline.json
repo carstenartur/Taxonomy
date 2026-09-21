@@ -293,7 +293,7 @@
       "fromPackage": "com.taxonomy.composition.reformulation",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 9
+      "classDependencyCount": 8
     },
     {
       "fromContext": "app-composition",
