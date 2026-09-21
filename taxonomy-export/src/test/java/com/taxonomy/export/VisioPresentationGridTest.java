@@ -6,6 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertTimeoutPreemptively;
 
 class VisioPresentationGridTest {
     @Test
+    void finiteOversizedBoxesAreRejectedBeforeAnyCellVisit() throws Exception {
+        VisioFiniteGridBudgetChecks.rejectsOversizedFiniteBoxesBeforeVisiting();
+    }
+
+    @Test
     void rejectsNonFiniteAndOutOfGridCoordinates() {
         assertTimeoutPreemptively(Duration.ofSeconds(2), VisioGridRegression::rejectsInvalidCoordinates);
     }

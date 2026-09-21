@@ -4,6 +4,7 @@ name: Reformulation usage contract
 on:
   pull_request:
     paths:
+      - 'taxonomy-tooling/**'
       - 'taxonomy-analysis/**'
       - 'taxonomy-portfolio/**'
       - 'taxonomy-app/**'
@@ -30,37 +31,31 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
+      - name: Compile dependency-free report verifier
+        run: |
+          mkdir -p taxonomy-tooling/target/classes
+          javac --release 21 -d taxonomy-tooling/target/classes taxonomy-tooling/src/main/java/com/taxonomy/tooling/*.java
       - name: Run all analysis and upstream unit tests
         run: |
           set +e
-          ./mvnw -B -ntp -pl taxonomy-analysis -am test > usage-tests.log 2>&1
+          ./mvnw -B -ntp -pl taxonomy-tooling,taxonomy-analysis -am test > usage-tests.log 2>&1
           result=$?
           tail -n 100 usage-tests.log
           exit "$result"
       - name: Require the intended suites to have executed
         if: always()
         run: |
-          python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-          suites = {'service.LlmTransportMeterTest': 8, 'service.LlmTransportMeterBoundaryTest': 6, 'service.LlmDurableTransportTest': 3,
-                    'reformulation.ParallelReformulationMeterTest': 1}
-          errors = 0
-          for name, minimum in suites.items():
-              report = Path(f'taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.{name}.xml')
-              root = ET.parse(report).getroot()
-              tests = int(root.attrib['tests'])
-              failed = int(root.attrib.get('failures', '0')) + int(root.attrib.get('errors', '0'))
-              skipped = int(root.attrib.get('skipped', '0'))
-              print(f'{name}: {tests} tests, {failed} failures/errors, {skipped} skipped')
-              errors += int(tests < minimum or failed != 0 or skipped != 0)
-          assert errors == 0
-          PY
+          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
+            taxonomy-tooling/target/surefire-reports/TEST-com.taxonomy.tooling.JunitReportVerifierTest.xml 5 \
+            taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.LlmTransportMeterTest.xml 8 \
+            taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.LlmTransportMeterBoundaryTest.xml 6 \
+            taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.LlmDurableTransportTest.xml 3 \
+            taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.reformulation.ParallelReformulationMeterTest.xml 1
       - name: Verify durable per-run accounting and existing architecture boundaries
         run: |
           set +e
           ./mvnw -B -ntp -pl taxonomy-app -am test \
-            -Dtest=ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ArchitectureContextDependencyRatchetTest \
+            -Dtest=ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ArchitectureContextDependencyRatchetTest \
             -Dsurefire.failIfNoSpecifiedTests=false > usage-persistence-tests.log 2>&1
           result=$?
           tail -n 100 usage-persistence-tests.log
@@ -68,18 +63,12 @@ jobs:
       - name: Require persistence suites and positive test counts
         if: always()
         run: |
-          python3 - <<'PYTEST'
-          import xml.etree.ElementTree as ET
-          from pathlib import Path
-          suites = [('taxonomy-portfolio', 'com.taxonomy.portfolio.reformulation.ReformulationUsageBoundaryTest', 3),
-                    ('taxonomy-app', 'com.taxonomy.portfolio.reformulation.ReformulationUsageTest', 1),
-                    ('taxonomy-app', 'com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest', 2)]
-          for module, name, count in suites:
-              root = ET.parse(Path(module) / 'target/surefire-reports' / f'TEST-{name}.xml').getroot()
-              print(name, root.attrib)
-              assert int(root.attrib['tests']) >= count
-              assert all(int(root.attrib.get(key, '0')) == 0 for key in ('failures', 'errors', 'skipped'))
-          PYTEST
+          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-junit-reports \
+            taxonomy-portfolio/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageBoundaryTest.xml 3 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageTest.xml 1 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationUsageWorkerTest.xml 2 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureContextDependencyRatchetTest.xml 1 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationLocalRecoveryTest.xml 2
       - name: Archive the tested public source tree
         if: always()
         run: git archive --format=zip -o usage-source.zip HEAD
