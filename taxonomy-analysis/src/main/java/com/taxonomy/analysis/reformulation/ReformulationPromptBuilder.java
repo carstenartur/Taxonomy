@@ -35,46 +35,13 @@ public class ReformulationPromptBuilder {
         // Full archives remain persisted. Calls use selected node/terminal/child/boundary inputs,
         // not repeated entire snapshots, unrelated branches or current workspace provenance.
         context.retain("project","sourceVersion","reformulationPromptVersion","reformulationSchemaVersion");
-        deduplicateDiscoveryContexts(data);
+        var questionLists = new java.util.ArrayList<tools.jackson.databind.JsonNode>();
+        questionLists.add(data.path("openDecisions"));
+        data.path("children").forEach(child -> questionLists.add(child.path("questionProposals")));
+        DiscoveryContextTable.encode(json, data, questionLists);
         return frozen + (data.has("discoveryContextTable") ? CONTEXT_DICTIONARY_INSTRUCTION : "")
             + "\nINPUT_DATA_JSON\n" + json.writeValueAsString(data)
             + (errors == null ? "" : "\nVALIDATION_ERRORS (repair the same input once): " + json.writeValueAsString(errors));
     }
 
-    /** Factor only identical repeated context strings; unique strings remain complete and inline. */
-    private void deduplicateDiscoveryContexts(tools.jackson.databind.node.ObjectNode data) {
-        var discoveries = new java.util.ArrayList<tools.jackson.databind.node.ObjectNode>();
-        collectDiscoveries(data.path("openDecisions"), discoveries);
-        data.path("children").forEach(child -> collectDiscoveries(child.path("questionProposals"), discoveries));
-        var counts = new java.util.HashMap<String, Integer>();
-        discoveries.forEach(d -> counts.merge(d.path("context").asText(), 1, Integer::sum));
-        var table = json.createObjectNode();
-        var references = new java.util.LinkedHashMap<String, String>();
-        for (var discovery : discoveries) {
-            String context = discovery.path("context").asText();
-            // Short strings cost less inline than a reference plus table entry.
-            if (context.length() <= 128 || counts.get(context) < 2) continue;
-            String key = references.computeIfAbsent(context, ignored -> "context-" + (references.size() + 1));
-            table.put(key, context);
-            discovery.remove("context");
-            discovery.put("contextRef", key);
-        }
-        if (!table.isEmpty()) data.set("discoveryContextTable", table);
-    }
-
-    private static void collectDiscoveries(tools.jackson.databind.JsonNode questions,
-            java.util.List<tools.jackson.databind.node.ObjectNode> target) {
-        questions.forEach(question -> {
-            collectDiscoveryObjects(question.path("discoveries"), target);
-            question.path("origins").forEach(origin -> collectDiscoveryObjects(origin.path("discoveries"), target));
-        });
-    }
-
-    private static void collectDiscoveryObjects(tools.jackson.databind.JsonNode discoveries,
-            java.util.List<tools.jackson.databind.node.ObjectNode> target) {
-        discoveries.forEach(discovery -> {
-            if (discovery instanceof tools.jackson.databind.node.ObjectNode object && discovery.path("context").isString())
-                target.add(object);
-        });
-    }
 }
