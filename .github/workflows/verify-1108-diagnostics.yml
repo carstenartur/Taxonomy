@@ -1,0 +1,52 @@
+name: Verify remaining 1108 diagnostics
+on:
+  push:
+    branches: [verify/1108-remaining-diagnostics]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Browser departure observer regression
+        id: node
+        continue-on-error: true
+        run: |
+          mkdir -p verification
+          node --version
+          set -o pipefail
+          node --test .github/scripts/browser-validation-departure.test.mjs .github/scripts/browser-sessions-acceptance.test.mjs 2>&1 | tee verification/node.log
+      - name: Prompt diagnostics and existing lifecycle regressions
+        id: java
+        continue-on-error: true
+        run: |
+          mkdir -p verification
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-analysis -am test -Dtest=LlmPreparedPromptTest,AnalysisRunControlBoundaryTest,AnalysisStoppedEvidenceTest,AnalysisProgressRegistryTest,PromptBudgetEnforcingLlmGatewayTest,LlmResponseProseTest,LlmResponseRootTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee verification/maven.log
+      - name: Preserve test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: remaining-diagnostics-${{ github.sha }}
+          path: |
+            verification/*.log
+            taxonomy-analysis/target/surefire-reports/*
+          if-no-files-found: error
+          retention-days: 7
+      - name: Require both regression commands to pass
+        if: always()
+        env:
+          NODE_OUTCOME: ${{ steps.node.outcome }}
+          JAVA_OUTCOME: ${{ steps.java.outcome }}
+        run: |
+          test "$NODE_OUTCOME" = success
+          test "$JAVA_OUTCOME" = success
