@@ -198,6 +198,14 @@
             'blob');
     }
 
+    function exportSparx(text) {
+        if (diagramExportBusy) return Promise.resolve(false);
+        if (!window.confirm(exportMessage(
+                'Export an experimental fresh copy for Sparx EA? The ZIP contains XMI and a mapping/loss report. Some relations are labelled associations, not native semantic equivalents. Diagram layout is not included. Existing EA models and synchronization checkpoints are not updated.',
+                'Experimentelle neue Kopie für Sparx EA exportieren? Das ZIP enthält XMI und einen Abbildungs-/Verlustbericht. Einige Beziehungen sind beschriftete Assoziationen, keine nativen semantischen Entsprechungen. Diagrammlayout ist nicht enthalten. Vorhandene EA-Modelle und Synchronisationsstände werden nicht aktualisiert.'))) return Promise.resolve(false);
+        return diagramDownload('/api/diagram/sparx', text, 'requirement-architecture-sparx.zip', 'blob');
+    }
+
     function exportArchiMate(text) {
         return diagramDownload('/api/diagram/archimate', text, 'requirement-architecture.xml',
             'blob');
@@ -214,7 +222,7 @@
     }
 
     var diagramExportBusy = false;
-    var diagramButtons = ['exportVisio', 'exportArchiMate', 'exportMermaid', 'exportStructurizr'];
+    var diagramButtons = ['exportVisio', 'exportSparx', 'exportArchiMate', 'exportMermaid', 'exportStructurizr'];
 
     function exportMessage(english, german) {
         return (document.documentElement.lang || '').toLowerCase().startsWith('de') ? german : english;
@@ -244,6 +252,70 @@
         // Keep errors visible even when the export panel is collapsed or on another tab.
         // The established alert bridge supplies persistent, accessible global feedback.
         if (failed) alert(message);
+    }
+
+    function validateResponseType(response, filename) {
+        var type = (response.headers && response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
+        var expected = filename.endsWith('.vsdx') ? ['application/vnd.ms-visio.drawing']
+            : filename.endsWith('.zip') ? ['application/zip']
+            : filename.endsWith('.xml') ? ['application/xml', 'text/xml'] : ['text/plain'];
+        if (response.redirected || expected.indexOf(type) < 0) {
+            throw new Error(exportMessage('The server did not return the requested file format. Sign in again and retry; no file was downloaded.',
+                'Der Server hat nicht das angeforderte Dateiformat geliefert. Melden Sie sich erneut an und versuchen Sie es noch einmal; keine Datei wurde heruntergeladen.'));
+        }
+    }
+
+    async function validateDownloadBytes(blob, filename) {
+        // A transport guard, not a replacement for the server's OPC/schema validation.
+        // Read only the bounded ZIP header/tail, never inflate arbitrary archive content.
+        var zip = filename.endsWith('.vsdx') || filename.endsWith('.zip');
+        var invalid = !blob.size;
+        if (zip && !invalid) {
+            var head = new Uint8Array(await blob.slice(0, 4).arrayBuffer());
+            invalid = blob.size < 52 || head[0] !== 0x50 || head[1] !== 0x4b || head[2] !== 3 || head[3] !== 4;
+            var tail = new Uint8Array(await blob.slice(-65557).arrayBuffer());
+            var end = -1;
+            for (var i = tail.length - 22; i >= 0; i--) {
+                if (tail[i] === 0x50 && tail[i + 1] === 0x4b && tail[i + 2] === 5 && tail[i + 3] === 6
+                        && i + 22 + tail[i + 20] + 256 * tail[i + 21] === tail.length) {
+                    end = i; break;
+                }
+            }
+            invalid = invalid || end < 0;
+            if (!invalid) {
+                var record = new DataView(tail.buffer, tail.byteOffset + end, 22);
+                var count = record.getUint16(10, true), length = record.getUint32(12, true), offset = record.getUint32(16, true);
+                var endOffset = blob.size - tail.length + end;
+                invalid = record.getUint16(4, true) !== 0 || record.getUint16(6, true) !== 0
+                    || record.getUint16(8, true) !== count || !count || count > 128
+                    || length > 262144 || offset + length !== endOffset;
+                if (!invalid) {
+                    var directory = new Uint8Array(await blob.slice(offset, offset + length).arrayBuffer());
+                    var names = new Set(), cursor = 0;
+                    for (var n = 0; n < count && !invalid; n++) {
+                        if (cursor + 46 > directory.length) { invalid = true; break; }
+                        var entry = new DataView(directory.buffer, directory.byteOffset + cursor);
+                        var nameLength = entry.getUint16(28, true);
+                        var next = cursor + 46 + nameLength + entry.getUint16(30, true) + entry.getUint16(32, true);
+                        invalid = entry.getUint32(0, true) !== 0x02014b50 || !!(entry.getUint16(8, true) & 1)
+                            || !nameLength || nameLength > 1024 || next > directory.length;
+                        if (invalid) break;
+                        var name = String.fromCharCode.apply(null, directory.subarray(cursor + 46, cursor + 46 + nameLength));
+                        if (names.has(name)) invalid = true;
+                        names.add(name); cursor = next;
+                    }
+                    var required = filename.endsWith('.vsdx')
+                        ? ['[Content_Types].xml', 'visio/document.xml', 'visio/pages/pages.xml']
+                        : ['architecture.xmi', 'manifest.json', 'README.txt'];
+                    invalid = invalid || cursor !== directory.length || required.some(function (name) { return !names.has(name); });
+                }
+            }
+        } else if (!invalid) {
+            var prefix = (await blob.slice(0, 512).text()).trimStart();
+            invalid = /^(?:<!doctype\s+html|<html\b|<head\b|<body\b)/i.test(prefix);
+        }
+        if (invalid) throw new Error(exportMessage('The downloaded file is empty, incomplete or not the requested format. No file was saved.',
+            'Die gelieferte Datei ist leer, unvollständig oder nicht im angeforderten Format. Keine Datei wurde gespeichert.'));
     }
 
     function diagramDownload(url, businessText, filename, responseType) {
@@ -291,10 +363,12 @@
                     throw new Error(problem.error || problem.detail || 'HTTP ' + response.status);
                 });
             }
+            validateResponseType(response, filename);
             diagramStatus(exportMessage('Receiving architecture file…', 'Architekturdatei wird übertragen…'), true, false);
             return responseType === 'text' ? response.text() : response.blob();
-        }).then(function (content) {
+        }).then(async function (content) {
             var blob = content instanceof Blob ? content : new Blob([content], { type: 'text/plain;charset=utf-8' });
+            await validateDownloadBytes(blob, filename);
             downloadBlob(blob, filename);
             diagramStatus(exportMessage('Download ready. The architecture was kept unchanged.',
                 'Download bereitgestellt. Die Architektur blieb unverändert.'), false, false);
@@ -408,6 +482,7 @@
         exportPdf: exportPdf,
         exportCsv: exportCsv,
         exportVisio: exportVisio,
+        exportSparx: exportSparx,
         exportArchiMate: exportArchiMate,
         exportMermaid: exportMermaid,
         exportStructurizrDsl: exportStructurizrDsl,
@@ -416,5 +491,46 @@
         exportMermaidTree: exportMermaidTree
     });
 
+    function installSparxExportButton() {
+        var reference = document.getElementById('exportVisio');
+        if (!reference) return;
+        var button = document.getElementById('exportSparx');
+        var created = !button;
+        if (created) {
+            button = document.createElement('button');
+            button.id = 'exportSparx'; button.type = 'button'; button.className = 'btn btn-outline-info';
+            reference.insertAdjacentElement('afterend', button);
+            // Existing templates have no legacy listener for this new button.
+            button.addEventListener('click', function () {
+                if (reference.disabled || button.disabled || diagramExportBusy) return;
+                var requirement = document.getElementById('businessText');
+                exportSparx(requirement ? requirement.value : '');
+            });
+            var enabled = function () { button.disabled = reference.disabled; };
+            enabled();
+            new MutationObserver(enabled).observe(reference, { attributes: true, attributeFilter: ['disabled'] });
+        }
+        button.textContent = exportMessage('Sparx EA / XMI (copy, experimental)', 'Sparx EA / XMI (Kopie, experimentell)');
+        button.title = exportMessage('XMI + mapping report. Not a synchronization checkpoint or EA diagram export.',
+            'XMI + Abbildungsbericht. Kein Synchronisationsstand und kein EA-Diagrammexport.');
+        // Accent-border colors are not necessarily readable foreground colors.
+        diagramButtons.forEach(function (id) {
+            var control = document.getElementById(id);
+            if (!control) return;
+            var colors = {
+                '--bs-btn-color': 'var(--bs-body-color)',
+                '--bs-btn-border-color': 'var(--bs-secondary-color)',
+                '--bs-btn-hover-color': 'var(--bs-body-bg)',
+                '--bs-btn-hover-bg': 'var(--bs-body-color)',
+                '--bs-btn-hover-border-color': 'var(--bs-body-color)',
+                '--bs-btn-active-color': 'var(--bs-body-bg)',
+                '--bs-btn-active-bg': 'var(--bs-body-color)'
+            };
+            Object.keys(colors).forEach(function (key) { control.style.setProperty(key, colors[key]); });
+        });
+    }
+
     installPdfRouteGuard();
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', installSparxExportButton, { once: true });
+    else if (document.readyState) installSparxExportButton();
 }());

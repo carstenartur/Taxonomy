@@ -18,17 +18,17 @@ function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeC
     for (const id of ['exportGroup','exportVisio','exportArchiMate','exportMermaid','exportStructurizr']) {
         const el=element('button');el.id=id;elements.set(id,el);
     }
-    const requests=[]; const alerts=[]; let resolve; let reject;
+    const requests=[]; const alerts=[]; const downloads=[]; let resolve; let reject;
     const pending=new Promise((yes,no)=>{resolve=yes;reject=no;});
     const document={documentElement:{lang:'en'},body:element('body'),
         getElementById:id=>elements.get(id)||null,createElement:element,
         querySelector:()=>null,addEventListener(){}};
     const state={currentArchView:view,lastAnalyzedText:'original',currentScores:{A:90}};
-    const window={TaxonomyState:state,setTimeout() {}};
-    const context={window,document,TaxonomyI18n:{t:key=>key},Blob,URL:{createObjectURL:()=> 'blob:test',revokeObjectURL(){}},
+    const window={TaxonomyState:state,setTimeout() {},confirm:()=>true};
+    const context={window,document,TaxonomyI18n:{t:key=>key},Blob,URL:{createObjectURL:blob=> {downloads.push(blob);return 'blob:test';},revokeObjectURL(){}},
         fetch:(url,options)=>{requests.push({url,options});return pending;},alert(message){alerts.push(message);},Element:class {}};
     vm.runInNewContext(source,context);
-    return {elements,requests,alerts,state,resolve,reject,run:()=>window.TaxonomyExport.exportVisio('original')};
+    return {elements,requests,alerts,state,resolve,reject,downloads,api:window.TaxonomyExport,run:()=>window.TaxonomyExport.exportVisio('original')};
 }
 test('exports a frozen copy of the current architecture with visible busy state',async()=>{
     const f=fixture();const original=JSON.stringify(f.state);const pending=f.run();await Promise.resolve();
@@ -37,7 +37,7 @@ test('exports a frozen copy of the current architecture with visible busy state'
     assert.equal(f.elements.get('exportVisio').disabled,true);
     assert.equal(f.elements.get('diagramExportStatus').attributes['aria-busy'],'true');
     assert.match(f.elements.get('diagramExportStatusText').textContent,/Creating/);
-    f.resolve({ok:true,blob:async()=>new Blob(['vsdx'])});await pending;
+    f.resolve(binaryResponse());await pending;
     assert.equal(f.elements.get('exportVisio').disabled,false);
     assert.equal(f.elements.get('diagramExportStatus').attributes['aria-busy'],'false');
     assert.match(f.elements.get('diagramExportStatusText').textContent,/ready/i);
@@ -60,7 +60,7 @@ test('failed export keeps the architecture and restores previously disabled cont
 });
 test('duplicate clicks do not create duplicate export requests',async()=>{
     const f=fixture();const pending=f.run();f.run();await Promise.resolve();assert.equal(f.requests.length,1);
-    f.resolve({ok:true,blob:async()=>new Blob(['vsdx'])});await pending;
+    f.resolve(binaryResponse());await pending;
 });
 
 test('backend errors also reach global feedback while the export group is hidden',async()=>{
@@ -102,4 +102,52 @@ test('an absent or blank analysed-text baseline must not permit an export',async
         assert.equal(f.requests.length,0);
         assert.equal(f.alerts.length,1);
     }
+});
+
+function packageBytes(names=['[Content_Types].xml','visio/document.xml','visio/pages/pages.xml']) {
+    const locals=[], directories=[];let offset=0;
+    for(const name of names){
+        const n=Buffer.from(name);const local=Buffer.alloc(30+n.length);local.writeUInt32LE(0x04034b50);
+        local.writeUInt16LE(20,4);local.writeUInt16LE(n.length,26);n.copy(local,30);locals.push(local);
+        const central=Buffer.alloc(46+n.length);central.writeUInt32LE(0x02014b50);central.writeUInt16LE(20,4);central.writeUInt16LE(20,6);
+        central.writeUInt16LE(n.length,28);central.writeUInt32LE(offset,42);n.copy(central,46);directories.push(central);offset+=local.length;
+    }
+    const directory=Buffer.concat(directories);const end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);
+    end.writeUInt16LE(names.length,8);end.writeUInt16LE(names.length,10);end.writeUInt32LE(directory.length,12);end.writeUInt32LE(offset,16);
+    return Buffer.concat([...locals,directory,end]);
+}
+function binaryResponse(overrides={}) {
+    return {ok:true, redirected:false, headers:{get:()=> 'application/vnd.ms-visio.drawing'},
+        blob:async()=>new Blob([packageBytes()],{type:'application/vnd.ms-visio.drawing'}), ...overrides};
+}
+for (const [name, response] of Object.entries({
+    'HTML success': binaryResponse({headers:{get:()=> 'text/html'},blob:async()=>new Blob(['<html>login</html>'])}),
+    'JSON success': binaryResponse({headers:{get:()=> 'application/json'},blob:async()=>new Blob(['{"error":"failed"}'])}),
+    'missing content type': binaryResponse({headers:{get:()=> null}}),
+    'redirected login': binaryResponse({redirected:true}),
+    'empty binary': binaryResponse({blob:async()=>new Blob([])}),
+    'non-ZIP binary': binaryResponse({blob:async()=>new Blob(['a forged VSDX response'])}),
+    'ZIP without Visio parts': binaryResponse({blob:async()=>new Blob([packageBytes(['unrelated.txt'])])}),
+    'truncated ZIP': binaryResponse({blob:async()=>new Blob([new Uint8Array([0x50,0x4b,3,4])])})
+})) test(`reject ${name} before creating a download`,async()=>{
+    const f=fixture(); const original=JSON.stringify(f.state); const work=f.run(); f.resolve(response);
+    assert.equal(await work,false);
+    assert.equal(f.downloads.length,0);
+    assert.equal(f.alerts.length,1);
+    assert.equal(f.elements.get('exportVisio').disabled,false);
+    assert.equal(JSON.stringify(f.state),original);
+});
+test('valid Visio binary creates exactly one download, without further requests',async()=>{
+    const f=fixture();const work=f.run();f.resolve(binaryResponse());assert.equal(await work,true);
+    assert.equal(f.downloads.length,1);assert.equal(f.requests.length,1);
+});
+test('Sparx handoff freezes the same existing view and does not call analysis',async()=>{
+    const f=fixture();assert.equal(typeof f.api.exportSparx,'function');
+    const initial=JSON.stringify(f.state.currentArchView);
+    const work=f.api.exportSparx('original');await Promise.resolve();
+    assert.equal(f.requests[0].url,'/api/diagram/current/sparx');
+    assert.equal(f.requests[0].options.body,initial);
+    f.resolve(binaryResponse({headers:{get:()=> 'application/zip'},blob:async()=>new Blob([packageBytes(['architecture.xmi','manifest.json','README.txt'])])}));
+    assert.equal(await work,true);assert.equal(f.downloads.length,1);
+    assert.equal(JSON.stringify(f.state.currentArchView),initial);
 });
