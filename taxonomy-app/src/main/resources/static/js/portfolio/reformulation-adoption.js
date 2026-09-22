@@ -115,8 +115,12 @@ window.TaxonomyReformulationAdoption = (function () {
             state.done=true;
             if(visible(state))state.status.textContent=words.adopted+result.targetVersionId+(result.analysisNeedsRefresh?' '+words.analysis:'');
             // This notification must never reload the page or discard another currently edited offer.
-            if(options.onAdopted)await options.onAdopted(result);
-            if(window.TaxonomyRequirementDetail)await window.TaxonomyRequirementDetail.refreshAfterAdoption();
+            try {
+                if(options.onAdopted)await options.onAdopted(result);
+            } finally {
+                // A failed offer refresh cannot suppress the independent active-detail refresh.
+                if(window.TaxonomyRequirementDetail)await window.TaxonomyRequirementDetail.refreshAfterAdoption();
+            }
         } catch(error) {
             if(visible(state)){
                 if(state.done){state.status.textContent+=' '+words.failed+error.message;return;}

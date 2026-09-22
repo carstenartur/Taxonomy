@@ -55,6 +55,7 @@ const tick=async()=>{for(let i=0;i<10;i++)await Promise.resolve();};
  api.open({...options,onAdopted:()=>{throw new Error('Post-adoption refresh failed');}});await tick();previewResolve();await tick();
  action('confirmed').checked=true;action('warnings').checked=true;action('rationale').value='Reviewed';action('rationale').fire('input');
  action('confirm').click();await tick();confirmResolve();await tick();
+ assert.equal(detailRefreshes,2,'A failed adoption callback must not suppress the independent detail refresh');
  assert.equal(action('confirm').disabled,true,'A failed refresh must not re-enable an already adopted command');
  assert(text(body).includes('Übernahme dokumentiert'),'A failed refresh hid successful adoption');
  console.log('REFORMULATION_ADOPTION_CONTROLS_OK');
