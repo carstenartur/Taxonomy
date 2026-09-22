@@ -153,6 +153,99 @@ class TaxonomyLargeResultBudgetIT {
         }
     }
 
+    @Test
+    void renderDurationDoesNotIncludeDelayedDriverObservation() {
+        captureSearchRender(3, 0);
+        Map<?, ?> first = readSearchRenderTiming();
+        // Deliberately stall the test driver after the browser has finished. This
+        // must not become application render time, even beyond the entire budget.
+        sleep((long) policy.maxRenderDurationMs() + 200);
+        Map<?, ?> delayed = readSearchRenderTiming();
+        assertThat(decimal(delayed.get("renderDurationMs")))
+                .as("render duration remains frozen after completion")
+                .isEqualTo(decimal(first.get("renderDurationMs")))
+                .isPositive();
+        assertThat(decimal(delayed.get("driverObservationDelayMs")))
+                .as("late WebDriver observation is recorded separately")
+                .isGreaterThan(policy.maxRenderDurationMs());
+    }
+
+    @Test
+    void renderDurationStillIncludesSlowSearchResponses() {
+        int responseDelay = (int) policy.maxRenderDurationMs() + 100;
+        captureSearchRender(3, responseDelay);
+        assertThat(decimal(readSearchRenderTiming().get("renderDurationMs")))
+                .as("a genuinely delayed response must still exceed the unchanged render budget")
+                .isGreaterThanOrEqualTo(responseDelay);
+    }
+
+    /** Capture completion in the browser, not when a later WebDriver poll reads it. */
+    private static void captureSearchRender(int resultCount, int responseDelayMillis) {
+        Map<?, ?> completion = map(executeAsync("""
+                const done = arguments[arguments.length - 1];
+                const count = arguments[0];
+                const area = document.querySelector('#searchResultsArea');
+                document.querySelector('#analysisSecondaryTools').open = true;
+                document.querySelector('#searchPanel').open = true;
+                area.innerHTML = '';
+                delete area.dataset.totalResults;
+                window.__taxonomySearchLongTasks = [];
+                window.__taxonomyBudgetInstall(count, arguments[1]);
+                window.__taxonomySearchRenderTiming = null;
+                let frame = 0, paintedFrame = 0, settled = false;
+                const finish = value => {
+                  if (settled) return;
+                  settled = true;
+                  observer.disconnect();
+                  clearTimeout(deadline);
+                  cancelAnimationFrame(frame);
+                  cancelAnimationFrame(paintedFrame);
+                  if (!value.error) window.__taxonomySearchRenderTiming = Object.freeze(value);
+                  done(value);
+                };
+                const observer = new MutationObserver(() => {
+                  if (Number(area.dataset.totalResults) !== count
+                      || !area.querySelector('.search-result-item')) return;
+                  observer.disconnect();
+                  frame = requestAnimationFrame(function layoutReady() {
+                    const list = area.querySelector('.search-results-list');
+                    if (!list || list.getBoundingClientRect().height <= 0) {
+                      finish({error: 'Search result window has no visible layout'});
+                      return;
+                    }
+                    // The next animation frame follows a rendering opportunity for
+                    // this exact result window. Queueing/layout/paint stay timed.
+                    paintedFrame = requestAnimationFrame(function paintReady() {
+                      const completedAt = performance.now();
+                      finish({renderDurationMs: completedAt - startedAt, completedAt});
+                    });
+                  });
+                });
+                const deadline = setTimeout(() => finish({error: 'Search rendering did not finish'}), 20000);
+                observer.observe(area, {childList: true, subtree: true, attributes: true,
+                  attributeFilter: ['data-total-results']});
+                const startedAt = performance.now();
+                try {
+                  window.TaxonomySearch.performSearch('budget-' + count, 'fulltext', count);
+                } catch (error) {
+                  finish({error: String(error)});
+                }
+                """, resultCount, responseDelayMillis));
+        assertThat(completion).as("browser-owned search render completion").doesNotContainKey("error");
+        assertThat(decimal(completion.get("renderDurationMs"))).isPositive();
+    }
+
+    private static Map<?, ?> readSearchRenderTiming() {
+        return map(execute("""
+                const timing = window.__taxonomySearchRenderTiming;
+                if (!timing) throw new Error('No completed search render measurement');
+                return {
+                  renderDurationMs: timing.renderDurationMs,
+                  driverObservationDelayMs: performance.now() - timing.completedAt
+                };
+                """));
+    }
+
     private static Map<String, Object> exerciseScenario(
             Scenario scenario,
             long initialTaxonomyNodes,
@@ -175,19 +268,14 @@ class TaxonomyLargeResultBudgetIT {
                 };
                 """));
 
-        execute("""
-                window.__taxonomySearchLongTasks = [];
-                window.__taxonomyBudgetInstall(arguments[0]);
-                window.__taxonomySearchStarted = performance.now();
-                window.TaxonomySearch.performSearch(
-                    'budget-' + arguments[0], 'fulltext', arguments[0]);
-                """, scenario.resultCount());
+        captureSearchRender(scenario.resultCount(), 0);
 
         wait.until(browser -> scenario.resultCount() == number(execute(
                 "return Number(document.querySelector('#searchResultsArea').dataset.totalResults || 0)")));
         wait.until(browser -> number(execute(
                 "return document.querySelectorAll('#searchResultsArea .search-result-item').length")) > 0);
         sleep(150);
+        Map<?, ?> renderTiming = readSearchRenderTiming();
 
         Map<?, ?> measured = map(execute("""
                 const area = document.querySelector('#searchResultsArea');
@@ -210,7 +298,6 @@ class TaxonomyLargeResultBudgetIT {
                   resultAreaScrollHeight: area.scrollHeight,
                   resultListHeight: list ? Math.ceil(list.getBoundingClientRect().height) : 0,
                   documentHeight: document.documentElement.scrollHeight,
-                  renderDurationMs: performance.now() - window.__taxonomySearchStarted,
                   longestTaskMs: tasks.length ? Math.max(...tasks) : 0,
                   heap: heap,
                   truncationClassNames: area.querySelectorAll(
@@ -298,7 +385,8 @@ class TaxonomyLargeResultBudgetIT {
         metrics.put("documentHeightIncreasePx", Math.max(0L,
                 number(measured.get("documentHeight"))
                         - number(baseline.get("documentHeight"))));
-        metrics.put("renderDurationMs", decimal(measured.get("renderDurationMs")));
+        metrics.put("renderDurationMs", decimal(renderTiming.get("renderDurationMs")));
+        metrics.put("driverObservationDelayMs", decimal(renderTiming.get("driverObservationDelayMs")));
         metrics.put("longestTaskMs", decimal(measured.get("longestTaskMs")));
         metrics.put("heapIncreaseBytes", heapIncrease);
         metrics.put("truncationClassNames", number(measured.get("truncationClassNames")));
@@ -434,6 +522,7 @@ class TaxonomyLargeResultBudgetIT {
                 .isLessThanOrEqualTo(policy.maxDocumentHeightIncreasePx());
         assertThat(decimal(metrics.get("renderDurationMs")))
                 .as(scenario.id() + " render duration")
+                .isPositive()
                 .isLessThanOrEqualTo(policy.maxRenderDurationMs());
         assertThat(decimal(metrics.get("longestTaskMs")))
                 .as(scenario.id() + " longest browser task")
@@ -547,7 +636,7 @@ class TaxonomyLargeResultBudgetIT {
                   });
                   window.__taxonomySearchLongTaskObserver.observe({entryTypes: ['longtask']});
                 }
-                window.__taxonomyBudgetInstall = function (count) {
+                window.__taxonomyBudgetInstall = function (count, responseDelayMs = 0) {
                   const original = window.__taxonomyBudgetOriginalFetch;
                   const nodes = () => Array.from({length: count}, (_, index) => {
                     const longSuffix = ' — repeated bounded-label evidence segment'.repeat(12);
@@ -579,6 +668,11 @@ class TaxonomyLargeResultBudgetIT {
                       if (query === 'race-slow-failure') {
                         return new Promise((resolve, reject) => {
                           setTimeout(() => reject(new Error('stale search failure')), 220);
+                        });
+                      }
+                      if (responseDelayMs > 0) {
+                        return new Promise(resolve => {
+                          setTimeout(() => resolve(response()), responseDelayMs);
                         });
                       }
                       return Promise.resolve(response());

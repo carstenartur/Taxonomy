@@ -4,100 +4,101 @@ on:
   pull_request:
     paths:
       - '.github/workflows/triage-core-run.yml'
+      - 'taxonomy-app/src/test/java/com/taxonomy/TaxonomyLargeResultBudgetIT.java'
 
 permissions:
   contents: read
-  actions: read
 
 jobs:
-  diagnose:
+  verify-render-clock:
     if: github.event.pull_request.number == 1108 && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
-      - name: Summarize existing reports without executing artifact contents
-        env:
-          GH_TOKEN: ${{ github.token }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Prove late-observation regression detects the old clock formula
         run: |
+          set -euo pipefail
+          mkdir -p target
+          source=taxonomy-app/src/test/java/com/taxonomy/TaxonomyLargeResultBudgetIT.java
+          cp "$source" target/render-clock-source.java
+          trap 'cp target/render-clock-source.java "$source"' EXIT
           python3 - <<'PY'
-          import hashlib
-          import io
-          import json
-          import os
-          import re
-          import urllib.error
-          import urllib.parse
-          import urllib.request
-          import xml.etree.ElementTree as ET
-          import zipfile
-
-          API = 'https://api.github.com/repos/carstenartur/Taxonomy'
-          class NoRedirect(urllib.request.HTTPRedirectHandler):
-              def redirect_request(self, req, fp, code, msg, headers, newurl):
-                  return None
-
-          def github_download(path):
-              request = urllib.request.Request(API + path, headers={
-                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
-                  'Accept': 'application/vnd.github+json',
-                  'X-GitHub-Api-Version': '2022-11-28'})
-              try:
-                  response = urllib.request.build_opener(NoRedirect).open(request, timeout=30)
-              except urllib.error.HTTPError as error:
-                  if error.code not in (301, 302, 303, 307, 308):
-                      raise
-                  location = error.headers['Location']
-                  parsed = urllib.parse.urlparse(location)
-                  if parsed.scheme != 'https':
-                      raise RuntimeError('Non-HTTPS artifact redirect rejected')
-                  # Never forward the repository token to the signed download endpoint.
-                  response = urllib.request.urlopen(location, timeout=30)
-              with response:
-                  data = response.read(128 * 1024 * 1024 + 1)
-              if len(data) > 128 * 1024 * 1024:
-                  raise RuntimeError('Diagnostic input exceeds its read bound')
-              return data
-
-          archive = github_download('/actions/artifacts/10705378268/zip')
-          expected = '4ceda6035db3dd0aa905a48db53e496623e0391e20dd665655945c2cca30619d'
-          if hashlib.sha256(archive).hexdigest() != expected:
-              raise RuntimeError('Reported-run archive digest mismatch')
-          failures = {}
-          suites = {}
-          with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
-              for entry in bundle.infolist():
-                  name = entry.filename
-                  if not name.endswith('.xml') or not any(part in name for part in ('surefire-reports/', 'failsafe-reports/')):
-                      continue
-                  if entry.file_size > 64 * 1024 * 1024:
-                      raise RuntimeError('Oversized XML report: ' + name)
-                  root = ET.fromstring(bundle.read(entry))
-                  if root.tag != 'testsuite':
-                      continue
-                  suite_key = (root.get('name'), root.get('tests'), root.get('time'))
-                  suites[suite_key] = {key: root.get(key) for key in ('name', 'tests', 'errors', 'failures', 'skipped')}
-                  for case in root.iter('testcase'):
-                      for failure in list(case.findall('failure')) + list(case.findall('error')):
-                          key = (case.get('classname'), case.get('name'), failure.get('message'))
-                          failures[key] = {'class': key[0], 'test': key[1], 'message': key[2],
-                                           'stack': (failure.text or '')[:2200]}
-          print('REPORT_BINDING: run=35743878114 job=106800769100 head=3b3dcca archive_sha256=' + expected)
-          print('Distinct failing test cases:', len(failures))
-          for failure in list(failures.values())[:24]:
-              print('FAILING_TEST ' + json.dumps(failure, ensure_ascii=True))
-          if len(failures) > 24:
-              print('Additional failing cases:', len(failures) - 24)
-          print('Failing suites:')
-          for suite in suites.values():
-              if int(suite['errors'] or 0) + int(suite['failures'] or 0):
-                  print(json.dumps(suite))
-
-          log = github_download('/actions/jobs/106800769100/logs').decode('utf-8', errors='replace')
-          log = re.sub(r'\x1b\[[0-9;]*m', '', log)
-          lines = log.splitlines()
-          significant = [line for line in lines if '[ERROR]' in line or 'BUILD FAILURE' in line
-                         or 'Rule violated' in line or '<<< FAILURE' in line or '<<< ERROR' in line]
-          print('FINAL_MAVEN_DIAGNOSTICS (last 45 significant lines):')
-          for line in significant[-45:]:
-              print(line[:1500])
+          from pathlib import Path
+          p = Path('taxonomy-app/src/test/java/com/taxonomy/TaxonomyLargeResultBudgetIT.java')
+          source = p.read_text()
+          old = 'renderDurationMs: timing.renderDurationMs,'
+          assert source.count(old) == 1
+          p.write_text(source.replace(old,
+              'renderDurationMs: performance.now() - (timing.completedAt - timing.renderDurationMs),'))
           PY
+          status=0
+          ./mvnw -B -pl taxonomy-app -am package failsafe:integration-test failsafe:verify \
+            -Pci -Dtaxonomy.ui.skip=true \
+            -Dtest=TaxonomySearchLargeResultContractTest -Dsurefire.failIfNoSpecifiedTests=false \
+            '-Dit.test=TaxonomyLargeResultBudgetIT#renderDurationDoesNotIncludeDelayedDriverObservation' \
+            -Dfailsafe.failIfNoSpecifiedTests=false >target/render-clock-red.log 2>&1 || status=$?
+          tail -n 35 target/render-clock-red.log
+          test "$status" -ne 0
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as ET
+          p = Path('taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.TaxonomyLargeResultBudgetIT.xml')
+          r = ET.parse(p).getroot()
+          assert r.get('tests') == '1' and r.get('failures') == '1' and r.get('errors') == '0', r.attrib
+          failure = r.find('testcase/failure')
+          assert 'render duration remains frozen after completion' in failure.get('message', ''), failure.attrib
+          Path('target/render-clock-red.xml').write_bytes(p.read_bytes())
+          print('RED_CONFIRMED: the late WebDriver observation formula fails the intended assertion')
+          PY
+      - name: Run all large-result browser budgets and both clock controls
+        run: |
+          set -euo pipefail
+          status=0
+          ./mvnw -B -pl taxonomy-app -am package failsafe:integration-test failsafe:verify \
+            -Pci -Dtaxonomy.ui.skip=true \
+            -Dtest=TaxonomySearchLargeResultContractTest -Dsurefire.failIfNoSpecifiedTests=false \
+            -Dit.test=TaxonomyLargeResultBudgetIT -Dfailsafe.failIfNoSpecifiedTests=false \
+            >target/render-clock-green.log 2>&1 || status=$?
+          tail -n 35 target/render-clock-green.log
+          if [ "$status" -ne 0 ]; then
+            grep -E '\[ERROR\]|<<< FAILURE|<<< ERROR' target/render-clock-green.log | tail -n 25 || true
+            exit "$status"
+          fi
+          python3 - <<'PY'
+          from pathlib import Path
+          import json
+          import xml.etree.ElementTree as ET
+          p = Path('taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.TaxonomyLargeResultBudgetIT.xml')
+          r = ET.parse(p).getroot()
+          assert r.get('tests') == '4' and r.get('failures') == '0' and r.get('errors') == '0' and r.get('skipped') == '0', r.attrib
+          print('GREEN_CONFIRMED:', r.attrib)
+          for case in r.findall('testcase'):
+              print('PASS', case.get('name'))
+          report = json.loads(Path('target/ui-verification/large-results/report.json').read_text())
+          assert len(report['scenarios']) == 2
+          for case in report['scenarios']:
+              print('RENDER_METRICS', json.dumps({k: case[k] for k in (
+                  'scenario', 'renderDurationMs', 'driverObservationDelayMs', 'longestTaskMs',
+                  'interactionLatencyMs', 'renderedResults', 'resultAreaDomNodes')}))
+          PY
+          git diff --exit-code -- taxonomy-app/src/test/java/com/taxonomy/TaxonomyLargeResultBudgetIT.java
+      - name: Retain focused verification evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: render-clock-verification
+          path: |
+            target/render-clock-*.log
+            target/render-clock-red.xml
+            target/ui-verification/large-results/report.json
+            taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.TaxonomyLargeResultBudgetIT.xml
+          if-no-files-found: error
+          retention-days: 7
