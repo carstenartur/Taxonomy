@@ -10,7 +10,7 @@
     "test:ui-evidence-policy": "node --test scripts/ui-evidence-policy.test.mjs",
     "test:ui-evidence-targets": "node --test scripts/ui-primary-evidence.test.mjs",
     "test:state-render-consistency": "node --test scripts/taxonomy-state.test.mjs ../taxonomy-app/src/test/js/current-diagram-export.cjs",
-    "test:dsl-validation": "node --test scripts/taxonomy-dsl-validation.test.mjs",
+    "test:dsl-validation": "node --test scripts/taxonomy-dsl-validation.test.mjs scripts/browser-validation-departure.test.mjs",
     "test:analysis-operation-controller": "node --test scripts/analysis-operation-controller.test.mjs",
     "test:analysis-session-api-routing": "node scripts/analysis-session-api-routing.test.mjs",
     "test:analysis-session-draft": "node --test scripts/analysis-session-draft.test.mjs",

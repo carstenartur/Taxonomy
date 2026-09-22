@@ -9,6 +9,7 @@ public final class AnalysisRunControl implements AutoCloseable {
     interface Observer {
         void phase(String phase, String node);
         long started(String provider, String node);
+        default void prepared(long callId, String prompt) { }
         void completed(long callId, LlmCallDetail detail, long durationMillis);
         void failed(long callId, String failure, long durationMillis);
         void stopped(AnalysisStoppedException.Reason reason);
@@ -24,6 +25,8 @@ public final class AnalysisRunControl implements AutoCloseable {
     private final BooleanSupplier cancelled;
     private final AnalysisMemoryGuard guard;
     private boolean closed;
+    // Thread-confined identity only: the observer owns the bounded prompt preview.
+    private long activeCallId = -1;
 
     AnalysisRunControl(Observer observer, BooleanSupplier cancelled, AnalysisMemoryGuard guard) {
         this.previous = CURRENT.get();
@@ -34,6 +37,14 @@ public final class AnalysisRunControl implements AutoCloseable {
     }
 
     public static boolean active() { return CURRENT.get() != null; }
+
+    /** Records prepared request evidence, not proof that a provider received it. */
+    static void preparedPrompt(String prompt) {
+        var current = CURRENT.get();
+        if (current != null && current.activeCallId >= 0) {
+            current.observer.prepared(current.activeCallId, prompt);
+        }
+    }
 
     public static void checkpoint() {
         AnalysisRunControl current = CURRENT.get();
@@ -60,6 +71,8 @@ public final class AnalysisRunControl implements AutoCloseable {
         var current = CURRENT.get();
         long id = current == null ? 0 : current.observer.started(provider, node);
         long started = System.nanoTime();
+        long previousCallId = current == null ? -1 : current.activeCallId;
+        if (current != null) current.activeCallId = id;
         LlmCallDetail detail;
         try {
             detail = operation.get();
@@ -73,6 +86,10 @@ public final class AnalysisRunControl implements AutoCloseable {
             if (current != null) current.observer.failed(id, failure.getClass().getSimpleName(),
                     (System.nanoTime() - started) / 1_000_000);
             throw failure;
+        } finally {
+            // Restore nesting and prevent later, unobserved gateway calls from
+            // attaching their prompt to this completed, failed or stopped call.
+            if (current != null) current.activeCallId = previousCallId;
         }
         try {
             // The final provider call may outlive cancellation, the deadline or heap reserves.
