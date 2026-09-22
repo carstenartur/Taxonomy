@@ -1,0 +1,63 @@
+name: Isolated consolidated preflight
+on:
+  push:
+    branches: [verify/llm-consolidated-20260922]
+permissions:
+  contents: read
+  actions: read
+jobs:
+  timings:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Inspect the completed canonical run without rerunning it
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/carstenartur/Taxonomy/actions/jobs/106849471435/logs > core.log
+          node <<'NODE'
+          const fs = require('node:fs');
+          const lines = fs.readFileSync('core.log','utf8').split('\n');
+          const rows = [];
+          for (const line of lines) {
+            const m = line.match(/Tests run: (\d+), Failures: (\d+), Errors: (\d+), Skipped: (\d+), Time elapsed: ([\d,.]+) s -- in (\S+)/);
+            if (m) rows.push({name:m[6],seconds:Number(m[5].replaceAll(',','')),tests:Number(m[1]),failures:Number(m[2]),errors:Number(m[3]),skipped:Number(m[4])});
+          }
+          console.log('TIMING_SUMMARY',JSON.stringify({count:rows.length,totalReportedSeconds:rows.reduce((s,r)=>s+r.seconds,0),slowest:rows.sort((a,b)=>b.seconds-a.seconds).slice(0,45)},null,2));
+          console.log('REACTOR_SUMMARY\n'+lines.filter(l=>/Taxonomy .*(SUCCESS|FAILURE)|BUILD SUCCESS|BUILD FAILURE|Total time:|maven-surefire-plugin|maven-failsafe-plugin/.test(l)).slice(-65).join('\n'));
+          NODE
+  regressions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {persist-credentials: false}
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Compile new checks and reproduce all known diagnostic regressions together
+        run: |
+          mkdir -p target/consolidated-preflight
+          set +e
+          set -o pipefail
+          ./mvnw -B -ntp test -Dtest=AnalysisPromptEvidenceTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/consolidated-preflight/java-red.log
+          java_status=${PIPESTATUS[0]}
+          node --test .github/scripts/browser-sessions-departure.test.mjs 2>&1 | tee target/consolidated-preflight/js-red.log
+          node_status=${PIPESTATUS[0]}
+          set -e
+          test "$java_status" -ne 0
+          test "$node_status" -ne 0
+          report=taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.AnalysisPromptEvidenceTest.xml
+          test -f "$report"
+          grep -F 'provider failure must retain the constructed prompt' "$report"
+          grep -F 'bounded evidence must not end in half a Unicode character' "$report"
+          grep -F 'validationExpected must be reset before departure begins' target/consolidated-preflight/js-red.log
+          echo 'EXPECTED_RED_REGRESSIONS_CONFIRMED'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: consolidated-preflight-red
+          path: |
+            target/consolidated-preflight/**
+            taxonomy-analysis/target/surefire-reports/**
+          if-no-files-found: error
+          retention-days: 3
