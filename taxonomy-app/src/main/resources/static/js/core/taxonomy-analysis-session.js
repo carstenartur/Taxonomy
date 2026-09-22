@@ -3,6 +3,8 @@
     'use strict';
     if (window.TaxonomyAnalysisSession || window.__taxonomyAnalysisSessionLoading) return;
     window.__taxonomyAnalysisSessionLoading = true;
+    var settleReady;
+    window.TaxonomyAnalysisSessionReady = new Promise(function (resolve) { settleReady = resolve; });
 
     var sources = [
         '/js/api/analysis-session-api.js',
@@ -48,6 +50,7 @@
     function load(index) {
         if (index >= sources.length) {
             window.__taxonomyAnalysisSessionLoading = false;
+            settleReady(window.TaxonomyAnalysisSession?.whenInitialized() || false);
             return;
         }
         if (!copilotSessionUiSettled
@@ -63,6 +66,7 @@
         script.addEventListener('load', function () { load(index + 1); }, { once: true });
         script.addEventListener('error', function () {
             window.__taxonomyAnalysisSessionLoading = false;
+            settleReady(false);
             if (window.console) {
                 window.console.error(
                     '[Taxonomy] Could not load analysis session module', script.src);

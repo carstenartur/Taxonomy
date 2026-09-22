@@ -76,12 +76,11 @@
         if (mergeBtn)          mergeBtn.addEventListener('click', mergeBranch);
         if (branchSelect)      branchSelect.addEventListener('change', onBranchChange);
 
-        // Initial load — defer content load until CodeMirror is ready
-        loadBranches();
+        // CodeMirror, workspace routing and the context bar initialize independently.
         if (window.dslCmView) {
-            loadCurrent();
+            loadInitialCurrent();
         } else {
-            editorContainer.addEventListener('cm-ready', loadCurrent, { once: true });
+            editorContainer.addEventListener('cm-ready', loadInitialCurrent, { once: true });
         }
     }
 
@@ -109,6 +108,52 @@
         var context = window.TaxonomyContextBar?.getCurrentContext();
         return JSON.stringify([runtime?.workspaceId, runtime?.analysisGeneration,
             context?.branch, context?.commitId, branchSelect?.value]);
+    }
+
+    function sessionInitialization() {
+        if (window.TaxonomyAnalysisSession?.whenInitialized) return window.TaxonomyAnalysisSession.whenInitialized();
+        if (window.TaxonomyAnalysisSessionReady) return window.TaxonomyAnalysisSessionReady;
+        var loader = document.querySelector('script[data-taxonomy-analysis-session]');
+        if (!loader) return Promise.resolve(true); // Standalone editor without session lifecycle.
+        return new Promise(function (resolve) {
+            function finish(value) {
+                loader.removeEventListener('load', loaded);
+                loader.removeEventListener('error', failed);
+                resolve(value);
+            }
+            function loaded() { finish(window.TaxonomyAnalysisSessionReady || false); }
+            function failed() { finish(false); }
+            loader.addEventListener('load', loaded, { once: true });
+            loader.addEventListener('error', failed, { once: true });
+        });
+    }
+
+    async function loadInitialCurrent() {
+        var view = window.dslCmView;
+        if (!view || textSuspended) return;
+        var original = view.state.doc, request = textRequest;
+        function current() {
+            return !textSuspended && request === textRequest && window.dslCmView === view && view.state.doc === original;
+        }
+        function workspaceScope() {
+            var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+            return JSON.stringify([runtime?.workspaceId, runtime?.analysisGeneration]);
+        }
+        try {
+            var ready = await sessionInitialization();
+            if (!current()) return;
+            if (!ready) throw new Error(t('workspace.provisioning.failed'));
+            var workspace = workspaceScope();
+            // Refetch after routing is pinned; discard any earlier unscoped context response.
+            if (window.TaxonomyContextBar && !await window.TaxonomyContextBar.fetchAndRender('contextBar')) {
+                throw new Error(t('dsl.reading.invalidResponse'));
+            }
+            if (!current() || workspace !== workspaceScope()) return;
+            await loadBranches();
+            if (current() && workspace === workspaceScope()) await loadCurrent();
+        } catch (error) {
+            if (current()) showStatus(t('dsl.load.failed', error.message), 'error');
+        }
     }
 
     async function readEditorText(url, options, labels, preserve, json) {
@@ -299,7 +344,7 @@
 
     // ── Branches ────────────────────────────────────────────────────
     function loadBranches() {
-        fetch('/api/dsl/branches')
+        return fetch('/api/dsl/branches')
             .then(function (r) { return r.json(); })
             .then(function (branches) {
                 if (!branchSelect) return;

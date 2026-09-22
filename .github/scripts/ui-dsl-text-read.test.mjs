@@ -76,3 +76,122 @@ test('the existing editor still accepts text without an optional reading-tools m
  h.format();h.calls[0].resolve(response('element BP {\n  taxonomy: BP;\n}\n'));await settle();
  assert.equal(h.view.state.doc.toString(),'element BP {\n  taxonomy: BP;\n}\n');
 });
+
+function deferred() {
+ let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve };
+}
+function startupHarness({ loaderPending = false, editorPending = false } = {}) {
+ const workspace = deferred(), context = deferred(), dom = new EventTarget(), lifecycle = new EventTarget();
+ const editorContainer = new EventTarget(), loader = new EventTarget(), calls = [];
+ const doc = text => ({ length: text.length, toString: () => text });
+ const view = { state: { doc: doc('') }, dispatch(change) { this.state.doc = doc(change.changes.insert); } };
+ const status = { classList: { add() {}, remove() {} }, textContent: '' };
+ const branch = new EventTarget(); branch.value = '';
+ branch.appendChild = option => { if (!branch.value) branch.value = option.value; };
+ branch.insertBefore = option => branch.appendChild(option);
+ const loadButton = new EventTarget();
+ let currentContext = null, contextReads = 0;
+ const request = (url, init, options) => {
+  if (url === '/api/dsl/branches' || url.startsWith('/api/dsl/history')) return Promise.resolve(response('[]',200,'application/json'));
+  return new Promise(resolve => calls.push({url, init, options, resolve}));
+ };
+ const window = { dslCmView: editorPending ? null : view, TaxonomyApiClient: { request },
+  __TaxonomyAnalysisSessionContext: { runtime: { workspaceId: null, analysisGeneration: 0 } },
+  addEventListener: lifecycle.addEventListener.bind(lifecycle),
+  TaxonomyContextBar: { getCurrentContext: () => currentContext,
+   fetchAndRender: () => { contextReads++; return context.promise.then(value => { currentContext = value; return value; }); } }
+ };
+ if (!loaderPending) window.TaxonomyAnalysisSessionReady = workspace.promise;
+ const document = { addEventListener: dom.addEventListener.bind(dom),
+  querySelector: selector => selector === 'script[data-taxonomy-analysis-session]' ? loader : null,
+  getElementById: id => ({dslEditorContainer:editorContainer,dslBranchSelect:branch,dslStatusArea:status,dslLoadCurrentBtn:loadButton}[id] || null),
+  createElement: () => ({}) };
+ vm.runInNewContext(script, {window,document,TaxonomyI18n:{t:key=>key},TaxonomyUtils:{escapeHtml:String},fetch:request,
+  AbortController,setTimeout:()=>1,clearTimeout(){},console});
+ dom.dispatchEvent(new Event('DOMContentLoaded'));
+ return {window,view,doc,calls,status,lifecycle,loadButton,editorContainer,loader,
+  get contextReads(){return contextReads;},
+  resolveWorkspace(ok=true){window.__TaxonomyAnalysisSessionContext.runtime.workspaceId='resolved-workspace';workspace.resolve(ok);},
+  resolveContext(value={branch:'draft',commitId:'initial-commit'}){context.resolve(value);},
+  loadModules(){window.TaxonomyAnalysisSessionReady=workspace.promise;loader.dispatchEvent(new Event('load'));},
+  readyEditor(){window.dslCmView=view;editorContainer.dispatchEvent(new Event('cm-ready'));}
+ };
+}
+test('initial DSL read waits for resolved workspace, context and branch selection', async()=>{
+ const h=startupHarness();await settle();assert.equal(h.calls.length,0,'No unscoped initial export');
+ h.resolveWorkspace();await settle();assert.equal(h.contextReads,1);assert.equal(h.calls.length,0,'Wait for context initialization');
+ h.resolveContext();await settle();assert.equal(h.calls.length,1);
+ h.calls[0].resolve(response('initial architecture'));await settle();assert.equal(h.view.state.doc.toString(),'initial architecture');
+});
+for(const stage of ['workspace','context'])test(`initialization preserves text typed while ${stage} is pending`,async()=>{
+ const h=startupHarness();if(stage==='context'){h.resolveWorkspace();await settle();}
+ h.view.state.doc=h.doc('human draft before initialization');h.resolveWorkspace();h.resolveContext();await settle();
+ assert.equal(h.calls.length,0,'Abandoned initialization must not issue a replacement read');
+ assert.equal(h.view.state.doc.toString(),'human draft before initialization');
+});
+test('manual load supersedes a pending automatic initial load',async()=>{
+ const h=startupHarness();h.loadButton.dispatchEvent(new Event('click'));assert.equal(h.calls.length,1);
+ h.resolveWorkspace();h.resolveContext();await settle();assert.equal(h.calls.length,1,'No automatic follow-up may overtake manual intent');
+});
+test('pagehide cancels pending initial loading even after pageshow',async()=>{
+ const h=startupHarness();h.lifecycle.dispatchEvent(new Event('pagehide'));h.lifecycle.dispatchEvent(new Event('pageshow'));
+ h.resolveWorkspace();h.resolveContext();await settle();assert.equal(h.calls.length,0);
+});
+test('workspace initialization failure never exports from an implicit fallback workspace',async()=>{
+ const h=startupHarness();h.resolveWorkspace(false);h.resolveContext();await settle();
+ assert.equal(h.calls.length,0);assert.equal(h.status.textContent,'dsl.load.failed');
+});
+test('initial loading waits even when the ordered session loader itself is still downloading',async()=>{
+ const h=startupHarness({loaderPending:true});await settle();assert.equal(h.calls.length,0);
+ h.loadModules();await settle();assert.equal(h.calls.length,0);
+ h.resolveWorkspace();h.resolveContext();await settle();assert.equal(h.calls.length,1);
+});
+test('session loader failure leaves an explicit error and no implicit export',async()=>{
+ const h=startupHarness({loaderPending:true});h.loader.dispatchEvent(new Event('error'));await settle();
+ assert.equal(h.calls.length,0);assert.equal(h.status.textContent,'dsl.load.failed');
+});
+test('CodeMirror and asynchronous session readiness can complete in either order',async()=>{
+ for(const editorFirst of [true,false]){
+  const h=startupHarness({editorPending:true});if(editorFirst)h.readyEditor();
+  h.resolveWorkspace();h.resolveContext();await settle();
+  if(!editorFirst){assert.equal(h.calls.length,0);h.readyEditor();await settle();}
+  assert.equal(h.calls.length,1);h.calls[0].resolve(response('ready architecture'));await settle();
+  assert.equal(h.view.state.doc.toString(),'ready architecture');
+ }
+});
+
+
+const contextSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/versioning/taxonomy-context-bar.js', import.meta.url), 'utf8');
+function contextHarness() {
+ const lifecycle = new EventTarget(), calls = [];
+ const scope = { window: {addEventListener:lifecycle.addEventListener.bind(lifecycle)},
+  document:{getElementById:()=>null}, TaxonomyI18n:{t:key=>key}, TaxonomyUtils:{escapeHtml:String},
+  fetch:(url,options)=>new Promise(resolve=>calls.push({url,options,resolve})), AbortController, clearInterval, setInterval };
+ vm.runInNewContext(contextSource, scope);
+ return {api:scope.window.TaxonomyContextBar,calls,lifecycle};
+}
+test('context readiness returns the accepted context and ignores a superseded startup response',async()=>{
+ const h=contextHarness(), first=h.api.fetchAndRender('contextBar'), second=h.api.fetchAndRender('contextBar');
+ assert.equal(typeof second?.then,'function','Context initialization must be awaitable');
+ h.calls[1].resolve(response(JSON.stringify({branch:'draft',commitId:'new'}),200,'application/json'));
+ assert.equal((await second).commitId,'new');
+ h.calls[0].resolve(response(JSON.stringify({branch:'draft',commitId:'old'}),200,'application/json'));
+ assert.equal(await first,null);assert.equal(h.api.getCurrentContext().commitId,'new');
+});
+test('context readiness fails closed on HTTP failure and navigation',async()=>{
+ const h=contextHarness(), failed=h.api.fetchAndRender('contextBar');
+ assert.equal(typeof failed?.then,'function');h.calls[0].resolve(response('error',503));assert.equal(await failed,null);
+ const cancelled=h.api.fetchAndRender('contextBar');h.lifecycle.dispatchEvent(new Event('pagehide'));
+ h.calls[1].resolve(response(JSON.stringify({branch:'draft',commitId:'late'}),200,'application/json'));
+ assert.equal(await cancelled,null);assert.equal(h.api.getCurrentContext(),null);
+});
+
+for (const change of ['workspaceId','analysisGeneration']) test(`startup does not export after ${change} changes during context resolution`,async()=>{
+ const h=startupHarness();h.resolveWorkspace();await settle();
+ h.window.__TaxonomyAnalysisSessionContext.runtime[change]='changed';h.resolveContext();await settle();
+ assert.equal(h.calls.length,0);
+});
+test('failed context resolution reports an error without an initial export',async()=>{
+ const h=startupHarness();h.resolveWorkspace();h.resolveContext(null);await settle();
+ assert.equal(h.calls.length,0);assert.equal(h.status.textContent,'dsl.load.failed');
+});

@@ -5,6 +5,8 @@
     if (!C) throw new Error('Analysis session modules must load before startup');
     var S = C.S;
     var runtime = C.runtime;
+    var settleInitialization;
+    var initialization = new Promise(function (resolve) { settleInitialization = resolve; });
     var CHANGE_POLL_MS = C.CHANGE_POLL_MS;
     var language = C.language;
     var text = C.text;
@@ -560,10 +562,13 @@
         runtime.initialized = true;
         installLifecycleCommands();
         installObservers();
-        resolveWorkspaceAndLoad();
+        resolveWorkspaceAndLoad().then(function () {
+            settleInitialization(runtime.workspaceResolved === true);
+        }, function () { settleInitialization(false); });
     }
 
     window.TaxonomyAnalysisSession = Object.freeze({
+        whenInitialized: function () { return initialization; },
         invalidate: invalidate,
         saveNow: saveDraft,
         startNewAnalysis: startNewAnalysis,

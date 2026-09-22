@@ -45,18 +45,21 @@ window.TaxonomyContextBar = (function () {
      * @param {string} containerId — DOM ID
      */
     function fetchAndRender(containerId) {
-        if (!pageActive) return;
+        if (!pageActive) return Promise.resolve(null);
         if (pendingRead) pendingRead.abort();
-        pendingRead = new AbortController();
-        fetch('/api/context/current', { signal: pendingRead.signal })
+        var controller = new AbortController();
+        pendingRead = controller;
+        return fetch('/api/context/current', { signal: controller.signal })
             .then(function (r) { return r.ok ? r.json() : null; })
             .then(function (ctx) {
-                if (!ctx || !pageActive) return;
+                if (!ctx || !pageActive || controller.signal.aborted || pendingRead !== controller) return null;
                 currentContext = ctx;
                 render(containerId, ctx);
+                return ctx;
             })
             .catch(function () {
-                // silently ignore — the global git-status bar already shows errors
+                // The global git-status bar shows errors; readiness callers must still fail closed.
+                return null;
             });
     }
 
