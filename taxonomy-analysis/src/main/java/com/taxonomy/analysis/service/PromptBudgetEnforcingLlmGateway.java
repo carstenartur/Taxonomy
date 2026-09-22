@@ -25,6 +25,8 @@ final class PromptBudgetEnforcingLlmGateway implements LlmGateway {
 
     @Override
     public String sendHttpRequest(String prompt, String apiKey) {
+        // Prepared does not imply sent: budget rejection must remain inspectable too.
+        AnalysisRunControl.preparedPrompt(prompt);
         validatePromptBudget(prompt);
         return delegate.sendHttpRequest(prompt, apiKey);
     }

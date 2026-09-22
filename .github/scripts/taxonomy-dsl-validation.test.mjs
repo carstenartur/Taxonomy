@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createDslValidationSource } from '../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-dsl-validation.mjs';
+import './browser-sessions-departure.test.mjs';
 
 function document(text) {
     const lines = text.split('\n');

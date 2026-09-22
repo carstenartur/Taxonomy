@@ -320,6 +320,14 @@ public class AnalysisProgressRegistry {
             phase("LLM_PREPARING", node);
             return call.id;
         }
+        @Override public synchronized void prepared(long id, String prompt) {
+            calls.stream().filter(call -> call.id == id).findFirst().ifPresent(call -> {
+                call.promptLength = length(prompt);
+                call.prompt = bounded(prompt, MAX_TEXT);
+                call.truncated = call.promptLength > MAX_TEXT || call.responseLength > MAX_TEXT;
+                touch();
+            });
+        }
         @Override public synchronized void completed(long id, LlmCallDetail detail, long duration) {
             Call call = calls.stream().filter(c -> c.id == id).findFirst().orElse(null);
             if (call != null) {
@@ -395,6 +403,9 @@ public class AnalysisProgressRegistry {
         if (value == null) return "";
         if (value.length() <= limit) return value;
         String marker = "\n[truncated]";
-        return value.substring(0, limit - marker.length()) + marker;
+        int end = limit - marker.length();
+        if (end > 0 && Character.isHighSurrogate(value.charAt(end - 1))
+                && Character.isLowSurrogate(value.charAt(end))) end--;
+        return value.substring(0, end) + marker;
     }
 }

@@ -9,6 +9,7 @@ public final class AnalysisRunControl implements AutoCloseable {
     interface Observer {
         void phase(String phase, String node);
         long started(String provider, String node);
+        default void prepared(long callId, String prompt) { }
         void completed(long callId, LlmCallDetail detail, long durationMillis);
         void failed(long callId, String failure, long durationMillis);
         void stopped(AnalysisStoppedException.Reason reason);
@@ -23,6 +24,7 @@ public final class AnalysisRunControl implements AutoCloseable {
     private final Observer observer;
     private final BooleanSupplier cancelled;
     private final AnalysisMemoryGuard guard;
+    private long activeCallId;
     private boolean closed;
 
     AnalysisRunControl(Observer observer, BooleanSupplier cancelled, AnalysisMemoryGuard guard) {
@@ -34,6 +36,14 @@ public final class AnalysisRunControl implements AutoCloseable {
     }
 
     public static boolean active() { return CURRENT.get() != null; }
+
+    /** Publish prepared request evidence before the gateway can reject or fail it. */
+    static void preparedPrompt(String prompt) {
+        AnalysisRunControl current = CURRENT.get();
+        if (current != null && current.activeCallId != 0) {
+            current.observer.prepared(current.activeCallId, prompt);
+        }
+    }
 
     public static void checkpoint() {
         AnalysisRunControl current = CURRENT.get();
@@ -59,31 +69,38 @@ public final class AnalysisRunControl implements AutoCloseable {
         checkpoint();
         var current = CURRENT.get();
         long id = current == null ? 0 : current.observer.started(provider, node);
+        long previousCallId = current == null ? 0 : current.activeCallId;
+        if (current != null) current.activeCallId = id;
         long started = System.nanoTime();
-        LlmCallDetail detail;
         try {
-            detail = operation.get();
-        } catch (AnalysisStoppedException stopped) {
-            // A cooperative stop is not a provider failure, including stops inside retries.
-            if (current != null) current.observer.stopped(stopped.reason());
-            throw stopped;
-        } catch (RuntimeException failure) {
-            // A provider exception must not hide a stop that arrived during its call.
-            checkpoint();
-            if (current != null) current.observer.failed(id, failure.getClass().getSimpleName(),
-                    (System.nanoTime() - started) / 1_000_000);
-            throw failure;
+            LlmCallDetail detail;
+            try {
+                detail = operation.get();
+            } catch (AnalysisStoppedException stopped) {
+                // A cooperative stop is not a provider failure, including stops inside retries.
+                if (current != null) current.observer.stopped(stopped.reason());
+                throw stopped;
+            } catch (RuntimeException failure) {
+                // A provider exception must not hide a stop that arrived during its call.
+                checkpoint();
+                if (current != null) current.observer.failed(id, failure.getClass().getSimpleName(),
+                        (System.nanoTime() - started) / 1_000_000);
+                throw failure;
+            }
+            try {
+                // The final provider call may outlive cancellation, the deadline or heap reserves.
+                checkpoint();
+            } catch (AnalysisStoppedException stopped) {
+                if (current != null) current.observer.stoppedAfterResponse(
+                        id, detail, (System.nanoTime() - started) / 1_000_000, stopped.reason());
+                throw stopped.withPartial(detail);
+            }
+            if (current != null) current.observer.completed(id, detail, (System.nanoTime() - started) / 1_000_000);
+            return detail;
+        } finally {
+            // Nested calls restore their parent; later unobserved calls cannot overwrite it.
+            if (current != null) current.activeCallId = previousCallId;
         }
-        try {
-            // The final provider call may outlive cancellation, the deadline or heap reserves.
-            checkpoint();
-        } catch (AnalysisStoppedException stopped) {
-            if (current != null) current.observer.stoppedAfterResponse(
-                    id, detail, (System.nanoTime() - started) / 1_000_000, stopped.reason());
-            throw stopped.withPartial(detail);
-        }
-        if (current != null) current.observer.completed(id, detail, (System.nanoTime() - started) / 1_000_000);
-        return detail;
     }
 
     public static void pause(String phase, long millis) {
