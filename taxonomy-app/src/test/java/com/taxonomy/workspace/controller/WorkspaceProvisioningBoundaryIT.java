@@ -81,9 +81,12 @@ class WorkspaceProvisioningBoundaryIT {
         try {
             manager.evictWorkspace(USER);
         } finally {
-            workspaceIds.forEach(gitRepositories::evict);
-            // JPA rows roll back with this test; close the separately cached Git handle too.
-            if (source != null) gitRepositories.deleteCentralRepository(source.getRepositoryId());
+            try {
+                // JPA rollback does not replace deletion of separately persisted Git state.
+                workspaceIds.forEach(gitRepositories::deleteWorkspaceRepository);
+            } finally {
+                if (source != null) gitRepositories.deleteCentralRepository(source.getRepositoryId());
+            }
         }
     }
 
