@@ -293,7 +293,10 @@ async function taxDslCompletions(context) {
 // CodeMirror owns the debounce. A second timer left superseded lint promises
 // unresolved and could start a request after the document began navigating away.
 const dslValidation = createDslValidationSource(apiClient, window);
-const taxDslLinter = linter(dslValidation.lint, { delay: 500 });
+const taxDslLinter = linter(dslValidation.lint, {
+    delay: 500,
+    needsRefresh: dslValidation.needsRefresh
+});
 
 // ── Theme compartment ──────────────────────────────────────────────────
 const themeCompartment = new Compartment();

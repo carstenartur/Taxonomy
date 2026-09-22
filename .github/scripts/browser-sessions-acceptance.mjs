@@ -52,35 +52,48 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
   const validationUrl = new URL('api/dsl/validate', base);
   const cases = [];
   for (const locale of ['en', 'de']) {
-    let pageInventoryRequests = 0;
+    let pageInventoryRequests = 0, hiddenValidationRequests = 0;
+    let validationExpected = false;
     const observe = request => {
-      if (new URL(request.url()).pathname === apiUrl.pathname) pageInventoryRequests += 1;
+      const pathname = new URL(request.url()).pathname;
+      if (pathname === apiUrl.pathname) pageInventoryRequests += 1;
+      if (pathname === validationUrl.pathname && !validationExpected) hiddenValidationRequests += 1;
     };
     page.on('request', observe);
     try {
       const home = new URL(base);
       home.searchParams.set('lang', locale);
-      // Finish the preceding document's requests before navigation. WebKit reports
-      // interrupted startup/draft fetches as console access-control failures.
+      // Finish the preceding document's requests before navigation. Hidden
+      // editors must not create another delayed request after this point.
       await page.evaluate(async () => {
         if (window.TaxonomyAnalysisSession) await window.TaxonomyAnalysisSession.saveNow();
       });
       await page.waitForLoadState('networkidle');
-      // Initial CodeMirror linting has two debounce stages. A previously fired
-      // networkidle event does not prove that this delayed request has finished.
-      const [validation] = await Promise.all([
-        page.waitForResponse(response => new URL(response.url()).pathname === validationUrl.pathname
-          && response.request().method() === 'POST'),
-        page.goto(home.href, { waitUntil: 'load' })
-      ]);
-      assert.equal(validation.status(), 200);
-      assert.equal(await validation.finished(), null);
+      await page.goto(home.href, { waitUntil: 'load' });
       await page.waitForFunction(() => {
         const state = window.TaxonomyAnalysisSession?.state?.();
         return window.__taxonomyAnalysisSessionLoading === false
-          && state?.workspaceId && state.restoring === false;
+          && state?.workspaceId && state.restoring === false
+          && window.dslCmView?.state.doc.length > 0 && !window.dslCmView.inView;
       });
+      assert.equal(hiddenValidationRequests, 0, 'The hidden startup editor must not validate in the background');
+      const originalDocument = await page.evaluate(() => window.dslCmView.state.doc.toString());
+      // Exercise the actual visibility -> CodeMirror needsRefresh -> HTTP path,
+      // without editing text or invoking the linter directly from the test.
+      validationExpected = true;
+      const [validation] = await Promise.all([
+        page.waitForResponse(response => new URL(response.url()).pathname === validationUrl.pathname
+          && response.request().method() === 'POST'),
+        navigateToPage(page, 'dsl-editor').then(() =>
+          page.locator('#dslEditorContainer').scrollIntoViewIfNeeded())
+      ]);
+      assert.equal(validation.status(), 200);
+      assert.equal(await validation.finished(), null);
+      assert.equal(validation.request().postData(), originalDocument);
+      assert.equal(await page.evaluate(() => window.dslCmView.state.doc.toString()), originalDocument);
       await navigateToPage(page, 'admin');
+      await page.waitForFunction(() => !window.dslCmView.inView);
+      validationExpected = false;
       const health = page.locator('#healthDashboard');
       if (!(await health.evaluate(element => element.open))) {
         const [loadedHealth] = await Promise.all([
@@ -163,6 +176,7 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
       assert.equal(next.userCount, snapshot.userCount);
       assert.equal(next.sessionCount, snapshot.sessionCount, 'Reading/refreshing must not register logins');
       assert.equal(pageInventoryRequests, 0, 'Server-rendered page must not start identity polling');
+      assert.equal(hiddenValidationRequests, 0, 'No delayed validation may escape the hidden or departing editor');
       await evidence.runAxe(`browser-sessions-${locale}`);
       assert.equal(await page.evaluate(() => document.documentElement.scrollWidth
         <= document.documentElement.clientWidth + 2), true, 'Session page must reflow');
@@ -172,7 +186,8 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
       await main.screenshot({ path: path.join(outputDir, screenshot), animations: 'disabled' });
       cases.push({ locale, screenshot, dimensions, scope: next.scope, users: next.userCount,
         sessions: next.sessionCount, keyboardOperated: true, refreshed: true,
-        automaticInventoryRequests: pageInventoryRequests });
+        automaticInventoryRequests: pageInventoryRequests, hiddenValidationRequests,
+        liveValidationOnReveal: true });
     } finally {
       page.off('request', observe);
     }

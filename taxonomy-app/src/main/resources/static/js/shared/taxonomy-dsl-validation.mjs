@@ -1,8 +1,13 @@
-/** One editor's live validation requests, including navigation and stale results. */
+/** One editor's live validation requests, including visibility, navigation and stale results. */
 export function createDslValidationSource(apiClient, lifecycle) {
     let active = null;
     let suspended = false;
     let disposed = false;
+    let wasVisible = false;
+
+    function available(view) {
+        return !disposed && !suspended && view.inView === true && view.dom.isConnected;
+    }
 
     function cancel() {
         const previous = active;
@@ -12,6 +17,7 @@ export function createDslValidationSource(apiClient, lifecycle) {
 
     function hide() {
         suspended = true;
+        wasVisible = false;
         cancel();
     }
 
@@ -23,9 +29,20 @@ export function createDslValidationSource(apiClient, lifecycle) {
     lifecycle.addEventListener('pageshow', show);
 
     return {
+        // CodeMirror reports visibility through its measured view state. Schedule
+        // one ordinary debounced lint when an editor returns, not on every scroll
+        // or on the transaction that publishes the resulting diagnostics.
+        needsRefresh({ view }) {
+            const visible = available(view);
+            const refresh = visible && !wasVisible;
+            wasVisible = visible;
+            if (!visible) cancel();
+            return refresh;
+        },
         async lint(view) {
             cancel();
-            if (disposed || suspended) return [];
+            wasVisible = available(view);
+            if (!wasVisible) return [];
             const controller = new AbortController();
             active = controller;
             const document = view.state.doc;
@@ -37,6 +54,10 @@ export function createDslValidationSource(apiClient, lifecycle) {
                     body: text
                 }, { timeoutMillis: 10000, signal: controller.signal });
                 const data = await response.json();
+                if (!available(view)) {
+                    wasVisible = false;
+                    return [];
+                }
                 if (controller.signal.aborted || active !== controller
                         || view.state.doc !== document) return [];
                 const diagnostics = [];
@@ -66,6 +87,7 @@ export function createDslValidationSource(apiClient, lifecycle) {
         },
         dispose() {
             disposed = true;
+            wasVisible = false;
             cancel();
             lifecycle.removeEventListener('pagehide', hide);
             lifecycle.removeEventListener('pageshow', show);
