@@ -1,0 +1,45 @@
+name: Inspect fixed 1108 SQL Server failure
+on:
+  push:
+    branches: [verify/1108-mssql-log]
+permissions:
+  actions: read
+  contents: read
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Read the fixed job and extract its final Maven failure
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          node --input-type=module <<'JS'
+          import { createHash } from 'node:crypto';
+          const root = 'https://api.github.com/repos/carstenartur/Taxonomy';
+          const headers = {Authorization: `Bearer ${process.env.GH_TOKEN}`, Accept: 'application/vnd.github+json'};
+          const metadata = await fetch(`${root}/actions/jobs/106886806797`, {headers});
+          if (!metadata.ok) throw new Error(`Job metadata HTTP ${metadata.status}`);
+          const job = await metadata.json();
+          console.log(JSON.stringify({job:job.id, run:job.run_id, sha:job.head_sha, conclusion:job.conclusion}));
+          if (job.run_id !== 35769344868 || job.head_sha !== 'ca27cebbc04e7f0f80bc03d38ec4d1e85fba2374') {
+            throw new Error('Unexpected source job');
+          }
+          let response = await fetch(`${root}/actions/jobs/${job.id}/logs`, {headers, redirect:'manual'});
+          if (response.status === 302) {
+            const location = new URL(response.headers.get('location'));
+            if (location.protocol !== 'https:') throw new Error('Insecure log redirect');
+            response = await fetch(location); // Never forward GitHub credentials to storage.
+          }
+          if (!response.ok) throw new Error(`Job log HTTP ${response.status}`);
+          const bytes = Buffer.from(await response.arrayBuffer());
+          console.log(JSON.stringify({bytes:bytes.length, sha256:createHash('sha256').update(bytes).digest('hex')}));
+          const lines = bytes.toString('utf8').split(/\r?\n/);
+          const lastFailure = lines.findLastIndex(line => line.includes('BUILD FAILURE'));
+          const finalErrors = lines.slice(Math.max(0,lastFailure-100), lastFailure+45);
+          const assertions = lines.filter(line => /\[ERROR\].*(?:Tests run:|<<< FAILURE|<<< ERROR|^$)/.test(line));
+          console.log('FINAL_MAVEN_FAILURE');
+          for (const line of finalErrors) console.log(JSON.stringify(line));
+          console.log('FAILED_TEST_SUMMARIES');
+          for (const line of assertions) console.log(JSON.stringify(line));
+          JS
