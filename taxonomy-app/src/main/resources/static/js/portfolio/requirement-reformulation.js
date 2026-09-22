@@ -17,7 +17,7 @@
             moreResults:'Weitere Teilergebnisse', noResults:'Noch kein Teilergebnis dauerhaft gespeichert.', inspect:'Teilergebnis ansehen', closeProgress:'Teilergebnisse schließen',
             createdAt:'Lauf angelegt', lastCheckpoint:'Letztes neu gespeichertes Ergebnis', retained:'Verweise auf erhaltene Aussagen / Fragen',
             heading:'Neuformulierungsangebote', create:'Neuformulierung vorschlagen', snapshot:'Vorhandener Analyse-Snapshot', source:'Quellversion', revision:'Entwurfsrevision',
-            state:'Neuformulierungsangebot – nicht übernommen', original:'Original', proposal:'Vorschlag', questions:'Fragen', empty:'Noch kein Angebot vorhanden.',
+            state:'Eigenständiges Neuformulierungsangebot', original:'Original', proposal:'Vorschlag', questions:'Fragen', empty:'Noch kein Angebot vorhanden.',
             noSnapshot:'Zuerst einen vorhandenen Analyse-Snapshot auswählen.', save:'Entwurf speichern', saved:'Gespeichert. Die aktive Anforderung bleibt unverändert.',
             variant:'Variante speichern', copy:'Gespeicherte Revision kopieren', copied:'Gespeicherte Revision kopiert.', compare:'Mit Vorgänger vergleichen',
             synthesize:'Betroffene Abschnitte neu formulieren', generate:'Neuen Formulierungslauf starten', cancelRun:'Lauf abbrechen',
@@ -43,7 +43,7 @@
             moreResults:'More partial results', noResults:'No partial result has been durably saved yet.', inspect:'Inspect partial result', closeProgress:'Close partial results',
             createdAt:'Run created', lastCheckpoint:'Last newly saved result', retained:'References to preserved statements / questions',
             heading:'Reformulation offers', create:'Propose reformulation', snapshot:'Existing analysis snapshot', source:'Source version', revision:'Draft revision',
-            state:'Reformulation offer – not adopted', original:'Original', proposal:'Proposal', questions:'Questions', empty:'No offer yet.',
+            state:'Independent reformulation offer', original:'Original', proposal:'Proposal', questions:'Questions', empty:'No offer yet.',
             noSnapshot:'Select an existing analysis snapshot first.', save:'Save draft', saved:'Saved. The active requirement is unchanged.',
             variant:'Save variant', copy:'Copy saved revision', copied:'Saved revision copied.', compare:'Compare with predecessor',
             synthesize:'Reword affected sections', generate:'Start new wording run', cancelRun:'Cancel run',
@@ -196,6 +196,16 @@
         controls.append(button(t('variant'),async()=>{await transition(() => api.updateReformulation(project,requirement,offer.id,'variants',revision.number,{rationale:reason.value}));const url=new URL(location.href);url.searchParams.set('proposal',offer.id);history.replaceState(null,'',url);}),
             button(t('copy'),async()=>{const exact=await api.getReformulationRevision(project,requirement,offer.id,revision.number);await navigator.clipboard.writeText(exact.text);announce(t('copied'));}),
             button(t('compare'),async()=>{const old=revision.predecessor?await api.getReformulationRevision(project,requirement,offer.id,revision.predecessor):{text:offer.baseline.originalText};showComparison(old.text,revision.text,t('compare'));announce(t('compare'));}));
+        if (window.TaxonomyReformulationAdoption) controls.append(button(lang==='de'?'Übernahme prüfen…':'Review adoption…',()=>{
+            requireCleanTransition();
+            const id=offer.id, number=revision.number;
+            window.TaxonomyReformulationAdoption.open({projectId:project,requirementId:requirement,proposalId:id,revision:number,language:lang,
+                isCurrent:()=>offer?.id===id && offer.currentRevision.number===number && !hasDrafts() && !mutationInFlight,
+                onAdopted:async result=>{
+                    currentRequirement=await api.getRequirement(project,requirement);
+                    render(); announce((lang==='de'?'Übernahme dokumentiert. Zielversion: ':'Adoption recorded. Target version: ')+result.targetVersionId);
+                }});
+        }));
         proposal.append(controls);grid.append(proposal);
         const questions=el('section',undefined,'reformulation-panel reformulation-questions');questions.dataset.panel='questions';questions.append(el('h3',t('questions'),'h5'));
         if(!revision.questions.length)questions.append(el('p',t('noQuestions')));revision.questions.forEach(q=>questions.append(question(q)));grid.append(questions);host.append(grid);

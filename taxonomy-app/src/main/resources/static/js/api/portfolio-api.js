@@ -73,6 +73,16 @@ window.TaxonomyPortfolioApi = (function () {
         })));
     }
 
+    async function adoptionCommand(projectId, requirementId, proposalId, revision, suffix, body) {
+        positiveInteger(revision, 'revision');
+        return responsePayload(await requireOk(await fetch(requirementPath(projectId, requirementId)
+            + '/reformulations/' + encodeURIComponent(proposalId) + '/' + suffix, {
+            method: 'POST', credentials: 'same-origin', cache: 'no-store',
+            headers: Object.assign({ Accept: 'application/json', 'Content-Type': 'application/json',
+                'If-Match': '"' + revision + '"' }, csrfHeaders()), body: JSON.stringify(body || {})
+        })));
+    }
+
     function positiveInteger(value, fieldName) {
         const parsed = Number(value);
         if (!Number.isSafeInteger(parsed) || parsed <= 0) {
@@ -159,6 +169,15 @@ window.TaxonomyPortfolioApi = (function () {
                 headers: Object.assign({ Accept: 'application/json', 'Content-Type': 'application/json',
                     'If-Match': '"' + revision + '"' }, csrfHeaders()), body: JSON.stringify(body || {})
             })));
+        },
+        createReformulationAdoptionPreview: function (projectId, requirementId, id, revision) {
+            return adoptionCommand(projectId, requirementId, id, revision, 'adoption-previews', {});
+        },
+        confirmReformulationAdoption: function (projectId, requirementId, id, revision, command) {
+            return adoptionCommand(projectId, requirementId, id, revision, 'adoptions', command);
+        },
+        listReformulationAdoptions: function (projectId, requirementId, id) {
+            return getJson(requirementPath(projectId, requirementId) + '/reformulations/' + encodeURIComponent(id) + '/adoptions');
         },
         listRequirementVersions: function (projectId, requirementId) {
             return getJson(requirementPath(projectId, requirementId) + '/versions');
