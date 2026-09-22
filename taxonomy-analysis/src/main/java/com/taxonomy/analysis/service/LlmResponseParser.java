@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.service;
 
+import tools.jackson.core.exc.StreamReadException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -8,8 +9,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
 
 /**
  * Parses LLM API responses (Gemini and OpenAI-compatible) and extracts structured
@@ -21,11 +20,6 @@ import java.util.regex.Pattern;
 public class LlmResponseParser {
 
     private static final Logger log = LoggerFactory.getLogger(LlmResponseParser.class);
-
-    // Possessive quantifiers (*+) prevent catastrophic backtracking (ReDoS) on
-    // malformed input while preserving the same matching semantics for valid JSON.
-    private static final Pattern JSON_OBJECT_PATTERN =
-            Pattern.compile("\\{[^{}]*+(?:\\{[^{}]*+\\}[^{}]*+)*+\\}", Pattern.DOTALL);
 
     private final ObjectMapper objectMapper;
 
@@ -136,8 +130,7 @@ public class LlmResponseParser {
     public LlmService.ScoreParseResult parseScoreParseResult(String text,
                                                               List<TaxonomyNode> nodes,
                                                               int parentScore) throws Exception {
-        String jsonText = extractJson(text);
-        Map<String, Object> raw = objectMapper.readValue(jsonText, new TypeReference<>() {});
+        Map<String, Object> raw = readScoreObject(text);
 
         Map<String, Integer> scores = new HashMap<>();
         Map<String, String> reasons = new HashMap<>();
@@ -193,8 +186,7 @@ public class LlmResponseParser {
      */
     public LlmService.ScoreParseResult parseIndependentScoreParseResult(
             String text, List<TaxonomyNode> nodes, int minimumScore) throws Exception {
-        String jsonText = extractJson(text);
-        Map<String, Object> raw = objectMapper.readValue(jsonText, new TypeReference<>() {});
+        Map<String, Object> raw = readScoreObject(text);
 
         Set<String> expectedCodes = new LinkedHashSet<>();
         for (TaxonomyNode node : nodes) {
@@ -281,14 +273,59 @@ public class LlmResponseParser {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    /** Strip markdown code fences and locate the outermost JSON object. */
-    public String extractJson(String text) {
-        String stripped = text.replaceAll("```json", "").replaceAll("```", "").trim();
-        Matcher m = JSON_OBJECT_PATTERN.matcher(stripped);
-        if (m.find()) {
-            return m.group();
+    private Map<String, Object> readScoreObject(String text) {
+        String jsonText = extractJson(text);
+        if (!jsonText.startsWith("{")) {
+            throw new IllegalArgumentException("Expected a JSON object for analysis scores, but the LLM "
+                    + "returned empty or non-JSON text. Inspect the raw response in the LLM communication log.");
         }
-        return stripped;
+        return objectMapper.readValue(jsonText, new TypeReference<>() {});
+    }
+
+    /**
+     * Locates the first outer JSON container in plain text or a Markdown code block.
+     * Complete bracketed prose such as {@code [IP]} is skipped when it is not JSON.
+     * Actual arrays remain arrays so the score parser rejects a non-object root.
+     * Respect strings and escapes: brackets and code fences inside a reason are
+     * data, not delimiters. An incomplete outer container is returned intact for
+     * rejection, never replaced by a seemingly valid inner object.
+     */
+    public String extractJson(String text) {
+        String stripped = text == null ? "" : text.trim();
+        int start = -1;
+        int depth = 0;
+        boolean quoted = false;
+        boolean escaped = false;
+        for (int i = 0; i < stripped.length(); i++) {
+            char character = stripped.charAt(i);
+            if (start < 0) {
+                if (character != '{' && character != '[') continue;
+                start = i;
+            }
+            if (quoted) {
+                if (escaped) escaped = false;
+                else if (character == '\\') escaped = true;
+                else if (character == '"') quoted = false;
+            } else if (character == '"') {
+                quoted = true;
+            } else if (character == '{' || character == '[') {
+                depth++;
+            } else if ((character == '}' || character == ']') && --depth == 0) {
+                String candidate = stripped.substring(start, i + 1);
+                if (stripped.charAt(start) == '[') {
+                    try {
+                        objectMapper.readTree(candidate);
+                    } catch (StreamReadException notJson) {
+                        // Skip the whole prose span, never salvage an object inside it.
+                        // Other failures, including configured read limits, must propagate.
+                        start = -1;
+                        continue;
+                    }
+                }
+                return candidate;
+            }
+        }
+        return start < 0 ? stripped : stripped.substring(start);
     }
 
     /**

@@ -26,6 +26,12 @@ class ReformulationLocalRecoveryTest {
     @Test void alreadyAdmittedFinalizationFinishesWithoutBlockingShutdown() throws Exception {
         run("finalization-admitted", "REFORMULATION_FINALIZATION_ADMITTED_OK");
     }
+    @Test void aCommittedButUnadmittedClaimIsImmediatelyRecoverable() throws Exception {
+        run("claim-retired", "REFORMULATION_UNADMITTED_RELEASE_OK");
+    }
+    @Test void retiringAnUnadmittedClaimCannotReleaseItsSuccessor() throws Exception {
+        run("claim-superseded", "REFORMULATION_UNADMITTED_SUCCESSOR_OK");
+    }
     private void run(String mode, String marker) throws Exception {
         var command = new ArrayList<String>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());

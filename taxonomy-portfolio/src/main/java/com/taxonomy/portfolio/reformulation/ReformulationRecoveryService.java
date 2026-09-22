@@ -90,6 +90,20 @@ public class ReformulationRecoveryService {
         return Optional.of(new Claim(d, owner, row.epoch()));
     }
 
+    /**
+     * Release a committed claim whose local delivery was retired before admission.
+     * Scope, owner and epoch are checked under the usual DB locks: a stale delivery
+     * cannot release its successor. The run remains recoverable, not failed, and
+     * the fencing epoch and bounded-attempt policy are never reset.
+     */
+    @Transactional
+    public boolean releaseUnadmitted(Claim token) {
+        var locked = lock(token.dispatch());
+        if (!valid(locked, token)) return false;
+        locked.lease().releaseUnadmitted();
+        return true;
+    }
+
     /** Reads the exact requested revision, not a newer manual edit encountered after restart. */
     @Transactional(readOnly = true)
     public Proposal source(Dispatch d) {

@@ -24,7 +24,7 @@ function fixture() {
         });
     } };
     return { lifecycle, calls, source: createDslValidationSource(api, lifecycle),
-        view: { state: { doc: document('first\nsecond') } } };
+        view: { inView: true, dom: { isConnected: true }, state: { doc: document('first\nsecond') } } };
 }
 
 test('validation preserves errors, warnings and exact source line ranges', async () => {
@@ -102,4 +102,62 @@ test('disposing one editor cancels only its own pending validation', async () =>
     second.calls[0].resolve({ errors: ['still active'] });
     assert.equal((await surviving)[0].message, 'still active');
     second.source.dispose();
+});
+
+for (const unavailable of ['hidden', 'detached']) {
+    test(`${unavailable} editors never start delayed validation requests`, async t => {
+        const { source, calls, view } = fixture();
+        t.after(() => source.dispose());
+        if (unavailable === 'hidden') view.inView = false;
+        else view.dom.isConnected = false;
+        const pending = source.lint(view);
+        assert.equal(calls.length, 0, 'no server work for an unavailable editor');
+        assert.deepEqual(await pending, []);
+    });
+}
+
+test('a reply received after hiding the editor does not publish diagnostics', async t => {
+    const { source, calls, view } = fixture();
+    t.after(() => source.dispose());
+    const pending = source.lint(view);
+    view.inView = false;
+    calls[0].resolve({ errors: ['stale hidden diagnostic'] });
+    assert.deepEqual(await pending, []);
+});
+
+test('revealing an unchanged editor requests one refresh without a continuous lint loop', async t => {
+    const { source, calls, view } = fixture();
+    t.after(() => source.dispose());
+    assert.equal(typeof source.needsRefresh, 'function', 'visibility must participate in the linter refresh contract');
+    view.inView = false;
+    assert.equal(source.needsRefresh({ view }), false);
+    const before = view.state.doc;
+    view.inView = true;
+    assert.equal(source.needsRefresh({ view }), true);
+    assert.equal(source.needsRefresh({ view }), false, 'geometry updates must not repeatedly refresh a visible editor');
+    const pending = source.lint(view);
+    assert.equal(view.state.doc, before, 'revealing must not synthesize a document edit');
+    calls[0].resolve({ warnings: ['current visible document'] });
+    assert.equal((await pending)[0].message, 'current visible document');
+    assert.equal(source.needsRefresh({ view }), false, 'publishing diagnostics must not start a lint loop');
+    view.inView = false;
+    assert.equal(source.needsRefresh({ view }), false);
+    view.inView = true;
+    assert.equal(source.needsRefresh({ view }), true);
+});
+
+test('navigation and disposal cannot be bypassed by a visibility refresh', async t => {
+    const { source, calls, view, lifecycle } = fixture();
+    t.after(() => source.dispose());
+    assert.equal(typeof source.needsRefresh, 'function');
+    lifecycle.dispatchEvent(new Event('pagehide'));
+    assert.equal(source.needsRefresh({ view }), false);
+    assert.deepEqual(await source.lint(view), []);
+    assert.equal(calls.length, 0);
+    lifecycle.dispatchEvent(new Event('pageshow'));
+    assert.equal(source.needsRefresh({ view }), true);
+    source.dispose();
+    assert.equal(source.needsRefresh({ view }), false);
+    assert.deepEqual(await source.lint(view), []);
+    assert.equal(calls.length, 0);
 });

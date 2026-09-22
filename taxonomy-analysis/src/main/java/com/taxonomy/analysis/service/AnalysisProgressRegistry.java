@@ -54,7 +54,12 @@ public class AnalysisProgressRegistry {
     }
 
     public record CallView(long id, String provider, String node, String status, long startedAt, long durationMillis) { }
-    public record CallDetail(String prompt, String response, boolean truncated) { }
+    public record CallDetail(String prompt, String response, boolean truncated, String error,
+                             int promptLength, int responseLength) {
+        public CallDetail(String prompt, String response, boolean truncated) {
+            this(prompt, response, truncated, "", length(prompt), length(response));
+        }
+    }
     public record Snapshot(String operationId, String status, String phase, String node, String stopReason,
                            long sequence, long startedAt, long lastActivityAt, long serverTime,
                            int evaluatedNodes, boolean scoresTruncated, Map<String, Integer> rawScores,
@@ -163,7 +168,8 @@ public class AnalysisProgressRegistry {
         Run run = require(id, owner, context);
         synchronized (run) {
             return run.calls.stream().filter(c -> c.id == callId)
-                    .map(c -> new CallDetail(c.prompt, c.response, c.truncated)).findFirst()
+                    .map(c -> new CallDetail(c.prompt, c.response, c.truncated, c.error,
+                            c.promptLength, c.responseLength)).findFirst()
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Call detail expired"));
         }
     }
@@ -270,7 +276,8 @@ public class AnalysisProgressRegistry {
         final long id, startedAt;
         final long startedNanos = System.nanoTime();
         final String provider, node;
-        String status = "STARTED", prompt = "", response = "";
+        String status = "STARTED", prompt = "", response = "", error = "";
+        int promptLength, responseLength;
         long duration;
         boolean truncated;
         Call(long id, String provider, String node) {
@@ -313,14 +320,26 @@ public class AnalysisProgressRegistry {
             phase("LLM_PREPARING", node);
             return call.id;
         }
+        @Override public synchronized void prepared(long id, String prompt) {
+            if (!active()) return;
+            Call call = calls.stream().filter(c -> c.id == id).findFirst().orElse(null);
+            if (call == null || !"STARTED".equals(call.status)) return;
+            call.promptLength = length(prompt);
+            call.prompt = bounded(prompt, MAX_TEXT);
+            call.truncated = call.promptLength > MAX_TEXT;
+            touch();
+        }
         @Override public synchronized void completed(long id, LlmCallDetail detail, long duration) {
             Call call = calls.stream().filter(c -> c.id == id).findFirst().orElse(null);
             if (call != null) {
                 call.status = detail.getError() == null || detail.getError().isBlank() ? "COMPLETED" : "FAILED";
                 call.duration = duration;
+                call.promptLength = length(detail.getPrompt());
+                call.responseLength = length(detail.getRawResponse());
+                call.error = bounded(detail.getError(), 1024);
                 call.prompt = bounded(detail.getPrompt(), MAX_TEXT);
                 call.response = bounded(detail.getRawResponse(), MAX_TEXT);
-                call.truncated = length(detail.getPrompt()) > MAX_TEXT || length(detail.getRawResponse()) > MAX_TEXT;
+                call.truncated = call.promptLength > MAX_TEXT || call.responseLength > MAX_TEXT;
             }
             if (detail.getScores() != null) detail.getScores().forEach((code, score) -> {
                 if (code == null || score == null) return;
@@ -339,7 +358,11 @@ public class AnalysisProgressRegistry {
             stopped(reason);
         }
         @Override public synchronized void failed(long id, String failure, long duration) {
-            calls.stream().filter(c -> c.id == id).findFirst().ifPresent(c -> { c.status = "FAILED"; c.duration = duration; });
+            calls.stream().filter(c -> c.id == id).findFirst().ifPresent(c -> {
+                c.status = "FAILED";
+                c.duration = duration;
+                c.error = bounded(failure, 1024);
+            });
             phase("LLM_FAILED", null);
         }
         @Override public synchronized void stopped(AnalysisStoppedException.Reason reason) {

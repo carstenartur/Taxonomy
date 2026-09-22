@@ -1,0 +1,121 @@
+# Immutable reformulation report exports (package 7a)
+
+This increment exports an explicitly selected saved proposal revision or a specific
+adoption receipt. It does not save, adopt, reanalyse, delete or create Git commits.
+It is the textual/structured export slice of package 7, not completion of portable
+Git evidence or Word/architecture-diagram reports.
+
+## API and historical meaning
+
+Authenticated GET-only routes, using the existing project/requirement/offer scope:
+
+- `/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}/revisions/{revision}/export?format=json`
+- `/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}/adoptions/{commandId}/export?format=json`
+
+`format` is `json`, `md` or `html`; default is JSON. Unsupported formats are
+rejected. Downloads use UTF-8, attachment disposition, no-store, nosniff and a
+SHA-256 digest of the exact response bytes. This digest is an integrity aid, not
+a signature or independent certificate.
+
+A proposal-revision export says "not an adoption receipt", rather than asserting
+that the revision has never subsequently been adopted. Its content never changes
+because another answer or adoption happened later. A receipt export reads the
+exact saved preview and its verified hash, not today's offer text. It identifies
+the historical adoption but makes no assertion about today's active version or
+expert approval. Changed/normalized adoption wording comes from preview.finalText;
+the complete original proposal revision remains in the structured evidence.
+
+Included are the original requirement, source version/hash, analysis snapshot ID,
+selected revision, taxonomy sections, statement conditions and provenance, question
+contracts/options, discoveries and merged origins, answers including superseded
+history, validation, and (for adoption) full stored preview and receipt. The raw
+frozen-context archive and snapshot payload are not included: this report is not
+a prompt log, workspace backup or complete portable architecture checkpoint.
+
+Read authorization remains current even for old reports. Receipts use the existing
+scope+command identity and are checked against the requested offer. Reading a
+receipt does not replay its command. Application composition maps Portfolio-owned
+snapshots into the framework-free Export renderer; no reverse module dependency,
+new Maven dependency, migration, schema change or test-policy exception is added.
+
+## UI and safe rendering
+
+The selected offer has JSON/Markdown/HTML download controls, explicitly labelled
+as exporting the *saved* revision. Unsaved text and pending answer edits are neither
+submitted nor reset. Receipt-history entries have corresponding download controls.
+A control captures its exact identity when rendered; changing the selection cannot
+retarget an already issued read. Responses for detached controls do not trigger
+late downloads. Double-click does not duplicate the same in-flight read. HTML/login
+responses without matching content type and attachment/digest metadata are rejected.
+
+HTML output escapes every external string and includes an offline CSP; no scripts,
+external assets or active links are generated. Markdown renders external text in
+literal fences longer than any contained backtick sequence. Heading text is escaped.
+No clock value or currently active requirement value is added during rendering.
+The full structured JSON is appended so no historical fields are discarded by the
+human-readable presentation.
+
+## Tests and scope of evidence
+
+The existing RED `ReformulationReportTest` from PR #1109 is retained byte-for-byte
+(blob `81f0e7212de117fde44a25518b160e5f036c3103`). Its published JSON contract is
+`schemaVersion: "reformulation-report-v1"` with `proposal.id` and `proposal.revision`.
+The full revision also remains available under `revision`. A porting regression
+first failed against the local patch's former numeric schema version, then passed
+after correcting the implementation instead of weakening the published test.
+
+`ReformulationReportHistoryTest` adds two ordinary JUnit entry points: the
+application/restart contract and actual API/download-control contract.
+`ReformulationReportRendererTest` supplies three renderer cases. Together with the
+preserved initial test, this is six JUnit methods, not a claim that they have all
+run locally under JUnit. Normal child JVMs forward an existing JaCoCo agent.
+
+This continuation uses a complete source checkout whose baseline tree is
+`18531654cdb2c9e672bc2c7e268b7970c2c7ef18`, exactly current main `ae4a0d13749c3d1fb340b7bc48cbac13c950a956`.
+The source artifact 10718150898 and runtime artifact 10717449058 were downloaded
+and independently SHA-256 verified. Their hashes are respectively
+`122380ba11cc8925633d1cd9987e661c9b3dbfa93dcb3ae48049ed845a4381c8` and
+`62e7043ceb88b7d9df76f3212ff93a1566b75b5e6f30c5f52985b25ec8062aa9`.
+The runtime's source tree matches the baseline, preserving the integrated LLM
+failure diagnostics, resource-policy and recovery fixes. No old source tree is
+substituted for the newer application.
+
+Tests first reproduced the missing authenticated endpoint (404) on the unchanged
+server and the schema mismatch on the port. Fresh Java 21 compilation of all new
+production classes and executable checks succeeded. Real Spring/HTTP/file-HSQL
+write and restart processes exited zero with `REFORMULATION_REPORT_HTTP_OK` and
+`REFORMULATION_REPORT_RESTART_OK`. All six saved report bodies (revision and receipt,
+each JSON/Markdown/HTML) remain byte-identical across later answer/adoption/text
+changes and a fresh application process. Full typed revision, preview and receipt
+comparisons, current authorization, wrong workspace/offer, unknown identities,
+GET-only behavior and no mutation are checked. Authored model/analysis fixtures
+use the real BP catalogue root; no live model is called.
+
+Three renderer checks and the actual API/download-control check passed again on
+the final sources. Existing progress, both cancellation, adoption-dialog and
+active-detail-refresh Node contracts also pass. These check safe literal fields,
+exact captured identities, stale detached controls, errors and duplicate clicks;
+they are not a complete browser-to-server acceptance result. The HTML/Markdown
+fixtures retain complete evidence rather than claiming visual or semantic quality
+of a live model. The browser checks presence/format of the digest header, not a
+cryptographic recomputation of the response body.
+
+## Required integration gates
+
+The canonical local `./mvnw verify -DexcludedGroups='real-llm'` was attempted and
+failed before compilation while downloading the pinned Maven distribution.
+Local Java checks are compiled source overlays on actual runtime libraries, not
+a complete Maven reactor build. Current-head Maven/JUnit, coverage, unchanged
+ArchUnit inventory rules, database matrix and full browser acceptance remain
+required. No test selector, threshold, workflow, dependency or migration is
+changed by this export increment. Any measured dependency-inventory change must
+be reviewed against actual class pairs, not guessed in advance.
+
+The old local patch is now integrated into the existing report branch rather
+than creating a duplicate PR. Publishing the feature does not certify its final
+CI or independent review. Review receipt binding, current authorization, immutable
+historical identity, UI capture/error handling and markup containment.
+
+Remaining package 7: portable evidence inside atomic Git checkpoints, import/round
+trip, rich Word reports including the selected architecture/decision-tree graphics.
+Package 8 live-model and full civilian acceptance remains separate.

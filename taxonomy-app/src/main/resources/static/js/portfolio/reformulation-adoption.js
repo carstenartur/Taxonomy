@@ -91,7 +91,13 @@ window.TaxonomyReformulationAdoption = (function () {
                 const receipts=await api.listReformulationAdoptions(options.projectId,options.requirementId,options.proposalId);
                 if(!visible(state))return;
                 history.append(element('p',receipts.length?'':words.none));
-                receipts.forEach(r=>history.append(element('p','#'+r.targetVersionId+' · '+r.actor+' · '+r.adoptedAt+' — '+r.rationale)));
+                receipts.forEach(r=>{
+                    history.append(element('p','#'+r.targetVersionId+' · '+r.actor+' · '+r.adoptedAt+' — '+r.rationale));
+                    if(window.TaxonomyReformulationReports) history.append(window.TaxonomyReformulationReports.controls({
+                        projectId:options.projectId,requirementId:options.requirementId,proposalId:options.proposalId,
+                        commandId:r.commandId,language:options.language
+                    }));
+                });
             } catch(error){if(visible(state))history.append(element('p',words.failed+error.message));}
         } catch(error){if(visible(state))state.status.textContent=words.failed+error.message;}
     }

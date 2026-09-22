@@ -223,6 +223,51 @@
         if (className) element.className = className;
         return element;
     }
+    function diagnosticField(container, title, value, className, originalLength, emptyMessage, formatJson) {
+        var raw = typeof value === 'string' ? value : '';
+        var section = node('div', undefined, 'mb-2');
+        section.append(node('strong', title));
+        if (Number.isSafeInteger(originalLength) && originalLength > raw.length) {
+            section.append(node('div', text('Gekürzte Vorschau; ursprüngliche Länge: ',
+                'Truncated preview; original length: ') + originalLength + text(' Zeichen.', ' characters.'), 'text-muted'));
+        }
+        var formatted = raw, parsedJson = false;
+        if (formatJson && raw) {
+            try {
+                var parsed = JSON.parse(raw);
+                if (parsed !== null && typeof parsed === 'object') {
+                    formatted = JSON.stringify(parsed, null, 2);
+                    parsedJson = true;
+                }
+            } catch (_) { /* Non-JSON and truncated replies remain readable, unchanged evidence. */ }
+        }
+        section.append(node('pre', raw ? formatted : emptyMessage, className));
+        if (parsedJson) {
+            var original = node('details');
+            original.append(node('summary', text('Unveränderte Rohantwort', 'Unchanged raw response')),
+                node('pre', raw, className));
+            section.append(original);
+        }
+        container.append(section);
+    }
+    function renderDiagnostic(body, detail) {
+        body.replaceChildren();
+        if (detail.error) {
+            body.append(node('strong', text('Fehler', 'Error')),
+                node('div', detail.error, 'llm-log-error-detail mb-2'));
+        }
+        // Keep the answer visible independently of a potentially much longer prompt.
+        // Reuse the bounded, pre-wrap log styles; Bootstrap text-wrap collapses newlines.
+        diagnosticField(body, text('LLM-Antwort', 'LLM response'), detail.response, 'llm-log-response',
+            detail.responseLength, text('Keine Antwort im Diagnosepuffer vorhanden.',
+                'No response retained in the diagnostic buffer.'), true);
+        diagnosticField(body, 'Prompt', detail.prompt, 'llm-log-prompt', detail.promptLength,
+            text('Kein Prompt im Diagnosepuffer vorhanden.', 'No prompt retained in the diagnostic buffer.'), false);
+        if (detail.truncated) {
+            body.append(node('div', text('Die Diagnosevorschau ist gekürzt; sie enthält nicht den vollständigen Austausch.',
+                'This diagnostic preview is truncated; it does not contain the complete exchange.'), 'text-muted'));
+        }
+    }
     function presentation() {
         var previous = document.getElementById('analysisLiveProgress');
         if (previous) previous.remove();
@@ -250,9 +295,7 @@
             try {
                 var detail = await monitor.detail(entry.call.id);
                 if (!entry.details.isConnected) return;
-                entry.body.textContent = 'Prompt\n' + detail.prompt + '\n\nResponse\n' + detail.response
-                    + (detail.truncated ? '\n\n' + text('Diagnosevorschau gekürzt; Bewertungen bleiben vollständig.',
-                        'Diagnostic preview truncated; scores remain complete.') : '');
+                renderDiagnostic(entry.body, detail);
                 entry.loaded = true;
             } catch (error) {
                 if (entry.details.isConnected) {
@@ -325,7 +368,7 @@
                     if (!entry && log) {
                         var details = node('details', undefined, 'llm-log-entry');
                         var summary = node('summary');
-                        var body = node('pre', text('Details werden beim Öffnen geladen.', 'Details are loaded when opened.'), 'small text-wrap');
+                        var body = node('div', text('Details werden beim Öffnen geladen.', 'Details are loaded when opened.'), 'small');
                         details.append(summary, body);
                         entry = { details: details, summary: summary, body: body, loaded: false, loading: false, call: call };
                         entries.set(call.id, entry);
@@ -335,6 +378,7 @@
                     if (entry) {
                         var becameReady = entry.call.status === 'STARTED' && call.status !== 'STARTED';
                         entry.call = call;
+                        entry.details.className = 'llm-log-entry' + (call.status === 'FAILED' ? ' llm-log-error' : '');
                         var seconds = call.status === 'STARTED'
                             ? Math.max(0, Math.floor((snapshot.serverTime - call.startedAt) / 1000))
                             : Math.floor(call.durationMillis / 1000);
