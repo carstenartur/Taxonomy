@@ -31,8 +31,9 @@ final class WalkUpExecution {
         }
         // This pool is distinct from the parent portfolio executor. No parent waits
         // for work queued into its own saturated executor, and groups remain serial.
-        try (var workers = Executors.newFixedThreadPool(parallelism,
-                Thread.ofPlatform().daemon().name("reformulation-node-", 0).factory())) {
+        var workers = Executors.newFixedThreadPool(parallelism,
+                Thread.ofPlatform().daemon().name("reformulation-node-", 0).factory());
+        try {
             var completed = new ExecutorCompletionService<T>(workers);
             var running = new HashMap<Future<T>,String>();
             var submitted = new HashSet<String>();
@@ -56,9 +57,21 @@ final class WalkUpExecution {
             if (failed.getCause() instanceof RuntimeException runtime) throw runtime;
             if (failed.getCause() instanceof Error error) throw error;
             throw new IllegalStateException("REFORMULATION_NODE_FAILED", failed.getCause());
+        } finally {
+            // ExecutorService.close() joins forever, even after caller interruption.
+            // Preserve promptly completed sibling checkpoints, but never let a
+            // stuck provider/supplier prevent failure or shutdown from returning.
+            workers.shutdown();
+            try {
+                if (Thread.currentThread().isInterrupted()
+                        || !workers.awaitTermination(1, TimeUnit.SECONDS)) workers.shutdownNow();
+            } catch (InterruptedException interrupted) {
+                workers.shutdownNow();
+                Thread.currentThread().interrupt();
+            }
         }
-        // Completion order never becomes evidence/document order. Closing the pool
-        // joins in-flight siblings on failure before the caller publishes FAILED.
+        // Completion order never becomes evidence/document order. Late children
+        // remain subject to the existing run/lease fences; they cannot publish.
         var ordered = new LinkedHashMap<String,T>();
         plan.forEach(step -> ordered.put(step.nodeId(), results.get(step.nodeId())));
         return Collections.unmodifiableMap(ordered);

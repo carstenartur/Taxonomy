@@ -43,5 +43,6 @@ public class ReformulationRecoveryCoordinator {
     @PreDestroy
     public synchronized void stop() {
         if(timers!=null) {timers.shutdownNow();timers=null;}
+        execution.shutdown();
     }
 }

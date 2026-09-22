@@ -22,6 +22,11 @@
       "systemProperty": "documentTemplateE2E",
       "requires": ["Java 21", "Docker", "Node 24", "Chromium", "LibreOffice", "Poppler"]
     },
+    "reformulation-usage-tests": {
+      "purpose": "Scoped durable usage, recovery, encoding and repository-guard regression tests; supplements canonical CI",
+      "test": "ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ReformulationEncodingTest,ArchitectureContextDependencyRatchetTest,WorkflowTestAuthorityPolicyTest,PythonSourceRatchetRepositoryTest,ReformulationVerificationProfileTest",
+      "requires": ["Java 21", "Node"]
+    },
     "civilian-acceptance": {
       "purpose": "Sourced civilian Copilot scenario with Spring remote LLM playback, export semantics and real browser screenshots",
       "test": "CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationBrowserTest",
@@ -54,6 +59,7 @@
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
     "catalogue-overlay-proposal.yml": "Maven-verified deterministic catalogue-overlay proposal and review-evidence publication",
     "document-template-report-e2e.yml": "Maven-owned packaged browser and decision-report evidence",
+    "reformulation-usage-contract.yml": "Supplemental Maven-owned usage, recovery and input-fidelity tests with positive JUnit evidence; canonical CI remains authoritative",
     "civilian-acceptance.yml": "Maven-owned civilian Copilot, remote LLM playback, export and screenshot evidence",
     "jgit-storage-hibernate-contract.yml": "consumer-owned storage compatibility contract with Maven verification catalogue selectors",
     "kubernetes-constrained-smoke.yml": "external kind and Helm constrained-cluster release-floor verification",

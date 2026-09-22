@@ -13,8 +13,8 @@ final class BoundedNodeSynthesis {
     static final int MAX_GROUPS = 16;
     private static final String GROUP_CONTRACT = "\nBOUNDED_GROUP_V1: Formulate only the supplied sibling group. Other siblings still exist. "
             + "Keep the complete original, restrictions, decisions and directed boundary relations. Do not invent a taxonomy node for the group.";
-    private static final String AGGREGATE_CONTRACT = "\nBOUNDED_AGGREGATE_V1: Combine the group summaries into this parent's short formulation. "
-            + "Detailed statements remain separately stored under preservedStatementIds; do not pretend their text was rechecked here. "
+    private static final String AGGREGATE_CONTRACT = "\nBOUNDED_AGGREGATE_V2: Combine the group summaries into this parent's short formulation. "
+            + "Full group formulations, conditions and provenance are supplied in statementProposals. Deeper preserved references remain stored separately; do not claim to have rechecked unsupplied text. "
             + "All questions and details must survive. Find cross-group decisions without deciding them. Do not infer absent features are excluded.";
     private final ObjectMapper json;
 
@@ -97,13 +97,13 @@ final class BoundedNodeSynthesis {
     }
 
     NodeSynthesisInput aggregate(NodeSynthesisInput input, List<NodeSynthesisResult> parts) {
-        // Full child details have already been processed and remain in the resulting document.
-        // Only summaries and stable references enter this short-parent composition step.
+        // Carry each group's actual formulation, not just its short summary or IDs.
+        // Deeper already-synthesized child evidence remains stored under its stable references.
         var children = new ArrayList<NodeSynthesisResult>();
         for (NodeSynthesisResult part : parts) {
             var statements = new LinkedHashSet<>(part.preservedStatementIds());
             part.statementProposals().forEach(s -> statements.add(s.id()));
-            children.add(new NodeSynthesisResult(input.nodeId(), part.summary(), List.of(), List.copyOf(statements),
+            children.add(new NodeSynthesisResult(input.nodeId(), part.summary(), part.statementProposals(), List.copyOf(statements),
                     part.questionProposals(), part.preservedQuestionIds(), part.uncoveredSourceRefs(), part.conflictCandidates()));
         }
         var retained = new LinkedHashMap<String, DecisionQuestion>();

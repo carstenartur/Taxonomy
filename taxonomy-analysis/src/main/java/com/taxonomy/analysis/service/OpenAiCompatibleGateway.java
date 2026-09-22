@@ -68,9 +68,13 @@ public class OpenAiCompatibleGateway implements LlmGateway {
     @Override
     public String sendHttpRequest(String prompt, String apiKey) {
         AnalysisRunControl.checkpoint();
+        String usageInvocation = LlmTransportMeter.newInvocation();
         if (recordReplayService != null && recordReplayService.isReplayMode()) {
             Optional<String> recorded = recordReplayService.replay(prompt);
-            if (recorded.isPresent()) return recorded.get();
+            if (recorded.isPresent()) {
+                LlmTransportMeter.replay(usageInvocation, provider.name());
+                return recorded.get();
+            }
             if (!recordReplayService.isFallbackLive()) {
                 log.warn("No LLM recording found for prompt hash — no fallback configured");
                 return null;
@@ -106,7 +110,8 @@ public class OpenAiCompatibleGateway implements LlmGateway {
                 ResponseEntity<String> response;
                 try {
                     AnalysisRunControl.phase("LLM_REQUEST", null);
-                    response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+                    response = LlmTransportMeter.exchange(usageInvocation, provider.name(), attempt,
+                            objectMapper, () -> restTemplate.exchange(url, HttpMethod.POST, entity, String.class));
                 } catch (HttpClientErrorException exception) {
                     int status = exception.getStatusCode().value();
                     if (status == 429) {
@@ -177,6 +182,8 @@ public class OpenAiCompatibleGateway implements LlmGateway {
             }
         } catch (LlmRateLimitException | LlmTimeoutException | LlmProviderException exception) {
             throw exception;
+        } catch (LlmTransportMeter.JournalStartException unavailable) {
+            throw unavailable;
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception exception) {

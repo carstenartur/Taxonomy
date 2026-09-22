@@ -258,7 +258,7 @@
       "fromPackage": "com.taxonomy.composition.reformulation",
       "toContext": "analysis",
       "toPackage": "com.taxonomy.analysis.service",
-      "classDependencyCount": 7
+      "classDependencyCount": 16
     },
     {
       "fromContext": "app-composition",
@@ -279,7 +279,7 @@
       "fromPackage": "com.taxonomy.composition.reformulation",
       "toContext": "portfolio",
       "toPackage": "com.taxonomy.portfolio.reformulation",
-      "classDependencyCount": 24
+      "classDependencyCount": 32
     },
     {
       "fromContext": "app-composition",
@@ -811,7 +811,7 @@
       "fromPackage": "com.taxonomy.portfolio.reformulation",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 6
     },
     {
       "fromContext": "portfolio",

@@ -184,6 +184,12 @@ final class VisioPresentation {
         private boolean visit(Box box, CellVisitor visitor) {
             int minX = cell(box.left() - .1), maxX = cell(box.x + box.width / 2 + .1);
             int minY = cell(box.bottom() - .1), maxY = cell(box.y + box.height / 2 + .1);
+            long columns = (long) maxX - minX + 1;
+            long rows = (long) maxY - minY + 1;
+            // Finite int coordinates can still describe billions of cells. Check
+            // before any callback/allocation and divide to avoid area overflow.
+            if (columns <= 0 || rows <= 0 || columns > 4096 || rows > 4096 / columns)
+                throw new IllegalArgumentException("Visio geometry exceeds the 4096-cell spatial query budget");
             // Widen the counters, not the bounds: incrementing Integer.MAX_VALUE
             // must terminate rather than wrap. Reject invalid geometry before use.
             for (long x = minX; x <= maxX; x++)

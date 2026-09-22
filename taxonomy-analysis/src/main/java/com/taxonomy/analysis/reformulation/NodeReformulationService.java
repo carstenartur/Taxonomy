@@ -20,9 +20,10 @@ public class NodeReformulationService {
     /** Prepare on the run thread; execute only on dedicated child threads and always clear their override. */
     <T> java.util.function.Supplier<T> captureProvider(java.util.function.Supplier<T> work) {
         var provider = java.util.Objects.requireNonNull(config.getActiveProvider(), "Missing captured provider");
+        var observedWork = LlmTransportMeter.capture(work);
         return () -> {
             config.setRequestProvider(provider);
-            try { return work.get(); }
+            try { return observedWork.get(); }
             finally { config.clearRequestProvider(); }
         };
     }

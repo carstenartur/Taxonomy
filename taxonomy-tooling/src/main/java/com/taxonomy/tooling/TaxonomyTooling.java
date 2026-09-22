@@ -69,6 +69,8 @@ public final class TaxonomyTooling {
                     commandArguments, workingDirectory, output, error);
             case "check-codeql-sarif" -> CodeQlSarifGate.run(
                     commandArguments, workingDirectory, output, error);
+            case "check-junit-reports" -> JunitReportVerifier.run(
+                    commandArguments, workingDirectory, output, error);
             case "check-civilian-documents" -> CivilianDocumentQa.run(
                     commandArguments, workingDirectory, output, error);
             default -> {

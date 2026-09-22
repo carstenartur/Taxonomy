@@ -74,10 +74,14 @@ public class GeminiGateway implements LlmGateway {
     @Override
     public String sendHttpRequest(String prompt, String apiKey) {
         AnalysisRunControl.checkpoint();
+        String usageInvocation = LlmTransportMeter.newInvocation();
         // REPLAY: return a previously recorded response — skips throttle and real API call.
         if (recordReplayService != null && recordReplayService.isReplayMode()) {
             Optional<String> recorded = recordReplayService.replay(prompt);
-            if (recorded.isPresent()) return recorded.get();
+            if (recorded.isPresent()) {
+                LlmTransportMeter.replay(usageInvocation, "GEMINI");
+                return recorded.get();
+            }
             if (!recordReplayService.isFallbackLive()) {
                 log.warn("No LLM recording found for prompt hash — no fallback configured");
                 return null;
@@ -108,8 +112,9 @@ public class GeminiGateway implements LlmGateway {
                 ResponseEntity<String> response;
                 try {
                     AnalysisRunControl.phase("LLM_REQUEST", null);
-                    response = restTemplate.exchange(
-                            providerConfig.getGeminiUrl() + apiKey, HttpMethod.POST, entity, String.class);
+                    response = LlmTransportMeter.exchange(usageInvocation, "GEMINI", attempt,
+                            objectMapper, () -> restTemplate.exchange(
+                                    providerConfig.getGeminiUrl() + apiKey, HttpMethod.POST, entity, String.class));
                 } catch (HttpClientErrorException e) {
                     if (e.getStatusCode().value() == 429) {
                         throw new LlmRateLimitException(
@@ -170,6 +175,8 @@ public class GeminiGateway implements LlmGateway {
             }
         } catch (LlmRateLimitException | LlmTimeoutException e) {
             throw e;
+        } catch (LlmTransportMeter.JournalStartException unavailable) {
+            throw unavailable;
         } catch (AnalysisStoppedException stopped) {
             throw stopped;
         } catch (Exception e) {
