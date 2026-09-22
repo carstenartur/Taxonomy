@@ -98,7 +98,10 @@ public class ReformulationExecutionService {
         var local = new LocalExecution();
         if (scheduled.putIfAbsent(id, local) != null) return;
         if (stopping) { retire(id, local); return; }
-        try { executor.execute(() -> execute(dispatch, local)); }
+        try {
+            executor.execute(() -> local.runOnce(() -> execute(dispatch, local),
+                    () -> scheduled.remove(id, local)));
+        }
         catch (org.springframework.core.task.TaskRejectedException rejected) { retire(id, local); }
     }
     /** A unique reservation per delivery, not just a run ID shared with its successor. */
@@ -108,11 +111,27 @@ public class ReformulationExecutionService {
         private boolean entered;
         private boolean retired;
         private boolean finalizing;
-        synchronized boolean enter() {
-            if (entered || retired) return false;
-            entered = true; runner = Thread.currentThread(); return true;
+        /** Own admission and cleanup in one command; never hold the monitor over I/O. */
+        void runOnce(Runnable work, Runnable cleanup) {
+            synchronized (this) {
+                if (entered || retired) return;
+                entered = true;
+                runner = Thread.currentThread();
+            }
+            try {
+                work.run();
+            } finally {
+                // Detach before releasing the reservation. A late retire must not
+                // interrupt a thread already returned to its shared executor.
+                synchronized (this) { runner = null; }
+                cleanup.run();
+            }
         }
-        synchronized boolean attach(Claim token) { claim = token; return !retired; }
+        synchronized boolean attach(Claim token) {
+            if (retired || runner == null || claim != null) return false;
+            claim = Objects.requireNonNull(token);
+            return true;
+        }
         synchronized Claim claim() { return claim; }
         synchronized boolean retired() { return retired; }
         /** Called only after database authorization/lease locks, immediately before publication. */
@@ -129,10 +148,8 @@ public class ReformulationExecutionService {
             // Shutdown never waits on network/DB I/O and must not interrupt that commit.
             if (runner != null && !finalizing) runner.interrupt();
         }
-        synchronized void finished() { runner = null; }
     }
     private void execute(Dispatch dispatch, LocalExecution local) {
-        if (!local.enter()) return; // A duplicate queue delivery owns no cleanup.
         Claim token=null;
         try {
             if (stopping) return;
@@ -175,8 +192,6 @@ public class ReformulationExecutionService {
             recovery.finish(token,null,failureCode(failure),local::beginFinalization);
         } finally {
             providers.clearRequestProvider();
-            local.finished();
-            scheduled.remove(dispatch.run().id(), local);
         }
     }
     private LlmTransportMeter.Journal usageJournal(Claim token, LocalExecution local) {
@@ -200,7 +215,7 @@ public class ReformulationExecutionService {
         return checkpointExecutor(projectId,requirementId,proposalId,run,actor,context,null);
     }
     private ReformulationStepExecutor checkpointExecutor(Long projectId,Long requirementId,String proposalId,Run run,String actor,WorkspaceContext context,Claim token) {
-        return checkpointExecutor(projectId, requirementId, proposalId, run, actor, context, token, () -> false);
+        return checkpointExecutor(projectId,requirementId,proposalId,run,actor,context,token,() -> false);
     }
     private ReformulationStepExecutor checkpointExecutor(Long projectId,Long requirementId,String proposalId,Run run,String actor,WorkspaceContext context,Claim token,
             java.util.function.BooleanSupplier stopped) {
