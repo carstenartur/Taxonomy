@@ -94,7 +94,7 @@ function createProbeHarness(request) {
   return { context, runtime };
 }
 
-function createStartupHarness(workspaceResponse) {
+function createStartupHarness(workspaceResponse, loadDraft = async () => null) {
   const pendingStates = [];
   const runtime = {
     initialized: false,
@@ -132,7 +132,7 @@ function createStartupHarness(workspaceResponse) {
     queueSave() {},
     deleteDraft: async () => undefined,
     saveDraft: async () => undefined,
-    loadDraft: async () => null,
+    loadDraft,
     setDraftDecisionPending(pending) {
       runtime.draftDecisionPending = pending;
       pendingStates.push(pending);
@@ -250,4 +250,58 @@ test('workspace readiness closes again for every unresolved mutation or conflict
     harness.runtime[barrier] = false;
     assert.equal(harness.session.state().ready, true, barrier);
   }
+});
+
+
+test('initialization promise waits for workspace discovery and accepts explicit central context', async () => {
+  const pending = deferred(), h = createStartupHarness(pending.promise);
+  assert.equal(typeof h.session.whenInitialized, 'function');
+  let settled = false;
+  const ready = h.session.whenInitialized().then(value => { settled = true; return value; });
+  await Promise.resolve(); assert.equal(settled, false);
+  pending.resolve(null);
+  assert.equal(await ready, true);
+  assert.equal(h.session.state().ready, true);
+});
+
+test('initialization promise also waits for the saved draft and reports workspace failures', async () => {
+  const workspace = deferred(), draft = deferred();
+  const h = createStartupHarness(workspace.promise, () => draft.promise);
+  assert.equal(typeof h.session.whenInitialized, 'function');
+  let settled = false;
+  const ready = h.session.whenInitialized().then(value => { settled = true; return value; });
+  workspace.resolve({ workspaceId: 'ws-ready' });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(settled, false);
+  draft.resolve(null); assert.equal(await ready, true);
+  const failed = deferred(), unavailable = createStartupHarness(failed.promise);
+  failed.reject(new Error('workspace unavailable'));
+  assert.equal(await unavailable.session.whenInitialized(), false);
+});
+
+const loaderSource = await readFile(new URL(`${sourceRoot}taxonomy-analysis-session.js`, import.meta.url), 'utf8');
+function loaderHarness() {
+  const scripts = [], window = { console: { error() {} } };
+  const document = { head: { appendChild(script) { scripts.push(script); } },
+    createElement() { const script = new EventTarget(); script.dataset = {}; return script; } };
+  vm.runInNewContext(loaderSource, { window, document });
+  return { window, scripts };
+}
+test('ordered loader readiness includes the last module asynchronous initialization', async () => {
+  const h = loaderHarness(), initialization = deferred();
+  assert.equal(typeof h.window.TaxonomyAnalysisSessionReady?.then, 'function');
+  let settled = false;
+  const ready = h.window.TaxonomyAnalysisSessionReady.then(value => { settled = true; return value; });
+  for (let index = 0; index < 10; index++) {
+    if (index === 9) h.window.TaxonomyAnalysisSession = { whenInitialized: () => initialization.promise };
+    h.scripts[index].dispatchEvent(new Event('load'));
+  }
+  await Promise.resolve(); assert.equal(settled, false);
+  initialization.resolve(true); assert.equal(await ready, true);
+});
+test('mandatory session module failure settles loader readiness as false', async () => {
+  const h = loaderHarness();
+  assert.equal(typeof h.window.TaxonomyAnalysisSessionReady?.then, 'function');
+  h.scripts[0].dispatchEvent(new Event('error'));
+  assert.equal(await h.window.TaxonomyAnalysisSessionReady, false);
 });
