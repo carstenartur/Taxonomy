@@ -231,15 +231,18 @@
             section.append(node('div', text('Gekürzte Vorschau; ursprüngliche Länge: ',
                 'Truncated preview; original length: ') + originalLength + text(' Zeichen.', ' characters.'), 'text-muted'));
         }
-        var formatted = raw;
+        var formatted = raw, parsedJson = false;
         if (formatJson && raw) {
             try {
                 var parsed = JSON.parse(raw);
-                if (parsed !== null && typeof parsed === 'object') formatted = JSON.stringify(parsed, null, 2);
+                if (parsed !== null && typeof parsed === 'object') {
+                    formatted = JSON.stringify(parsed, null, 2);
+                    parsedJson = true;
+                }
             } catch (_) { /* Non-JSON and truncated replies remain readable, unchanged evidence. */ }
         }
         section.append(node('pre', raw ? formatted : emptyMessage, className));
-        if (formatted !== raw) {
+        if (parsedJson) {
             var original = node('details');
             original.append(node('summary', text('Unveränderte Rohantwort', 'Unchanged raw response')),
                 node('pre', raw, className));

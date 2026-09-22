@@ -108,3 +108,16 @@ test('late diagnostic replies cannot publish across analysis generations', async
     view.runtime.analysisGeneration++; resolve(failure); await flush();
     assert.ok(!view.log.textContent.includes(reply)); view.monitor.stop();
 });
+
+for (const value of [{ IP: { score: 80, reason: 'Already formatted' } }, []]) {
+    test('preformatted JSON keeps an explicit expandable raw response: ' + JSON.stringify(value), async () => {
+        const raw = JSON.stringify(value, null, 2);
+        const view = fixture({ prompt: 'Prompt', response: raw, error: '', truncated: false }, 'COMPLETED');
+        await view.tick(); await view.open();
+        const rawView = descendants(view.log).find(element => element.tagName === 'DETAILS'
+            && element.children.some(child => child.tagName === 'SUMMARY' && child.textContent === 'Unveränderte Rohantwort'));
+        assert.ok(rawView, 'Valid JSON always has a separately identifiable raw evidence view');
+        assert.ok(rawView.children.some(child => child.tagName === 'PRE' && child.textContent === raw));
+        view.monitor.stop();
+    });
+}
