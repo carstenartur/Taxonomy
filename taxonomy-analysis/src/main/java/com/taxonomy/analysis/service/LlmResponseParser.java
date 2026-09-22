@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.service;
 
+import tools.jackson.core.exc.StreamReadException;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -283,22 +284,24 @@ public class LlmResponseParser {
 
     /**
      * Locates the first outer JSON container in plain text or a Markdown code block.
-     * Arrays remain arrays so the score parser rejects a non-object root. Scan once,
-     * respecting JSON strings and escapes: brackets and code fences inside a reason
-     * are data, not delimiters. An incomplete outer container is returned intact
-     * for rejection, never replaced by a seemingly valid inner object.
+     * Complete bracketed prose such as {@code [IP]} is skipped when it is not JSON.
+     * Actual arrays remain arrays so the score parser rejects a non-object root.
+     * Respect strings and escapes: brackets and code fences inside a reason are
+     * data, not delimiters. An incomplete outer container is returned intact for
+     * rejection, never replaced by a seemingly valid inner object.
      */
     public String extractJson(String text) {
         String stripped = text == null ? "" : text.trim();
-        int start = stripped.indexOf('{');
-        int arrayStart = stripped.indexOf('[');
-        if (arrayStart >= 0 && (start < 0 || arrayStart < start)) start = arrayStart;
-        if (start < 0) return stripped;
+        int start = -1;
         int depth = 0;
         boolean quoted = false;
         boolean escaped = false;
-        for (int i = start; i < stripped.length(); i++) {
+        for (int i = 0; i < stripped.length(); i++) {
             char character = stripped.charAt(i);
+            if (start < 0) {
+                if (character != '{' && character != '[') continue;
+                start = i;
+            }
             if (quoted) {
                 if (escaped) escaped = false;
                 else if (character == '\\') escaped = true;
@@ -308,10 +311,21 @@ public class LlmResponseParser {
             } else if (character == '{' || character == '[') {
                 depth++;
             } else if ((character == '}' || character == ']') && --depth == 0) {
-                return stripped.substring(start, i + 1);
+                String candidate = stripped.substring(start, i + 1);
+                if (stripped.charAt(start) == '[') {
+                    try {
+                        objectMapper.readTree(candidate);
+                    } catch (StreamReadException notJson) {
+                        // Skip the whole prose span, never salvage an object inside it.
+                        // Other failures, including configured read limits, must propagate.
+                        start = -1;
+                        continue;
+                    }
+                }
+                return candidate;
             }
         }
-        return stripped.substring(start);
+        return start < 0 ? stripped : stripped.substring(start);
     }
 
     /**
