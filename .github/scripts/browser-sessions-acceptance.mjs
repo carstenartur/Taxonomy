@@ -89,11 +89,12 @@ export async function runBrowserSessionsAcceptance({ page, evidence, outputDir,
       ]);
       assert.equal(validation.status(), 200);
       assert.equal(await validation.finished(), null);
+      // The reveal request has finished: departure must not inherit its allowance.
+      validationExpected = false;
       assert.equal(validation.request().postData(), originalDocument);
       assert.equal(await page.evaluate(() => window.dslCmView.state.doc.toString()), originalDocument);
       await navigateToPage(page, 'admin');
       await page.waitForFunction(() => !window.dslCmView.inView);
-      validationExpected = false;
       const health = page.locator('#healthDashboard');
       if (!(await health.evaluate(element => element.open))) {
         const [loadedHealth] = await Promise.all([

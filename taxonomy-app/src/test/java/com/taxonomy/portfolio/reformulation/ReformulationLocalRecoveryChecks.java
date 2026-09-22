@@ -37,6 +37,11 @@ public final class ReformulationLocalRecoveryChecks {
         boolean shutdown = args.length > 0 && args[0].equals("shutdown");
         boolean finalizationRace = args.length > 0 && args[0].equals("finalization-race");
         boolean finalizationAdmitted = args.length > 0 && args[0].equals("finalization-admitted");
+        boolean claimSuperseded = args.length > 0 && args[0].equals("claim-superseded");
+        boolean claimRetired = claimSuperseded || args.length > 0 && args[0].equals("claim-retired");
+        var executionReference = new AtomicReference<ReformulationExecutionService>();
+        var retiredClaim = new AtomicReference<ReformulationRecoveryService.Claim>();
+        var successorClaim = new AtomicReference<ReformulationRecoveryService.Claim>();
         var permitObserved = new AtomicBoolean();
         var finishEntered = new CountDownLatch(1); var releaseFinish = new CountDownLatch(1);
         var firstEntered = new CountDownLatch(1); var releaseFirst = new CountDownLatch(1);
@@ -98,7 +103,33 @@ public final class ReformulationLocalRecoveryChecks {
             var offer = proposals.create(project.id(), r.id(), new ReformulationDtos.CreateRequest(r.currentVersionId(), snapshot, "de"), "architect", context);
             var queued = new CopyOnWriteArrayList<Runnable>();
             AsyncTaskExecutor executor = queued::add;
-            var recovery = app.getBean(ReformulationRecoveryService.class);
+            var durableRecovery = app.getBean(ReformulationRecoveryService.class);
+            var recovery = durableRecovery;
+            var db = app.getBean(JdbcTemplate.class);
+            if (claimRetired) {
+                // The real transaction commits before this interceptor retires the
+                // local delivery. No provider work has been admitted at this point.
+                var proxy = new ProxyFactory(recovery); proxy.setProxyTargetClass(true);
+                proxy.addAdvice((MethodInterceptor) invocation -> {
+                    Object returned = invocation.proceed();
+                    if (invocation.getMethod().getName().equals("claim")
+                            && returned instanceof Optional<?> claimed && claimed.isPresent()) {
+                        var token = (ReformulationRecoveryService.Claim) claimed.orElseThrow();
+                        retiredClaim.set(token);
+                        executionReference.get().shutdown();
+                        // Model a driver consuming interruption; ownership still
+                        // must be checked independently of the thread flag.
+                        Thread.interrupted();
+                        if (claimSuperseded) {
+                            db.update("update reformulation_recovery_lease set lease_until=? where run_id=?",
+                                    Timestamp.from(Instant.EPOCH), token.dispatch().run().id());
+                            successorClaim.set(durableRecovery.claim(token.dispatch(), "successor").orElseThrow());
+                        }
+                    }
+                    return returned;
+                });
+                recovery = (ReformulationRecoveryService) proxy.getProxy();
+            }
             if (finalizationRace || finalizationAdmitted) {
                 // Hold the actual transactional call before it acquires DB locks, after
                 // the worker's old local retired check. A driver can consume interruption.
@@ -124,12 +155,32 @@ public final class ReformulationLocalRecoveryChecks {
             }
             var execution = new ReformulationExecutionService(proposals, app.getBean(FrozenReformulationEngine.class), app.getBean(CrossTaxonomyReconciler.class),
                     app.getBean(LlmProviderConfig.class), executor, app.getBean(ObjectMapper.class), recovery, app.getBean(ReformulationUsageService.class));
+            executionReference.set(execution);
             var run = execution.start(project.id(), r.id(), offer.id(), 1, "architect", context);
             check(queued.size() == 1, "Initial dispatch absent");
             var workerFailure = new AtomicReference<Throwable>();
-            Thread first = launch(queued.getFirst(), workerFailure); threads.add(first); await(firstEntered);
-            var db = app.getBean(JdbcTemplate.class);
-            if (finalizationRace || finalizationAdmitted) {
+            Thread first = launch(queued.getFirst(), workerFailure); threads.add(first);
+            if (claimRetired) {
+                join(first);
+                check(workerFailure.get() == null, "Unadmitted claim worker failed: " + workerFailure.get());
+                var token = Objects.requireNonNull(retiredClaim.get(), "Real claim transaction was not intercepted");
+                check(!durableRecovery.heartbeat(token), "Retired-before-attach delivery retained its database lease");
+                if (!claimSuperseded) {
+                    check(durableRecovery.due(100).stream().anyMatch(d -> d.run().id().equals(run.id())),
+                            "Unadmitted work must be recoverable without waiting for lease expiry");
+                    successorClaim.set(durableRecovery.claim(token.dispatch(), "successor").orElseThrow());
+                }
+                check(successorClaim.get().epoch() == token.epoch() + 1, "Release must not reset the fencing epoch");
+                check(durableRecovery.heartbeat(successorClaim.get()), "Old delivery damaged its successor's lease");
+                check(!durableRecovery.finish(token, null, "STALE_WORKER"), "Old delivery finalized its successor's work");
+                check(proposals.runs(project.id(), r.id(), offer.id(), "architect", context).getFirst().status().equals("RUNNING"),
+                        "Unadmitted work must not become a terminal failure");
+                check(proposals.get(project.id(), r.id(), offer.id(), "architect", context).currentRevision().number() == 1,
+                        "Unadmitted work published a proposal revision");
+                check(calls.get() == 0, "Unadmitted work reached the provider");
+                System.out.println(claimSuperseded ? "REFORMULATION_UNADMITTED_SUCCESSOR_OK" : "REFORMULATION_UNADMITTED_RELEASE_OK");
+            } else if (finalizationRace || finalizationAdmitted) {
+                await(firstEntered);
                 await(finishEntered);
                 if (finalizationAdmitted) check(permitObserved.get(), "Worker finalization has no lock-scoped permit");
                 execution.shutdown();
@@ -144,6 +195,7 @@ public final class ReformulationLocalRecoveryChecks {
                 check(calls.get() == 2, "Unexpected additional provider work");
                 System.out.println(finalizationAdmitted ? "REFORMULATION_FINALIZATION_ADMITTED_OK" : "REFORMULATION_FINALIZATION_RETIREMENT_OK");
             } else if (shutdown) {
+                await(firstEntered);
                 var coordinator = new ReformulationRecoveryCoordinator(execution, 1000, 1000, 120_000, 1);
                 coordinator.stop();
                 var extra = proposals.create(project.id(), r.id(), new ReformulationDtos.CreateRequest(r.currentVersionId(), snapshot, "de"), "architect", context);
@@ -161,6 +213,7 @@ public final class ReformulationLocalRecoveryChecks {
                 check(queued.size() == 1, "Shutdown scheduled another job");
                 System.out.println("REFORMULATION_GRACEFUL_STOP_OK");
             } else {
+                await(firstEntered);
                 db.update("update reformulation_recovery_lease set lease_until=? where run_id=?", Timestamp.from(Instant.EPOCH), run.id());
                 execution.heartbeat(); execution.recoverAvailable(1);
                 check(queued.size() == 2, "Expired local worker permanently consumes the recovery slot");
