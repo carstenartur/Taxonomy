@@ -17,7 +17,8 @@
         snapshotDetail: null,
         portfolio: null,
         account: null,
-        busy: 0
+        busy: 0,
+        readGeneration: 0
     };
 
     const text = {
@@ -116,6 +117,8 @@
     };
 
     document.addEventListener('DOMContentLoaded', initialize);
+    // Read-only adoption refresh must not reset the separate new-version form.
+    window.TaxonomyRequirementDetail = {refreshAfterAdoption: () => loadAll(true)};
 
     function t(key) { return (text[locale] && text[locale][key]) || text.en[key] || key; }
 
@@ -183,7 +186,8 @@
         });
     }
 
-    async function loadAll() {
+    async function loadAll(preserveVersionForm = false) {
+        const generation = ++state.readGeneration;
         setBusy(true);
         try {
             const [project, requirement, versions, snapshots, portfolio, account] = await Promise.all([
@@ -194,11 +198,16 @@
                 api().getProjectPortfolio(projectId),
                 api().getAccount()
             ]);
+            if (generation !== state.readGeneration) return;
             Object.assign(state, { project, requirement, versions, snapshots, portfolio, account });
             state.selectedVersion = requirement.currentVersion || versions[0] || null;
-            renderAll();
+            const inputs = preserveVersionForm
+                ? [...document.querySelectorAll('#newVersionForm input, #newVersionForm textarea')].map(node => [node, node.value, node.checked])
+                : [];
+            try { renderAll(); }
+            finally { inputs.forEach(([node, value, checked]) => { node.value = value; node.checked = checked; }); }
         } catch (error) {
-            showError(error);
+            if (generation === state.readGeneration) showError(error);
         } finally {
             setBusy(false);
         }

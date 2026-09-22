@@ -8,7 +8,11 @@ import java.time.Instant;
 
 /** Immutable validated step output. Never stores incomplete or failed provider responses. */
 @Entity
-@Table(name = "reformulation_node_checkpoint", indexes = @Index(name = "idx_reform_checkpoint_proposal", columnList = "proposal_id,scope_key"))
+@Table(name = "reformulation_node_checkpoint", indexes = {
+        @Index(name = "idx_reform_checkpoint_proposal", columnList = "proposal_id,scope_key"),
+        @Index(name = "idx_reform_cp_run_order", columnList = "run_id,created_at,id"),
+        @Index(name = "idx_reform_cp_run_kind", columnList = "run_id,task_kind")
+})
 public class ReformulationNodeCheckpoint {
     @Id @Column(length = 64, updatable = false) private String id;
     @Column(name = "proposal_id", nullable = false, updatable = false, length = 36) private String proposalId;

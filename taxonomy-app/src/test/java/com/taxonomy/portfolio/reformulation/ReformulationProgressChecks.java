@@ -41,6 +41,7 @@ public final class ReformulationProgressChecks {
             var proposals = app.getBean(ReformulationService.class);
             var workspaces = app.getBean(WorkspaceManager.class);
             var jdbc = app.getBean(JdbcTemplate.class);
+            ReformulationCheckpointIndexContract.verify(app.getBean(javax.sql.DataSource.class));
             String base = "http://127.0.0.1:" + app.getEnvironment().getProperty("local.server.port");
             WorkspaceContext scope;
             long project, requirement;
@@ -78,6 +79,12 @@ public final class ReformulationProgressChecks {
             get(client, json, base + path, 200);
             var originalBefore = projects.getRequirement(project, requirement, "admin", scope);
             var proposalBefore = proposals.get(project, requirement, proposal, "admin", scope);
+            if (verifyRestart) {
+                check(proposalBefore.currentRevision().text().equals("Menschliche Überarbeitung"), "Restart lost saved manual wording");
+                check(originalBefore.currentVersion().text().equals(ORIGINAL), "Restart changed original requirement text");
+                check(originalBefore.currentVersionId().equals(proposalBefore.baseline().sourceVersionId()), "Restart changed active source version");
+                check(projects.listRequirementVersions(project, requirement, "admin", scope).size() == 1, "Restart created a requirement version");
+            }
             String url = base + path + "/synthesis-runs/" + run + "/progress";
             var statistics=app.getBean(jakarta.persistence.EntityManagerFactory.class).unwrap(org.hibernate.SessionFactory.class).getStatistics();
             statistics.setStatisticsEnabled(true);
@@ -165,6 +172,21 @@ public final class ReformulationProgressChecks {
                 var foreign = workspaces.createWorkspace("admin", "Foreign", "Scope isolation");
                 foreign = workspaces.provisionWorkspaceRepository("admin", foreign.getWorkspaceId()); workspaces.switchWorkspace("admin", foreign.getWorkspaceId());
                 get(client, json, url, 404); get(client, json, url + "/checkpoints/" + id, 404);
+            }
+            if (args.length > 1 && args[1].equals("write-legacy-indexes")) {
+                // This throwaway file DB keeps its rows but simulates the pre-index schema.
+                check(jdbc.queryForObject("select count(*) from reformulation_node_checkpoint", Long.class) >= 5,
+                        "Upgrade fixture must contain existing results");
+                jdbc.execute("drop index idx_reform_cp_run_order");
+                jdbc.execute("drop index idx_reform_cp_run_kind");
+                boolean missing = false;
+                try { ReformulationCheckpointIndexContract.verify(app.getBean(javax.sql.DataSource.class)); }
+                catch (AssertionError expected) {
+                    if (!expected.getMessage().startsWith("Missing checkpoint inspection index:")) throw expected;
+                    missing = true;
+                }
+                check(missing, "Upgrade fixture still has the new indexes");
+                System.out.println("REFORMULATION_INDEX_UPGRADE_FIXTURE_OK");
             }
             System.out.println(verifyRestart ? "REFORMULATION_PROGRESS_RESTART_OK" : "REFORMULATION_PROGRESS_HTTP_OK");
         }
