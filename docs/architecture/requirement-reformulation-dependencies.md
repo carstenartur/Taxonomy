@@ -78,3 +78,28 @@ frozen baseline/revision payloads. The interactive client fetches selected detai
 separately. The compiled controller signature and actual authenticated HTTP output
 were checked before recording this pair. The unchanged strict ratchet remains the
 full integrated CI gate; no arbitrary allowance or test exclusion is introduced.
+
+## Package 6: explicit draft adoption
+
+The failed `managedContextDependenciesMatchReviewedBaseline` run on PR #1107
+(head `1975ed3c03ca8d24b6e5bb181fc41a353b29c58d`) measured the following three
+additions. The adoption controller, DTO signatures and service authority
+parameter were inspected before recording these exact values:
+
+| From package | To package | Count change | Exact new class pairs |
+| --- | --- | ---: | --- |
+| composition.reformulation | portfolio.reformulation | 32 → 37 | ReformulationAdoptionController → ReformulationAdoptionService, ReformulationAdoptionDtos.Preview, ReformulationAdoptionDtos.ConfirmRequest, ReformulationAdoptionDtos.Result and ReformulationPreconditionException. |
+| composition.reformulation | workspace.service | 8 → 9 | ReformulationAdoptionController → WorkspaceResolver resolves current authenticated authority for preview, read, confirmation and history. |
+| portfolio.reformulation | workspace.service | 6 → 7 | ReformulationAdoptionService → WorkspaceContext carries the existing explicit authority into the guarded portfolio transaction. |
+
+All package names are prefixed with `com.taxonomy.`. The baseline is copied from
+the unchanged ArchUnit failure's generated inventory, with a structural comparison
+confirming that only these three counts differ. These are direct class-pair counts,
+not new upper bounds. No new package direction or Maven dependency is introduced.
+The composition controller delegates to portfolio; portfolio continues to own the
+preview, receipt, requirement-version and authorization transaction boundaries.
+
+Generating or reviewing an offer still cannot adopt it. Only the separate
+confirmation command can change the active version. The existing dependency rule,
+context coverage and negative fixtures remain unchanged. A fresh integrated CI run
+must verify the updated inventory; this review does not substitute for that run.
