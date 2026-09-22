@@ -32,6 +32,13 @@ jobs:
           mkdir -p verification
           set -o pipefail
           ./mvnw -B -ntp -pl taxonomy-analysis -am test -Dtest=LlmPreparedPromptTest,AnalysisRunControlBoundaryTest,AnalysisStoppedEvidenceTest,AnalysisProgressRegistryTest,PromptBudgetEnforcingLlmGatewayTest,LlmResponseProseTest,LlmResponseRootTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee verification/maven.log
+      - name: Real database claim and retirement regressions
+        id: recovery
+        continue-on-error: true
+        run: |
+          mkdir -p verification
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=ReformulationLocalRecoveryTest,ReformulationExecutionReservationTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee verification/recovery.log
       - name: Preserve test evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -40,13 +47,16 @@ jobs:
           path: |
             verification/*.log
             taxonomy-analysis/target/surefire-reports/*
+            taxonomy-app/target/surefire-reports/*
           if-no-files-found: error
           retention-days: 7
-      - name: Require both regression commands to pass
+      - name: Require all regression commands to pass
         if: always()
         env:
           NODE_OUTCOME: ${{ steps.node.outcome }}
           JAVA_OUTCOME: ${{ steps.java.outcome }}
+          RECOVERY_OUTCOME: ${{ steps.recovery.outcome }}
         run: |
           test "$NODE_OUTCOME" = success
           test "$JAVA_OUTCOME" = success
+          test "$RECOVERY_OUTCOME" = success
