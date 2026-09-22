@@ -162,8 +162,8 @@ class LlmPreparedPromptTest {
         when(config.getActiveProviderName()).thenReturn("GEMINI");
         when(config.getApiKey(LlmProvider.GEMINI)).thenReturn(KEY);
         var gatewayRegistry = mock(LlmGatewayRegistry.class);
-        when(gatewayRegistry.getGateway(LlmProvider.GEMINI))
-                .thenReturn(rejecting(new IllegalStateException(PRIVATE_ERROR)));
+        var gateway = rejecting(new IllegalStateException(PRIVATE_ERROR));
+        when(gatewayRegistry.getGateway(LlmProvider.GEMINI)).thenReturn(gateway);
         var templates = new PromptTemplateService();
         templates.setTemplate("IP", "Requirement:\n{{BUSINESS_TEXT}}\nReturn {{EXPECTED_KEYS}}.\n{{NODE_LIST}}");
         var service = new LlmService(config, gatewayRegistry, new ObjectMapper(), null, templates, null, null);
