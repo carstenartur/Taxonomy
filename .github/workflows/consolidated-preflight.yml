@@ -6,58 +6,86 @@ permissions:
   contents: read
   actions: read
 jobs:
-  failure-context:
+  combined:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - name: Read the exact application assertion and preceding events
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          gh api --allow-escape-sequences repos/carstenartur/Taxonomy/actions/jobs/106886806797/logs > sql.log
-          node <<'NODE'
-          const fs = require('node:fs');
-          const lines = fs.readFileSync('sql.log','utf8').replace(/\x1b\[[0-9;]*m/g,'').split('\n');
-          const start = lines.findIndex(line => line.includes('Running com.taxonomy.CivilianArchitectureAcceptanceTest'));
-          const end = lines.findIndex((line,index) => index > start && line.includes('<<< FAILURE! -- in com.taxonomy.CivilianArchitectureAcceptanceTest'));
-          console.log('CIVILIAN_FAILURE_CONTEXT\n'+lines.slice(Math.max(start, end - 35), end + 185).join('\n'));
-          console.log('MEMORY_EVENTS\n'+lines.filter(line => /MEMORY_PRESSURE|OutOfMemoryError|headroom|Heap:|memory pressure/.test(line)).slice(-30).join('\n'));
-          NODE
-  regressions:
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: {persist-credentials: false}
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Compile and run combined analysis, lifecycle, budget and parser regressions
+      - name: Confirm the missing isolation contract against the unchanged POM
         run: |
           mkdir -p target/consolidated-preflight
+          git fetch --depth=1 origin ca27cebbc04e7f0f80bc03d38ec4d1e85fba2374
+          cp taxonomy-app/pom.xml target/consolidated-preflight/candidate-pom.xml
+          trap 'cp target/consolidated-preflight/candidate-pom.xml taxonomy-app/pom.xml' EXIT
+          git show ca27cebbc04e7f0f80bc03d38ec4d1e85fba2374:taxonomy-app/pom.xml > taxonomy-app/pom.xml
+          set +e
           set -o pipefail
-          ./mvnw -B -ntp test '-Dtest=Analysis*Test,PromptBudgetEnforcingLlmGatewayTest,LlmResponse*Test,LlmDiagnosticTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/consolidated-preflight/java-green.log
-      - name: Run diagnostic and editor lifecycle contracts
+          ./mvnw -B -ntp test -Dtest=CivilianAcceptanceForkContractTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/consolidated-preflight/isolation-red.log
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -ne 0
+          grep -F 'the complete civilian acceptance needs an isolated execution' taxonomy-app/target/surefire-reports/TEST-com.taxonomy.CivilianAcceptanceForkContractTest.xml
+          echo 'ISOLATION_RED_CONFIRMED'
+      - name: Exercise the combined repair and real acceptance after a contaminated test JVM
+        run: |
+          set -o pipefail
+          node <<'NODE'
+          const fs = require('node:fs');
+          fs.writeFileSync('taxonomy-app/src/test/java/com/taxonomy/PreflightHeapHistoryTest.java', `package com.taxonomy;
+          class PreflightHeapHistoryTest {
+            private static byte[] precedingTestHeap;
+            @org.junit.jupiter.api.Test void retainPriorTestHeap() {
+              precedingTestHeap = new byte[256 * 1024 * 1024];
+              for (int i = 0; i < precedingTestHeap.length; i += 4096) precedingTestHeap[i] = 1;
+              System.out.println("PREFLIGHT_PRECEDING_PID=" + ProcessHandle.current().pid());
+              System.out.println("PREFLIGHT_RETAINED_BYTES=" + precedingTestHeap.length);
+            }
+          }`);
+          NODE
+          trap 'rm -f taxonomy-app/src/test/java/com/taxonomy/PreflightHeapHistoryTest.java' EXIT
+          ./mvnw -B -ntp test '-Dtest=AnalysisPromptEvidenceTest,AnalysisRunControlTest,AnalysisProgressRegistryTest,AnalysisMemoryGuardTest,PromptBudgetEnforcingLlmGatewayTest,LlmResponseParserTest,LlmResponseRootTest,LlmResponseProseTest,LlmDiagnosticTest,CivilianAcceptanceForkContractTest,PreflightHeapHistoryTest' -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee target/consolidated-preflight/combined-green.log
+          node <<'NODE'
+          const assert = require('node:assert/strict'), fs = require('node:fs');
+          const log = fs.readFileSync('target/consolidated-preflight/combined-green.log','utf8');
+          const preceding = log.match(/PREFLIGHT_PRECEDING_PID=(\d+)/);
+          const acceptance = log.match(/Starting CivilianArchitectureAcceptanceTest[^\n]*with PID (\d+)/);
+          assert.ok(preceding && acceptance, 'both JVM identities must be visible');
+          assert.notEqual(preceding[1], acceptance[1], 'civilian acceptance must not inherit preceding heap');
+          assert.match(log, /surefire:[^\n]*\(civilian-acceptance-isolated\)/);
+          const xml = fs.readFileSync('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.CivilianArchitectureAcceptanceTest.xml','utf8');
+          assert.match(xml, /tests="1"/);
+          assert.match(xml, /failures="0"/);
+          assert.match(xml, /errors="0"/);
+          assert.match(xml, /skipped="0"/);
+          console.log('REAL_CIVILIAN_ISOLATION_CONFIRMED', JSON.stringify({precedingPid:preceding[1],acceptancePid:acceptance[1]}));
+          NODE
+      - name: Verify normal editor and diagnostic contracts together
         if: always()
         run: |
-          mkdir -p target/consolidated-preflight
           set -o pipefail
           node --check .github/scripts/browser-sessions-acceptance.mjs
           node --test .github/scripts/analysis-*.test.mjs .github/scripts/taxonomy-dsl-validation.test.mjs 2>&1 | tee target/consolidated-preflight/js-green.log
-      - name: Record the exact candidate and reviewed diff
+      - name: Preserve exact source and diff evidence
         if: always()
         run: |
-          git fetch --depth=1 origin ca27cebbc04e7f0f80bc03d38ec4d1e85fba2374
+          rm -f taxonomy-app/src/test/java/com/taxonomy/PreflightHeapHistoryTest.java
+          git diff --exit-code
           git diff --check ca27cebbc04e7f0f80bc03d38ec4d1e85fba2374
           git diff --stat ca27cebbc04e7f0f80bc03d38ec4d1e85fba2374
-          git diff ca27cebbc04e7f0f80bc03d38ec4d1e85fba2374 -- taxonomy-analysis/src/main/java .github/scripts > target/consolidated-preflight/candidate.patch
+          git diff ca27cebbc04e7f0f80bc03d38ec4d1e85fba2374 -- taxonomy-analysis/src/main/java .github/scripts taxonomy-app/pom.xml taxonomy-app/src/test/java/com/taxonomy/CivilianAcceptanceForkContractTest.java > target/consolidated-preflight/candidate.patch
+          git ls-tree -r HEAD > target/consolidated-preflight/source-blobs.txt
           git rev-parse HEAD > target/consolidated-preflight/commit.txt
-          git ls-tree -r HEAD -- taxonomy-analysis/src/main/java .github/scripts/browser-sessions-acceptance.mjs .github/scripts/browser-sessions-departure.test.mjs .github/scripts/taxonomy-dsl-validation.test.mjs taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/AnalysisPromptEvidenceTest.java > target/consolidated-preflight/source-blobs.txt
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: consolidated-preflight-green
+          name: consolidated-preflight-complete
           path: |
             target/consolidated-preflight/**
             taxonomy-analysis/target/surefire-reports/**
+            taxonomy-app/target/surefire-reports/**
+            taxonomy-app/target/civilian-acceptance/**
           if-no-files-found: error
           retention-days: 3

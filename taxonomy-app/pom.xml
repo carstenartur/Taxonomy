@@ -439,6 +439,31 @@
                         <spring.test.context.cache.maxSize>1</spring.test.context.cache.maxSize>
                     </systemPropertyVariables>
                 </configuration>
+                <executions>
+                    <execution>
+                        <id>default-test</id>
+                        <configuration>
+                            <excludes>
+                                <exclude>**/CivilianArchitectureAcceptanceTest.java</exclude>
+                            </excludes>
+                        </configuration>
+                    </execution>
+                    <!-- Preserve the complete real two-pass acceptance test, but do not
+                         inherit the heap history of thousands of preceding Spring tests.
+                         The production memory guard and inherited heap limit stay active. -->
+                    <execution>
+                        <id>civilian-acceptance-isolated</id>
+                        <phase>test</phase>
+                        <goals><goal>test</goal></goals>
+                        <configuration>
+                            <test>CivilianArchitectureAcceptanceTest</test>
+                            <forkCount>1</forkCount>
+                            <reuseForks>false</reuseForks>
+                            <failIfNoTests>true</failIfNoTests>
+                            <failIfNoSpecifiedTests>true</failIfNoSpecifiedTests>
+                        </configuration>
+                    </execution>
+                </executions>
             </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
