@@ -1,0 +1,103 @@
+name: Reported core failure diagnosis
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/triage-core-run.yml'
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  diagnose:
+    if: github.event.pull_request.number == 1108 && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Summarize existing reports without executing artifact contents
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import hashlib
+          import io
+          import json
+          import os
+          import re
+          import urllib.error
+          import urllib.parse
+          import urllib.request
+          import xml.etree.ElementTree as ET
+          import zipfile
+
+          API = 'https://api.github.com/repos/carstenartur/Taxonomy'
+          class NoRedirect(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  return None
+
+          def github_download(path):
+              request = urllib.request.Request(API + path, headers={
+                  'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Accept': 'application/vnd.github+json',
+                  'X-GitHub-Api-Version': '2022-11-28'})
+              try:
+                  response = urllib.request.build_opener(NoRedirect).open(request, timeout=30)
+              except urllib.error.HTTPError as error:
+                  if error.code not in (301, 302, 303, 307, 308):
+                      raise
+                  location = error.headers['Location']
+                  parsed = urllib.parse.urlparse(location)
+                  if parsed.scheme != 'https':
+                      raise RuntimeError('Non-HTTPS artifact redirect rejected')
+                  # Never forward the repository token to the signed download endpoint.
+                  response = urllib.request.urlopen(location, timeout=30)
+              with response:
+                  data = response.read(128 * 1024 * 1024 + 1)
+              if len(data) > 128 * 1024 * 1024:
+                  raise RuntimeError('Diagnostic input exceeds its read bound')
+              return data
+
+          archive = github_download('/actions/artifacts/10705378268/zip')
+          expected = '4ceda6035db3dd0aa905a48db53e496623e0391e20dd665655945c2cca30619d'
+          if hashlib.sha256(archive).hexdigest() != expected:
+              raise RuntimeError('Reported-run archive digest mismatch')
+          failures = {}
+          suites = {}
+          with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+              for entry in bundle.infolist():
+                  name = entry.filename
+                  if not name.endswith('.xml') or not any(part in name for part in ('surefire-reports/', 'failsafe-reports/')):
+                      continue
+                  if entry.file_size > 64 * 1024 * 1024:
+                      raise RuntimeError('Oversized XML report: ' + name)
+                  root = ET.fromstring(bundle.read(entry))
+                  if root.tag != 'testsuite':
+                      continue
+                  suite_key = (root.get('name'), root.get('tests'), root.get('time'))
+                  suites[suite_key] = {key: root.get(key) for key in ('name', 'tests', 'errors', 'failures', 'skipped')}
+                  for case in root.iter('testcase'):
+                      for failure in list(case.findall('failure')) + list(case.findall('error')):
+                          key = (case.get('classname'), case.get('name'), failure.get('message'))
+                          failures[key] = {'class': key[0], 'test': key[1], 'message': key[2],
+                                           'stack': (failure.text or '')[:2200]}
+          print('REPORT_BINDING: run=35743878114 job=106800769100 head=3b3dcca archive_sha256=' + expected)
+          print('Distinct failing test cases:', len(failures))
+          for failure in list(failures.values())[:24]:
+              print('FAILING_TEST ' + json.dumps(failure, ensure_ascii=True))
+          if len(failures) > 24:
+              print('Additional failing cases:', len(failures) - 24)
+          print('Failing suites:')
+          for suite in suites.values():
+              if int(suite['errors'] or 0) + int(suite['failures'] or 0):
+                  print(json.dumps(suite))
+
+          log = github_download('/actions/jobs/106800769100/logs').decode('utf-8', errors='replace')
+          log = re.sub(r'\x1b\[[0-9;]*m', '', log)
+          lines = log.splitlines()
+          significant = [line for line in lines if '[ERROR]' in line or 'BUILD FAILURE' in line
+                         or 'Rule violated' in line or '<<< FAILURE' in line or '<<< ERROR' in line]
+          print('FINAL_MAVEN_DIAGNOSTICS (last 45 significant lines):')
+          for line in significant[-45:]:
+              print(line[:1500])
+          PY
