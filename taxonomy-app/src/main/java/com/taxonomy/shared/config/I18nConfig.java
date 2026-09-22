@@ -27,7 +27,8 @@ public class I18nConfig {
             "messages_task_focus",
             "messages_impact_map",
             "messages_architecture_editor",
-            "messages_integrations");
+            "messages_integrations",
+            "messages_dsl_reading");
 
     @Bean
     public MessageSource messageSource() {
