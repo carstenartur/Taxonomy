@@ -403,7 +403,7 @@ class TaxonomyLargeResultBudgetIT {
         metrics.put("activeClass", interaction.get("activeClass"));
         metrics.put("activeTag", interaction.get("activeTag"));
         metrics.put("selectedCode", interaction.get("selectedCode"));
-        metrics.put("highlightedCode", highlightedCode(interaction));
+        metrics.put("highlightedCode", interaction.get("highlightedCode"));
         metrics.put("currentPath", interaction.get("path"));
         metrics.put("returnFocusConfirmed", returnContext.get("focusConfirmed"));
         metrics.put("returnFocusTarget", returnContext.get("focusTarget"));
@@ -412,10 +412,6 @@ class TaxonomyLargeResultBudgetIT {
         metrics.put("returnAreaScrollTop", number(returnContext.get("areaScrollTop")));
         metrics.put("responsiveProfiles", responsiveEvidence);
         return metrics;
-    }
-
-    private static Object highlightedCode(Map<?, ?> interaction) {
-        return interaction.get("highlightedCode");
     }
 
     private static Map<String, Object> exerciseSearchRace(String staleQuery) {
