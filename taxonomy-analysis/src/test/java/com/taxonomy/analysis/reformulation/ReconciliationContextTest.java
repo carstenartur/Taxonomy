@@ -3,6 +3,7 @@ package com.taxonomy.analysis.reformulation;
 import org.junit.jupiter.api.Test;
 
 class ReconciliationContextTest {
+    @Test void dictionarySelectionRespectsUnicodeAndUtf8Budgets() { ReconciliationContextChecks.unicode(); }
     @Test void exactRepeatedContextsStayInOneRequest() { ReconciliationContextChecks.duplicates(); }
     @Test void shortAndUniqueContextsStayCompleteAndInline() { ReconciliationContextChecks.unique(); }
     @Test void dictionaryOverheadDoesNotGrowSmallInputs() { ReconciliationContextChecks.smallDuplicate(); }

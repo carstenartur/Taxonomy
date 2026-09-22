@@ -25,6 +25,7 @@ public final class ReconciliationContextChecks {
 
     public static void main(String[] args) throws Exception {
         switch (args[0]) {
+            case "unicode" -> unicode();
             case "duplicates" -> duplicates();
             case "unique" -> unique();
             case "small-duplicate" -> smallDuplicate();
@@ -37,6 +38,28 @@ public final class ReconciliationContextChecks {
             default -> throw new IllegalArgumentException(args[0]);
         }
         System.out.println("RECONCILIATION_CONTEXT_OK " + args[0]);
+    }
+
+    static void unicode() {
+        for (String repeated : List.of("😀".repeat(200), "😀".repeat(400), "漢".repeat(400))) {
+            var in = input(List.of(repeated, repeated));
+            String inline = in.baseline().frozenContext().get("reconcilePrompt") + "\n" + MARKER
+                    + JSON.writeValueAsString(expected(in));
+            String prompt = new ReconcilePromptBuilder(JSON).build(in, null);
+            int characters = inline.codePointCount(0, inline.length());
+            int bytes = inline.getBytes(StandardCharsets.UTF_8).length;
+            var target = new AiTargetDescriptor("test", "Test", "CUSTOM_OPENAI", "unicode-budget",
+                    AiTargetMode.REMOTE, AiTargetHealth.READY, true, false, false,
+                    new PromptBudget(characters, bytes, (characters + 3) / 4), "test", null);
+            var policy = new AiPromptBudgetPolicy(null);
+            policy.requireWithinBudget(inline, target);
+            policy.requireWithinBudget(prompt, target);
+            check(prompt.codePointCount(0, prompt.length()) <= characters, "Dictionary increased Unicode character budget");
+            check(prompt.getBytes(StandardCharsets.UTF_8).length <= bytes, "Dictionary increased UTF-8 byte budget");
+            check(data(prompt).has("discoveryContextTable") == (repeated.codePointCount(0, repeated.length()) == 400),
+                    "Keep Unicode savings when both enforced budget measures improve");
+            assertRoundTrip(in, data(prompt));
+        }
     }
 
     static void duplicates() {
