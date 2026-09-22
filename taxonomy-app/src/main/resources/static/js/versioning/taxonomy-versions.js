@@ -248,97 +248,77 @@ window.TaxonomyVersions = (function () {
             });
     }
 
-    function compareVersion(commitId) {
-        fetch('/api/git/state?branch=' + encodeURIComponent(currentBranch))
-            .then(function (r) { return r.json(); })
-            .then(function (state) {
-                var headCommit = state.headCommit;
-                if (!headCommit || headCommit === commitId) {
-                    showModal(t('versions.compare'), '<div class="text-muted">' + escapeHtml(t('versions.compare.same')) + '</div>');
-                    return;
-                }
-                return fetch('/api/dsl/diff/' + encodeURIComponent(commitId) + '/' + encodeURIComponent(headCommit));
-            })
-            .then(function (r) { return r ? r.json() : null; })
-            .then(function (diff) {
-                if (!diff) return;
-                var shortSha = commitId.substring(0, 7);
-                var html = '<div class="small">';
-                html += '<div class="compare-summary-card mb-3">';
-                html += '<div class="compare-title">' + escapeHtml(t('versions.compare.title', shortSha)) + '</div>';
-                html += '<div class="compare-stats">';
-                if (diff.added && diff.added.length > 0) {
-                    html += '<span class="compare-stat text-success">\uD83D\uDFE2 ' + escapeHtml(t('versions.restore.preview.added', diff.added.length)) + '</span>';
-                }
-                if (diff.removed && diff.removed.length > 0) {
-                    html += '<span class="compare-stat text-danger">\uD83D\uDD34 ' + escapeHtml(t('versions.restore.preview.removed', diff.removed.length)) + '</span>';
-                }
-                if (diff.changed && diff.changed.length > 0) {
-                    html += '<span class="compare-stat text-warning">\uD83D\uDFE1 ' + escapeHtml(t('versions.restore.preview.changed', diff.changed.length)) + '</span>';
-                }
-                html += '</div></div>';
+    var comparisonRequest = 0;
 
-                if (diff.added && diff.added.length > 0) {
-                    html += '<h6 class="text-success">' + escapeHtml(t('versions.compare.added')) + ' (' + diff.added.length + ')</h6>';
-                    html += '<ul>' + diff.added.map(function (a) { return '<li>' + escapeHtml(a.code || a.id || JSON.stringify(a)) + '</li>'; }).join('') + '</ul>';
-                }
-                if (diff.removed && diff.removed.length > 0) {
-                    html += '<h6 class="text-danger">' + escapeHtml(t('versions.compare.removed')) + ' (' + diff.removed.length + ')</h6>';
-                    html += '<ul>' + diff.removed.map(function (r) { return '<li>' + escapeHtml(r.code || r.id || JSON.stringify(r)) + '</li>'; }).join('') + '</ul>';
-                }
-                if (diff.changed && diff.changed.length > 0) {
-                    html += '<h6 class="text-warning">' + escapeHtml(t('versions.compare.changed')) + ' (' + diff.changed.length + ')</h6>';
-                    html += '<ul>' + diff.changed.map(function (c) { return '<li>' + escapeHtml(c.code || c.id || JSON.stringify(c)) + '</li>'; }).join('') + '</ul>';
-                }
-                if ((diff.totalChanges || 0) === 0) {
-                    html += '<p class="text-muted">' + escapeHtml(t('versions.compare.no.diff')) + '</p>';
-                }
-                html += '</div>';
-                showModal(t('versions.compare.summary.title', shortSha), html);
-            })
-            .catch(function (err) {
-                showModal(t('versions.error'), '<div class="text-danger">' + escapeHtml(err.message) + '</div>');
-            });
+    async function compareVersion(commitId) {
+        var request = ++comparisonRequest;
+        var branch = currentBranch;
+        var modal = showModal(t('versions.compare'), '<p class="text-muted">' + escapeHtml(t('compare.loading')) + '</p>');
+        modal.addEventListener('hide.bs.modal', function () {
+            if (request === comparisonRequest) comparisonRequest++;
+        });
+        try {
+            var state = await window.TaxonomyApiClient.getJson('/api/git/state?branch=' + encodeURIComponent(branch));
+            if (!state.headCommit) throw new Error('No saved version');
+            var diff = await window.TaxonomyApiClient.getJson('/api/dsl/diff/' + encodeURIComponent(commitId) + '/' + encodeURIComponent(state.headCommit));
+            var comparison = window.TaxonomyContextCompare.fromDocumentDiff(diff,
+                { branch: branch, commitId: commitId }, { branch: branch, commitId: state.headCommit });
+            if (request !== comparisonRequest || !modal.isConnected) return;
+            var body = modal.querySelector('.modal-body');
+            body.id = 'versionComparisonResults';
+            window.TaxonomyContextCompare.renderComparison(body.id, comparison);
+        } catch (error) {
+            if (request === comparisonRequest && modal.isConnected) {
+                modal.querySelector('.modal-body').innerHTML = '<p class="text-danger">' + escapeHtml(t('compare.failed')) + '</p>';
+            }
+        }
     }
 
     /**
      * Restore with preview modal.
      */
-    function restoreVersion(commitId) {
-        // Load diff preview before confirming
-        fetch('/api/git/state?branch=' + encodeURIComponent(currentBranch))
-            .then(function (r) { return r.json(); })
-            .then(function (state) {
-                var headCommit = state.headCommit;
-                if (!headCommit) {
-                    executeRestore(commitId);
-                    return;
-                }
-                return fetch('/api/dsl/diff/' + encodeURIComponent(commitId) + '/' + encodeURIComponent(headCommit))
-                    .then(function (r) { return r.json(); })
-                    .then(function (diff) {
-                        showRestoreConfirmModal(commitId, diff);
-                    });
-            })
-            .catch(function () {
-                // Fallback without preview
-                showRestoreConfirmModal(commitId, null);
-            });
+    async function restoreVersion(commitId) {
+        var request = ++comparisonRequest;
+        var branch = currentBranch;
+        var modal = showConfirmModal(t('versions.restore.confirm.title'),
+            '<p class="text-muted" role="status">' + escapeHtml(t('compare.loading')) + '</p>',
+            t('versions.restore.confirm.btn'), 'btn-warning', function () { executeRestore(commitId, branch); });
+        var confirm = modal.querySelector('#versionsConfirmBtn');
+        confirm.disabled = true;
+        modal.addEventListener('hide.bs.modal', function () {
+            if (request === comparisonRequest) comparisonRequest++;
+        });
+        try {
+            var state = await window.TaxonomyApiClient.getJson('/api/git/state?branch=' + encodeURIComponent(branch));
+            if (!state.headCommit) throw new Error('No saved version');
+            // Preview the operation the user is about to perform: HEAD -> target.
+            var diff = await window.TaxonomyApiClient.getJson('/api/dsl/diff/' + encodeURIComponent(state.headCommit) + '/' + encodeURIComponent(commitId));
+            var comparison = window.TaxonomyContextCompare.fromDocumentDiff(diff,
+                { branch: branch, commitId: state.headCommit }, { branch: branch, commitId: commitId });
+            if (request !== comparisonRequest || !modal.isConnected) return;
+            modal.querySelector('.modal-body').innerHTML = restorePreviewHtml(commitId, comparison);
+            confirm.disabled = false;
+        } catch (error) {
+            // A failed preview is not permission to perform a blind restore.
+            if (request === comparisonRequest && modal.isConnected) {
+                modal.querySelector('.modal-body').innerHTML = '<p class="text-danger" role="alert">' + escapeHtml(t('compare.failed')) + '</p>';
+            }
+        }
     }
 
     /**
-     * Show restore confirmation modal with optional preview.
+     * Render a validated, correctly directed restore preview.
      */
-    function showRestoreConfirmModal(commitId, diff) {
+    function restorePreviewHtml(commitId, diff) {
         var shortSha = escapeHtml(commitId.substring(0, 7));
         var bodyHtml = '<p>' + t('versions.restore.confirm.body', shortSha) + '</p>';
         bodyHtml += '<p class="small text-muted">' + escapeHtml(t('versions.restore.confirm.detail')) + '</p>';
 
         if (diff) {
-            var total = (diff.totalChanges || 0);
-            var addedCount = diff.added ? diff.added.length : 0;
-            var removedCount = diff.removed ? diff.removed.length : 0;
-            var changedCount = diff.changed ? diff.changed.length : 0;
+            var addedCount = diff.summary.elementsAdded + diff.summary.relationsAdded;
+            var removedCount = diff.summary.elementsRemoved + diff.summary.relationsRemoved;
+            var changedCount = diff.summary.elementsChanged + diff.summary.relationsChanged;
+            var total = addedCount + removedCount + changedCount;
 
             if (total > 0) {
                 bodyHtml += '<div class="restore-preview">';
@@ -353,14 +333,12 @@ window.TaxonomyVersions = (function () {
             }
         }
 
-        showConfirmModal(t('versions.restore.confirm.title'), bodyHtml, t('versions.restore.confirm.btn'), 'btn-warning', function () {
-            executeRestore(commitId);
-        });
+        return bodyHtml;
     }
 
-    function executeRestore(commitId) {
+    function executeRestore(commitId, branch) {
         fetch('/api/dsl/restore?commitId=' + encodeURIComponent(commitId) +
-            '&branch=' + encodeURIComponent(currentBranch), { method: 'POST' })
+            '&branch=' + encodeURIComponent(branch), { method: 'POST' })
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (data.error) {
@@ -570,12 +548,15 @@ window.TaxonomyVersions = (function () {
         var modal = new bootstrap.Modal(modalEl);
 
         document.getElementById('versionsConfirmBtn').addEventListener('click', function () {
+            if (this.disabled) return;
+            this.disabled = true;
             modal.hide();
             if (onConfirm) onConfirm();
         });
 
         modal.show();
-        modalEl.addEventListener('hidden.bs.modal', function () { modalEl.remove(); });
+        modalEl.addEventListener('hidden.bs.modal', function () { modal.dispose(); modalEl.remove(); });
+        return modalEl;
     }
 
     // ── Modal helper ────────────────────────────────────────────────
@@ -601,7 +582,8 @@ window.TaxonomyVersions = (function () {
         var modalEl = document.getElementById('versionsModal');
         var modal = new bootstrap.Modal(modalEl);
         modal.show();
-        modalEl.addEventListener('hidden.bs.modal', function () { modalEl.remove(); });
+        modalEl.addEventListener('hidden.bs.modal', function () { modal.dispose(); modalEl.remove(); });
+        return modalEl;
     }
 
     // ── Helpers ──────────────────────────────────────────────────────

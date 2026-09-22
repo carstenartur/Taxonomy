@@ -255,7 +255,7 @@ body.dark-mode .variant-card {
 
 /* ── Compare View (AP 3) ──────────────────────────────── */
 .compare-summary-card {
-    background: var(--bs-light, #f8f9fa);
+    background: var(--bs-tertiary-bg, #f8f9fa);
     border: 1px solid var(--bs-border-color, #dee2e6);
     border-radius: 8px;
     padding: 16px;
@@ -283,7 +283,7 @@ body.dark-mode .variant-card {
 
 .compare-changes-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
     gap: 12px;
     margin-bottom: 16px;
 }
@@ -304,19 +304,19 @@ body.dark-mode .variant-card {
 
 .compare-column .col-header.col-added {
     background: rgba(25, 135, 84, 0.1);
-    color: var(--bs-success, #198754);
+    color: var(--bs-success-text-emphasis, #0a3622);
     border-bottom: 2px solid var(--bs-success, #198754);
 }
 
 .compare-column .col-header.col-changed {
     background: rgba(255, 193, 7, 0.1);
-    color: var(--bs-warning, #856404);
+    color: var(--bs-warning-text-emphasis, #664d03);
     border-bottom: 2px solid var(--bs-warning, #ffc107);
 }
 
 .compare-column .col-header.col-removed {
     background: rgba(220, 53, 69, 0.1);
-    color: var(--bs-danger, #dc3545);
+    color: var(--bs-danger-text-emphasis, #58151c);
     border-bottom: 2px solid var(--bs-danger, #dc3545);
 }
 
@@ -344,7 +344,7 @@ body.dark-mode .variant-card {
 .compare-column .col-empty {
     padding: 12px;
     text-align: center;
-    color: var(--bs-secondary, #6c757d);
+    color: var(--bs-secondary-color, #6c757d);
     font-size: 0.8rem;
     font-style: italic;
 }
@@ -353,6 +353,11 @@ body.dark-mode .compare-summary-card {
     background: #1e1e30;
     border-color: #333;
 }
+
+/* Status foregrounds are text colors, not bright accent/border colors. */
+.compare-summary-card .compare-stat.text-success { color: var(--bs-success-text-emphasis, #0a3622) !important; }
+.compare-summary-card .compare-stat.text-warning { color: var(--bs-warning-text-emphasis, #664d03) !important; }
+.compare-summary-card .compare-stat.text-danger { color: var(--bs-danger-text-emphasis, #58151c) !important; }
 
 /* ── Versions Timeline (AP 4) ─────────────────────────── */
 .timeline-entry {
