@@ -154,7 +154,12 @@ public class ReformulationExecutionService {
         try {
             if (stopping) return;
             token=recovery.claim(dispatch,owner).orElseThrow(()->com.taxonomy.portfolio.service.PortfolioException.conflict("REFORMULATION_CLAIM_REJECTED"));
-            if (!local.attach(token)) return;
+            if (!local.attach(token)) {
+                // The claim committed, but local retirement won before any work.
+                // Release only this owner/epoch without finalizing the queued run.
+                recovery.releaseUnadmitted(token);
+                return;
+            }
             var run=dispatch.run();var provider=LlmProvider.valueOf(run.provider());
             providers.setRequestProvider(provider);
             if(provider==LlmProvider.LOCAL_ONNX || !providers.isProviderConfigured(provider)
