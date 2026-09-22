@@ -1,0 +1,35 @@
+name: Verify 1108 child property guard
+on:
+  push:
+    branches: [verify/1108-final-property-guard]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Property boundary and unchanged real civilian acceptance
+        run: |
+          mkdir -p verification
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=CivilianAcceptanceProcessTest,CivilianArchitectureAcceptanceTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee verification/civilian-property-guard.log
+      - name: Preserve exact-head test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: civilian-property-guard-${{ github.sha }}
+          path: |
+            verification/*.log
+            taxonomy-app/target/surefire-reports/*
+            taxonomy-app/target/civilian-acceptance/**
+          if-no-files-found: error
+          retention-days: 7
