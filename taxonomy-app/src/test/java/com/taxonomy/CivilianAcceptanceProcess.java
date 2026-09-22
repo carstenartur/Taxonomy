@@ -28,8 +28,8 @@ public final class CivilianAcceptanceProcess {
         ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
                 .filter(argument -> argument.startsWith("-javaagent:") && argument.contains("jacoco"))
                 .forEach(command::add);
-        // Preserve explicit test configuration and browser opt-in; environment and working
-        // directory are inherited. Never print a command that may contain configuration secrets.
+        // The scenario owns its application configuration. Forward only explicit non-secret
+        // UI test flags on argv; environment and working directory remain inherited.
         System.getProperties().stringPropertyNames().stream().sorted()
                 .filter(CivilianAcceptanceProcess::testProperty)
                 .forEach(key -> command.add("-D" + key + "=" + System.getProperty(key)));
@@ -55,10 +55,7 @@ public final class CivilianAcceptanceProcess {
     }
 
     private static boolean testProperty(String key) {
-        return key.startsWith("spring.") || key.startsWith("taxonomy.")
-                || key.startsWith("embedding.") || key.startsWith("llm.")
-                || key.startsWith("custom.") || key.equals("generateScreenshots")
-                || key.equals("java.awt.headless");
+        return key.equals("generateScreenshots") || key.equals("java.awt.headless");
     }
 
     public static void main(String[] args) throws Throwable {
