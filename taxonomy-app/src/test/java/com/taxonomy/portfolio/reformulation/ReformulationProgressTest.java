@@ -24,6 +24,12 @@ class ReformulationProgressTest {
     }
 
     @Test
+    void existingResultsAndQuestionsSurviveSchemaIndexUpdate() throws Exception {
+        runApplication("write-legacy-indexes", "REFORMULATION_INDEX_UPGRADE_FIXTURE_OK");
+        runApplication("read", "REFORMULATION_PROGRESS_RESTART_OK");
+    }
+
+    @Test
     void actualApiAndProgressControlsFenceLateReadsAndNeverWrite() throws Exception {
         Path script = resource("/reformulation/progress-contract.cjs", "progress.cjs");
         Path api = resource("/static/js/api/portfolio-api.js", "api.js");
