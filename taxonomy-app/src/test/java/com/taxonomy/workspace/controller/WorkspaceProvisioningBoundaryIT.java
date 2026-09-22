@@ -1,12 +1,16 @@
 package com.taxonomy.workspace.controller;
 
+import com.taxonomy.workspace.model.SystemRepository;
+import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.service.SystemRepositoryService;
 import com.taxonomy.workspace.service.WorkspaceContextResolver;
 import com.taxonomy.workspace.service.WorkspaceManager;
+import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
 import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
@@ -21,6 +25,8 @@ import org.springframework.test.web.servlet.request.MockHttpServletRequestBuilde
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -38,21 +44,50 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @TestPropertySource(properties = {
         "gemini.api.key=", "openai.api.key=", "deepseek.api.key=",
         "qwen.api.key=", "llama.api.key=", "mistral.api.key=",
-        "taxonomy.features.multi-repository-api.enabled=false"
+        "taxonomy.features.multi-repository-api.enabled=false",
+        "taxonomy.git.bootstrap=false"
 })
 class WorkspaceProvisioningBoundaryIT {
     private static final String USER = "provisioning-boundary-user";
     private static final String HEADER = WorkspaceContextResolver.WORKSPACE_HEADER;
     private static final String QUERY = WorkspaceContextResolver.WORKSPACE_QUERY_PARAMETER;
+    private static final String SOURCE_DSL = "meta { language: \"taxdsl\"; namespace: \"provisioning-boundary\"; }\n";
 
     @Autowired private MockMvc mvc;
     @Autowired private UserWorkspaceRepository rows;
     @Autowired private WorkspaceManager manager;
     @Autowired private SystemRepositoryService repositories;
+    @Autowired private DslGitRepositoryFactory gitRepositories;
+    private SystemRepository source;
+    private String sourceCommit;
+    private final List<String> workspaceIds = new ArrayList<>();
+
+    @BeforeEach
+    void createOwnedSourceCheckpoint() throws Exception {
+        // A prior Spring context may already have consumed the JVM-wide bootstrap.
+        // Own a unique real source instead of depending on the primary's test order.
+        source = repositories.createCentralRepository("Provisioning boundary source",
+                "provisioning-boundary-" + UUID.randomUUID(), null,
+                RepositoryVisibility.PRIVATE, USER, "draft");
+        var git = gitRepositories.createCentralRepository(
+                source.getRepositoryId(), source.getStorageRepositoryName());
+        sourceCommit = git.commitDsl("draft", SOURCE_DSL, USER, "Provisioning test source");
+        repositories.markProvisioningReady(source.getRepositoryId());
+        assertThat(git.getDslAtCommit(sourceCommit)).isEqualTo(SOURCE_DSL);
+    }
 
     @AfterEach
     void clearNavigation() {
-        manager.evictWorkspace(USER);
+        try {
+            manager.evictWorkspace(USER);
+        } finally {
+            try {
+                // JPA rollback does not replace deletion of separately persisted Git state.
+                workspaceIds.forEach(gitRepositories::deleteWorkspaceRepository);
+            } finally {
+                if (source != null) gitRepositories.deleteCentralRepository(source.getRepositoryId());
+            }
+        }
     }
 
     @ParameterizedTest
@@ -94,6 +129,10 @@ class WorkspaceProvisioningBoundaryIT {
         UserWorkspace provisioned = rows.findByWorkspaceId(pinned.getWorkspaceId()).orElseThrow();
         assertThat(provisioned.getProvisioningStatus()).isEqualTo(WorkspaceProvisioningStatus.READY);
         assertThat(provisioned.getCurrentBranch()).isEqualTo("main");
+        assertThat(provisioned.getSourceRepositoryId()).isEqualTo(source.getRepositoryId());
+        assertThat(provisioned.getBaseCommit()).isEqualTo(sourceCommit);
+        assertThat(gitRepositories.openWorkspaceRepository(provisioned.getWorkspaceId())
+                .getDslAtCommit(provisioned.getCurrentCommit())).isEqualTo(SOURCE_DSL);
         assertThat(rows.findByWorkspaceId(active.getWorkspaceId()).orElseThrow().getCurrentBranch())
                 .isEqualTo("feature/other-tab");
         assertThat(manager.findActiveWorkspace(USER).getWorkspaceId()).isEqualTo(active.getWorkspaceId());
@@ -154,6 +193,10 @@ class WorkspaceProvisioningBoundaryIT {
         var workspace = rows.findByWorkspaceId(id).orElseThrow();
         assertThat(workspace.isDefault()).isTrue();
         assertThat(workspace.getCurrentCommit()).isNotBlank();
+        assertThat(workspace.getSourceRepositoryId()).isEqualTo(source.getRepositoryId());
+        assertThat(workspace.getBaseCommit()).isEqualTo(sourceCommit);
+        assertThat(gitRepositories.openWorkspaceRepository(id)
+                .getDslAtCommit(workspace.getCurrentCommit())).isEqualTo(SOURCE_DSL);
         mvc.perform(get("/api/dsl/branches").header(HEADER, id)).andExpect(status().isOk());
         mvc.perform(get("/api/proposals/pending").header(HEADER, id)).andExpect(status().isOk());
     }
@@ -184,10 +227,11 @@ class WorkspaceProvisioningBoundaryIT {
     private UserWorkspace workspace(String owner, WorkspaceProvisioningStatus state) {
         UserWorkspace workspace = new UserWorkspace();
         String id = "provisioning-boundary-" + UUID.randomUUID();
+        workspaceIds.add(id);
         workspace.setWorkspaceId(id);
         workspace.setDisplayName(id);
         workspace.setUsername(owner);
-        workspace.setSourceRepositoryId(repositories.getPrimaryRepository().getRepositoryId());
+        workspace.setSourceRepositoryId(source.getRepositoryId());
         workspace.setProvisioningStatus(state);
         workspace.setCreatedAt(Instant.now());
         workspace.setLastAccessedAt(Instant.now());

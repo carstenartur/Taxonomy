@@ -216,7 +216,7 @@ public class PortfolioAnalysisPersistenceService {
                 Instant.now(),
                 durationMs,
                 analysis.getWarnings() != null ? analysis.getWarnings().size() : 0,
-                analysis.getErrorMessage(),
+                diagnosticPreview(analysis.getErrorMessage()),
                 jsonCodec.write(analysis),
                 jsonCodec.write(gaps),
                 jsonCodec.write(patterns),
@@ -233,7 +233,8 @@ public class PortfolioAnalysisPersistenceService {
 
         requirement.pointToAnalysis(snapshotId, Instant.now());
         requirementRepository.save(requirement);
-        item.complete(status, snapshotId, Instant.now());
+        item.complete(status, snapshotId, Instant.now(),
+                status == AnalysisStatus.PARTIAL ? partialDiagnostic(analysis) : null);
         return toSnapshotSummary(snapshot);
     }
 
@@ -271,7 +272,7 @@ public class PortfolioAnalysisPersistenceService {
                 .map(item -> item.getRequirement().getRequirementKey() + ": " + item.getErrorMessage())
                 .collect(Collectors.joining(" | "));
         job.complete(successful, partial, failed,
-                errors.isBlank() ? null : truncate(errors, 2000), Instant.now());
+                errors.isBlank() ? null : diagnosticPreview(errors), Instant.now());
         return toJobView(job);
     }
 
@@ -487,22 +488,21 @@ public class PortfolioAnalysisPersistenceService {
         if (architecture == null || architecture.getIncludedRelationships() == null) {
             return;
         }
-        List<RequirementRelationMapping> mappings =
-                architecture.getIncludedRelationships().stream()
-                        .map(relation -> new RequirementRelationMapping(
-                                snapshot,
-                                relation.getSourceCode(),
-                                relation.getTargetCode(),
-                                relation.getRelationType(),
-                                relation.getOrigin() != null
-                                        ? relation.getOrigin().name() : "UNKNOWN",
-                                relation.getRelationCategory(),
-                                relation.getPropagatedRelevance(),
-                                relation.getConfidence(),
-                                relation.getPresenceReason() != null
-                                        ? relation.getPresenceReason()
-                                        : relation.getDerivationReason()))
-                        .toList();
+        List<RequirementRelationMapping> mappings = architecture.getIncludedRelationships().stream()
+                .map(relation -> new RequirementRelationMapping(
+                        snapshot,
+                        relation.getSourceCode(),
+                        relation.getTargetCode(),
+                        relation.getRelationType(),
+                        relation.getOrigin() != null
+                                ? relation.getOrigin().name() : "UNKNOWN",
+                        relation.getRelationCategory(),
+                        relation.getPropagatedRelevance(),
+                        relation.getConfidence(),
+                        relation.getPresenceReason() != null
+                                ? relation.getPresenceReason()
+                                : relation.getDerivationReason()))
+                .toList();
         relationRepository.saveAll(mappings);
     }
 
@@ -726,6 +726,26 @@ public class PortfolioAnalysisPersistenceService {
         Set<String> result = new TreeSet<>(left);
         result.removeAll(right);
         return List.copyOf(result);
+    }
+
+    private static String partialDiagnostic(AnalysisResult analysis) {
+        String error = analysis.getErrorMessage();
+        if (error != null && !error.isBlank()) return diagnosticPreview(error);
+        if (analysis.getWarnings() == null) return null;
+        return analysis.getWarnings().stream()
+                .filter(warning -> warning != null && !warning.isBlank())
+                .findFirst().map(PortfolioAnalysisPersistenceService::diagnosticPreview)
+                .orElse(null);
+    }
+
+    /** Both summary columns are VARCHAR(2000); never shorten the full analysis payload. */
+    private static String diagnosticPreview(String message) {
+        if (message == null || message.length() <= 2000) return message;
+        String marker = "\n[truncated]";
+        int end = 2000 - marker.length();
+        if (Character.isHighSurrogate(message.charAt(end - 1))
+                && Character.isLowSurrogate(message.charAt(end))) end--;
+        return message.substring(0, end) + marker;
     }
 
     private static AnalysisStatus analysisStatus(AnalysisResult analysis) {

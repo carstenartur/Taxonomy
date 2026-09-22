@@ -1,7 +1,9 @@
 package com.taxonomy.workspace.service;
 
+import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.model.UserWorkspace;
 import com.taxonomy.workspace.model.WorkspaceProvisioningStatus;
+import com.taxonomy.workspace.repository.SystemRepositoryRepository;
 import com.taxonomy.workspace.repository.UserWorkspaceRepository;
 import com.taxonomy.workspace.storage.DslGitRepository;
 import com.taxonomy.workspace.storage.DslGitRepositoryFactory;
@@ -26,10 +28,12 @@ import static org.mockito.Mockito.*;
 /** Separate service instances share only the real JPA repository, never a Java monitor. */
 @SpringBootTest
 @TestPropertySource(properties = {"gemini.api.key=", "openai.api.key=", "deepseek.api.key=",
-        "qwen.api.key=", "llama.api.key=", "mistral.api.key="})
+        "qwen.api.key=", "llama.api.key=", "mistral.api.key=", "taxonomy.git.bootstrap=false"})
 class WorkspaceProvisioningClaimIT {
     @Autowired private UserWorkspaceRepository repository;
     @Autowired private SystemRepositoryService repositories;
+    @Autowired private SystemRepositoryRepository centralRows;
+    @Autowired private DslGitRepositoryFactory gitRepositories;
     @Autowired private WorkspaceManager managedWorkspaceManager;
     @Autowired private org.springframework.transaction.PlatformTransactionManager transactions;
 
@@ -93,24 +97,36 @@ class WorkspaceProvisioningClaimIT {
     }
 
     @Test
-    void defaultProvisioningDoesNotInheritAReadOnlyCallerTransaction() {
+    void defaultProvisioningDoesNotInheritAReadOnlyCallerTransaction() throws Exception {
         String id = UUID.randomUUID().toString();
-        var workspace = new UserWorkspace();
-        workspace.setWorkspaceId(id);
-        workspace.setUsername("readonly-provision-owner");
-        workspace.setDisplayName(id);
-        workspace.setCreatedAt(Instant.now());
-        workspace.setDefault(true);
-        workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
-        repository.saveAndFlush(workspace);
+        String username = "readonly-provision-owner";
+        String sourceDsl = "meta { language: \"taxdsl\"; namespace: \"readonly-provision\"; }\n";
+        var source = repositories.createCentralRepository("Read-only provisioning source",
+                "readonly-provision-" + UUID.randomUUID(), null,
+                RepositoryVisibility.PRIVATE, username, "draft");
         try {
+            // Commit a real, uniquely named source before entering the caller's read-only
+            // transaction. The JVM-wide primary bootstrap is deliberately not a fixture.
+            var sourceGit = gitRepositories.createCentralRepository(
+                    source.getRepositoryId(), source.getStorageRepositoryName());
+            String sourceCommit = sourceGit.commitDsl("draft", sourceDsl, username, "Provisioning test source");
+            repositories.markProvisioningReady(source.getRepositoryId());
+            assertEquals(sourceDsl, sourceGit.getDslAtCommit(sourceCommit));
+            var workspace = new UserWorkspace();
+            workspace.setWorkspaceId(id);
+            workspace.setUsername(username);
+            workspace.setDisplayName(id);
+            workspace.setCreatedAt(Instant.now());
+            workspace.setDefault(true);
+            workspace.setSourceRepositoryId(source.getRepositoryId());
+            workspace.setProvisioningStatus(WorkspaceProvisioningStatus.NOT_PROVISIONED);
+            repository.saveAndFlush(workspace);
             var readOnly = new org.springframework.transaction.support.TransactionTemplate(transactions);
             readOnly.setReadOnly(true);
             UserWorkspace result = assertDoesNotThrow(() -> readOnly.execute(status -> {
                 assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
                         .isCurrentTransactionReadOnly());
-                var ready = managedWorkspaceManager.provisionDefaultWorkspaceRepository(
-                        workspace.getUsername(), id);
+                var ready = managedWorkspaceManager.provisionDefaultWorkspaceRepository(username, id);
                 assertTrue(org.springframework.transaction.support.TransactionSynchronizationManager
                         .isCurrentTransactionReadOnly());
                 return ready;
@@ -121,8 +137,18 @@ class WorkspaceProvisioningClaimIT {
             assertEquals(WorkspaceProvisioningStatus.READY, retained.getProvisioningStatus());
             assertNotNull(retained.getCurrentCommit());
             assertEquals("draft", retained.getCurrentBranch());
+            assertEquals(source.getRepositoryId(), retained.getSourceRepositoryId());
+            assertEquals(sourceCommit, retained.getBaseCommit());
+            assertEquals(sourceDsl, gitRepositories.openWorkspaceRepository(id)
+                    .getDslAtCommit(retained.getCurrentCommit()));
         } finally {
-            repository.findByWorkspaceId(id).ifPresent(repository::delete);
+            try {
+                gitRepositories.deleteWorkspaceRepository(id);
+                repository.findByWorkspaceId(id).ifPresent(repository::delete);
+            } finally {
+                gitRepositories.deleteCentralRepository(source.getRepositoryId());
+                centralRows.findByRepositoryId(source.getRepositoryId()).ifPresent(centralRows::delete);
+            }
         }
     }
 

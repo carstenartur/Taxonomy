@@ -40,5 +40,7 @@ public class ReformulationRecoveryLease {
     }
     void claim(String owner, Instant until) { ownerId = owner; epoch++; leaseUntil = until; }
     void renew(Instant until) { leaseUntil = until; }
+    /** Keep recovery active and preserve the fencing epoch when no work was admitted. */
+    void releaseUnadmitted() { ownerId = null; leaseUntil = null; }
     void retire() { active = false; }
 }

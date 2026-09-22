@@ -28,16 +28,21 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Real HTTP, authentication, catalogue, jobs, persistence and exports; only LLM HTTP is replaced. */
-@SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
-        "taxonomy.features.multi-repository-api.enabled=true",
-        "embedding.enabled=false", "embedding.allow-download=false", "llm.mock=false",
-        "llm.provider=CUSTOM_OPENAI", "custom.llm.url=" + CivilianLlmConfiguration.URL,
-        "custom.llm.model=civilian-fixture", "taxonomy.admin-password=Civilian-Acceptance-2026!",
-        "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2"
-})
-@Import({CivilianLlmConfiguration.class, com.taxonomy.interop.publication.PublicationCivilianConfiguration.class})
-@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class CivilianArchitectureAcceptanceTest {
+    // Build the Spring fixture only in the child JVM, not in the long-lived reactor
+    // test process. The resource guard still observes real, unmodified heap samples.
+    @SpringBootTest(classes = TaxonomyApplication.class,
+            webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT, properties = {
+            "taxonomy.features.multi-repository-api.enabled=true",
+            "embedding.enabled=false", "embedding.allow-download=false", "llm.mock=false",
+            "llm.provider=CUSTOM_OPENAI", "custom.llm.url=" + CivilianLlmConfiguration.URL,
+            "custom.llm.model=civilian-fixture", "taxonomy.admin-password=Civilian-Acceptance-2026!",
+            "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2"
+    })
+    @Import({CivilianLlmConfiguration.class, com.taxonomy.interop.publication.PublicationCivilianConfiguration.class})
+    @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
+    static class Scenario extends CivilianArchitectureAcceptanceTest { }
+
     static final String PASSWORD = "Civilian-Acceptance-2026!";
     @LocalServerPort int port;
     @Autowired ScenarioLlmPlayback playback;
@@ -56,6 +61,10 @@ class CivilianArchitectureAcceptanceTest {
     final Path output = Path.of("target/civilian-acceptance");
 
     @Test void generatesAndReopensCivilianArchitectureThroughTheRealCopilot() throws Exception {
+        CivilianAcceptanceProcess.verify();
+    }
+
+    void verifyScenario() throws Exception {
         Files.createDirectories(output);
         JsonNode fixture = playback.fixture();
         JsonNode catalogue = get("/api/taxonomy");

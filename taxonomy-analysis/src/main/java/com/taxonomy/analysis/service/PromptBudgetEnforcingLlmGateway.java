@@ -31,6 +31,9 @@ final class PromptBudgetEnforcingLlmGateway implements LlmGateway {
 
     @Override
     public void validatePromptBudget(String prompt) {
+        // Retain the bounded prepared prompt even if admission or transport fails.
+        // No credential is passed to observation and preparation does not imply delivery.
+        AnalysisRunControl.preparedPrompt(prompt);
         promptBudgetPolicy.requireWithinBudget(prompt, delegate.providerName());
     }
 
