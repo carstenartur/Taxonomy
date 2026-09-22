@@ -153,6 +153,11 @@ public class RequirementAnalysisJobItem {
     }
 
     public void complete(AnalysisStatus status, String snapshotId, Instant now) {
+        complete(status, snapshotId, now, null);
+    }
+
+    /** Complete with a bounded diagnostic summary; full evidence remains in the snapshot. */
+    public void complete(AnalysisStatus status, String snapshotId, Instant now, String diagnostic) {
         if (status != AnalysisStatus.SUCCESS && status != AnalysisStatus.PARTIAL) {
             throw new IllegalArgumentException("Completed item status must be SUCCESS or PARTIAL");
         }
@@ -160,7 +165,7 @@ public class RequirementAnalysisJobItem {
         this.snapshotId = snapshotId;
         this.snapshot = null;
         this.completedAt = now;
-        this.errorMessage = null;
+        this.errorMessage = status == AnalysisStatus.PARTIAL ? diagnostic : null;
     }
 
     public void fail(String errorMessage, Instant now) {
