@@ -108,9 +108,21 @@ public class ReformulationExecutionService {
         private boolean entered;
         private boolean retired;
         private boolean finalizing;
-        synchronized boolean enter() {
-            if (entered || retired) return false;
-            entered = true; runner = Thread.currentThread(); return true;
+        /** Admission and cleanup belong to one delivery, never to a separate caller-side check. */
+        void runOnce(Runnable work) {
+            synchronized (this) {
+                if (entered || retired) return;
+                entered = true;
+                runner = Thread.currentThread();
+            }
+            try {
+                // Never hold the retirement monitor across database or provider I/O.
+                work.run();
+            } finally {
+                synchronized (this) {
+                    runner = null;
+                }
+            }
         }
         synchronized boolean attach(Claim token) { claim = token; return !retired; }
         synchronized Claim claim() { return claim; }
@@ -129,10 +141,11 @@ public class ReformulationExecutionService {
             // Shutdown never waits on network/DB I/O and must not interrupt that commit.
             if (runner != null && !finalizing) runner.interrupt();
         }
-        synchronized void finished() { runner = null; }
     }
     private void execute(Dispatch dispatch, LocalExecution local) {
-        if (!local.enter()) return; // A duplicate queue delivery owns no cleanup.
+        local.runOnce(() -> executeClaimed(dispatch, local));
+    }
+    private void executeClaimed(Dispatch dispatch, LocalExecution local) {
         Claim token=null;
         try {
             if (stopping) return;
@@ -175,7 +188,6 @@ public class ReformulationExecutionService {
             recovery.finish(token,null,failureCode(failure),local::beginFinalization);
         } finally {
             providers.clearRequestProvider();
-            local.finished();
             scheduled.remove(dispatch.run().id(), local);
         }
     }
