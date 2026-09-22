@@ -107,4 +107,3 @@ export async function runVersionComparisonWorkflow({ page, role, evidence }) {
   });
   evidence.passed('Real relation-only version comparison, correct restore direction, visible failures and QA branch cleanup');
 }
-
