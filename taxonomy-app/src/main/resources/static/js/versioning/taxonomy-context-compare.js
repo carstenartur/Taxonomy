@@ -11,6 +11,17 @@
 window.TaxonomyContextCompare = (function () {
     'use strict';
 
+    // Explicit contract with taxonomy-dsl SemanticChangeType. Unknown kinds are
+    // errors, not silently relabelled as a supported modification.
+    var semanticTypes = new Set([
+        'ELEMENT_ADDED', 'ELEMENT_REMOVED', 'ELEMENT_TITLE_CHANGED',
+        'ELEMENT_DESCRIPTION_CHANGED', 'ELEMENT_TYPE_CHANGED',
+        'ELEMENT_TAXONOMY_CHANGED', 'ELEMENT_EXTENSIONS_CHANGED',
+        'RELATION_ADDED', 'RELATION_REMOVED', 'RELATION_STATUS_CHANGED',
+        'RELATION_CONFIDENCE_CHANGED', 'RELATION_PROVENANCE_CHANGED',
+        'RELATION_EXTENSIONS_CHANGED'
+    ]);
+
     function fromDocumentDiff(diff, left, right) {
         if (!diff || !diff.details || !Array.isArray(diff.semanticChanges)) {
             throw new Error('Invalid document comparison response');
@@ -34,7 +45,9 @@ window.TaxonomyContextCompare = (function () {
         }
         var changes = diff.semanticChanges.map(function (change) {
             if (!change || !['element', 'relation'].includes(change.entityKind)
-                    || typeof change.changeType !== 'string' || typeof change.entityId !== 'string'
+                    || !semanticTypes.has(change.changeType)
+                    || !change.changeType.startsWith(change.entityKind.toUpperCase() + '_')
+                    || typeof change.entityId !== 'string'
                     || typeof change.description !== 'string') {
                 throw new Error('Invalid semantic comparison change');
             }
@@ -285,7 +298,7 @@ window.TaxonomyContextCompare = (function () {
                         html += '<span class="badge bg-secondary me-1" style="font-size:0.65rem;">' + escapeHtml(c.category) + '</span>';
                         html += '<span>' + escapeHtml(c.description) + '</span>';
                         if (c.beforeValue != null && c.afterValue != null) {
-                            html += '<div class="small text-muted mt-1">' + escapeHtml(c.beforeValue) + ' \u2192 ' + escapeHtml(c.afterValue) + '</div>';
+                            html += '<div class="small text-muted mt-1">' + escapeHtml(String(c.beforeValue)) + ' \u2192 ' + escapeHtml(String(c.afterValue)) + '</div>';
                         }
                         html += '</div>';
                     });

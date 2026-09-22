@@ -7,9 +7,10 @@ const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/stati
 function harness() {
   const elements = new Map();
   const context = { window: {}, document: {
-    addEventListener() {}, getElementById: id => elements.get(id) || null
-  }, TaxonomyI18n: { t: (key, ...args) => key + (args.length ? ': ' + args.join(', ') : ''), formatBranch: name => name },
-  TaxonomyUtils: { escapeHtml: value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;') }};
+    readyState: 'loading', addEventListener() {}, getElementById: id => elements.get(id) || null
+  }, TaxonomyI18n: { t: (key, ...args) => key + (args.length ? ': ' + args.join(', ') : ''), formatBranch: name => name } };
+  vm.runInNewContext(readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js', import.meta.url), 'utf8'), context);
+  context.TaxonomyUtils = context.window.TaxonomyUtils;
   vm.runInNewContext(source, context);
   return { api: context.window.TaxonomyContextCompare, elements, context };
 }
@@ -151,4 +152,53 @@ test('relation-only comparison does not bury its changes under three empty eleme
   const html = elements.get('results').innerHTML;
   assert.ok(!html.includes('compare.column.added'), 'Empty element columns must not precede the actual relationship change');
   assert.ok(html.includes('compare.filter.elements'), 'Keep an explicit compact no-element-changes message');
+});
+
+for (const type of ['UNKNOWN_ADDED', 'RELATION_WHATEVER', '', 'ELEMENT_ADDED']) test(`reject unknown or wrong-kind semantic change ${type}`, () => {
+  const { api } = harness(); const diff = fixture(); diff.semanticChanges[0].changeType = type;
+  assert.throws(() => api.fromDocumentDiff(diff));
+});
+test('all Java SemanticChangeType values are accepted for their actual entity kind', () => {
+  const java = readFileSync(new URL('../../taxonomy-dsl/src/main/java/com/taxonomy/dsl/diff/SemanticChangeType.java', import.meta.url), 'utf8');
+  const types = [...java.matchAll(/\b((?:ELEMENT|RELATION)_[A-Z_]+)\(/g)].map(match => match[1]);
+  assert.equal(types.length, 13);
+  for (const type of types) {
+    const diff = fixture(), kind = type.startsWith('ELEMENT_') ? 'Elements' : 'Relations';
+    const action = type.endsWith('_ADDED') ? 'added' : type.endsWith('_REMOVED') ? 'removed' : 'changed';
+    diff.changedRelations = 0; diff.details.changedRelations = [];
+    diff[action + kind] = 1; diff.details[action + kind] = [{}];
+    Object.assign(diff.semanticChanges[0], { changeType: type, entityKind: kind.toLowerCase().slice(0, -1) });
+    assert.equal(convert(diff).changes.length, 1, type);
+  }
+});
+test('actual shared escaping retains element numeric zero and boolean false evidence', () => {
+  const { api, elements, context } = harness();
+  assert.equal(context.TaxonomyUtils.escapeHtml(0), '', 'Exercise actual production escaping, not a friendlier test double');
+  elements.set('results', { innerHTML: '' });
+  const diff = convert(fixture()); diff.changes[0].category = 'ELEMENT';
+  diff.changes[0].beforeValue = 0; diff.changes[0].afterValue = false;
+  api.renderComparison('results', diff);
+  assert.match(elements.get('results').innerHTML, /0 → false/);
+});
+for (const failAt of ['success', 'partial setup', 'UI assertion']) test(`QA comparison branch cleanup after ${failAt}`, async () => {
+  const workflow = await import('./ui-primary-version-workflow.mjs');
+  assert.equal(typeof workflow.usingComparisonBranch, 'function');
+  let allocated, cleaned;
+  const run = branch => { allocated = branch; if (failAt !== 'success') throw new Error(failAt); return 'done'; };
+  const cleanup = branch => { cleaned = branch; };
+  if (failAt === 'success') assert.equal(await workflow.usingComparisonBranch(run, cleanup), 'done');
+  else await assert.rejects(workflow.usingComparisonBranch(run, cleanup), new RegExp(failAt));
+  assert.match(allocated, /^qa-compare-[0-9a-f-]{36}$/);
+  assert.equal(cleaned, allocated, 'Cleanup must run even before setup returned version IDs');
+});
+test('QA cleanup errors preserve the original assertion failure', async () => {
+  const workflow = await import('./ui-primary-version-workflow.mjs');
+  assert.equal(typeof workflow.usingComparisonBranch, 'function');
+  await assert.rejects(workflow.usingComparisonBranch(() => { throw new Error('original assertion'); },
+    () => { throw new Error('cleanup unavailable'); }), error => {
+      assert.equal(error.errors.length, 2);
+      assert.match(error.errors[0].message, /original assertion/);
+      assert.match(error.errors[1].message, /cleanup unavailable/);
+      return true;
+    });
 });
