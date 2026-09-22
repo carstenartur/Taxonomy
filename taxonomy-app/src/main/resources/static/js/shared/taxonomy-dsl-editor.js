@@ -31,15 +31,17 @@
         return view ? view.state.doc.toString() : '';
     }
 
-    function setEditorContent(text) {
+    function setEditorContent(text, preserveReadingState) {
         var view = window.dslCmView;
-        if (view) {
+        if (view && window.dslReadingTools) {
+            window.dslReadingTools.replaceDocument(text, { preserve: preserveReadingState === true });
+        } else if (view) {
             view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: text } });
         }
     }
 
     // Expose format callback so the CodeMirror Shift+Alt+F keymap can call it
-    window.dslFormatContent = function () { formatDsl(); };
+    window.dslFormatContent = function () { return formatDsl(); };
 
     function init() {
         editorContainer   = document.getElementById('dslEditorContainer');
@@ -96,15 +98,63 @@
     }
 
     // ── Load current architecture as DSL ────────────────────────────
+    var textRequest = 0, textAbort = null, textSuspended = false;
+    window.addEventListener('pagehide', function () {
+        textSuspended = true; textRequest++; if (textAbort) textAbort.abort();
+    });
+    window.addEventListener('pageshow', function () { textSuspended = false; });
+
+    function editorScope() {
+        var runtime = window.__TaxonomyAnalysisSessionContext?.runtime;
+        var context = window.TaxonomyContextBar?.getCurrentContext();
+        return JSON.stringify([runtime?.workspaceId, runtime?.analysisGeneration,
+            context?.branch, context?.commitId, branchSelect?.value]);
+    }
+
+    async function readEditorText(url, options, labels, preserve, json) {
+        var view = window.dslCmView;
+        if (!view || textSuspended) return;
+        var original = view.state.doc, scope = editorScope(), request = ++textRequest;
+        if (textAbort) textAbort.abort();
+        var controller = new AbortController(); textAbort = controller;
+        showStatus(labels.loading, 'info');
+        function current() {
+            return request === textRequest && !textSuspended && !controller.signal.aborted
+                && window.dslCmView === view && editorScope() === scope;
+        }
+        try {
+            var response = await window.TaxonomyApiClient.request(url, options,
+                { signal: controller.signal, timeoutMillis: 10000 });
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            var contentType = response.headers.get('Content-Type') || '';
+            var text;
+            if (json) {
+                if (!contentType.toLowerCase().startsWith('application/json')) throw new Error(t('dsl.reading.invalidResponse'));
+                text = (await response.json()).dslText;
+            } else {
+                if (!contentType.toLowerCase().startsWith('text/plain')) throw new Error(t('dsl.reading.invalidResponse'));
+                text = await response.text();
+            }
+            if (typeof text !== 'string' || (preserve && original.toString().trim() && !text.trim())) {
+                throw new Error(t('dsl.reading.invalidResponse'));
+            }
+            if (!current()) return;
+            if (view.state.doc !== original) {
+                showStatus(t('dsl.reading.newerDraft'), 'info'); return;
+            }
+            setEditorContent(text, preserve);
+            showStatus(labels.success(text), 'success');
+        } catch (error) {
+            if (current()) showStatus(t(labels.failure, error.message), 'error');
+        } finally {
+            if (request === textRequest) textAbort = null;
+        }
+    }
+
     function loadCurrent() {
-        showStatus(t('dsl.loading'), 'info');
-        fetch('/api/dsl/export')
-            .then(function (r) { return r.text(); })
-            .then(function (text) {
-                setEditorContent(text);
-                showStatus(t('dsl.loaded', text.length), 'success');
-            })
-            .catch(function (e) { showStatus(t('dsl.load.failed', e.message), 'error'); });
+        return readEditorText('/api/dsl/export', {}, {
+            loading: t('dsl.loading'), success: text => t('dsl.loaded', text.length), failure: 'dsl.load.failed'
+        }, false, false);
     }
 
     // ── Parse ───────────────────────────────────────────────────────
@@ -141,18 +191,9 @@
 
     // ── Format ──────────────────────────────────────────────────────
     function formatDsl() {
-        showStatus(t('dsl.formatting'), 'info');
-        fetch('/api/dsl/format', {
-            method: 'POST',
-            headers: { 'Content-Type': 'text/plain' },
-            body: getEditorContent()
-        })
-            .then(function (r) { return r.text(); })
-            .then(function (formatted) {
-                setEditorContent(formatted);
-                showStatus(t('dsl.formatted'), 'success');
-            })
-            .catch(function (e) { showStatus(t('dsl.format.error', e.message), 'error'); });
+        return readEditorText('/api/dsl/format', {
+            method: 'POST', headers: { 'Content-Type': 'text/plain' }, body: getEditorContent()
+        }, { loading: t('dsl.formatting'), success: () => t('dsl.formatted'), failure: 'dsl.format.error' }, true, false);
     }
 
     function renderValidation(data) {
@@ -383,21 +424,10 @@
     }
 
     function loadCommitById(commitId) {
-        showStatus(t('dsl.commit.loading', commitId.substring(0, 8)), 'info');
-        fetch('/api/dsl/git/commit/' + encodeURIComponent(commitId))
-            .then(function (r) {
-                if (!r.ok) throw new Error(t('dsl.commit.not.found'));
-                return r.json();
-            })
-            .then(function (data) {
-                if (data.dslText) {
-                    setEditorContent(data.dslText);
-                    showStatus(t('dsl.commit.loaded', commitId.substring(0, 8)), 'success');
-                } else {
-                    showStatus(t('dsl.commit.no.content', commitId.substring(0, 8)), 'error');
-                }
-            })
-            .catch(function (e) { showStatus(t('dsl.load.error', e.message), 'error'); });
+        return readEditorText('/api/dsl/git/commit/' + encodeURIComponent(commitId), {}, {
+            loading: t('dsl.commit.loading', commitId.substring(0, 8)),
+            success: () => t('dsl.commit.loaded', commitId.substring(0, 8)), failure: 'dsl.load.error'
+        }, false, true);
     }
 
     // ── Diff ────────────────────────────────────────────────────────
