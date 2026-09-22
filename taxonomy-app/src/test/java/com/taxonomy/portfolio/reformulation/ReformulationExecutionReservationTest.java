@@ -146,12 +146,12 @@ class ReformulationExecutionReservationTest {
             var constructor = type.getDeclaredConstructor();
             constructor.setAccessible(true);
             value = constructor.newInstance();
-            runOnce = method(type, "runOnce", Runnable.class);
+            runOnce = method(type, "runOnce", Runnable.class, Runnable.class);
             retire = method(type, "retire");
             beginFinalization = method(type, "beginFinalization");
         }
 
-        void runOnce(Runnable work) { invoke(runOnce, work); }
+        void runOnce(Runnable work) { invoke(runOnce, work, (Runnable) () -> {}); }
         void retire() { invoke(retire); }
         boolean beginFinalization() { return (boolean) invoke(beginFinalization); }
 
