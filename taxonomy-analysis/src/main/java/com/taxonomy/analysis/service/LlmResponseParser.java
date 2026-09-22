@@ -282,14 +282,17 @@ public class LlmResponseParser {
     }
 
     /**
-     * Locates the first outer JSON object in plain text or a Markdown code block.
-     * Scan once, respecting JSON strings and escapes: braces and code fences inside a
-     * reason are data, not delimiters. An incomplete outer object is returned intact
-     * for the JSON parser to reject, never replaced by a seemingly valid inner object.
+     * Locates the first outer JSON container in plain text or a Markdown code block.
+     * Arrays remain arrays so the score parser rejects a non-object root. Scan once,
+     * respecting JSON strings and escapes: brackets and code fences inside a reason
+     * are data, not delimiters. An incomplete outer container is returned intact
+     * for rejection, never replaced by a seemingly valid inner object.
      */
     public String extractJson(String text) {
         String stripped = text == null ? "" : text.trim();
         int start = stripped.indexOf('{');
+        int arrayStart = stripped.indexOf('[');
+        if (arrayStart >= 0 && (start < 0 || arrayStart < start)) start = arrayStart;
         if (start < 0) return stripped;
         int depth = 0;
         boolean quoted = false;
@@ -302,9 +305,9 @@ public class LlmResponseParser {
                 else if (character == '"') quoted = false;
             } else if (character == '"') {
                 quoted = true;
-            } else if (character == '{') {
+            } else if (character == '{' || character == '[') {
                 depth++;
-            } else if (character == '}' && --depth == 0) {
+            } else if ((character == '}' || character == ']') && --depth == 0) {
                 return stripped.substring(start, i + 1);
             }
         }
