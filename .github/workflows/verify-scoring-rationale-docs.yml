@@ -1,0 +1,27 @@
+name: Verify scoring rationale documentation
+on:
+  push:
+    branches: [verify/scoring-rationale-docs-20260923]
+permissions:
+  contents: read
+jobs:
+  documentation:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+          show-progress: false
+      - name: Connect documentation and check exact documentation-only tree
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 .verification/verify-scoring-rationale-docs.py
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: scoring-rationale-docs-proof
+          path: /tmp/scoring-docs-proof.json
+          if-no-files-found: error
+          retention-days: 14
