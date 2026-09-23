@@ -5,6 +5,8 @@ import tools.jackson.core.StreamReadFeature;
 import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DeserializationFeature;
+import java.math.BigDecimal;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import org.slf4j.Logger;
@@ -144,14 +146,24 @@ public class LlmResponseParser {
             String code = entry.getKey();
             Object value = entry.getValue();
             Object scoreValue = value instanceof Map<?, ?> object ? object.get("score") : value;
-            if (!(scoreValue instanceof Number number)
-                    || !Double.isFinite(number.doubleValue())
-                    || number.doubleValue() < 0 || number.doubleValue() > 100
-                    || number.doubleValue() != Math.rint(number.doubleValue())) {
+            if (!(scoreValue instanceof Number number)) {
                 throw new IllegalArgumentException("Category response for " + code
                         + " requires an explicit integer score between 0 and 100");
             }
-            scores.put(code, number.intValue());
+            final int score;
+            try {
+                // The reader preserves decimal tokens; conversion through double would
+                // turn precision-boundary fractions into apparently integral scores.
+                score = new BigDecimal(number.toString()).intValueExact();
+            } catch (ArithmeticException | NumberFormatException invalid) {
+                throw new IllegalArgumentException("Category response for " + code
+                        + " requires an exact integer score between 0 and 100", invalid);
+            }
+            if (score < 0 || score > 100) {
+                throw new IllegalArgumentException("Category response for " + code
+                        + " requires an explicit integer score between 0 and 100");
+            }
+            scores.put(code, score);
             if (value instanceof Map<?, ?> object && object.get("reason") instanceof String reason
                     && !reason.isBlank()) {
                 reasons.put(code, reason);
@@ -281,6 +293,7 @@ public class LlmResponseParser {
         }
         return objectMapper.readerFor(new TypeReference<Map<String, Object>>() {})
                 .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
                 .readValue(jsonText);
     }
 

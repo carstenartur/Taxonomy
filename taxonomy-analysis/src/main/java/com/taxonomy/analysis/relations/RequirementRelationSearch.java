@@ -1,6 +1,7 @@
 package com.taxonomy.analysis.relations;
 
 import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.relations.service.RelationCompatibilityMatrix;
 import java.nio.charset.StandardCharsets;
@@ -46,6 +47,11 @@ public final class RequirementRelationSearch {
         String stop = "";
         try {
             checkpoint.run();
+            // Catalogue validity is a precondition for extraction, not a late
+            // engine concern after the caller has already paid for model calls.
+            List<Node> offeredRoots = List.copyOf(catalogue.roots());
+            ChildAssessmentContract.validateCandidates(offeredRoots.stream().map(Node::id).toList());
+            List<Node> roots = offeredRoots.stream().sorted(Comparator.comparing(Node::id)).toList();
             List<Node> nodes = sourceNodes(scores, options.maxSources(), warnings);
             int size = options.limits().batchSize();
             for (int i = 0; i < nodes.size(); i += size) {
@@ -66,7 +72,6 @@ public final class RequirementRelationSearch {
                     warnings.add("INVALID_SOURCE_RESPONSE " + batch.stream().map(Node::id).toList() + ": " + invalid.getMessage());
                 }
             }
-            List<Node> roots = catalogue.roots().stream().sorted(Comparator.comparing(Node::id)).toList();
             List<Intent> intents = new ArrayList<>();
             for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {
                 int before = intents.size();

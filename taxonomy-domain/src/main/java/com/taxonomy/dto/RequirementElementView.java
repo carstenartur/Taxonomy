@@ -29,6 +29,16 @@ public class RequirementElementView {
     /** Original LLM score (0–100); 0 when the node was only reached by propagation. */
     private int directLlmScore;
 
+    /**
+     * Original typed assessment for requirement-scoped projections. Null means no
+     * assessment was supplied, not a score of zero. Legacy numeric fields remain
+     * compatible with existing indexes and diagram layout; this detail is authoritative.
+     */
+    private AnalysisScoreDetail scoreDetail;
+
+    public AnalysisScoreDetail getScoreDetail() { return scoreDetail; }
+    public void setScoreDetail(AnalysisScoreDetail scoreDetail) { this.scoreDetail = scoreDetail; }
+
     /** Whether this node was selected for the final impact presentation. */
     private boolean selectedForImpact;
 

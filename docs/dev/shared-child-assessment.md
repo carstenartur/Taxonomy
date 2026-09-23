@@ -99,3 +99,41 @@ commit identities are recorded in PR #1113. The full canonical source/coverage,
 database, browser and security checks are still required before merge; targeted
 tests or earlier-head evidence do not replace them. No canonical workflow,
 coverage threshold, test exclusion or dependency-policy exception is changed.
+
+
+## Projection preserves score provenance and choice evidence
+
+The active evidence projection receives `AnalysisResult.getScoreDetails()` alongside
+effective relevance. A product with raw suitability 80 and parent relevance 40
+therefore keeps direct score 80 and effective relevance 32; it is not reclassified
+as a directly assessed 32. `RequirementElementView.scoreDetail` reuses the existing
+immutable `AnalysisScoreDetail`. Null means no assessment was supplied, whereas a
+non-null detail with score zero means an explicit negative assessment. Legacy
+numeric layout/index defaults remain for compatibility and are not score evidence.
+The untyped projection overload cannot establish raw-score provenance.
+
+The snapshot mapping table reads raw and effective scores from the authoritative
+analysis details and shows an em dash for unassessed scoped nodes, never an index
+placeholder zero. Analysis and architecture-view JSON round trips retain these
+details. Other exchange formats still follow their documented support boundaries.
+
+All verified evidence is grouped by the actual oriented source/target/type
+signature before deciding which required graph edges to display. A group containing
+a required claim retains its distinct optional and alternative evidence, including
+conditions and choice groups, irrespective of their arrival order. A pure-choice
+group creates no required edge or endpoint. The full report is unchanged by
+grouping, node limits or neutral diagram projection; no choice is automatically
+adopted into the active architecture.
+
+Exact JSON decimals are checked before integer conversion: precision-boundary
+fractions such as `0.999999999999999999` are invalid, while exactly integral `1.0`
+or `1e0` remain accepted. The supplied catalogue root set is copied and validated
+before contribution extraction, avoiding paid calls for malformed roots. These
+checks use the existing parser, child contract and report/stop paths, with no extra
+provider call, service, global cache or transaction spanning a model request.
+
+Regression entry points: `EvidenceProjectionContinuationTest` exercises the real
+use case, score derivation, facade, projection, snapshot JSON and neutral diagram;
+`ReviewBoundaryContinuationTest` exercises exact decimals and catalogue preflight.
+The existing relationship confidence UI suite also covers authoritative raw vs.
+effective scores, explicit zero and absent assessment.

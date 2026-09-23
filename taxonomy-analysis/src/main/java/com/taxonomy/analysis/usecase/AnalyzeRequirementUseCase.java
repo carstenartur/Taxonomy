@@ -163,7 +163,7 @@ public class AnalyzeRequirementUseCase {
             return;
         }
         RequirementArchitectureView archView = result.getRelationSearchReport() != null
-                ? architectureViewService.buildFromEvidence(result.getScores(), command.maxArchitectureNodes(),
+                ? architectureViewService.buildFromEvidence(result.getScores(), result.getScoreDetails(), command.maxArchitectureNodes(),
                         result.getRelationSearchReport())
                 : architectureViewService.build(result.getScores(), command.businessText(),
                         command.maxArchitectureNodes(), result.getProvisionalRelations());

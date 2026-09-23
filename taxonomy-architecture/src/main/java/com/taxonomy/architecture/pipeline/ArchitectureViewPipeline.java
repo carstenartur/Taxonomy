@@ -34,8 +34,15 @@ public class ArchitectureViewPipeline {
     /** Separate projection strategy on the same view model: never expand seeds or score products. */
     public RequirementArchitectureView projectEvidence(com.taxonomy.dto.RelationSearchReport report,
                                                        java.util.Map<String,Integer> scores, int maxNodes) {
-        ArchitectureViewContext context = new ArchitectureViewContext(scores, "", maxNodes, java.util.List.of());
-        EvidenceRelationProjection.apply(context, report);
+        return projectEvidence(report, scores, java.util.Map.of(), maxNodes);
+    }
+
+    /** Untyped relevance alone must never be relabelled as an original model score. */
+    public RequirementArchitectureView projectEvidence(com.taxonomy.dto.RelationSearchReport report,
+            java.util.Map<String,Integer> effectiveScores,
+            java.util.Map<String,com.taxonomy.dto.AnalysisScoreDetail> scoreDetails, int maxNodes) {
+        ArchitectureViewContext context = new ArchitectureViewContext(effectiveScores, "", maxNodes, java.util.List.of());
+        EvidenceRelationProjection.apply(context, report, scoreDetails);
         invariantValidator.beforeReturn(context);
         return context.getView();
     }
