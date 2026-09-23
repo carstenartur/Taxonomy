@@ -5,45 +5,161 @@ on:
 permissions:
   contents: read
 jobs:
-  regression:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
+    outputs:
+      tree: ${{ steps.tree.outputs.tree }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          show-progress: false
           persist-credentials: false
-      - name: Stage review regressions on exact unmodified source
+      - name: Reconstruct isolated product tree and verify main ancestry content
         run: |
           cp -r .verification /tmp/evidence-regressions
-          git fetch --quiet origin b3e06be24226c7a7cdbcdb31d413c1e405b1b94b --depth=1
+          test "$(git rev-parse c73f1981386548b02049ec5b13be779b1a39395e^{tree})" = "$(git rev-parse eb93cf88de5f190b2cfc3c32c0cc6fa7e919d642^{tree})"
+          git merge-base --is-ancestor eb93cf88de5f190b2cfc3c32c0cc6fa7e919d642 b3e06be24226c7a7cdbcdb31d413c1e405b1b94b
           git checkout --detach b3e06be24226c7a7cdbcdb31d413c1e405b1b94b
-          cp /tmp/evidence-regressions/ReviewBoundaryContinuationTest.java taxonomy-analysis/src/test/java/com/taxonomy/analysis/relations/
+          python3 /tmp/evidence-regressions/apply-projection.py
+          python3 /tmp/evidence-regressions/apply-review.py
+          git add -A
+          git diff --cached --check
+          git diff --cached --stat
+      - id: tree
+        run: |
+          echo "tree=$(git write-tree)" >> "$GITHUB_OUTPUT"
+          echo "TESTED_PRODUCT_TREE=$(git write-tree)"
+          test -z "$(git diff --cached --name-only | grep -E '^(.verification/|.github/workflows/|.github/architecture-dependency-baseline.json)' || true)"
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
           distribution: temurin
           java-version: 21
           cache: maven
-      - name: Prove precision and early-root validation failures
+      - name: Execute complete source-built analysis and upstream unit suites
         run: |
           set +e
-          ./mvnw -B -ntp -pl taxonomy-analysis -am -Dtest=ReviewBoundaryContinuationTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/evidence-review-red.log 2>&1
+          ./mvnw -B -ntp -pl taxonomy-analysis -am test > /tmp/evidence-green.log 2>&1
           status=$?
-          tail -80 /tmp/evidence-review-red.log
-          test "$status" -ne 0 || exit 1
+          tail -100 /tmp/evidence-green.log
+          exit "$status"
+      - name: Execute unchanged architecture, configuration and projection guards
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-app -am -Dtest=ArchitectureContextDependencyRatchetTest,ConfigurationReferenceContractTest,EvidenceRelationProjectionTest,RelationEvidenceMappingTest,ScopedEvidenceDiagramTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/evidence-guards.log 2>&1
+          status=$?
+          tail -80 /tmp/evidence-guards.log
+          exit "$status"
+      - name: Execute complete ordinary UI contract entrypoint
+        run: |
+          npm --prefix .github ci > /tmp/evidence-npm.log 2>&1
+          set +e
+          npm --prefix .github run verify:ui-contracts > /tmp/evidence-ui-green.log 2>&1
+          status=$?
+          tail -60 /tmp/evidence-ui-green.log
+          exit "$status"
+      - name: Require positive regression counts and unchanged tested source
+        run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
-          p='taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.relations.ReviewBoundaryContinuationTest.xml'
-          r=ET.parse(p).getroot()
-          print('RED_REVIEW_ASSERTIONS',r.attrib)
-          assert int(r.get('tests'))==8 and int(r.get('failures'))==5 and int(r.get('errors'))==0 and int(r.get('skipped'))==0
+          from pathlib import Path
+          names={'EvidenceProjectionContinuationTest':8,'ReviewBoundaryContinuationTest':8,'RelationSearchIntegrationTest':40,'RelationSearchEngineTest':28}
+          for name,count in names.items():
+              p=Path('taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.relations.'+name+'.xml')
+              r=ET.parse(p).getroot(); print(name,r.attrib)
+              assert int(r.get('tests'))>=count and all(int(r.get(k,'0'))==0 for k in ['errors','failures','skipped'])
           PY
+          test "$(git write-tree)" = '${{ steps.tree.outputs.tree }}'
+          git diff --exit-code
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: evidence-review-red
+          name: evidence-projection-green
           path: |
-            /tmp/evidence-review-red.log
-            taxonomy-analysis/target/surefire-reports/TEST-*ContinuationTest.xml
+            /tmp/evidence-*.log
+            taxonomy-*/target/surefire-reports/TEST-*.xml
+          retention-days: 7
+          if-no-files-found: error
+  prepare-commit:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          show-progress: false
+          persist-credentials: false
+      - name: Prepare exactly verified increment without moving refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_TREE: ${{ needs.verify.outputs.tree }}
+        run: |
+          cp -r .verification /tmp/evidence-regressions
+          git checkout --detach b3e06be24226c7a7cdbcdb31d413c1e405b1b94b
+          python3 /tmp/evidence-regressions/apply-projection.py
+          python3 /tmp/evidence-regressions/apply-review.py
+          git add -A
+          test "$(git write-tree)" = "$EXPECTED_TREE"
+          python3 - <<'PY'
+          import json,os,subprocess,urllib.request
+          from pathlib import Path
+          base='b3e06be24226c7a7cdbcdb31d413c1e405b1b94b'
+          main='c73f1981386548b02049ec5b13be779b1a39395e'
+          def git(*args): return subprocess.check_output(['git',*args],text=True).strip()
+          assert git('rev-parse',main+'^{tree}')==git('rev-parse','eb93cf88de5f190b2cfc3c32c0cc6fa7e919d642^{tree}')
+          names=git('diff','--cached','--name-only',base).splitlines()
+          assert names and all(not n.startswith(('.verification/','.github/workflows/')) for n in names)
+          def post(kind,body):
+              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/'+kind,data=json.dumps(body).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urllib.request.urlopen(req,timeout=60) as response:return json.load(response)
+          tree=post('trees',{'base_tree':'69a1f7e15fd33fb77b261c6ce616d790c962c0df','tree':[{'path':p,'mode':'100644','type':'blob','content':Path(p).read_text()} for p in names]})
+          assert tree['sha']==os.environ['EXPECTED_TREE']
+          commit=post('commits',{'tree':tree['sha'],'parents':[base,main],'message':'fix(analysis): preserve projected score provenance and relationship choices\n\nKeep raw and effective scores separate, retain absent assessments and every scoped claim on required edge signatures. Validate exact numeric scores and catalogue roots before spending model calls. Reconcile the content-identical squash of #1112 without dropping either branch history. No automatic adoption or canonical test-policy changes.'})
+          print('PREPARED_COMMIT='+commit['sha'])
+          print('PREPARED_TREE='+tree['sha'])
+          print('No branch references were moved. Full ordinary CI remains separate.')
+          PY
+  canonical-verification:
+    needs: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          show-progress: false
+          persist-credentials: false
+      - name: Reconstruct the identical tested product source
+        run: |
+          cp -r .verification /tmp/evidence-regressions
+          git checkout --detach b3e06be24226c7a7cdbcdb31d413c1e405b1b94b
+          python3 /tmp/evidence-regressions/apply-projection.py
+          python3 /tmp/evidence-regressions/apply-review.py
+          git add -A
+          test "$(git write-tree)" = '${{ needs.verify.outputs.tree }}'
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Run canonical verification including GUI contracts
+        run: |
+          set +e
+          ./mvnw -B -ntp verify -DexcludedGroups=real-llm > /tmp/evidence-canonical.log 2>&1
+          status=$?
+          tail -100 /tmp/evidence-canonical.log
+          exit "$status"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: evidence-projection-canonical
+          path: |
+            /tmp/evidence-canonical.log
+            taxonomy-*/target/surefire-reports/TEST-*.xml
+            taxonomy-*/target/failsafe-reports/TEST-*.xml
           retention-days: 7
           if-no-files-found: error
