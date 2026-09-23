@@ -5,42 +5,98 @@ on:
 permissions:
   contents: read
 jobs:
-  red:
+  green:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
+    permissions:
+      contents: write
+    outputs:
+      source: ${{ steps.publish.outputs.source }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
+      - name: Apply checksum-verified patch to the exact main baseline
+        run: |
+          python3 - <<'PY'
+          import base64, gzip, hashlib, os
+          from pathlib import Path
+          patch = gzip.decompress(base64.b64decode(Path('.github/llm-json-diagnostics.patch.gz.b64').read_text()))
+          assert hashlib.sha256(patch).hexdigest() == '7b420574eb47bc85863ca686822f70b4e679af8c2e26b8ae6159554a1040a40a'
+          Path(os.environ['RUNNER_TEMP'], 'llm-diagnostics.patch').write_bytes(patch)
+          PY
+          git switch --detach f40f58a259dbde09877476d4736f22ec5662523d
+          git apply --check "$RUNNER_TEMP/llm-diagnostics.patch"
+          git apply "$RUNNER_TEMP/llm-diagnostics.patch"
+          git add --all
+          git diff --cached --check
+          test "$(git write-tree)" = 7686db96de5ec90dffaf3563295b2e6feef787fd
+          mkdir -p "$RUNNER_TEMP/llm-evidence"
+          git diff --cached > "$RUNNER_TEMP/llm-evidence/source.patch"
+          git write-tree > "$RUNNER_TEMP/llm-evidence/tree.txt"
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - name: Run analysis and upstream module unit tests
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-analysis -am test 2>&1 | tee "$RUNNER_TEMP/llm-evidence/maven-test.log"
+      - name: Run the complete existing UI contract suite
+        run: |
+          set -o pipefail
+          npm --prefix .github ci
+          npm --prefix .github run verify:ui-contracts 2>&1 | tee "$RUNNER_TEMP/llm-evidence/ui-contracts.log"
+      - name: Retain pinned stylesheet for local browser inspection
+        run: |
+          curl --fail --silent --show-error --location --max-time 30 https://raw.githubusercontent.com/twbs/bootstrap/v5.3.8/dist/css/bootstrap.min.css > "$RUNNER_TEMP/llm-evidence/bootstrap-5.3.8.min.css"
+      - name: Publish only the tested product tree on the feature branch
+        id: publish
+        run: |
+          test "$(git write-tree)" = 7686db96de5ec90dffaf3563295b2e6feef787fd
+          git diff --exit-code
+          git -c user.name='Carsten Hammer' -c user.email='carsten.hammer@t-online.de' commit -m 'fix: improve LLM JSON diagnostics and preserve literal prompt data'
+          test "$(git rev-parse HEAD^{tree})" = 7686db96de5ec90dffaf3563295b2e6feef787fd
+          git push origin HEAD:refs/heads/fix/llm-json-diagnostics
+          echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          git rev-parse HEAD > "$RUNNER_TEMP/llm-evidence/commit.txt"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: llm-diagnostics-green
+          path: |
+            ${{ runner.temp }}/llm-evidence/
+            **/target/surefire-reports/
+          retention-days: 14
+  full-verify:
+    needs: green
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.green.outputs.source }}
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Execute tests against unchanged production source
+      - name: Run documented full verification without real provider calls
         run: |
-          mkdir -p evidence
-          set +e
-          ./mvnw -B -ntp -pl taxonomy-analysis -am test -Dtest=LlmJsonValidationTest,PromptLiteralDataTest -Dsurefire.failIfNoSpecifiedTests=false > evidence/red.log 2>&1
-          result=$?
-          set -e
-          cat evidence/red.log
-          test "$result" -ne 0
-          python3 - <<'PY'
-          import glob, xml.etree.ElementTree as ET
-          reports = glob.glob('taxonomy-analysis/target/surefire-reports/TEST-*Test.xml')
-          suites = [ET.parse(p).getroot() for p in reports]
-          assert len(suites) == 2, [s.get('name') for s in suites]
-          assert sum(int(s.get('tests', 0)) for s in suites) == 12
-          assert sum(int(s.get('failures', 0)) for s in suites) == 11
-          assert sum(int(s.get('errors', 0)) for s in suites) == 0
-          print('Expected RED: 12 tests, 11 assertion failures, 0 errors')
-          PY
+          mkdir -p "$RUNNER_TEMP/llm-full-verify"
+          set -o pipefail
+          ./mvnw -B -ntp verify -DexcludedGroups=real-llm 2>&1 | tee "$RUNNER_TEMP/llm-full-verify/verify.log"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: llm-diagnostics-red
+          name: llm-diagnostics-full-verify
           path: |
-            evidence/
+            ${{ runner.temp }}/llm-full-verify/
             **/target/surefire-reports/
+            **/target/failsafe-reports/
           retention-days: 14
