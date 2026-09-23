@@ -1,16 +1,20 @@
 # IP – Information Products: grouping and scoring
 
-[Shared scoring contract and implementation scope](../TAXONOMY_SCORING.md) · [Deutsch](../../de/taxonomies/IP.md)
+[Shared scoring contract and binding source constraints](../TAXONOMY_SCORING.md) · [Deutsch](../../de/taxonomies/IP.md)
 
-## Subject and existing hierarchy
+## Original structure and limited additions
 
-IP means information products such as reports, plans and information artefacts that are read or produced, not software products generally. The source has 1,071 IP entries. The existing overlay assigns 866 entries, including 853 classified as `PRODUCT`. These are structural audit counts, not expert semantic approvals. The runtime tree has one primary parent; secondary classification codes are metadata. #1118 does not treat overlay assignment as evidence of inherited source semantics.
+IP means information products, not software products generally. The audited source contains 1,071 IP entries; the existing overlay assigns 866 entries, including 853 as `PRODUCT`. These are structural counts, not expert approvals. Runtime navigation uses one primary parent; additional classification codes are metadata.
 
-## Exact criterion for the five new proposals
+**Binding change requirement:** Preserve all original nodes, descriptions, IDs, source status and original arrangement. Do not change sensible parent relationships or source ordering. New groups are allowed only at documented IP attachment gaps, not for wholesale regrouping. Low AI scores do not prove a bad parent. Existing overlay assignments must also be checked against this narrower permission.
 
-**English words in the original title, and nothing more.** The generator selects original entries marked `PRODUCT` by the overlay. It lowercases titles with `Locale.ROOT`, splits at characters that are neither Unicode letters nor digits, and looks for an exact match with at least one listed word. Full descriptions remain in the audit but do not participate in grouping. This uses no LLM, embedding or semantic-subordination assessment.
+Additions are separately versioned navigation, not replacements for original parent fields or ordering. Preserve sensible relationships within an affected subtree. One understandable hierarchy is sufficient; multiple facets are not required. This supersedes the earlier general faceted-regrouping target. Identifying and attaching all eligible cases remains open.
 
-| Proposed access point | Exact words | References in inspected catalogue |
+## Criterion used by the five existing proposals
+
+The generator uses **English words in original titles only**, selecting entries marked `PRODUCT` by the overlay. It lowercases with `Locale.ROOT`, splits on characters other than Unicode letters/digits, and matches exact tokens. Descriptions remain in the audit but do not determine grouping. No AI or semantic-subordination assessment is performed.
+
+| Proposal | Exact words | References in inspected catalogue |
 |---|---|---:|
 | Hazard / warning information | `hazard`, `hazards`, `warning`, `warnings` | 26 |
 | Reports | `report`, `reports` | 222 |
@@ -18,27 +22,29 @@ IP means information products such as reports, plans and information artefacts t
 | Requests | `request`, `requests` | 48 |
 | Orders | `order`, `orders` | 50 |
 
-These rules mix subject/purpose with artefact form. They are **not one consistent semantic decomposition**, exhaustive product coverage or a completed IP tree. A warning report can match several groups. A synonym without a listed word is missed, and accidental word matches can misclassify. Counts can overlap and must not be summed as disjoint coverage. A group with 222 reports is not yet a bounded model candidate batch.
+These rules mix subject/purpose and artefact form. They are neither a consistent semantic decomposition nor exhaustive. Word matches can mislead; synonyms can be missed. Counts overlap and are not disjoint coverage. A 222-report group is not a bounded model candidate batch. The rules **do not yet enforce** the newly required documented-IP-gap restriction.
 
-Each proposal is `NAVIGATION_GROUP`, `reviewRequired=true`, `affectsScores=false`, `inheritsSemantics=false` and `createsArchitectureElement=false`. Stable IDs start with `local:ip:navigation:`; `ip-reports` is a display code only. `parentId=IP` in proposal JSON does not insert nodes into the runtime tree. Original IDs, descriptions and active parents are unchanged.
+All proposals remain unapproved `NAVIGATION_GROUP` with `reviewRequired=true`, `affectsScores=false`, `inheritsSemantics=false` and `createsArchitectureElement=false`. Identities start with `local:ip:navigation:`; `ip-reports` is a display code only. They are not inserted into the active tree and do not authorize rearranging correctly placed original entries.
 
-## Current scoring
+## Navigation allowed, architecture relationships prohibited
 
-Families and categories use parent-budget allocation. Concrete `PRODUCT` entries receive independent suitability scores against the original requirement in batches of at most ten. The default threshold 50 converts lower values to structured zeros. Multiple products may score highly together; their total need not equal 100 or the family value.
+**For now, no local group may be the source or target of an architecture relationship**, even after internal review. Groups are neither required information products nor official classifications of architecture elements. A central provenance/role check must enforce this for AI, API/manual input, persistence/adoption, projection and export. Proposal metadata alone does not demonstrate that enforcement.
 
-Downstream weighting remains `round(parent relevance * suitability / 100)`: 40 and 80 produce 32. This is not justified conditional probability arithmetic and the new navigation groups do not repair it. The shared contract explains missing-parent fallbacks, failure zeros and original-response versus stored/effective values. Only completed successful product assessment without a suitable candidate can establish a confirmed catalogue coverage-gap finding.
+Parent-child membership in augmented navigation remains necessary and permitted. A local branch leads to original entries; a justified relationship ends at an appropriate **original** leaf or intermediate node. A group match alone proves no edge. Do not redirect it to the nearest original parent or an arbitrary leaf; leave unresolved target search open. Do not infer provenance from letter case or trust provenance supplied by an API caller.
 
-## Joint need versus alternatives
+Concept provenance and proposed-relationship provenance remain separate: an AI edge between original IP entries is not an official publisher assertion either.
 
-Hazard reporting and action tracking might jointly require a hazard record, action plan and effectiveness evidence. Two reporting forms could instead be alternatives for one contribution. Suitability alone proves neither joint necessity nor interchangeability. Requirement contribution, access mode and conditions must justify the decision. These examples invent no original C3 IDs.
+## Current scoring and remaining limitations
 
-## Target design: explicit facets rather than mixed branches
+Families/categories use the parent budget. Concrete `PRODUCT` entries receive independent suitability against the original requirement in batches of at most ten. The default threshold 50 turns lower values into structured zeros. Multiple products can score highly at once; their sum need not equal the family score.
 
-Subject, purpose and artefact form should have separate definitions. The same warning report can appear under “Subject → Hazards” and “Artefact form → Report”. Groups need inclusion/exclusion criteria; membership should use title and description with provenance. Retain original and semantically reviewed relationships. Do not silently swap semantic containment and navigation-only membership.
+Downstream weighting remains `round(parent relevance * suitability / 100)`: 40 and 80 produce 32. The heuristic is not validated conditional probability. The shared contract explains failure zeros, absent parent scores, root normalization, and original-response versus stored/effective values. Only complete successful assessment without a suitable candidate may establish a confirmed catalogue coverage-gap finding. #1118 does not change these formulas.
 
-Alternate access references one original identity. It must not duplicate counts, multiply different parent scores or cause unnecessary repeated model assessments. Different requirement contributions still retain separate evidence. A low-scoring provisional route must not block all other access. Faceted runtime navigation and coordinated score migration remain open in #1111.
+A hazard record, action plan and effectiveness evidence can be jointly needed; other reporting forms can be alternatives for one contribution. Suitability does not distinguish these cases. Concrete contribution, access and conditions must justify need and relationships.
 
-Acceptance: one product through two facets remains one object; jointly needed products coexist; alternatives are not both adopted automatically; navigation-only regrouping does not change suitability; semantic classifications use reviewable definitions instead of title-only rules.
+## Acceptance
+
+Preserve original identity, content, status, sensible parent relationships and order. Attach only documented IP gaps; lose or duplicate no original entry. A local navigation level changes neither suitability nor necessity. A matching local branch remains navigable, but architectural edges to it are visibly rejected. Original intermediate nodes remain possible; jointly required products coexist. Unresolved attachment must not silently exclude matching original entries. Semantic placement, active navigation, endpoint enforcement and coordinated scoring changes remain open in #1111.
 
 ## Implementation sources
 

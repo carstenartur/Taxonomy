@@ -1,86 +1,90 @@
 # Gruppierung und Bewertung der Teiltaxonomien
 
-> **Implementierungsstand:** 23. September 2026, Quellstand `e73dcfe43964b68aaa6bc7d967471fe209da9a8a` aus PR #1118. Diese Seite beschreibt den dort lesbaren Code, keine bereits ausgerollte Installation. Die gesonderten Parseränderungen aus #1113 sind in dieser Ausgangsbasis nicht enthalten. Abschnitte mit **Zielbild** sind noch keine implementierten Fähigkeiten. Eine Dokumentationsänderung ändert weder Scores noch Katalogdaten.
+> **Implementierungsstand:** Quellstand `e73dcfe43964b68aaa6bc7d967471fe209da9a8a` aus PR #1118, nicht eine bereits ausgerollte Installation. Die separaten Parseränderungen aus #1113 sind in dieser Basis nicht enthalten. Die unten ausdrücklich als **verbindlicher Änderungsauftrag** bezeichneten Grenzen wurden am 23. September 2026 präzisiert; ihre Dokumentation ist kein Nachweis einer bereits durchgängigen Laufzeitsperre. Dieser Dokumentationsschritt verändert weder Code noch Scores, Katalogdaten oder historische Snapshots.
 
 [English](../en/TAXONOMY_SCORING.md) · [Kontext und Navigation](../dev/hierarchy-context-and-navigation.md) · [Technischer Score-Datenvertrag](../dev/ANALYSIS_SCORE_SEMANTICS.md)
 
 ## Eine gemeinsame Ausführung, unterschiedliche fachliche Fragen
 
-Die Teiltaxonomien haben unterschiedliche Gegenstände, aber nicht acht verschiedene implementierte Rechenverfahren. Im regulären LLM-Pfad verwenden Kategorien denselben Elternbudget-Parser. Die Prompts unterscheiden den fachlichen Blickwinkel. Nur ausdrücklich durch Metadaten als `PRODUCT` klassifizierte Einträge erhalten die unabhängige Produktbewertung. Ein Blatt ist nicht allein deshalb ein Produkt; eine User Application verwendet nicht automatisch die IP-Produktformel.
+Es gibt nicht acht verschiedene implementierte Rechenverfahren. Im regulären LLM-Pfad verwenden Kategorien denselben Elternbudget-Parser; die Prompts unterscheiden den fachlichen Blickwinkel. Nur ausdrücklich als `PRODUCT` klassifizierte Einträge erhalten die unabhängige Produktbewertung. Ein Blatt oder eine User Application ist nicht allein deshalb ein solches Produkt.
 
 | Seite | Fachliche Frage | Heutiger regulärer Bewertungsweg |
 |---|---|---|
 | [BP – Business Processes](taxonomies/BP.md) | Welche Tätigkeiten und Abläufe werden benötigt? | Kategorie-/Elternbudget |
 | [BR – Business Roles](taxonomies/BR.md) | Welche Rollen und Verantwortlichkeiten sind betroffen? | Kategorie-/Elternbudget |
 | [CP – Capabilities](taxonomies/CP.md) | Welche Fähigkeiten werden benötigt? | Kategorie-/Elternbudget |
-| [CI – COI Services](taxonomies/CI.md) | Welche gemeinschafts- beziehungsweise fachgebietsspezifischen Dienste werden benötigt? | Kategorie-/Elternbudget |
+| [CI – COI Services](taxonomies/CI.md) | Welche gemeinschafts-/fachgebietsspezifischen Dienste werden benötigt? | Kategorie-/Elternbudget |
 | [CO – Communications Services](taxonomies/CO.md) | Welche Kommunikations- und Übertragungsdienste werden benötigt? | Kategorie-/Elternbudget |
 | [CR – Core Services](taxonomies/CR.md) | Welche grundlegenden IT-Dienste werden benötigt? | Kategorie-/Elternbudget |
 | [IP – Information Products](taxonomies/IP.md) | Welche Informationen werden erzeugt, gelesen oder verändert? | Familien: Kategorie; `PRODUCT`: unabhängige Eignung |
 | [UA – User Applications](taxonomies/UA.md) | Welche benutzerseitigen Anwendungsfunktionen werden benötigt? | Kategorie-/Elternbudget |
 
-## Was bedeutet eine Gruppierung?
+## Verbindlicher Änderungsauftrag: Originalstruktur erhalten
 
-Eine Quell-Unterordnung, eine ergänzte fachliche Klassifikation, eine Navigationsgruppe und eine Architekturbeziehung sind nicht austauschbar. Die bestehende Persistenz hat einen primären `parentCode`. Das IP-Overlay ergänzt diesen sowie optionale `secondaryClassificationCodes`. Diese Metadaten sind noch kein vollständiger, mehrdimensionaler Suchbaum.
+**Die Originaleinträge und ihre Anordnung in der Excel-Quelle bleiben maßgeblich.** IDs, Titel, Beschreibungen, Quellstatus, ursprüngliche Elternangaben und Quellreihenfolge bleiben erhalten. Bestehende sinnvolle Eltern-Kind-Beziehungen werden nicht umgeordnet oder durch neue Zwischenknoten unterbrochen. Das gilt für originale Zwischenknoten ebenso wie für Blätter und für alle Teiltaxonomien. Ein aus der Quelle stammender Draft-Eintrag wird dadurch nicht als fachlich freigegeben ausgegeben.
 
-PR #1118 trennt den sichtbaren Navigationspfad vom Bewertungskontext: Originale Vorfahrenbeschreibungen bleiben erhalten; an einer Overlay-Elternzuordnung endet die automatische Vererbung. Die Quellzugehörigkeit ist damit nachvollziehbar, aber nicht als mathematisch oder fachlich unfehlbar bewiesen. Ein fehlender, zyklischer oder wurzelübergreifender semantischer Pfad wird nicht still repariert. Ein `reviewRequired=false` aus deterministischen Zuordnungsregeln ersetzt keine fachliche Prüfung.
+**Ergänzungen sind ausschließlich an belegten IP-Anschlusslücken erlaubt.** Zulässige Gründe sind eine fehlende oder nicht auflösbare Elternreferenz oder ein konkret belegter fachlich ungeeigneter Elternbezug. Ein niedriger Score, Titelwortähnlichkeit oder ein für die Suche bequemerer Baum reicht nicht aus. Bei unklarer Semantik bleibt die Zuordnung offen. Existierende sinnvolle Beziehungen innerhalb eines betroffenen Teilbaums bleiben erhalten; ergänzt wird nur die fehlende Anbindung.
 
-**Zielbild: mehrere getrennte Klassifikationsachsen.** Funktion, fachlicher Gegenstand und Artefakt-/Produkttyp können unabhängige Zugänge sein. Ein E-Mail-Client kann über „Funktion → Kommunikation“ und über „Anwendungstyp → Client“ erreichbar sein. Beide Wege referenzieren dieselbe Originalidentität. Das Beispiel bezeichnet keine zusätzlichen C3-Katalogcodes. „Kommunikation“ als Facette ist nicht automatisch die Teiltaxonomie CO; ein Client ist auch nicht allein wegen des Wortes Produkt ein IP-Informationsprodukt.
+Die Ergänzung wird getrennt versioniert und überschreibt weder das originale `Parent`-Feld noch die Quellreihenfolge. Originalansicht und ergänzte Navigation müssen unterscheidbar sein. **Ein einziger nachvollziehbarer Baum genügt; Mehrfachwege und Facetten sind nicht gefordert.** Frühere Aussagen über eine allgemeine Neuklassifikation oder verpflichtende Facettennavigation sind damit ersetzt. Die bestehenden Overlay-Zuordnungen müssen ebenfalls auf diesen engeren Umfang geprüft werden.
 
-Eine künftige Mitgliedschaft muss mindestens Facette, Gruppenidentität, Originalidentität, Beziehungsart, Herkunft, Geltungsbereich und Prüfstatus unterscheiden. Bei echten, gemeinsam geltenden Oberbegriffen gelten beide Einschränkungen. Alternative Navigationswege werden dagegen nicht zu einer erfundenen UND-Bedeutung vermischt. Doppelte Zugänge dürfen weder Knoten noch Abdeckung noch Modellabfragen vervielfachen. Unterschiedliche Anforderungsbeiträge müssen dennoch als getrennte Belege erhalten bleiben.
+## Lokale Navigation ist keine offizielle Taxonomieaussage
 
-## Heutige Kategorie-Rechnung: ein Gewichtungsbudget
+Erfundene Gruppenknoten sind sichtbar als lokale Navigationshilfen zu kennzeichnen. Herkunft und Rolle müssen explizit und versionsbezogen sein; Kleinbuchstaben im Code oder ein `reviewRequired`-Wert reichen nicht als Herkunftsnachweis. Interne Prüfung verleiht einer lokalen Gruppe keinen offiziellen Status.
 
-Der Prompt fordert für die angebotenen Kategorien ganzzahlige Scores und Begründungen, deren Summe dem Elternwert `P` entspricht. Für gelesene nichtnegative Werte `r_i` mit positiver Summe `S` normalisiert `LlmResponseParser` bei Abweichungen:
+**Zunächst sind Architekturbeziehungen mit lokalen Gruppenknoten als Quelle oder Ziel verboten.** Das gilt für KI-Vorschläge, manuelle/API-Eingaben, Speicherung/Übernahme, Architekturprojektion und Export. Eine Gruppe darf weder als fachlicher Architekturbaustein erzeugt noch als offizielle Taxonomieklassifikation eines Bausteins verwendet werden. Die für den Baum nötigen Navigationszuordnungen sind davon getrennt: Ein lokaler Ast darf zu zulässig angeschlossenen Original-IP-Einträgen führen.
+
+Ein Verstoß muss sichtbar abgewiesen werden. Eine Kante darf nicht still ausgeblendet oder auf einen Originalvater bzw. das erste Blatt umgebogen werden. Solange nur die lokale Gruppe passt, bleibt die Suche oder der Bedarf offen. Originale Zwischenknoten bleiben mögliche Endpunkte, wenn Typ und Anforderungsbeleg passen. Historische Nachweise bleiben unverändert; Konflikte bei erneuter Verwendung müssen offengelegt werden.
+
+Auch eine KI-Beziehung **zwischen Originaleinträgen** ist keine offizielle Herausgeberaussage. Begriffsherkunft und Beziehungsherkunft sind getrennt zu dokumentieren.
+
+## Heutiger Kontextpfad
+
+Quell-Unterordnung, ergänzte Klassifikation, Navigation und Architekturbeziehung sind unterschiedliche Dinge. Die Persistenz hat einen primären `parentCode`; das Overlay ergänzt außerdem `secondaryClassificationCodes`. PR #1118 behält anwendbare Quell-Vorfahrenbeschreibungen im Bewertungskontext, beendet die automatische Vererbung aber an Overlay-Elternzuordnungen. Fehlende Eltern, Zyklen und wurzelübergreifende semantische Pfade scheitern explizit. Das setzt die oben beschriebene neue Zuordnungs- und Endpunktsperre noch nicht vollständig um.
+
+## Heutige Kategorie-Rechnung: Gewichtungsbudget
+
+Der Prompt verlangt ganzzahlige Scores und Begründungen mit Summe `P`, dem Elternbudget. Bei positiver gelieferter Summe `S` normalisiert der Parser Abweichungen proportional:
 
 ```text
 w_i = P * r_i / S
-Ganzzahlen durch Abrunden und Vergabe der verbleibenden Einheiten
-an die größten Nachkommareste (Largest-Remainder-Verfahren).
+Abrunden, dann restliche Einheiten an die größten Nachkommareste vergeben.
+P = 60; gelieferte Kinderwerte 80, 40 -> 40, 20.
 ```
 
-Bei `S = P` werden die Werte unverändert übernommen. Sind alle Werte null, bleiben sie null; es werden nicht künstlich positive Werte erzeugt. Beispiel: `P = 60`, gelieferte Kinderwerte `80, 40` ergeben `40, 20`. Der gelieferte Summenwert über dem Budget erzeugt bereits einen `TaxonomyDiscrepancy`-Eintrag. Dieser Summenbefund ist nicht die noch ausstehende Prüfung semantischer Kind-/Vater-Konsistenz.
+Bei `S = P` bleiben Werte unverändert; ein vollständig mit null beantworteter Satz bleibt null. Eine gelieferte Summe über `P` erzeugt einen `TaxonomyDiscrepancy`-Eintrag. Dieser Summenbefund ist nicht die noch fehlende semantische Kind-/Vater-Konsistenzprüfung.
 
-**Rationale und Grenze:** Die Normalisierung realisiert eine hierarchische Gewichtungsverteilung. Sie beweist weder einen Erfüllungsgrad noch Notwendigkeit, Wahrscheinlichkeit, Kostenanteil oder gegenseitigen Ausschluss. Mehrere Prozesse, Rollen, Fähigkeiten, Dienste oder Anwendungen können gleichzeitig erforderlich sein. Auch ein Kind mit kleinem Budgetanteil kann unverzichtbar sein. Mehr erforderliche Geschwister können allein rechnerisch die Anteile vorhandener Geschwister senken.
+Die Normalisierung verteilt Gewichte. Sie beweist weder Erfüllung, Notwendigkeit, Wahrscheinlichkeit, Kostenanteil noch gegenseitigen Ausschluss. Mehrere Prozesse, Rollen, Dienste, Anwendungen oder Produkte können gleichzeitig erforderlich sein; ein kleiner Budgetanteil kann unverzichtbar sein.
 
-### Wurzel-Sonderfall: dokumentierte Abweichung von der Absicht
+**Bekannter Wurzelfehler:** `analyzeAllTaxonomies` und `analyzeStreaming` senden jede Wurzel einzeln mit `P = 100` durch denselben Parser. Eine positive Einzelantwort `20` wird so `100`; `0` bleibt `0`. Das widerspricht der beabsichtigten unabhängigen Wurzelrelevanz und ist noch zu korrigieren. Mockwerte können davon abweichen.
 
-`analyzeAllTaxonomies` und `analyzeStreaming` bewerten jede Wurzel getrennt mit `P = 100`. Laut Kommentar soll das unabhängige Astrelevanz liefern. Der tatsächlich verwendete reguläre Kategorie-Parser normalisiert aber auch diesen Ein-Knoten-Satz: Eine Antwort `20` wird zu `100`; eine Antwort `0` bleibt `0`. Die Wurzeln werden zwar nicht miteinander auf 100 verteilt, der einzelne positive Modellwert bleibt dabei jedoch nicht erhalten. Das ist eine zu korrigierende Einschränkung, keine fachliche Empfehlung. Mockdaten können abweichende Wurzelwerte zeigen.
+## Heutige IP-Produktrechnung
 
-## Heutige IP-Produktrechnung: Eignung plus abgeleiteter Wert
-
-Nur `analysisRole=PRODUCT` schaltet auf den Produktweg. Kandidaten werden nach Code sortiert, in Paketen von höchstens zehn bewertet und anhand der Originalanforderung unabhängig mit 0–100 und Begründung eingeschätzt. Die Paketgröße ist konfigurierbar. Die Mindestgrenze beträgt standardmäßig 50; gelieferte Werte darunter werden im strukturierten Ergebnis zu null. `49, 80, 90` ergeben bei Grenze 50 also `0, 80, 90`, nicht eine Verteilung auf 100.
-
-Für generische nachgelagerte Verbraucher verwendet `AnalysisScoreSemantics` Version 1 weiterhin:
+`analysisRole=PRODUCT` aktiviert unabhängige Eignung für die Originalanforderung. Kandidaten werden nach Code sortiert, in konfigurierbaren Paketen von höchstens zehn geprüft und anhand der Standard-Mindestgrenze 50 gefiltert: `49, 80, 90` wird im strukturierten Ergebnis `0, 80, 90`. Das ist keine Aufteilung auf 100.
 
 ```text
-effektive Relevanz = round(direkte Elternrelevanz * Produkteignung / 100)
-Beispiel: Elternwert 40, Produkteignung 80 -> effektiver Wert 32.
+Version 1: effektive Relevanz = round(direkte Elternrelevanz * Produkteignung / 100)
+Elternwert 40 und Produkteignung 80 -> effektiver Wert 32.
 ```
 
-Fehlt der bewertete direkte Elternwert, wird der effektive Wert `0` und eine Warnung erzeugt. Das ist ein technischer Ersatzwert, kein Nachweis fehlender Eignung. Die Produktbewertung fragt nach der gesamten Anforderung, nicht ausdrücklich nach einer bedingten Wahrscheinlichkeit. Die Multiplikation ist daher eine bestehende Gewichtungsheuristik, keine fachlich validierte Wahrscheinlichkeitsrechnung. Ein unpassender Elternknoten kann die weitere Bewertung verhindern oder den abgeleiteten Wert unbegründet verringern. #1118 ändert diese Formel nicht.
+Fehlt ein bewerteter direkter Elternwert, entsteht ein effektiver Ersatzwert `0` mit Warnung, kein Nachweis fehlender Eignung. Die Multiplikation ist eine bestehende Gewichtungsheuristik, keine validierte bedingte Wahrscheinlichkeit. Ein falscher Elternbezug kann die Suche oder den abgeleiteten Wert verzerren. In gemischten Geschwistersätzen erhalten Kategorien das Elternbudget und Produkte unabhängige Eignung; beide Werte dürfen nicht zu einer Erfüllungssumme addiert werden.
 
-In gemischten Geschwistersätzen erhalten die Kategorien das Elternbudget und die Produkte jeweils unabhängige Eignungswerte. Diese Werte dürfen nicht gemeinsam zu einer vermeintlichen Erfüllungssumme addiert werden.
+## Eignung, Bedarf und Suchpriorität
 
-## Eignung ist nicht Bedarf
+Gleich hohe Scores können gemeinsam benötigte Beiträge, Alternativen oder nur allgemein passende Kandidaten beschreiben. Erst Beitrag, Belege und Bedingungen begründen den Bedarf. Die zuschaltbare Beziehungssuche unterscheidet `REQUIRED`, `OPTIONAL` und `ALTERNATIVE`, ersetzt damit aber noch keinen vollständigen Produktvariantenentscheid.
 
-Zwei Werte von 90 können zwei gemeinsam notwendige Produkte, zwei alternative Realisierungen oder zwei nur allgemein passende Kandidaten betreffen. Der Score allein unterscheidet das nicht. Der konkrete Anforderungsbeitrag und die verifizierte Beziehung müssen getrennt begründen, was benötigt wird. Die zuschaltbare Beziehungssuche unterscheidet `REQUIRED`, `OPTIONAL` und `ALTERNATIVE`; ihre Navigations- und Prüfentscheidungen sind keine Prozentanteile. Auch eine alternativ klassifizierte Beziehung ersetzt noch keinen vollständigen Variantenentscheid auf Produktebene.
+**Änderungsziel:** Gleicher Anforderungskontext und echte semantische Unterordnung erfordern konsistente Astrelevanz (`Kind <= Vater`); Widersprüche bleiben als Befund mit Originalbelegen sichtbar statt durch Kappen/Multiplizieren verborgen zu werden. Daraus folgt keine Summengleichheit der Geschwister. Lokale Navigationsgruppen bekommen höchstens eine getrennte Suchpriorität, keine fachliche Produktrelevanz. Ihre Einfügung darf Eignung und Bedarf eines Originaleintrags nicht ändern. Der Abstieg muss mehrere erforderliche Äste verfolgen können, ohne mehrere Wege je Eintrag zu benötigen. Eine ungeklärte IP-Anbindung darf relevante Einträge nicht unbemerkt ausschließen.
 
-**Zielbild:** Astrelevanz bei gleichem Anforderungskontext und echter semantischer Unterordnung soll konsistent sein (`Kind <= Vater`). Ein Widerspruch wird als Befund mit Originalbelegen sichtbar und nicht durch stilles Kappen oder Multiplizieren verdeckt. Das erzwingt keine Summengleichheit zwischen Geschwistern. Eine rein organisatorische Umgruppierung darf weder die Eignung eines Originaleintrags noch dessen Bedarf verändern. Eine Suchpriorität einer Navigationsgruppe ist ein eigener Wert, nicht die Relevanz eines Architekturbausteins.
+## Fehler, gespeicherte Werte und Grenzen
 
-## Fehler, Abbruch und gespeicherte Werte richtig lesen
+Die beschriebene Basis enthält noch fehlende-Kategorieantwort-zu-null-Ergänzungen und Fehlernullen. Null muss zusammen mit Fehler, Warnung, Status und Rohantwort interpretiert werden. #1113 bearbeitet dies separat; seine Integration ist nicht vorausgesetzt. Eine unterschwellige Antwort ist ebenfalls keine ursprünglich gelieferte Null.
 
-Die Basis von #1118 enthält im Kategorie-Parser noch fehlende-Antwort-zu-null-Ergänzungen und in Fehlerpfaden Nullplatzhalter. Daher muss eine Null zusammen mit Aufruffehler, Warnungen, Status und Rohantwort gelesen werden. #1113 bearbeitet Teile dieses Vertrags separat; seine Integration ist hier nicht vorausgesetzt. Eine durch Produkt-Mindestgrenze erzeugte Null ist ebenfalls keine ursprünglich vom Modell gelieferte Null.
+`LlmCallDetail` und inkrementelle Ereignisse enthalten bereits normalisierte/gefilterte Werte. `AnalysisResult.rawScores` liegt vor der zusätzlichen Produkt-Elterngewichtung, nicht zwingend vor jeder Transformation der Modellantwort. Rohantwort, `scoreDetails`, `scoreSemanticsVersion`, Warnungen und eingefrorener Katalog gehören zum Nachweis. Bei der weiteren Migration müssen Originalwerte und Transformationen getrennt erhalten bleiben.
 
-`LlmCallDetail` und inkrementelle Score-Ereignisse transportieren Werte nach Parsernormalisierung beziehungsweise Produktschwelle. `AnalysisResult.rawScores` liegt vor der zusätzlichen Produkt-Elterngewichtung, aber nicht zwingend vor allen Transformationen der Modellantwort. Die vollständige Antwort im LLM-Protokoll ist für diese Unterscheidung maßgeblich. `scoreDetails` trennt Bewertungsart, gespeicherten Ausgangswert und abgeleitete Relevanz; `scoreSemanticsVersion`, Warnungen und eingefrorener Katalog gehören zur Interpretation eines Snapshots.
+Der automatische Abstieg verfolgt positive Kategorien; Produkte sind Endpunkte. Nicht besucht ist nicht negativ bewertet. Aufruf-, Prompt- und Speichergrenzen können Teilergebnisse erzeugen. Manuelle Werte, Mock-/Replaydaten und lokale Embedding-Ähnlichkeit sind keine austauschbaren Notwendigkeitsnachweise. Lokale Embeddings umgehen die natürlichsprachlichen Prompts. Promptüberschreibungen ändern nicht automatisch den Parservertrag. Keine dieser Einschränkungen wird durch diese Dokumentationsänderung repariert.
 
-Der automatische Abstieg verfolgt im untersuchten Pfad positive Kategorieeinträge weiter; Produkte sind Endpunkte. Ein nicht besuchter Knoten ist damit nicht automatisch negativ bewertet. Prompt-, Aufruf- und Speichergrenzen sowie Fehler können Teilergebnisse erzeugen. Manuelle Werte, Mock-/Replaydaten und lokale Embedding-Ähnlichkeit sind keine austauschbaren Nachweise einer vom Modell begründeten Notwendigkeit. Lokale Embeddings umgehen die natürlichsprachlichen Scoring-Prompts; die hier beschriebene Kontextkorrektur ist kein Nachweis einer identischen lokalen Embedding-Auswertung. Promptüberschreibungen können die Frage verändern, nicht automatisch den Parservertrag.
+## Abnahme der nächsten Umsetzung
 
-## Änderungsauftrag und Prüfkriterien
-
-Die koordinierte Weiterentwicklung in #1111 muss Wurzelrelevanz, Astrelevanz, verteiltes Gewicht, Produkteignung und Bedarf ausdrücklich trennen; den fehlerhaften Ein-Wurzel-Normalisierungseffekt korrigieren; Originalwerte und Transformationen versioniert erhalten; mehrdimensionale Zugänge anhand fachlicher Definitionen prüfen; und eine fragwürdige Elternzuordnung nicht zum einzigen Suchzugang machen.
-
-Prüfbeispiele: Nur die Beschreibung eines BP-Vorfahren definiert den fachlichen Geltungsbereich. Zwei benötigte Produkte bleiben gleichzeitig auswählbar. Zwei Alternativen werden nicht automatisch beide übernommen. Ein Produkt über zwei Facetten bleibt ein Objekt. Eine reine Navigationsänderung verändert seine Bewertung nicht. Gleicher Maßstab mit Kind über Vater erzeugt einen erklärbaren Befund. Fehlende Antwort, echte Null und unterschwellige Antwort bleiben unterscheidbar.
+Original-IDs, Inhalte, Quellstatus, sinnvolle Elternbeziehungen und Reihenfolge bleiben erhalten. Nur belegte IP-Lücken werden ergänzt; jeder Originaleintrag bleibt einmal repräsentiert. BP-Kontext wird weiter vererbt. Navigation durch eine lokale Gruppe funktioniert, aber lokale Quelle, lokales Ziel und manipulierte Herkunft einer Architekturbeziehung werden abgewiesen. Originale Zwischenknoten bleiben bei passender Semantik zulässig. Keine Kante wird umgeleitet. Gemeinsam erforderliche Produkte bleiben möglich; Alternativen werden nicht automatisch gemeinsam übernommen. Fehlende, echte Null- und unterschwellige Antworten bleiben unterscheidbar. Diese Abnahme ist offen, nicht durch reine Struktur- oder Dokumentationsprüfungen erledigt.
 
 ## Quellen im Repository
 

@@ -1,26 +1,26 @@
 # UA – User Applications: grouping and scoring
 
-[Shared scoring contract and implementation scope](../TAXONOMY_SCORING.md) · [Deutsch](../../de/taxonomies/UA.md)
+[Shared scoring contract and binding source constraints](../TAXONOMY_SCORING.md) · [Deutsch](../../de/taxonomies/UA.md)
 
-## Subject and grouping criterion
+## Subject and protected hierarchy
 
-The UA prompt addresses end-user tools, operational applications and interfaces. Current grouping follows the source catalogue. An application class is not automatically a vendor product, deployed instance or information product. Metadata `PRODUCT`, not the everyday term software product, selects independent IP scoring.
+The UA prompt addresses end-user tools, operational applications and interfaces. Its tree follows the source catalogue. An application class is not automatically a vendor product, deployed instance or information product. Metadata `PRODUCT`, not the everyday term software product, selects independent IP scoring.
+
+**This change request does not regroup UA.** Preserve original entries, descriptions, IDs, source status, parent relationships and ordering. Navigation additions are restricted to documented IP attachment gaps. Multiple hierarchy paths are not required; the earlier email-client example illustrated a possible classification discussion, not an instruction to add UA facets.
 
 ## Current scoring
 
-UA categories share a parent budget. Communication and evaluation functions might receive 40 and 20 from parent 60. These weights neither count required programs nor prove that two separate applications must exist. Own and applicable source ancestor descriptions remain available. Shared rounding, root and error limits apply.
+UA categories share the parent-budget allocation. Communication and evaluation functions might receive 40 and 20 from a parent value of 60. These weights neither count required programs nor prove that two separate applications are needed. Own and applicable source-ancestor descriptions remain available. Shared rounding, root and error limitations apply.
 
-## Email client through several routes
+## Classification and actual contribution
 
-**Target design, not an implemented multiple hierarchy:** “Function → Communication → Email client” and “Application type → Client → Email client” are different views of the same original entry. The first classifies purpose, the second application type. Groups must name their axis. Membership creates neither a second application nor a second license obligation and is not an architecture relationship between components.
+A client can provide email and calendar functions. Assess its contribution to the actual requirement; email suitability does not require every other feature. Additional functions or a different deployment model do not authorize changing its official catalogue position. A jointly required planning application and an alternative email client are different necessity cases that similar scores cannot distinguish.
 
-A client may provide email and calendar functions. Only its required contribution should be assessed for a particular requirement. Email suitability does not demand every additional feature. A jointly needed planning application and an alternative email client are different necessity situations; similar scores do not distinguish them.
+Different deployed instances remain distinct even when sharing a classification. A requirement-derived relationship between original concepts is an analysis assertion, not an official publisher assertion. Local IP navigation aids must not be sources or targets of such architecture relationships. Central runtime enforcement of this boundary remains open.
 
-## Target design and limits
+## Acceptance
 
-Function, application type and operating model stay separate. Different deployed instances sharing one classification must not be merged; different access paths to one catalogue entry must not duplicate it. Current single-parent navigation and category arithmetic do not yet fulfil this target completely.
-
-Acceptance: two routes preserve one catalogue identity; requirement contributions retain their reasons; jointly needed applications coexist; alternatives are not adopted together without a decision.
+Preserve the UA source hierarchy and ordering. Different requirement contributions keep their rationales; jointly required applications can coexist; alternatives are not adopted together without a decision. Local helper nodes are neither official classifications nor architecture endpoints. The shared scoring contract identifies remaining score migration work.
 
 ## Implementation sources
 
