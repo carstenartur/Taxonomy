@@ -59,3 +59,52 @@ test('AI bootstrap never treats the untranslated unknown key as settled', () => 
   assert.match(systemInformationSource, /onLocaleNavigationEnd\?\.\(locale\)/);
   assert.match(systemInformationSource, /aiStatusSettled: true/);
 });
+
+
+// Exercise the real navigation precondition with a controlled draft promise.
+async function navigationHarness({ initial = {}, after, outcome = true, pending } = {}) {
+  const vm = await import('node:vm');
+  const mod = await import('./system-information-acceptance.mjs');
+  assert.equal(typeof mod.settleDraftBeforeLocaleNavigation, 'function');
+  let saves = 0;
+  let state = { workspaceId: 'workspace', ready: true, restoring: false, conflict: false, ...initial };
+  const context = vm.createContext({ window: { TaxonomyAnalysisSession: {
+    state: () => state,
+    saveNow: async () => { saves++; const result = pending ? await pending : outcome; if (after) state = { ...state, ...after }; return result; }
+  } } });
+  const page = { evaluate: fn => vm.runInContext('(' + fn.toString() + ')()', context) };
+  return { run: () => mod.settleDraftBeforeLocaleNavigation(page), saves: () => saves };
+}
+
+test('locale navigation awaits the authoritative draft write', async () => {
+  let release;
+  const pending = new Promise(resolve => { release = resolve; });
+  const h = await navigationHarness({ pending });
+  let settled = false;
+  const work = h.run().then(() => { settled = true; });
+  await new Promise(resolve => setImmediate(resolve));
+  assert.equal(h.saves(), 1);
+  assert.equal(settled, false, 'Navigation must not overtake an in-flight write');
+  release(true); await work; assert.equal(settled, true);
+});
+
+for (const [label, initial] of Object.entries({ conflict: { conflict: true }, restoring: { restoring: true }, missingWorkspace: { workspaceId: '' } })) {
+  test('locale navigation stops before saving an unsafe draft: ' + label, async () => {
+    const h = await navigationHarness({ initial });
+    await assert.rejects(h.run(), /draft.*ready/i); assert.equal(h.saves(), 0);
+  });
+}
+
+test('failed autosave blocks locale navigation instead of filtering its error', async () => {
+  const h = await navigationHarness({ outcome: false });
+  await assert.rejects(h.run(), /draft.*saved/i);
+});
+
+test('a workspace switch during saving invalidates locale navigation', async () => {
+  const h = await navigationHarness({ after: { workspaceId: 'different' } });
+  await assert.rejects(h.run(), /workspace|draft.*changed/i);
+});
+
+test('system-information locale reload flushes drafts before its navigation window', async () => {
+  assert.match(systemInformationSource, /await settleDraftBeforeLocaleNavigation\(page\);[\s\S]*onLocaleNavigationStart\?\.\(locale\)/);
+});
