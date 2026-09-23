@@ -92,6 +92,65 @@ public final class RelationSearchContract {
         check(r.calls() == 4 && r.edges().getFirst().target().equals(LEAF), "full controlled descent");
     }
 
+    public static void testDuplicateOfferedRootsFailBeforeEvaluation() {
+        AtomicInteger calls = new AtomicInteger();
+        var search = engine(q -> { calls.incrementAndGet(); return decisions(q, Outcome.REJECT); });
+        try {
+            search.search(ORIGINAL, List.of(new Intent(READ, "CONSUMES", Direction.OUTGOING,
+                    List.of(ROOT, ROOT))), DEFAULTS);
+            throw new AssertionError("Duplicate offered roots must not become a complete search");
+        } catch (IllegalArgumentException expected) {
+            check(calls.get() == 0, "Duplicate root IDs must fail before a remote evaluation");
+        }
+    }
+
+    public static void testDuplicateOfferedChildrenFailBeforeChildEvaluation() {
+        AtomicInteger calls = new AtomicInteger();
+        var search = new RelationSearchEngine(n -> List.of(FOLDER, FOLDER), q -> {
+            calls.incrementAndGet();
+            return decisions(q, q.candidates().getFirst().equals(ROOT) ? Outcome.DESCEND : Outcome.REJECT);
+        }, () -> { });
+        try {
+            search.search(ORIGINAL, List.of(intent(READ)), DEFAULTS);
+            throw new AssertionError("Duplicate offered children must not be silently deduplicated");
+        } catch (RuntimeException expected) {
+            check(expected instanceof RelationSearchEngine.InterruptedSearchException,
+                    "Invalid discovered children must preserve an interrupted search report");
+            check(expected.getCause() instanceof IllegalArgumentException, "Retain the invalid catalogue cause");
+            check(calls.get() == 1, "Only parent navigation may run; no ambiguous child evaluation");
+        }
+    }
+
+    public static void testInvalidLaterIntentFailsBeforeAnyModelEvaluation() {
+        AtomicInteger calls = new AtomicInteger();
+        var search = engine(q -> { calls.incrementAndGet(); return decisions(q, Outcome.REJECT); });
+        var invalid = new Intent(READ, "PRODUCES", Direction.OUTGOING, List.of(ROOT, ROOT));
+        try {
+            search.search(ORIGINAL, List.of(intent(READ), invalid), DEFAULTS);
+            throw new AssertionError("Invalid later intent was accepted");
+        } catch (IllegalArgumentException expected) {
+            check(calls.get() == 0, "Validate all offered root sets before spending any model budget");
+        }
+    }
+
+    public static void testInvalidDiscoveredChildrenRetainAlreadyVerifiedEdges() {
+        var search = new RelationSearchEngine(n -> List.of(LEAF, LEAF), q -> decisions(q,
+                q.phase() == Phase.VERIFY ? Outcome.VERIFIED
+                        : q.candidates().getFirst().container() ? Outcome.DESCEND : Outcome.MATCH), () -> { });
+        var first = new Intent(READ, "CONSUMES", Direction.OUTGOING, List.of(FOLDER));
+        try {
+            search.search(ORIGINAL, List.of(first, intent(READ)), DEFAULTS);
+            throw new AssertionError("Invalid discovered children were accepted");
+        } catch (RuntimeException failure) {
+            check(failure instanceof RelationSearchEngine.InterruptedSearchException,
+                    "Invalid later catalogue data must not discard earlier evidence");
+            var partial = ((RelationSearchEngine.InterruptedSearchException) failure).partialResult();
+            check(partial.edges().size() == 1 && partial.edges().getFirst().target().equals(FOLDER),
+                    "Retain the previously verified relation");
+            check(partial.calls() == 3 && !partial.searchExhausted(), "Retain spent budget and unfinished work");
+        }
+    }
+
     public static void testIdenticalContextsAreDeduplicated() {
         Result r = engine(q -> decisions(q, Outcome.REJECT)).search(ORIGINAL, List.of(intent(READ), intent(READ)), DEFAULTS);
         check(r.calls() == 1, "duplicate intent must not pay twice");

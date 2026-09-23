@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.relations;
 
+import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import java.util.*;
 import static com.taxonomy.dto.RelationSearchModel.*;
 
@@ -57,6 +58,8 @@ public final class RelationSearchEngine {
 
         Result execute(List<Intent> intents) {
             for (Intent intent : intents) {
+                // All supplied root sets are known before the first remote evaluation.
+                validateCandidates(intent.roots());
                 if (!original.contains(intent.contribution().quote())) {
                     throw new IllegalArgumentException("Contribution evidence is not an original quote");
                 }
@@ -115,7 +118,12 @@ public final class RelationSearchEngine {
                 return;
             }
             List<Node> children;
-            try { children = List.copyOf(catalogue.children(node)); }
+            try {
+                children = List.copyOf(catalogue.children(node));
+                // Newly discovered invalid candidates stop with the same partial-result
+                // contract as other catalogue failures, preserving verified evidence.
+                validateCandidates(children);
+            }
             catch (RuntimeException failed) { interrupt(work, failed); return; }
             if (children.isEmpty()) {
                 unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),
@@ -149,11 +157,9 @@ public final class RelationSearchEngine {
 
         private List<Query> queries(Contribution contribution, String type, Direction direction, Phase phase,
                                     List<Node> candidates, Decision proposal) {
+            validateCandidates(candidates);
             Map<String, Node> unique = new TreeMap<>();
-            for (Node node : candidates) {
-                Node previous = unique.putIfAbsent(node.id(), node);
-                if (previous != null && !previous.equals(node)) throw new IllegalArgumentException("Conflicting catalogue identity " + node.id());
-            }
+            for (Node node : candidates) unique.put(node.id(), node);
             List<Node> ordered = List.copyOf(unique.values());
             List<Query> batches = new ArrayList<>();
             for (int i = 0; i < ordered.size(); i += limits.batchSize()) {
@@ -215,6 +221,10 @@ public final class RelationSearchEngine {
             return new Result(List.copyOf(edges), unfinished, trace, calls, visited,
                     (System.nanoTime() - started) / 1_000_000);
         }
+    }
+
+    private static void validateCandidates(List<Node> candidates) {
+        ChildAssessmentContract.validateCandidates(candidates.stream().map(Node::id).toList());
     }
 
     private static boolean sameClaim(Decision a, Decision b) {

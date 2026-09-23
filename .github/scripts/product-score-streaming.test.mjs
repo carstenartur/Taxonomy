@@ -344,3 +344,70 @@ for (const rawScores of [{}, null, { [family]: 50 }]) {
     assert.equal(h.state.lastAnalysisStatus, 'ERROR');
   });
 }
+
+// Execute the actual interactive closure; only expose its entry point in the test realm.
+const browseSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js', import.meta.url), 'utf8');
+function interactiveHarness(response) {
+  const classes = new Set(['tax-has-unevaluated']);
+  const children = { style: { display: 'none' } };
+  const wrapper = {
+    classList: { add: key => classes.add(key), remove: key => classes.delete(key) },
+    querySelector: selector => selector === ':scope > .tax-children' ? children : null,
+    setAttribute() {}
+  };
+  const status = { innerHTML: '' }; const logs = []; const errors = [];
+  const state = { currentScores: { IP: 100 }, currentRawScores: { IP: 100 }, currentReasons: {},
+    storedBusinessText: 'Read existing evidence', evaluatedNodes: new Set(['IP']) };
+  const scoring = {
+    applyLocalRawScores(scores) { Object.assign(state.currentRawScores, scores); Object.assign(state.currentScores, scores); },
+    appendLlmLogEntry(...args) { logs.push(args); }, syncVisibleScoreNodes() {}
+  };
+  const window = { TaxonomyState: state, TaxonomyScoring: scoring };
+  const context = vm.createContext({
+    window,
+    document: { addEventListener() {}, getElementById: id => id === 'statusArea' ? status : null },
+    console: { log() {}, warn() {}, error(...args) { errors.push(args); } },
+    TaxonomyI18n: { t: (key, ...args) => [key, ...args].join(' ') },
+    TaxonomyUtils: { escapeHtml: text => String(text) }, CSS: { escape: text => text },
+    fetch: async () => ({ ok: true, json: async () => response })
+  });
+  vm.runInContext(browseSource.replace('renderView: renderView,',
+    'evaluateNodeChildren: evaluateNodeChildren, renderView: renderView,'), context);
+  return { state, classes, logs, status, errors, async run() {
+    window.TaxonomyBrowse.evaluateNodeChildren('IP', wrapper, { textContent: '' });
+    await new Promise(resolve => setImmediate(resolve));
+  } };
+}
+
+test('failed interactive category assessment stays unevaluated and retryable', async () => {
+  const h = interactiveHarness({ scores: {}, reasons: {}, error: 'Missing assessment for IP-1069', rawResponse: '{}' });
+  await h.run();
+  assert.equal(h.state.evaluatedNodes.has('IP'), false);
+  assert.equal(h.classes.has('tax-has-unevaluated'), true);
+  assert.equal(h.classes.has('tax-evaluating'), false);
+  assert.deepEqual(h.state.currentRawScores, { IP: 100 });
+  assert.equal(h.state.lastAnalysisStatus, 'PARTIAL');
+  assert.match(h.status.innerHTML, /Missing assessment/);
+  assert.equal(h.logs.length, 1);
+  assert.equal(h.errors.length, 0);
+});
+
+test('a partial interactive batch keeps valid results but allows retry of missing children', async () => {
+  const h = interactiveHarness({ scores: { 'IP-1065': 80 }, reasons: {}, error: 'Another assessment failed' });
+  await h.run();
+  assert.equal(h.state.currentRawScores['IP-1065'], 80);
+  assert.equal(Object.prototype.hasOwnProperty.call(h.state.currentRawScores, 'IP-1069'), false);
+  assert.equal(h.state.evaluatedNodes.has('IP'), false);
+  assert.equal(h.classes.has('tax-has-unevaluated'), true);
+  assert.equal(h.errors.length, 0);
+});
+
+test('a complete interactive zero is evaluated evidence, not an error or retry loop', async () => {
+  const h = interactiveHarness({ scores: { 'IP-1065': 0 }, reasons: { 'IP-1065': 'Not required' } });
+  await h.run();
+  assert.equal(h.state.currentRawScores['IP-1065'], 0);
+  assert.equal(h.state.evaluatedNodes.has('IP'), true);
+  assert.equal(h.classes.has('tax-has-unevaluated'), false);
+  assert.equal(h.errors.length, 0);
+});
