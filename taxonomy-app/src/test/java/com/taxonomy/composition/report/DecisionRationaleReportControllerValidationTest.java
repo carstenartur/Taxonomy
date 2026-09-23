@@ -156,6 +156,41 @@ class DecisionRationaleReportControllerValidationTest {
                 repositoryStateService);
     }
 
+    @Test
+    void rejectsNegativeAnalysisDurationBeforeContextResolutionForEveryFormat() {
+        var reportService = mock(DecisionRationaleReportService.class);
+        var rendererRegistry = mock(ReportRendererRegistry.class);
+        var repositoryStateService = mock(RepositoryStateService.class);
+        var workspaceResolver = mock(WorkspaceResolver.class);
+        var controller = new DecisionRationaleReportController(reportService, rendererRegistry,
+                repositoryStateService, workspaceResolver);
+        for (long duration : new long[] { -1, Long.MIN_VALUE }) {
+            var request = timedRequest(duration);
+            assertThat(controller.exportJson(request).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(controller.exportHtml(request).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+            assertThat(controller.exportDocx(request).getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+        }
+        verifyNoInteractions(reportService, rendererRegistry, repositoryStateService, workspaceResolver);
+    }
+
+    @Test
+    void allowsUnknownZeroAndNonnegativeAnalysisDurations() {
+        for (Long duration : new Long[] { null, 0L, 123456L, Long.MAX_VALUE }) {
+            var resolver = mock(WorkspaceResolver.class);
+            when(resolver.resolveCurrentContext()).thenThrow(new IllegalStateException("validation passed"));
+            var controller = new DecisionRationaleReportController(null, null, null, resolver);
+            assertThatThrownBy(() -> controller.exportJson(timedRequest(duration)))
+                    .isInstanceOf(IllegalStateException.class).hasMessage("validation passed");
+            verify(resolver).resolveCurrentContext();
+        }
+    }
+
+    private DecisionReportRequest timedRequest(Long duration) {
+        return new DecisionReportRequest(Map.of("CP", 100), null, null, null, null, null,
+                Map.of("CP", "reason"), "bounded requirement", "MOCK", "SUCCESS",
+                List.of(), List.of(), "en", duration);
+    }
+
     private ProductCoverageGap productGap(
             String familyCode,
             List<String> candidateCodes) {

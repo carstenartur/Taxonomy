@@ -279,6 +279,7 @@
         var state = node('div', text('Warte auf den Server …', 'Waiting for the server …'));
         var duration = node('div', text('Analysedauer: noch nicht verfügbar', 'Analysis duration: not yet available'));
         duration.id = 'analysisElapsed';
+        var terminalDuration = null;
         function showDuration(millis) {
             var value = Number.isSafeInteger(millis) && millis >= 0 ? millis : null;
             duration.textContent = text('Analysedauer: ', 'Analysis duration: ') + (value === null
@@ -336,7 +337,10 @@
                     ' Final diagnostic status unavailable; showing the last observed state.');
             },
             finished: function (status, measuredDuration) {
-                if (Number.isSafeInteger(measuredDuration) && measuredDuration >= 0) showDuration(measuredDuration);
+                if (Number.isSafeInteger(measuredDuration) && measuredDuration >= 0) terminalDuration = measuredDuration;
+                // A running estimate may include admission/connection time. Only an
+                // authoritative result or measured terminal snapshot can finalize it.
+                showDuration(terminalDuration);
                 title.textContent = text('Analyse beendet', 'Analysis finished');
                 state.textContent = status === 'SUCCESS'
                     ? text('Vollständiges Ergebnis empfangen.', 'Complete result received.')
@@ -345,7 +349,10 @@
                 cancelState(true, text('Analyse beendet', 'Analysis finished'));
             },
             unavailable: function (reason, terminal) {
-                if (terminal) cancelState(true, text('Nicht verfügbar', 'Unavailable'));
+                if (terminal) {
+                    cancelState(true, text('Nicht verfügbar', 'Unavailable'));
+                    showDuration(terminalDuration);
+                }
                 state.textContent = reason === 'WAITING_FOR_RUN'
                     ? text('Warte auf Aufnahme des Laufs; noch keine LLM-Anfrage bestätigt.', 'Waiting for admission; no LLM request confirmed yet.')
                     : text('Statusverbindung unterbrochen; letzter Stand bleibt sichtbar. ', 'Status connection interrupted; retaining the last state. ') + reason;
@@ -362,6 +369,7 @@
                 var elapsedMillis = Number.isSafeInteger(snapshot.elapsedMillis) && snapshot.elapsedMillis >= 0
                     ? snapshot.elapsedMillis : !isTerminal && Number.isFinite(snapshot.startedAt) && Number.isFinite(snapshot.serverTime)
                         ? Math.max(0, snapshot.serverTime - snapshot.startedAt) : null;
+                if (isTerminal) terminalDuration = elapsedMillis;
                 showDuration(elapsedMillis);
                 var elapsed = elapsedMillis === null ? '?' : Math.floor(elapsedMillis / 1000);
                 var quiet = Math.max(0, Math.floor((snapshot.serverTime - snapshot.lastActivityAt) / 1000));

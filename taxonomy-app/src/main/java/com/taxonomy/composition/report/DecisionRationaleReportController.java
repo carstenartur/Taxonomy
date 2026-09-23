@@ -266,6 +266,7 @@ public class DecisionRationaleReportController {
 
     private boolean isValid(DecisionReportRequest request) {
         if (request == null
+                || (request.analysisDurationMillis() != null && request.analysisDurationMillis() < 0)
                 || !boundedText(request.businessText(), MAX_REQUIREMENT_LENGTH, false)
                 || request.scores() == null
                 || request.scores().isEmpty()

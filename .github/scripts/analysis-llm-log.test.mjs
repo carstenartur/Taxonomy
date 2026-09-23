@@ -226,3 +226,31 @@ test('authoritative result duration is not replaced by a differently scoped diag
     view.monitor.finish('SUCCESS', true, 123456); await flush();
     assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /2 min 03 s/);
 });
+
+for (const value of [undefined, null, -1, Number.NaN]) {
+    test('completion without valid measured timing clears the live estimate: ' + String(value), async () => {
+        const view = fixture(failure); await view.tick();
+        const elapsed = descendants(view.root).find(element => element.id === 'analysisElapsed');
+        assert.match(elapsed.textContent, /0 min 03 s/);
+        view.monitor.finish('ERROR', false, value);
+        assert.match(elapsed.textContent, /Nicht aufgezeichnet/);
+    });
+}
+
+test('transport loss without terminal evidence clears live duration, not the diagnostic log', async () => {
+    const view = fixture(failure); await view.tick(); await view.open();
+    view.monitor.transportFailed();
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /Nicht aufgezeichnet/);
+    assert.ok(view.log.textContent.includes(reply));
+});
+
+test('terminal zero remains measured rather than unknown after completion', async () => {
+    const view = fixture(failure); await view.tick(); view.monitor.finish('SUCCESS', false, 0);
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /0 min 00 s/);
+});
+
+test('English unmeasured completion is explicit', async () => {
+    const view = fixture(failure, 'FAILED', { locale: 'en' }); await view.tick();
+    view.monitor.finish('ERROR', false);
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /Analysis duration: Not recorded/);
+});
