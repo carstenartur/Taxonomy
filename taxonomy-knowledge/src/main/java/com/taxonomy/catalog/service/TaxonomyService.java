@@ -1,5 +1,6 @@
 package com.taxonomy.catalog.service;
 
+import com.taxonomy.dto.CatalogueNodeOrigin;
 import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.dto.TaxonomyRelationDto;
 import com.taxonomy.model.RelationType;
@@ -221,6 +222,7 @@ public class TaxonomyService {
                     persistedUuidToCode.put(node.getUuid(), node.getCode());
                 }
             }
+            backfillSourceHierarchyMetadata(persistedNodeMap);
             CatalogueOverlayService.OverlayApplicationResult overlayResult =
                     catalogueOverlayService.applyAndValidate(
                             persistedNodeMap, persistedUuidToCode, catalogueResource);
@@ -264,6 +266,7 @@ public class TaxonomyService {
             root.setDescriptionEn("C3 Taxonomy – " + sheetName);
             root.setTaxonomyRoot(prefix);
             root.setLevel(0);
+            root.setCatalogueOrigin(CatalogueNodeOrigin.VIRTUAL_ROOT);
             nodeMap.put(prefix, root);
             virtualRoots.add(root);
         }
@@ -560,6 +563,9 @@ public class TaxonomyService {
             node.setNameEn(name);
             node.setDescriptionEn(truncate(description, 5000));
             node.setParentCode(parentCode);
+            node.setSourceParentReference(parentCode);
+            node.setSourceOrder(row.getRowNum());
+            node.setCatalogueOrigin(CatalogueNodeOrigin.OFFICIAL_SOURCE);
             node.setTaxonomyRoot(sheetPrefix);
             node.setLevel(level);
             node.setDataset(dataset);
@@ -569,6 +575,39 @@ public class TaxonomyService {
             node.setSortOrder(sortOrder);
             node.setState(state);
             nodeMap.put(code, node);
+        }
+    }
+
+    private void backfillSourceHierarchyMetadata(Map<String, TaxonomyNode> persistedNodes) throws Exception {
+        boolean needsBackfill = persistedNodes.values().stream()
+                .anyMatch(node -> node.getLevel() > 0 && node.getSourceOrder() == null);
+        if (!needsBackfill) {
+            return;
+        }
+        Resource resource = resourceLoader.getResource(catalogueResource);
+        try (InputStream input = resource.getInputStream();
+             Workbook workbook = new XSSFWorkbook(input)) {
+            for (Map.Entry<String, String> entry : SHEET_PREFIXES.entrySet()) {
+                Sheet sheet = workbook.getSheet(entry.getKey());
+                if (sheet == null) continue;
+                boolean first = true;
+                for (Row row : sheet) {
+                    if (first) { first = false; continue; }
+                    String code = cellString(row, 0);
+                    if (code == null) continue;
+                    TaxonomyNode node = persistedNodes.get(code);
+                    if (node == null) continue;
+                    node.setSourceParentReference(cellString(row, 4));
+                    node.setSourceParentCode(null);
+                    node.setSourceOrder(row.getRowNum());
+                    node.setCatalogueOrigin(CatalogueNodeOrigin.OFFICIAL_SOURCE);
+                }
+            }
+        }
+        for (TaxonomyNode node : persistedNodes.values()) {
+            if (node.getLevel() == 0) {
+                node.setCatalogueOrigin(CatalogueNodeOrigin.VIRTUAL_ROOT);
+            }
         }
     }
 
@@ -695,6 +734,10 @@ public class TaxonomyService {
         dto.setDescriptionEn(node.getDescriptionEn());
         dto.setDescriptionDe(node.getDescriptionDe());
         dto.setParentCode(node.getParentCode());
+        dto.setSourceParentReference(node.getSourceParentReference());
+        dto.setSourceParentCode(node.getSourceParentCode());
+        dto.setSourceOrder(node.getSourceOrder());
+        dto.setCatalogueOrigin(node.getCatalogueOrigin());
         dto.setTaxonomyRoot(node.getTaxonomyRoot());
         dto.setLevel(node.getLevel());
         dto.setDataset(node.getDataset());
@@ -711,7 +754,9 @@ public class TaxonomyService {
         dto.setClassificationReviewRequired(overlayMetadata.reviewRequired());
         dto.setClassificationJustification(overlayMetadata.justification());
         List<TaxonomyNodeDto> childDtos = new ArrayList<>();
-        for (TaxonomyNode child : node.getChildren()) {
+        List<TaxonomyNode> orderedChildren = new ArrayList<>(node.getChildren());
+        orderedChildren.sort(sourceOrderComparator());
+        for (TaxonomyNode child : orderedChildren) {
             childDtos.add(toDto(child));
         }
         dto.setChildren(childDtos);
@@ -750,7 +795,10 @@ public class TaxonomyService {
 
     @Transactional(readOnly = true)
     public List<TaxonomyNode> getChildrenOf(String parentCode) {
-        return repository.findByParentCodeOrderByNameEnAsc(parentCode);
+        List<TaxonomyNode> children =
+                new ArrayList<>(repository.findByParentCodeOrderByNameEnAsc(parentCode));
+        children.sort(sourceOrderComparator());
+        return List.copyOf(children);
     }
 
     /**
@@ -879,9 +927,17 @@ public class TaxonomyService {
                 map.computeIfAbsent(parentCode, k -> new ArrayList<>()).add(node);
             }
         }
-        // Sort each child list by code for determinism
-        map.values().forEach(list -> list.sort(Comparator.comparing(TaxonomyNode::getCode)));
+        // Preserve explicit/source row order with a stable code fallback.
+        map.values().forEach(list -> list.sort(sourceOrderComparator()));
         return map;
+    }
+
+    private Comparator<TaxonomyNode> sourceOrderComparator() {
+        return Comparator.comparing(TaxonomyNode::getSortOrder,
+                        Comparator.nullsLast(Integer::compareTo))
+                .thenComparing(TaxonomyNode::getSourceOrder,
+                        Comparator.nullsLast(Integer::compareTo))
+                .thenComparing(TaxonomyNode::getCode);
     }
 
     public TaxonomyNodeDto applyScores(TaxonomyNodeDto dto, Map<String, Integer> scores) {

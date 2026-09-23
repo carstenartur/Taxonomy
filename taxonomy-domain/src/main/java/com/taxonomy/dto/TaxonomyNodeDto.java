@@ -13,6 +13,10 @@ public class TaxonomyNodeDto {
     private String descriptionEn;
     private String descriptionDe;
     private String parentCode;
+    private String sourceParentReference;
+    private String sourceParentCode;
+    private Integer sourceOrder;
+    private CatalogueNodeOrigin catalogueOrigin = CatalogueNodeOrigin.OFFICIAL_SOURCE;
     private String taxonomyRoot;
     private int level;
     private String dataset;
@@ -62,6 +66,23 @@ public class TaxonomyNodeDto {
 
     public String getParentCode() { return parentCode; }
     public void setParentCode(String parentCode) { this.parentCode = parentCode; }
+
+    public String getSourceParentReference() { return sourceParentReference; }
+    public void setSourceParentReference(String sourceParentReference) {
+        this.sourceParentReference = sourceParentReference;
+    }
+
+    public String getSourceParentCode() { return sourceParentCode; }
+    public void setSourceParentCode(String sourceParentCode) { this.sourceParentCode = sourceParentCode; }
+
+    public Integer getSourceOrder() { return sourceOrder; }
+    public void setSourceOrder(Integer sourceOrder) { this.sourceOrder = sourceOrder; }
+
+    public CatalogueNodeOrigin getCatalogueOrigin() { return catalogueOrigin; }
+    public void setCatalogueOrigin(CatalogueNodeOrigin catalogueOrigin) {
+        this.catalogueOrigin = catalogueOrigin == null
+                ? CatalogueNodeOrigin.OFFICIAL_SOURCE : catalogueOrigin;
+    }
 
     public String getTaxonomyRoot() { return taxonomyRoot; }
     public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }

@@ -1,6 +1,7 @@
 package com.taxonomy.catalog.service;
 
 import com.taxonomy.catalog.model.TaxonomyNode;
+import com.taxonomy.dto.CatalogueNodeOrigin;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -79,7 +80,7 @@ public class CatalogueOverlayService {
         Objects.requireNonNull(nodes, "nodes");
         Objects.requireNonNull(uuidToCode, "uuidToCode");
 
-        resolveUuidParents(nodes, uuidToCode);
+        prepareSourceHierarchy(nodes, uuidToCode);
 
         LoadedOverlay overlay = enabled ? loadOverlay() : LoadedOverlay.disabled(overlayResource);
         if (enabled) {
@@ -121,11 +122,11 @@ public class CatalogueOverlayService {
         return enabled;
     }
 
-    /** An overlay assignment is not evidence that the source defines semantic inheritance. */
+    /** True only when local navigation actually replaces a missing/invalid source attachment. */
     public boolean hasParentPatch(String code) {
         if (!enabled || code == null) return false;
         loadOverlay();
-        return nodeMetadata.containsKey(code);
+        return getNodeMetadata(code).navigationParentApplied();
     }
 
     public boolean isProduct(String code) {
@@ -263,6 +264,16 @@ public class CatalogueOverlayService {
                 throw new IllegalStateException("Patch " + patch.getCode()
                         + " must contain a justification");
             }
+            if (patch.isReplaceSourceParent()) {
+                if (isBlank(patch.getSourceParentIssue())) {
+                    throw new IllegalStateException("Patch " + patch.getCode()
+                            + " replaces a source parent without sourceParentIssue evidence");
+                }
+                if (!patch.isReviewRequired()) {
+                    throw new IllegalStateException("Patch " + patch.getCode()
+                            + " replaces a source parent and must remain reviewRequired");
+                }
+            }
         }
     }
 
@@ -274,7 +285,8 @@ public class CatalogueOverlayService {
                     List.copyOf(patch.getSecondaryClassificationCodes()),
                     patch.getConfidence(),
                     patch.isReviewRequired(),
-                    patch.getJustification()));
+                    patch.getJustification(),
+                    false));
         }
     }
 
@@ -291,17 +303,40 @@ public class CatalogueOverlayService {
         }
     }
 
-    private void resolveUuidParents(Map<String, TaxonomyNode> nodes,
-                                    Map<String, String> uuidToCode) {
+    private void prepareSourceHierarchy(Map<String, TaxonomyNode> nodes,
+                                        Map<String, String> uuidToCode) {
         for (TaxonomyNode node : nodes.values()) {
-            String parentCode = node.getParentCode();
-            if (isBlank(parentCode) || nodes.containsKey(parentCode)) {
+            if (node.getLevel() == 0) {
+                node.setCatalogueOrigin(CatalogueNodeOrigin.VIRTUAL_ROOT);
+                node.setSourceParentReference(null);
+                node.setSourceParentCode(null);
+                node.setParentCode(null);
                 continue;
             }
-            String resolved = uuidToCode.get(parentCode);
-            if (resolved != null) {
-                node.setParentCode(resolved);
+            node.setCatalogueOrigin(CatalogueNodeOrigin.OFFICIAL_SOURCE);
+            String raw = node.getSourceParentReference();
+            if (raw == null) {
+                raw = node.getParentCode();
+                node.setSourceParentReference(raw);
             }
+            String resolved = null;
+            if (!isBlank(raw)) {
+                if (nodes.containsKey(raw)) {
+                    resolved = raw;
+                } else {
+                    resolved = uuidToCode.get(raw);
+                }
+            }
+            if (resolved != null && !resolved.equals(node.getCode())) {
+                TaxonomyNode parent = nodes.get(resolved);
+                if (parent != null && Objects.equals(node.getTaxonomyRoot(), parent.getTaxonomyRoot())) {
+                    node.setSourceParentCode(resolved);
+                    node.setParentCode(resolved);
+                    continue;
+                }
+            }
+            node.setSourceParentCode(null);
+            node.setParentCode(null);
         }
     }
 
@@ -330,6 +365,11 @@ public class CatalogueOverlayService {
                         + " expected state '" + patch.getExpectedState()
                         + "' but source state is '" + node.getState() + "'");
             }
+            if (!"IP".equals(node.getTaxonomyRoot())) {
+                throw new IllegalStateException("Only IP source attachment gaps may receive "
+                        + "supplemental catalogue parents; patch " + patch.getCode()
+                        + " belongs to " + node.getTaxonomyRoot());
+            }
             if (node == parent) {
                 throw new IllegalStateException("Overlay patch " + patch.getCode()
                         + " creates a self-parent reference");
@@ -355,7 +395,20 @@ public class CatalogueOverlayService {
                             + " contains a redundant secondary classification " + secondaryCode);
                 }
             }
-            node.setParentCode(patch.getParentCode());
+            boolean hasValidSourceParent = !isBlank(node.getSourceParentCode());
+            boolean applyNavigationParent = !hasValidSourceParent || patch.isReplaceSourceParent();
+            if (hasValidSourceParent && patch.isReplaceSourceParent()
+                    && Objects.equals(node.getSourceParentCode(), patch.getParentCode())) {
+                applyNavigationParent = false;
+            }
+            if (applyNavigationParent) {
+                node.setParentCode(patch.getParentCode());
+            }
+            NodeMetadata previous = getNodeMetadata(patch.getCode());
+            nodeMetadata.put(patch.getCode(), new NodeMetadata(
+                    previous.analysisRole(), previous.secondaryClassificationCodes(),
+                    previous.confidence(), previous.reviewRequired(), previous.justification(),
+                    applyNavigationParent));
         }
     }
 
@@ -431,8 +484,7 @@ public class CatalogueOverlayService {
             childrenByParent.computeIfAbsent(parent.getCode(), ignored -> new ArrayList<>())
                     .add(node);
         }
-        childrenByParent.values().forEach(children ->
-                children.sort(Comparator.comparing(TaxonomyNode::getCode)));
+        childrenByParent.values().forEach(children -> children.sort(sourceOrderComparator()));
 
         Map<String, VisitState> states = new HashMap<>();
         Set<String> visited = new LinkedHashSet<>();
@@ -502,6 +554,14 @@ public class CatalogueOverlayService {
         }
     }
 
+    private Comparator<TaxonomyNode> sourceOrderComparator() {
+        return Comparator.comparing(TaxonomyNode::getSortOrder,
+                        Comparator.nullsLast(Integer::compareTo))
+                .thenComparing(TaxonomyNode::getSourceOrder,
+                        Comparator.nullsLast(Integer::compareTo))
+                .thenComparing(TaxonomyNode::getCode);
+    }
+
     private String normalizeWhitespace(String value) {
         return nullToEmpty(value).trim().replaceAll("\\s+", " ");
     }
@@ -564,9 +624,10 @@ public class CatalogueOverlayService {
             List<String> secondaryClassificationCodes,
             double confidence,
             boolean reviewRequired,
-            String justification) {
+            String justification,
+            boolean navigationParentApplied) {
         static NodeMetadata category() {
-            return new NodeMetadata(ROLE_CATEGORY, List.of(), 1.0, false, null);
+            return new NodeMetadata(ROLE_CATEGORY, List.of(), 1.0, false, null, false);
         }
     }
 
@@ -618,6 +679,8 @@ public class CatalogueOverlayService {
         private double confidence;
         private boolean reviewRequired;
         private String justification;
+        private boolean replaceSourceParent;
+        private String sourceParentIssue;
 
         public String getCode() { return code; }
         public void setCode(String code) { this.code = code; }
@@ -641,5 +704,13 @@ public class CatalogueOverlayService {
         public void setReviewRequired(boolean reviewRequired) { this.reviewRequired = reviewRequired; }
         public String getJustification() { return justification; }
         public void setJustification(String justification) { this.justification = justification; }
+        public boolean isReplaceSourceParent() { return replaceSourceParent; }
+        public void setReplaceSourceParent(boolean replaceSourceParent) {
+            this.replaceSourceParent = replaceSourceParent;
+        }
+        public String getSourceParentIssue() { return sourceParentIssue; }
+        public void setSourceParentIssue(String sourceParentIssue) {
+            this.sourceParentIssue = sourceParentIssue;
+        }
     }
 }

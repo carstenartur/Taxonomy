@@ -1,5 +1,6 @@
 package com.taxonomy.catalog.model;
 
+import com.taxonomy.dto.CatalogueNodeOrigin;
 import com.taxonomy.search.NodeEmbeddingBinder;
 import jakarta.persistence.*;
 import org.hibernate.annotations.BatchSize;
@@ -56,6 +57,25 @@ public class TaxonomyNode {
     @Column(name = "parent_code")
     @GenericField
     private String parentCode;
+
+    /** Raw parent reference from the authoritative source row, before local navigation repair. */
+    @Nationalized
+    @Column(name = "source_parent_reference")
+    private String sourceParentReference;
+
+    /** Resolved source parent code when the authoritative reference is valid. */
+    @Nationalized
+    @Column(name = "source_parent_code")
+    @GenericField
+    private String sourceParentCode;
+
+    /** Stable source-row position; local navigation nodes have no source order. */
+    @Column(name = "source_order")
+    private Integer sourceOrder;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "catalogue_origin", nullable = false, length = 32)
+    private CatalogueNodeOrigin catalogueOrigin = CatalogueNodeOrigin.OFFICIAL_SOURCE;
 
     @Nationalized
     @Column(name = "taxonomy_root")
@@ -161,6 +181,25 @@ public class TaxonomyNode {
 
     public String getParentCode() { return parentCode; }
     public void setParentCode(String parentCode) { this.parentCode = parentCode; }
+
+    public String getSourceParentReference() { return sourceParentReference; }
+    public void setSourceParentReference(String sourceParentReference) {
+        this.sourceParentReference = sourceParentReference;
+    }
+
+    public String getSourceParentCode() { return sourceParentCode; }
+    public void setSourceParentCode(String sourceParentCode) { this.sourceParentCode = sourceParentCode; }
+
+    public Integer getSourceOrder() { return sourceOrder; }
+    public void setSourceOrder(Integer sourceOrder) { this.sourceOrder = sourceOrder; }
+
+    public CatalogueNodeOrigin getCatalogueOrigin() {
+        return catalogueOrigin == null ? CatalogueNodeOrigin.OFFICIAL_SOURCE : catalogueOrigin;
+    }
+    public void setCatalogueOrigin(CatalogueNodeOrigin catalogueOrigin) {
+        this.catalogueOrigin = catalogueOrigin == null
+                ? CatalogueNodeOrigin.OFFICIAL_SOURCE : catalogueOrigin;
+    }
 
     public String getTaxonomyRoot() { return taxonomyRoot; }
     public void setTaxonomyRoot(String taxonomyRoot) { this.taxonomyRoot = taxonomyRoot; }

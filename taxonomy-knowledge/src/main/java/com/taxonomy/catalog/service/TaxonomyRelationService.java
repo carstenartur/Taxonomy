@@ -115,6 +115,8 @@ public class TaxonomyRelationService {
         TaxonomyNode target = nodeRepository.findByCode(targetCode)
                 .orElseThrow(() -> new IllegalArgumentException(
                         "Target node not found: " + targetCode));
+        requireOfficialArchitectureEndpoint(source, "source");
+        requireOfficialArchitectureEndpoint(target, "target");
 
         if (relationExistsVisibleInContext(sourceCode, targetCode, type, tenant)) {
             throw new IllegalArgumentException(String.format(
@@ -346,6 +348,14 @@ public class TaxonomyRelationService {
         dto.setWeight(relation.getWeight());
         dto.setBidirectional(relation.isBidirectional());
         return dto;
+    }
+
+    private static void requireOfficialArchitectureEndpoint(TaxonomyNode node, String role) {
+        if (!node.getCatalogueOrigin().mayBeArchitectureEndpoint()) {
+            throw new IllegalArgumentException("Architecture relation " + role + " "
+                    + node.getCode() + " is not an official catalogue endpoint (origin "
+                    + node.getCatalogueOrigin() + ")");
+        }
     }
 
     private RepositoryContext primaryContext(
