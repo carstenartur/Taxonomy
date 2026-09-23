@@ -279,7 +279,20 @@ public class LlmResponseParser {
             throw new IllegalArgumentException("Expected a JSON object for analysis scores, but the LLM "
                     + "returned empty or non-JSON text. Inspect the raw response in the LLM communication log.");
         }
-        return objectMapper.readValue(jsonText, new TypeReference<>() {});
+        try {
+            return objectMapper.readValue(jsonText, new TypeReference<>() {});
+        } catch (StreamReadException malformed) {
+            // Do not expose model text or Jackson's source-reference boilerplate in the
+            // main UI error. Keep the cause for diagnostics and the raw answer in LlmCallDetail.
+            var location = malformed.getLocation();
+            String position = location != null && location.getLineNr() > 0 && location.getColumnNr() > 0
+                    ? " at line " + location.getLineNr() + ", column " + location.getColumnNr()
+                            + " of the extracted JSON"
+                    : " (position unavailable)";
+            throw new IllegalArgumentException("Invalid JSON in LLM response" + position
+                    + ". The response could not be evaluated. Inspect the raw response in the LLM communication log.",
+                    malformed);
+        }
     }
 
     /**

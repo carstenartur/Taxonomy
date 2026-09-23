@@ -230,7 +230,7 @@
 
 /* ── LLM Communication Log ───────────────────────────────── */
 #llmCommLogContent .llm-log-entry {
-    border-bottom: 1px solid #dee2e6;
+    border-bottom: 1px solid var(--bs-border-color, #dee2e6);
     padding: 0.5rem;
 }
 
@@ -256,23 +256,31 @@
 
 /* ── LLM log error states ────────────────────────────────── */
 #llmCommLogContent .llm-log-error {
-    background-color: #fff5f5;
-    border-left: 3px solid #dc3545;
+    background-color: var(--bs-danger-bg-subtle, #fff5f5);
+    color: var(--bs-body-color, #212529);
+    border-left: 3px solid var(--bs-danger, #dc3545);
 }
 
 .llm-log-error-badge {
-    color: #dc3545;
+    color: var(--bs-danger-text-emphasis, #842029);
     font-weight: 600;
 }
 
 .llm-log-error-detail {
-    color: #dc3545;
-    background: #fff5f5;
-    border: 1px solid #f5c2c7;
+    color: var(--bs-danger-text-emphasis, #842029);
+    background: var(--bs-danger-bg-subtle, #fff5f5);
+    border: 1px solid var(--bs-danger-border-subtle, #f5c2c7);
     border-radius: 4px;
     padding: 0.3rem 0.5rem;
     margin-top: 0.25rem;
     font-size: 0.9em;
+}
+
+/* Disabled is communicated by native semantics, a neutral outline and a status label,
+   not low-contrast text. Keep its place in the layout. */
+#analysisLiveProgress button:disabled {
+    --bs-btn-disabled-opacity: 1;
+    cursor: default;
 }
 
 /* ── Diagnostics panel ───────────────────────────────────── */

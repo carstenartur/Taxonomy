@@ -21,7 +21,7 @@ class Element {
 }
 function descendants(element) { return element.children.flatMap(child => [child, ...descendants(child)]); }
 const flush = async () => { for (let i = 0; i < 12; i++) await Promise.resolve(); };
-function fixture(detail, status = 'FAILED') {
+function fixture(detail, status = 'FAILED', options = {}) {
     const root = new Element('main'); root.connected = true;
     const log = new Element('div'); log.id = 'llmCommLogContent';
     const anchor = new Element('div'); anchor.id = 'statusArea'; root.append(anchor, log);
@@ -30,7 +30,8 @@ function fixture(detail, status = 'FAILED') {
     let snapshot = { operationId: 'run', sequence: 1, phase: 'SCORING', status: 'RUNNING',
         startedAt: 1000, serverTime: 4000, lastActivityAt: 4000, evaluatedNodes: 1,
         calls: [{ id: 1, provider: 'GEMINI', node: 'IP', status, startedAt: 1000, durationMillis: 1000 }], memory: {} };
-    const document = { documentElement: { lang: 'de' }, createElement: tag => new Element(tag),
+    snapshot.calls[0].startedAt = Object.hasOwn(options, 'startedAt') ? options.startedAt : 1000;
+    const document = { documentElement: { lang: options.locale || 'de' }, createElement: tag => new Element(tag),
         getElementById: id => descendants(root).find(element => element.id === id) || null,
         addEventListener() {} };
     const window = { __TaxonomyAnalysisSessionContext: { runtime },
@@ -46,6 +47,8 @@ function fixture(detail, status = 'FAILED') {
     const monitor = window.TaxonomyAnalysisProgress.start('run');
     return { root, log, monitor, runtime,
         get detailCalls() { return detailCalls; },
+        get button() { return descendants(root).find(element => element.tagName === 'BUTTON'); },
+        update(values) { snapshot = { ...snapshot, ...values, sequence: snapshot.sequence + 1 }; },
         get row() { return descendants(log).find(element => element.tagName === 'DETAILS'); },
         async tick() { const pair = [...timers].sort((a, b) => a[1].delay - b[1].delay)[0]; assert.ok(pair, 'scheduled observation'); timers.delete(pair[0]); await pair[1].fn(); await flush(); },
         async open() { this.row.open = true; this.row.emit('toggle'); await flush(); },
@@ -121,3 +124,74 @@ for (const value of [{ IP: { score: 80, reason: 'Already formatted' } }, []]) {
         view.monitor.stop();
     });
 }
+
+
+test('collapsed calls expose stable absolute server start time and call/run identities', async () => {
+    const timestamp = Date.parse('2026-09-23T08:41:03.123Z');
+    const view = fixture(failure, 'FAILED', { startedAt: timestamp });
+    await view.tick();
+    const time = descendants(view.row).find(element => element.tagName === 'TIME');
+    assert.ok(time, 'absolute start belongs to collapsed summary');
+    assert.equal(time.attributes.datetime, '2026-09-23T08:41:03.123Z');
+    assert.match(time.textContent, /2026-09-23 08:41:03[.]123 UTC/);
+    assert.match(view.row.children[0].textContent, /Aufruf #1/);
+    assert.match(view.log.textContent, /Vorgang: run/);
+    view.update({ serverTime: timestamp + 120000 }); await view.tick();
+    const updated = descendants(view.row).find(element => element.tagName === 'TIME');
+    assert.equal(updated.textContent, time.textContent, 'polling must not manufacture a new start');
+    view.monitor.stop();
+});
+
+for (const timestamp of [undefined, null, 'invalid', Number.NaN, 9e20]) {
+    test('missing or invalid server timestamp is explicit: ' + String(timestamp), async () => {
+        const view = fixture(failure, 'FAILED', { startedAt: timestamp }); await view.tick();
+        assert.match(view.row.children[0].textContent, /Startzeit unbekannt/);
+        assert.ok(!descendants(view.row).some(element => element.tagName === 'TIME'));
+        view.monitor.stop();
+    });
+}
+
+test('English log uses the same timestamp contract and translated labels', async () => {
+    const view = fixture(failure, 'FAILED', { locale: 'en' }); await view.tick();
+    assert.match(view.row.children[0].textContent, /Call #1/);
+    assert.match(view.row.children[0].textContent, /Started:/);
+    assert.match(view.log.textContent, /Operation: run/); view.monitor.stop();
+});
+
+test('finished analysis keeps a genuinely disabled but clearly non-actionable button', async () => {
+    const view = fixture(failure); await view.tick();
+    assert.equal(view.button.disabled, false); assert.match(view.button.className, /btn-danger/);
+    view.monitor.finish('PARTIAL', false);
+    assert.equal(view.button.disabled, true);
+    assert.doesNotMatch(view.button.className, /btn-danger/);
+    assert.match(view.button.textContent, /Analyse beendet/);
+    assert.doesNotMatch(view.button.textContent, /abbrechen/);
+});
+
+test('terminal snapshots and transport loss do not leave an apparent cancel action', async () => {
+    for (const status of ['PARTIAL', 'COMPLETED', 'ERROR', 'CANCELLED']) {
+        const view = fixture(failure); view.update({ status }); await view.tick();
+        assert.equal(view.button.disabled, true);
+        assert.doesNotMatch(view.button.className, /btn-danger/);
+        assert.match(view.button.textContent, /Analyse beendet/);
+    }
+    const view = fixture(failure); await view.tick(); view.monitor.transportFailed();
+    assert.equal(view.button.disabled, true); assert.doesNotMatch(view.button.className, /btn-danger/);
+    assert.match(view.button.textContent, /Nicht verfügbar/);
+});
+
+test('cancelling has its own disabled non-action label', async () => {
+    const view = fixture(failure); await view.tick(); await view.monitor.cancel();
+    assert.equal(view.button.disabled, true); assert.doesNotMatch(view.button.className, /btn-danger/);
+    assert.match(view.button.textContent, /Abbruch angefordert/);
+    view.update({ status: 'CANCELLING' }); await view.tick();
+    assert.match(view.button.textContent, /Abbruch angefordert/); view.monitor.stop();
+});
+
+test('a truncated diagnostic preview is not independently classified as invalid JSON', async () => {
+    const view = fixture({ prompt: '', response: '{"BR":', responseLength: 20000, truncated: true, error: '' }, 'COMPLETED');
+    await view.tick(); await view.open();
+    assert.match(view.log.textContent, /20000/);
+    assert.ok(!descendants(view.log).some(element => element.className.includes('llm-log-error-detail')));
+    view.monitor.stop();
+});
