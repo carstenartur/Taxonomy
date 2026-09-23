@@ -7,6 +7,9 @@ class LlmDiagnosticTest {
     @Test void failedReplyRemainsInspectable() throws Exception {
         LlmDiagnosticChecks.failedReplyRemainsInspectable();
     }
+    @Test void malformedJsonKeepsVisibleFailureAndOriginalEvidence() {
+        LlmDiagnosticChecks.malformedJsonKeepsVisibleFailureAndOriginalEvidence();
+    }
     @Test void diagnosticLengthsAndLimits() throws Exception {
         LlmDiagnosticChecks.diagnosticLengthsAndLimits();
     }

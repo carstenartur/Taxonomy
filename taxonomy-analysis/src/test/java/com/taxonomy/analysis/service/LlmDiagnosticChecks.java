@@ -57,6 +57,27 @@ public final class LlmDiagnosticChecks {
         }
     }
 
+    static void malformedJsonKeepsVisibleFailureAndOriginalEvidence() {
+        String raw = "```json\n{\n  \"IP\": {\"score\": 100, \"reason\": \"complete child\"}\n```";
+        var registry = new AnalysisProgressRegistry(new StandardEnvironment());
+        String id = UUID.randomUUID().toString();
+        try (var reservation = registry.reserve(id, "owner", SCOPE, null);
+             var handle = reservation.open()) {
+            var detail = service(raw).analyzeSingleBatchDetailed("Civilian requirement", List.of(node()), 100);
+            require(detail.getError() != null && detail.getError().contains("Invalid JSON in LLM response"),
+                    "The actual service must expose the concise parser diagnostic");
+            require(raw.equals(detail.getRawResponse()), "No repaired or shortened answer may replace raw evidence");
+            handle.finish("PARTIAL");
+            var snapshot = registry.snapshot(id, "owner", SCOPE);
+            require("PARTIAL".equals(snapshot.status()), "Malformed response is not a completed analysis");
+            require("FAILED".equals(snapshot.calls().getFirst().status()), "The log call must remain failed");
+            require(snapshot.calls().getFirst().startedAt() > 0, "Server start time must survive failure");
+            var saved = registry.callDetail(id, 1, "owner", SCOPE);
+            require(raw.equals(saved.response()) && detail.getError().equals(saved.error()),
+                    "The diagnostic API must retain both the raw answer and its format error");
+        }
+    }
+
     static void diagnosticLengthsAndLimits() throws Exception {
         AnalysisProgressRegistry registry = new AnalysisProgressRegistry(new StandardEnvironment());
         String id = UUID.randomUUID().toString();
