@@ -1,0 +1,109 @@
+diff --git a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/relations/RelationSearchEngine.java b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/relations/RelationSearchEngine.java
+index 84c5b79..57b4349 100644
+--- a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/relations/RelationSearchEngine.java
++++ b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/relations/RelationSearchEngine.java
+@@ -1,5 +1,6 @@
+ package com.taxonomy.analysis.relations;
+ 
++import com.taxonomy.analysis.assessment.ChildAssessmentContract;
+ import java.util.*;
+ import static com.taxonomy.dto.RelationSearchModel.*;
+ 
+@@ -57,6 +58,8 @@ public final class RelationSearchEngine {
+ 
+         Result execute(List<Intent> intents) {
+             for (Intent intent : intents) {
++                // All supplied root sets are known before the first remote evaluation.
++                validateCandidates(intent.roots());
+                 if (!original.contains(intent.contribution().quote())) {
+                     throw new IllegalArgumentException("Contribution evidence is not an original quote");
+                 }
+@@ -115,7 +118,12 @@ public final class RelationSearchEngine {
+                 return;
+             }
+             List<Node> children;
+-            try { children = List.copyOf(catalogue.children(node)); }
++            try {
++                children = List.copyOf(catalogue.children(node));
++                // Newly discovered invalid candidates stop with the same partial-result
++                // contract as other catalogue failures, preserving verified evidence.
++                validateCandidates(children);
++            }
+             catch (RuntimeException failed) { interrupt(work, failed); return; }
+             if (children.isEmpty()) {
+                 unfinished.add(new Unfinished(q.contribution().source().id(), q.type(), q.direction(),
+@@ -149,11 +157,9 @@ public final class RelationSearchEngine {
+ 
+         private List<Query> queries(Contribution contribution, String type, Direction direction, Phase phase,
+                                     List<Node> candidates, Decision proposal) {
++            validateCandidates(candidates);
+             Map<String, Node> unique = new TreeMap<>();
+-            for (Node node : candidates) {
+-                Node previous = unique.putIfAbsent(node.id(), node);
+-                if (previous != null) throw new IllegalArgumentException("Duplicate catalogue identity " + node.id());
+-            }
++            for (Node node : candidates) unique.put(node.id(), node);
+             List<Node> ordered = List.copyOf(unique.values());
+             List<Query> batches = new ArrayList<>();
+             for (int i = 0; i < ordered.size(); i += limits.batchSize()) {
+@@ -217,6 +223,10 @@ public final class RelationSearchEngine {
+         }
+     }
+ 
++    private static void validateCandidates(List<Node> candidates) {
++        ChildAssessmentContract.validateCandidates(candidates.stream().map(Node::id).toList());
++    }
++
+     private static boolean sameClaim(Decision a, Decision b) {
+         return Objects.equals(a.targetId(), b.targetId()) && Objects.equals(a.contribution(), b.contribution())
+                 && Objects.equals(a.quote(), b.quote()) && a.necessity() == b.necessity()
+diff --git a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/relations/RelationSearchContract.java b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/relations/RelationSearchContract.java
+index be9ba0b..02d7524 100644
+--- a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/relations/RelationSearchContract.java
++++ b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/relations/RelationSearchContract.java
+@@ -113,11 +113,44 @@ public final class RelationSearchContract {
+         try {
+             search.search(ORIGINAL, List.of(intent(READ)), DEFAULTS);
+             throw new AssertionError("Duplicate offered children must not be silently deduplicated");
+-        } catch (IllegalArgumentException expected) {
++        } catch (RuntimeException expected) {
++            check(expected instanceof RelationSearchEngine.InterruptedSearchException,
++                    "Invalid discovered children must preserve an interrupted search report");
++            check(expected.getCause() instanceof IllegalArgumentException, "Retain the invalid catalogue cause");
+             check(calls.get() == 1, "Only parent navigation may run; no ambiguous child evaluation");
+         }
+     }
+ 
++    public static void testInvalidLaterIntentFailsBeforeAnyModelEvaluation() {
++        AtomicInteger calls = new AtomicInteger();
++        var search = engine(q -> { calls.incrementAndGet(); return decisions(q, Outcome.REJECT); });
++        var invalid = new Intent(READ, "PRODUCES", Direction.OUTGOING, List.of(ROOT, ROOT));
++        try {
++            search.search(ORIGINAL, List.of(intent(READ), invalid), DEFAULTS);
++            throw new AssertionError("Invalid later intent was accepted");
++        } catch (IllegalArgumentException expected) {
++            check(calls.get() == 0, "Validate all offered root sets before spending any model budget");
++        }
++    }
++
++    public static void testInvalidDiscoveredChildrenRetainAlreadyVerifiedEdges() {
++        var search = new RelationSearchEngine(n -> List.of(LEAF, LEAF), q -> decisions(q,
++                q.phase() == Phase.VERIFY ? Outcome.VERIFIED
++                        : q.candidates().getFirst().container() ? Outcome.DESCEND : Outcome.MATCH), () -> { });
++        var first = new Intent(READ, "CONSUMES", Direction.OUTGOING, List.of(FOLDER));
++        try {
++            search.search(ORIGINAL, List.of(first, intent(READ)), DEFAULTS);
++            throw new AssertionError("Invalid discovered children were accepted");
++        } catch (RuntimeException failure) {
++            check(failure instanceof RelationSearchEngine.InterruptedSearchException,
++                    "Invalid later catalogue data must not discard earlier evidence");
++            var partial = ((RelationSearchEngine.InterruptedSearchException) failure).partialResult();
++            check(partial.edges().size() == 1 && partial.edges().getFirst().target().equals(FOLDER),
++                    "Retain the previously verified relation");
++            check(partial.calls() == 3 && !partial.searchExhausted(), "Retain spent budget and unfinished work");
++        }
++    }
++
+     public static void testIdenticalContextsAreDeduplicated() {
+         Result r = engine(q -> decisions(q, Outcome.REJECT)).search(ORIGINAL, List.of(intent(READ), intent(READ)), DEFAULTS);
+         check(r.calls() == 1, "duplicate intent must not pay twice");

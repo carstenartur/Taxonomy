@@ -1,4 +1,4 @@
-name: Verify strict category assessment continuation
+name: Verify strict assessments and retained partial evidence
 on:
   push:
     branches: [verify/pr1112-pr1113-repair-20260923]
@@ -17,13 +17,16 @@ jobs:
         run: |
           cp .verification/category-increment.payload /tmp/category-increment.payload
           cp .verification/apply-category-increment.py /tmp/apply-category-increment.py
+          cp .verification/preserve-partial.patch /tmp/preserve-partial.patch
+          echo '5b4a034b1845bdfacdc450ebb62a99bddbcb5a4830354a99a63d385b8d341f4f  /tmp/preserve-partial.patch' | sha256sum --check
           git checkout --detach 1bb12dbb3ef5a6708ad6558b27e7d1460aff270e
           python3 /tmp/apply-category-increment.py
+          git apply --index /tmp/preserve-partial.patch
+          test "$(git write-tree)" = 69a1f7e15fd33fb77b261c6ce616d790c962c0df
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
       - name: Run complete analysis and upstream unit suites
         run: |
-          set -o pipefail
           ./mvnw -B -ntp -pl taxonomy-analysis -am test > /tmp/category-java.log 2>&1 || { tail -n 100 /tmp/category-java.log; exit 1; }
           tail -n 25 /tmp/category-java.log
       - name: Check unchanged architecture and configuration contracts
@@ -45,7 +48,7 @@ jobs:
               'com.taxonomy.analysis.service.CategoryAssessmentContractTest': 15,
               'com.taxonomy.analysis.service.LlmServiceBranchCoverageTest': 25,
               'com.taxonomy.analysis.service.LlmDiagnosticTest': 6,
-              'com.taxonomy.analysis.relations.RelationSearchEngineTest': 26,
+              'com.taxonomy.analysis.relations.RelationSearchEngineTest': 28,
               'com.taxonomy.analysis.relations.RelationSearchIntegrationTest': 40,
             },
             'taxonomy-app': {
@@ -60,7 +63,7 @@ jobs:
                   assert all(int(root.get(key, 0)) == 0 for key in ('failures','errors','skipped')), root.attrib
                   print(name, root.attrib)
           PY
-          test "$(git write-tree)" = e64fddf13fadc4d6fca64a0750dfc6a923e19d15
+          test "$(git write-tree)" = 69a1f7e15fd33fb77b261c6ce616d790c962c0df
           git diff --exit-code
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
@@ -80,17 +83,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with: {persist-credentials: false, fetch-depth: 0}
-      - name: Prepare only the verified feature increment; do not update any refs
+      - name: Prepare only the verified increment; do not update any refs
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           cp .verification/category-increment.payload /tmp/category-increment.payload
           cp .verification/apply-category-increment.py /tmp/apply-category-increment.py
+          cp .verification/preserve-partial.patch /tmp/preserve-partial.patch
+          echo '5b4a034b1845bdfacdc450ebb62a99bddbcb5a4830354a99a63d385b8d341f4f  /tmp/preserve-partial.patch' | sha256sum --check
           git checkout --detach 1bb12dbb3ef5a6708ad6558b27e7d1460aff270e
           python3 - <<'PY'
-          import json, os, runpy, urllib.request
+          import json, os, runpy, subprocess, urllib.request
           from pathlib import Path
           data = runpy.run_path('/tmp/apply-category-increment.py')
+          subprocess.run(['git','apply','--index','/tmp/preserve-partial.patch'],check=True)
+          expected_tree = '69a1f7e15fd33fb77b261c6ce616d790c962c0df'
+          assert data['git']('write-tree') == expected_tree
+          assert data['git']('diff','--cached','--name-only').splitlines() == data['FILES']
           def post(kind, body):
               request = urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/' + kind,
                   data=json.dumps(body).encode(), method='POST', headers={
@@ -100,9 +109,9 @@ jobs:
                   return json.load(response)
           tree = post('trees', {'base_tree':'657ae72887e39bd7eb686975641bdb9c354fc3e4',
               'tree':[{'path':p,'mode':'100644','type':'blob','content':Path(p).read_text()} for p in data['FILES']]})
-          assert tree['sha'] == data['TREE'], tree['sha']
+          assert tree['sha'] == expected_tree
           commit = post('commits', {'tree':tree['sha'], 'parents':[data['BASE']],
-              'message':'fix(analysis): preserve unassessed category children instead of false zeros\n\nReuse the shared complete child-set contract for category scores; reject invalid scores before parent normalization. Preserve unknowns through detailed calls, automatic/streaming results and JSON snapshots; keep interactive failed batches retryable. Reject duplicate catalogue candidates before evaluation. Tests-first regressions and exact-tree Java/guard/UI source builds passed. No main refs, thresholds, canonical workflows or unrelated evidence/adoption semantics change.'})
+              'message':'fix(analysis): preserve unassessed children and partial relationship evidence\n\nReuse complete child-set validation for category scores and original catalogue candidate sets. Reject invalid batches before normalization; retain unknowns, diagnostics, prior scores, verified edges and spent budget. Keep failed interactive batches retryable without changing successful zero semantics. Exact-tree source-built analysis/upstream, architecture/configuration and complete UI contracts passed. No main refs, thresholds, canonical workflows or automatic adoption semantics change.'})
           print('PREPARED_COMMIT=' + commit['sha'])
           print('PREPARED_TREE=' + tree['sha'])
           print('No branch references were changed.')
