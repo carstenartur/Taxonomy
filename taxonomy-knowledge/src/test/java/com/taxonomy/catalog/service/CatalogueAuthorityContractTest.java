@@ -7,16 +7,25 @@ import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
 import com.taxonomy.model.RelationType;
 import com.taxonomy.workspace.service.RepositoryContext;
 import com.taxonomy.workspace.service.SystemRepositoryService;
+import org.apache.poi.ss.usermodel.Cell;
+import org.apache.poi.ss.usermodel.DataFormatter;
+import org.apache.poi.ss.usermodel.Row;
+import org.apache.poi.ss.usermodel.Workbook;
+import org.apache.poi.xssf.usermodel.XSSFWorkbook;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.core.io.DefaultResourceLoader;
 import tools.jackson.databind.ObjectMapper;
 
+import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
 
@@ -167,6 +176,58 @@ class CatalogueAuthorityContractTest {
     }
 
     @Test
+    void checkedInWorkbookPreservesEveryResolvableOfficialIpParent() throws Exception {
+        Map<String, TaxonomyNode> nodes = new LinkedHashMap<>();
+        Map<String, String> uuidToCode = new HashMap<>();
+        TaxonomyNode root = node("IP", null, "IP", 0, "Information Products");
+        nodes.put(root.getCode(), root);
+        DataFormatter formatter = new DataFormatter(Locale.ROOT);
+
+        ClassPathResource workbookResource =
+                new ClassPathResource("data/C3_Taxonomy_Catalogue_25AUG2025.xlsx");
+        try (InputStream input = workbookResource.getInputStream();
+             Workbook workbook = new XSSFWorkbook(input)) {
+            boolean first = true;
+            for (Row row : workbook.getSheet("Information Products")) {
+                if (first) { first = false; continue; }
+                String code = cell(formatter, row, 0);
+                String title = cell(formatter, row, 2);
+                if (code == null || title == null) continue;
+                String rawParent = cell(formatter, row, 4);
+                TaxonomyNode entry = node(code, rawParent, "IP", 1, title);
+                entry.setUuid(cell(formatter, row, 1));
+                entry.setSourceParentReference(rawParent);
+                entry.setSourceOrder(row.getRowNum());
+                entry.setState(cell(formatter, row, 10));
+                nodes.put(code, entry);
+                if (entry.getUuid() != null) uuidToCode.put(entry.getUuid(), code);
+            }
+        }
+
+        CatalogueOverlayService service = new CatalogueOverlayService(
+                new ObjectMapper(), new DefaultResourceLoader(), true,
+                "classpath:data/nato-taxonomy.json");
+        service.applyAndValidate(nodes, uuidToCode,
+                "classpath:data/C3_Taxonomy_Catalogue_25AUG2025.xlsx");
+
+        long supplemental = 0;
+        for (TaxonomyNode entry : nodes.values()) {
+            if (entry == root) continue;
+            assertThat(entry.getSourceOrder()).isNotNull();
+            if (entry.getSourceParentCode() != null) {
+                assertThat(entry.getParentCode())
+                        .as("official Excel parent of %s", entry.getCode())
+                        .isEqualTo(entry.getSourceParentCode());
+                assertThat(service.hasParentPatch(entry.getCode())).isFalse();
+            } else if (service.hasParentPatch(entry.getCode())) {
+                supplemental++;
+                assertThat(entry.getTaxonomyRoot()).isEqualTo("IP");
+            }
+        }
+        assertThat(supplemental).as("documented IP gaps repaired by navigation overlay").isPositive();
+    }
+
+    @Test
     void localNavigationNodeCannotBeArchitectureRelationEndpoint() throws Exception {
         TaxonomyNode local = node("local:ip:test", null, "IP", 1, "Local helper");
         TaxonomyNode official = node("IP-1", null, "IP", 1, "Official product");
@@ -212,6 +273,13 @@ class CatalogueAuthorityContractTest {
         assertThat(service.toDto(parent).getChildren())
                 .extracting(dto -> dto.getCode())
                 .containsExactly("IP-1", "IP-2");
+    }
+
+    private static String cell(DataFormatter formatter, Row row, int column) {
+        Cell cell = row.getCell(column, Row.MissingCellPolicy.RETURN_BLANK_AS_NULL);
+        if (cell == null) return null;
+        String value = formatter.formatCellValue(cell);
+        return value == null || value.isBlank() ? null : value.strip();
     }
 
     private static CatalogueOverlayService overlay(Path dir, String json) throws Exception {
