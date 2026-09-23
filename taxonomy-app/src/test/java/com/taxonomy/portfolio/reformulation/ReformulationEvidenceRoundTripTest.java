@@ -22,7 +22,8 @@ import java.util.UUID;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
-@SpringBootTest(properties = "llm.mock=true")\n@org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
+@SpringBootTest(properties = "llm.mock=true")
+@org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc
 @WithMockUser(username = "architect", roles = "ARCHITECT")
 class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
     private static final String EVIDENCE_BLOCK = "reformulationEvidence";
