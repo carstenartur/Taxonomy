@@ -1,6 +1,8 @@
 package com.taxonomy.analysis.service;
 
 import tools.jackson.core.exc.StreamReadException;
+import tools.jackson.core.StreamReadFeature;
+import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
@@ -9,6 +11,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.*;
+import java.util.function.BiFunction;
 
 /**
  * Parses LLM API responses (Gemini and OpenAI-compatible) and extracts structured
@@ -186,22 +189,8 @@ public class LlmResponseParser {
      */
     public LlmService.ScoreParseResult parseIndependentScoreParseResult(
             String text, List<TaxonomyNode> nodes, int minimumScore) throws Exception {
-        Map<String, Object> raw = readScoreObject(text);
-
-        Set<String> expectedCodes = new LinkedHashSet<>();
-        for (TaxonomyNode node : nodes) {
-            expectedCodes.add(node.getCode());
-        }
-        Set<String> actualCodes = new LinkedHashSet<>(raw.keySet());
-        if (!actualCodes.equals(expectedCodes)) {
-            Set<String> missing = new LinkedHashSet<>(expectedCodes);
-            missing.removeAll(actualCodes);
-            Set<String> unknown = new LinkedHashSet<>(actualCodes);
-            unknown.removeAll(expectedCodes);
-            throw new IllegalArgumentException(
-                    "Independent product response keys do not match candidates; missing="
-                            + missing + ", unknown=" + unknown);
-        }
+        Map<String, Object> raw = parseChildAssessment(text,
+                nodes.stream().map(TaxonomyNode::getCode).toList(), (code, value) -> value);
 
         int threshold = Math.max(0, Math.min(100, minimumScore));
         Map<String, Integer> scores = new LinkedHashMap<>();
@@ -273,13 +262,26 @@ public class LlmResponseParser {
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
+    /**
+     * Shared structured child evaluation boundary. The policy interprets values; the
+     * common contract rejects missing/unknown IDs before any child is interpreted.
+     * This is used by independent product scoring and relation assessment. Legacy
+     * category-budget parsing keeps its existing missing-score behavior for now.
+     */
+    public <T> Map<String, T> parseChildAssessment(String text, List<String> candidateIds,
+                                                 BiFunction<String, Object, T> policy) {
+        return ChildAssessmentContract.decode(candidateIds, readScoreObject(text), policy);
+    }
+
     private Map<String, Object> readScoreObject(String text) {
         String jsonText = extractJson(text);
         if (!jsonText.startsWith("{")) {
-            throw new IllegalArgumentException("Expected a JSON object for analysis scores, but the LLM "
+            throw new IllegalArgumentException("Expected a JSON object for a child assessment, but the LLM "
                     + "returned empty or non-JSON text. Inspect the raw response in the LLM communication log.");
         }
-        return objectMapper.readValue(jsonText, new TypeReference<>() {});
+        return objectMapper.readerFor(new TypeReference<Map<String, Object>>() {})
+                .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .readValue(jsonText);
     }
 
     /**
