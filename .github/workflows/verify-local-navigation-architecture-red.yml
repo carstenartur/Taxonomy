@@ -16,5 +16,8 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: Run boundary tests expected red
-        run: ./mvnw -B -ntp -pl taxonomy-architecture -am -Dtest=LocalNavigationRelationBoundaryTest,CatalogueArchitectureEndpointBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Run analysis boundary tests expected red
+        run: ./mvnw -B -ntp -pl taxonomy-analysis -am -Dtest=LocalNavigationRelationBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Run architecture boundary tests expected red
+        if: always()
+        run: ./mvnw -B -ntp -pl taxonomy-architecture -am -Dtest=CatalogueArchitectureEndpointBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test
