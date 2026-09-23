@@ -1,0 +1,59 @@
+name: Verify hierarchy context correction
+on:
+  push:
+    branches: ['verify/hierarchy-context-20260923']
+permissions:
+  contents: read
+jobs:
+  regressions:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          show-progress: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Stage new regression tests only
+        run: |
+          cp .verification/TaxonomyHierarchyContextTest.java taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/
+          cp .verification/CatalogueHierarchyAuditTest.java taxonomy-tooling/src/test/java/com/taxonomy/tooling/
+      - name: Prove context regressions on unmodified implementation
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-analysis -am -Dtest=TaxonomyHierarchyContextTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/context-red.log 2>&1
+          rc=$?
+          tail -55 /tmp/context-red.log
+          test "$rc" -ne 0 || exit 1
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          r=ET.parse('taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.TaxonomyHierarchyContextTest.xml').getroot()
+          print('CONTEXT_RED',r.attrib)
+          assert int(r.get('tests'))==8 and int(r.get('failures'))>=3 and int(r.get('errors'))==0
+          PY
+      - name: Prove real-catalogue audit contract is missing
+        if: always()
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-tooling -am -Dtest=CatalogueHierarchyAuditTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/audit-red.log 2>&1
+          rc=$?
+          tail -40 /tmp/audit-red.log
+          test "$rc" -ne 0 || exit 1
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          r=ET.parse('taxonomy-tooling/target/surefire-reports/TEST-com.taxonomy.tooling.CatalogueHierarchyAuditTest.xml').getroot()
+          print('AUDIT_RED',r.attrib)
+          assert int(r.get('tests'))==1 and int(r.get('failures'))==1 and int(r.get('errors'))==0
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: hierarchy-context-red
+          path: |
+            /tmp/*-red.log
+            taxonomy-*/target/surefire-reports/TEST-*Hierarchy*.xml
+          retention-days: 7
