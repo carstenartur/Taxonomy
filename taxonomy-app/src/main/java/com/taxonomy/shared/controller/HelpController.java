@@ -80,6 +80,7 @@ public class HelpController {
         new String[]{"MODULE_BOUNDARIES",         "🧱", "help.toc.MODULE_BOUNDARIES",             "help.audience.developers"},
         new String[]{"ARCHITECTURE_EDITOR",       "✏️", "help.toc.ARCHITECTURE_EDITOR",           "help.audience.everyone"},
         new String[]{"DECISION_PIPELINE",         "🔬", "help.toc.DECISION_PIPELINE",             "help.audience.developers"},
+        new String[]{"SPARX_CURRENT_VIEW_EXPORT", "📤", "help.toc.SPARX_CURRENT_VIEW_EXPORT", "help.audience.everyone"},
         new String[]{"DECISION_RATIONALE_REPORT", "🧭", "help.toc.DECISION_RATIONALE_REPORT",     "help.audience.everyone"},
         new String[]{"DOCUMENT_TEMPLATES",        "📄", "help.toc.DOCUMENT_TEMPLATES",            "help.audience.admins"},
         new String[]{"DEVELOPER_GUIDE",           "🛠️", "help.toc.DEVELOPER_GUIDE",               "help.audience.developers"},

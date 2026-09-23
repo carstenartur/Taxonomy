@@ -9,6 +9,7 @@ import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.export.service.ExportFacade;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.service.VisioExportExtension;
+import com.taxonomy.export.service.SparxExportExtension;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -27,7 +28,7 @@ final class CurrentDiagramExportRegression {
 
     private static ExportApiController controller() {
         var registry = new ExportFormatExtensionRegistry(List.of(
-                new VisioExportExtension(new VisioDiagramService(), new VisioPackageBuilder())));
+                new VisioExportExtension(new VisioDiagramService(), new VisioPackageBuilder()), new SparxExportExtension()));
         return new ExportApiController(facade(), registry);
     }
 
@@ -55,6 +56,26 @@ final class CurrentDiagramExportRegression {
             check(view.getIncludedElements().equals(before), "Export mutated working state");
             check(view.getIncludedRelationships().size() == size - 1, "Export mutated relationships");
         }
+    }
+
+    static void exportsSparxWorkingViewWithoutScoringOrSyncMutation() throws Exception {
+        var view = view(3);
+        var nodes = new ArrayList<>(view.getIncludedElements());
+        var response = controller().exportCurrentDiagram("sparx", view);
+        check(response.getStatusCode().value() == 200, "Sparx format must be registered");
+        check("application/zip".equals(response.getHeaders().getFirst("Content-Type")), "Sparx ZIP media type");
+        check(response.getHeaders().getFirst("Content-Disposition").contains("sparx.zip"), "Honest bundle extension");
+        byte[] xmi = null;
+        try (var zip = new ZipInputStream(new ByteArrayInputStream((byte[]) response.getBody()))) {
+            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+                byte[] bytes = zip.readAllBytes();
+                if (entry.getName().equals("architecture.xmi")) xmi = bytes;
+            }
+        }
+        check(xmi != null, "Sparx XMI missing");
+        var decoded = new com.taxonomy.exchange.sparx.SparxXmiCodec().read(xmi, null, false);
+        check(decoded.artifacts().size() == 3 && decoded.relations().size() == 2, "Sparx membership changed");
+        check(view.getIncludedElements().equals(nodes) && view.getIncludedRelationships().size() == 2, "Sparx export changed working view");
     }
 
     static void rejectsInvalidSnapshotsWithoutScoring() {
@@ -127,6 +148,7 @@ final class CurrentDiagramExportRegression {
     public static void main(String[] args) throws Exception {
         exportsAllCurrentNodesWithoutScoring();
         rejectsInvalidSnapshotsWithoutScoring();
+        exportsSparxWorkingViewWithoutScoringOrSyncMutation();
         System.out.println("PASS: complete 50/150-node VSDX exports without LLM/derivation; invalid inputs and normalized score ranges checked");
     }
 }
