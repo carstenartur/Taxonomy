@@ -1,0 +1,234 @@
+diff --git a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/AnalysisProgressRegistry.java b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/AnalysisProgressRegistry.java
+index cfd852fcceab822a6964b5a44a6f92866d483f7f..c81d7ed00bbe6630f2689d0919f3760fe30703f7 100644
+--- a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/AnalysisProgressRegistry.java
++++ b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/service/AnalysisProgressRegistry.java
+@@ -67 +67,2 @@ public class AnalysisProgressRegistry {
+-                           String databaseStorage, String indexStorage, AnalysisProvenance provenance) { }
++                           String databaseStorage, String indexStorage, AnalysisProvenance provenance,
++                           Long finishedAt, long elapsedMillis) { }
+@@ -294,0 +296,2 @@ public class AnalysisProgressRegistry {
++        final long startedNanos = System.nanoTime();
++        long finishedElapsedMillis;
+@@ -387,0 +391 @@ public class AnalysisProgressRegistry {
++            finishedElapsedMillis = Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L);
+@@ -398 +402,2 @@ public class AnalysisProgressRegistry {
+-                    databaseStorage, indexStorage, provenance);
++                    databaseStorage, indexStorage, provenance, active() ? null : finishedAt,
++                    active() ? Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L) : finishedElapsedMillis);
+diff --git a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/AnalysisStreamEvent.java b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/AnalysisStreamEvent.java
+index 950c020578323454a5adef5bcaf4152a2aeb797d..c0b8b9a37a2ddd537b767466daffb2009e591b8e 100644
+--- a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/AnalysisStreamEvent.java
++++ b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/AnalysisStreamEvent.java
+@@ -17,2 +17 @@ public sealed interface AnalysisStreamEvent
+-    record Phase(String message, int progressPercent) implements AnalysisStreamEvent {
+-    }
++    record Phase(String message, int progressPercent) implements AnalysisStreamEvent { }
+@@ -23,2 +22 @@ public sealed interface AnalysisStreamEvent
+-                  LlmCallDetail detail) implements AnalysisStreamEvent {
+-    }
++                  LlmCallDetail detail) implements AnalysisStreamEvent { }
+@@ -26,2 +24 @@ public sealed interface AnalysisStreamEvent
+-    record Expanding(String parentCode, List<String> childCodes) implements AnalysisStreamEvent {
+-    }
++    record Expanding(String parentCode, List<String> childCodes) implements AnalysisStreamEvent { }
+@@ -33 +30,6 @@ public sealed interface AnalysisStreamEvent
+-                    List<ProductCoverageGap> productCoverageGaps) implements AnalysisStreamEvent {
++                    List<ProductCoverageGap> productCoverageGaps,
++                    Long analysisDurationMillis) implements AnalysisStreamEvent {
++        public Complete(String status, Map<String, Integer> allScores, List<String> warnings,
++                        List<TaxonomyDiscrepancy> discrepancies, List<ProductCoverageGap> productCoverageGaps) {
++            this(status, allScores, warnings, discrepancies, productCoverageGaps, null);
++        }
+@@ -42 +44,7 @@ public sealed interface AnalysisStreamEvent
+-                 Map<String, String> partialReasons) implements AnalysisStreamEvent {
++                 Map<String, String> partialReasons,
++                 Long analysisDurationMillis) implements AnalysisStreamEvent {
++        public Error(String status, String errorMessage, Map<String, Integer> partialScores,
++                     List<String> warnings, List<TaxonomyDiscrepancy> discrepancies,
++                     List<ProductCoverageGap> productCoverageGaps, Map<String, String> partialReasons) {
++            this(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps, partialReasons, null);
++        }
+@@ -46 +54 @@ public sealed interface AnalysisStreamEvent
+-            this(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps, Map.of());
++            this(status, errorMessage, partialScores, warnings, discrepancies, productCoverageGaps, Map.of(), null);
+diff --git a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/AnalyzeRequirementUseCase.java b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/AnalyzeRequirementUseCase.java
+index 807c462e2bdbe8383a52a80528fe2817be07f405..34191fdb93bd15e4118e3a726cff1ca90ccf6c9b 100644
+--- a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/AnalyzeRequirementUseCase.java
++++ b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/AnalyzeRequirementUseCase.java
+@@ -76,0 +77 @@ public class AnalyzeRequirementUseCase {
++        long startedNanos = System.nanoTime();
+@@ -101,0 +103 @@ public class AnalyzeRequirementUseCase {
++            result.setAnalysisDurationMillis(Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
+diff --git a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCase.java b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCase.java
+index f853ba596ebdb28d8ccb12dd3342212675aa0123..87c25f85f66dc9b5d40fccd707507fc3db1a90a3 100644
+--- a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCase.java
++++ b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCase.java
+@@ -30,0 +31 @@ public class StreamRequirementAnalysisUseCase {
++        long startedNanos = System.nanoTime();
+@@ -60 +61 @@ public class StreamRequirementAnalysisUseCase {
+-                            status, allScores, warnings, discrepancies, productCoverageGaps));
++                            status, allScores, warnings, discrepancies, productCoverageGaps, elapsedMillis(startedNanos)));
+@@ -71 +72 @@ public class StreamRequirementAnalysisUseCase {
+-                            productCoverageGaps));
++                            productCoverageGaps, Map.of(), elapsedMillis(startedNanos)));
+@@ -80 +81 @@ public class StreamRequirementAnalysisUseCase {
+-                            productCoverageGaps, partialReasons));
++                            productCoverageGaps, partialReasons, elapsedMillis(startedNanos)));
+@@ -91,0 +93,4 @@ public class StreamRequirementAnalysisUseCase {
++    private static long elapsedMillis(long startedNanos) {
++        return Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L);
++    }
++
+diff --git a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/AnalysisTimingChecks.java b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/AnalysisTimingChecks.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..e0938efdc98f59cb9e10009b8e576816b32a84c7
+--- /dev/null
++++ b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/AnalysisTimingChecks.java
+@@ -0,0 +1,64 @@
++package com.taxonomy.analysis.service;
++import com.taxonomy.dto.AnalysisResult;
++import com.taxonomy.workspace.service.WorkspaceContext;
++import org.springframework.core.env.StandardEnvironment;
++import java.lang.reflect.Method;
++
++public final class AnalysisTimingChecks {
++    static Method method(Class<?> type,String name,Class<?>... args) {
++        try { return type.getMethod(name,args); }
++        catch(NoSuchMethodException e){throw new AssertionError(type.getSimpleName()+" must expose "+name);}
++    }
++    public static void resultTiming() throws Exception {
++        var result = new AnalysisResult();
++        var get=method(AnalysisResult.class,"getAnalysisDurationMillis");
++        var set=method(AnalysisResult.class,"setAnalysisDurationMillis",Long.class);
++        if(get.invoke(result)!=null)throw new AssertionError("Unknown duration is not zero");
++        set.invoke(result,123456L);
++        if(!Long.valueOf(123456).equals(get.invoke(result)))throw new AssertionError("Measured duration lost");
++        var json = tools.jackson.databind.json.JsonMapper.builder().findAndAddModules().build();
++        var reloaded = json.readValue(json.writeValueAsString(result), AnalysisResult.class);
++        if (!Long.valueOf(123456L).equals(reloaded.getAnalysisDurationMillis()))
++            throw new AssertionError("Snapshot JSON lost the measured duration");
++        if (json.readValue("{}", AnalysisResult.class).getAnalysisDurationMillis() != null)
++            throw new AssertionError("Historical JSON must not invent a zero duration");
++        var mapper = new com.taxonomy.analysis.controller.AnalysisSseEventMapper();
++        var event = new com.taxonomy.analysis.usecase.AnalysisStreamEvent.Complete(
++            "SUCCESS", java.util.Map.of(), java.util.List.of(), java.util.List.of(), java.util.List.of(), 123456L);
++        if (!Long.valueOf(123456L).equals(((java.util.Map<?, ?>)mapper.map(event).payload()).get("analysisDurationMillis")))
++            throw new AssertionError("SSE complete must preserve the measured duration");
++        var error = new com.taxonomy.analysis.usecase.AnalysisStreamEvent.Error(
++            "PARTIAL", "Stopped", java.util.Map.of(), java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.Map.of(), 9876L);
++        if (!Long.valueOf(9876L).equals(((java.util.Map<?, ?>)mapper.map(error).payload()).get("analysisDurationMillis")))
++            throw new AssertionError("SSE partial must preserve the measured duration");
++        boolean rejected=false;
++        try{set.invoke(result,-1L);}catch(java.lang.reflect.InvocationTargetException e){rejected=e.getCause() instanceof IllegalArgumentException;}
++        if(!rejected)throw new AssertionError("Negative duration must be rejected");
++    }
++    public static void frozenRunTiming() throws Exception {
++        var registry=new AnalysisProgressRegistry(new StandardEnvironment());
++        var context=new WorkspaceContext("qa","qa-workspace","draft","qa-repository");
++        var elapsed=method(AnalysisProgressRegistry.Snapshot.class,"elapsedMillis");
++        var finished=method(AnalysisProgressRegistry.Snapshot.class,"finishedAt");
++        try(var run=registry.open(null,"qa",context,null)) {
++            var live=registry.snapshot(run.id(),"qa",context);
++            if(finished.invoke(live)!=null)throw new AssertionError("Running operation has no finish timestamp");
++            run.finish("PARTIAL");
++            var terminal=registry.snapshot(run.id(),"qa",context);
++            if(finished.invoke(terminal)==null)throw new AssertionError("Missing finish time");
++            long measured=(Long)elapsed.invoke(terminal);
++            for(int i=0;i<100;i++) {
++                var again=registry.snapshot(run.id(),"qa",context);
++                if((Long)elapsed.invoke(again)!=measured)throw new AssertionError("Finished duration changes on observation");
++            }
++            run.finish("SUCCESS");
++            if(!"PARTIAL".equals(registry.snapshot(run.id(),"qa",context).status()))throw new AssertionError("Timing must not change terminal ownership");
++        }
++    }
++    public static void main(String[] args)throws Exception {
++        int failed=0;
++        try{resultTiming();System.out.println("PASS result timing");}catch(AssertionError e){failed++;System.err.println(e.getMessage());}
++        try{frozenRunTiming();System.out.println("PASS frozen run timing");}catch(AssertionError e){failed++;System.err.println(e.getMessage());}
++        if(failed>0)throw new AssertionError(failed+" timing checks failed");
++    }
++}
+diff --git a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/AnalysisTimingTest.java b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/AnalysisTimingTest.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..9d1a4c3ec2fdd426aec32d7af31d943ea19967e9
+--- /dev/null
++++ b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/AnalysisTimingTest.java
+@@ -0,0 +1,12 @@
++package com.taxonomy.analysis.service;
++
++import org.junit.jupiter.api.Test;
++
++class AnalysisTimingTest {
++    @Test void resultAndTerminalStreamsRetainMeasuredDuration() throws Exception {
++        AnalysisTimingChecks.resultTiming();
++    }
++    @Test void terminalObservationDoesNotAdvanceDuration() throws Exception {
++        AnalysisTimingChecks.frozenRunTiming();
++    }
++}
+diff --git a/taxonomy-app/src/main/java/com/taxonomy/composition/report/DecisionRationaleReportController.java b/taxonomy-app/src/main/java/com/taxonomy/composition/report/DecisionRationaleReportController.java
+index 7eac241856b1e4c363c7022e587826ea33077945..6084af3d91ac7ae41e1953e33af00ac930fde86a 100644
+--- a/taxonomy-app/src/main/java/com/taxonomy/composition/report/DecisionRationaleReportController.java
++++ b/taxonomy-app/src/main/java/com/taxonomy/composition/report/DecisionRationaleReportController.java
+@@ -101,0 +102,15 @@ public class DecisionRationaleReportController {
++            Map<String, Integer> scores,
++            Map<String, Integer> rawScores,
++            Map<String, Integer> effectiveScores,
++            Map<String, AnalysisScoreDetail> scoreDetails,
++            Map<String, Integer> productSuitabilityScores,
++            Integer scoreSemanticsVersion,
++            Map<String, String> reasons,
++            String businessText,
++            String provider,
++            String analysisStatus,
++            List<TaxonomyDiscrepancy> discrepancies,
++            List<ProductCoverageGap> productCoverageGaps,
++            String language,
++            Long analysisDurationMillis) {
++        public DecisionReportRequest(
+@@ -114,0 +130,3 @@ public class DecisionRationaleReportController {
++            this(scores, rawScores, effectiveScores, scoreDetails, productSuitabilityScores, scoreSemanticsVersion, reasons, businessText, provider, analysisStatus, discrepancies, productCoverageGaps, language, null);
++        }
++
+@@ -220 +238 @@ public class DecisionRationaleReportController {
+-                scoreDetails);
++                scoreDetails, request.analysisDurationMillis());
+diff --git a/taxonomy-app/src/main/resources/i18n/messages.properties b/taxonomy-app/src/main/resources/i18n/messages.properties
+index 1615e4ec049d0132143a9269a0d12667137dd0f4..94355d245f5ba1fc9023dc08c8b9e65d409b91ff 100644
+--- a/taxonomy-app/src/main/resources/i18n/messages.properties
++++ b/taxonomy-app/src/main/resources/i18n/messages.properties
+@@ -1654,0 +1655,5 @@ relation.search.conditions=Conditions / choice group
++
++view.sunburst.hide.zero=Hide zero relevance
++views.sunburst.empty=No entries remain with the current filter. Switch off “Hide zero relevance” to show them again.
++analysis.duration.label=Analysis duration
++analysis.duration.unknown=Not recorded
+diff --git a/taxonomy-app/src/main/resources/i18n/messages_de.properties b/taxonomy-app/src/main/resources/i18n/messages_de.properties
+index c76b7201195a1eea4d944c20e82c4f3e2f7ff6a1..087ee92bc22c6a6d6a517b1ceed698375daaa55a 100644
+--- a/taxonomy-app/src/main/resources/i18n/messages_de.properties
++++ b/taxonomy-app/src/main/resources/i18n/messages_de.properties
+@@ -1654,0 +1655,5 @@ relation.search.conditions=Bedingungen / Entscheidungsgruppe
++
++view.sunburst.hide.zero=0-Relevanz ausblenden
++views.sunburst.empty=Mit diesem Filter bleiben keine Einträge übrig. Schalten Sie „0-Relevanz ausblenden“ aus, um alle Einträge wieder anzuzeigen.
++analysis.duration.label=Analysedauer
++analysis.duration.unknown=Nicht aufgezeichnet
+diff --git a/taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css b/taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css
+index 8ae4b4de2e0901c41718842d33b5399193a88a10..10a64c1f67977dc06f4a0ef60f06d2749d477aef 100644
+--- a/taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css
++++ b/taxonomy-app/src/main/resources/static/css/taxonomy-ergonomics.css
+@@ -693,0 +694,13 @@ dialog.onboarding-overlay .onboarding-card {
++
++/* A view switch must never move the view selector. Tools have an independent row. */
++.taxonomy-view-header { display: flex; flex-direction: column; align-items: stretch; gap: .5rem; }
++.taxonomy-view-controls { min-width: 0; }
++.taxonomy-view-selector { display: flex; flex-wrap: wrap; justify-content: flex-start; width: fit-content; max-width: 100%; }
++.taxonomy-view-selector > .btn { flex: 0 0 auto; }
++.taxonomy-view-tools { display: flex; align-items: center; flex-wrap: wrap; gap: .5rem; min-height: 2.25rem; margin-top: .5rem; }
++#sunburstFilterGroup { display: none; }
++#leftPanel:has(#taxonomyTree[data-view-rendered="sunburst"]) #sunburstFilterGroup { display: block; }
++button.summary-layer-element { font: inherit; text-align: left; }
++button.summary-layer-element[aria-pressed="true"] { outline: 2px solid currentColor; outline-offset: 2px; }
++#summarySelectionDetails { margin-top: 1rem; padding: .75rem; border: 1px solid var(--bs-border-color); border-radius: .375rem; overflow-wrap: anywhere; }
++#summarySelectionDetails p { margin-bottom: .5rem; }

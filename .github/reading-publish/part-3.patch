@@ -1,0 +1,296 @@
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js
+index b8b3f4a46719d0b50ec594b41271993503d875aa..21688616c4367a4e9141e15e22dd430af5d6d7fe 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js
+@@ -279,0 +280,8 @@
++        var duration = node('div', text('Analysedauer: noch nicht verfügbar', 'Analysis duration: not yet available'));
++        duration.id = 'analysisElapsed';
++        function showDuration(millis) {
++            var value = Number.isSafeInteger(millis) && millis >= 0 ? millis : null;
++            duration.textContent = text('Analysedauer: ', 'Analysis duration: ') + (value === null
++                ? text('Nicht aufgezeichnet', 'Not recorded')
++                : Math.floor(value / 60000) + ' min ' + String(Math.floor(value / 1000) % 60).padStart(2, '0') + ' s');
++        }
+@@ -289 +297 @@
+-        panel.append(title, state, resources, warning, button);
++        panel.append(title, state, duration, resources, warning, button);
+@@ -330 +338,2 @@
+-            finished: function (status) {
++            finished: function (status, measuredDuration) {
++                if (Number.isSafeInteger(measuredDuration) && measuredDuration >= 0) showDuration(measuredDuration);
+@@ -352 +361,6 @@
+-                var elapsed = Math.max(0, Math.floor((snapshot.serverTime - snapshot.startedAt) / 1000));
++                var isTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0;
++                var elapsedMillis = Number.isSafeInteger(snapshot.elapsedMillis) && snapshot.elapsedMillis >= 0
++                    ? snapshot.elapsedMillis : !isTerminal && Number.isFinite(snapshot.startedAt) && Number.isFinite(snapshot.serverTime)
++                        ? Math.max(0, snapshot.serverTime - snapshot.startedAt) : null;
++                showDuration(elapsedMillis);
++                var elapsed = elapsedMillis === null ? '?' : Math.floor(elapsedMillis / 1000);
+@@ -442 +456 @@
+-        monitor.finish = function (status, refreshDiagnostics) {
++        monitor.finish = function (status, refreshDiagnostics, measuredDuration) {
+@@ -446 +460 @@
+-            view.finished(status);
++            view.finished(status, measuredDuration);
+@@ -451 +465 @@
+-                view.finished(status);
++                view.finished(status, measuredDuration);
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js
+index c044ebae9019592a6f14abf534f473c64449a1bc..9d7ee740ab32e851d8fe691907f02f95f8d0d92e 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-core.js
+@@ -328,0 +329 @@
++            analysisDurationMillis: S.lastAnalysisDurationMillis,
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js
+index 2138f45c7cc7da2ccd42eca03f04211ee5acb1fe..af80fe0befb9addc61a68eb346b6b402aed37100 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-session-draft.js
+@@ -224,0 +225 @@
++        S.lastAnalysisDurationMillis = null;
+@@ -270,0 +272,2 @@
++            S.lastAnalysisDurationMillis = Number.isSafeInteger(payload.analysisDurationMillis)
++                && payload.analysisDurationMillis >= 0 ? payload.analysisDurationMillis : null;
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
+index 875fe86fa85d45f55ded13e1757819141e1a72a2..af21ee6b2f9466b1e924886cef94886793b82dbf 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
+@@ -142,0 +143 @@
++                        S.lastAnalysisDurationMillis = null; // imported scores have no verified run timing
+@@ -765,0 +767,9 @@
++        var durationDisplay = document.getElementById('analysisDurationDisplay');
++        if (durationDisplay) {
++            var duration = S.lastAnalysisDurationMillis;
++            var known = Number.isSafeInteger(duration) && duration >= 0;
++            durationDisplay.hidden = !known && !S.lastAnalyzedText;
++            durationDisplay.textContent = t('analysis.duration.label') + ': ' + (known
++                ? Math.floor(duration / 60000) + ' min ' + String(Math.floor(duration / 1000) % 60).padStart(2, '0') + ' s'
++                : t('analysis.duration.unknown'));
++        }
+@@ -941,0 +952 @@
++                analysisDurationMillis: S.lastAnalysisDurationMillis,
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-copilot-terminal-state.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-copilot-terminal-state.js
+index 50f9a77901853fc7c1e7de660d88e303405df92a..bca84688a6a5dddeb0c53f6b2c1d95f960c39f08 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-copilot-terminal-state.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-copilot-terminal-state.js
+@@ -202,0 +203 @@
++        C.S.lastAnalysisDurationMillis = null;
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
+index 4500e825739e19fe35cf93b33c99600d29720524..4d548db1ad88098383f3e3ff1a180df83dcd9532 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
+@@ -128,0 +129,2 @@
++        S.lastAnalysisDurationMillis = Number.isSafeInteger(envelope.analysisDurationMillis)
++            && envelope.analysisDurationMillis >= 0 ? envelope.analysisDurationMillis : null;
+@@ -269,0 +272,5 @@
++            '<div><strong>' + (isGermanLocale() ? 'Analysedauer:' : 'Analysis duration:') + '</strong> '
++                + (Number.isSafeInteger(S.lastAnalysisDurationMillis) && S.lastAnalysisDurationMillis >= 0
++                    ? Math.floor(S.lastAnalysisDurationMillis / 60000) + ' min '
++                        + String(Math.floor(S.lastAnalysisDurationMillis / 1000) % 60).padStart(2, '0') + ' s'
++                    : (isGermanLocale() ? 'Nicht aufgezeichnet' : 'Not recorded')) + '</div>' +
+@@ -405,0 +413 @@
++        S.lastAnalysisDurationMillis = null;
+@@ -473 +481 @@
+-                if (progress) progress.finish(result.status);
++                if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
+@@ -620,0 +629 @@
++        S.lastAnalysisDurationMillis = null;
+@@ -657,0 +667 @@
++        S.lastAnalysisDurationMillis = null;
+@@ -742 +752,2 @@
+-                scoreSemanticsWarnings: data.scoreSemanticsWarnings
++                scoreSemanticsWarnings: data.scoreSemanticsWarnings,
++                analysisDurationMillis: data.analysisDurationMillis
+@@ -747,0 +759,3 @@
++            updateAnalysisLog({ timestamp: new Date(), totalNodes: Object.keys(S.currentScores || {}).length,
++                matchedEntries: Object.entries(S.currentScores || {}).filter(function (entry) { return entry[1] > 0; }),
++                warnings: data.warnings || [], status: S.lastAnalysisStatus });
+@@ -788 +802,2 @@
+-                        scoreSemanticsWarnings: data.scoreSemanticsWarnings
++                        scoreSemanticsWarnings: data.scoreSemanticsWarnings,
++                        analysisDurationMillis: data.analysisDurationMillis
+@@ -789,0 +805,2 @@
++                    S.lastAnalysisDurationMillis = Number.isSafeInteger(data.analysisDurationMillis)
++                        && data.analysisDurationMillis >= 0 ? data.analysisDurationMillis : null;
+@@ -790,0 +808,3 @@
++                    updateAnalysisLog({ timestamp: new Date(), totalNodes: Object.keys(S.currentScores || {}).length,
++                        matchedEntries: Object.entries(S.currentScores || {}).filter(function (entry) { return entry[1] > 0; }),
++                        warnings: data.warnings || [], status: S.lastAnalysisStatus });
+@@ -1722,0 +1743,2 @@
++    var summarySelection = null;
++
+@@ -1803 +1825 @@
+-                html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
++                html += '<button type="button" class="summary-layer-element" aria-pressed="false" aria-controls="summarySelectionDetails" data-code="' + escapeHtml(el.nodeCode) +
+@@ -1809 +1831 @@
+-                html += '</span>';
++                html += '</button>';
+@@ -1827,14 +1849,36 @@
+-        // Click handler: navigate to node in list view
+-        container.querySelectorAll('.summary-layer-element').forEach(function (el) {
+-            el.addEventListener('click', function () {
+-                var code = this.dataset.code;
+-                if (code) {
+-                    B().switchView('list');
+-                    setTimeout(function () {
+-                        var nodeEl = document.querySelector('[data-node-code="' + code + '"]');
+-                        if (nodeEl) {
+-                            nodeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+-                            nodeEl.classList.add('search-highlight');
+-                            setTimeout(function () { nodeEl.classList.remove('search-highlight'); }, 2000);
+-                        }
+-                    }, 200);
++        var details = document.createElement('section');
++        details.id = 'summarySelectionDetails';
++        details.setAttribute('aria-live', 'polite');
++        details.hidden = true;
++        container.querySelector('.summary-view').appendChild(details);
++
++        function select(code) {
++            var selected = view.includedElements.find(function (item) { return item.nodeCode === code; });
++            if (!selected) return;
++            summarySelection = { view: view, code: code };
++            container.querySelectorAll('.summary-layer-element').forEach(function (button) {
++                button.setAttribute('aria-pressed', String(button.dataset.code === code));
++            });
++            details.replaceChildren();
++            details.hidden = false;
++            var heading = document.createElement('h3');
++            heading.className = 'h6';
++            heading.textContent = code + (selected.title ? ' — ' + selected.title : '');
++            details.appendChild(heading);
++            [selected.hierarchyPath, selected.includedBecause, (S.currentReasons || {})[code]].forEach(function (value) {
++                if (!value) return;
++                var paragraph = document.createElement('p');
++                paragraph.textContent = value;
++                details.appendChild(paragraph);
++            });
++            var navigate = document.createElement('button');
++            navigate.type = 'button';
++            navigate.className = 'btn btn-sm btn-outline-primary';
++            navigate.textContent = isGermanLocale() ? 'Im Taxonomiebaum anzeigen' : 'Show in taxonomy tree';
++            navigate.addEventListener('click', function () {
++                B().switchView('list');
++                expandNodeByCode(code);
++                var node = B().ensureNodeRendered(code, S.currentScores);
++                if (node) {
++                    node.scrollIntoView({ block: 'center' });
++                    node.focus({ preventScroll: true });
+@@ -1842,0 +1887,4 @@
++            details.appendChild(navigate);
++        }
++        container.querySelectorAll('.summary-layer-element').forEach(function (button) {
++            button.addEventListener('click', function () { select(this.dataset.code); });
+@@ -1843,0 +1892 @@
++        if (summarySelection && summarySelection.view === view) select(summarySelection.code);
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-state.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-state.js
+index f81699fa7043c2d054eff7a9d3c99948973e97ec..822ea4f35fd093d076132c4dbe7e754f35edf3a6 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-state.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-state.js
+@@ -93,0 +94,11 @@
++    // Bind timing to the actual score envelope, so replacing scores cannot retain an old run's duration.
++    var measuredDuration = null, measuredScores = null;
++    Object.defineProperty(state, 'lastAnalysisDurationMillis', {
++        enumerable: true,
++        get: function () { return measuredScores === currentScores ? measuredDuration : null; },
++        set: function (value) {
++            measuredScores = currentScores;
++            measuredDuration = Number.isSafeInteger(value) && value >= 0 ? value : null;
++        }
++    });
++
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js
+index b45149d0f42e5c0c26b6281ad934f87c5c18a138..1ef38fe316a792838d1edbd5e2aa00d0eff21d69 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js
+@@ -100,0 +101,15 @@
++    /** A display-only projection. Missing/pending measurements are not negative evidence. */
++    function filterZeroRelevance(data, scores, details) {
++        function project(node) {
++            var children = (node.children || []).map(project).filter(Boolean);
++            var detail = details && details[node.code];
++            var pendingProduct = detail && detail.kind === 'PRODUCT_SUITABILITY'
++                && !Number.isFinite(detail.parentScore);
++            var zero = scores && Object.prototype.hasOwnProperty.call(scores, node.code)
++                && scores[node.code] === 0 && !pendingProduct;
++            if (zero && children.length === 0) return null;
++            return Object.assign({}, node, { children: children });
++        }
++        return (data || []).map(project).filter(Boolean);
++    }
++
+@@ -121 +136,22 @@
+-        var colorMap = buildColorMap(data);
++        var originalData = data;
++        var colorMap = buildColorMap(originalData);
++        var filter = document.getElementById('sunburstHideZero');
++        if (filter) {
++            if (filter._taxonomyZeroFilter) filter.removeEventListener('change', filter._taxonomyZeroFilter);
++            filter._taxonomyZeroFilter = function () {
++                if (container.getAttribute('data-view-rendered') === 'sunburst') {
++                    renderSunburst(container, originalData, scores);
++                }
++            };
++            filter.addEventListener('change', filter._taxonomyZeroFilter);
++            if (filter.checked) data = filterZeroRelevance(originalData, scores,
++                window.TaxonomyState && window.TaxonomyState.currentScoreDetails);
++        }
++        if (!data.length) {
++            var empty = document.createElement('p');
++            empty.className = 'text-muted p-3';
++            empty.textContent = t('views.sunburst.empty');
++            container.appendChild(empty);
++            container.setAttribute('data-view-rendered', 'sunburst');
++            return;
++        }
+@@ -221 +257 @@
+-            var t = svg.transition().duration(750);
++            var transition = svg.transition().duration(750);
+@@ -223 +259 @@
+-            paths.transition(t)
++            paths.transition(transition)
+@@ -237 +273 @@
+-            }).transition(t)
++            }).transition(transition)
+@@ -1417,0 +1454 @@
++        filterZeroRelevance: filterZeroRelevance,
+diff --git a/taxonomy-app/src/main/resources/templates/index.html b/taxonomy-app/src/main/resources/templates/index.html
+index 887ace53fc176cc57942b027aedc084b3f6f4c70..4467998f3555387178a313d7cc363c9b7d34046d 100644
+--- a/taxonomy-app/src/main/resources/templates/index.html
++++ b/taxonomy-app/src/main/resources/templates/index.html
+@@ -150 +150 @@
+-                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
++                <div class="card-header taxonomy-view-header">
+@@ -152,3 +152,4 @@
+-                    <div class="d-flex gap-2 align-items-center flex-wrap">
+-                        <!-- View switcher -->
+-                        <div class="btn-group" role="group" aria-label="View mode">
++                    <span id="analysisDurationDisplay" class="small text-muted" hidden></span>
++                    <div class="taxonomy-view-controls">
++                        <!-- Stable first row; variable tools belong in the second row. -->
++                        <div class="btn-group taxonomy-view-selector" id="diagramViewSelector" role="group" aria-label="View mode">
+@@ -161,0 +163 @@
++                        <div class="taxonomy-view-tools">
+@@ -170,0 +173,4 @@
++                        <div id="sunburstFilterGroup" class="form-check form-switch mb-0">
++                            <input class="form-check-input" type="checkbox" id="sunburstHideZero"/>
++                            <label class="form-check-label small" for="sunburstHideZero" th:text="#{view.sunburst.hide.zero}">Hide zero relevance</label>
++                        </div>
+@@ -175,0 +182 @@
++                        </div>
+diff --git a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleDocxRenderer.java b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleDocxRenderer.java
+index e2e547cc7f7900684bd2499a0a7b33a9ad9e6105..0774509819881e78cf86c0366460f4ae27955229 100644
+--- a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleDocxRenderer.java
++++ b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleDocxRenderer.java
+@@ -153 +153 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
+-        writer.contents(navigation);
++        writer.contents(navigation, 2);
+@@ -346,0 +347 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
++        addMetadataRow(provenance, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
+@@ -365,0 +367,2 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
++        addBodyParagraph(document, labels.analysisDuration() + ": "
++                + labels.durationMillis(report.metadata().analysisDurationMillis()), false);
+@@ -458 +461 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
+-            addHeading(document, labels.alternatives(), 2, false);
++            addHeading(document, labels.alternatives() + " · " + chapter.parentCode(), 3, false);
+@@ -522,0 +526 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
++        addMetadataRow(evidence, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));

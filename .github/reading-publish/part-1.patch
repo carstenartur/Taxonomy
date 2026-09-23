@@ -1,0 +1,299 @@
+diff --git a/.github/package.json b/.github/package.json
+index 517829c5950760aeaae07bc9a3f691f602ea4f45..92340ab4adcdef6811e2c69ba3c91d5e4d178769 100644
+--- a/.github/package.json
++++ b/.github/package.json
+@@ -12 +12 @@
+-    "test:state-render-consistency": "node --test scripts/taxonomy-state.test.mjs ../taxonomy-app/src/test/js/current-diagram-export.cjs",
++    "test:state-render-consistency": "node --test scripts/taxonomy-state.test.mjs ../taxonomy-app/src/test/js/current-diagram-export.cjs scripts/sunburst-zero-relevance.test.mjs",
+diff --git a/.github/scripts/analysis-llm-log.test.mjs b/.github/scripts/analysis-llm-log.test.mjs
+index 8819c052b27a144c5a71ad5c33a28a2331faece0..fdcd461bbbf5bc2a5841d739ad4f07a1b07ae3e4 100644
+--- a/.github/scripts/analysis-llm-log.test.mjs
++++ b/.github/scripts/analysis-llm-log.test.mjs
+@@ -197,0 +198,31 @@ test('a truncated diagnostic preview is not independently classified as invalid
++
++test('terminal duration is kept visibly after the final result, not replaced by its receipt text', async () => {
++    const view = fixture(failure);
++    view.update({ status: 'COMPLETED', elapsedMillis: 123456, finishedAt: 124456, serverTime: 900000 });
++    await view.tick(); view.monitor.finish('SUCCESS', false);
++    const duration = descendants(view.root).find(element => element.id === 'analysisElapsed');
++    assert.ok(duration, 'dedicated readable duration');
++    assert.match(duration.textContent, /2 min 03/);
++    assert.doesNotMatch(duration.textContent, /899/);
++});
++
++test('legacy terminal snapshots do not manufacture an analysis duration from later server time', async () => {
++    const view = fixture(failure);
++    view.update({ status: 'COMPLETED', serverTime: 900000 });
++    await view.tick(); view.monitor.finish('SUCCESS', false);
++    const duration = descendants(view.root).find(element => element.id === 'analysisElapsed');
++    assert.ok(duration); assert.match(duration.textContent, /nicht aufgezeichnet|not recorded/i);
++});
++
++
++test('authoritative result duration survives missing final diagnostics', async () => {
++    const view = fixture(failure); await view.tick();
++    view.monitor.finish('SUCCESS', false, 123456);
++    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /2 min 03 s/);
++});
++test('authoritative result duration is not replaced by a differently scoped diagnostic duration', async () => {
++    const view = fixture(failure); await view.tick();
++    view.update({ status: 'COMPLETED', elapsedMillis: 130000 });
++    view.monitor.finish('SUCCESS', true, 123456); await flush();
++    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /2 min 03 s/);
++});
+diff --git a/.github/scripts/sunburst-zero-relevance.test.mjs b/.github/scripts/sunburst-zero-relevance.test.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..f3224c608895e593da41c1996d141d7c7d19421f
+--- /dev/null
++++ b/.github/scripts/sunburst-zero-relevance.test.mjs
+@@ -0,0 +1,35 @@
++import { test } from 'node:test';
++import assert from 'node:assert/strict';
++import { readFileSync } from 'node:fs';
++import vm from 'node:vm';
++const source=readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js',import.meta.url),'utf8');
++const context={window:{},TaxonomyI18n:{t:key=>key}};
++vm.runInNewContext(source,context);
++const filter=(...args)=>context.window.TaxonomyViews.filterZeroRelevance(...args);
++// Real top-level catalogue identifiers; no invented children or hierarchy links.
++const catalogue=Object.freeze(['BP','BR','CP','CI','CO','CR','IP','UA'].map(code=>Object.freeze({code,children:Object.freeze([])})));
++test('zero filter is a projection and does not mutate the real source identities',()=>{
++    const scores=Object.freeze({BP:0,BR:75});
++    assert.deepEqual(Array.from(filter(catalogue,scores),node=>node.code),['BR','CP','CI','CO','CR','IP','UA']);
++    assert.equal(catalogue.length,8); assert.deepEqual(scores,{BP:0,BR:75});
++});
++for(const value of [undefined,null,NaN,'0'])test(`missing or nonnumeric ${String(value)} is not a measured zero`,()=>{
++    assert.equal(filter(catalogue,{BP:value}).length,8);
++});
++test('all actual zeros have an empty result, not an invented fallback node',()=>{
++    assert.equal(filter(catalogue,Object.fromEntries(catalogue.map(n=>[n.code,0]))).length,0);
++});
++test('retain a zero ancestor while an actual descendant remains visible',()=>{
++    // BP -> BP-1000 is the catalogue's real root/family edge; this is an explicitly bounded projection.
++    const nodes=[{code:'BP',children:[{code:'BP-1000',children:[]}]}];
++    assert.equal(filter(nodes,{BP:0,'BP-1000':75})[0].children[0].code,'BP-1000');
++    assert.equal(filter(nodes,{BP:0})[0].children.length,1);
++    assert.equal(filter(nodes,{BP:0,'BP-1000':0}).length,0);
++});
++test('a missing product-family evaluation must not become a zero rejection',()=>{
++    // Recorded catalogue product IP-1286 has the direct family IP-2072.
++    const product = [{code: 'IP-1286', parentCode: 'IP-2072', analysisRole: 'PRODUCT', children: []}];
++    const detail = {'IP-1286': {kind: 'PRODUCT_SUITABILITY', parentCode: 'IP-2072', parentScore: null}};
++    assert.equal(filter(product, {'IP-1286': 0}, detail).length, 1);
++    assert.equal(filter(product, {'IP-1286': 0}, {'IP-1286': {...detail['IP-1286'], parentScore: 0}}).length, 0);
++});
+diff --git a/.github/scripts/taxonomy-state.test.mjs b/.github/scripts/taxonomy-state.test.mjs
+index cd64e18dfcde3892bf09985df27b63e80526b1aa..097aea84fa5c0503314c8602e0416860c9dae081 100644
+--- a/.github/scripts/taxonomy-state.test.mjs
++++ b/.github/scripts/taxonomy-state.test.mjs
+@@ -100,0 +101,23 @@ test('leaves graphical views to their dedicated renderers', () => {
++
++
++test('measured analysis duration belongs to its score envelope, not the next result', () => {
++  const { state } = createHarness();
++  assert.equal(state.lastAnalysisDurationMillis, null);
++  state.currentScores = { BP: 85 };
++  state.lastAnalysisDurationMillis = 123456;
++  assert.equal(state.lastAnalysisDurationMillis, 123456);
++  state.currentScores = { BP: 80 };
++  assert.equal(state.lastAnalysisDurationMillis, null);
++});
++for (const invalid of [-1, NaN, Infinity, '1200', undefined, null]) {
++  test(`duration cannot manufacture a measurement from ${String(invalid)}`, () => {
++    const { state } = createHarness();
++    state.lastAnalysisDurationMillis = invalid;
++    assert.equal(state.lastAnalysisDurationMillis, null);
++  });
++}
++test('a measured zero duration is distinct from missing evidence', () => {
++  const { state } = createHarness();
++  state.lastAnalysisDurationMillis = 0;
++  assert.equal(state.lastAnalysisDurationMillis, 0);
++});
+diff --git a/.github/scripts/ui-primary-session-workflow.mjs b/.github/scripts/ui-primary-session-workflow.mjs
+index be9184e2f281d3ef5d05add3faf9a89201eecba0..9ac5304be7b1202b03e89bf7326ebe2036eff50d 100644
+--- a/.github/scripts/ui-primary-session-workflow.mjs
++++ b/.github/scripts/ui-primary-session-workflow.mjs
+@@ -0,0 +1 @@
++import { verifyReadingErgonomics } from './ui-reading-ergonomics.mjs';
+@@ -280,0 +282 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
++  await verifyReadingErgonomics({ page, evidence });
+diff --git a/.github/scripts/ui-reading-ergonomics.mjs b/.github/scripts/ui-reading-ergonomics.mjs
+new file mode 100644
+index 0000000000000000000000000000000000000000..9ed3fabef7f674cedbed5f4ae54cb872512d618b
+--- /dev/null
++++ b/.github/scripts/ui-reading-ergonomics.mjs
+@@ -0,0 +1,73 @@
++/** Real application assertions after the existing complete Copilot workflow. */
++export async function verifyReadingErgonomics({ page, evidence }) {
++  const originalViewport = page.viewportSize();
++  const originalView = await page.evaluate(() => window.TaxonomyState.currentView);
++  const errors = [];
++  const onError = error => errors.push(error.message);
++  page.on('pageerror', onError);
++  try {
++    evidence.assert(await page.evaluate(() => {
++      const duration = window.TaxonomyState.lastAnalysisDurationMillis;
++      return Number.isSafeInteger(duration) && duration >= 0;
++    }), 'Completed analysis must retain a measured duration');
++    const originalData = await page.evaluate(() => JSON.stringify({
++      tree: window.TaxonomyState.taxonomyData, scores: window.TaxonomyState.currentScores
++    }));
++    for (const width of [390, 768, 1366, 1920, 2560]) {
++      await page.setViewportSize({ width, height: 1080 });
++      const positions = [];
++      for (const id of ['viewSunburst', 'viewTree', 'viewDecision', 'viewSummary']) {
++        await page.locator('#' + id).click();
++        positions.push(await page.locator('#viewList').evaluate(button => {
++          const rect = button.getBoundingClientRect();
++          const header = button.closest('.card-header').getBoundingClientRect();
++          return { x: rect.x - header.x, y: rect.y - header.y };
++        }));
++      }
++      for (const axis of ['x', 'y']) {
++        evidence.assert(Math.max(...positions.map(p => p[axis])) - Math.min(...positions.map(p => p[axis])) < 1,
++          `Diagram selector moves on ${axis} at ${width}px: ${JSON.stringify(positions)}`);
++      }
++    }
++    await page.locator('#viewSummary').click();
++    const selected = page.locator('.summary-layer-element').first();
++    await selected.focus();
++    await page.keyboard.press('Enter');
++    evidence.assert(await page.evaluate(() => window.TaxonomyState.currentView === 'summary'),
++      'Summary keyboard selection must not navigate to another diagram');
++    evidence.assert((await page.locator('#summarySelectionDetails').innerText()).trim().length > 0,
++      'Summary selection must expose its details');
++    evidence.assert(await selected.getAttribute('aria-pressed') === 'true', 'Summary selection is not exposed');
++    await page.locator('#viewSunburst').click();
++    await page.locator('#sunburstHideZero').check();
++    evidence.assert(await page.evaluate(() => JSON.stringify({
++      tree: window.TaxonomyState.taxonomyData, scores: window.TaxonomyState.currentScores
++    })) === originalData, 'Sunburst visibility filter changed source data');
++    await page.locator('#sunburstHideZero').uncheck();
++    // Native activation of an actual rendered arc must exercise zoom, not a replacement renderer.
++    const hit = await page.locator('#taxonomyTree path').evaluateAll(paths => {
++      for (const path of paths) {
++        const d = path.__data__;
++        if (!d?.children?.length || path.getAttribute('pointer-events') === 'none') continue;
++        const current = d.current;
++        const radius = (current.y0 + current.y1) / 2;
++        const angle = (current.x0 + current.x1) / 2 - Math.PI / 2;
++        const point = new DOMPoint(radius * Math.cos(angle), radius * Math.sin(angle))
++          .matrixTransform(path.getScreenCTM());
++        if (document.elementFromPoint(point.x, point.y) === path) return { x: point.x, y: point.y };
++      }
++      return null;
++    });
++    evidence.assert(hit !== null, 'Sunburst has no clickable parent arc');
++    await page.mouse.click(hit.x, hit.y);
++    evidence.assert(errors.length === 0, `Sunburst zoom threw: ${errors.join('; ')}`);
++    evidence.assert(await page.locator('#analysisDurationDisplay').isVisible(), 'Measured duration disappeared on navigation');
++    await page.locator('#leftPanel').scrollIntoViewIfNeeded();
++    await evidence.saveRequiredViewportState('analysis-reading-ergonomics', '#leftPanel');
++    evidence.passed('Stable diagram selection, Summary keyboard details, immutable Sunburst filter and analysis duration');
++  } finally {
++    page.off('pageerror', onError);
++    if (originalViewport) await page.setViewportSize(originalViewport);
++    await page.evaluate(view => window.TaxonomyBrowse.switchView(view), originalView);
++  }
++}
+diff --git a/docs/testing/analysis-reading-ergonomics.md b/docs/testing/analysis-reading-ergonomics.md
+new file mode 100644
+index 0000000000000000000000000000000000000000..e3e4fcc1fb9d1b5394f850c23c92a1c588ba8c3c
+--- /dev/null
++++ b/docs/testing/analysis-reading-ergonomics.md
+@@ -0,0 +1,86 @@
++# Analysis reading ergonomics: delivery contract
++
++Baseline: main `4e69b04b2fa56dd68d6b56cd4c7f15c22c7e0bd8`.
++This is the bounded repair of the five reported reading/navigation failures, not
++completion of the separately prepared Preferences, Decision viewport or DSL work.
++
++## Visible behavior
++
++The view selector owns a stable row; variable Tree/Decision/Sunburst tools use a
++separate row. The selector may wrap at narrow widths but tools do not move it.
++Summary items are native keyboard-actionable selection buttons. Selecting an item
++keeps Summary and exposes text details. Only the explicit “Show in taxonomy tree”
++action changes view and expands/focuses the actual catalogue path.
++
++Sunburst has an optional “Hide zero relevance” checkbox. This is an immutable
++projection, not a change to catalogue, scores or architecture. Only explicit
++numeric zeroes are hidden. Unknown/missing evaluations, pending product-family
++measurements and ancestors needed to reach retained descendants stay visible.
++An empty projection explains how to show the catalogue again. The pre-existing
++zoom handler no longer shadows the translation function with its D3 transition.
++Filtering still recomputes the Sunburst layout; zoom continuity during filtering
++is not a delivered guarantee.
++
++## Analysis duration
++
++The complete analysis use case measures elapsed wall duration with nanoTime,
++including scoring, relationship discovery and architecture construction. The
++streaming use case reports its own complete/partial duration. These are not sums
++of concurrent LLM timings, queue latency or total Copilot postprocessing time.
++
++Nullable `analysisDurationMillis` accompanies AnalysisResult, terminal SSE,
++portfolio snapshot JSON, restored analysis drafts and decision-report metadata.
++A null historic/unmeasured duration is explicitly “Not recorded”, never zero or
++an estimate from report generation time. Replacement/manual/imported score
++maps cannot inherit the previous result's duration. Progress snapshots expose
++frozen terminal elapsed time and finish time. A measured result duration wins
++over later diagnostic polling, including when final diagnostics are unavailable.
++
++The UI retains duration in the result log and the taxonomy header. Decision HTML,
++JSON and DOCX include it; Word also shows it in the executive summary. Interactive
++report requests submit their current run metadata; immutable portfolio reports
++read the stored analysis payload instead.
++
++## Decision report contents
++
++The former generic “Direct child nodes and alternatives” heading was Heading2
++inside every Heading2 decision chapter. It is now a contextual Heading3, with the
++parent code, and the decision TOC includes only levels 1–2. The TOC title has a
++non-outline TOCHeading style. Fallback navigation uses a single title and a
++“Open chapter” action rather than printing the same title twice.
++
++The existing Word field still needs a consumer that updates TOC fields to show
++page numbers; the independent fallback links remain available. No existing user
++report has been inspected or changed in place.
++
++## Verification and remaining gates
++
++- Before correction the actual production browser components reproduced Summary
++  navigation, selector displacement, a Sunburst `t is not a function` exception,
++  and the missing filter.
++- Final local production-component matrix: 9 passing scenarios, including native
++  Summary keyboard activation and selector positions at 390/768/1366/1920/2560px.
++  Actual catalogue: 2,572 nodes; scores are explicitly controlled fixture input.
++- 133 targeted Node checks pass, zero failures/skips, including source-data
++  immutability, unknown/product zero semantics, measurement ownership, frozen
++  progress and authoritative duration after a failed final diagnostic read.
++- Four executable Java checks pass after compiling changed sources against the
++  existing application runtime libraries: JSON/SSE timing, terminal timing,
++  and EN/DE report navigation/duration. Ordinary JUnit wrappers register these
++  in the standard source build. This local execution is not Maven/JUnit evidence.
++- Generated five-page German DOCX rendered through LibreOffice and all pages
++  inspected. English DOCX structure and HTML timing also checked. The sample
++  report is authored over real BP/BR catalogue edges, not a live LLM assessment.
++- The existing complete USER Copilot browser workflow now asserts the selector,
++  native Summary activation, filter, zoom and retained measured duration, then
++  records a screenshot. No additional analysis call is introduced. Full
++  application execution of this expanded workflow remains a CI gate.
++- Canonical `./mvnw verify -DexcludedGroups="real-llm"` was attempted locally and
++  stopped at the pinned Maven 3.9.16 distribution download. The complete
++  `npm --prefix .github run verify:ui-contracts` stopped at the existing evidence
++  test because `@axe-core/playwright` could not be found. Local Node is 22, not
++  repository-pinned 24. These are not green complete builds.
++
++Full exact-head Maven, browser/database/security gates and review remain required.
++No production dependency, canonical workflow, threshold, exclusion, resource
++budget or taxonomy hierarchy was changed by this repair.
+diff --git a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisSseEventMapper.java b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisSseEventMapper.java
+index b91aa5d708d4c509451e67ddaa14087dcc6c068a..9fb2b9d435eff052861f045dc9cfd7e7c561ef0f 100644
+--- a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisSseEventMapper.java
++++ b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisSseEventMapper.java
+@@ -70,0 +71 @@ public class AnalysisSseEventMapper {
++            payload.put("analysisDurationMillis", complete.analysisDurationMillis());
+@@ -87,0 +89 @@ public class AnalysisSseEventMapper {
++            payload.put("analysisDurationMillis", error.analysisDurationMillis());

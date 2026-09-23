@@ -1,0 +1,225 @@
+diff --git a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleHtmlRenderer.java b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleHtmlRenderer.java
+index 19a6acbe0a42d0217df39a17395b72e9be8fac35..ca7387fcec4a4b0fc9b64c6d6f0438ace8606189 100644
+--- a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleHtmlRenderer.java
++++ b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleHtmlRenderer.java
+@@ -108,0 +109 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
++        metadataItem(html, labels.analysisDuration(), labels.durationMillis(metadata.analysisDurationMillis()));
+@@ -284,0 +286 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
++        evidence(html, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
+diff --git a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReport.java b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReport.java
+index d04731c8bc167fea789625bfeb4ab81ad6fdf7a8..91053291abd8041fa9da2a8d2531ba7a49e01d31 100644
+--- a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReport.java
++++ b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReport.java
+@@ -89,0 +90,39 @@ public record DecisionRationaleReport(
++            Instant generatedAt,
++            String generatedBy,
++            String taxonomyApplicationVersion,
++            String taxonomyBuildCommit,
++            String taxonomyCatalogueFile,
++            String taxonomyDataVersion,
++            String taxonomyCatalogueResourceSha256,
++            String taxonomyDataFingerprintSha256,
++            String analysisSnapshotFingerprintSha256,
++            String taxonomyDataSource,
++            int taxonomyNodeCount,
++            int taxonomyRootCount,
++            String repositoryId,
++            String workspaceId,
++            String branch,
++            String basedOnCommit,
++            Instant basedOnCommitTimestamp,
++            boolean projectionStale,
++            boolean indexStale,
++            String analysisProvider,
++            String analysisStatus,
++            String analysisModel,
++            String analysisSnapshotId,
++            Long projectId,
++            Long requirementId,
++            Long requirementVersionId,
++            Integer requirementVersionNumber,
++            Instant analysisCreatedAt,
++            String analysisCreatedBy,
++            String recordedTaxonomyFingerprintSha256,
++            String promptFingerprintSha256,
++            boolean hierarchyFromImmutableSnapshot,
++            String reportTimeZone,
++            int suppliedReasonCount,
++            int evaluatedNodeCount,
++            int positiveNodeCount,
++            double completenessPercent,
++            Long analysisDurationMillis) {
++        public ReportMetadata(
+@@ -126,0 +166,8 @@ public record DecisionRationaleReport(
++            this(generatedAt, generatedBy, taxonomyApplicationVersion, taxonomyBuildCommit, taxonomyCatalogueFile, taxonomyDataVersion, taxonomyCatalogueResourceSha256, taxonomyDataFingerprintSha256, analysisSnapshotFingerprintSha256, taxonomyDataSource, taxonomyNodeCount, taxonomyRootCount, repositoryId, workspaceId, branch, basedOnCommit, basedOnCommitTimestamp, projectionStale, indexStale, analysisProvider, analysisStatus, analysisModel, analysisSnapshotId, projectId, requirementId, requirementVersionId, requirementVersionNumber, analysisCreatedAt, analysisCreatedBy, recordedTaxonomyFingerprintSha256, promptFingerprintSha256, hierarchyFromImmutableSnapshot, reportTimeZone, suppliedReasonCount, evaluatedNodeCount, positiveNodeCount, completenessPercent, null);
++        }
++
++        public ReportMetadata {
++            if (analysisDurationMillis != null && analysisDurationMillis < 0)
++                throw new IllegalArgumentException("Analysis duration must not be negative");
++        }
++
+@@ -166 +213 @@ public record DecisionRationaleReport(
+-                    completenessPercent);
++                    completenessPercent, analysisDurationMillis);
+diff --git a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportService.java b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportService.java
+index b2cfc93f37c602779ccf611403db44f2f89e728e..653284fbf1326db18a3cee0c5b1b2440bccd3d98 100644
+--- a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportService.java
++++ b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionRationaleReportService.java
+@@ -84,0 +85,12 @@ public class DecisionRationaleReportService {
++  Map<String, AnalysisScoreDetail> scoreDetails,
++            Long analysisDurationMillis) {
++        public DecisionAnalysisInput(
++  String businessText,
++  Map<String, Integer> scores,
++  Map<String, String> reasons,
++  String provider,
++  String analysisStatus,
++  List<TaxonomyDiscrepancy> discrepancies,
++  List<ProductCoverageGap> productCoverageGaps,
++  List<TaxonomyNodeDto> taxonomyTree,
++  AnalysisSnapshotProvenance snapshotProvenance,
+@@ -85,0 +98,3 @@ public class DecisionRationaleReportService {
++            this(businessText, scores, reasons, provider, analysisStatus, discrepancies, productCoverageGaps, taxonomyTree, snapshotProvenance, scoreDetails, null);
++        }
++
+@@ -87,0 +103,2 @@ public class DecisionRationaleReportService {
++  if (analysisDurationMillis != null && analysisDurationMillis < 0)
++      throw new IllegalArgumentException("Analysis duration must not be negative");
+@@ -295 +312 @@ public class DecisionRationaleReportService {
+-                completeness.percent());
++                completeness.percent(), input.analysisDurationMillis());
+diff --git a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionReportLabels.java b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionReportLabels.java
+index 75036ce5dba2eca94c2ccb9d2f166027ed88dbe7..892129b0b0c82b35544a760c64c937109cb2b55c 100644
+--- a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionReportLabels.java
++++ b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/decision/DecisionReportLabels.java
+@@ -134,0 +135,8 @@ public final class DecisionReportLabels {
++    public String analysisDuration() { return german() ? "Analysedauer" : "Analysis duration"; }
++
++    public String durationMillis(Long millis) {
++        if (millis == null) return german() ? "Nicht aufgezeichnet" : "Not recorded";
++        if (millis < 0) throw new IllegalArgumentException("Negative duration");
++        return String.format(java.util.Locale.ROOT, "%d min %02d.%03d s", millis / 60000, (millis / 1000) % 60, millis % 1000);
++    }
++
+diff --git a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/report/WordDocumentWriter.java b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/report/WordDocumentWriter.java
+index ab82d9b66ac18390336ada3a01bbe4c7e3646163..b2ac47269827673d385584a9a8790e71986cf588 100644
+--- a/taxonomy-architecture/src/main/java/com/taxonomy/architecture/report/WordDocumentWriter.java
++++ b/taxonomy-architecture/src/main/java/com/taxonomy/architecture/report/WordDocumentWriter.java
+@@ -27 +27 @@ public final class WordDocumentWriter {
+-        for (String id : List.of("Title", "Heading1", "Heading2", "Heading3", "Caption")) {
++        for (String id : List.of("Title", "Heading1", "Heading2", "Heading3", "TOCHeading", "Caption")) {
+@@ -75 +75,8 @@ public final class WordDocumentWriter {
+-        heading(labels.contents(), 1, null);
++        contents(sections, 3);
++    }
++
++    /** The contents title itself is not an indexed section. */
++    public void contents(Map<String, String> sections, int outlineDepth) {
++        if (outlineDepth < 1 || outlineDepth > 3)
++            throw new IllegalArgumentException("Contents depth must be 1 to 3");
++        heading(labels.contents(), 1, null).setStyle("TOCHeading");
+@@ -79 +86 @@ public final class WordDocumentWriter {
+-        field.setInstr("TOC \\o \"1-3\" \\h \\z \\u");
++        field.setInstr("TOC \\o \"1-" + outlineDepth + "\" \\h \\z \\u");
+@@ -92 +99 @@ public final class WordDocumentWriter {
+-                    link(row.getCell(1).getParagraphs().getFirst(), anchor, title);
++                    link(row.getCell(1).getParagraphs().getFirst(), anchor, labels.openChapter());
+diff --git a/taxonomy-architecture/src/test/java/com/taxonomy/architecture/decision/DecisionReadingChecks.java b/taxonomy-architecture/src/test/java/com/taxonomy/architecture/decision/DecisionReadingChecks.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..1b83a5a93382af602de27a607cc7628437c70ddc
+--- /dev/null
++++ b/taxonomy-architecture/src/test/java/com/taxonomy/architecture/decision/DecisionReadingChecks.java
+@@ -0,0 +1,53 @@
++package com.taxonomy.architecture.decision;
++
++import com.taxonomy.architecture.decision.DecisionRationaleReport.*;
++import com.taxonomy.architecture.report.WordDocumentWriter;
++import org.apache.poi.xwpf.usermodel.XWPFDocument;
++import java.util.*;
++import java.time.Instant;
++
++/** Small authored report over real catalogue roots and their direct children. */
++public final class DecisionReadingChecks {
++    public static void main(String[] args) throws Exception {
++        int failures=0;
++        for (String locale : List.of("de", "en")) {
++            try { contents(locale); System.out.println("PASS TOC " + locale); }
++            catch (AssertionError e) { failures++; System.err.println(e.getMessage()); }
++        }
++        if (failures > 0) throw new AssertionError(failures + " report navigation checks failed");
++    }
++    public static void contents(String locale) throws Exception {
++        var labels = new DecisionReportLabels(locale);
++        var metadata = new ReportMetadata(Instant.EPOCH,"qa","test","test","catalogue.xlsx","fixture","fixture","fixture","fixture","Authored test",
++            4,2,"test-repository","test-workspace","draft","test-commit",Instant.EPOCH,false,false,"MOCK","SUCCESS","MOCK","fixture",null,null,null,null,
++            Instant.EPOCH,"qa","fixture","fixture",true,"UTC",2,4,4,100.0,123456L);
++        require(metadata.withAnalysisSnapshotFingerprintSha256("new-fingerprint").analysisDurationMillis().equals(123456L),
++            "Snapshot fingerprinting must preserve measured duration");
++        require(labels.durationMillis(null).equals(locale.equals("de") ? "Nicht aufgezeichnet" : "Not recorded"),
++            "Unknown historical duration is explicit");
++        var chapters = new ArrayList<DecisionChapter>();
++        // BP -> BP-1000 and BR -> BR-1000 are direct parent/child pairs in the real catalogue.
++        for (String code : List.of("BP", "BR")) chapters.add(new DecisionChapter(chapters.size()+1,code,code,"",100,0,true,"Authored decision","Authored comparison",
++            List.of(new ChildDecision(code+"-1000",code,"",100,100.0,1,true,Disposition.CONTINUED,"Authored evidence",ReasonSource.AI_SCORING,false)),List.of()));
++        var report = new DecisionRationaleReport("Reading QA",locale,"Arbeitszeiterfassung",ReportStatus.FINAL,metadata,
++            new ExecutiveSummary(null,List.of(),"Authored conclusion","Authored method"),chapters,List.of(),List.of(),List.of(),List.of(),null);
++        String html = new DecisionRationaleHtmlRenderer(new DecisionChapterDiagramRenderer()).render(report);
++        require(html.contains(labels.durationMillis(123456L)), "HTML report must show measured duration");
++        try (var document = new XWPFDocument()) {
++            new DecisionRationaleDocxRenderer(new DecisionChapterDiagramRenderer()).writeReportBody(document,report,labels);
++            var peers = document.getParagraphs().stream().filter(p->"Heading2".equals(p.getStyle())).map(p->p.getText()).toList();
++            require(peers.stream().noneMatch(labels.alternatives()::equals), "Alternatives must not appear as repeated peer chapters: " + peers);
++            require(document.getParagraphs().stream().filter(p->"Heading3".equals(p.getStyle())).filter(p->p.getText().startsWith(labels.alternatives())).count()==2,
++                "Both contextual alternatives headings remain in the document");
++            String xml=document.getDocument().xmlText();
++            require(xml.contains(labels.durationMillis(123456L)), "Word report must show measured duration");
++            require(xml.contains("TOC \\o &quot;1-2&quot;") || xml.contains("TOC \\o \"1-2\""), "Decision TOC must include only two levels");
++            require(document.getParagraphs().stream().noneMatch(p->labels.contents().equals(p.getText())&&"Heading1".equals(p.getStyle())), "TOC must not index itself");
++            var links=document.getTables().getFirst().getRows().stream().skip(1).flatMap(row->row.getTableCells().get(1).getParagraphs().stream()).flatMap(p->p.getCTP().getHyperlinkList().stream()).flatMap(h->h.getRList().stream()).flatMap(run->run.getTList().stream()).map(text->text.getStringValue()).toList();
++            require(links.stream().allMatch(labels.openChapter()::equals), "Fallback navigation must not repeat each title as its action label: " + links);
++            var directory=java.nio.file.Files.createDirectories(java.nio.file.Path.of("target/decision-reading-qa"));
++            try(var stream=java.nio.file.Files.newOutputStream(directory.resolve("decision-reading-"+locale+".docx"))){document.write(stream);}
++        }
++    }
++    static void require(boolean condition,String message){if(!condition)throw new AssertionError(message);}
++}
+diff --git a/taxonomy-architecture/src/test/java/com/taxonomy/architecture/decision/DecisionReadingTest.java b/taxonomy-architecture/src/test/java/com/taxonomy/architecture/decision/DecisionReadingTest.java
+new file mode 100644
+index 0000000000000000000000000000000000000000..25a2b1d1be0c9a568f16a1a871feadea5cb63a4f
+--- /dev/null
++++ b/taxonomy-architecture/src/test/java/com/taxonomy/architecture/decision/DecisionReadingTest.java
+@@ -0,0 +1,12 @@
++package com.taxonomy.architecture.decision;
++
++import org.junit.jupiter.params.ParameterizedTest;
++import org.junit.jupiter.params.provider.ValueSource;
++
++class DecisionReadingTest {
++    @ParameterizedTest
++    @ValueSource(strings = {"de", "en"})
++    void reportNavigationAndMeasuredDurationRemainReadable(String locale) throws Exception {
++        DecisionReadingChecks.contents(locale);
++    }
++}
+diff --git a/taxonomy-domain/src/main/java/com/taxonomy/dto/AnalysisResult.java b/taxonomy-domain/src/main/java/com/taxonomy/dto/AnalysisResult.java
+index 271d316f6ca14f035b46350e358d012857a31bd6..6bdd8d81e142209020d7a6d7aa71b07606d9d991 100644
+--- a/taxonomy-domain/src/main/java/com/taxonomy/dto/AnalysisResult.java
++++ b/taxonomy-domain/src/main/java/com/taxonomy/dto/AnalysisResult.java
+@@ -10,0 +11,9 @@ public class AnalysisResult {
++    /** Server-measured scoring, relation and architecture work; null for older/unmeasured results. */
++    private Long analysisDurationMillis;
++    public Long getAnalysisDurationMillis() { return analysisDurationMillis; }
++    public void setAnalysisDurationMillis(Long value) {
++        if (value != null && value < 0) throw new IllegalArgumentException("Analysis duration must not be negative");
++        analysisDurationMillis = value;
++    }
++
++
+diff --git a/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/report/DecisionRationaleSnapshotReportService.java b/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/report/DecisionRationaleSnapshotReportService.java
+index 72401b81a367f43d36635635e6d5b7fefd5721a2..cd13d8c05bbaba6525b71a2507e0339df3bbfc71 100644
+--- a/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/report/DecisionRationaleSnapshotReportService.java
++++ b/taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/report/DecisionRationaleSnapshotReportService.java
+@@ -120 +120 @@ public class DecisionRationaleSnapshotReportService {
+-                scoreDetails);
++                scoreDetails, analysis.getAnalysisDurationMillis());

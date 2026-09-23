@@ -1,0 +1,20 @@
+name: Publish exact reading repair source
+on:
+  push:
+    branches: [stage/reading-publish-20260923a]
+permissions:
+  contents: write
+jobs:
+  publish:
+    if: github.repository == 'carstenartur/Taxonomy' && github.ref == 'refs/heads/stage/reading-publish-20260923a'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: true
+      - name: Verify exact delta and create only its isolated source branch
+        env:
+          BASE_REF: 4e69b04b2fa56dd68d6b56cd4c7f15c22c7e0bd8
+        run: python3 .github/reading-publish/publish.py
