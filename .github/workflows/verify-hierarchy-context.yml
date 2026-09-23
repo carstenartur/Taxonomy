@@ -5,8 +5,10 @@ on:
 permissions:
   contents: read
 jobs:
-  regressions:
+  verify:
     runs-on: ubuntu-latest
+    outputs:
+      tree: ${{ steps.tree.outputs.tree }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -18,42 +20,140 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Stage new regression tests only
+      - name: Reconstruct isolated product source
         run: |
-          cp .verification/TaxonomyHierarchyContextTest.java taxonomy-analysis/src/test/java/com/taxonomy/analysis/service/
-          cp .verification/CatalogueHierarchyAuditTest.java taxonomy-tooling/src/test/java/com/taxonomy/tooling/
-      - name: Prove context regressions on unmodified implementation
+          cp -r .verification /tmp/hierarchy-work
+          git fetch --quiet origin 4e69b04b2fa56dd68d6b56cd4c7f15c22c7e0bd8 --depth=1
+          git checkout --detach 4e69b04b2fa56dd68d6b56cd4c7f15c22c7e0bd8
+          python3 /tmp/hierarchy-work/apply-hierarchy.py
+          git add -A
+          git diff --cached --check
+          git diff --cached --stat
+      - id: tree
+        run: |
+          echo "tree=$(git write-tree)" >> "$GITHUB_OUTPUT"
+          echo "PRODUCT_TREE=$(git write-tree)"
+      - name: Run full analysis and upstream unit suites
         run: |
           set +e
-          ./mvnw -B -ntp -pl taxonomy-analysis -am -Dtest=TaxonomyHierarchyContextTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/context-red.log 2>&1
+          ./mvnw -B -ntp -pl taxonomy-analysis -am test > /tmp/hierarchy-analysis.log 2>&1
           rc=$?
-          tail -55 /tmp/context-red.log
-          test "$rc" -ne 0 || exit 1
-          python3 - <<'PY'
-          import xml.etree.ElementTree as ET
-          r=ET.parse('taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.TaxonomyHierarchyContextTest.xml').getroot()
-          print('CONTEXT_RED',r.attrib)
-          assert int(r.get('tests'))==8 and int(r.get('failures'))>=3 and int(r.get('errors'))==0
-          PY
-      - name: Prove real-catalogue audit contract is missing
+          tail -65 /tmp/hierarchy-analysis.log | cut -c 1-650
+          exit "$rc"
+      - name: Run existing tooling suite and real-catalogue audit
         if: always()
         run: |
           set +e
-          ./mvnw -B -ntp -pl taxonomy-tooling -am -Dtest=CatalogueHierarchyAuditTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/audit-red.log 2>&1
+          ./mvnw -B -ntp -pl taxonomy-tooling -am test > /tmp/hierarchy-tooling.log 2>&1
           rc=$?
-          tail -40 /tmp/audit-red.log
-          test "$rc" -ne 0 || exit 1
+          tail -50 /tmp/hierarchy-tooling.log | cut -c 1-650
+          test "$rc" -eq 0 || exit "$rc"
+          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.CatalogueOverlayProposalGenerator
+          python3 - <<'PY'
+          import json
+          d=json.load(open('target/catalogue-overlay/catalogue-overlay-proposal.json'))['hierarchyAudit']
+          print('AUDIT_COUNTS', {k:v for k,v in d.items() if not isinstance(v,list)})
+          for g in d['navigationGroupProposals']:
+              print('GROUP',g['id'],len(g['memberCodes']))
+          print('HAZARDS_ENTRY', next(r for r in d['entries'] if r['code']=='IP-1051'))
+          PY
+      - name: Run unchanged architecture and configuration guards
+        if: success()
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-app -am -Dtest=ArchitectureContextDependencyRatchetTest,ConfigurationReferenceContractTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/hierarchy-guards.log 2>&1
+          rc=$?
+          tail -55 /tmp/hierarchy-guards.log | cut -c 1-650
+          exit "$rc"
+      - name: Check positive test counts and exact source
+        if: success()
+        run: |
           python3 - <<'PY'
           import xml.etree.ElementTree as ET
-          r=ET.parse('taxonomy-tooling/target/surefire-reports/TEST-com.taxonomy.tooling.CatalogueHierarchyAuditTest.xml').getroot()
-          print('AUDIT_RED',r.attrib)
-          assert int(r.get('tests'))==1 and int(r.get('failures'))==1 and int(r.get('errors'))==0
+          for path,n in [('taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.service.TaxonomyHierarchyContextTest.xml',8),('taxonomy-tooling/target/surefire-reports/TEST-com.taxonomy.tooling.CatalogueHierarchyAuditTest.xml',1)]:
+              r=ET.parse(path).getroot()
+              print('VERIFIED',r.attrib)
+              assert int(r.get('tests'))>=n and all(int(r.get(k,'0'))==0 for k in ['failures','errors','skipped'])
           PY
+          test "$(git write-tree)" = '${{ steps.tree.outputs.tree }}'
+          git diff --exit-code
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: hierarchy-context-red
+          name: hierarchy-context-evidence
           path: |
-            /tmp/*-red.log
+            /tmp/hierarchy-*.log
             taxonomy-*/target/surefire-reports/TEST-*Hierarchy*.xml
-          retention-days: 7
+            target/catalogue-overlay/
+          retention-days: 14
+  prepare-commit:
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+          show-progress: false
+      - name: Prepare verified product commit without moving a branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_TREE: ${{ needs.verify.outputs.tree }}
+        run: |
+          cp -r .verification /tmp/hierarchy-work
+          git fetch --quiet origin 4e69b04b2fa56dd68d6b56cd4c7f15c22c7e0bd8 --depth=1
+          git checkout --detach 4e69b04b2fa56dd68d6b56cd4c7f15c22c7e0bd8
+          python3 /tmp/hierarchy-work/apply-hierarchy.py
+          git add -A
+          python3 - <<'PY'
+          import os,json,subprocess,urllib.request
+          from pathlib import Path
+          def git(*a):return subprocess.check_output(['git',*a],text=True).strip()
+          names=git('diff','--cached','--name-only').splitlines()
+          assert names and not any(n.startswith(('.verification/','.github/workflows/')) for n in names)
+          assert git('write-tree')==os.environ['EXPECTED_TREE']
+          def post(kind,body):
+              r=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/'+kind,data=json.dumps(body).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urllib.request.urlopen(r,timeout=60) as f:return json.load(f)
+          tree=post('trees',{'base_tree':'3601e99ddc37b8d5fe60436fad4046ad83153b71','tree':[{'path':p,'mode':'100644','type':'blob','content':Path(p).read_text()} for p in names]})
+          assert tree['sha']==os.environ['EXPECTED_TREE']
+          c=post('commits',{'tree':tree['sha'],'parents':['4e69b04b2fa56dd68d6b56cd4c7f15c22c7e0bd8'],'message':'fix(taxonomy): distinguish source hierarchy context from overlay navigation\n\nShare bounded source-context resolution across child and relation assessment; audit real IP mappings and emit explicit local navigation proposals without changing original identities, active hierarchy or scoring formulas. Refs #1111.'})
+          print('PREPARED_COMMIT='+c['sha']);print('PREPARED_TREE='+tree['sha'])
+          PY
+  canonical:
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+          show-progress: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Execute canonical verification on the same product tree
+        run: |
+          cp -r .verification /tmp/hierarchy-work
+          git checkout --detach 4e69b04b2fa56dd68d6b56cd4c7f15c22c7e0bd8
+          python3 /tmp/hierarchy-work/apply-hierarchy.py
+          git add -A
+          test "$(git write-tree)" = '${{ needs.verify.outputs.tree }}'
+          set +e
+          ./mvnw -B -ntp verify -DexcludedGroups=real-llm > /tmp/hierarchy-canonical.log 2>&1
+          rc=$?
+          tail -100 /tmp/hierarchy-canonical.log | cut -c 1-650
+          exit "$rc"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: hierarchy-canonical-evidence
+          path: |
+            /tmp/hierarchy-canonical.log
+            taxonomy-*/target/surefire-reports/TEST-*.xml
+            taxonomy-*/target/failsafe-reports/TEST-*.xml
+          retention-days: 14
