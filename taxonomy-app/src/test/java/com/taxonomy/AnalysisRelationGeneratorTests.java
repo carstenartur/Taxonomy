@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.analysis.service.AnalysisMemoryGuard;
 import com.taxonomy.dto.RelationHypothesisDto;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.catalog.repository.TaxonomyRelationRepository;
@@ -12,17 +13,22 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.ResultActions;
 
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.hasItem;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mockStatic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 import org.springframework.security.test.context.support.WithMockUser;
 
-@SpringBootTest
+@SpringBootTest(properties = "llm.mock=true")
 @AutoConfigureMockMvc
 @WithMockUser(roles = "ADMIN")
 class AnalysisRelationGeneratorTests {
@@ -196,23 +202,66 @@ class AnalysisRelationGeneratorTests {
 
     @Test
     void analyzeEndpointIncludesProvisionalRelations() throws Exception {
-        mockMvc.perform(post("/api/analyze")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"businessText\":\"Provide secure voice communications for deployed military forces\"}"))
+        analyzeWithHeap(false, healthyHeap())
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.scores").exists())
-                .andExpect(jsonPath("$.provisionalRelations").isArray());
+                .andExpect(jsonPath("$.provisionalRelations").isArray())
+                .andExpect(jsonPath("$.provisionalRelations").isNotEmpty());
     }
 
     @Test
     void analyzeWithArchViewUsesProvisionalRelations() throws Exception {
-        mockMvc.perform(post("/api/analyze")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"businessText\":\"Provide secure voice communications for deployed military forces\",\"includeArchitectureView\":true}"))
+        analyzeWithHeap(true, healthyHeap())
                 .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.scores").exists())
                 .andExpect(jsonPath("$.provisionalRelations").isArray())
+                .andExpect(jsonPath("$.provisionalRelations").isNotEmpty())
                 .andExpect(jsonPath("$.architectureView").exists())
-                .andExpect(jsonPath("$.architectureView.notes").isArray());
+                .andExpect(jsonPath("$.architectureView.notes").isArray())
+                .andExpect(jsonPath("$.architectureView.includedRelationships[*].includedBecause")
+                        .value(hasItem("provisional (AI-suggested, not yet confirmed)")));
+    }
+
+    @Test
+    void memoryPressureStopsEnrichmentButDoesNotPoisonTheNextRun() throws Exception {
+        long mib = 1024L * 1024;
+        analyzeWithHeap(true, new AnalysisMemoryGuard.Sample(511 * mib, 512 * mib))
+                .andExpect(status().isOk())
+                .andExpect(header().exists("X-Analysis-Operation-Id"))
+                .andExpect(jsonPath("$.status").value("PARTIAL"))
+                .andExpect(jsonPath("$.errorMessage").value(containsString("MEMORY_PRESSURE")))
+                .andExpect(jsonPath("$.provisionalRelations").isEmpty())
+                .andExpect(jsonPath("$.architectureView").doesNotExist());
+
+        analyzeWithHeap(true, healthyHeap())
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.errorMessage").doesNotExist())
+                .andExpect(jsonPath("$.provisionalRelations").isNotEmpty())
+                .andExpect(jsonPath("$.architectureView").exists());
+    }
+
+    private static AnalysisMemoryGuard.Sample healthyHeap() {
+        long mib = 1024L * 1024;
+        return new AnalysisMemoryGuard.Sample(64 * mib, 512 * mib);
+    }
+
+    private ResultActions analyzeWithHeap(boolean includeView, AnalysisMemoryGuard.Sample sample) throws Exception {
+        // The same synchronous boundary used by ArchitectureViewTests: control only
+        // the external heap measurement, never the guard, policy or use case.
+        // Unrelated tests' pre-GC heap peaks must not choose this test's scenario.
+        // llm.mock=true uses the existing catalogue-backed scores without API keys.
+        try (var memory = mockStatic(AnalysisMemoryGuard.class)) {
+            memory.when(AnalysisMemoryGuard::heapSample).thenReturn(sample);
+            ResultActions result = mockMvc.perform(post("/api/analyze")
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"businessText\":\"Provide secure voice communications for deployed military forces\","
+                                    + "\"includeArchitectureView\":" + includeView + "}"))
+                    .andExpect(request().asyncNotStarted());
+            memory.verify(AnalysisMemoryGuard::heapSample, atLeastOnce());
+            return result;
+        }
     }
 }
