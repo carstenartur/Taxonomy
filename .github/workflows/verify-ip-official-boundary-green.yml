@@ -16,5 +16,9 @@ jobs:
           distribution: temurin
           java-version: "21"
           cache: maven
-      - name: Run authority contract
+      - name: Run catalogue authority contract
         run: ./mvnw -B -ntp -pl taxonomy-knowledge -am -Dtest=CatalogueAuthorityContractTest -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Run analysis authority contract
+        run: ./mvnw -B -ntp -pl taxonomy-analysis -am -Dtest=CatalogueAuthorityAnalysisContractTest -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Run architecture authority contract
+        run: ./mvnw -B -ntp -pl taxonomy-architecture -am -Dtest=CatalogueAuthorityProjectionContractTest -Dsurefire.failIfNoSpecifiedTests=false test
