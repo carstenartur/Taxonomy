@@ -12,7 +12,7 @@ class CatalogueHierarchyAuditTest {
         while (p != null && !Files.exists(p.resolve("taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json"))) p=p.getParent();
         if (p==null) throw new IllegalStateException("Repository root not found"); return p;
     }
-    @SuppressWarnings("unchecked") @Test void realAuditSeparatesSourceAndOverlayAndProposesOnlyNavigation(@TempDir Path out) throws Exception {
+    @SuppressWarnings("unchecked") @Test void realAuditSeparatesSourceAndOverlayAndReportsAttachmentGaps(@TempDir Path out) throws Exception {
         Path data=root().resolve("taxonomy-knowledge/src/main/resources/data");
         Path workbook=data.resolve("C3_Taxonomy_Catalogue_25AUG2025.xlsx"), overlay=data.resolve("nato-taxonomy.json");
         byte[] sourceBefore=Files.readAllBytes(workbook), overlayBefore=Files.readAllBytes(overlay);
@@ -30,16 +30,16 @@ class CatalogueHierarchyAuditTest {
         Map<String,Object> hazard=rows.stream().filter(r -> "IP-1051".equals(r.get("code"))).findFirst().orElseThrow();
         assertThat(hazard).containsEntry("parentRelationKind","OVERLAY_CLASSIFICATION").containsEntry("overlayParentCode","IP-1064");
         List<Map<String,Object>> groups=(List<Map<String,Object>>)audit.get("navigationGroupProposals");
-        assertThat(groups).isNotEmpty();
-        Set<String> ids=new HashSet<>();
-        var source=CatalogueOverlayProposalInputs.readSourceCatalogue(workbook,"IP");
-        for (Map<String,Object> g: groups) {
-            String id=(String)g.get("id"); assertThat(id).startsWith("local:ip:"); assertThat(ids.add(id)).isTrue();
-            assertThat(g).containsEntry("kind","NAVIGATION_GROUP").containsEntry("reviewRequired",true).containsEntry("affectsScores",false).containsEntry("inheritsSemantics",false);
-            assertThat(g).doesNotContainKeys("score","confidence");
-            List<String> members=(List<String>)g.get("memberCodes"); assertThat(members).doesNotHaveDuplicates().isNotEmpty();
-            assertThat(source.nodes().keySet()).containsAll(members);
-        }
+        assertThat(groups).isEmpty();
+        List<Map<String,Object>> gaps=(List<Map<String,Object>>)audit.get("attachmentGapCandidates");
+        assertThat(gaps).isNotEmpty();
+        assertThat(gaps).allSatisfy(gap -> {
+            assertThat(gap.get("code")).asString().startsWith("IP-");
+            assertThat(gap.get("sourceParentStatus")).isIn("MISSING","SELF_REFERENCE","UNRESOLVED");
+            assertThat(gap).containsEntry("requiresHumanAttachmentDecision",true)
+                    .containsEntry("automaticLocalParentProposed",false)
+                    .doesNotContainKeys("localGroupId","suggestedLocalParent");
+        });
         assertThat(Files.readString(out.resolve("a.md"))).contains("Hierarchy semantics audit").contains("not semantic approval");
     }
 }

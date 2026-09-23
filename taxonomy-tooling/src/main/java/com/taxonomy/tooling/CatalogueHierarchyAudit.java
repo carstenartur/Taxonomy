@@ -51,41 +51,33 @@ final class CatalogueHierarchyAudit {
         result.put("productCount",products); result.put("existingReviewRequiredCount",provisional);
         result.put("missingSourceParentCount",missing); result.put("invalidSourceParentCount",invalid);
         result.put("entries",List.copyOf(entries));
-        result.put("navigationGroupProposals",navigationGroups(source,overlay));
+        List<Map<String,Object>> gaps = entries.stream()
+                .filter(CatalogueHierarchyAudit::isAttachmentGap)
+                .map(CatalogueHierarchyAudit::gapEvidence)
+                .toList();
+        result.put("attachmentGapCandidates", gaps);
+        // Deliberately empty: audit reports source gaps but does not invent unofficial hierarchy.
+        result.put("navigationGroupProposals", List.of());
         return Collections.unmodifiableMap(result);
     }
 
-    /** Explicit lexical entry points for review, not an automatic domain classification. */
-    private static List<Map<String,Object>> navigationGroups(SourceCatalogue source, OverlayModel overlay) {
-        List<GroupRule> rules=List.of(
-            new GroupRule("hazards","Hazard and warning information",Set.of("hazard","hazards","warning","warnings")),
-            new GroupRule("reports","Reports",Set.of("report","reports")),
-            new GroupRule("plans","Plans",Set.of("plan","plans")),
-            new GroupRule("requests","Requests",Set.of("request","requests")),
-            new GroupRule("orders","Orders",Set.of("order","orders")));
-        List<Map<String,Object>> groups=new ArrayList<>();
-        for (GroupRule rule:rules) {
-            List<String> members=source.nodes().values().stream()
-                .filter(n -> overlay.patches().containsKey(n.code())
-                    && "PRODUCT".equals(overlay.patches().get(n.code()).analysisRole()))
-                .filter(n -> Arrays.stream(n.title().toLowerCase(Locale.ROOT).split("[^\\p{L}\\p{N}]+"))
-                    .anyMatch(rule.terms()::contains))
-                .map(SourceNode::code).sorted().toList();
-            if (members.isEmpty()) continue;
-            Map<String,Object> group=new LinkedHashMap<>();
-            group.put("id","local:ip:navigation:"+rule.key());
-            group.put("displayCode","ip-"+rule.key()); group.put("kind","NAVIGATION_GROUP");
-            group.put("title",rule.title()); group.put("parentId",source.rootCode());
-            group.put("scopeDescription","Candidate entry point for original information products whose source title contains one of: "
-                + rule.terms().stream().sorted().toList() + ". Membership is a title-based proposal; review original descriptions before adoption.");
-            group.put("memberCodes",members); group.put("reviewRequired",true);
-            group.put("affectsScores",false); group.put("inheritsSemantics",false);
-            group.put("createsArchitectureElement",false); group.put("origin","LOCAL_NAVIGATION_PROPOSAL");
-            groups.add(Collections.unmodifiableMap(group));
-        }
-        return List.copyOf(groups);
+    private static boolean isAttachmentGap(Map<String,Object> entry) {
+        Object status = entry.get("sourceParentStatus");
+        return "MISSING".equals(status) || "SELF_REFERENCE".equals(status) || "UNRESOLVED".equals(status);
     }
-    private record GroupRule(String key, String title, Set<String> terms) { }
+
+    private static Map<String,Object> gapEvidence(Map<String,Object> entry) {
+        Map<String,Object> gap = new LinkedHashMap<>();
+        for (String key : List.of("code", "title", "sourceDescription", "sourceState",
+                "sourceParentCode", "resolvedSourceParentCode", "sourceParentStatus", "sourceLevel",
+                "overlayParentCode", "overlayParentTitle", "analysisRole", "reviewRequired",
+                "existingJustification")) {
+            gap.put(key, entry.get(key));
+        }
+        gap.put("requiresHumanAttachmentDecision", true);
+        gap.put("automaticLocalParentProposed", false);
+        return Collections.unmodifiableMap(gap);
+    }
 
     @SuppressWarnings("unchecked")
     static String markdown(Map<String,Object> audit) {
@@ -96,10 +88,14 @@ final class CatalogueHierarchyAudit {
         for(String key:List.of("sourceNodeCount","overlayAssignmentCount","productCount","existingReviewRequiredCount","missingSourceParentCount","invalidSourceParentCount")) {
             out.append('|').append(key).append('|').append(audit.get(key)).append("|\n");
         }
-        out.append("\n### Local navigation group proposals\n\nThese are additional entry points, not new original taxonomy concepts, semantic parents, score weights or architecture components. Original IDs remain unchanged. Overlapping memberships refer to the same original node. No proposal is automatically promoted.\n\n");
-        for(Map<String,Object> group:(List<Map<String,Object>>)audit.get("navigationGroupProposals")) {
-            out.append("- `").append(group.get("id")).append("`: ").append(escape(group.get("title")))
-               .append(" — ").append(((List<?>)group.get("memberCodes")).size()).append(" original references; review required.\n");
+        out.append("\n### IP attachment gaps requiring review\n\n")
+            .append("The audit does not invent local grouping nodes or replacement parents. ")
+            .append("It only identifies source attachment gaps that may justify a separately reviewed navigation supplement.\n\n");
+        for(Map<String,Object> gap:(List<Map<String,Object>>)audit.get("attachmentGapCandidates")) {
+            out.append("- `").append(gap.get("code")).append("`: ")
+               .append(escape(gap.get("title"))).append(" — ")
+               .append(gap.get("sourceParentStatus")).append("; current overlay parent ")
+               .append(escape(gap.get("overlayParentCode"))).append(".\n");
         }
         out.append("\n### Source / overlay comparison\n\n| Original code | Title | Source parent status | Overlay parent | Existing review required |\n|---|---|---|---|---|\n");
         for(Map<String,Object> row:(List<Map<String,Object>>)audit.get("entries")) {
