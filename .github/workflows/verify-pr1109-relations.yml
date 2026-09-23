@@ -17,9 +17,9 @@ jobs:
           java-version: '21'
           distribution: temurin
           cache: maven
-      - name: Source-build the relation and architecture-view contracts
+      - name: Source-build combined relation, architecture and report contracts
         run: |
-          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=AnalysisRelationGeneratorTests,ArchitectureViewTests -Dsurefire.failIfNoSpecifiedTests=false > relation-regression.log 2>&1
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=AnalysisRelationGeneratorTests,ArchitectureViewTests,ReformulationReportTest,ReformulationReportHistoryTest,ReformulationReportRendererTest -Dsurefire.failIfNoSpecifiedTests=false > relation-regression.log 2>&1
       - name: Show final source-build diagnostics
         if: always()
         run: tail -n 100 relation-regression.log
@@ -27,7 +27,7 @@ jobs:
         run: |
           mkdir -p verification-tooling
           javac --release 21 -d verification-tooling taxonomy-tooling/src/main/java/com/taxonomy/tooling/*.java
-          java -cp verification-tooling com.taxonomy.tooling.TaxonomyTooling check-junit-reports taxonomy-app/target/surefire-reports/TEST-com.taxonomy.AnalysisRelationGeneratorTests.xml 14 taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureViewTests.xml 1
+          java -cp verification-tooling com.taxonomy.tooling.TaxonomyTooling check-junit-reports taxonomy-app/target/surefire-reports/TEST-com.taxonomy.AnalysisRelationGeneratorTests.xml 14 taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureViewTests.xml 23 taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationReportTest.xml 1 taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationReportHistoryTest.xml 2 taxonomy-export/target/surefire-reports/TEST-com.taxonomy.export.reformulation.ReformulationReportRendererTest.xml 4
       - name: Preserve source-built regression evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -37,5 +37,8 @@ jobs:
             relation-regression.log
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.AnalysisRelationGeneratorTests.xml
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureViewTests.xml
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationReportTest.xml
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationReportHistoryTest.xml
+            taxonomy-export/target/surefire-reports/TEST-com.taxonomy.export.reformulation.ReformulationReportRendererTest.xml
           if-no-files-found: error
           retention-days: 7

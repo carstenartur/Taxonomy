@@ -222,11 +222,13 @@ class AnalysisRelationGeneratorTests {
                 .andExpect(jsonPath("$.provisionalRelations").isNotEmpty())
                 .andExpect(jsonPath("$.architectureView").exists())
                 .andExpect(jsonPath("$.architectureView.includedRelationships").isNotEmpty())
-                .andExpect(jsonPath("$.architectureView.notes").isArray());
+                .andExpect(jsonPath("$.architectureView.notes").isArray())
+                .andExpect(jsonPath("$.architectureView.includedRelationships[*].includedBecause")
+                        .value(hasItem("provisional (AI-suggested, not yet confirmed)")));
     }
 
     @Test
-    void emergencyPressureStopsAnalysisWithoutPoisoningTheNextRequest() throws Exception {
+    void memoryPressureStopsEnrichmentButDoesNotPoisonTheNextRun() throws Exception {
         long mib = 1024L * 1024;
         analyzeWithHeap(true, new AnalysisMemoryGuard.Sample(511 * mib, 512 * mib))
                 .andExpect(status().isOk())
@@ -239,12 +241,12 @@ class AnalysisRelationGeneratorTests {
                 .andExpect(jsonPath("$.provisionalRelations").isEmpty())
                 .andExpect(jsonPath("$.architectureView").doesNotExist());
 
-        // A stopped request must not retain pressure state in the following run.
         analyzeWithHeap(true, healthyHeap())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.errorMessage").doesNotExist())
                 .andExpect(jsonPath("$.provisionalRelations").isNotEmpty())
+                .andExpect(jsonPath("$.architectureView").exists())
                 .andExpect(jsonPath("$.architectureView.includedRelationships").isNotEmpty());
     }
 
@@ -253,17 +255,17 @@ class AnalysisRelationGeneratorTests {
         return new AnalysisMemoryGuard.Sample(64 * mib, 512 * mib);
     }
 
-    private ResultActions analyzeWithHeap(boolean includeArchitectureView,
-            AnalysisMemoryGuard.Sample sample) throws Exception {
-        // Control only the external heap measurement for this synchronous request,
-        // not the production guard, policy, registry, generator or view builder.
-        // The thread-local mock is closed even if the request or assertion fails.
+    private ResultActions analyzeWithHeap(boolean includeView, AnalysisMemoryGuard.Sample sample) throws Exception {
+        // The same synchronous boundary used by ArchitectureViewTests: control only
+        // the external heap measurement, never the guard, policy or use case.
+        // Unrelated tests' pre-GC heap peaks must not choose this test's scenario.
+        // llm.mock=true uses the existing catalogue-backed scores without API keys.
         try (var memory = mockStatic(AnalysisMemoryGuard.class)) {
             memory.when(AnalysisMemoryGuard::heapSample).thenReturn(sample);
             ResultActions result = mockMvc.perform(post("/api/analyze")
-                    .contentType(MediaType.APPLICATION_JSON)
-                    .content("{\"businessText\":\"Provide secure voice communications for deployed military forces\""
-                            + (includeArchitectureView ? ",\"includeArchitectureView\":true" : "") + "}"))
+                            .contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"businessText\":\"Provide secure voice communications for deployed military forces\","
+                                    + "\"includeArchitectureView\":" + includeView + "}"))
                     .andExpect(request().asyncNotStarted());
             memory.verify(AnalysisMemoryGuard::heapSample, atLeastOnce());
             return result;

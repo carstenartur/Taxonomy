@@ -58,6 +58,31 @@ public final class CivilianExportQa {
         assertThat(archimateManifest.path("xmlSha256").asText())
                 .isEqualTo(sha256(artifacts.get("architecture.archimate.xml")));
 
+        var sparxBundle = unzip(artifacts.get("adapter-sparx.sparx.zip"));
+        assertThat(sparxBundle.keySet()).containsExactlyInAnyOrder("architecture.xmi", "manifest.json", "README.txt");
+        var sparxManifest = JSON.readTree(sparxBundle.get("manifest.json"));
+        assertThat(sparxManifest.path("mode").asText()).isEqualTo("fresh-copy");
+        assertThat(sparxManifest.path("productCompatibility").asText()).isEqualTo("not-certified");
+        assertThat(sparxManifest.path("syncCheckpointChanged").asBoolean(true)).isFalse();
+        assertThat(sparxManifest.path("sha256").asText()).isEqualTo(sha256(sparxBundle.get("architecture.xmi")));
+        var sparx = new com.taxonomy.exchange.sparx.SparxXmiCodec().read(sparxBundle.get("architecture.xmi"), null, false);
+        assertThat(sparx.artifacts()).hasSize(expected.nodes().size());
+        assertThat(sparx.relations()).hasSize(expected.edges().size());
+        assertThat(sparx.artifacts()).extracting(a -> a.extensions().get("taxonomy:sourceId"))
+                .containsExactlyInAnyOrderElementsOf(expected.nodes().stream().map(node -> node.id()).toList());
+        assertThat(sparx.relations()).extracting(r -> r.extensions().get("taxonomy:sourceId"))
+                .containsExactlyInAnyOrderElementsOf(expected.edges().stream().map(edge -> edge.id()).toList());
+        Map<String, String> sparxSourceIds = new HashMap<>();
+        sparx.artifacts().forEach(a -> sparxSourceIds.put(a.id(), a.extensions().get("taxonomy:sourceId")));
+        Map<String, com.taxonomy.diagram.DiagramEdge> expectedEdges = new HashMap<>();
+        expected.edges().forEach(edge -> expectedEdges.put(edge.id(), edge));
+        sparx.relations().forEach(relation -> {
+            var edge = expectedEdges.get(relation.extensions().get("taxonomy:sourceId"));
+            assertThat(sparxSourceIds.get(relation.source())).isEqualTo(edge.sourceId());
+            assertThat(sparxSourceIds.get(relation.target())).isEqualTo(edge.targetId());
+            assertThat(relation.extensions().get("taxonomy:sourceType")).isEqualTo(edge.relationType());
+        });
+
         var visioBundle = unzip(artifacts.get("architecture.visio.zip"));
         assertThat(visioBundle.get("diagram.vsdx")).isEqualTo(artifacts.get("architecture.vsdx"));
         var visio = unzip(artifacts.get("architecture.vsdx"));
@@ -200,7 +225,7 @@ public final class CivilianExportQa {
                         "F5 timing/outage contracts", "A1 delivery/privacy/audit contracts")));
         report.put("automaticChecks", List.of("ArchiMate semantic round trip", "Visio identity and endpoint parity",
                 "ZIP and manifest checksums", "SVG identity and scene bounds", "PDF text, provenance and minimum 7pt glyph size",
-                "DOCX/HTML/JSON report provenance", "All four registered diagram adapters",
+                "DOCX/HTML/JSON report provenance", "All registered diagram adapters, including Sparx fresh-copy handoff",
                 "ArchiMate integration codec round trip", "Structurizr official 6.2.3 parser and local importer parity",
                 "Legacy Markdown/HTML/DOCX/JSON report endpoints"));
         report.put("notCertified", List.of("Sparx EA desktop", "Microsoft Visio desktop", "operational flood-warning design"));
