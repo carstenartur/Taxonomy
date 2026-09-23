@@ -134,4 +134,12 @@ adoption controls and unavailable-vs-legacy confidence presentation.
 
 ## Reviewed module dependencies
 
-The hierarchical adapter reuses the existing analysis-to-knowledge direction; it introduces no reverse dependency or new Maven module. `RequirementRelationSearchService` and its scalar catalogue adapter each reference `TaxonomyService` and `TaxonomyNode` (two class pairs per package). `RequirementRelationSearch` and `RequirementRelationSearchService` each reference the existing `RelationCompatibilityMatrix` (two class pairs). These six concrete class pairs are recorded in the architecture dependency baseline. The dependency ratchet remains exact: no wildcard exemptions or general count increases are allowed. Bytecode inspection with `jdeps -verbose:class` confirms these pairs; the regular ArchUnit gate is the authoritative merged-source check.
+The hierarchical adapter reuses the existing analysis-to-knowledge direction; it
+introduces no reverse dependency or new Maven module. The authoritative ArchUnit
+inventory counts one class pair to `com.taxonomy.catalog.model`, two to
+`com.taxonomy.catalog.service`, and two to `com.taxonomy.relations.service`.
+The scalar `TaxonomyNode` conversion belongs to `RequirementRelationSearchService`;
+compiler-generated references in its anonymous catalogue adapter do not constitute
+a second class pair under the existing inventory policy. The former jdeps-based
+count of six was incorrect. The baseline now records the five actual pairs and
+keeps every unrelated entry and the exact dependency ratchet unchanged.

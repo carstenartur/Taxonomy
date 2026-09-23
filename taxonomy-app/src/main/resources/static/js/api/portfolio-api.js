@@ -100,6 +100,16 @@ window.TaxonomyPortfolioApi = (function () {
             + positiveInteger(requirementId, 'requirementId');
     }
 
+    function reformulationReportPath(projectId, requirementId, proposalId, kind, identity, format) {
+        const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+        if (typeof proposalId !== 'string' || !uuid.test(proposalId)) throw new TypeError('Invalid proposal ID');
+        if (!['json', 'md', 'html'].includes(format)) throw new TypeError('Unsupported report format');
+        if (kind === 'revisions') identity = positiveInteger(identity, 'revision');
+        else if (typeof identity !== 'string' || !uuid.test(identity)) throw new TypeError('Invalid adoption command ID');
+        return requirementPath(projectId, requirementId) + '/reformulations/' + proposalId
+            + '/' + kind + '/' + identity + '/export?format=' + format;
+    }
+
     function reportUrl(projectId, format, parameters) {
         const query = new URLSearchParams(parameters || {}).toString();
         return projectPath(projectId) + '/reports/' + encodeURIComponent(String(format))
@@ -130,6 +140,12 @@ window.TaxonomyPortfolioApi = (function () {
         },
         getRequirement: function (projectId, requirementId) {
             return getJson(requirementPath(projectId, requirementId));
+        },
+        downloadReformulationReport: function (projectId, requirementId, proposalId, revision, format) {
+            return getResponse(reformulationReportPath(projectId, requirementId, proposalId, 'revisions', revision, format), '*/*');
+        },
+        downloadReformulationAdoptionReport: function (projectId, requirementId, proposalId, commandId, format) {
+            return getResponse(reformulationReportPath(projectId, requirementId, proposalId, 'adoptions', commandId, format), '*/*');
         },
         listReformulations: function (projectId, requirementId) {
             return getJson(requirementPath(projectId, requirementId) + '/reformulations');

@@ -206,6 +206,9 @@
                     render(); announce((lang==='de'?'Übernahme dokumentiert. Zielversion: ':'Adoption recorded. Target version: ')+result.targetVersionId);
                 }});
         }));
+        if (window.TaxonomyReformulationReports) controls.append(window.TaxonomyReformulationReports.controls({
+            projectId:project,requirementId:requirement,proposalId:offer.id,revision:revision.number,language:lang
+        }));
         proposal.append(controls);grid.append(proposal);
         const questions=el('section',undefined,'reformulation-panel reformulation-questions');questions.dataset.panel='questions';questions.append(el('h3',t('questions'),'h5'));
         if(!revision.questions.length)questions.append(el('p',t('noQuestions')));revision.questions.forEach(q=>questions.append(question(q)));grid.append(questions);host.append(grid);

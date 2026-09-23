@@ -37,4 +37,5 @@ public class ReformulationAdoption {
         this.requirementId=requirementId;this.targetVersionId=targetVersionId;this.payload=payload;this.createdAt=now;
     }
     public String getCommandHash(){return commandHash;} public String getPayload(){return payload;}
+    public String getPreviewId(){return previewId;} public Long getTargetVersionId(){return targetVersionId;}
 }

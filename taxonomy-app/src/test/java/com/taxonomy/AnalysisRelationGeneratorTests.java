@@ -205,6 +205,7 @@ class AnalysisRelationGeneratorTests {
         analyzeWithHeap(false, healthyHeap())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.errorMessage").doesNotExist())
                 .andExpect(jsonPath("$.scores").exists())
                 .andExpect(jsonPath("$.provisionalRelations").isArray())
                 .andExpect(jsonPath("$.provisionalRelations").isNotEmpty());
@@ -215,10 +216,12 @@ class AnalysisRelationGeneratorTests {
         analyzeWithHeap(true, healthyHeap())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
+                .andExpect(jsonPath("$.errorMessage").doesNotExist())
                 .andExpect(jsonPath("$.scores").exists())
                 .andExpect(jsonPath("$.provisionalRelations").isArray())
                 .andExpect(jsonPath("$.provisionalRelations").isNotEmpty())
                 .andExpect(jsonPath("$.architectureView").exists())
+                .andExpect(jsonPath("$.architectureView.includedRelationships").isNotEmpty())
                 .andExpect(jsonPath("$.architectureView.notes").isArray())
                 .andExpect(jsonPath("$.architectureView.includedRelationships[*].includedBecause")
                         .value(hasItem("provisional (AI-suggested, not yet confirmed)")));
@@ -232,6 +235,9 @@ class AnalysisRelationGeneratorTests {
                 .andExpect(header().exists("X-Analysis-Operation-Id"))
                 .andExpect(jsonPath("$.status").value("PARTIAL"))
                 .andExpect(jsonPath("$.errorMessage").value(containsString("MEMORY_PRESSURE")))
+                .andExpect(jsonPath("$.warnings").value(hasItem(containsString("MEMORY_PRESSURE"))))
+                .andExpect(jsonPath("$.scores").exists())
+                .andExpect(jsonPath("$.tree").isArray())
                 .andExpect(jsonPath("$.provisionalRelations").isEmpty())
                 .andExpect(jsonPath("$.architectureView").doesNotExist());
 
@@ -240,7 +246,8 @@ class AnalysisRelationGeneratorTests {
                 .andExpect(jsonPath("$.status").value("SUCCESS"))
                 .andExpect(jsonPath("$.errorMessage").doesNotExist())
                 .andExpect(jsonPath("$.provisionalRelations").isNotEmpty())
-                .andExpect(jsonPath("$.architectureView").exists());
+                .andExpect(jsonPath("$.architectureView").exists())
+                .andExpect(jsonPath("$.architectureView.includedRelationships").isNotEmpty());
     }
 
     private static AnalysisMemoryGuard.Sample healthyHeap() {
