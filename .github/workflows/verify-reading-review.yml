@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fetch-depth: 2
+          fetch-depth: 1
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
           java-version: '21'
@@ -28,6 +28,7 @@ jobs:
           echo '292ba79e2db1e6f8c6e2de4c006dcdf120b67423a9f65266334d6743f7512154  reading-review-tests.patch' | sha256sum -c
           echo '7f9e6badefa2e2d96fe93d1cb3ddf18734e761bcf856b050e18aa19ac696feb7  reading-review-fix.patch' | sha256sum -c
           cd "$GITHUB_WORKSPACE"
+          git fetch --no-tags --depth=1 origin 0403beba5627e9bfd4c7148316dd767081f8cf39
           git checkout --detach 0403beba5627e9bfd4c7148316dd767081f8cf39
           test "$(git rev-parse HEAD^{tree})" = d7def2805e7482cc6828ec3229067d915ccb5f1d
           git apply --check "$RUNNER_TEMP/pr1117-review/reading-review-tests.patch"
@@ -36,6 +37,7 @@ jobs:
         shell: bash
         run: |
           set -uo pipefail
+          set +e
           log="$RUNNER_TEMP/pr1117-review/evidence"
           ./mvnw -B -ntp -pl taxonomy-analysis -am test -Dtest=AnalysisCompletionContractTest,StreamRequirementAnalysisUseCaseTest -Dsurefire.failIfNoSpecifiedTests=false > "$log/java-red.log" 2>&1
           result=$?
