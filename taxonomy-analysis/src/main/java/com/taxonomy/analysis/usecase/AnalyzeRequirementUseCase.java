@@ -25,6 +25,9 @@ public class AnalyzeRequirementUseCase {
     @Autowired
     private AnalysisProgressRegistry analysisProgressRegistry;
 
+    @Autowired
+    private com.taxonomy.analysis.relations.RequirementRelationSearchService requirementRelationSearch;
+
     private final LlmService llmService;
     private final AiPromptBudgetPolicy promptBudgetPolicy;
     private final RequirementArchitectureViewService architectureViewService;
@@ -81,8 +84,11 @@ public class AnalyzeRequirementUseCase {
                 try {
                     AnalysisRunControl.phase("RELATIONS", null);
                     enrichWithRelationHypotheses(command, result, persistHypotheses);
-                    AnalysisRunControl.phase("ARCHITECTURE", null);
-                    enrichWithArchitectureView(command, result);
+                    if (result.getRelationSearchReport() == null
+                            || !isCooperativeStop(result.getRelationSearchReport().stopReason())) {
+                        AnalysisRunControl.phase("ARCHITECTURE", null);
+                        enrichWithArchitectureView(command, result);
+                    }
                 } catch (AnalysisStoppedException stopped) {
                     result.setStatus("PARTIAL");
                     result.setErrorMessage(stopped.getMessage());
@@ -122,6 +128,27 @@ public class AnalyzeRequirementUseCase {
         if (result.getScores() == null) {
             return;
         }
+        if (requirementRelationSearch != null && requirementRelationSearch.isEnabled()) {
+            var report = requirementRelationSearch.search(command.businessText(), result.getScores());
+            result.setRelationSearchReport(report);
+            // Scope, conditions and choices must not leak into globally accepted catalogue edges.
+            // The existing analysis snapshot persists the typed report; adoption is a separate action.
+            result.setProvisionalRelations(java.util.List.of());
+            if (!report.isSearchExhausted()) {
+                if (!"ERROR".equals(result.getStatus())) result.setStatus("PARTIAL");
+                String summary = "RELATION_SEARCH_PARTIAL: " + report.totalCalls() + "/" + report.maxCalls()
+                        + " evaluation attempts; " + report.result().unfinished().size() + " unfinished search batches."
+                        + (report.stopReason().isEmpty() ? "" : " " + report.stopReason());
+                if (result.getErrorMessage() == null) result.setErrorMessage(summary);
+                var warnings = new java.util.ArrayList<>(result.getWarnings());
+                warnings.add(summary);
+                report.warnings().stream().limit(8).forEach(warnings::add);
+                report.result().unfinished().stream().filter(u -> !u.question().isBlank()).limit(8)
+                        .map(u -> u.sourceId() + ": " + u.question()).forEach(warnings::add);
+                result.setWarnings(warnings);
+            }
+            return;
+        }
         result.setProvisionalRelations(analysisRelationGenerator.generate(result.getScores()));
         if (persistHypotheses && !result.getProvisionalRelations().isEmpty()) {
             hypothesisService.persistFromAnalysis(
@@ -135,11 +162,11 @@ public class AnalyzeRequirementUseCase {
         if (!command.includeArchitectureView() || result.getScores() == null) {
             return;
         }
-        RequirementArchitectureView archView = architectureViewService.build(
-                result.getScores(),
-                command.businessText(),
-                command.maxArchitectureNodes(),
-                result.getProvisionalRelations());
+        RequirementArchitectureView archView = result.getRelationSearchReport() != null
+                ? architectureViewService.buildFromEvidence(result.getScores(), command.maxArchitectureNodes(),
+                        result.getRelationSearchReport())
+                : architectureViewService.build(result.getScores(), command.businessText(),
+                        command.maxArchitectureNodes(), result.getProvisionalRelations());
         DiagramViewMetadata meta = metadataPort.resolve();
         archView.setViewTitle(meta.viewTitle());
         archView.setViewDescription(meta.viewDescription());

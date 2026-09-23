@@ -8,6 +8,12 @@ import java.util.Objects;
 
 public class AnalysisResult {
 
+    /** Immutable, requirement-scoped search evidence; never a global catalogue mutation. */
+    private RelationSearchReport relationSearchReport;
+    public RelationSearchReport getRelationSearchReport() { return relationSearchReport; }
+    public void setRelationSearchReport(RelationSearchReport report) { this.relationSearchReport = report; }
+
+
     /**
      * Original node scores returned by analysis. Concrete PRODUCT entries are independent
      * suitability values and are retained separately from comparable relevance.
