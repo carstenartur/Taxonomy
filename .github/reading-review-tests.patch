@@ -1,0 +1,158 @@
+diff --git a/.github/scripts/product-score-streaming.test.mjs b/.github/scripts/product-score-streaming.test.mjs
+index ba4ba54..4d1e2e8 100644
+--- a/.github/scripts/product-score-streaming.test.mjs
++++ b/.github/scripts/product-score-streaming.test.mjs
+@@ -11,2 +11,5 @@ const viewsSource = await readFile(new URL(
+   import.meta.url), 'utf8');
++const browseSource = await readFile(new URL(
++  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js',
++  import.meta.url), 'utf8');
+ const catalogue = JSON.parse(await readFile(new URL(
+@@ -53,3 +56,6 @@ function harness(locale = 'en') {
+   const input = element(); input.value = 'A requirement';
+-  const controls = { businessText: input, analyzeBtn: element() };
++  const controls = { businessText: input, analyzeBtn: element(), analysisDurationDisplay: element() };
++  controls.analysisDurationDisplay.hidden = true;
++  const focused = element();
++  let renders = 0;
+   const handlers = new Map();
+@@ -59,3 +65,3 @@ function harness(locale = 'en') {
+   const document = {
+-    documentElement: { lang: locale },
++    documentElement: { lang: locale }, activeElement: focused, addEventListener() {},
+     getElementById: id => controls[id] || null,
+@@ -69,3 +75,3 @@ function harness(locale = 'en') {
+     TaxonomyBrowse: {
+-      renderView() {}, ensureNodeRendered() {}, showStatus(...args) { statuses.push(args); }, clearStatus() {},
++      renderView() { renders++; }, ensureNodeRendered() {}, showStatus(...args) { statuses.push(args); }, clearStatus() {},
+       updateExportGroupVisibility() {}
+@@ -83,2 +89,6 @@ function harness(locale = 'en') {
+   });
++  const browse = window.TaxonomyBrowse;
++  vm.runInContext(browseSource, context);
++  browse.refreshAnalysisDuration = window.TaxonomyBrowse.refreshAnalysisDuration;
++  window.TaxonomyBrowse = browse;
+   vm.runInContext(source, context);
+@@ -87,3 +97,3 @@ function harness(locale = 'en') {
+   return {
+-    state, nodes, statuses, api: window.TaxonomyScoring, views: window.TaxonomyViews,
++    state, nodes, statuses, controls, document, focused, renders: () => renders, api: window.TaxonomyScoring, views: window.TaxonomyViews,
+     send(type, data) {
+@@ -307 +317,30 @@ for (const rawScores of [{}, null, { [family]: 50 }]) {
+ }
++
++for (const terminal of ['complete', 'error', 'mapping-error']) {
++  test(`${terminal}: streaming refreshes duration without rebuilding the diagram or moving focus`, () => {
++    const h = harness('de');
++    h.state.currentView = 'sunburst';
++    const renderedBefore = h.renders();
++    const score = { [family]: 60 };
++    const event = { status: terminal === 'complete' ? 'SUCCESS' : 'PARTIAL',
++      analysisDurationMillis: 62500, totalScores: score, partialScores: score,
++      rawScores: score, errorMessage: 'controlled test failure',
++      scoreSemanticsUnavailable: terminal === 'mapping-error' };
++    h.send(terminal === 'complete' ? 'complete' : 'error', event);
++    assert.equal(h.controls.analysisDurationDisplay.hidden, false);
++    assert.match(h.controls.analysisDurationDisplay.textContent, /1 min 02 s/);
++    assert.equal(h.state.lastAnalysisDurationMillis, 62500);
++    assert.equal(h.renders(), renderedBefore, 'Do not repair metadata by re-rendering the graph');
++    assert.equal(h.document.activeElement, h.focused);
++    assert.equal(h.state.currentView, 'sunburst');
++  });
++}
++test('duration header distinguishes zero duration from an unknown replacement result', () => {
++  const h = harness();
++  h.state.lastAnalyzedText = 'A requirement';
++  h.send('complete', { totalScores: {}, analysisDurationMillis: 0 });
++  assert.match(h.controls.analysisDurationDisplay.textContent, /0 min 00 s/);
++  h.send('complete', { totalScores: {} });
++  assert.match(h.controls.analysisDurationDisplay.textContent, /analysis.duration.unknown/);
++  assert.doesNotMatch(h.controls.analysisDurationDisplay.textContent, /0 min 00 s/);
++});
+diff --git a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/controller/AnalysisCompletionContractTest.java b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/controller/AnalysisCompletionContractTest.java
+index bd4d5e1..c818ca5 100644
+--- a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/controller/AnalysisCompletionContractTest.java
++++ b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/controller/AnalysisCompletionContractTest.java
+@@ -106,5 +106,5 @@ class AnalysisCompletionContractTest {
+             if ("complete".equals(ending)) emit.handle(new AnalysisStreamEvent.Complete(
+-                    "SUCCESS", Map.of("CP", 80), List.of("existing warning"), List.of(), List.of()));
++                    "SUCCESS", Map.of("CP", 80), List.of("existing warning"), List.of(), List.of(), 1234L));
+             else emit.handle(new AnalysisStreamEvent.Error("ERROR", "existing diagnostic", Map.of("CP", 80),
+-                    List.of("existing warning"), List.of(), List.of(), Map.of("CP", "completed explanation")));
++                    List.of("existing warning"), List.of(), List.of(), Map.of("CP", "completed explanation"), 1234L));
+             return null;
+@@ -113,2 +113,4 @@ class AnalysisCompletionContractTest {
+         assertThat(body).contains("\"status\":\"PARTIAL\"", "CANCELLED").doesNotContain("\"status\":\"SUCCESS\"");
++        if (!"throw".equals(ending)) assertThat(body).contains("\"analysisDurationMillis\":1234");
++        else assertMeasuredDuration(body);
+         if (!"throw".equals(ending)) assertThat(body).contains("\"CP\":80", "existing warning");
+@@ -182,6 +184,6 @@ class AnalysisCompletionContractTest {
+                 emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80),
+-                        List.of("retained warning"), List.of(), List.of()));
++                        List.of("retained warning"), List.of(), List.of(), 8765L));
+             } else {
+                 emit.handle(new AnalysisStreamEvent.Error("PARTIAL", "retained diagnostic", Map.of("CP", 80),
+-                        List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason")));
++                        List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason"), 8765L));
+             }
+@@ -190,3 +192,3 @@ class AnalysisCompletionContractTest {
+         String body = executeStream();
+-        assertThat(body).contains("event:error", "\"CP\":80", "retained warning", "scoreSemanticsUnavailable");
++        assertThat(body).contains("event:error", "\"CP\":80", "retained warning", "scoreSemanticsUnavailable", "\"analysisDurationMillis\":8765");
+         assertThat(body.split("event:error", -1)).hasSize(2);
+@@ -270,2 +272,28 @@ class AnalysisCompletionContractTest {
+ 
++    @ParameterizedTest @ValueSource(strings = {"silent", "provider", "failure", "stopped"})
++    void controllerGeneratedTerminalEventsCarryWorkerDuration(String ending) throws Exception {
++        doAnswer(invocation -> {
++            switch (ending) {
++                case "provider" -> throw new UnknownAnalysisProviderException("test-provider");
++                case "failure" -> throw new IllegalStateException("provider failed");
++                case "stopped" -> throw new com.taxonomy.analysis.service.AnalysisStoppedException(
++                        com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED);
++                default -> { }
++            }
++            return null;
++        }).when(stream).stream(any(), any());
++        String body = executeStream();
++        assertThat(body.split("event:error", -1)).hasSize(2);
++        assertMeasuredDuration(body);
++    }
++
++    private void assertMeasuredDuration(String body) throws Exception {
++        String terminal = body.lines().filter(line -> line.startsWith("data:"))
++                .reduce((first, last) -> last).orElseThrow();
++        var duration = new ObjectMapper().readTree(terminal.substring(5)).get("analysisDurationMillis");
++        assertThat(duration).as("Every accepted worker publishes its measured duration").isNotNull();
++        assertThat(duration.isIntegralNumber()).isTrue();
++        assertThat(duration.asLong()).isNotNegative();
++    }
++
+     private String executeStream() throws Exception {
+diff --git a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCaseTest.java b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCaseTest.java
+index ca6bf97..5c5be00 100644
+--- a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCaseTest.java
++++ b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCaseTest.java
+@@ -78,3 +78,5 @@ class StreamRequirementAnalysisUseCaseTest {
+         assertThat(events.get(2)).isEqualTo(new AnalysisStreamEvent.Expanding("CP", List.of("CP-1023")));
+-        assertThat(events.get(3)).isEqualTo(new AnalysisStreamEvent.Complete(
++        var complete = (AnalysisStreamEvent.Complete) events.get(3);
++        assertThat(complete.analysisDurationMillis()).isNotNull().isNotNegative();
++        assertThat(complete).isEqualTo(new AnalysisStreamEvent.Complete(
+                 "SUCCESS",
+@@ -83,3 +85,3 @@ class StreamRequirementAnalysisUseCaseTest {
+                 List.of(),
+-                List.of()));
++                List.of(), complete.analysisDurationMillis()));
+ 
+@@ -110,2 +112,5 @@ class StreamRequirementAnalysisUseCaseTest {
+ 
++        assertThat(events).hasSize(1);
++        var error = (AnalysisStreamEvent.Error) events.getFirst();
++        assertThat(error.analysisDurationMillis()).isNotNull().isNotNegative();
+         assertThat(events).containsExactly(new AnalysisStreamEvent.Error(
+@@ -116,3 +121,3 @@ class StreamRequirementAnalysisUseCaseTest {
+                 List.of(),
+-                List.of()));
++                List.of(), Map.of(), error.analysisDurationMillis()));
+         verify(promptBudgetPolicy).requireWithinBudget(

@@ -1,0 +1,99 @@
+diff --git a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java
+index ed4e0b3..f84458a 100644
+--- a/taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java
++++ b/taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java
+@@ -241,2 +241,3 @@ public class AnalysisApiController {
+             worker.set(Thread.currentThread());
++            long startedNanos = System.nanoTime(); // Worker time, excluding the executor queue.
+             try (var run = reservation == null ? null : reservation.open()) {
+@@ -244,2 +245,3 @@ public class AnalysisApiController {
+                     if (completed.get()) return;
++                    event = withMeasuredDuration(event, startedNanos);
+                     boolean terminal = event instanceof AnalysisStreamEvent.Complete
+@@ -402,2 +404,17 @@ public class AnalysisApiController {
+ 
++    /** Keep authoritative use-case timing; measure controller-generated terminal fallbacks once. */
++    private static AnalysisStreamEvent withMeasuredDuration(AnalysisStreamEvent event, long startedNanos) {
++        if (event instanceof AnalysisStreamEvent.Complete complete && complete.analysisDurationMillis() == null) {
++            return new AnalysisStreamEvent.Complete(complete.status(), complete.allScores(), complete.warnings(),
++                    complete.discrepancies(), complete.productCoverageGaps(),
++                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
++        }
++        if (event instanceof AnalysisStreamEvent.Error error && error.analysisDurationMillis() == null) {
++            return new AnalysisStreamEvent.Error(error.status(), error.errorMessage(), error.partialScores(),
++                    error.warnings(), error.discrepancies(), error.productCoverageGaps(), error.partialReasons(),
++                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
++        }
++        return event;
++    }
++
+     private static AnalysisStreamEvent.Error terminalMappingFailure(AnalysisStreamEvent event) {
+@@ -406,3 +423,3 @@ public class AnalysisApiController {
+             return new AnalysisStreamEvent.Error("ERROR", message, complete.allScores(), complete.warnings(),
+-                    complete.discrepancies(), complete.productCoverageGaps());
++                    complete.discrepancies(), complete.productCoverageGaps(), Map.of(), complete.analysisDurationMillis());
+         }
+@@ -411,3 +428,4 @@ public class AnalysisApiController {
+         return new AnalysisStreamEvent.Error("ERROR", prior == null || prior.isBlank() ? message : prior + " " + message,
+-                error.partialScores(), error.warnings(), error.discrepancies(), error.productCoverageGaps(), error.partialReasons());
++                error.partialScores(), error.warnings(), error.discrepancies(), error.productCoverageGaps(),
++                error.partialReasons(), error.analysisDurationMillis());
+     }
+@@ -422,2 +440,3 @@ public class AnalysisApiController {
+         payload.put("scoreSemanticsUnavailable", true);
++        payload.put("analysisDurationMillis", error.analysisDurationMillis());
+         return new AnalysisSseEventMapper.MappedEvent("error", payload);
+@@ -432,2 +451,3 @@ public class AnalysisApiController {
+             payload.put("warnings", complete.warnings());
++            payload.put("analysisDurationMillis", complete.analysisDurationMillis());
+         } else if (event instanceof AnalysisStreamEvent.Error error) {
+@@ -436,2 +456,3 @@ public class AnalysisApiController {
+             payload.put("warnings", error.warnings());
++            payload.put("analysisDurationMillis", error.analysisDurationMillis());
+         }
+@@ -446,3 +467,4 @@ public class AnalysisApiController {
+             return new AnalysisStreamEvent.Complete(terminal.resultStatus(), complete.allScores(),
+-                    terminal.warnings(complete.warnings()), complete.discrepancies(), complete.productCoverageGaps());
++                    terminal.warnings(complete.warnings()), complete.discrepancies(), complete.productCoverageGaps(),
++                    complete.analysisDurationMillis());
+         }
+@@ -452,3 +474,3 @@ public class AnalysisApiController {
+                     error.partialScores(), terminal.warnings(error.warnings()), error.discrepancies(),
+-                    error.productCoverageGaps(), error.partialReasons());
++                    error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis());
+         }
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
+index af21ee6..ab2f610 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js
+@@ -764,4 +764,4 @@
+     // ── Master render dispatcher ──────────────────────────────────────────────
+-    function renderView(data, scores) {
+-        if (!data || data.length === 0) { return; }
++    // Metadata-only refresh must not rebuild a live diagram or disturb its reading context.
++    function refreshAnalysisDuration() {
+         var durationDisplay = document.getElementById('analysisDurationDisplay');
+@@ -775,2 +775,7 @@
+         }
++    }
++
++    function renderView(data, scores) {
++        refreshAnalysisDuration();
++        if (!data || data.length === 0) { return; }
+         document.getElementById('taxonomyTree').removeAttribute('data-view-rendered');
+@@ -2309,2 +2314,3 @@
+         renderView: renderView,
++        refreshAnalysisDuration: refreshAnalysisDuration,
+         switchView: switchView,
+diff --git a/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js b/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
+index 4d548db..3b99809 100644
+--- a/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
++++ b/taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
+@@ -130,2 +130,3 @@
+             && envelope.analysisDurationMillis >= 0 ? envelope.analysisDurationMillis : null;
++        if (typeof B().refreshAnalysisDuration === 'function') B().refreshAnalysisDuration();
+     }
+@@ -806,2 +807,3 @@
+                         && data.analysisDurationMillis >= 0 ? data.analysisDurationMillis : null;
++                    if (typeof B().refreshAnalysisDuration === 'function') B().refreshAnalysisDuration();
+                     syncVisibleScoreNodes();

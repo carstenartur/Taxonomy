@@ -1,0 +1,107 @@
+name: Verify reading review corrections
+on:
+  push:
+    branches: [qa/reading-review-verification-20260923]
+permissions:
+  contents: write
+jobs:
+  verify:
+    if: github.repository == 'carstenartur/Taxonomy' && github.ref == 'refs/heads/qa/reading-review-verification-20260923'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 2
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Verify exact patches and source baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/pr1117-review/evidence/red"
+          cp .github/reading-review-*.patch "$RUNNER_TEMP/pr1117-review/"
+          cd "$RUNNER_TEMP/pr1117-review"
+          echo '292ba79e2db1e6f8c6e2de4c006dcdf120b67423a9f65266334d6743f7512154  reading-review-tests.patch' | sha256sum -c
+          echo '7f9e6badefa2e2d96fe93d1cb3ddf18734e761bcf856b050e18aa19ac696feb7  reading-review-fix.patch' | sha256sum -c
+          cd "$GITHUB_WORKSPACE"
+          git checkout --detach 0403beba5627e9bfd4c7148316dd767081f8cf39
+          test "$(git rev-parse HEAD^{tree})" = d7def2805e7482cc6828ec3229067d915ccb5f1d
+          git apply --check "$RUNNER_TEMP/pr1117-review/reading-review-tests.patch"
+          git apply "$RUNNER_TEMP/pr1117-review/reading-review-tests.patch"
+      - name: Reproduce missing terminal duration and stale header
+        shell: bash
+        run: |
+          set -uo pipefail
+          log="$RUNNER_TEMP/pr1117-review/evidence"
+          ./mvnw -B -ntp -pl taxonomy-analysis -am test -Dtest=AnalysisCompletionContractTest,StreamRequirementAnalysisUseCaseTest -Dsurefire.failIfNoSpecifiedTests=false > "$log/java-red.log" 2>&1
+          result=$?
+          tail -n 55 "$log/java-red.log"
+          test "$result" -ne 0 || exit 1
+          python3 - <<'PY'
+          import os, pathlib, shutil, xml.etree.ElementTree as ET
+          source = pathlib.Path('taxonomy-analysis/target/surefire-reports')
+          names = ['AnalysisCompletionContractTest', 'StreamRequirementAnalysisUseCaseTest']
+          reports = [p for p in source.glob('TEST-*.xml') if any(p.name.endswith(n+'.xml') for n in names)]
+          assert len(reports) == 2, 'Both source-built suites must execute'
+          roots = [ET.parse(p).getroot() for p in reports]
+          assert sum(int(r.get('errors',0)) for r in roots) == 0, 'Compilation/runtime errors are not red proof'
+          assert sum(int(r.get('skipped',0)) for r in roots) == 0
+          failures = [t.get('name') for r in roots for t in r.iter('testcase') if t.find('failure') is not None]
+          assert len(failures) == 8, failures
+          assert all(n.startswith(('controllerGeneratedTerminalEventsCarryWorkerDuration', 'terminalMappingFailureStillDeliversOneClosedEvidenceBearingTerminalEvent', 'streamTerminalReflectsTheSameCancellationDecisionAsTheRegistry')) for n in failures), failures
+          for p in reports: shutil.copy2(p, pathlib.Path(os.environ['RUNNER_TEMP'])/'pr1117-review/evidence/red'/p.name)
+          print('RED: eight intended source-built duration assertion failures, zero errors/skips')
+          PY
+          test $? -eq 0 || exit 1
+          node --test .github/scripts/product-score-streaming.test.mjs > "$log/node-red.log" 2>&1
+          result=$?
+          tail -n 15 "$log/node-red.log"
+          test "$result" -ne 0 || exit 1
+          grep -qx '# fail 4' "$log/node-red.log" || exit 1
+      - name: Apply only the verified product correction
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check "$RUNNER_TEMP/pr1117-review/reading-review-fix.patch"
+          git apply "$RUNNER_TEMP/pr1117-review/reading-review-fix.patch"
+          git diff --check
+          git add .github/scripts/product-score-streaming.test.mjs taxonomy-analysis/src/main/java/com/taxonomy/analysis/controller/AnalysisApiController.java taxonomy-analysis/src/test/java/com/taxonomy/analysis/controller/AnalysisCompletionContractTest.java taxonomy-analysis/src/test/java/com/taxonomy/analysis/usecase/StreamRequirementAnalysisUseCaseTest.java taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js
+          test "$(git diff --cached --name-only | wc -l)" -eq 6
+          test "$(git write-tree)" = 8abb1757ea3dd55ad76a4706f3ec044b805bde98
+      - name: Full analysis and upstream source tests
+        shell: bash
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-analysis -am test 2>&1 | tee "$RUNNER_TEMP/pr1117-review/evidence/java-green.log"
+      - name: Complete Maven-owned UI contracts
+        shell: bash
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee "$RUNNER_TEMP/pr1117-review/evidence/ui-green.log"
+      - name: Publish verified source ref only, without this helper in its ancestry
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 0403beba5627e9bfd4c7148316dd767081f8cf39
+          test "$(git write-tree)" = 8abb1757ea3dd55ad76a4706f3ec044b805bde98
+          git diff --exit-code
+          git diff --cached --check
+          export GIT_AUTHOR_NAME='github-actions[bot]' GIT_COMMITTER_NAME='github-actions[bot]'
+          export GIT_AUTHOR_EMAIL='41898282+github-actions[bot]@users.noreply.github.com' GIT_COMMITTER_EMAIL='41898282+github-actions[bot]@users.noreply.github.com'
+          commit=$(git commit-tree 8abb1757ea3dd55ad76a4706f3ec044b805bde98 -p 0403beba5627e9bfd4c7148316dd767081f8cf39 -m 'fix(analysis): retain terminal timing and refresh header without rebuilding diagrams')
+          git push origin "$commit:refs/heads/qa/reading-reviewed-source-20260923"
+          printf '%s\n' "$commit" | tee "$RUNNER_TEMP/pr1117-review/evidence/verified-commit.txt"
+      - name: Preserve verification reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: reading-review-source-verification
+          path: |
+            ${{ runner.temp }}/pr1117-review/evidence
+            taxonomy-*/target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 7
