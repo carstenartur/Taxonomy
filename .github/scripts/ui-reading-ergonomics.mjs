@@ -10,6 +10,15 @@ export async function verifyReadingErgonomics({ page, evidence }) {
       const duration = window.TaxonomyState.lastAnalysisDurationMillis;
       return Number.isSafeInteger(duration) && duration >= 0;
     }), 'Completed analysis must retain a measured duration');
+    const durationLabel = await page.evaluate(() => {
+      const duration = window.TaxonomyState.lastAnalysisDurationMillis;
+      return Math.floor(duration / 60000) + ' min '
+        + String(Math.floor(duration / 1000) % 60).padStart(2, '0') + ' s';
+    });
+    evidence.assert(await page.locator('#analysisDurationDisplay').isVisible(),
+      'Terminal analysis must update its duration header before any diagram switch');
+    evidence.assert((await page.locator('#analysisDurationDisplay').innerText()).includes(durationLabel),
+      'The duration header must match the terminal result before navigation');
     const originalData = await page.evaluate(() => JSON.stringify({
       tree: window.TaxonomyState.taxonomyData, scores: window.TaxonomyState.currentScores
     }));
