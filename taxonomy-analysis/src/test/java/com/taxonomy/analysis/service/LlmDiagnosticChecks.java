@@ -43,7 +43,7 @@ public final class LlmDiagnosticChecks {
             LlmCallDetail detail = service(REPLY).analyzeSingleBatchDetailed("Civilian requirement", List.of(node()), 100);
             require(REPLY.equals(detail.getRawResponse()), "Service must preserve the exact invalid reply");
             require(detail.getError() != null, "Non-JSON must remain a failed analysis");
-            require(detail.getScores().equals(Map.of("IP", 0)), "No fabricated success scores");
+            require(detail.getScores().isEmpty(), "A failed assessment must not manufacture a zero score");
             handle.finish("PARTIAL");
             var snapshot = registry.snapshot(id, "owner", SCOPE);
             require("FAILED".equals(snapshot.calls().getFirst().status()), "Call must be visibly failed");

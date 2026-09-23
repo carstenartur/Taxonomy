@@ -123,6 +123,8 @@ public class LlmResponseParser {
      *   <li>Old format: {@code {"C1": 80, "C2": 0}} — integer values, no reasons</li>
      *   <li>New format: {@code {"C1": {"score": 80, "reason": "..."}, "C2": {"score": 0, "reason": "..."}}}
      * </ul>
+     * <p>All offered IDs require explicit valid scores. Missing, foreign or malformed
+     * decisions invalidate the batch before normalization; absence is not negative evidence.
      * <p>The LLM is asked to distribute exactly {@code parentScore} across child categories.
      * If the raw sum already matches, scores are passed through without normalization.
      * If the raw sum differs, scores are normalized as a fallback.
@@ -133,29 +135,27 @@ public class LlmResponseParser {
     public LlmService.ScoreParseResult parseScoreParseResult(String text,
                                                               List<TaxonomyNode> nodes,
                                                               int parentScore) throws Exception {
-        Map<String, Object> raw = readScoreObject(text);
+        Map<String, Object> raw = parseChildAssessment(text,
+                nodes.stream().map(TaxonomyNode::getCode).toList(), (code, value) -> value);
 
-        Map<String, Integer> scores = new HashMap<>();
-        Map<String, String> reasons = new HashMap<>();
-
+        Map<String, Integer> scores = new LinkedHashMap<>();
+        Map<String, String> reasons = new LinkedHashMap<>();
         for (Map.Entry<String, Object> entry : raw.entrySet()) {
             String code = entry.getKey();
             Object value = entry.getValue();
-            if (value instanceof Number num) {
-                scores.put(code, num.intValue());
-            } else if (value instanceof Map<?, ?> obj) {
-                Object scoreVal = obj.get("score");
-                int score = scoreVal instanceof Number n ? n.intValue() : 0;
-                scores.put(code, score);
-                Object reasonVal = obj.get("reason");
-                if (reasonVal instanceof String reasonStr && !reasonStr.isBlank()) {
-                    reasons.put(code, reasonStr);
-                }
+            Object scoreValue = value instanceof Map<?, ?> object ? object.get("score") : value;
+            if (!(scoreValue instanceof Number number)
+                    || !Double.isFinite(number.doubleValue())
+                    || number.doubleValue() < 0 || number.doubleValue() > 100
+                    || number.doubleValue() != Math.rint(number.doubleValue())) {
+                throw new IllegalArgumentException("Category response for " + code
+                        + " requires an explicit integer score between 0 and 100");
             }
-        }
-
-        for (TaxonomyNode n : nodes) {
-            scores.putIfAbsent(n.getCode(), 0);
+            scores.put(code, number.intValue());
+            if (value instanceof Map<?, ?> object && object.get("reason") instanceof String reason
+                    && !reason.isBlank()) {
+                reasons.put(code, reason);
+            }
         }
 
         int rawSum = scores.values().stream().mapToInt(Integer::intValue).sum();
@@ -265,8 +265,8 @@ public class LlmResponseParser {
     /**
      * Shared structured child evaluation boundary. The policy interprets values; the
      * common contract rejects missing/unknown IDs before any child is interpreted.
-     * This is used by independent product scoring and relation assessment. Legacy
-     * category-budget parsing keeps its existing missing-score behavior for now.
+     * This is used by category relevance, independent product suitability and relation
+     * assessment. Each caller retains its own semantics after complete identity validation.
      */
     public <T> Map<String, T> parseChildAssessment(String text, List<String> candidateIds,
                                                  BiFunction<String, Object, T> policy) {

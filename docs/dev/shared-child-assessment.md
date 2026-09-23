@@ -8,14 +8,15 @@ another search engine, provider stack, data model or adoption path.
 
 `ChildAssessmentContract` checks exact offered IDs, duplicate/null/foreign/missing
 answers, non-null policy results, immutable output and stable offered ordering.
-Map-based product scores and array-based relationship decisions use the same
+Map-based category/product scores and array-based relationship decisions use the same
 contract. Array identities are validated before indexing, so duplicate answers
 cannot disappear in a map. Duplicate offered identities fail before the active
 relationship protocol sends a remote completion request.
 
-`LlmResponseParser.parseChildAssessment` remains the consumer for independent
-product scores. Product thresholds and the lack of parent normalization are
-unchanged. `RelationSearchProtocol` now uses the same contract for contribution
+`LlmResponseParser.parseChildAssessment` is the common boundary for category
+relevance and independent product scores. Complete category batches retain their
+existing parent-budget normalization. Product thresholds and the lack of parent
+normalization are unchanged. `RelationSearchProtocol` now uses the same contract for contribution
 extraction and NAVIGATE/VERIFY decisions, in the real `AnalyzeRequirementUseCase`
 path. Original text, quotes, roles, conditions, alternatives and endpoint identities
 remain governed by the existing `RelationSearchModel` and search validation.
@@ -38,14 +39,39 @@ continue through the same observation, cooperative stop and resource checks.
 No live model, automatic acceptance or extra model round trip is introduced by
 this reuse correction.
 
+## Missing category assessment is not a zero score
+
+Every offered category must have an explicit, finite, integral score in 0..100.
+A missing ID, foreign ID, null, missing score property, nonnumeric value, duplicate
+JSON key or out-of-range score invalidates that entire batch **before** parent
+normalization. A complete batch of explicit zeros is valid negative evidence;
+it is different from a batch which could not be assessed. Both existing numeric
+and score/reason-object response formats remain supported.
+
+The active detailed category call returns an empty score map plus its error on
+parse, transport, timeout, missing-credential or unavailable-local-model failure.
+Prompt and raw-response diagnostics remain available when a reply was received.
+Automatic and streaming analysis retain successful earlier batches, emit the
+existing warnings/PARTIAL status, and do not insert zero placeholders for failed
+roots or descendants. JSON snapshots preserve the missing score entries. The
+interactive UI applies any valid completed entries but leaves an errored parent
+unevaluated and retryable; a successful explicit-zero batch stays evaluated.
+
+Duplicate catalogue candidates are rejected before normalization can hide them:
+duplicate roots spend no model call, and duplicate children spend no child-batch
+call. Identical *search contexts* are still deduplicated; that is a different
+operation from silently accepting an invalid candidate set.
+
 ## Boundaries that remain
 
-Legacy category scoring still has its existing parent-score normalization and
-missing-value compatibility. This is not claimed as a migration of all category
-false-zero paths. Migrating that API, streaming outcomes and persisted score
-semantics remains explicit work in #1111. This increment does not claim a
-persistent shared cache, provider-retry/token budget, improved model recall or
-standards conformance. The opt-in relation phase and its configured limits are
+This migration covers the active detailed category workflow and its consumers.
+Legacy score-only provider parsing helpers and product failure placeholders are
+not redesigned here. Category parent-budget semantics and product thresholds
+are unchanged; absence in the analysis score maps is authoritative, not the
+legacy numeric defaults of unrelated architecture DTO fields. A restart-safe
+resume queue for incomplete work is not introduced by this change. This increment
+does not claim a persistent shared cache, provider-retry/token budget, improved
+model recall or standards conformance. The opt-in relation phase and its configured limits are
 unchanged; see `requirement-relation-downwalk.md` and both configuration references.
 
 A separate verification model call is not independent human review or formal
@@ -62,8 +88,13 @@ to the existing ordinary JUnit integration entry point rather than a new test
 selector. The original fourteen protocol cases and existing engine, session,
 use-case, product/parser and typed run-control suites remain in normal CI.
 
-The repair is verified by tests-first execution and a fresh Java 21 Maven source
-build on an isolated verification branch. Actual executed results and exact
+Additional ordinary JUnit regressions exercise malformed category responses,
+explicit-zero versus missing outcomes, the detailed service, automatic/streaming
+completion and JSON snapshots. Engine-level tests exercise duplicate roots and
+children through the real search. The existing product-score-streaming UI suite
+also covers failed/partial interactive retries and successful explicit zeros.
+
+The repair is verified by tests-first execution and Java 21 Maven source builds. Actual executed results and exact
 commit identities are recorded in PR #1113. The full canonical source/coverage,
 database, browser and security checks are still required before merge; targeted
 tests or earlier-head evidence do not replace them. No canonical workflow,

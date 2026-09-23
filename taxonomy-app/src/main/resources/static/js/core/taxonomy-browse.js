@@ -1485,6 +1485,9 @@
 
                 // Show error in status area if present
                 if (result.error) {
+                    // A failed or partial batch is still open work, not an evaluated zero.
+                    S.evaluatedNodes.delete(parentCode);
+                    wrapper.classList.add('tax-has-unevaluated');
                     console.warn('[Taxonomy] LLM error for', parentCode, ':', result.error);
                     showStatus('warning', t('browse.eval.llm.issue', parentCode, result.error));
                 }

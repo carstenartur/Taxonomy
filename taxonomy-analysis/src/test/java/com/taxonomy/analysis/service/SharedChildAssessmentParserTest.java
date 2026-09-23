@@ -55,10 +55,12 @@ class SharedChildAssessmentParserTest {
     }
 
     @Test
-    void categoryCompatibilityIsNotAccidentallyChangedByProductAndRelationGeneralization() throws Exception {
-        var scores = parser.parseScoreParseResult("{\"A\":100}", List.of(node("A"), node("B")), 100);
-        assertEquals(Map.of("A", 100, "B", 0), scores.scores());
-        assertEquals(Map.of("A", 0), parser.parseScoreParseResult(
-                "{\"A\":{\"reason\":\"legacy missing score\"}}", List.of(node("A")), 0).scores());
+    void categoryKeepsParentBudgetButRequiresTheSharedCompleteChildSet() throws Exception {
+        var scores = parser.parseScoreParseResult("{\"A\":60,\"B\":20}", List.of(node("A"), node("B")), 40);
+        assertEquals(Map.of("A", 30, "B", 10), scores.scores());
+        assertThrows(IllegalArgumentException.class, () -> parser.parseScoreParseResult(
+                "{\"A\":100}", List.of(node("A"), node("B")), 100));
+        assertThrows(IllegalArgumentException.class, () -> parser.parseScoreParseResult(
+                "{\"A\":{\"reason\":\"missing score\"}}", List.of(node("A")), 0));
     }
 }

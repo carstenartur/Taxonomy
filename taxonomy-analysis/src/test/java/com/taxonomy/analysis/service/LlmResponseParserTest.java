@@ -350,14 +350,11 @@ class LlmResponseParserTest {
         }
 
         @Test
-        void missingNodes_getZero() throws Exception {
+        void missingNodes_areAnIncompleteAssessment() {
             String text = "{\"BP\": 100}";
             List<TaxonomyNode> nodes = List.of(node("BP"), node("CP"), node("CR"));
 
-            LlmService.ScoreParseResult result = parser.parseScoreParseResult(text, nodes, 100);
-
-            assertEquals(0, result.scores().get("CP"));
-            assertEquals(0, result.scores().get("CR"));
+            assertThrows(IllegalArgumentException.class, () -> parser.parseScoreParseResult(text, nodes, 100));
         }
 
         @Test
@@ -423,14 +420,12 @@ class LlmResponseParserTest {
         }
 
         @Test
-        void newFormat_missingScoreField_defaultsToZero() throws Exception {
+        void newFormat_missingScoreField_isNotExplicitZero() {
             String text = """
                     {"A": {"reason": "no score field"}}""";
             List<TaxonomyNode> nodes = List.of(node("A"));
 
-            LlmService.ScoreParseResult result = parser.parseScoreParseResult(text, nodes, 0);
-
-            assertEquals(0, result.scores().get("A"));
+            assertThrows(IllegalArgumentException.class, () -> parser.parseScoreParseResult(text, nodes, 0));
         }
 
         @Test
