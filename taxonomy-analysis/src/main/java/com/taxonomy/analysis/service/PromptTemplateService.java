@@ -16,6 +16,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Manages prompt templates for LLM taxonomy analysis.
@@ -24,6 +26,8 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 @Service
 public class PromptTemplateService {
+
+    private static final Pattern PLACEHOLDER = Pattern.compile("\\{\\{[A-Z_]+\\}\\}");
 
     private static final Logger log = LoggerFactory.getLogger(PromptTemplateService.class);
 
@@ -142,12 +146,12 @@ public class PromptTemplateService {
                                int parentScore, String expectedKeys) {
         String name = TAXONOMY_NAMES.getOrDefault(taxonomyCode, taxonomyCode);
         String template = getTemplate(taxonomyCode);
-        return template
-                .replace("{{BUSINESS_TEXT}}", businessText)
-                .replace("{{NODE_LIST}}", nodeList)
-                .replace("{{TAXONOMY_NAME}}", name)
-                .replace("{{PARENT_SCORE}}", String.valueOf(parentScore))
-                .replace("{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "");
+        return substitute(template, Map.of(
+                "{{BUSINESS_TEXT}}", businessText,
+                "{{NODE_LIST}}", nodeList,
+                "{{TAXONOMY_NAME}}", name,
+                "{{PARENT_SCORE}}", String.valueOf(parentScore),
+                "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : ""));
     }
 
     /**
@@ -184,11 +188,11 @@ public class PromptTemplateService {
     public String renderProductPrompt(String businessText, String nodeList,
                                       String expectedKeys, int minimumScore) {
         String template = getTemplate("IP-product");
-        return template
-                .replace("{{BUSINESS_TEXT}}", businessText)
-                .replace("{{NODE_LIST}}", nodeList)
-                .replace("{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "")
-                .replace("{{MIN_SCORE}}", String.valueOf(minimumScore));
+        return substitute(template, Map.of(
+                "{{BUSINESS_TEXT}}", businessText,
+                "{{NODE_LIST}}", nodeList,
+                "{{EXPECTED_KEYS}}", expectedKeys != null ? expectedKeys : "",
+                "{{MIN_SCORE}}", String.valueOf(minimumScore)));
     }
 
     /**
@@ -215,11 +219,11 @@ public class PromptTemplateService {
                     + "how the leaf node relates to the requirement, and note any relevant "
                     + "connections to the cross-referenced nodes.";
         }
-        return template
-                .replace("{{BUSINESS_TEXT}}", businessText)
-                .replace("{{LEAF_CODE}}", leafCode)
-                .replace("{{PATH_DESCRIPTION}}", pathDescription)
-                .replace("{{CROSS_REFERENCES}}", crossRefs);
+        return substitute(template, Map.of(
+                "{{BUSINESS_TEXT}}", businessText,
+                "{{LEAF_CODE}}", leafCode,
+                "{{PATH_DESCRIPTION}}", pathDescription,
+                "{{CROSS_REFERENCES}}", crossRefs));
     }
 
     /**
@@ -290,8 +294,13 @@ public class PromptTemplateService {
                                                  String documentText,
                                                  String nodeList) {
         String template = getTemplate(mappingCode);
-        return template
-                .replace("{{DOCUMENT_TEXT}}", documentText)
-                .replace("{{NODE_LIST}}", nodeList);
+        return substitute(template, Map.of("{{DOCUMENT_TEXT}}", documentText, "{{NODE_LIST}}", nodeList));
+    }
+
+    /** Match only the original template. Inserted data is literal, including dollar signs,
+     * backslashes and text that looks like another placeholder; unknown tokens stay unchanged. */
+    private static String substitute(String template, Map<String, String> values) {
+        return PLACEHOLDER.matcher(template).replaceAll(match ->
+                Matcher.quoteReplacement(values.getOrDefault(match.group(), match.group())));
     }
 }

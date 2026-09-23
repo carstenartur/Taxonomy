@@ -281,6 +281,11 @@
         var warning = node('div', '', 'fw-bold');
         var button = node('button', text('Analyse abbrechen', 'Cancel analysis'), 'btn btn-sm btn-danger mt-2');
         button.type = 'button';
+        function cancelState(disabled, label) {
+            button.disabled = disabled;
+            button.className = 'btn btn-sm mt-2 ' + (disabled ? 'btn-outline-secondary' : 'btn-danger');
+            button.textContent = label;
+        }
         panel.append(title, state, resources, warning, button);
         var anchor = document.getElementById('statusArea') || document.getElementById('analyzeBtn');
         if (anchor) anchor.insertAdjacentElement('afterend', panel);
@@ -288,7 +293,8 @@
         if (log) log.replaceChildren();
         var entries = new Map();
         var omitted = node('div', '', 'text-muted p-2');
-        if (log) log.append(omitted);
+        var operation = node('div', '', 'small p-2');
+        if (log) log.append(operation, omitted);
         async function loadDetail(entry, monitor) {
             if (!entry.details.open || entry.loaded || entry.loading || entry.call.status === 'STARTED') return;
             entry.loading = true;
@@ -327,16 +333,16 @@
                     ? text('Vollständiges Ergebnis empfangen.', 'Complete result received.')
                     : text('Teilergebnis oder Fehler empfangen; Einzelheiten stehen im Analysestatus.',
                         'Partial result or error received; see the analysis status for details.');
-                button.disabled = true;
+                cancelState(true, text('Analyse beendet', 'Analysis finished'));
             },
             unavailable: function (reason, terminal) {
-                if (terminal) button.disabled = true;
+                if (terminal) cancelState(true, text('Nicht verfügbar', 'Unavailable'));
                 state.textContent = reason === 'WAITING_FOR_RUN'
                     ? text('Warte auf Aufnahme des Laufs; noch keine LLM-Anfrage bestätigt.', 'Waiting for admission; no LLM request confirmed yet.')
                     : text('Statusverbindung unterbrochen; letzter Stand bleibt sichtbar. ', 'Status connection interrupted; retaining the last state. ') + reason;
             },
             cancelling: function () {
-                button.disabled = true;
+                cancelState(true, text('Abbruch angefordert', 'Cancellation requested'));
                 state.textContent = text('Abbruch angefordert. Ein laufender HTTP-Aufruf kann noch bis zu seinem Timeout dauern.',
                     'Cancellation requested. An in-flight HTTP call may continue until its timeout.');
             },
@@ -360,7 +366,12 @@
                         ? text('Flüchtiger Speicher: Für große Analysen das Profil hsqldb-file verwenden.',
                             'Volatile storage: use the hsqldb-file profile for large analyses.') : '');
                 panel.className = 'alert mt-2 ' + (memory.warning || snapshot.stopReason ? 'alert-warning' : 'alert-info');
-                button.disabled = ['RUNNING'].indexOf(snapshot.status) < 0;
+                cancelState(snapshot.status !== 'RUNNING', snapshot.status === 'RUNNING'
+                    ? text('Analyse abbrechen', 'Cancel analysis')
+                    : snapshot.status === 'CANCELLING'
+                        ? text('Abbruch angefordert', 'Cancellation requested')
+                        : text('Analyse beendet', 'Analysis finished'));
+                operation.textContent = text('Vorgang: ', 'Operation: ') + snapshot.operationId;
                 var kept = new Set();
                 (snapshot.calls || []).forEach(function (call) {
                     kept.add(call.id);
@@ -382,7 +393,20 @@
                         var seconds = call.status === 'STARTED'
                             ? Math.max(0, Math.floor((snapshot.serverTime - call.startedAt) / 1000))
                             : Math.floor(call.durationMillis / 1000);
-                        entry.summary.textContent = call.provider + ' · ' + call.node + ' · ' + call.status + ' · ' + seconds + ' s';
+                        entry.summary.replaceChildren(node('span', text('Aufruf #', 'Call #') + call.id
+                            + ' · ' + call.provider + ' · ' + call.node + ' · '));
+                        // Display the recorded server start, never a polling/browser reception time.
+                        var started = Number.isSafeInteger(call.startedAt) ? new Date(call.startedAt) : null;
+                        if (started && Number.isFinite(started.getTime())) {
+                            var iso = started.toISOString();
+                            var timestamp = node('time', iso.replace('T', ' ').replace('Z', ' UTC'));
+                            timestamp.setAttribute('datetime', iso);
+                            entry.summary.append(node('span', text('Start: ', 'Started: ')), timestamp);
+                        } else {
+                            entry.summary.append(node('span', text('Startzeit unbekannt', 'Start time unknown')));
+                        }
+                        entry.summary.append(node('span', ' · ' + call.status + ' · '
+                            + (Number.isFinite(seconds) ? seconds + ' s' : '—')));
                         // An open pending row needs no second toggle when its response arrives.
                         if (becameReady) loadDetail(entry, monitor);
                     }

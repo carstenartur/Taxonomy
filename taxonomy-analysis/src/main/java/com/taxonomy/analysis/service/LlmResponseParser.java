@@ -226,7 +226,17 @@ public class LlmResponseParser {
                         "Independent product response for " + node.getCode()
                                 + " has no non-blank reason");
             }
-            int score = Math.max(0, Math.min(100, number.intValue()));
+            final int score;
+            try {
+                score = new BigDecimal(number.toString()).intValueExact();
+            } catch (ArithmeticException | NumberFormatException invalid) {
+                throw new IllegalArgumentException("Independent product response for " + node.getCode()
+                        + " requires an exact integer score between 0 and 100", invalid);
+            }
+            if (score < 0 || score > 100) {
+                throw new IllegalArgumentException("Independent product response for " + node.getCode()
+                        + " requires an explicit integer score between 0 and 100");
+            }
             scores.put(node.getCode(), score >= threshold ? score : 0);
             reasons.put(node.getCode(), reason);
         }
@@ -291,10 +301,22 @@ public class LlmResponseParser {
             throw new IllegalArgumentException("Expected a JSON object for a child assessment, but the LLM "
                     + "returned empty or non-JSON text. Inspect the raw response in the LLM communication log.");
         }
-        return objectMapper.readerFor(new TypeReference<Map<String, Object>>() {})
-                .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
-                .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
-                .readValue(jsonText);
+        try {
+            return objectMapper.readerFor(new TypeReference<Map<String, Object>>() {})
+                    .with(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                    .with(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS)
+                    .readValue(jsonText);
+        } catch (StreamReadException malformed) {
+            // Preserve main's concise diagnostic and this branch's strict, exact reader.
+            var location = malformed.getLocation();
+            String position = location != null && location.getLineNr() > 0 && location.getColumnNr() > 0
+                    ? " at line " + location.getLineNr() + ", column " + location.getColumnNr()
+                            + " of the extracted JSON"
+                    : " (position unavailable)";
+            throw new IllegalArgumentException("Invalid JSON in LLM response" + position
+                    + ". The response could not be evaluated. Inspect the raw response in the LLM communication log.",
+                    malformed);
+        }
     }
 
     /**
