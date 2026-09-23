@@ -121,6 +121,13 @@ public class CatalogueOverlayService {
         return enabled;
     }
 
+    /** An overlay assignment is not evidence that the source defines semantic inheritance. */
+    public boolean hasParentPatch(String code) {
+        if (!enabled || code == null) return false;
+        loadOverlay();
+        return nodeMetadata.containsKey(code);
+    }
+
     public boolean isProduct(String code) {
         return ROLE_PRODUCT.equals(getNodeMetadata(code).analysisRole());
     }

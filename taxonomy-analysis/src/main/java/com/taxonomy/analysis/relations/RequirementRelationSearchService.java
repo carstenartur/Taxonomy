@@ -47,8 +47,8 @@ public class RequirementRelationSearchService {
     public RelationSearchReport search(String original, Map<String,Integer> scores) {
         var adapter = new RequirementRelationSearch.InputCatalogue() {
             public Node find(String id) { return scalar(catalogue.getNodeByCode(id)); }
-            public List<Node> roots() { return catalogue.getRootNodes().stream().map(RequirementRelationSearchService::scalar).toList(); }
-            public List<Node> children(Node node) { return catalogue.getChildrenOf(node.id()).stream().map(RequirementRelationSearchService::scalar).toList(); }
+            public List<Node> roots() { return scalars(catalogue.getRootNodes()); }
+            public List<Node> children(Node node) { return scalars(catalogue.getChildrenOf(node.id())); }
         };
         return new RequirementRelationSearch(adapter, rules, this::complete, AnalysisRunControl::checkpoint)
                 .search(original, scores, options());
@@ -67,9 +67,18 @@ public class RequirementRelationSearchService {
         }).getRawResponse();
     }
 
-    private static Node scalar(TaxonomyNode node) {
-        if (node == null) return null;
-        return new Node(node.getCode(), node.getTaxonomyRoot(), node.getNameEn(), node.getDescriptionEn(),
+    private List<Node> scalars(List<TaxonomyNode> nodes) {
+        Map<String, String> descriptions = catalogue.getAssessmentDescriptions(nodes);
+        return nodes.stream().map(node -> scalar(node,
+                descriptions.getOrDefault(node.getCode(), node.getDescriptionEn()))).toList();
+    }
+
+    private Node scalar(TaxonomyNode node) {
+        return node == null ? null : scalars(List.of(node)).getFirst();
+    }
+
+    private static Node scalar(TaxonomyNode node, String description) {
+        return new Node(node.getCode(), node.getTaxonomyRoot(), node.getNameEn(), description,
                 node.getParentCode() == null || node.getParentCode().isBlank());
     }
 }

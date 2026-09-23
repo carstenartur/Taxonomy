@@ -108,7 +108,8 @@ public class HelpController {
         new String[]{"DOCUMENT_IMPORT_LIMITS",    "🛡️", "help.toc.DOCUMENT_IMPORT_LIMITS",        "help.audience.admins"},
         new String[]{"UI_GAP_ANALYSIS",           "📊", "help.toc.UI_GAP_ANALYSIS",               "help.audience.developers"},
         new String[]{"WORKSPACE_VERSIONING",      "🔄", "help.toc.WORKSPACE_VERSIONING",          "help.audience.everyone"},
-        new String[]{"REPOSITORY_TOPOLOGY",       "🔗", "help.toc.REPOSITORY_TOPOLOGY",           "help.audience.developers"},
+        new String[]{"REPOSITORY_TOPOLOGY",       "🔗", "help.toc.REPOSITORY_TOPOLOGY",           "help.audience.developers"},        new String[]{"TAXONOMY_SCORING",          "📊", "help.toc.TAXONOMY_SCORING",              "help.audience.everyone"},
+
         new String[]{"RELATION_SEEDS",            "🌱", "help.toc.RELATION_SEEDS",                "help.audience.developers"}
     );
 
