@@ -25,3 +25,7 @@ produktseitig abgenommen. Dasselbe gilt für die Microsoft-Visio-Desktop-Abnahme
 Bei einem Visio-Fehler sind Build-Commit, genaue Meldung und gegebenenfalls die
 heruntergeladene Datei für die Diagnose entscheidend. Eine HTML-Anmeldeseite oder
 unvollständige ZIP-Antwort wird jetzt bereits vor dem Download zurückgewiesen.
+
+Auch fehlende lokale ZIP-Einträge und leere erforderliche Dateien werden vor dem
+Download zurückgewiesen. Diese Transportprüfungen ersetzen weder die serverseitige
+Schemaprüfung noch den Öffnungstest im jeweiligen Desktopprodukt.

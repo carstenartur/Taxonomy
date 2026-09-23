@@ -265,9 +265,48 @@
         }
     }
 
+    // PKWARE APPNOTE 4.3.7 / 4.3.9 / 4.3.12: a directory entry must point
+    // to a matching local header and a complete, non-overlapping data range.
+    // Only small headers/names/descriptors are read. Payloads are never inflated.
+    async function localZipRange(blob, entry, expectedName, directoryOffset) {
+        var start = entry.getUint32(42, true);
+        var compressed = entry.getUint32(20, true), uncompressed = entry.getUint32(24, true);
+        var flags = entry.getUint16(8, true), method = entry.getUint16(10, true), crc = entry.getUint32(16, true);
+        if (entry.getUint16(34, true) !== 0 || (flags & 0x2041) !== 0
+                || (method !== 0 && method !== 8) || start + 30 > directoryOffset
+                || compressed === 0xffffffff || uncompressed === 0xffffffff
+                || (method === 0 && compressed !== uncompressed)) return null;
+        var header = new DataView(await blob.slice(start, start + 30).arrayBuffer());
+        var nameLength = header.getUint16(26, true), extraLength = header.getUint16(28, true);
+        var dataStart = start + 30 + nameLength + extraLength, end = dataStart + compressed;
+        if (header.getUint32(0, true) !== 0x04034b50 || header.getUint16(6, true) !== flags
+                || header.getUint16(8, true) !== method || nameLength !== expectedName.length
+                || dataStart > directoryOffset || end > directoryOffset) return null;
+        var actualName = new Uint8Array(await blob.slice(start + 30, start + 30 + nameLength).arrayBuffer());
+        if (actualName.some(function (byte, index) { return byte !== expectedName[index]; })) return null;
+        if (flags & 8) {
+            // Streaming writers such as ZipOutputStream put sizes/CRC in a descriptor.
+            // Both signed and unsigned descriptors are part of the ZIP specification.
+            if (end + 12 > directoryOffset) return null;
+            var descriptor = new DataView(await blob.slice(end, Math.min(end + 16, directoryOffset)).arrayBuffer());
+            var matches = function (at) {
+                return descriptor.byteLength >= at + 12 && descriptor.getUint32(at, true) === crc
+                    && descriptor.getUint32(at + 4, true) === compressed && descriptor.getUint32(at + 8, true) === uncompressed;
+            };
+            if (descriptor.getUint32(0, true) === 0x08074b50 && matches(4)) end += 16;
+            else if (matches(0)) end += 12;
+            else return null;
+            if ((header.getUint32(14, true) !== 0 && header.getUint32(14, true) !== crc)
+                    || (header.getUint32(18, true) !== 0 && header.getUint32(18, true) !== compressed)
+                    || (header.getUint32(22, true) !== 0 && header.getUint32(22, true) !== uncompressed)) return null;
+        } else if (header.getUint32(14, true) !== crc || header.getUint32(18, true) !== compressed
+                || header.getUint32(22, true) !== uncompressed) return null;
+        return { start: start, end: end, nonempty: compressed > 0 && uncompressed > 0 };
+    }
+
     async function validateDownloadBytes(blob, filename) {
         // A transport guard, not a replacement for the server's OPC/schema validation.
-        // Read only the bounded ZIP header/tail, never inflate arbitrary archive content.
+        // Read bounded ZIP metadata, never inflate arbitrary archive content.
         var zip = filename.endsWith('.vsdx') || filename.endsWith('.zip');
         var invalid = !blob.size;
         if (zip && !invalid) {
@@ -291,7 +330,7 @@
                     || length > 262144 || offset + length !== endOffset;
                 if (!invalid) {
                     var directory = new Uint8Array(await blob.slice(offset, offset + length).arrayBuffer());
-                    var names = new Set(), cursor = 0;
+                    var names = new Map(), ranges = [], cursor = 0;
                     for (var n = 0; n < count && !invalid; n++) {
                         if (cursor + 46 > directory.length) { invalid = true; break; }
                         var entry = new DataView(directory.buffer, directory.byteOffset + cursor);
@@ -300,14 +339,18 @@
                         invalid = entry.getUint32(0, true) !== 0x02014b50 || !!(entry.getUint16(8, true) & 1)
                             || !nameLength || nameLength > 1024 || next > directory.length;
                         if (invalid) break;
-                        var name = String.fromCharCode.apply(null, directory.subarray(cursor + 46, cursor + 46 + nameLength));
-                        if (names.has(name)) invalid = true;
-                        names.add(name); cursor = next;
+                        var nameBytes = directory.subarray(cursor + 46, cursor + 46 + nameLength);
+                        var name = String.fromCharCode.apply(null, nameBytes);
+                        var range = await localZipRange(blob, entry, nameBytes, offset);
+                        if (names.has(name) || !range) { invalid = true; break; }
+                        names.set(name, range.nonempty); ranges.push(range); cursor = next;
                     }
                     var required = filename.endsWith('.vsdx')
                         ? ['[Content_Types].xml', 'visio/document.xml', 'visio/pages/pages.xml']
                         : ['architecture.xmi', 'manifest.json', 'README.txt'];
-                    invalid = invalid || cursor !== directory.length || required.some(function (name) { return !names.has(name); });
+                    ranges.sort(function (left, right) { return left.start - right.start; });
+                    invalid = invalid || cursor !== directory.length || required.some(function (name) { return !names.get(name); })
+                        || ranges.some(function (range, index) { return index > 0 && ranges[index - 1].end > range.start; });
                 }
             }
         } else if (!invalid) {
