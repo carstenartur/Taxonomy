@@ -264,7 +264,7 @@ class VisioHandoffContractTest {
             case "style" -> parts.compute("visio/pages/page1.xml", (k, v) -> v.replace("LineStyle=\"0\"", "LineStyle=\"987\""));
             default -> fail(mutation);
         }
-        assertThrows(IllegalArgumentException.class, () -> VisioOpcValidator.validate(parts));
+        assertThrows(java.io.UncheckedIOException.class, () -> VisioOpcValidator.validate(parts));
     }
 
     @ParameterizedTest @ValueSource(strings = {"\u0000", "\u000b", "\ud800"})

@@ -179,7 +179,7 @@ class CivilianArchitectureAcceptanceTest {
             // These SPI calls avoid the legacy endpoints' deliberate re-analysis of a requirement.
             var diagram = json.treeToValue(projection.get("diagram"), DiagramModel.class);
             assertThat(exportFormats.listDescriptors()).extracting(descriptor -> descriptor.id())
-                    .containsExactlyInAnyOrder("archimate", "visio", "mermaid", "structurizr");
+                    .containsExactlyInAnyOrder("archimate", "visio", "mermaid", "structurizr", "sparx");
             for (var descriptor : exportFormats.listDescriptors()) {
                 byte[] bytes = exportFormats.getRequired(descriptor.id()).export(ExportContext.of(diagram)).bytes();
                 String file = "adapter-" + descriptor.id() + "." + descriptor.fileExtension();

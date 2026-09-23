@@ -123,10 +123,12 @@ final class VisioOpcValidator {
             }
             check(!pageIds.isEmpty() && pageIds.size() <= 32, "Visio profile requires 1 to 32 pages");
             check(pageTargets.size() == types.values().stream().filter("application/vnd.ms-visio.page+xml"::equals).count(), "Unindexed page contents");
-        } catch (IllegalArgumentException e) {
-            throw e;
         } catch (Exception e) {
-            throw new IllegalArgumentException("Invalid generated Visio OPC/schema profile", e);
+            // This validates server-generated parts, not an uploaded user document.
+            // Preserve the reason for server diagnostics and route it to the existing
+            // export-failure (HTTP 500) boundary rather than blaming client input.
+            throw new java.io.UncheckedIOException("VISIO_PACKAGE_VALIDATION_FAILED",
+                    new java.io.IOException("Generated Visio OPC/schema profile is invalid", e));
         }
     }
 

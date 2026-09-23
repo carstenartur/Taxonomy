@@ -28,7 +28,8 @@ public class I18nConfig {
             "messages_impact_map",
             "messages_architecture_editor",
             "messages_integrations",
-            "messages_dsl_reading");
+            "messages_dsl_reading",
+            "messages_sparx_export");
 
     @Bean
     public MessageSource messageSource() {
