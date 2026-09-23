@@ -104,13 +104,15 @@ class AnalysisCompletionContractTest {
             registry.cancel(id, "alice", scope);
             if ("throw".equals(ending)) throw new IllegalStateException("provider failure");
             if ("complete".equals(ending)) emit.handle(new AnalysisStreamEvent.Complete(
-                    "SUCCESS", Map.of("CP", 80), List.of("existing warning"), List.of(), List.of()));
+                    "SUCCESS", Map.of("CP", 80), List.of("existing warning"), List.of(), List.of(), 1234L));
             else emit.handle(new AnalysisStreamEvent.Error("ERROR", "existing diagnostic", Map.of("CP", 80),
-                    List.of("existing warning"), List.of(), List.of(), Map.of("CP", "completed explanation")));
+                    List.of("existing warning"), List.of(), List.of(), Map.of("CP", "completed explanation"), 1234L));
             return null;
         }).when(stream).stream(any(), any());
         String body = executeStream();
         assertThat(body).contains("\"status\":\"PARTIAL\"", "CANCELLED").doesNotContain("\"status\":\"SUCCESS\"");
+        if (!"throw".equals(ending)) assertThat(body).contains("\"analysisDurationMillis\":1234");
+        else assertMeasuredDuration(body);
         if (!"throw".equals(ending)) assertThat(body).contains("\"CP\":80", "existing warning");
         if ("error".equals(ending)) assertThat(body).contains("completed explanation", "existing diagnostic");
         assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("CANCELLED");
@@ -180,15 +182,15 @@ class AnalysisCompletionContractTest {
             if ("cancelled".equals(ending)) registry.cancel(id, "alice", scope);
             if ("complete".equals(ending)) {
                 emit.handle(new AnalysisStreamEvent.Complete("SUCCESS", Map.of("CP", 80),
-                        List.of("retained warning"), List.of(), List.of()));
+                        List.of("retained warning"), List.of(), List.of(), 8765L));
             } else {
                 emit.handle(new AnalysisStreamEvent.Error("PARTIAL", "retained diagnostic", Map.of("CP", 80),
-                        List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason")));
+                        List.of("retained warning"), List.of(), List.of(), Map.of("CP", "retained reason"), 8765L));
             }
             return null;
         }).when(stream).stream(any(), any());
         String body = executeStream();
-        assertThat(body).contains("event:error", "\"CP\":80", "retained warning", "scoreSemanticsUnavailable");
+        assertThat(body).contains("event:error", "\"CP\":80", "retained warning", "scoreSemanticsUnavailable", "\"analysisDurationMillis\":8765");
         assertThat(body.split("event:error", -1)).hasSize(2);
         assertThat(body).doesNotContain("catalogue projection unavailable", "\"status\":\"SUCCESS\"");
         if (!"complete".equals(ending)) assertThat(body).contains("retained reason", "retained diagnostic");
@@ -266,6 +268,32 @@ class AnalysisCompletionContractTest {
         assertThat(lookups.get()).isEqualTo(failAt + 1);
         assertThat(registry.snapshot(id, "alice", scope).status()).isEqualTo("ERROR");
         assertThat(com.taxonomy.analysis.service.AnalysisRunControl.active()).isFalse();
+    }
+
+    @ParameterizedTest @ValueSource(strings = {"silent", "provider", "failure", "stopped"})
+    void controllerGeneratedTerminalEventsCarryWorkerDuration(String ending) throws Exception {
+        doAnswer(invocation -> {
+            switch (ending) {
+                case "provider" -> throw new UnknownAnalysisProviderException("test-provider");
+                case "failure" -> throw new IllegalStateException("provider failed");
+                case "stopped" -> throw new com.taxonomy.analysis.service.AnalysisStoppedException(
+                        com.taxonomy.analysis.service.AnalysisStoppedException.Reason.CANCELLED);
+                default -> { }
+            }
+            return null;
+        }).when(stream).stream(any(), any());
+        String body = executeStream();
+        assertThat(body.split("event:error", -1)).hasSize(2);
+        assertMeasuredDuration(body);
+    }
+
+    private void assertMeasuredDuration(String body) throws Exception {
+        String terminal = body.lines().filter(line -> line.startsWith("data:"))
+                .reduce((first, last) -> last).orElseThrow();
+        var duration = new ObjectMapper().readTree(terminal.substring(5)).get("analysisDurationMillis");
+        assertThat(duration).as("Every accepted worker publishes its measured duration").isNotNull();
+        assertThat(duration.isIntegralNumber()).isTrue();
+        assertThat(duration.asLong()).isNotNegative();
     }
 
     private String executeStream() throws Exception {

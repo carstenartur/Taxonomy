@@ -60,6 +60,7 @@ test('AI bootstrap never treats the untranslated unknown key as settled', () => 
   assert.match(systemInformationSource, /aiStatusSettled: true/);
 });
 
+
 // Exercise the real navigation precondition with a controlled draft promise.
 async function navigationHarness({ initial = {}, after, outcome = true, pending } = {}) {
   const vm = await import('node:vm');
@@ -107,4 +108,3 @@ test('a workspace switch during saving invalidates locale navigation', async () 
 test('system-information locale reload flushes drafts before its navigation window', async () => {
   assert.match(systemInformationSource, /await settleDraftBeforeLocaleNavigation\(page\);[\s\S]*onLocaleNavigationStart\?\.\(locale\)/);
 });
-

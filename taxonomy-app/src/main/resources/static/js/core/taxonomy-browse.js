@@ -140,6 +140,7 @@
                         S.currentScores = data.scores || {};
                         S.currentReasons = data.reasons || {};
                         S.lastAnalysisProvider = data.provider || 'IMPORTED';
+                        S.lastAnalysisDurationMillis = null; // imported scores have no verified run timing
                         S.lastAnalysisStatus = data.analysisStatus || 'IMPORTED';
                         // Update business text field if present in the imported data
                         if (data.requirement) {
@@ -761,7 +762,21 @@
     }
 
     // ── Master render dispatcher ──────────────────────────────────────────────
+    // Metadata-only refresh must not rebuild a live diagram or disturb its reading context.
+    function refreshAnalysisDuration() {
+        var durationDisplay = document.getElementById('analysisDurationDisplay');
+        if (durationDisplay) {
+            var duration = S.lastAnalysisDurationMillis;
+            var known = Number.isSafeInteger(duration) && duration >= 0;
+            durationDisplay.hidden = !known && !S.lastAnalyzedText;
+            durationDisplay.textContent = t('analysis.duration.label') + ': ' + (known
+                ? Math.floor(duration / 60000) + ' min ' + String(Math.floor(duration / 1000) % 60).padStart(2, '0') + ' s'
+                : t('analysis.duration.unknown'));
+        }
+    }
+
     function renderView(data, scores) {
+        refreshAnalysisDuration();
         if (!data || data.length === 0) { return; }
         document.getElementById('taxonomyTree').removeAttribute('data-view-rendered');
         switch (S.currentView) {
@@ -939,6 +954,7 @@
                 businessText: decisionText,
                 provider: decisionProvider,
                 analysisStatus: S.lastAnalysisStatus || 'UNKNOWN',
+                analysisDurationMillis: S.lastAnalysisDurationMillis,
                 discrepancies: S.currentDiscrepancies || [],
                 productCoverageGaps: S.currentProductCoverageGaps || [],
                 language: window.TaxonomyI18n
@@ -2299,6 +2315,7 @@
     // ── Public API for cross-module use ──────────────────────────────────────
     window.TaxonomyBrowse = {
         renderView: renderView,
+        refreshAnalysisDuration: refreshAnalysisDuration,
         switchView: switchView,
         showStatus: showStatus,
         clearStatus: clearStatus,

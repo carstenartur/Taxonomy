@@ -76,12 +76,14 @@ class StreamRequirementAnalysisUseCaseTest {
         assertThat(scores.description()).isEqualTo("Capabilities scored 80/100");
         assertThat(scores.detail()).isSameAs(detail);
         assertThat(events.get(2)).isEqualTo(new AnalysisStreamEvent.Expanding("CP", List.of("CP-1023")));
-        assertThat(events.get(3)).isEqualTo(new AnalysisStreamEvent.Complete(
+        var complete = (AnalysisStreamEvent.Complete) events.get(3);
+        assertThat(complete.analysisDurationMillis()).isNotNull().isNotNegative();
+        assertThat(complete).isEqualTo(new AnalysisStreamEvent.Complete(
                 "SUCCESS",
                 Map.of("CP", 80, "CR", 0),
                 List.of("warn"),
                 List.of(),
-                List.of()));
+                List.of(), complete.analysisDurationMillis()));
 
         verify(promptBudgetPolicy).requireWithinBudget(
                 command.businessText(), command.provider());
@@ -108,13 +110,16 @@ class StreamRequirementAnalysisUseCaseTest {
 
         useCase.stream(command, events::add);
 
+        assertThat(events).hasSize(1);
+        var error = (AnalysisStreamEvent.Error) events.getFirst();
+        assertThat(error.analysisDurationMillis()).isNotNull().isNotNegative();
         assertThat(events).containsExactly(new AnalysisStreamEvent.Error(
                 "PARTIAL",
                 "Analysis failed",
                 Map.of("CP", 80),
                 List.of("warn"),
                 List.of(),
-                List.of()));
+                List.of(), Map.of(), error.analysisDurationMillis()));
         verify(promptBudgetPolicy).requireWithinBudget(
                 command.businessText(), command.provider());
         verify(llmService).analyzeStreaming(eq(command.businessText()), any());

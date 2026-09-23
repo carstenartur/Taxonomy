@@ -82,9 +82,26 @@ public class DecisionRationaleReportService {
   List<ProductCoverageGap> productCoverageGaps,
   List<TaxonomyNodeDto> taxonomyTree,
   AnalysisSnapshotProvenance snapshotProvenance,
+  Map<String, AnalysisScoreDetail> scoreDetails,
+            Long analysisDurationMillis) {
+        public DecisionAnalysisInput(
+  String businessText,
+  Map<String, Integer> scores,
+  Map<String, String> reasons,
+  String provider,
+  String analysisStatus,
+  List<TaxonomyDiscrepancy> discrepancies,
+  List<ProductCoverageGap> productCoverageGaps,
+  List<TaxonomyNodeDto> taxonomyTree,
+  AnalysisSnapshotProvenance snapshotProvenance,
   Map<String, AnalysisScoreDetail> scoreDetails) {
+            this(businessText, scores, reasons, provider, analysisStatus, discrepancies, productCoverageGaps, taxonomyTree, snapshotProvenance, scoreDetails, null);
+        }
+
 
         public DecisionAnalysisInput {
+  if (analysisDurationMillis != null && analysisDurationMillis < 0)
+      throw new IllegalArgumentException("Analysis duration must not be negative");
   scores = scores == null ? Map.of() : Map.copyOf(scores);
   reasons = reasons == null ? Map.of() : Map.copyOf(reasons);
   discrepancies = discrepancies == null ? List.of() : List.copyOf(discrepancies);
@@ -292,7 +309,7 @@ public class DecisionRationaleReportService {
                 suppliedReasonCount,
                 scores.size(),
                 positiveNodeCount,
-                completeness.percent());
+                completeness.percent(), input.analysisDurationMillis());
 
         ExecutiveSummary executiveSummary = new ExecutiveSummary(
                 leadingLeaf,

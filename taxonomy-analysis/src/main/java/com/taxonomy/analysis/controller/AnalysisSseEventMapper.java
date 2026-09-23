@@ -68,6 +68,7 @@ public class AnalysisSseEventMapper {
                     .count();
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("status", complete.status());
+            payload.put("analysisDurationMillis", complete.analysisDurationMillis());
             payload.put("totalScores", semantics.effectiveScores());
             payload.put("rawScores", complete.allScores());
             payload.put("effectiveScores", semantics.effectiveScores());
@@ -85,6 +86,7 @@ public class AnalysisSseEventMapper {
             AnalysisScoreSemantics.Derived semantics = derive(error.partialScores());
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("status", error.status());
+            payload.put("analysisDurationMillis", error.analysisDurationMillis());
             payload.put("errorMessage", error.errorMessage());
             payload.put("partialScores", semantics.effectiveScores());
             payload.put("rawScores", error.partialScores());

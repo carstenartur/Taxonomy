@@ -147,11 +147,12 @@
         <!-- Left: Taxonomy tree (hidden on full-width tabs) -->
         <div id="leftPanel" class="col-lg-7">
             <div class="card shadow-sm h-100">
-                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div class="card-header taxonomy-view-header">
                     <span class="fw-semibold" th:text="#{browse.title}">Taxonomy Browser</span>
-                    <div class="d-flex gap-2 align-items-center flex-wrap">
-                        <!-- View switcher -->
-                        <div class="btn-group" role="group" aria-label="View mode">
+                    <span id="analysisDurationDisplay" class="small text-muted" hidden></span>
+                    <div class="taxonomy-view-controls">
+                        <!-- Stable first row; variable tools belong in the second row. -->
+                        <div class="btn-group taxonomy-view-selector" id="diagramViewSelector" role="group" aria-label="View mode">
                             <button id="viewList"     data-view="list"     class="btn btn-sm btn-primary"          th:title="#{view.list.title}" title="Indented list view">&#128203; List</button>
                             <button id="viewTabs"     data-view="tabs"     class="btn btn-sm btn-outline-secondary" th:title="#{view.tabs.title}" title="Tabbed list view">&#128209; Tabs</button>
                             <button id="viewSunburst" data-view="sunburst" class="btn btn-sm btn-outline-secondary" th:title="#{view.sunburst.title}" title="Zoomable sunburst chart">&#128262; Sunburst</button>
@@ -159,6 +160,7 @@
                             <button id="viewDecision" data-view="decision" class="btn btn-sm btn-outline-secondary" th:title="#{view.decision.title}" title="Decision overview map">&#127942; Decision</button>
                             <button id="viewSummary"  data-view="summary"  class="btn btn-sm btn-outline-secondary" th:title="#{view.summary.title}" title="Architecture summary after analysis" style="display:none;">&#128203; Summary</button>
                         </div>
+                        <div class="taxonomy-view-tools">
                         <!-- Expand / Collapse (list &amp; tabs only) -->
                         <div id="expandCollapseGroup">
                             <button id="expandAll"   class="btn btn-sm btn-outline-secondary me-1"><span th:text="#{browse.expand.all}">Expand All</span></button>
@@ -168,10 +170,15 @@
                         <div id="treeRootGroup" style="display:none;">
                             <select id="treeRootSelect" class="form-select form-select-sm" th:aria-label="#{view.tree.root.select}" aria-label="Select taxonomy to display"></select>
                         </div>
+                        <div id="sunburstFilterGroup" class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="sunburstHideZero"/>
+                            <label class="form-check-label small" for="sunburstHideZero" th:text="#{view.sunburst.hide.zero}">Hide zero relevance</label>
+                        </div>
                         <!-- Show/hide descriptions -->
                         <div class="form-check form-switch mb-0 ms-1 d-flex align-items-center gap-1">
                             <input class="form-check-input" type="checkbox" id="showDescriptions" checked/>
                             <label class="form-check-label small text-nowrap" for="showDescriptions" th:text="#{browse.descriptions}">Descriptions</label>
+                        </div>
                         </div>
                     </div>
                 </div>

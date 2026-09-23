@@ -132,4 +132,12 @@ public final class DecisionReportLabels {
     public String project() { return german ? "Projekt" : "Project"; }
     public String requirementId() { return german ? "Anforderungskennung" : "Requirement ID"; }
     public String evidenceEyebrow() { return german ? "TAXONOMY · ENTSCHEIDUNGSNACHWEIS" : "TAXONOMY · DECISION EVIDENCE"; }
+    public String analysisDuration() { return german() ? "Analysedauer" : "Analysis duration"; }
+
+    public String durationMillis(Long millis) {
+        if (millis == null) return german() ? "Nicht aufgezeichnet" : "Not recorded";
+        if (millis < 0) throw new IllegalArgumentException("Negative duration");
+        return String.format(java.util.Locale.ROOT, "%d min %02d.%03d s", millis / 60000, (millis / 1000) % 60, millis % 1000);
+    }
+
 }

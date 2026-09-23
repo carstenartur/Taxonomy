@@ -195,3 +195,62 @@ test('a truncated diagnostic preview is not independently classified as invalid 
     assert.ok(!descendants(view.log).some(element => element.className.includes('llm-log-error-detail')));
     view.monitor.stop();
 });
+
+test('terminal duration is kept visibly after the final result, not replaced by its receipt text', async () => {
+    const view = fixture(failure);
+    view.update({ status: 'COMPLETED', elapsedMillis: 123456, finishedAt: 124456, serverTime: 900000 });
+    await view.tick(); view.monitor.finish('SUCCESS', false);
+    const duration = descendants(view.root).find(element => element.id === 'analysisElapsed');
+    assert.ok(duration, 'dedicated readable duration');
+    assert.match(duration.textContent, /2 min 03/);
+    assert.doesNotMatch(duration.textContent, /899/);
+});
+
+test('legacy terminal snapshots do not manufacture an analysis duration from later server time', async () => {
+    const view = fixture(failure);
+    view.update({ status: 'COMPLETED', serverTime: 900000 });
+    await view.tick(); view.monitor.finish('SUCCESS', false);
+    const duration = descendants(view.root).find(element => element.id === 'analysisElapsed');
+    assert.ok(duration); assert.match(duration.textContent, /nicht aufgezeichnet|not recorded/i);
+});
+
+
+test('authoritative result duration survives missing final diagnostics', async () => {
+    const view = fixture(failure); await view.tick();
+    view.monitor.finish('SUCCESS', false, 123456);
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /2 min 03 s/);
+});
+test('authoritative result duration is not replaced by a differently scoped diagnostic duration', async () => {
+    const view = fixture(failure); await view.tick();
+    view.update({ status: 'COMPLETED', elapsedMillis: 130000 });
+    view.monitor.finish('SUCCESS', true, 123456); await flush();
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /2 min 03 s/);
+});
+
+for (const value of [undefined, null, -1, Number.NaN]) {
+    test('completion without valid measured timing clears the live estimate: ' + String(value), async () => {
+        const view = fixture(failure); await view.tick();
+        const elapsed = descendants(view.root).find(element => element.id === 'analysisElapsed');
+        assert.match(elapsed.textContent, /0 min 03 s/);
+        view.monitor.finish('ERROR', false, value);
+        assert.match(elapsed.textContent, /Nicht aufgezeichnet/);
+    });
+}
+
+test('transport loss without terminal evidence clears live duration, not the diagnostic log', async () => {
+    const view = fixture(failure); await view.tick(); await view.open();
+    view.monitor.transportFailed();
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /Nicht aufgezeichnet/);
+    assert.ok(view.log.textContent.includes(reply));
+});
+
+test('terminal zero remains measured rather than unknown after completion', async () => {
+    const view = fixture(failure); await view.tick(); view.monitor.finish('SUCCESS', false, 0);
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /0 min 00 s/);
+});
+
+test('English unmeasured completion is explicit', async () => {
+    const view = fixture(failure, 'FAILED', { locale: 'en' }); await view.tick();
+    view.monitor.finish('ERROR', false);
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /Analysis duration: Not recorded/);
+});

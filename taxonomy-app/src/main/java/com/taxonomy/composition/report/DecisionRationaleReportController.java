@@ -111,7 +111,25 @@ public class DecisionRationaleReportController {
             String analysisStatus,
             List<TaxonomyDiscrepancy> discrepancies,
             List<ProductCoverageGap> productCoverageGaps,
+            String language,
+            Long analysisDurationMillis) {
+        public DecisionReportRequest(
+            Map<String, Integer> scores,
+            Map<String, Integer> rawScores,
+            Map<String, Integer> effectiveScores,
+            Map<String, AnalysisScoreDetail> scoreDetails,
+            Map<String, Integer> productSuitabilityScores,
+            Integer scoreSemanticsVersion,
+            Map<String, String> reasons,
+            String businessText,
+            String provider,
+            String analysisStatus,
+            List<TaxonomyDiscrepancy> discrepancies,
+            List<ProductCoverageGap> productCoverageGaps,
             String language) {
+            this(scores, rawScores, effectiveScores, scoreDetails, productSuitabilityScores, scoreSemanticsVersion, reasons, businessText, provider, analysisStatus, discrepancies, productCoverageGaps, language, null);
+        }
+
 
         /** Legacy request constructor retained for Java callers and validation tests. */
         public DecisionReportRequest(
@@ -217,7 +235,7 @@ public class DecisionRationaleReportController {
                 request.productCoverageGaps(),
                 List.of(),
                 null,
-                scoreDetails);
+                scoreDetails, request.analysisDurationMillis());
         DecisionRationaleReport report = reportService.generate(
                 input, context, viewContext, locale);
         return scoreSemanticsAdapter.adapt(report, scoreDetails, locale);
@@ -248,6 +266,7 @@ public class DecisionRationaleReportController {
 
     private boolean isValid(DecisionReportRequest request) {
         if (request == null
+                || (request.analysisDurationMillis() != null && request.analysisDurationMillis() < 0)
                 || !boundedText(request.businessText(), MAX_REQUIREMENT_LENGTH, false)
                 || request.scores() == null
                 || request.scores().isEmpty()

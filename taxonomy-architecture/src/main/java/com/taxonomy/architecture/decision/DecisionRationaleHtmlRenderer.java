@@ -106,6 +106,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         metadataItem(html, labels.analysisCreatedAt(),
                 formatInstant(metadata.analysisCreatedAt(), metadata.reportTimeZone()));
         metadataItem(html, labels.analysisCreatedBy(), metadata.analysisCreatedBy());
+        metadataItem(html, labels.analysisDuration(), labels.durationMillis(metadata.analysisDurationMillis()));
         metadataItem(html, labels.generatedAt(), formatInstant(metadata.generatedAt(), metadata.reportTimeZone()));
         metadataItem(html, labels.generatedBy(), metadata.generatedBy());
         metadataItem(html, labels.applicationVersion(), metadata.taxonomyApplicationVersion());
@@ -282,6 +283,7 @@ public class DecisionRationaleHtmlRenderer implements ReportRendererExtension {
         evidence(html, labels.analysisProvider(), report.metadata().analysisProvider());
         evidence(html, labels.analysisModel(), report.metadata().analysisModel());
         evidence(html, labels.analysisStatus(), report.metadata().analysisStatus());
+        evidence(html, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
         html.append("</dl><h3>").append(text(labels.methodology())).append("</h3><p>")
                 .append(text(report.executiveSummary().methodologyNote())).append("</p>");
         if (!report.discrepancies().isEmpty()) {
