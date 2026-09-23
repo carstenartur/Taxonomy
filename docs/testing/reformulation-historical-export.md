@@ -57,8 +57,9 @@ human-readable presentation.
 
 ## Tests and scope of evidence
 
-The existing RED `ReformulationReportTest` from PR #1109 is retained byte-for-byte
-(blob `81f0e7212de117fde44a25518b160e5f036c3103`). Its published JSON contract is
+The initial RED `ReformulationReportTest` from PR #1109 established the endpoint
+and non-mutation contract. The CI repair below changes only the source of its
+pre-export comparison snapshot; no field is excluded from equality. Its JSON contract is
 `schemaVersion: "reformulation-report-v1"` with `proposal.id` and `proposal.revision`.
 The full revision also remains available under `revision`. A porting regression
 first failed against the local patch's former numeric schema version, then passed
@@ -119,3 +120,43 @@ historical identity, UI capture/error handling and markup containment.
 Remaining package 7: portable evidence inside atomic Git checkpoints, import/round
 trip, rich Word reports including the selected architecture/decision-tree graphics.
 Package 8 live-model and full civilian acceptance remains separate.
+
+## CI repair on 23 September 2026
+
+The actual `11d8fe36` core reports (run `35795678923`, artifact `10725511098`,
+independently checked SHA-256
+`caefc4256dcf7df89ccb73229be4d0a6b96471360bf72482e4d36a664bc37aff`)
+contain two failures. Both are addressed without changing export production code.
+
+### Persisted before/after state
+
+The original non-mutation assertion compared the creation call's in-memory proposal
+with the later database read. Its only mismatch was `createdAt`: the creation
+object retained nanoseconds (`.603000329Z`) while the column returned milliseconds
+(`.603Z`). The revised test reads the persisted proposal before exporting, and
+compares that complete value with the same persisted read afterwards. It still
+checks all fields, the original requirement, schema, exact revision, no-store and
+absence of synthesis runs. It does not ignore or round timestamps during equality.
+The separate historical-body/restart checks remain unchanged.
+
+### Reviewed dependency inventory
+
+The unchanged ArchUnit test reported four existing package edges with additional
+class pairs. The controller and service source and compiled dependencies were
+reviewed: application composition still depends on Portfolio and Workspace;
+Portfolio retains its established Workspace scope contract. No reverse edge,
+new package direction or module dependency is introduced. Only these four exact
+measured counts are recorded; all other entries and the ratchet test stay intact:
+
+| Origin package | Target package | Before | After | Reason |
+| --- | --- | ---: | ---: | --- |
+| composition.reformulation | portfolio.reformulation | 37 | 43 | Report service, Report/Source values, saved revision and adoption preview/receipt access |
+| composition.reformulation | portfolio.service | 3 | 4 | Existing PortfolioException for invalid report formats |
+| composition.reformulation | workspace.service | 9 | 10 | Existing authenticated WorkspaceResolver in the new report controller |
+| portfolio.reformulation | workspace.service | 7 | 8 | WorkspaceContext parameter in the new report service |
+
+The counts come from the actual canonical ArchUnit output, not from a jdeps count
+or a guessed allowance. The increase is nine class pairs within four already
+reviewed directions. The generic context-policy validation, source coverage and
+new-edge/growth/reduction checks remain unchanged. A normal fresh source-built
+CI run must execute both corrected tests before merge.
