@@ -91,6 +91,17 @@
         }
     });
 
+    // Bind timing to the actual score envelope, so replacing scores cannot retain an old run's duration.
+    var measuredDuration = null, measuredScores = null;
+    Object.defineProperty(state, 'lastAnalysisDurationMillis', {
+        enumerable: true,
+        get: function () { return measuredScores === currentScores ? measuredDuration : null; },
+        set: function (value) {
+            measuredScores = currentScores;
+            measuredDuration = Number.isSafeInteger(value) && value >= 0 ? value : null;
+        }
+    });
+
     function createAnalysisOperationController() {
         var generation = 0;
         var active = null;

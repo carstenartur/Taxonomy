@@ -64,7 +64,8 @@ public class AnalysisProgressRegistry {
                            long sequence, long startedAt, long lastActivityAt, long serverTime,
                            int evaluatedNodes, boolean scoresTruncated, Map<String, Integer> rawScores,
                            List<CallView> calls, long omittedCalls, AnalysisMemoryGuard.Reading memory,
-                           String databaseStorage, String indexStorage, AnalysisProvenance provenance) { }
+                           String databaseStorage, String indexStorage, AnalysisProvenance provenance,
+                           Long finishedAt, long elapsedMillis) { }
 
     /** Immutable decision made at the run's cancellation/completion linearization point. */
     public record Terminal(String status, String stopReason) {
@@ -292,6 +293,8 @@ public class AnalysisProgressRegistry {
         final Scope scope;
         final AnalysisProvenance provenance;
         final long startedAt = System.currentTimeMillis();
+        final long startedNanos = System.nanoTime();
+        long finishedElapsedMillis;
         final AnalysisMemoryGuard guard = new AnalysisMemoryGuard(policy, AnalysisMemoryGuard::heapSample,
                 () -> TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));
         final ArrayDeque<Call> calls = new ArrayDeque<>();
@@ -385,6 +388,7 @@ public class AnalysisProgressRegistry {
                     : "PARTIAL".equals(resultStatus) ? "PARTIAL" : "ERROR";
             phase = "FINISHED";
             finishedAt = System.currentTimeMillis();
+            finishedElapsedMillis = Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L);
             touch();
             // reap() observes this volatile state without taking the run monitor.
             // Publish the timestamp and terminal metadata before making the run inactive.
@@ -395,7 +399,8 @@ public class AnalysisProgressRegistry {
             return new Snapshot(id, status, phase, node, stopReason, sequence, startedAt, lastActivityAt,
                     System.currentTimeMillis(), scores.size(), scoresTruncated, Map.copyOf(scores),
                     calls.stream().map(Call::view).toList(), omittedCalls, guard.reading(),
-                    databaseStorage, indexStorage, provenance);
+                    databaseStorage, indexStorage, provenance, active() ? null : finishedAt,
+                    active() ? Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L) : finishedElapsedMillis);
         }
     }
 

@@ -195,3 +195,34 @@ test('a truncated diagnostic preview is not independently classified as invalid 
     assert.ok(!descendants(view.log).some(element => element.className.includes('llm-log-error-detail')));
     view.monitor.stop();
 });
+
+test('terminal duration is kept visibly after the final result, not replaced by its receipt text', async () => {
+    const view = fixture(failure);
+    view.update({ status: 'COMPLETED', elapsedMillis: 123456, finishedAt: 124456, serverTime: 900000 });
+    await view.tick(); view.monitor.finish('SUCCESS', false);
+    const duration = descendants(view.root).find(element => element.id === 'analysisElapsed');
+    assert.ok(duration, 'dedicated readable duration');
+    assert.match(duration.textContent, /2 min 03/);
+    assert.doesNotMatch(duration.textContent, /899/);
+});
+
+test('legacy terminal snapshots do not manufacture an analysis duration from later server time', async () => {
+    const view = fixture(failure);
+    view.update({ status: 'COMPLETED', serverTime: 900000 });
+    await view.tick(); view.monitor.finish('SUCCESS', false);
+    const duration = descendants(view.root).find(element => element.id === 'analysisElapsed');
+    assert.ok(duration); assert.match(duration.textContent, /nicht aufgezeichnet|not recorded/i);
+});
+
+
+test('authoritative result duration survives missing final diagnostics', async () => {
+    const view = fixture(failure); await view.tick();
+    view.monitor.finish('SUCCESS', false, 123456);
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /2 min 03 s/);
+});
+test('authoritative result duration is not replaced by a differently scoped diagnostic duration', async () => {
+    const view = fixture(failure); await view.tick();
+    view.update({ status: 'COMPLETED', elapsedMillis: 130000 });
+    view.monitor.finish('SUCCESS', true, 123456); await flush();
+    assert.match(descendants(view.root).find(element => element.id === 'analysisElapsed').textContent, /2 min 03 s/);
+});

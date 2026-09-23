@@ -28,6 +28,7 @@ public class StreamRequirementAnalysisUseCase {
     }
 
     public void stream(StreamRequirementAnalysisCommand command, AnalysisStreamEventHandler handler) {
+        long startedNanos = System.nanoTime();
         Locale previousLocale = LocaleContextHolder.getLocale();
         try {
             applyRequestLocale(command.requestLocale());
@@ -57,7 +58,7 @@ public class StreamRequirementAnalysisUseCase {
                                        List<TaxonomyDiscrepancy> discrepancies,
                                        List<ProductCoverageGap> productCoverageGaps) {
                     handler.handle(new AnalysisStreamEvent.Complete(
-                            status, allScores, warnings, discrepancies, productCoverageGaps));
+                            status, allScores, warnings, discrepancies, productCoverageGaps, elapsedMillis(startedNanos)));
                 }
 
                 @Override
@@ -68,7 +69,7 @@ public class StreamRequirementAnalysisUseCase {
                                     List<ProductCoverageGap> productCoverageGaps) {
                     handler.handle(new AnalysisStreamEvent.Error(
                             status, errorMessage, partialScores, warnings, discrepancies,
-                            productCoverageGaps));
+                            productCoverageGaps, Map.of(), elapsedMillis(startedNanos)));
                 }
                 @Override
                 public void onError(String status, String errorMessage,
@@ -77,7 +78,7 @@ public class StreamRequirementAnalysisUseCase {
                                     List<ProductCoverageGap> productCoverageGaps) {
                     handler.handle(new AnalysisStreamEvent.Error(
                             status, errorMessage, partialScores, warnings, discrepancies,
-                            productCoverageGaps, partialReasons));
+                            productCoverageGaps, partialReasons, elapsedMillis(startedNanos)));
                 }
             });
         } finally {
@@ -87,6 +88,10 @@ public class StreamRequirementAnalysisUseCase {
                 LocaleContextHolder.setLocale(previousLocale);
             }
         }
+    }
+
+    private static long elapsedMillis(long startedNanos) {
+        return Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L);
     }
 
     private void applyRequestLocale(Locale requestLocale) {

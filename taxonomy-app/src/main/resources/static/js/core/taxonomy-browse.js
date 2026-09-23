@@ -140,6 +140,7 @@
                         S.currentScores = data.scores || {};
                         S.currentReasons = data.reasons || {};
                         S.lastAnalysisProvider = data.provider || 'IMPORTED';
+                        S.lastAnalysisDurationMillis = null; // imported scores have no verified run timing
                         S.lastAnalysisStatus = data.analysisStatus || 'IMPORTED';
                         // Update business text field if present in the imported data
                         if (data.requirement) {
@@ -763,6 +764,15 @@
     // ── Master render dispatcher ──────────────────────────────────────────────
     function renderView(data, scores) {
         if (!data || data.length === 0) { return; }
+        var durationDisplay = document.getElementById('analysisDurationDisplay');
+        if (durationDisplay) {
+            var duration = S.lastAnalysisDurationMillis;
+            var known = Number.isSafeInteger(duration) && duration >= 0;
+            durationDisplay.hidden = !known && !S.lastAnalyzedText;
+            durationDisplay.textContent = t('analysis.duration.label') + ': ' + (known
+                ? Math.floor(duration / 60000) + ' min ' + String(Math.floor(duration / 1000) % 60).padStart(2, '0') + ' s'
+                : t('analysis.duration.unknown'));
+        }
         document.getElementById('taxonomyTree').removeAttribute('data-view-rendered');
         switch (S.currentView) {
             case 'list':
@@ -939,6 +949,7 @@
                 businessText: decisionText,
                 provider: decisionProvider,
                 analysisStatus: S.lastAnalysisStatus || 'UNKNOWN',
+                analysisDurationMillis: S.lastAnalysisDurationMillis,
                 discrepancies: S.currentDiscrepancies || [],
                 productCoverageGaps: S.currentProductCoverageGaps || [],
                 language: window.TaxonomyI18n

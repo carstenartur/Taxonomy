@@ -98,6 +98,21 @@
         return colorMap[code] || '#aaa';
     }
 
+    /** A display-only projection. Missing/pending measurements are not negative evidence. */
+    function filterZeroRelevance(data, scores, details) {
+        function project(node) {
+            var children = (node.children || []).map(project).filter(Boolean);
+            var detail = details && details[node.code];
+            var pendingProduct = detail && detail.kind === 'PRODUCT_SUITABILITY'
+                && !Number.isFinite(detail.parentScore);
+            var zero = scores && Object.prototype.hasOwnProperty.call(scores, node.code)
+                && scores[node.code] === 0 && !pendingProduct;
+            if (zero && children.length === 0) return null;
+            return Object.assign({}, node, { children: children });
+        }
+        return (data || []).map(project).filter(Boolean);
+    }
+
     // ── Sunburst ────────────────────────────────────────────────────────────────
     /**
      * Render an interactive zoomable sunburst chart into `container`.
@@ -118,7 +133,28 @@
         container.innerHTML = '';
 
         try {
-        var colorMap = buildColorMap(data);
+        var originalData = data;
+        var colorMap = buildColorMap(originalData);
+        var filter = document.getElementById('sunburstHideZero');
+        if (filter) {
+            if (filter._taxonomyZeroFilter) filter.removeEventListener('change', filter._taxonomyZeroFilter);
+            filter._taxonomyZeroFilter = function () {
+                if (container.getAttribute('data-view-rendered') === 'sunburst') {
+                    renderSunburst(container, originalData, scores);
+                }
+            };
+            filter.addEventListener('change', filter._taxonomyZeroFilter);
+            if (filter.checked) data = filterZeroRelevance(originalData, scores,
+                window.TaxonomyState && window.TaxonomyState.currentScoreDetails);
+        }
+        if (!data.length) {
+            var empty = document.createElement('p');
+            empty.className = 'text-muted p-3';
+            empty.textContent = t('views.sunburst.empty');
+            container.appendChild(empty);
+            container.setAttribute('data-view-rendered', 'sunburst');
+            return;
+        }
         var W = container.clientWidth || 500;
         var size = Math.min(W, MAX_SUNBURST_SIZE);
         var radius = size / 2;
@@ -218,9 +254,9 @@
                 };
             });
 
-            var t = svg.transition().duration(750);
+            var transition = svg.transition().duration(750);
 
-            paths.transition(t)
+            paths.transition(transition)
                 .tween('data', function (d) {
                     var i = d3.interpolate(d.current, d.target);
                     return function (tt) { d.current = i(tt); };
@@ -234,7 +270,7 @@
 
             labels.filter(function (d) {
                 return +this.getAttribute('fill-opacity') || labelVisible(d.target);
-            }).transition(t)
+            }).transition(transition)
                 .attr('fill-opacity', function (d) { return +labelVisible(d.target); })
                 .attrTween('transform', function (d) { return function () { return labelTransform(d.current); }; });
 
@@ -1415,6 +1451,7 @@
     // ── Export ─────────────────────────────────────────────────────────────────
     window.TaxonomyViews = {
         renderSunburst: renderSunburst,
+        filterZeroRelevance: filterZeroRelevance,
         renderTreeDiagram: renderTreeDiagram,
         renderTreeCanvas: renderTreeCanvas,
         renderDecisionMap: renderDecisionMap,

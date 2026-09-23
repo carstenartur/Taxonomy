@@ -277,6 +277,14 @@
         panel.setAttribute('aria-live', 'polite');
         var title = node('strong', text('Analyse wird gestartet', 'Starting analysis'));
         var state = node('div', text('Warte auf den Server …', 'Waiting for the server …'));
+        var duration = node('div', text('Analysedauer: noch nicht verfügbar', 'Analysis duration: not yet available'));
+        duration.id = 'analysisElapsed';
+        function showDuration(millis) {
+            var value = Number.isSafeInteger(millis) && millis >= 0 ? millis : null;
+            duration.textContent = text('Analysedauer: ', 'Analysis duration: ') + (value === null
+                ? text('Nicht aufgezeichnet', 'Not recorded')
+                : Math.floor(value / 60000) + ' min ' + String(Math.floor(value / 1000) % 60).padStart(2, '0') + ' s');
+        }
         var resources = node('div');
         var warning = node('div', '', 'fw-bold');
         var button = node('button', text('Analyse abbrechen', 'Cancel analysis'), 'btn btn-sm btn-danger mt-2');
@@ -286,7 +294,7 @@
             button.className = 'btn btn-sm mt-2 ' + (disabled ? 'btn-outline-secondary' : 'btn-danger');
             button.textContent = label;
         }
-        panel.append(title, state, resources, warning, button);
+        panel.append(title, state, duration, resources, warning, button);
         var anchor = document.getElementById('statusArea') || document.getElementById('analyzeBtn');
         if (anchor) anchor.insertAdjacentElement('afterend', panel);
         var log = document.getElementById('llmCommLogContent');
@@ -327,7 +335,8 @@
                 omitted.textContent += text(' Abschlussprotokoll nicht verfügbar; angezeigt bleibt der zuletzt beobachtete Stand.',
                     ' Final diagnostic status unavailable; showing the last observed state.');
             },
-            finished: function (status) {
+            finished: function (status, measuredDuration) {
+                if (Number.isSafeInteger(measuredDuration) && measuredDuration >= 0) showDuration(measuredDuration);
                 title.textContent = text('Analyse beendet', 'Analysis finished');
                 state.textContent = status === 'SUCCESS'
                     ? text('Vollständiges Ergebnis empfangen.', 'Complete result received.')
@@ -349,7 +358,12 @@
             render: function (snapshot, monitor) {
                 var phase = phases[snapshot.phase];
                 title.textContent = phase ? text(phase[0], phase[1]) : snapshot.phase;
-                var elapsed = Math.max(0, Math.floor((snapshot.serverTime - snapshot.startedAt) / 1000));
+                var isTerminal = ['COMPLETED', 'PARTIAL', 'ERROR', 'CANCELLED'].indexOf(snapshot.status) >= 0;
+                var elapsedMillis = Number.isSafeInteger(snapshot.elapsedMillis) && snapshot.elapsedMillis >= 0
+                    ? snapshot.elapsedMillis : !isTerminal && Number.isFinite(snapshot.startedAt) && Number.isFinite(snapshot.serverTime)
+                        ? Math.max(0, snapshot.serverTime - snapshot.startedAt) : null;
+                showDuration(elapsedMillis);
+                var elapsed = elapsedMillis === null ? '?' : Math.floor(elapsedMillis / 1000);
                 var quiet = Math.max(0, Math.floor((snapshot.serverTime - snapshot.lastActivityAt) / 1000));
                 state.textContent = snapshot.status + ' · ' + snapshot.evaluatedNodes
                     + text(' Knoten bewertet', ' nodes evaluated') + ' · ' + elapsed + ' s · '
@@ -439,16 +453,16 @@
             view.unavailable('CONNECTION_LOST', true);
         };
         var finished = false;
-        monitor.finish = function (status, refreshDiagnostics) {
+        monitor.finish = function (status, refreshDiagnostics, measuredDuration) {
             if (finished || active !== monitor) return;
             finished = true;
             monitor.stop();
-            view.finished(status);
+            view.finished(status, measuredDuration);
             if (refreshDiagnostics === false) return;
             monitor.finalSnapshot().then(function (snapshot) {
                 if (!snapshot || active !== monitor || !monitor.isInScope()) return;
                 view.render(snapshot, monitor);
-                view.finished(status);
+                view.finished(status, measuredDuration);
             }).catch(function () {
                 if (active === monitor && monitor.isInScope()) view.finalDiagnosticsUnavailable();
             });

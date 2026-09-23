@@ -1,3 +1,4 @@
+import { verifyReadingErgonomics } from './ui-reading-ergonomics.mjs';
 import { navigateToPage } from './ui-role-fixtures.mjs';
 
 const COPILOT_ENDPOINTS = Object.freeze([
@@ -278,6 +279,7 @@ export async function runAnalysisSessionWorkflow({ page, evidence }) {
   await page.locator('#copilotPanel').scrollIntoViewIfNeeded();
   await saveRequiredViewportState('session-copilot-complete');
   passed('complete Copilot analysis with architecture and derived results');
+  await verifyReadingErgonomics({ page, evidence });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#mobileMainNavigation').waitFor({ state: 'visible', timeout: 10_000 });

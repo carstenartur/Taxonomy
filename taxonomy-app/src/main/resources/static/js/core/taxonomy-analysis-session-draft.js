@@ -222,6 +222,7 @@
             input.classList.remove('stale-results');
         }
         S.currentScores = null;
+        S.lastAnalysisDurationMillis = null;
         S.currentRawScores = {};
         S.currentEffectiveScores = {};
         S.currentScoreDetails = {};
@@ -268,6 +269,8 @@
             S.scoreSemanticsVersion = payload.scoreSemanticsVersion || 0;
             S.currentScoreSemanticsWarnings = payload.scoreSemanticsWarnings || [];
             S.currentScores = S.currentEffectiveScores;
+            S.lastAnalysisDurationMillis = Number.isSafeInteger(payload.analysisDurationMillis)
+                && payload.analysisDurationMillis >= 0 ? payload.analysisDurationMillis : null;
             S.currentReasons = payload.reasons || {};
             S.currentDiscrepancies = payload.discrepancies || [];
             S.currentProductCoverageGaps = payload.productCoverageGaps || [];

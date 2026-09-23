@@ -200,6 +200,7 @@
         var target = event.target && typeof event.target.closest === 'function'
             ? event.target.closest('#manualApplyBtn') : null;
         if (!target || !hasScores(C.S.currentScores)) return;
+        C.S.lastAnalysisDurationMillis = null;
         C.S.lastAnalysisProvider = 'MANUAL';
         C.S.lastAnalysisStatus = 'SUCCESS';
     });

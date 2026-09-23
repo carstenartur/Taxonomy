@@ -8,6 +8,15 @@ import java.util.Objects;
 
 public class AnalysisResult {
 
+    /** Server-measured scoring, relation and architecture work; null for older/unmeasured results. */
+    private Long analysisDurationMillis;
+    public Long getAnalysisDurationMillis() { return analysisDurationMillis; }
+    public void setAnalysisDurationMillis(Long value) {
+        if (value != null && value < 0) throw new IllegalArgumentException("Analysis duration must not be negative");
+        analysisDurationMillis = value;
+    }
+
+
     /** Immutable, requirement-scoped search evidence; never a global catalogue mutation. */
     private RelationSearchReport relationSearchReport;
     public RelationSearchReport getRelationSearchReport() { return relationSearchReport; }

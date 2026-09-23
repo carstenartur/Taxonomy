@@ -126,6 +126,8 @@
         S.scoreSemanticsVersion = envelope.scoreSemanticsVersion || 0;
         S.currentScoreSemanticsWarnings = envelope.scoreSemanticsWarnings || [];
         S.currentScores = S.currentEffectiveScores;
+        S.lastAnalysisDurationMillis = Number.isSafeInteger(envelope.analysisDurationMillis)
+            && envelope.analysisDurationMillis >= 0 ? envelope.analysisDurationMillis : null;
     }
 
     function describeScore(code, effective) {
@@ -267,6 +269,11 @@
             '<div><strong>Time:</strong> ' + timeStr + '</div>' +
             '<div><strong>Nodes evaluated:</strong> ' + info.totalNodes + '</div>' +
             '<div><strong>Status:</strong> ' + escapeHtml(info.status || 'unknown') + '</div>' +
+            '<div><strong>' + (isGermanLocale() ? 'Analysedauer:' : 'Analysis duration:') + '</strong> '
+                + (Number.isSafeInteger(S.lastAnalysisDurationMillis) && S.lastAnalysisDurationMillis >= 0
+                    ? Math.floor(S.lastAnalysisDurationMillis / 60000) + ' min '
+                        + String(Math.floor(S.lastAnalysisDurationMillis / 1000) % 60).padStart(2, '0') + ' s'
+                    : (isGermanLocale() ? 'Nicht aufgezeichnet' : 'Not recorded')) + '</div>' +
             '<div><strong>Matched codes (' + info.matchedEntries.length + '):</strong> ' + matchedList + '</div>' +
             warnHtml;
         logEl.style.display = '';
@@ -403,6 +410,7 @@
         S.pendingProposalNodeCode = null;
         S.lastAnalysisProvider = null;
         window._currentProvisionalRelations = [];
+        S.lastAnalysisDurationMillis = null;
         S.lastAnalysisStatus = 'IN_PROGRESS';
         applyLocalRawScores({}, true);
         var lifecycle = window.__TaxonomyAnalysisSessionContext;
@@ -470,7 +478,7 @@
                 // Polling may have stopped after observing completion, but only the latest
                 // in-scope operation owns this full response and may update the application.
                 if (progress && !progress.acceptsResult()) return;
-                if (progress) progress.finish(result.status);
+                if (progress) progress.finish(result.status, true, result.analysisDurationMillis);
                 setAnalyzing(false);
                 if (Array.isArray(result.tree) && result.tree.length) S.taxonomyData = result.tree;
                 applyScoreEnvelope(result);
@@ -618,6 +626,7 @@
         S.currentReasons = {};
         var interactiveProvider = document.getElementById('providerSelect');
         S.lastAnalysisProvider = interactiveProvider ? interactiveProvider.value : null;
+        S.lastAnalysisDurationMillis = null;
         S.lastAnalysisStatus = 'IN_PROGRESS';
         document.getElementById('businessText').classList.remove('stale-results');
 
@@ -655,6 +664,7 @@
         S.scoreSemanticsVersion = 0;
         S.currentScoreSemanticsWarnings = [];
         S.currentReasons = {};
+        S.lastAnalysisDurationMillis = null;
         S.lastAnalysisStatus = 'IN_PROGRESS';
         S.storedBusinessText = text;
         document.getElementById('businessText').classList.remove('stale-results');
@@ -739,12 +749,16 @@
                 scoreDetails: data.scoreDetails,
                 productSuitabilityScores: data.productSuitabilityScores,
                 scoreSemanticsVersion: data.scoreSemanticsVersion,
-                scoreSemanticsWarnings: data.scoreSemanticsWarnings
+                scoreSemanticsWarnings: data.scoreSemanticsWarnings,
+                analysisDurationMillis: data.analysisDurationMillis
             });
             syncVisibleScoreNodes();
             S.currentDiscrepancies = data.discrepancies || [];
             S.currentProductCoverageGaps = data.productCoverageGaps || [];
             S.lastAnalysisStatus = data.status || 'SUCCESS';
+            updateAnalysisLog({ timestamp: new Date(), totalNodes: Object.keys(S.currentScores || {}).length,
+                matchedEntries: Object.entries(S.currentScores || {}).filter(function (entry) { return entry[1] > 0; }),
+                warnings: data.warnings || [], status: S.lastAnalysisStatus });
             S.storedBusinessText = text;
             S.lastAnalyzedText = text;
             const matchedCount = Object.values(data.totalScores).filter(v => v > 0).length;
@@ -785,9 +799,15 @@
                         scoreDetails: data.scoreDetails,
                         productSuitabilityScores: data.productSuitabilityScores,
                         scoreSemanticsVersion: data.scoreSemanticsVersion,
-                        scoreSemanticsWarnings: data.scoreSemanticsWarnings
+                        scoreSemanticsWarnings: data.scoreSemanticsWarnings,
+                        analysisDurationMillis: data.analysisDurationMillis
                     });
+                    S.lastAnalysisDurationMillis = Number.isSafeInteger(data.analysisDurationMillis)
+                        && data.analysisDurationMillis >= 0 ? data.analysisDurationMillis : null;
                     syncVisibleScoreNodes();
+                    updateAnalysisLog({ timestamp: new Date(), totalNodes: Object.keys(S.currentScores || {}).length,
+                        matchedEntries: Object.entries(S.currentScores || {}).filter(function (entry) { return entry[1] > 0; }),
+                        warnings: data.warnings || [], status: S.lastAnalysisStatus });
                     S.currentDiscrepancies = data.discrepancies || [];
                     S.currentProductCoverageGaps = data.productCoverageGaps || [];
                     B().showStatus('warning', '⚠️ ' + data.errorMessage);
@@ -1720,6 +1740,8 @@
     };
 
     // ── Summary View ──────────────────────────────────────────────────────────
+    var summarySelection = null;
+
     function renderSummaryView(data, scores) {
         var container = document.getElementById('taxonomyTree');
         if (!container) return;
@@ -1800,13 +1822,13 @@
                 var path = el.hierarchyPath || el.nodeCode;
                 var titleParts = [path, el.title || '', el.includedBecause || '']
                     .filter(function (p) { return p.length > 0; });
-                html += '<span class="summary-layer-element" data-code="' + escapeHtml(el.nodeCode) +
+                html += '<button type="button" class="summary-layer-element" aria-pressed="false" aria-controls="summarySelectionDetails" data-code="' + escapeHtml(el.nodeCode) +
                     '" title="' + escapeHtml(titleParts.join(' — ')) + '">';
                 html += escapeHtml(el.nodeCode);
                 if (el.title) html += ' \u2013 ' + escapeHtml(el.title.substring(0, 50));
                 html += ' <span class="summary-pct">[' + pct + '%]</span>';
                 if (el.anchor) html += ' ★';
-                html += '</span>';
+                html += '</button>';
             });
 
             html += '</div>';
@@ -1824,23 +1846,50 @@
 
         container.innerHTML = html;
 
-        // Click handler: navigate to node in list view
-        container.querySelectorAll('.summary-layer-element').forEach(function (el) {
-            el.addEventListener('click', function () {
-                var code = this.dataset.code;
-                if (code) {
-                    B().switchView('list');
-                    setTimeout(function () {
-                        var nodeEl = document.querySelector('[data-node-code="' + code + '"]');
-                        if (nodeEl) {
-                            nodeEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                            nodeEl.classList.add('search-highlight');
-                            setTimeout(function () { nodeEl.classList.remove('search-highlight'); }, 2000);
-                        }
-                    }, 200);
+        var details = document.createElement('section');
+        details.id = 'summarySelectionDetails';
+        details.setAttribute('aria-live', 'polite');
+        details.hidden = true;
+        container.querySelector('.summary-view').appendChild(details);
+
+        function select(code) {
+            var selected = view.includedElements.find(function (item) { return item.nodeCode === code; });
+            if (!selected) return;
+            summarySelection = { view: view, code: code };
+            container.querySelectorAll('.summary-layer-element').forEach(function (button) {
+                button.setAttribute('aria-pressed', String(button.dataset.code === code));
+            });
+            details.replaceChildren();
+            details.hidden = false;
+            var heading = document.createElement('h3');
+            heading.className = 'h6';
+            heading.textContent = code + (selected.title ? ' — ' + selected.title : '');
+            details.appendChild(heading);
+            [selected.hierarchyPath, selected.includedBecause, (S.currentReasons || {})[code]].forEach(function (value) {
+                if (!value) return;
+                var paragraph = document.createElement('p');
+                paragraph.textContent = value;
+                details.appendChild(paragraph);
+            });
+            var navigate = document.createElement('button');
+            navigate.type = 'button';
+            navigate.className = 'btn btn-sm btn-outline-primary';
+            navigate.textContent = isGermanLocale() ? 'Im Taxonomiebaum anzeigen' : 'Show in taxonomy tree';
+            navigate.addEventListener('click', function () {
+                B().switchView('list');
+                expandNodeByCode(code);
+                var node = B().ensureNodeRendered(code, S.currentScores);
+                if (node) {
+                    node.scrollIntoView({ block: 'center' });
+                    node.focus({ preventScroll: true });
                 }
             });
+            details.appendChild(navigate);
+        }
+        container.querySelectorAll('.summary-layer-element').forEach(function (button) {
+            button.addEventListener('click', function () { select(this.dataset.code); });
         });
+        if (summarySelection && summarySelection.view === view) select(summarySelection.code);
     }
 
     // ── Public API ────────────────────────────────────────────────────────────
