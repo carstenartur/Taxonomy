@@ -9,7 +9,7 @@ const source = await readFile(new URL(
 const viewsSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js',
   import.meta.url), 'utf8');
-const browseSource = await readFile(new URL(
+const durationBrowseSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js',
   import.meta.url), 'utf8');
 const catalogue = JSON.parse(await readFile(new URL(
@@ -88,7 +88,7 @@ function harness(locale = 'en') {
     }
   });
   const browse = window.TaxonomyBrowse;
-  vm.runInContext(browseSource, context);
+  vm.runInContext(durationBrowseSource, context);
   browse.refreshAnalysisDuration = window.TaxonomyBrowse.refreshAnalysisDuration;
   window.TaxonomyBrowse = browse;
   vm.runInContext(source, context);
@@ -298,24 +298,6 @@ test('malformed application error payload still terminates as a transport error'
 });
 
 
-for (const rawScores of [{}, null, { [family]: 50 }]) {
-  test(`raw-only fallback retains collected evidence for ${JSON.stringify(rawScores)}`, () => {
-    const h = harness();
-    h.state.taxonomyData = [{ code: family, analysisRole: 'PRODUCT_FAMILY', children: [
-      { code: product, analysisRole: 'PRODUCT', parentCode: family, children: [] }
-    ] }];
-    h.score({ [family]: 40, [product]: 80 }, { [product]: hint });
-    h.state.currentReasons[product] = 'Retained product reason';
-    h.send('error', { status: 'ERROR', rawScores, scoreSemanticsUnavailable: true,
-      errorMessage: 'Projection unavailable' });
-    assert.equal(h.state.currentRawScores[product], 80);
-    assert.equal(h.state.currentProductSuitabilityScores[product], 80);
-    assert.equal(h.state.currentScores[product], rawScores?.[family] === 50 ? 40 : 32);
-    assert.equal(h.state.currentReasons[product], 'Retained product reason');
-    assert.equal(h.state.lastAnalysisStatus, 'ERROR');
-  });
-}
-
 for (const terminal of ['complete', 'error', 'mapping-error']) {
   test(`${terminal}: streaming refreshes duration without rebuilding the diagram or moving focus`, () => {
     const h = harness('de');
@@ -344,3 +326,21 @@ test('duration header distinguishes zero duration from an unknown replacement re
   assert.match(h.controls.analysisDurationDisplay.textContent, /analysis.duration.unknown/);
   assert.doesNotMatch(h.controls.analysisDurationDisplay.textContent, /0 min 00 s/);
 });
+
+for (const rawScores of [{}, null, { [family]: 50 }]) {
+  test(`raw-only fallback retains collected evidence for ${JSON.stringify(rawScores)}`, () => {
+    const h = harness();
+    h.state.taxonomyData = [{ code: family, analysisRole: 'PRODUCT_FAMILY', children: [
+      { code: product, analysisRole: 'PRODUCT', parentCode: family, children: [] }
+    ] }];
+    h.score({ [family]: 40, [product]: 80 }, { [product]: hint });
+    h.state.currentReasons[product] = 'Retained product reason';
+    h.send('error', { status: 'ERROR', rawScores, scoreSemanticsUnavailable: true,
+      errorMessage: 'Projection unavailable' });
+    assert.equal(h.state.currentRawScores[product], 80);
+    assert.equal(h.state.currentProductSuitabilityScores[product], 80);
+    assert.equal(h.state.currentScores[product], rawScores?.[family] === 50 ? 40 : 32);
+    assert.equal(h.state.currentReasons[product], 'Retained product reason');
+    assert.equal(h.state.lastAnalysisStatus, 'ERROR');
+  });
+}
