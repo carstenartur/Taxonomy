@@ -664,27 +664,31 @@
 
         var RANK_EMOJIS = ['', '\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49']; // 🥇🥈🥉
 
+        function dmTheme(token, fallback) {
+            var value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
+            return value || fallback;
+        }
+
         function dmNodeFill(d) {
             var code = d.data.code;
             if (code === '__root__') { return 'none'; }
             var rank = rankMap[code];
-            if (rank === 1) { return '#FFD700'; }
-            if (rank === 2) { return '#C0C0C0'; }
-            if (rank === 3) { return '#CD7F32'; }
-            var pct = scores[code];
-            if (pct > 0) {
-                var alpha = Math.min(pct / 100, 1).toFixed(2);
-                return 'rgba(0,128,0,' + alpha + ')';
+            if (rank === 1) { return dmTheme('--decision-rank-1-surface', '#F6C344'); }
+            if (rank === 2) { return dmTheme('--decision-rank-2-surface', '#CBD5E1'); }
+            if (rank === 3) { return dmTheme('--decision-rank-3-surface', '#C98958'); }
+            if ((scores[code] || 0) > 0) {
+                // Magnitude is encoded by the numeric label, not hue/opacity.
+                return dmTheme('--decision-score-surface', '#DBEAFE');
             }
-            return '#ddd'; // hot-path ancestor with no score
+            return dmTheme('--decision-ancestor-surface', '#F1F5F9');
         }
 
         function dmNodeStroke(d) {
             var code = d.data.code;
             if (code === '__root__') { return 'none'; }
-            if (rankMap[code]) { return '#888'; }
-            if (scores[code] > 0) { return '#555'; }
-            return '#bbb';
+            if (rankMap[code]) { return dmTheme('--decision-rank-stroke', '#475569'); }
+            if ((scores[code] || 0) > 0) { return dmTheme('--decision-score-stroke', '#1D4ED8'); }
+            return dmTheme('--decision-ancestor-stroke', '#64748B');
         }
 
         function dmLinkStrokeWidth(d) {
@@ -697,12 +701,11 @@
 
         function dmLinkStroke(d) {
             var code = d.target.data.code;
-            if (rankMap[code] === 1) { return '#FFD700'; }
-            if (rankMap[code] === 2) { return '#C0C0C0'; }
-            if (rankMap[code] === 3) { return '#CD7F32'; }
-            var pct = scores[code] || 0;
-            if (pct > 0) { return 'rgba(0,128,0,0.6)'; }
-            return '#ccc';
+            if (rankMap[code] === 1) { return dmTheme('--decision-rank-1-line', '#9A6A00'); }
+            if (rankMap[code] === 2) { return dmTheme('--decision-rank-2-line', '#64748B'); }
+            if (rankMap[code] === 3) { return dmTheme('--decision-rank-3-line', '#8A4B22'); }
+            if ((scores[code] || 0) > 0) { return dmTheme('--decision-score-line', '#2563EB'); }
+            return dmTheme('--decision-link', '#64748B');
         }
 
         function dmUpdate(source) {
@@ -783,7 +786,7 @@
                 })
                 .attr('x', function (d) { return (d.children || d._children) ? -10 : 10; })
                 .attr('text-anchor', function (d) { return (d.children || d._children) ? 'end' : 'start'; })
-                .style('fill', function (d) { return (scores[d.data.code] || 0) >= 60 ? '#fff' : '#333'; })
+                .style('fill', function () { return dmTheme('--decision-map-text', '#1F2937'); })
                 .style('font-weight', function (d) { return rankMap[d.data.code] ? '700' : '400'; });
 
             nodeUpdate.select('.dm-rank')
@@ -915,14 +918,12 @@
                 var nodeName = nameMap[code] || '';
                 var path = (pathMap[code] || []).join(' \u2192 ');
                 var level = levelMap[code] || 0;
-                var alpha = Math.min(pct / 100, 1).toFixed(2);
-                var textColor = pct >= 60 ? '#fff' : '#000';
                 var tr = document.createElement('tr');
                 tr.innerHTML =
                     '<td>' + rankEmoji + '</td>' +
                     '<td><strong>' + esc(code) + '</strong></td>' +
                     '<td>' + esc(nodeName) + '</td>' +
-                    '<td><span class="decision-score-badge" style="background:rgba(0,128,0,' + alpha + ');color:' + textColor + '">' + esc(scoreText(code, pct)) + '</span></td>' +
+                    '<td><span class="decision-score-badge">' + esc(scoreText(code, pct)) + '</span></td>' +
                     '<td class="small text-muted">' + esc(path) + '</td>' +
                     '<td class="text-center">' + level + '</td>';
                 tbody.appendChild(tr);
