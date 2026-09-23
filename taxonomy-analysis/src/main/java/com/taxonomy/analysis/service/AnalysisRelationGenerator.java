@@ -77,6 +77,11 @@ public class AnalysisRelationGenerator {
                 continue;
             }
             TaxonomyNode node = nodeOpt.get();
+            if (!node.getCatalogueOrigin().mayBeArchitectureEndpoint()) {
+                log.debug("Skipping non-architectural catalogue node {} ({})",
+                        code, node.getCatalogueOrigin());
+                continue;
+            }
             String root = node.getTaxonomyRoot();
             if (root == null) {
                 continue;

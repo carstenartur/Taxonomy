@@ -98,6 +98,11 @@ public class ProvisionalRelationStep implements ArchitecturePipelineStep {
                                 String nodeCode, String nodeName,
                                 java.util.Map<String, Integer> scores,
                                 ArchitectureViewContext ctx) {
+        Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
+        if (nodeOpt.isPresent() && !nodeOpt.get().getCatalogueOrigin().mayBeArchitectureEndpoint()) {
+            throw new IllegalArgumentException("Catalogue node " + nodeCode
+                    + " is navigation-only and is not an official architecture endpoint");
+        }
         if (includedCodes.contains(nodeCode)) {
             return;
         }
@@ -111,7 +116,6 @@ public class ProvisionalRelationStep implements ArchitecturePipelineStep {
         element.setDirectLlmScore(scores.getOrDefault(nodeCode, 0));
         element.setTitle(nodeName);
 
-        Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
         if (nodeOpt.isPresent()) {
             TaxonomyNode node = nodeOpt.get();
             if (element.getTitle() == null) {

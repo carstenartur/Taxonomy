@@ -79,6 +79,10 @@ public class ElementBuildStep implements ArchitecturePipelineStep {
             Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
             if (nodeOpt.isPresent()) {
                 TaxonomyNode node = nodeOpt.get();
+                if (!node.getCatalogueOrigin().mayBeArchitectureEndpoint()) {
+                    throw new IllegalArgumentException("Catalogue node " + nodeCode
+                            + " is navigation-only and is not an official architecture endpoint");
+                }
                 element.setTitle(node.getNameEn());
                 element.setTaxonomySheet(node.getTaxonomyRoot());
                 element.setTaxonomyDepth(node.getLevel());
