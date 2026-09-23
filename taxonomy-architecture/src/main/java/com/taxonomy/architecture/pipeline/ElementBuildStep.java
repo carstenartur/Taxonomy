@@ -79,6 +79,7 @@ public class ElementBuildStep implements ArchitecturePipelineStep {
             Optional<TaxonomyNode> nodeOpt = nodeRepository.findByCode(nodeCode);
             if (nodeOpt.isPresent()) {
                 TaxonomyNode node = nodeOpt.get();
+                requireOfficialArchitectureEndpoint(node);
                 element.setTitle(node.getNameEn());
                 element.setTaxonomySheet(node.getTaxonomyRoot());
                 element.setTaxonomyDepth(node.getLevel());
@@ -96,5 +97,13 @@ public class ElementBuildStep implements ArchitecturePipelineStep {
                 .thenComparing(Comparator.comparingDouble(RequirementElementView::getRelevance).reversed()));
 
         ctx.setElements(elements);
+    }
+
+    private static void requireOfficialArchitectureEndpoint(TaxonomyNode node) {
+        if (!node.getCatalogueOrigin().mayBeArchitectureEndpoint()) {
+            throw new IllegalArgumentException("Architecture element " + node.getCode()
+                    + " is not an official catalogue endpoint (origin "
+                    + node.getCatalogueOrigin() + ")");
+        }
     }
 }

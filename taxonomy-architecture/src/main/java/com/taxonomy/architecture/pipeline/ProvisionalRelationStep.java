@@ -68,6 +68,16 @@ public class ProvisionalRelationStep implements ArchitecturePipelineStep {
                 .map(RequirementElementView::getNodeCode)
                 .collect(Collectors.toSet());
 
+        // Validate the persisted catalogue identity before mutating the view. Hypothesis
+        // labels or codes cannot promote a local navigation helper to an official concept.
+        for (RelationHypothesisDto hyp : provisionalRelations) {
+            if (!hasText(hyp.getSourceCode()) || !hasText(hyp.getTargetCode())) {
+                continue;
+            }
+            validateEndpoint(hyp.getSourceCode());
+            validateEndpoint(hyp.getTargetCode());
+        }
+
         boolean addedProvisional = false;
         for (RelationHypothesisDto hyp : provisionalRelations) {
             if (!hasText(hyp.getSourceCode()) || !hasText(hyp.getTargetCode())) {
@@ -91,6 +101,15 @@ public class ProvisionalRelationStep implements ArchitecturePipelineStep {
         }
 
         ctx.setUsedProvisional(addedProvisional);
+    }
+
+    private void validateEndpoint(String nodeCode) {
+        Optional<TaxonomyNode> node = nodeRepository.findByCode(nodeCode);
+        if (node.isPresent() && !node.get().getCatalogueOrigin().mayBeArchitectureEndpoint()) {
+            throw new IllegalArgumentException("Architecture relation endpoint " + nodeCode
+                    + " is not an official catalogue endpoint (origin "
+                    + node.get().getCatalogueOrigin() + ")");
+        }
     }
 
     private void ensureElement(List<RequirementElementView> elements,
