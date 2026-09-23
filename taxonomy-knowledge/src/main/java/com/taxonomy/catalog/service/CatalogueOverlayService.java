@@ -313,9 +313,15 @@ public class CatalogueOverlayService {
                 node.setParentCode(null);
                 continue;
             }
+            if (node.getCatalogueOrigin() == CatalogueNodeOrigin.LOCAL_NAVIGATION) {
+                continue;
+            }
             node.setCatalogueOrigin(CatalogueNodeOrigin.OFFICIAL_SOURCE);
             String raw = node.getSourceParentReference();
-            if (raw == null) {
+            if (raw == null && node.getSourceOrder() == null) {
+                // Compatibility for in-memory/legacy nodes that have not yet been hydrated
+                // from the source workbook. A source row with an assigned sourceOrder and
+                // an empty parent cell must remain an official gap across restarts.
                 raw = node.getParentCode();
                 node.setSourceParentReference(raw);
             }
