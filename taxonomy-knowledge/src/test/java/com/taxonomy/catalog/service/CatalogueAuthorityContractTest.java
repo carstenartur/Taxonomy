@@ -180,6 +180,7 @@ class CatalogueAuthorityContractTest {
         Map<String, TaxonomyNode> nodes = new LinkedHashMap<>();
         Map<String, String> uuidToCode = new HashMap<>();
         TaxonomyNode root = node("IP", null, "IP", 0, "Information Products");
+        root.setState(null);
         nodes.put(root.getCode(), root);
         DataFormatter formatter = new DataFormatter(Locale.ROOT);
 
