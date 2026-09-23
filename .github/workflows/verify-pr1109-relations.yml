@@ -1,0 +1,41 @@
+name: PR1109 isolated relation regression
+on:
+  push:
+    branches: ['verify/pr1109-relations-20260923-0647']
+permissions:
+  contents: read
+jobs:
+  relation-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Source-build the relation and architecture-view contracts
+        run: |
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=AnalysisRelationGeneratorTests,ArchitectureViewTests -Dsurefire.failIfNoSpecifiedTests=false > relation-regression.log 2>&1
+      - name: Show final source-build diagnostics
+        if: always()
+        run: tail -n 100 relation-regression.log
+      - name: Verify positive JUnit evidence
+        run: |
+          mkdir -p verification-tooling
+          javac --release 21 -d verification-tooling taxonomy-tooling/src/main/java/com/taxonomy/tooling/*.java
+          java -cp verification-tooling com.taxonomy.tooling.TaxonomyTooling check-junit-reports taxonomy-app/target/surefire-reports/TEST-com.taxonomy.AnalysisRelationGeneratorTests.xml 14 taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureViewTests.xml 1
+      - name: Preserve source-built regression evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pr1109-relations-${{ github.run_id }}
+          path: |
+            relation-regression.log
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.AnalysisRelationGeneratorTests.xml
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.ArchitectureViewTests.xml
+          if-no-files-found: error
+          retention-days: 7
