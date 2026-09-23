@@ -1,0 +1,63 @@
+name: Verify evidence projection continuation
+on:
+  push:
+    branches: [verify/pr1113-evidence-projection-20260923]
+permissions:
+  contents: read
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Stage regression tests on exact unmodified feature source
+        run: |
+          cp -r .verification /tmp/evidence-regressions
+          git checkout --detach b3e06be24226c7a7cdbcdb31d413c1e405b1b94b
+          cp /tmp/evidence-regressions/EvidenceProjectionContinuationTest.java taxonomy-analysis/src/test/java/com/taxonomy/analysis/relations/
+          cat /tmp/evidence-regressions/score-ui-tests.mjs >> .github/scripts/relation-search-confidence.test.mjs
+          git diff --stat
+          git show c73f1981386548b02049ec5b13be779b1a39395e --format='%H %T' --no-patch
+          git show eb93cf88de5f190b2cfc3c32c0cc6fa7e919d642 --format='%H %T' --no-patch
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+      - name: Demonstrate real projection failures before implementing
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-analysis -am -Dtest=EvidenceProjectionContinuationTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/evidence-red.log 2>&1
+          status=$?
+          tail -100 /tmp/evidence-red.log
+          test "$status" -ne 0 || exit 1
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          p='taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.relations.EvidenceProjectionContinuationTest.xml'
+          r=ET.parse(p).getroot()
+          print('RED_ASSERTIONS',r.attrib)
+          assert int(r.get('tests'))==8 and int(r.get('failures'))==5 and int(r.get('errors'))==0 and int(r.get('skipped'))==0
+          PY
+      - name: Demonstrate UI evidence failures
+        run: |
+          set +e
+          node --test .github/scripts/relation-search-confidence.test.mjs > /tmp/evidence-ui-red.log 2>&1
+          status=$?
+          cat /tmp/evidence-ui-red.log
+          test "$status" -ne 0
+      - name: Inspect relevant repository references
+        run: |
+          git grep -n -E 'buildFromEvidence|projectEvidence|setDirectLlmScore|getDirectLlmScore' -- taxonomy-*/src/main/java | head -100
+          git ls-files '*copilot-instructions*' '*AGENTS.md' '*DiagramNode.java' '*DiagramEdge.java'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: evidence-projection-red
+          path: |
+            /tmp/evidence-*.log
+            taxonomy-analysis/target/surefire-reports/TEST-*ContinuationTest.xml
+          retention-days: 7
+          if-no-files-found: error
