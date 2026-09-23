@@ -98,3 +98,26 @@ test('leaves graphical views to their dedicated renderers', () => {
   harness.flush();
   assert.equal(harness.renderCalls(), 0);
 });
+
+
+test('measured analysis duration belongs to its score envelope, not the next result', () => {
+  const { state } = createHarness();
+  assert.equal(state.lastAnalysisDurationMillis, null);
+  state.currentScores = { BP: 85 };
+  state.lastAnalysisDurationMillis = 123456;
+  assert.equal(state.lastAnalysisDurationMillis, 123456);
+  state.currentScores = { BP: 80 };
+  assert.equal(state.lastAnalysisDurationMillis, null);
+});
+for (const invalid of [-1, NaN, Infinity, '1200', undefined, null]) {
+  test(`duration cannot manufacture a measurement from ${String(invalid)}`, () => {
+    const { state } = createHarness();
+    state.lastAnalysisDurationMillis = invalid;
+    assert.equal(state.lastAnalysisDurationMillis, null);
+  });
+}
+test('a measured zero duration is distinct from missing evidence', () => {
+  const { state } = createHarness();
+  state.lastAnalysisDurationMillis = 0;
+  assert.equal(state.lastAnalysisDurationMillis, 0);
+});

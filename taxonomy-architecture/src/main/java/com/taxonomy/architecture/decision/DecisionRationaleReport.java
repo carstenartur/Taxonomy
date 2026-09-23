@@ -123,7 +123,54 @@ public record DecisionRationaleReport(
             int suppliedReasonCount,
             int evaluatedNodeCount,
             int positiveNodeCount,
+            double completenessPercent,
+            Long analysisDurationMillis) {
+        public ReportMetadata(
+            Instant generatedAt,
+            String generatedBy,
+            String taxonomyApplicationVersion,
+            String taxonomyBuildCommit,
+            String taxonomyCatalogueFile,
+            String taxonomyDataVersion,
+            String taxonomyCatalogueResourceSha256,
+            String taxonomyDataFingerprintSha256,
+            String analysisSnapshotFingerprintSha256,
+            String taxonomyDataSource,
+            int taxonomyNodeCount,
+            int taxonomyRootCount,
+            String repositoryId,
+            String workspaceId,
+            String branch,
+            String basedOnCommit,
+            Instant basedOnCommitTimestamp,
+            boolean projectionStale,
+            boolean indexStale,
+            String analysisProvider,
+            String analysisStatus,
+            String analysisModel,
+            String analysisSnapshotId,
+            Long projectId,
+            Long requirementId,
+            Long requirementVersionId,
+            Integer requirementVersionNumber,
+            Instant analysisCreatedAt,
+            String analysisCreatedBy,
+            String recordedTaxonomyFingerprintSha256,
+            String promptFingerprintSha256,
+            boolean hierarchyFromImmutableSnapshot,
+            String reportTimeZone,
+            int suppliedReasonCount,
+            int evaluatedNodeCount,
+            int positiveNodeCount,
             double completenessPercent) {
+            this(generatedAt, generatedBy, taxonomyApplicationVersion, taxonomyBuildCommit, taxonomyCatalogueFile, taxonomyDataVersion, taxonomyCatalogueResourceSha256, taxonomyDataFingerprintSha256, analysisSnapshotFingerprintSha256, taxonomyDataSource, taxonomyNodeCount, taxonomyRootCount, repositoryId, workspaceId, branch, basedOnCommit, basedOnCommitTimestamp, projectionStale, indexStale, analysisProvider, analysisStatus, analysisModel, analysisSnapshotId, projectId, requirementId, requirementVersionId, requirementVersionNumber, analysisCreatedAt, analysisCreatedBy, recordedTaxonomyFingerprintSha256, promptFingerprintSha256, hierarchyFromImmutableSnapshot, reportTimeZone, suppliedReasonCount, evaluatedNodeCount, positiveNodeCount, completenessPercent, null);
+        }
+
+        public ReportMetadata {
+            if (analysisDurationMillis != null && analysisDurationMillis < 0)
+                throw new IllegalArgumentException("Analysis duration must not be negative");
+        }
+
 
         public ReportMetadata withAnalysisSnapshotFingerprintSha256(String fingerprint) {
             return new ReportMetadata(
@@ -163,7 +210,7 @@ public record DecisionRationaleReport(
                     suppliedReasonCount,
                     evaluatedNodeCount,
                     positiveNodeCount,
-                    completenessPercent);
+                    completenessPercent, analysisDurationMillis);
         }
     }
 

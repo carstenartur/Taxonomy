@@ -150,7 +150,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         navigation.put("decision_tree",labels.treeOverview());
         navigation.put("decision_chapters",labels.decisionChapters());
         navigation.put("decision_evidence",labels.appendix());
-        writer.contents(navigation);
+        writer.contents(navigation, 2);
         renderExecutiveSummary(document, report, labels);
         if(report.architecture()!=null)new ArchitectureWordSectionRenderer().write(document,report.architecture());
         new DecisionTreeWordSectionRenderer().write(document,
@@ -344,6 +344,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         addMetadataRow(provenance, labels.analysisDigest(),
                 report.metadata().analysisSnapshotFingerprintSha256());
         addMetadataRow(provenance, labels.analysisStatus(), report.metadata().analysisStatus());
+        addMetadataRow(provenance, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
 
         XWPFParagraph note = document.createParagraph();
         note.setSpacingBefore(260);
@@ -363,6 +364,8 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         addSectionHeading(document, "01", labels.executiveSummary());
         new WordDocumentWriter(document,labels).bookmark(document.getParagraphs().getLast(),"decision_summary");
         addLeadParagraph(document, report.executiveSummary().conciseConclusion());
+        addBodyParagraph(document, labels.analysisDuration() + ": "
+                + labels.durationMillis(report.metadata().analysisDurationMillis()), false);
 
         LeafCandidate leading = report.executiveSummary().leadingLeaf();
         if (leading != null) {
@@ -455,7 +458,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
 
             addRationaleBox(document, labels.decisionResult(), chapter.decisionSummary(), PALE_BLUE);
             addRationaleBox(document, labels.comparison(), chapter.comparativeRationale(), LIGHT_TEAL);
-            addHeading(document, labels.alternatives(), 2, false);
+            addHeading(document, labels.alternatives() + " · " + chapter.parentCode(), 3, false);
             addChildTable(document, chapter, labels);
             if (!chapter.complete()) {
                 addWarningBox(document,
@@ -520,6 +523,7 @@ public class DecisionRationaleDocxRenderer implements ReportRendererExtension {
         addMetadataRow(evidence, labels.analysisProvider(), report.metadata().analysisProvider());
         addMetadataRow(evidence, labels.analysisModel(), report.metadata().analysisModel());
         addMetadataRow(evidence, labels.analysisStatus(), report.metadata().analysisStatus());
+        addMetadataRow(evidence, labels.analysisDuration(), labels.durationMillis(report.metadata().analysisDurationMillis()));
         addMetadataRow(evidence, labels.completeness(),
                 percent(report.metadata().completenessPercent()));
 

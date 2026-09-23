@@ -24,7 +24,7 @@ public final class WordDocumentWriter {
     public static void ensureStyles(XWPFDocument document) {
         XWPFStyles styles =
                 document.getStyles() == null ? document.createStyles() : document.getStyles();
-        for (String id : List.of("Title", "Heading1", "Heading2", "Heading3", "Caption")) {
+        for (String id : List.of("Title", "Heading1", "Heading2", "Heading3", "TOCHeading", "Caption")) {
             if (styles.styleExist(id)) continue;
             CTStyle style = CTStyle.Factory.newInstance();
             style.setStyleId(id);
@@ -72,11 +72,18 @@ public final class WordDocumentWriter {
     }
 
     public void contents(Map<String, String> sections) {
-        heading(labels.contents(), 1, null);
+        contents(sections, 3);
+    }
+
+    /** The contents title itself is not an indexed section. */
+    public void contents(Map<String, String> sections, int outlineDepth) {
+        if (outlineDepth < 1 || outlineDepth > 3)
+            throw new IllegalArgumentException("Contents depth must be 1 to 3");
+        heading(labels.contents(), 1, null).setStyle("TOCHeading");
         var p = document.createParagraph();
         p.getCTP().addNewPPr();
         var field = p.getCTP().addNewFldSimple();
-        field.setInstr("TOC \\o \"1-3\" \\h \\z \\u");
+        field.setInstr("TOC \\o \"1-" + outlineDepth + "\" \\h \\z \\u");
         p.setKeepNext(true);
         field.addNewR().addNewT().setStringValue("");
         var settings = document.getSettings().getCTSettings();
@@ -89,7 +96,7 @@ public final class WordDocumentWriter {
                 (anchor, title) -> {
                     var row = table.createRow();
                     cell(row.getCell(0), title);
-                    link(row.getCell(1).getParagraphs().getFirst(), anchor, title);
+                    link(row.getCell(1).getParagraphs().getFirst(), anchor, labels.openChapter());
                     row.setCantSplitRow(true);
                 });
     }

@@ -74,6 +74,7 @@ public class AnalyzeRequirementUseCase {
 
     private AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command,
                                              boolean persistHypotheses) {
+        long startedNanos = System.nanoTime();
         try {
             applyProviderOverride(command.provider());
             promptBudgetPolicy.requireWithinBudget(
@@ -99,6 +100,7 @@ public class AnalyzeRequirementUseCase {
                 }
             }
             populateViewContext(command, result);
+            result.setAnalysisDurationMillis(Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
             return new AnalyzeRequirementResult(result);
         } finally {
             llmService.clearRequestProvider();
