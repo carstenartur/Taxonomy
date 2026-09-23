@@ -1,5 +1,7 @@
 # Analysis score semantics
 
+> **Current-version arithmetic, not validated necessity or probability semantics.** Read [Grouping and scoring](../en/TAXONOMY_SCORING.md) ([Deutsch](../de/TAXONOMY_SCORING.md)) for source-pinned behavior and the separate target design. Category allocation already changes provider values; product thresholding can already turn a positive reply into zero. The regular singleton-root category call also normalizes a positive root value to 100. These limitations are not fixed by adding typed score metadata.
+
 Taxonomy uses more than one 0–100 scoring contract. Equal numeric values are not necessarily
 interchangeable.
 
@@ -7,17 +9,18 @@ interchangeable.
 
 | Kind | Meaning | Comparison contract |
 |---|---|---|
-| `ROOT_RELEVANCE` | Independent relevance of one taxonomy root | Comparable as root-level relevance; root values do not need to sum to 100 |
-| `HIERARCHICAL_RELEVANCE` | Absolute relevance carried through a parent budget | Comparable with other effective relevance values |
-| `PRODUCT_SUITABILITY` | Independent suitability of one concrete `PRODUCT` conditional on its direct product family | Evidence only; never use directly as a hierarchy share, architecture anchor or relation score |
+| `ROOT_RELEVANCE` | Intended independent root relevance; ordinary singleton-root parsing currently normalizes positive values to 100 | Roots do not share a sum budget; do not mistake this implementation limit for preserved model relevance |
+| `HIERARCHICAL_RELEVANCE` | Category weight after parent-budget allocation | Used by generic ranking; not independently calibrated necessity or fulfilment |
+| `PRODUCT_SUITABILITY` | Independent suitability of one concrete `PRODUCT` against the requirement, after thresholding | Not defined by the prompt as a conditional probability; do not reinterpret it as a hierarchy share or proof of a relationship |
 
 Only nodes whose frozen catalogue metadata has `analysisRole=PRODUCT` use the product-suitability
 contract. Product families and all other ancestors remain hierarchically scored categories.
 
 ## Effective product relevance
 
-Generic downstream consumers need one comparable value. Taxonomy therefore retains raw product
-suitability and derives effective relevance deterministically:
+Version 1 supplies generic downstream ranking with a deterministic weighting heuristic. It retains
+product suitability after thresholding and derives a separate value. The formula remains implemented,
+but has not been justified as conditional-probability or necessity arithmetic:
 
 ```text
 effective product relevance
@@ -39,7 +42,8 @@ The product is displayed as `Suitability 80%; effective relevance 32/100`. It is
 
 `AnalysisResult` exposes:
 
-- `rawScores`: canonical provider evidence before product-relevance weighting; malformed legacy
+- `rawScores`: analysis-path values before additional product-relevance weighting; category values
+  may already be normalized and product values thresholded (consult the full LLM reply for original values); malformed legacy
   entries with blank keys or null values are discarded once, keys are trimmed and values are
   bounded to 0–100; multiple source keys that collapse to the same canonical code fail closed;
 - `scores` and `effectiveScores`: comparable relevance used by existing generic consumers;
@@ -109,7 +113,8 @@ carry both maps and are independently interpreted at the server boundary describ
 
 ## Required regression example
 
-Every implementation path must preserve this invariant:
+The current version-1 weighting paths preserve the following arithmetic. This is not a requirement
+to retain the same formula when the coordinated scoring semantics are redesigned:
 
 ```text
 family = 40, product suitability = 80

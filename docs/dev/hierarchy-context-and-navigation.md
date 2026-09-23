@@ -1,5 +1,7 @@
 # Source hierarchy, classification and navigation
 
+User-facing rationale and per-taxonomy pages: [English](../en/TAXONOMY_SCORING.md) / [Deutsch](../de/TAXONOMY_SCORING.md). These state the exact title-token grouping rules, current scoring transformations, singleton-root limitation and the still-unimplemented faceted target.
+
 ## Approved design and scope
 
 Implementation of the hierarchy review in #1111. A precise child can rely on descriptions defined only at its ancestors. An inferred parent assignment is not proof that those descriptions apply. Do not compensate for a bad classification by silently capping, multiplying or overwriting scores.

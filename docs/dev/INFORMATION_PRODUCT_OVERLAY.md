@@ -1,5 +1,7 @@
 # Information Product catalogue overlay
 
+> **Interpretation update (23 September 2026):** This page records the existing overlay and scoring implementation, not semantic approval of its inferred parent assignments. See the [IP rationale](../en/taxonomies/IP.md) ([Deutsch](../de/taxonomies/IP.md)) and [shared scoring contract](../en/TAXONOMY_SCORING.md). Title-only navigation proposals are not a completed semantic hierarchy; independent suitability and parent weighting do not establish conditional probabilities or product necessity.
+
 ## Decision
 
 The checked-in C3 Excel workbook remains the baseline catalogue. Taxonomy applies

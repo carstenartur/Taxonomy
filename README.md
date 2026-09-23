@@ -310,6 +310,8 @@ Document registration and candidate confirmation are transactional. A failed ope
 
 ## AI and local operation
 
+For the actual grouping criteria, score calculations, limitations and rationale for each of the eight sub-taxonomies, see [Grouping and scoring](docs/en/TAXONOMY_SCORING.md) ([Deutsch](docs/de/TAXONOMY_SCORING.md)). It distinguishes implemented arithmetic from the target faceted navigation and necessity model.
+
 The application can use Gemini, OpenAI-compatible providers, or a local ONNX embedding model. Provider configuration is optional for catalogue browsing, DSL editing, version navigation, deterministic validation, and many search and export functions.
 
 Local embedding configuration:
