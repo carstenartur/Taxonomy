@@ -22,3 +22,5 @@ jobs:
         run: ./mvnw -B -ntp -pl taxonomy-analysis -am -Dtest=CatalogueAuthorityAnalysisContractTest -Dsurefire.failIfNoSpecifiedTests=false test
       - name: Run architecture authority contract
         run: ./mvnw -B -ntp -pl taxonomy-architecture -am -Dtest=CatalogueAuthorityProjectionContractTest -Dsurefire.failIfNoSpecifiedTests=false test
+      - name: Run tooling authority contract
+        run: ./mvnw -B -ntp -pl taxonomy-tooling -am -Dtest=CatalogueHierarchyAuthorityTest -Dsurefire.failIfNoSpecifiedTests=false test
