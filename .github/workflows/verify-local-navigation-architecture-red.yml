@@ -1,0 +1,20 @@
+name: Verify local navigation architecture RED
+on:
+  push:
+    branches: [ "verify/ip-architecture-boundary-red-20260923" ]
+permissions:
+  contents: read
+jobs:
+  red:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Run boundary tests expected red
+        run: ./mvnw -B -ntp -pl taxonomy-architecture -am -Dtest=LocalNavigationRelationBoundaryTest,CatalogueArchitectureEndpointBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false test
