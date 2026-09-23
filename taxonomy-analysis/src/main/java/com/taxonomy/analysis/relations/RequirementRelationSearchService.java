@@ -79,6 +79,7 @@ public class RequirementRelationSearchService {
 
     private static Node scalar(TaxonomyNode node, String description) {
         return new Node(node.getCode(), node.getTaxonomyRoot(), node.getNameEn(), description,
-                node.getParentCode() == null || node.getParentCode().isBlank());
+                !node.getCatalogueOrigin().mayBeArchitectureEndpoint()
+                        || node.getParentCode() == null || node.getParentCode().isBlank());
     }
 }
