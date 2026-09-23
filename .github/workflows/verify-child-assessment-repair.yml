@@ -1,0 +1,54 @@
+name: Verify child-assessment repair
+on:
+  push:
+    branches: [verify/pr1112-pr1113-repair-20260923]
+permissions:
+  contents: read
+jobs:
+  reproduce-and-stage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 8e6ee9981f511ce0dd80d6b3780cc21d79eb14c9
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Reproduce existing shared-assessment architecture failure
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-app -am -Dtest=ArchitectureContextDependencyRatchetTest,ConfigurationReferenceContractTest,ChildAssessmentContractTest,RelationAssessmentTest,SharedChildAssessmentParserTest,AnalysisRunControlTypedTest,RelationChildAssessmentServiceTest -Dsurefire.failIfNoSpecifiedTests=false test > repair-baseline.log 2>&1
+          result=$?
+          tail -n 100 repair-baseline.log
+          echo "$result" > repair-baseline.exit
+          test "$result" -ne 0
+          grep -F 'GREW analysis/com.taxonomy.analysis.service -> knowledge/com.taxonomy.relations.service: 1 -> 2' repair-baseline.log
+      - name: Stage only public dependency binaries and test runtime
+        if: always()
+        run: |
+          mkdir -p repair-artifact
+          cp repair-baseline.log repair-baseline.exit repair-artifact/
+          python3 - <<'PY'
+          from pathlib import Path
+          import tarfile
+          home = Path.home()
+          with tarfile.open('repair-artifact/public-maven-dependencies.tar.gz', 'w:gz') as archive:
+              repo = home / '.m2/repository'
+              for path in sorted(repo.rglob('*')):
+                  if path.is_file() and not path.is_symlink() and path.suffix in ('.jar', '.pom'):
+                      archive.add(path, arcname=str(path.relative_to(home)), recursive=False)
+              dist = home / '.m2/wrapper/dists'
+              for path in sorted(dist.rglob('*')):
+                  if path.is_file() and not path.is_symlink() and (path.name in ('mvn', 'mvnDebug', 'm2.conf', 'toolchains.xml') or path.suffix in ('.jar', '.xml')):
+                      archive.add(path, arcname=str(path.relative_to(home)), recursive=False)
+          PY
+          find taxonomy-* -path '*/target/surefire-reports/TEST-*.xml' -exec cp --parents '{}' repair-artifact/ \;
+          sha256sum repair-artifact/public-maven-dependencies.tar.gz > repair-artifact/SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: child-assessment-repair-baseline
+          path: repair-artifact/
+          if-no-files-found: error
+          retention-days: 1
