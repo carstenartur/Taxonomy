@@ -131,3 +131,7 @@ Browser contract tests are `.github/scripts/relation-search-report.test.mjs` and
 `.github/scripts/relation-search-confidence.test.mjs`, within the existing Node test
 suite. They check budget/questions, escaped evidence, bounded previews, no accidental
 adoption controls and unavailable-vs-legacy confidence presentation.
+
+## Reviewed module dependencies
+
+The hierarchical adapter reuses the existing analysis-to-knowledge direction; it introduces no reverse dependency or new Maven module. `RequirementRelationSearchService` and its scalar catalogue adapter each reference `TaxonomyService` and `TaxonomyNode` (two class pairs per package). `RequirementRelationSearch` and `RequirementRelationSearchService` each reference the existing `RelationCompatibilityMatrix` (two class pairs). These six concrete class pairs are recorded in the architecture dependency baseline. The dependency ratchet remains exact: no wildcard exemptions or general count increases are allowed. Bytecode inspection with `jdeps -verbose:class` confirms these pairs; the regular ArchUnit gate is the authoritative merged-source check.
