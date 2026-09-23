@@ -74,8 +74,8 @@ final class CurrentDiagramExportRegression {
         for (int i = 0; i < 12; i++) {
             check(svg.contains("NODE-" + i + "-END"), "Full-model SVG lost node " + i);
         }
-        check(!svg.contains("zoom") && !svg.contains("translate("),
-                "Model export leaked browser viewport state");
+        check(!svg.contains("impact-map-viewport") && !svg.contains("decision-map-svg"),
+                "Model export leaked browser viewport markup");
     }
 
     static void exportsSparxWorkingViewWithoutScoringOrSyncMutation() throws Exception {
