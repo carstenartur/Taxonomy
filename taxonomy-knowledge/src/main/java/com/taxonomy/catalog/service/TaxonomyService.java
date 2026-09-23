@@ -767,17 +767,99 @@ public class TaxonomyService {
      */
     @Transactional(readOnly = true)
     public List<TaxonomyNode> getPathToRoot(String code) {
-        TaxonomyNode node = repository.findByCode(code).orElse(null);
-        if (node == null) return List.of();
+        return resolveCataloguePath(code, false, new HashMap<>());
+    }
+
+    /**
+     * The source-hierarchy suffix ending at this node, in root-to-leaf order.
+     * An overlay parent assignment terminates inheritance, even when its deterministic
+     * classification has reviewRequired=false. That flag is not source authority.
+     * The ordinary navigation path remains available separately through getPathToRoot.
+     */
+    @Transactional(readOnly = true)
+    public List<TaxonomyNode> getSemanticPathToRoot(String code) {
+        return resolveCataloguePath(code, true, new HashMap<>());
+    }
+
+    private List<TaxonomyNode> resolveCataloguePath(String code, boolean semanticOnly,
+                                                   Map<String, TaxonomyNode> resolved) {
+        if (code == null || code.isBlank()) return List.of();
+        TaxonomyNode current = resolved.computeIfAbsent(code, this::getNodeByCode);
+        if (current == null) return List.of();
+        String root = current.getTaxonomyRoot();
         LinkedList<TaxonomyNode> path = new LinkedList<>();
-        TaxonomyNode current = node;
+        Set<String> seen = new HashSet<>();
         while (current != null) {
+            if (!seen.add(current.getCode())) {
+                throw new IllegalStateException("Taxonomy path contains a cycle at " + current.getCode());
+            }
+            if (!Objects.equals(root, current.getTaxonomyRoot())) {
+                throw new IllegalStateException("Taxonomy path crosses roots at " + current.getCode());
+            }
             path.addFirst(current);
-            String parentCode = current.getParentCode();
-            if (parentCode == null || parentCode.isBlank()) break;
-            current = repository.findByCode(parentCode).orElse(null);
+            String parent = current.getParentCode();
+            if (parent == null || parent.isBlank()) break;
+            if (semanticOnly && hasOverlayParent(current.getCode())) break;
+            current = resolved.computeIfAbsent(parent, this::getNodeByCode);
+            if (current == null) throw new IllegalStateException("Missing taxonomy parent " + parent);
         }
         return List.copyOf(path);
+    }
+
+    private boolean hasOverlayParent(String code) {
+        return catalogueOverlayService != null && catalogueOverlayService.hasParentPatch(code);
+    }
+
+    /**
+     * Shared scalar context for child assessment and relationship assessment. Resolves
+     * each distinct ancestor at most once per batch; does not load lazy graph collections.
+     * Mixed-parent batches keep per-candidate contexts. No source node is rewritten.
+     */
+    @Transactional(readOnly = true)
+    public Map<String, String> getAssessmentDescriptions(List<TaxonomyNode> nodes) {
+        Map<String, String> contexts = getAssessmentContexts(nodes);
+        Map<String, String> descriptions = new LinkedHashMap<>();
+        for (TaxonomyNode node : nodes) {
+            descriptions.put(node.getCode(), Objects.toString(node.getDescriptionEn(), "")
+                    + contexts.get(node.getCode()));
+        }
+        return Collections.unmodifiableMap(descriptions);
+    }
+
+    /** Context only, so callers can transmit common sibling context once without parsing text. */
+    @Transactional(readOnly = true)
+    public Map<String, String> getAssessmentContexts(List<TaxonomyNode> nodes) {
+        Objects.requireNonNull(nodes, "nodes");
+        Map<String, TaxonomyNode> resolved = new HashMap<>();
+        for (TaxonomyNode node : nodes) {
+            if (node == null || node.getCode() == null || node.getCode().isBlank()
+                    || resolved.putIfAbsent(node.getCode(), node) != null) {
+                throw new IllegalArgumentException("Assessment candidates require unique non-blank IDs");
+            }
+        }
+        Map<String, String> descriptions = new LinkedHashMap<>();
+        for (TaxonomyNode node : nodes) {
+            List<TaxonomyNode> path = resolveCataloguePath(node.getCode(), true, resolved);
+            StringBuilder text = new StringBuilder();
+            if (path.size() > 1) {
+                text.append("\nSource hierarchy context (ancestors, not additional candidates):\n");
+                for (TaxonomyNode ancestor : path.subList(0, path.size() - 1)) {
+                    text.append("  ").append(ancestor.getCode()).append(": ").append(ancestor.getNameEn());
+                    if (ancestor.getDescriptionEn() != null && !ancestor.getDescriptionEn().isBlank()) {
+                        text.append(" - ").append(ancestor.getDescriptionEn());
+                    }
+                    text.append('\n');
+                }
+            }
+            if (!path.isEmpty() && hasOverlayParent(path.getFirst().getCode())) {
+                text.append("\nClassification/navigation only: the parent assignment above ")
+                        .append(path.getFirst().getCode())
+                        .append(" comes from an overlay, not established source hierarchy. ")
+                        .append("Do not inherit restrictions or infer irrelevance from that assignment.");
+            }
+            descriptions.put(node.getCode(), text.toString());
+        }
+        return Collections.unmodifiableMap(descriptions);
     }
 
     /**

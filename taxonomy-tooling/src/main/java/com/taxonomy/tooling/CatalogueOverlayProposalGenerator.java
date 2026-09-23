@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
  */
 public final class CatalogueOverlayProposalGenerator {
 
-    static final String ALGORITHM_VERSION = "catalogue-overlay-proposal-v2";
+    static final String ALGORITHM_VERSION = "catalogue-overlay-proposal-v3";
     static final int OUTPUT_SCHEMA_VERSION = 1;
     static final String ROLE_PRODUCT = "PRODUCT";
     static final String ROLE_PRODUCT_FAMILY = "PRODUCT_FAMILY";
@@ -159,6 +159,9 @@ public final class CatalogueOverlayProposalGenerator {
                 proposedFanOut,
                 changes,
                 proposals);
+        Map<String, Object> hierarchyAudit = CatalogueHierarchyAudit.document(cataloguePath, source, overlay);
+        document = new LinkedHashMap<>(document);
+        document.put("hierarchyAudit", hierarchyAudit);
         String proposalText = FlatJson.pretty(document) + "\n";
         String reportText = CatalogueOverlayProposalRenderer.reviewReport(
                 cataloguePath,
@@ -172,6 +175,7 @@ public final class CatalogueOverlayProposalGenerator {
                 changes,
                 proposals);
 
+        reportText += CatalogueHierarchyAudit.markdown(hierarchyAudit);
         atomicWrite(proposalPath, proposalText);
         atomicWrite(reportPath, reportText);
         return new Result(

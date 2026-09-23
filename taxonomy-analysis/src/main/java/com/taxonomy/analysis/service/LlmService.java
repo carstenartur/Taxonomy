@@ -1257,47 +1257,24 @@ public class LlmService {
         return sb.toString();
     }
 
-    /**
-     * Builds the node list for LLM prompts, optionally prepending the ancestor hierarchy as
-     * context when the nodes share a common parent.
-     *
-     * <p>All nodes in the list are expected to be siblings (i.e. share the same parent) — this is
-     * guaranteed by all callers, which always pass the result of {@link TaxonomyService#getChildrenOf}
-     * or a root node combined with its direct children. The ancestor path is derived from the first
-     * node's parent, which is representative for the whole batch. Nodes that have no parent (e.g. root
-     * nodes) receive the same plain formatting as {@link #buildNodeList} without any ancestor header.
-     */
+    /** Shared source context is sent once per sibling group, never inferred from the first node. */
     private String buildNodeListWithContext(List<TaxonomyNode> nodes) {
-        if (nodes.isEmpty()) {
-            return "";
+        // Root-only assessments have no inherited context and need no catalogue lookup.
+        if (nodes.isEmpty() || nodes.stream().allMatch(node -> node.getParentCode() == null
+                || node.getParentCode().isBlank())) return buildNodeList(nodes);
+        Map<String, String> contexts = taxonomyService.getAssessmentContexts(nodes);
+        Map<String, List<TaxonomyNode>> groups = new LinkedHashMap<>();
+        for (TaxonomyNode node : nodes) {
+            groups.computeIfAbsent(contexts.getOrDefault(node.getCode(), ""), unused -> new ArrayList<>())
+                    .add(node);
         }
-        StringBuilder sb = new StringBuilder();
-
-        // Use the first node's parent as the shared context anchor
-        String parentCode = nodes.get(0).getParentCode();
-        if (parentCode != null && !parentCode.isBlank()) {
-            List<TaxonomyNode> ancestors = taxonomyService.getPathToRoot(parentCode);
-            if (!ancestors.isEmpty()) {
-                sb.append("Parent hierarchy (for context — do NOT score these):\n");
-                for (TaxonomyNode ancestor : ancestors) {
-                    sb.append("  ").append(ancestor.getCode()).append(": ").append(ancestor.getName());
-                    if (ancestor.getDescription() != null && !ancestor.getDescription().isBlank()) {
-                        sb.append(" - ").append(ancestor.getDescription());
-                    }
-                    sb.append("\n");
-                }
-                sb.append("\nNodes to evaluate:\n");
-            }
+        StringBuilder text = new StringBuilder();
+        for (Map.Entry<String, List<TaxonomyNode>> group : groups.entrySet()) {
+            if (!group.getKey().isBlank()) text.append(group.getKey())
+                    .append("\nNodes to evaluate (only the following candidates):\n");
+            text.append(buildNodeList(group.getValue()));
         }
-
-        for (TaxonomyNode n : nodes) {
-            sb.append(n.getCode()).append(": ").append(n.getName());
-            if (n.getDescription() != null && !n.getDescription().isBlank()) {
-                sb.append(" - ").append(n.getDescription());
-            }
-            sb.append("\n");
-        }
-        return sb.toString();
+        return text.toString();
     }
 
     private String buildPrompt(String businessText, String nodeList) {
