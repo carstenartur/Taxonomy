@@ -127,6 +127,46 @@ class CatalogueAuthorityContractTest {
     }
 
     @Test
+    void persistedGapNeverPromotesSupplementalParentToOfficialSource(@TempDir Path dir) throws Exception {
+        Map<String, TaxonomyNode> nodes = new LinkedHashMap<>();
+        nodes.put("IP", node("IP", null, "IP", 0, "root"));
+        nodes.put("IP-A", node("IP-A", "IP", "IP", 1, "Official A"));
+        TaxonomyNode product = node("IP-1", "IP-A", "IP", 2, "Product");
+        product.setSourceParentReference(null);
+        product.setSourceParentCode(null);
+        product.setSourceOrder(42);
+        nodes.put("IP-1", product);
+
+        CatalogueOverlayService service = overlay(dir, """
+                {
+                  "schemaVersion": 2,
+                  "mode": "OVERLAY",
+                  "baseCatalogue": "base.xlsx",
+                  "mappingVersion": "test",
+                  "nodePatches": [{
+                    "code": "IP-1",
+                    "expectedTitle": "Product",
+                    "expectedState": "draft",
+                    "parentCode": "IP-A",
+                    "analysisRole": "PRODUCT",
+                    "confidence": 0.8,
+                    "reviewRequired": true,
+                    "justification": "persisted navigation repair"
+                  }]
+                }
+                """);
+
+        service.applyAndValidate(nodes, Map.of(), dir.resolve("base.xlsx").toUri().toString());
+
+        assertThat(product.getSourceParentReference()).isNull();
+        assertThat(product.getSourceParentCode()).isNull();
+        assertThat(product.getParentCode()).isEqualTo("IP-A");
+        assertThat(service.hasParentPatch("IP-1"))
+                .as("supplemental navigation must remain visibly non-source after restart")
+                .isTrue();
+    }
+
+    @Test
     void localNavigationNodeCannotBeArchitectureRelationEndpoint() throws Exception {
         TaxonomyNode local = node("local:ip:test", null, "IP", 1, "Local helper");
         TaxonomyNode official = node("IP-1", null, "IP", 1, "Official product");
