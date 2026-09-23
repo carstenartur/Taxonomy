@@ -67,8 +67,8 @@ after correcting the implementation instead of weakening the published test.
 
 `ReformulationReportHistoryTest` adds two ordinary JUnit entry points: the
 application/restart contract and actual API/download-control contract.
-`ReformulationReportRendererTest` supplies three renderer cases. Together with the
-preserved initial test, this is six JUnit methods, not a claim that they have all
+`ReformulationReportRendererTest` supplies four renderer cases, including literal
+tilde headings. Together with the preserved initial test, this is seven JUnit methods, not a claim that they have all
 run locally under JUnit. Normal child JVMs forward an existing JaCoCo agent.
 
 This continuation uses a complete source checkout whose baseline tree is
@@ -160,3 +160,34 @@ or a guessed allowance. The increase is nine class pairs within four already
 reviewed directions. The generic context-policy validation, source coverage and
 new-edge/growth/reduction checks remain unchanged. A normal fresh source-built
 CI run must execute both corrected tests before merge.
+
+
+## Persisted adoption identity binding (review 4079267281)
+
+The report lookup now binds the computed scoped command ID to the stored proposal,
+requirement and scope columns **before deserializing** the receipt JSON. The
+receipt's preview and target-version IDs must match the physical row. Load the
+preview by that stored ID, then verify its own ID/proposal and embedded
+requirement/project identities as well as the receipt's previous version. All
+prior source-version, source-text, snapshot, revision, authorization and hash
+checks remain. The entity gains read accessors only; no schema, writer or
+adoption operation is changed. These are consistency checks, not a claim that
+arbitrary database-administrator tampering is cryptographically prevented.
+
+Ten new controlled corruption cases run inside the existing historical report
+JUnit entry point. They retain valid foreign-key combinations and touch only its
+private temporary database. Two prove that mismatched stored owners are rejected
+before malformed JSON is decoded; the others cover repointed stored/serialized
+preview IDs, target/previous versions and correctly hashed preview identities.
+Every changed row is restored in finally, and the original byte-identical report
+plus existing source/answer/requirement/receipt no-mutation assertions remain.
+
+On the 6bd5203 predecessor the new cases reproduced ten intended failures: two
+HTTP 422 responses instead of the required pre-decode 404, and eight incorrect
+HTTP 200 successes. With the correction, real Spring/authenticated HTTP/file-HSQL
+write and restart processes both exit zero. The ten new binding cases, thirteen
+existing rejection cases and all six byte-stable historical outputs pass.
+Production/test sources were compiled with Java 21 and -parameters against the
+packaged application libraries; these are supplemental runtime-library checks,
+not a full local Maven/JUnit build. The current-head ordinary CI remains required.
+No coverage threshold, dependency inventory, test selector or workflow is changed.

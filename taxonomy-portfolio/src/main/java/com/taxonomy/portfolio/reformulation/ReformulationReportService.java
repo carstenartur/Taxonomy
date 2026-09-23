@@ -57,16 +57,26 @@ public class ReformulationReportService {
             throw PortfolioException.validation("A canonical adoption command UUID is required");
         }
         // Same scoped identity as the writer; no global command-ID or unbounded history lookup.
-        String id = StableIdentityHash.sha256(json.write(List.of(PortfolioScope.key(actor, context), commandId)));
-        var stored = receipts.findById(id).orElseThrow(() -> PortfolioException.notFound("Adoption receipt not found"));
+        String scope = PortfolioScope.key(actor, context);
+        String id = StableIdentityHash.sha256(json.write(List.of(scope, commandId)));
+        // Bind physical ownership BEFORE reading possibly inconsistent serialized evidence.
+        var stored = receipts.findByIdAndProposalIdAndRequirementIdAndScopeKey(id, proposalId, requirementId, scope)
+                .orElseThrow(() -> PortfolioException.notFound("Adoption receipt not found"));
         var receipt = json.read(stored.getPayload(), ReformulationAdoptionDtos.Result.class);
-        if (!Objects.equals(proposalId, receipt.proposalId()) || !Objects.equals(commandId, receipt.commandId()))
+        if (!Objects.equals(proposalId, receipt.proposalId()) || !Objects.equals(commandId, receipt.commandId())
+                || !Objects.equals(stored.getPreviewId(), receipt.previewId())
+                || !Objects.equals(stored.getTargetVersionId(), receipt.targetVersionId()))
             throw PortfolioException.notFound("Adoption receipt not found");
         // readPreview rechecks authorization and the saved payload's integrity hash.
-        var preview = adoptions.readPreview(projectId, requirementId, proposalId, receipt.previewId(), actor, context);
+        var preview = adoptions.readPreview(projectId, requirementId, proposalId, stored.getPreviewId(), actor, context);
         var content = preview.content();
         var baseline = offer.baseline();
-        if (receipt.proposalRevision() != content.revision().number()
+        if (!Objects.equals(stored.getPreviewId(), content.id())
+                || !Objects.equals(proposalId, content.proposalId())
+                || !Objects.equals(requirementId, content.currentRequirement().id())
+                || !Objects.equals(projectId, content.currentRequirement().projectId())
+                || receipt.previousVersionId() != content.currentRequirement().currentVersionId()
+                || receipt.proposalRevision() != content.revision().number()
                 || content.sourceVersionId() != baseline.sourceVersionId()
                 || !content.originalText().equals(baseline.originalText())
                 || !content.analysisSnapshotId().equals(baseline.snapshotId()))

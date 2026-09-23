@@ -100,6 +100,7 @@ final class ReformulationReportBoundaryChecks {
             }
             check(get(http, receiptUrl, 200, true).body().equals(validReport), "Preview was not restored after " + field);
         }
+        ReformulationReportBindingChecks.verify(app, http, base, fixture, commandId);
         check(beforeRequirement.equals(projects.getRequirement(fixture.project(), fixture.requirement(), "admin", fixture.scope())),
                 "Rejected report changed the active requirement");
         check(beforeProposal.equals(proposals.get(fixture.project(), fixture.requirement(), fixture.proposal(), "admin", fixture.scope())),
