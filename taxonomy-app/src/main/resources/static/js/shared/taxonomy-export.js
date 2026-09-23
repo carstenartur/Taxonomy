@@ -40,43 +40,123 @@
     }
 
     function exportSvg(containerId) {
-        var svg = standaloneSvg(containerId);
-        if (!svg) return unavailable('export.no.svg');
-        downloadBlob(
-            new Blob([serializeSvg(svg)], { type: 'image/svg+xml;charset=utf-8' }),
-            'taxonomy-view.svg'
-        );
+        // An explicit container is a view-level capture. The main Export action is
+        // model-level and must not inherit transient zoom, pan, focus or filter state.
+        if (containerId) {
+            var svg = standaloneSvg(containerId);
+            if (!svg) return unavailable('export.no.svg');
+            downloadBlob(
+                new Blob([serializeSvg(svg)], { type: 'image/svg+xml;charset=utf-8' }),
+                'taxonomy-view.svg'
+            );
+            return true;
+        }
+        var requirement = document.getElementById('businessText');
+        return diagramDownload('/api/diagram/svg', requirement ? requirement.value : '',
+            'requirement-architecture.svg', 'text');
     }
 
-    function exportPng(containerId, scaleFactor) {
-        var svg = standaloneSvg(containerId);
-        if (!svg) return unavailable('export.no.svg');
+    function rasterizeSvg(svgText, scaleFactor, filename) {
+        var parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+        var svg = parsed.documentElement;
+        if (!svg || svg.localName !== 'svg' || parsed.querySelector('parsererror')) {
+            return Promise.reject(new Error(exportMessage('The architecture SVG is invalid.',
+                'Das Architektur-SVG ist ungültig.')));
+        }
         var width = dimension(svg, 'width', 800);
         var height = dimension(svg, 'height', 400);
         var resolution = document.getElementById('pngResolution');
         var scale = scaleFactor || (resolution ? parseInt(resolution.value, 10) : 2) || 2;
-        var blob = new Blob([serializeSvg(svg)], { type: 'image/svg+xml;charset=utf-8' });
+        var blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
         var url = URL.createObjectURL(blob);
-        var image = new Image();
-        image.onload = function () {
-            var canvas = document.createElement('canvas');
-            canvas.width = width * scale;
-            canvas.height = height * scale;
-            var context = canvas.getContext('2d');
-            context.fillStyle = '#ffffff';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            context.scale(scale, scale);
-            context.drawImage(image, 0, 0);
-            URL.revokeObjectURL(url);
-            canvas.toBlob(function (png) {
-                if (png) downloadBlob(png, 'taxonomy-view.png');
-            }, 'image/png');
-        };
-        image.onerror = function () {
-            URL.revokeObjectURL(url);
-            unavailable('export.png.failed');
-        };
-        image.src = url;
+        return new Promise(function (resolve, reject) {
+            var image = new Image();
+            image.onload = function () {
+                var canvas = document.createElement('canvas');
+                canvas.width = Math.ceil(width * scale);
+                canvas.height = Math.ceil(height * scale);
+                var context = canvas.getContext('2d');
+                context.fillStyle = '#ffffff';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                context.scale(scale, scale);
+                context.drawImage(image, 0, 0, width, height);
+                URL.revokeObjectURL(url);
+                canvas.toBlob(function (png) {
+                    if (!png) {
+                        reject(new Error(exportMessage('PNG conversion failed.',
+                            'PNG-Konvertierung fehlgeschlagen.')));
+                        return;
+                    }
+                    downloadBlob(png, filename);
+                    resolve(true);
+                }, 'image/png');
+            };
+            image.onerror = function () {
+                URL.revokeObjectURL(url);
+                reject(new Error(exportMessage('PNG conversion failed.',
+                    'PNG-Konvertierung fehlgeschlagen.')));
+            };
+            image.src = url;
+        });
+    }
+
+    function exportPng(containerId, scaleFactor) {
+        // Explicit callers keep the view-capture contract. The main export button
+        // obtains a fresh deterministic full-model SVG from the server first.
+        if (containerId) {
+            var viewSvg = standaloneSvg(containerId);
+            if (!viewSvg) return unavailable('export.no.svg');
+            return rasterizeSvg(serializeSvg(viewSvg), scaleFactor, 'taxonomy-view.png')
+                .catch(function (error) { return unavailable('export.png.failed', error.message); });
+        }
+        if (diagramExportBusy) return Promise.resolve(false);
+        var state = window.TaxonomyState;
+        var requirement = document.getElementById('businessText');
+        var businessText = requirement ? requirement.value : '';
+        if (!state || !state.currentArchView || !Array.isArray(state.currentArchView.includedElements)
+                || !state.currentArchView.includedElements.length) {
+            return unavailable('export.png.failed', exportMessage(
+                'No existing architecture view is available. No new analysis was started.',
+                'Keine vorhandene Architekturansicht verfügbar. Es wurde keine neue Analyse gestartet.'));
+        }
+        if (typeof state.lastAnalyzedText !== 'string' || !state.lastAnalyzedText.trim()
+                || businessText !== state.lastAnalyzedText) {
+            return unavailable('export.png.failed', exportMessage(
+                'The requirement changed after analysis. Load the matching analysis before exporting.',
+                'Die Anforderung wurde nach der Analyse geändert. Laden Sie vor dem Export die passende Analyse.'));
+        }
+        var headers = { 'Content-Type': 'application/json' };
+        var csrf = document.querySelector('meta[name="_csrf"]');
+        var csrfHeader = document.querySelector('meta[name="_csrf_header"]');
+        if (csrf && csrfHeader) headers[csrfHeader.content] = csrf.content;
+        diagramExportBusy = true;
+        diagramStatus(exportMessage('Creating complete architecture PNG…',
+            'Vollständiges Architektur-PNG wird erstellt…'), true, false);
+        return fetch('/api/diagram/current/svg', {
+            method: 'POST',
+            headers: headers,
+            credentials: 'same-origin',
+            body: JSON.stringify(state.currentArchView)
+        }).then(function (response) {
+            if (!response.ok) {
+                return response.json().catch(function () { return {}; }).then(function (problem) {
+                    throw new Error(problem.error || problem.detail || 'HTTP ' + response.status);
+                });
+            }
+            validateResponseType(response, 'requirement-architecture.svg');
+            return response.text();
+        }).then(function (svgText) {
+            return rasterizeSvg(svgText, scaleFactor, 'requirement-architecture.png');
+        }).then(function () {
+            diagramStatus(exportMessage('Download ready. Zoom and pan were not exported.',
+                'Download bereitgestellt. Zoom und Verschiebung wurden nicht exportiert.'), false, false);
+            return true;
+        }).catch(function (error) {
+            diagramStatus(exportMessage('Export failed: ', 'Export fehlgeschlagen: ') + error.message, false, true);
+            return false;
+        }).finally(function () {
+            diagramExportBusy = false;
+        });
     }
 
     /**
