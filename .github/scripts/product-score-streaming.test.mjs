@@ -9,6 +9,9 @@ const source = await readFile(new URL(
 const viewsSource = await readFile(new URL(
   '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-views.js',
   import.meta.url), 'utf8');
+const browseSource = await readFile(new URL(
+  '../../taxonomy-app/src/main/resources/static/js/core/taxonomy-browse.js',
+  import.meta.url), 'utf8');
 const catalogue = JSON.parse(await readFile(new URL(
   '../../taxonomy-knowledge/src/main/resources/data/nato-taxonomy.json',
   import.meta.url), 'utf8'));
@@ -51,13 +54,16 @@ function harness(locale = 'en') {
     nodes.set(code, node);
   }
   const input = element(); input.value = 'A requirement';
-  const controls = { businessText: input, analyzeBtn: element() };
+  const controls = { businessText: input, analyzeBtn: element(), analysisDurationDisplay: element() };
+  controls.analysisDurationDisplay.hidden = true;
+  const focused = element();
+  let renders = 0;
   const handlers = new Map();
   let transport;
   const statuses = [];
   const state = { taxonomyData: [], currentScores: {}, currentReasons: {} };
   const document = {
-    documentElement: { lang: locale },
+    documentElement: { lang: locale }, activeElement: focused, addEventListener() {},
     getElementById: id => controls[id] || null,
     createElement: () => element(), createTextNode: value => ({ textContent: value }),
     querySelector(selector) { return nodes.get(selector.match(/data-code="([^"]+)"/)?.[1]) || null; },
@@ -67,7 +73,7 @@ function harness(locale = 'en') {
   };
   const window = { TaxonomyState: state, TaxonomyI18n: { getLocale: () => locale },
     TaxonomyBrowse: {
-      renderView() {}, ensureNodeRendered() {}, showStatus(...args) { statuses.push(args); }, clearStatus() {},
+      renderView() { renders++; }, ensureNodeRendered() {}, showStatus(...args) { statuses.push(args); }, clearStatus() {},
       updateExportGroupVisibility() {}
     }
   };
@@ -81,11 +87,15 @@ function harness(locale = 'en') {
       close() {}
     }
   });
+  const browse = window.TaxonomyBrowse;
+  vm.runInContext(browseSource, context);
+  browse.refreshAnalysisDuration = window.TaxonomyBrowse.refreshAnalysisDuration;
+  window.TaxonomyBrowse = browse;
   vm.runInContext(source, context);
   vm.runInContext(viewsSource, context);
   window.TaxonomyScoring.runStreamingAnalysis();
   return {
-    state, nodes, statuses, api: window.TaxonomyScoring, views: window.TaxonomyViews,
+    state, nodes, statuses, controls, document, focused, renders: () => renders, api: window.TaxonomyScoring, views: window.TaxonomyViews,
     send(type, data) {
       const event = { data: JSON.stringify(data) };
       handlers.get(type)(event);
@@ -305,3 +315,32 @@ for (const rawScores of [{}, null, { [family]: 50 }]) {
     assert.equal(h.state.lastAnalysisStatus, 'ERROR');
   });
 }
+
+for (const terminal of ['complete', 'error', 'mapping-error']) {
+  test(`${terminal}: streaming refreshes duration without rebuilding the diagram or moving focus`, () => {
+    const h = harness('de');
+    h.state.currentView = 'sunburst';
+    const renderedBefore = h.renders();
+    const score = { [family]: 60 };
+    const event = { status: terminal === 'complete' ? 'SUCCESS' : 'PARTIAL',
+      analysisDurationMillis: 62500, totalScores: score, partialScores: score,
+      rawScores: score, errorMessage: 'controlled test failure',
+      scoreSemanticsUnavailable: terminal === 'mapping-error' };
+    h.send(terminal === 'complete' ? 'complete' : 'error', event);
+    assert.equal(h.controls.analysisDurationDisplay.hidden, false);
+    assert.match(h.controls.analysisDurationDisplay.textContent, /1 min 02 s/);
+    assert.equal(h.state.lastAnalysisDurationMillis, 62500);
+    assert.equal(h.renders(), renderedBefore, 'Do not repair metadata by re-rendering the graph');
+    assert.equal(h.document.activeElement, h.focused);
+    assert.equal(h.state.currentView, 'sunburst');
+  });
+}
+test('duration header distinguishes zero duration from an unknown replacement result', () => {
+  const h = harness();
+  h.state.lastAnalyzedText = 'A requirement';
+  h.send('complete', { totalScores: {}, analysisDurationMillis: 0 });
+  assert.match(h.controls.analysisDurationDisplay.textContent, /0 min 00 s/);
+  h.send('complete', { totalScores: {} });
+  assert.match(h.controls.analysisDurationDisplay.textContent, /analysis.duration.unknown/);
+  assert.doesNotMatch(h.controls.analysisDurationDisplay.textContent, /0 min 00 s/);
+});

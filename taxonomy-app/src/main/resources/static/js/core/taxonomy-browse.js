@@ -762,8 +762,8 @@
     }
 
     // ── Master render dispatcher ──────────────────────────────────────────────
-    function renderView(data, scores) {
-        if (!data || data.length === 0) { return; }
+    // Metadata-only refresh must not rebuild a live diagram or disturb its reading context.
+    function refreshAnalysisDuration() {
         var durationDisplay = document.getElementById('analysisDurationDisplay');
         if (durationDisplay) {
             var duration = S.lastAnalysisDurationMillis;
@@ -773,6 +773,11 @@
                 ? Math.floor(duration / 60000) + ' min ' + String(Math.floor(duration / 1000) % 60).padStart(2, '0') + ' s'
                 : t('analysis.duration.unknown'));
         }
+    }
+
+    function renderView(data, scores) {
+        refreshAnalysisDuration();
+        if (!data || data.length === 0) { return; }
         document.getElementById('taxonomyTree').removeAttribute('data-view-rendered');
         switch (S.currentView) {
             case 'list':
@@ -2307,6 +2312,7 @@
     // ── Public API for cross-module use ──────────────────────────────────────
     window.TaxonomyBrowse = {
         renderView: renderView,
+        refreshAnalysisDuration: refreshAnalysisDuration,
         switchView: switchView,
         showStatus: showStatus,
         clearStatus: clearStatus,

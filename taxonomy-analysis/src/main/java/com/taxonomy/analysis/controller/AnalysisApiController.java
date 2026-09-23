@@ -239,9 +239,11 @@ public class AnalysisApiController {
         try {
         analysisExecutor.execute(() -> {
             worker.set(Thread.currentThread());
+            long startedNanos = System.nanoTime(); // Worker time, excluding the executor queue.
             try (var run = reservation == null ? null : reservation.open()) {
                 com.taxonomy.analysis.usecase.AnalysisStreamEventHandler emit = event -> {
                     if (completed.get()) return;
+                    event = withMeasuredDuration(event, startedNanos);
                     boolean terminal = event instanceof AnalysisStreamEvent.Complete
                             || event instanceof AnalysisStreamEvent.Error;
                     if (disconnected.get()) {
@@ -400,16 +402,32 @@ public class AnalysisApiController {
         return false;
     }
 
+    /** Keep authoritative use-case timing; measure controller-generated terminal fallbacks once. */
+    private static AnalysisStreamEvent withMeasuredDuration(AnalysisStreamEvent event, long startedNanos) {
+        if (event instanceof AnalysisStreamEvent.Complete complete && complete.analysisDurationMillis() == null) {
+            return new AnalysisStreamEvent.Complete(complete.status(), complete.allScores(), complete.warnings(),
+                    complete.discrepancies(), complete.productCoverageGaps(),
+                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
+        }
+        if (event instanceof AnalysisStreamEvent.Error error && error.analysisDurationMillis() == null) {
+            return new AnalysisStreamEvent.Error(error.status(), error.errorMessage(), error.partialScores(),
+                    error.warnings(), error.discrepancies(), error.productCoverageGaps(), error.partialReasons(),
+                    Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));
+        }
+        return event;
+    }
+
     private static AnalysisStreamEvent.Error terminalMappingFailure(AnalysisStreamEvent event) {
         String message = "The terminal result could not be fully rendered; collected raw evidence is retained.";
         if (event instanceof AnalysisStreamEvent.Complete complete) {
             return new AnalysisStreamEvent.Error("ERROR", message, complete.allScores(), complete.warnings(),
-                    complete.discrepancies(), complete.productCoverageGaps());
+                    complete.discrepancies(), complete.productCoverageGaps(), Map.of(), complete.analysisDurationMillis());
         }
         var error = (AnalysisStreamEvent.Error) event;
         String prior = error.errorMessage();
         return new AnalysisStreamEvent.Error("ERROR", prior == null || prior.isBlank() ? message : prior + " " + message,
-                error.partialScores(), error.warnings(), error.discrepancies(), error.productCoverageGaps(), error.partialReasons());
+                error.partialScores(), error.warnings(), error.discrepancies(), error.productCoverageGaps(),
+                error.partialReasons(), error.analysisDurationMillis());
     }
 
     /** No catalogue lookup, derived-score fabrication, or retry of the failed mapper. */
@@ -420,6 +438,7 @@ public class AnalysisApiController {
         payload.put("discrepancies", error.discrepancies());
         payload.put("productCoverageGaps", error.productCoverageGaps());
         payload.put("scoreSemanticsUnavailable", true);
+        payload.put("analysisDurationMillis", error.analysisDurationMillis());
         return new AnalysisSseEventMapper.MappedEvent("error", payload);
     }
 
@@ -430,10 +449,12 @@ public class AnalysisApiController {
         if (event instanceof AnalysisStreamEvent.Complete complete) {
             payload.put("status", complete.status());
             payload.put("warnings", complete.warnings());
+            payload.put("analysisDurationMillis", complete.analysisDurationMillis());
         } else if (event instanceof AnalysisStreamEvent.Error error) {
             payload.put("status", error.status());
             payload.put("errorMessage", error.errorMessage());
             payload.put("warnings", error.warnings());
+            payload.put("analysisDurationMillis", error.analysisDurationMillis());
         }
         return new AnalysisSseEventMapper.MappedEvent(mapped.name(), payload);
     }
@@ -444,13 +465,14 @@ public class AnalysisApiController {
         if (event instanceof AnalysisStreamEvent.Complete complete) {
             var terminal = run.finishAndGet(complete.status());
             return new AnalysisStreamEvent.Complete(terminal.resultStatus(), complete.allScores(),
-                    terminal.warnings(complete.warnings()), complete.discrepancies(), complete.productCoverageGaps());
+                    terminal.warnings(complete.warnings()), complete.discrepancies(), complete.productCoverageGaps(),
+                    complete.analysisDurationMillis());
         }
         if (event instanceof AnalysisStreamEvent.Error error) {
             var terminal = run.finishAndGet(error.status());
             return new AnalysisStreamEvent.Error(terminal.resultStatus(), terminal.message(error.errorMessage()),
                     error.partialScores(), terminal.warnings(error.warnings()), error.discrepancies(),
-                    error.productCoverageGaps(), error.partialReasons());
+                    error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis());
         }
         return event;
     }

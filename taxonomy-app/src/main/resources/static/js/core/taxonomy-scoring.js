@@ -128,6 +128,7 @@
         S.currentScores = S.currentEffectiveScores;
         S.lastAnalysisDurationMillis = Number.isSafeInteger(envelope.analysisDurationMillis)
             && envelope.analysisDurationMillis >= 0 ? envelope.analysisDurationMillis : null;
+        if (typeof B().refreshAnalysisDuration === 'function') B().refreshAnalysisDuration();
     }
 
     function describeScore(code, effective) {
@@ -804,6 +805,7 @@
                     });
                     S.lastAnalysisDurationMillis = Number.isSafeInteger(data.analysisDurationMillis)
                         && data.analysisDurationMillis >= 0 ? data.analysisDurationMillis : null;
+                    if (typeof B().refreshAnalysisDuration === 'function') B().refreshAnalysisDuration();
                     syncVisibleScoreNodes();
                     updateAnalysisLog({ timestamp: new Date(), totalNodes: Object.keys(S.currentScores || {}).length,
                         matchedEntries: Object.entries(S.currentScores || {}).filter(function (entry) { return entry[1] > 0; }),
