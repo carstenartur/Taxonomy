@@ -34,6 +34,26 @@ export function validateSystemSnapshot(snapshot) {
   }
 }
 
+/** End the previous editing task before a deliberate hard locale reload. */
+export async function settleDraftBeforeLocaleNavigation(page) {
+  await page.evaluate(async () => {
+    const session = window.TaxonomyAnalysisSession;
+    const before = session?.state?.();
+    if (!session?.saveNow || !before?.workspaceId || !before.ready
+        || before.restoring || before.conflict) {
+      throw new Error('Analysis draft is not ready for locale navigation');
+    }
+    if (await session.saveNow() !== true) {
+      throw new Error('Analysis draft was not saved before locale navigation');
+    }
+    const after = session.state();
+    if (after.workspaceId !== before.workspaceId || !after.ready
+        || after.restoring || after.conflict) {
+      throw new Error('Analysis draft or workspace changed during locale navigation preparation');
+    }
+  });
+}
+
 /** Continue in the existing authenticated browser/app; no extra service or LLM calls. */
 export async function runSystemInformationAcceptance({
   page, evidence, outputDir, onLocaleNavigationStart, onLocaleNavigationEnd
@@ -48,6 +68,7 @@ export async function runSystemInformationAcceptance({
     try {
       const url = new URL(page.url());
       url.searchParams.set('lang', locale);
+      await settleDraftBeforeLocaleNavigation(page);
       onLocaleNavigationStart?.(locale);
       try {
         await page.goto(url.toString(), { waitUntil: 'domcontentloaded' });
