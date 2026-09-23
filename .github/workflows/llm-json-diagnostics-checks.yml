@@ -5,20 +5,42 @@ on:
 permissions:
   contents: read
 jobs:
-  snapshot:
+  red:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-      - name: Archive the exact source tree
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Execute tests against unchanged production source
         run: |
           mkdir -p evidence
-          git archive --format=tar HEAD | gzip > evidence/source.tar.gz
-          git rev-parse HEAD > evidence/commit.txt
-      - uses: actions/upload-artifact@v4
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-analysis -am test -Dtest=LlmJsonValidationTest,PromptLiteralDataTest -Dsurefire.failIfNoSpecifiedTests=false > evidence/red.log 2>&1
+          result=$?
+          set -e
+          cat evidence/red.log
+          test "$result" -ne 0
+          python3 - <<'PY'
+          import glob, xml.etree.ElementTree as ET
+          reports = glob.glob('taxonomy-analysis/target/surefire-reports/TEST-*Test.xml')
+          suites = [ET.parse(p).getroot() for p in reports]
+          assert len(suites) == 2, [s.get('name') for s in suites]
+          assert sum(int(s.get('tests', 0)) for s in suites) == 12
+          assert sum(int(s.get('failures', 0)) for s in suites) == 11
+          assert sum(int(s.get('errors', 0)) for s in suites) == 0
+          print('Expected RED: 12 tests, 11 assertion failures, 0 errors')
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
         with:
-          name: llm-diagnostics-source
-          path: evidence/
-          retention-days: 7
+          name: llm-diagnostics-red
+          path: |
+            evidence/
+            **/target/surefire-reports/
+          retention-days: 14
