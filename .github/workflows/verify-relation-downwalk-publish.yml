@@ -1,64 +1,56 @@
-name: Verify requirement relation downwalk
+name: Prepare reviewed relation dependency baseline
 on:
   push:
     branches: [verify/relation-downwalk-publish]
 permissions:
-  contents: read
-concurrency:
-  group: relation-downwalk-publication
-  cancel-in-progress: false
+  contents: write
 jobs:
-  verification:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with: {persist-credentials: false, fetch-depth: 0}
-      - name: Reconstruct exact locally tested product tree
-        run: |
-          cp .verification-publication/prepare.py /tmp/prepare-relations.py
-          python3 /tmp/prepare-relations.py
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
-        with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Compile reactor and run focused JUnit regression suites
-        run: |
-          set -euo pipefail
-          ./mvnw -B -ntp -pl taxonomy-analysis,taxonomy-portfolio -am -Dtest=RelationSearchEngineTest,RelationSearchIntegrationTest,EvidenceRelationProjectionTest,ScopedEvidenceDiagramTest,RelationEvidenceMappingTest,AnalyzeRequirementUseCaseTest -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee /tmp/relation-maven.log
-      - name: Execute production UI and streaming contracts
-        run: |
-          set -euo pipefail
-          node --test .github/scripts/relation-search-report.test.mjs .github/scripts/relation-search-confidence.test.mjs .github/scripts/product-score-streaming.test.mjs 2>&1 | tee /tmp/relation-node.log
-          git diff --exit-code
-          test "$(git write-tree)" = cd9be4de356bbe280685988134e6d373d5329082
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
-        if: always()
-        with:
-          name: relation-downwalk-focused-verification
-          path: |
-            /tmp/relation-maven.log
-            /tmp/relation-node.log
-            **/target/surefire-reports/**
-          if-no-files-found: warn
-          retention-days: 14
-  publish-feature:
-    needs: verification
+  prepare-commit:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with: {persist-credentials: true, fetch-depth: 0}
-      - name: Reconstruct verified product tree without running product code
+        with:
+          ref: 0783f6f4accc831bd3228bd9d0347d2461553205
+          persist-credentials: false
+      - name: Prepare precisely two reviewed files and an unreferenced commit
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          cp .verification-publication/prepare.py /tmp/prepare-relations.py
-          python3 /tmp/prepare-relations.py
-      - name: Publish only the authorized feature branch without force
-        run: |
-          set -euo pipefail
-          current=$(git ls-remote origin refs/heads/feature/requirement-relation-downwalk | cut -f1)
-          test "$current" = 409562e3eb739569aac3c56619207acd45bd09a8
-          test "$(git write-tree)" = cd9be4de356bbe280685988134e6d373d5329082
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(analysis): add bounded requirement-scoped relation downwalk' -m 'Implements the scoped relationship search plan in #1111. Preserve evidence, alternatives, unresolved work and budget reports; opt-in activation. Exact product tree passed focused Java 21 reactor/JUnit and Node contracts. Full PR CI and independent review remain required.'
-          git push origin HEAD:refs/heads/feature/requirement-relation-downwalk
-          printf 'Published feature commit: %s\nProduct tree: %s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" >> "$GITHUB_STEP_SUMMARY"
+          python3 - <<'PY'
+          import json, os, subprocess, urllib.request
+          from pathlib import Path
+          parent = '0783f6f4accc831bd3228bd9d0347d2461553205'
+          assert subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() == parent
+          baseline = Path('.github/architecture-dependency-baseline.json')
+          document = Path('docs/dev/requirement-relation-downwalk.md')
+          data = json.loads(baseline.read_text())
+          source = 'com.taxonomy.analysis.relations'
+          for target in ['com.taxonomy.catalog.model', 'com.taxonomy.catalog.service', 'com.taxonomy.relations.service']:
+              assert not any(e['fromPackage'] == source and e['toPackage'] == target for e in data['edges'])
+              data['edges'].append(dict(fromContext='analysis', fromPackage=source, toContext='knowledge', toPackage=target, classDependencyCount=2))
+          data['edges'].sort(key=lambda e: (e['fromContext'], e['fromPackage'], e['toContext'], e['toPackage']))
+          baseline.write_text(json.dumps(data, indent=2) + '\n')
+          extra = '\n## Reviewed module dependencies\n\nThe hierarchical adapter reuses the existing analysis-to-knowledge direction; it introduces no reverse dependency or new Maven module. `RequirementRelationSearchService` and its scalar catalogue adapter each reference `TaxonomyService` and `TaxonomyNode` (two class pairs per package). `RequirementRelationSearch` and `RequirementRelationSearchService` each reference the existing `RelationCompatibilityMatrix` (two class pairs). These six concrete class pairs are recorded in the architecture dependency baseline. The dependency ratchet remains exact: no wildcard exemptions or general count increases are allowed. Bytecode inspection with `jdeps -verbose:class` confirms these pairs; the regular ArchUnit gate is the authoritative merged-source check.\n'
+          assert '## Reviewed module dependencies' not in document.read_text()
+          document.write_text(document.read_text() + extra)
+          for path, expected in [(baseline, 'da3d4d49a3f095a3f9aaa934ca55c2abc052c334'), (document, '665242f9e4a17495ecba93b1df451dbc53f9c780')]:
+              assert subprocess.check_output(['git', 'hash-object', str(path)], text=True).strip() == expected
+          subprocess.run(['git', 'diff', '--check'], check=True)
+          subprocess.run(['git', 'add', str(baseline), str(document)], check=True)
+          expected_tree = '346d78379b5b61e6da39f028283f620e5cc2103b'
+          assert subprocess.check_output(['git', 'write-tree'], text=True).strip() == expected_tree
+          def post(resource, body):
+              request = urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/' + resource,
+                  data=json.dumps(body).encode(), method='POST', headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'],
+                  'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json', 'X-GitHub-Api-Version': '2022-11-28'})
+              with urllib.request.urlopen(request, timeout=30) as response:
+                  return json.load(response)
+          tree = post('trees', {'base_tree': '47694e028294b92d7205d27aca7ba6903c18d60f', 'tree': [
+              {'path': str(path), 'mode': '100644', 'type': 'blob', 'content': path.read_text()} for path in [baseline, document]]})
+          assert tree['sha'] == expected_tree
+          commit = post('commits', {'message': 'docs(architecture): record the six scoped relation-search catalogue dependencies\n\nKeep the exact architecture ratchet and all existing dependency counts. No reverse dependency or new module. Actual source pairs checked with jdeps; ordinary merged-source ArchUnit validation remains required.', 'tree': tree['sha'], 'parents': [parent]})
+          print('PREPARED_COMMIT=' + commit['sha'])
+          print('PREPARED_TREE=' + tree['sha'])
+          print('No branch references were moved. Publication is a separate authorized connector operation.')
+          PY
