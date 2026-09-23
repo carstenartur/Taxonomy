@@ -27,6 +27,12 @@ public class RequirementArchitectureViewService {
         this.pipeline = pipeline;
     }
 
+    /** Projects only requirement-scoped evidence; does not read or mutate catalogue relations. */
+    public RequirementArchitectureView buildFromEvidence(Map<String,Integer> scores, int maxNodes,
+                                                         com.taxonomy.dto.RelationSearchReport report) {
+        return pipeline.projectEvidence(report, scores, maxNodes);
+    }
+
     /**
      * Builds the architecture view from analysis scores (without provisional relations).
      *

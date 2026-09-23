@@ -87,6 +87,25 @@ Die HSQLDB-Poolvariablen gelten nur im HSQLDB-Profil; PostgreSQL, MSSQL und Orac
 
 Das eingehende Kontingent wird nach der Autorisierung geprüft. Lokale Benutzer werden über den kanonischen Benutzernamen zugeordnet; Keycloak-Browser- und Bearer-Zugriffe verwenden das unveränderliche Paar `iss`/`sub` und teilen daher auch nach einer Änderung von `preferred_username` dasselbe Budget. Forwarding-Header und Peer-Adressen sind keine Kontingentidentitäten; abgewiesene Aufrufe erzeugen keinen Zustand. Die begrenzten In-Memory-Zähler laufen bei Inaktivität ab und liefern HTTP `429` mit `Retry-After` und `Cache-Control: no-store`. Sie gelten je Anwendungsinstanz; für ein clusterweites Budget bei mehreren Replikaten ist deshalb ein verteilter äußerer Begrenzer erforderlich. Der gleiche Pfadvertrag gilt am Root-Kontext und unter einem Präfix wie `/taxonomy`.
 
+## Anforderungsbezogene Beziehungssuche
+
+Diese zusätzliche Phase ist ausdrücklich zuschaltbar und nutzt den ausgewählten
+generativen Provider. Die Werte sind Server-Startparameter, keine im Repository
+gespeicherten Preferences-Felder. Die Grenzen betreffen logische Prüfversuche
+dieser Phase (Beitragsextraktion, Navigation und Verifikation), nicht die vorherige
+Kategoriebewertung, physische HTTP-Wiederholungen oder kumulierte Rechnungstokens.
+Erreichte Grenzen erhalten fertige Belege und kennzeichnen unerledigte Arbeit;
+sie sind kein Nachweis, dass keine Beziehung existiert.
+
+| Variable | Spring-Eigenschaft / Geltungsbereich | Standard | Bedeutung |
+|---|---|---|---|
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `false` | Aktiviert anforderungsbezogene Beziehungssuche statt reiner Score-Ableitung. Originalanforderung und aktive Architektur werden nicht automatisch übernommen oder überschrieben. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximale logische Prüfversuche dieser Phase, 0–10000. Null ist zulässig und lässt Quellen ausdrücklich unbewertet. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_DEPTH` | `taxonomy.analysis.relations.hierarchical.max-depth` | `8` | Maximale Navigationstiefe, 0–100. Ein dadurch begrenzter Zweig bleibt unerledigt statt als irrelevant zu gelten. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_BATCH_SIZE` | `taxonomy.analysis.relations.hierarchical.batch-size` | `10` | Angebotene Quell- oder Geschwisterkandidaten pro Prüfung, 1–100. Kein Aufrufbudget für den gesamten Lauf. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items` | `512` | Maximale zugelassene Suchaufgaben, 1–100000. Umfasst Navigation und Verifikation; zurückgestellte Arbeit wird ausgewiesen. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources` | `32` | Maximale konkrete positiv bewertete Quellknoten für die Beitragsextraktion, 1–256. Ausgelassene Quellen werden gemeldet. |
+
 ## LLM Record/Replay
 
 Produktiv normalerweise vollständig deaktiviert lassen.

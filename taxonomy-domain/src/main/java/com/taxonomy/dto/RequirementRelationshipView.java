@@ -4,6 +4,12 @@ import com.taxonomy.model.SeedType;
 
 public class RequirementRelationshipView {
 
+    /** Scoped evidence remains a proposal, not a confirmed global catalogue relation. */
+    private java.util.List<RelationSearchModel.Edge> requirementEvidence = java.util.List.of();
+    public java.util.List<RelationSearchModel.Edge> getRequirementEvidence() { return requirementEvidence; }
+    public void setRequirementEvidence(java.util.List<RelationSearchModel.Edge> evidence) { this.requirementEvidence = java.util.List.copyOf(evidence); }
+
+
     /** Relation is included for scoring traceability (typically root-level propagation). */
     public static final String CATEGORY_TRACE = "trace";
 

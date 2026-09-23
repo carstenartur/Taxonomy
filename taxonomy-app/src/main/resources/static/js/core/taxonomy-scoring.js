@@ -1143,6 +1143,45 @@
         return h;
     }
 
+    function renderRelationSearchReport(report) {
+        if (!report) return '';
+        var result = report.result || {};
+        var html = '<details class="relation-search-report border rounded p-2 mb-2"><summary>'
+            + escapeHtml(t('relation.search.title')) + ' · '
+            + escapeHtml(t('relation.search.budget', report.totalCalls, report.maxCalls)) + '</summary>';
+        html += '<p class="small mt-2">' + escapeHtml(t(report.searchExhausted
+            ? 'relation.search.exhausted' : 'relation.search.partial')) + '</p>';
+        function section(label, items, format) {
+            if (!Array.isArray(items) || !items.length) return;
+            html += '<h6 class="mt-2">' + escapeHtml(t(label)) + '</h6>';
+            items.slice(0, 30).forEach(function (item) {
+                html += '<div class="small border-bottom py-1">' + format(item) + '</div>';
+            });
+            if (items.length > 30) html += '<p class="small">'
+                + escapeHtml(t('relation.search.omitted', 30, items.length)) + '</p>';
+        }
+        var warnings = Array.isArray(report.warnings) ? report.warnings.slice() : [];
+        if (report.stopReason) warnings.push(report.stopReason);
+        section('relation.search.warnings', warnings, function (warning) { return escapeHtml(warning); });
+        section('relation.search.questions', result.unfinished, function (item) {
+            return escapeHtml((item.sourceId || '') + ' · ' + (item.type || '') + ' · '
+                + (item.reason || '') + ': ' + (item.question || ''));
+        });
+        section('relation.search.evidence', result.edges, function (edge) {
+            var part = edge.contribution || {}, node = part.source || {}, target = edge.target || {}, evidence = edge.evidence || {};
+            var from = edge.direction === 'INCOMING' ? target.id : node.id;
+            var to = edge.direction === 'INCOMING' ? node.id : target.id;
+            return '<strong>' + escapeHtml((from || '') + ' → ' + (to || '') + ' · '
+                    + (edge.type || '') + ' · ' + (evidence.necessity || '')) + '</strong><br>'
+                + escapeHtml((part.text || '') + ' / ' + (evidence.contribution || '')) + '<br>'
+                + escapeHtml(evidence.rationale || '') + '<br>'
+                + '<q>' + escapeHtml(part.quote || '') + '</q> / <q>' + escapeHtml(evidence.quote || '') + '</q><br>'
+                + escapeHtml(t('relation.search.conditions')) + ': '
+                + escapeHtml([part.condition, evidence.condition, evidence.alternativeGroup].filter(Boolean).join(' / '));
+        });
+        return html + '</details>';
+    }
+
     function renderArchitectureView(view) {
         const panel = document.getElementById('architectureViewPanel');
         const content = document.getElementById('architectureViewContent');
@@ -1173,6 +1212,8 @@
             }
             html += '</div>';
         }
+
+        html += renderRelationSearchReport(view.relationSearchReport);
 
         // Notes
         if (view.notes && view.notes.length > 0) {
@@ -1821,6 +1862,7 @@
         appendLlmLogEntry: appendLlmLogEntry,
         requestLeafJustification: requestLeafJustification,
         showLeafJustificationModal: showLeafJustificationModal,
+        renderRelationSearchReport: renderRelationSearchReport,
         renderArchitectureView: renderArchitectureView,
         renderSuggestedRelations: renderSuggestedRelations,
         renderSummaryView: renderSummaryView,

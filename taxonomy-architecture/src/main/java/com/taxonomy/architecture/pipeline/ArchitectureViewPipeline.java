@@ -31,6 +31,15 @@ public class ArchitectureViewPipeline {
         this.invariantValidator = invariantValidator;
     }
 
+    /** Separate projection strategy on the same view model: never expand seeds or score products. */
+    public RequirementArchitectureView projectEvidence(com.taxonomy.dto.RelationSearchReport report,
+                                                       java.util.Map<String,Integer> scores, int maxNodes) {
+        ArchitectureViewContext context = new ArchitectureViewContext(scores, "", maxNodes, java.util.List.of());
+        EvidenceRelationProjection.apply(context, report);
+        invariantValidator.beforeReturn(context);
+        return context.getView();
+    }
+
     public RequirementArchitectureView execute(ArchitectureViewContext context) {
         RequirementArchitectureView view = context.getView();
         List<ArchitecturePipelineStep> enabledSteps = registry.getEnabledSteps();

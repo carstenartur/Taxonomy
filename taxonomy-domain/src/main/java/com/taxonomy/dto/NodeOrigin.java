@@ -11,6 +11,9 @@ package com.taxonomy.dto;
  */
 public enum NodeOrigin {
 
+    /** Endpoint retained by requirement-scoped, separately verified relation evidence. */
+    RELATION_EVIDENCE("node.origin.relation.evidence"),
+
     /** Node received an LLM score at or above the anchor threshold. */
     DIRECT_SCORED("node.origin.direct.scored"),
 

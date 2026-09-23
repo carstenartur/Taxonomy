@@ -5,6 +5,12 @@ import java.util.List;
 
 public class RequirementArchitectureView {
 
+    /** Full immutable evidence behind this proposal view; filters do not mutate this report. */
+    private RelationSearchReport relationSearchReport;
+    public RelationSearchReport getRelationSearchReport() { return relationSearchReport; }
+    public void setRelationSearchReport(RelationSearchReport report) { this.relationSearchReport = report; }
+
+
     private List<RequirementAnchor> anchors = new ArrayList<>();
     private List<RequirementElementView> includedElements = new ArrayList<>();
     private List<RequirementRelationshipView> includedRelationships = new ArrayList<>();

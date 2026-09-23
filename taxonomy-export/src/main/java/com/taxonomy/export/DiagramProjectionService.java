@@ -85,9 +85,26 @@ public class DiagramProjectionService {
     public DiagramModel project(RequirementArchitectureView view, String title) {
         DiagramModel raw = projectRaw(view, title);
         DiagramModel curated = policy.apply(raw);
+        if (view != null && view.getRelationSearchReport() != null) {
+            // A visual policy may omit nodes/edges, but may not transform a verified
+            // relation into an unverified one by rerouting or changing its type.
+            var verified = new java.util.HashSet<EdgeSignature>();
+            raw.edges().forEach(edge -> verified.add(EdgeSignature.of(edge)));
+            var endpoints = new java.util.HashSet<String>();
+            curated.nodes().forEach(node -> endpoints.add(node.id()));
+            var retained = curated.edges().stream().filter(edge -> verified.contains(EdgeSignature.of(edge))
+                    && endpoints.contains(edge.sourceId()) && endpoints.contains(edge.targetId())).toList();
+            curated = new DiagramModel(curated.title(), curated.nodes(), retained, curated.layout());
+        }
         log.info("DiagramProjection: {} nodes, {} edges from architecture view",
                 curated.nodes().size(), curated.edges().size());
         return curated;
+    }
+
+    private record EdgeSignature(String source, String target, String type) {
+        static EdgeSignature of(DiagramEdge edge) {
+            return new EdgeSignature(edge.sourceId(), edge.targetId(), edge.relationType());
+        }
     }
 
     /**
