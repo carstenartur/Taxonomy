@@ -1,74 +1,132 @@
-name: Verify relation CI repair
+name: Verify integrated shared child assessment
 on:
   push:
     branches: [verify/pr1112-pr1113-repair-20260923]
-permissions:
-  contents: read
+permissions: {contents: read}
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 40
+    outputs:
+      product-tree: ${{ steps.identity.outputs.tree }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with: {persist-credentials: false, fetch-depth: 0}
-      - name: Reconstruct exact four-file correction
+        with: {persist-credentials: false, fetch-depth: 1}
+      - name: Combine existing features without a main-branch write
         run: |
-          cp .verification/repair1112.py /tmp/repair1112.py
-          git fetch origin 37142420865bd76b6492908b46ae9c8f060a7d51
-          git checkout --detach 37142420865bd76b6492908b46ae9c8f060a7d51
-          python3 /tmp/repair1112.py
+          cp -r .verification /tmp/shared-repair
+          git fetch --quiet --no-tags origin bf09ff0abd4c4f02a2c82a2ed1e593122585e045 eb93cf88de5f190b2cfc3c32c0cc6fa7e919d642 f40f58a259dbde09877476d4736f22ec5662523d --depth=20
+          git checkout --quiet --detach bf09ff0abd4c4f02a2c82a2ed1e593122585e045
+          git -c user.name=Verification -c user.email=verification@example.invalid merge --no-commit --no-ff eb93cf88de5f190b2cfc3c32c0cc6fa7e919d642
+          python3 /tmp/shared-repair/repair1113.py tests
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
-      - name: Execute unchanged failing suites against repaired source
+      - name: Prove all eight new regressions fail before production changes
         run: |
-          set -o pipefail
-          ./mvnw -B -ntp -pl taxonomy-app -am -Dtest=ArchitectureContextDependencyRatchetTest,ConfigurationReferenceContractTest -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee /tmp/repair1112.log
-          test "$(git write-tree)" = 9d6ef7223714aa5a5364131fe010a3dfb99d9cfb
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-analysis -am -Dtest=RelationSearchIntegrationTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/shared-red.log 2>&1
+          status=$?
+          tail -n 65 /tmp/shared-red.log
+          test "$status" -ne 0 || exit 1
           python3 - <<'PY'
-          from pathlib import Path
           import xml.etree.ElementTree as ET
-          for name in ['com.taxonomy.ArchitectureContextDependencyRatchetTest','com.taxonomy.config.ConfigurationReferenceContractTest']:
-              path=Path('taxonomy-app/target/surefire-reports/TEST-'+name+'.xml')
-              root=ET.parse(path).getroot()
-              assert int(root.get('tests','0')) > 0
-              assert all(int(root.get(key,'0')) == 0 for key in ['failures','errors','skipped'])
-              print(name,root.attrib)
+          from pathlib import Path
+          path=Path('taxonomy-analysis/target/surefire-reports/TEST-com.taxonomy.analysis.relations.RelationSearchIntegrationTest.xml')
+          suite=ET.parse(path).getroot()
+          assert int(suite.get('tests','0')) == 40, suite.attrib
+          assert int(suite.get('failures','0')) == 8, suite.attrib
+          assert all(int(suite.get(k,'0')) == 0 for k in ['errors','skipped']), suite.attrib
+          print('RED_VERIFIED',suite.attrib)
+          Path('/tmp/shared-red.xml').write_bytes(path.read_bytes())
           PY
+      - name: Wire the real relationship protocol to the shared contract
+        id: identity
+        run: |
+          python3 /tmp/shared-repair/repair1113.py implementation
+          git add -A
+          tree=$(git write-tree)
+          echo "tree=$tree" >> "$GITHUB_OUTPUT"
+          echo "PRODUCT_TREE=$tree"
+          git diff --cached --stat
+      - name: Run all analysis and upstream unit tests
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-analysis -am test > /tmp/shared-green.log 2>&1
+          status=$?
+          tail -n 85 /tmp/shared-green.log
+          exit "$status"
+      - name: Verify exact architecture and configuration contracts
+        run: |
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-app -am -Dtest=ArchitectureContextDependencyRatchetTest,ConfigurationReferenceContractTest,RelationEvidenceMappingTest,EvidenceRelationProjectionTest,ScopedEvidenceDiagramTest -Dsurefire.failIfNoSpecifiedTests=false test > /tmp/shared-architecture.log 2>&1
+          status=$?
+          tail -n 85 /tmp/shared-architecture.log
+          exit "$status"
+      - name: Verify UI contracts and positive JUnit counts
+        run: |
+          npm --prefix .github run test:requirement-relations > /tmp/shared-ui.log 2>&1
+          tail -n 15 /tmp/shared-ui.log
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+          from pathlib import Path
+          expected={'taxonomy-analysis':{'com.taxonomy.analysis.relations.RelationSearchIntegrationTest':40,'com.taxonomy.analysis.relations.RelationSearchEngineTest':24,'com.taxonomy.analysis.assessment.ChildAssessmentContractTest':1,'com.taxonomy.analysis.service.SharedChildAssessmentParserTest':4},'taxonomy-app':{'com.taxonomy.ArchitectureContextDependencyRatchetTest':22,'com.taxonomy.config.ConfigurationReferenceContractTest':11}}
+          for module,suites in expected.items():
+              for name,count in suites.items():
+                  suite=ET.parse(Path(module)/'target/surefire-reports'/('TEST-'+name+'.xml')).getroot()
+                  assert int(suite.get('tests','0'))>=count and all(int(suite.get(k,'0'))==0 for k in ['failures','errors','skipped']),suite.attrib
+                  print(name,suite.attrib)
+          PY
+          test "$(git write-tree)" = '${{ steps.identity.outputs.tree }}'
+          git diff --exit-code
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: pr1112-ci-repair-evidence
+          name: shared-child-integration-evidence
           path: |
-            /tmp/repair1112.log
-            taxonomy-app/target/surefire-reports/TEST-*.xml
+            /tmp/shared-*.log
+            /tmp/shared-red.xml
+            taxonomy-*/target/surefire-reports/TEST-*.xml
           if-no-files-found: error
           retention-days: 7
   prepare-commit:
     needs: verify
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     permissions: {contents: write}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with: {persist-credentials: false, fetch-depth: 0}
-      - name: Prepare exact verified commit without moving any branch
-        env: {GH_TOKEN: '${{ github.token }}'}
+        with: {persist-credentials: false, fetch-depth: 1}
+      - name: Reconstruct and prepare the tested tree without moving refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_TREE: ${{ needs.verify.outputs.product-tree }}
         run: |
-          cp .verification/repair1112.py /tmp/repair1112.py
-          git fetch origin 37142420865bd76b6492908b46ae9c8f060a7d51
-          git checkout --detach 37142420865bd76b6492908b46ae9c8f060a7d51
-          python3 /tmp/repair1112.py
+          cp -r .verification /tmp/shared-repair
+          git fetch --quiet --no-tags origin bf09ff0abd4c4f02a2c82a2ed1e593122585e045 eb93cf88de5f190b2cfc3c32c0cc6fa7e919d642 f40f58a259dbde09877476d4736f22ec5662523d --depth=20
+          git checkout --quiet --detach bf09ff0abd4c4f02a2c82a2ed1e593122585e045
+          git -c user.name=Verification -c user.email=verification@example.invalid merge --no-commit --no-ff eb93cf88de5f190b2cfc3c32c0cc6fa7e919d642
+          python3 /tmp/shared-repair/repair1113.py tests
+          python3 /tmp/shared-repair/repair1113.py implementation
+          git add -A
+          test "$(git write-tree)" = "$EXPECTED_TREE"
           python3 - <<'PY'
-          import json,os,urllib.request
+          import json,os,subprocess,urllib.request
           from pathlib import Path
           def post(kind,data):
-              request=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/'+kind,data=json.dumps(data).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
-              with urllib.request.urlopen(request,timeout=30) as response:return json.load(response)
-          files=['.github/architecture-dependency-baseline.json','docs/de/CONFIGURATION_REFERENCE.md','docs/en/CONFIGURATION_REFERENCE.md','docs/dev/requirement-relation-downwalk.md']
-          tree=post('trees',{'base_tree':'e58944ce2e3c8cf73e18e7443c7f0d59e8db9023','tree':[{'path':p,'type':'blob','mode':'100644','content':Path(p).read_text()} for p in files]})
-          assert tree['sha']=='9d6ef7223714aa5a5364131fe010a3dfb99d9cfb'
-          commit=post('commits',{'message':'fix(analysis): align relation configuration and exact dependency inventory\n\nPreserve current main and the existing relation-search implementation. Correct the actual ArchUnit class-pair count and document six server settings in both canonical references. The unchanged architecture and configuration contracts pass in a fresh Java21 Maven source build. No thresholds, test exclusions or canonical workflows change. Full PR CI remains required.','tree':tree['sha'],'parents':['368221424c9b43b46a17e3c7e65586eed77b33ce','f40f58a259dbde09877476d4736f22ec5662523d']})
+              req=urllib.request.Request('https://api.github.com/repos/carstenartur/Taxonomy/git/'+kind,data=json.dumps(data).encode(),method='POST',headers={'Authorization':'Bearer '+os.environ['GH_TOKEN'],'Accept':'application/vnd.github+json','Content-Type':'application/json'})
+              with urllib.request.urlopen(req,timeout=60) as response:return json.load(response)
+          names=subprocess.check_output(['git','diff','--cached','--name-only','bf09ff0abd4c4f02a2c82a2ed1e593122585e045'],text=True).splitlines()
+          assert names and all(not n.startswith(('.verification/','.github/workflows/')) for n in names)
+          entries=[]
+          for name in names:
+              entry={'path':name,'mode':'100644','type':'blob'}
+              if Path(name).exists():entry['content']=Path(name).read_text()
+              else:entry['sha']=None
+              entries.append(entry)
+          tree=post('trees',{'base_tree':'95a8a907587db6ef7a094a7ca5bceb65eae4aa97','tree':entries})
+          assert tree['sha']==os.environ['EXPECTED_TREE'],tree
+          commit=post('commits',{'message':'refactor(analysis): reuse child assessment in the active relation search\n\nIntegrate repaired #1112 into #1113 without a parallel relation service. Preserve exact offered identities and ordering, reject incomplete answers before interpretation, and retain distinct contribution conditions. Eight new protocol regressions fail before the change and pass after it; fresh source-built analysis/upstream and architecture/configuration checks run on this exact tree. No canonical CI, thresholds, exclusions or main references change. Full PR verification remains required.','tree':tree['sha'],'parents':['bf09ff0abd4c4f02a2c82a2ed1e593122585e045','eb93cf88de5f190b2cfc3c32c0cc6fa7e919d642']})
           print('PREPARED_COMMIT='+commit['sha'])
           print('PREPARED_TREE='+tree['sha'])
-          print('No branch references were moved.')
+          print('No branch references moved.')
           PY
