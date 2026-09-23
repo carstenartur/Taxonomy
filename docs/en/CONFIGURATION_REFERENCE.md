@@ -87,6 +87,24 @@ A full Copilot run needs a configured generative provider. `LOCAL_ONNX` supplies
 
 The incoming quota runs after authorization. Local users are keyed by canonical username; Keycloak browser and bearer access use the immutable `iss`/`sub` pair and therefore share one budget even when `preferred_username` changes. Forwarding headers and peer addresses are not quota identities. Rejected requests do not allocate state. The bounded in-memory counters expire after inactivity and return HTTP `429` with `Retry-After` and `Cache-Control: no-store`. They are scoped to one application instance, so multi-replica deployments require an outer distributed quota if a cluster-wide budget is required. The same matching contract applies at the root context and below a prefix such as `/taxonomy`.
 
+## Requirement-scoped relationship search
+
+This additional phase is opt-in and uses the selected generative provider. These
+are server startup properties, not repository-backed Preferences fields. Limits
+bound this phase's logical evaluation attempts (contribution extraction,
+navigation and verification), not earlier category scoring, physical HTTP retries
+or cumulative billed tokens. Exhausted limits preserve completed evidence and
+explicitly report unfinished work; they do not certify that no relationship exists.
+
+| Variable | Spring property / scope | Default | Meaning |
+|---|---|---|---|
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `false` | Enables requirement-scoped relationship discovery instead of score-only inference. Original requirements and active architecture are not automatically adopted or overwritten. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximum logical evaluation attempts in this phase, 0–10000. Zero is supported and leaves sources explicitly unassessed. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_DEPTH` | `taxonomy.analysis.relations.hierarchical.max-depth` | `8` | Navigation depth limit, 0–100. A depth-limited branch remains unfinished rather than becoming a negative finding. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_BATCH_SIZE` | `taxonomy.analysis.relations.hierarchical.batch-size` | `10` | Offered source or sibling candidates per evaluation, 1–100. It is not a total-run call budget. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_WORK_ITEMS` | `taxonomy.analysis.relations.hierarchical.max-work-items` | `512` | Maximum admitted search work items, 1–100000. Includes navigation and verification work; deferred work is reported. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_SOURCES` | `taxonomy.analysis.relations.hierarchical.max-sources` | `32` | Maximum concrete positively scored source nodes considered for contribution extraction, 1–256. Omitted sources are reported. |
+
 ## LLM record/replay tooling
 
 These switches are for deterministic test evidence. A production process should normally leave all of them disabled.

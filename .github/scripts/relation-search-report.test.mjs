@@ -1,0 +1,28 @@
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+import test from 'node:test';
+import vm from 'node:vm';
+const source = await readFile(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-scoring.js', import.meta.url), 'utf8');
+const escapeHtml = value => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+const window = { TaxonomyState: {} };
+vm.runInNewContext(source, { window, TaxonomyI18n: { t: (key, ...args) => `${key} ${args.join(' ')}` }, TaxonomyUtils: { escapeHtml } });
+const render = window.TaxonomyScoring.renderRelationSearchReport;
+const base = () => ({ totalCalls: 5, maxCalls: 24, searchExhausted: false, sources: [], warnings: [], stopReason: '', result: { edges: [], unfinished: [], trace: [] } });
+const edge = necessity => ({ type: 'CONSUMES', direction: 'OUTGOING', contribution: { source: { id: 'reader' }, text: 'Read only', quote: 'Read evidence.', condition: 'authorized role' }, target: { id: 'evidence' }, evidence: { necessity, contribution: 'existing record', quote: 'Read evidence.', rationale: 'Read, not write', condition: 'if requested', alternativeGroup: 'channel' } });
+test('absent report leaves legacy view unchanged', () => assert.equal(render(null), ''));
+test('evaluation budget is visible', () => { const html = render(base()); assert.match(html, /relation.search.budget 5 24/); assert.match(html, /<details/); assert.match(html, /<summary/); });
+test('partial is not presented as complete', () => { assert.match(render(base()), /relation.search.partial/); const r = base(); r.searchExhausted = true; assert.match(render(r), /relation.search.exhausted/); });
+test('unresolved questions are shown with source and reason', () => { const r = base(); r.result.unfinished = [{ sourceId: 'reader', reason: 'UNRESOLVED', question: 'Which channel?' }]; assert.match(render(r), /reader/); assert.match(render(r), /Which channel\?/); });
+test('optional and alternative evidence is visible without adoption controls', () => { const r = base(); r.result.edges = [edge('OPTIONAL'), edge('ALTERNATIVE')]; const html = render(r); assert.match(html, /OPTIONAL/); assert.match(html, /ALTERNATIVE/); assert.match(html, /channel/); assert.match(html, /authorized role/); assert.doesNotMatch(html, /<button|onclick=/); });
+test('provider and requirement strings cannot inject markup', () => { const r = base(); r.warnings = ['<script>alert(1)</script>']; r.result.edges = [edge('REQUIRED')]; r.result.edges[0].evidence.rationale = '<img src=x onerror="alert(1)">'; const html = render(r); assert.doesNotMatch(html, /<script|<img/); assert.match(html, /&lt;script/); assert.match(html, /&lt;img/); });
+test('bounded rendering states omissions explicitly', () => { const r = base(); r.result.unfinished = Array.from({ length: 81 }, (_, i) => ({ sourceId: `n${i}`, reason: 'CALL_BUDGET', question: 'Pending' })); const html = render(r); assert.match(html, /relation.search.omitted/); assert.doesNotMatch(html, /n80/); });
+test('full requirement context and checked rationale are available', () => { const r = base(); r.result.edges = [edge('REQUIRED')]; const html = render(r); assert.match(html, /Read evidence\./); assert.match(html, /Read, not write/); assert.match(html, /existing record/); assert.match(html, /reader/); });
+test('regular UI verification executes both relationship report suites', async () => {
+  const { scripts } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const name of ['relation-search-report.test.mjs', 'relation-search-confidence.test.mjs']) {
+    assert.ok(scripts['test:requirement-relations'].includes(`scripts/${name}`), `missing regular suite: ${name}`);
+  }
+  for (const owner of ['verify:ui', 'verify:ui-contracts']) {
+    assert.ok(scripts[owner].includes('npm run test:requirement-relations'), `missing suite owner: ${owner}`);
+  }
+});

@@ -651,6 +651,11 @@
         return `<div><div class="card h-100"><div class="card-body"><div class="h3">${value}</div><div class="small text-body-secondary">${escapeHtml(label)}</div></div></div></div>`;
     }
 
+    function snapshotConfidence(value) {
+        // These proposals have no calibrated confidence; do not render a fabricated 0% or score product.
+        return state.snapshotDetail?.analysis?.relationSearchReport ? '—' : `${Math.round(value * 100)}%`;
+    }
+
     function renderMappings(mappings) {
         const target = document.getElementById('mappingTable');
         if (!mappings.length) return renderEmpty(target, t('noMappings'));
@@ -658,7 +663,7 @@
             + `<thead><tr><th>${escapeHtml(t('node'))}</th><th>${escapeHtml(t('score'))}</th><th>${escapeHtml(t('relevance'))}</th>`
             + `<th>${escapeHtml(t('confidence'))}</th><th>${escapeHtml(t('origin'))}</th><th>${escapeHtml(t('review'))}</th><th>${escapeHtml(t('action'))}</th></tr></thead>`
             + `<tbody>${mappings.map(mapping => `<tr><td><code>${escapeHtml(mapping.nodeCode)}</code><div class="small">${escapeHtml(mapping.nodeTitle || '')}</div><div class="small text-body-secondary">${escapeHtml(mapping.hierarchyPath || '')}</div></td>`
-                + `<td>${mapping.directScore}%</td><td>${Math.round(mapping.relevance * 100)}%</td><td>${Math.round(mapping.confidence * 100)}%</td>`
+                + `<td>${mapping.directScore}%</td><td>${Math.round(mapping.relevance * 100)}%</td><td>${snapshotConfidence(mapping.confidence)}</td>`
                 + `<td>${escapeHtml(humanize(mapping.mappingOrigin))}</td><td>${escapeHtml(humanize(mapping.reviewStatus))}</td><td>${escapeHtml(humanize(mapping.actionStatus))}</td></tr>`).join('')}</tbody></table>`;
     }
 
@@ -668,7 +673,7 @@
         target.innerHTML = `<table class="table table-sm align-middle"><caption>${escapeHtml(t('relation'))}</caption>`
             + `<thead><tr><th>${escapeHtml(t('relation'))}</th><th>${escapeHtml(t('relevance'))}</th><th>${escapeHtml(t('confidence'))}</th><th>${escapeHtml(t('review'))}</th></tr></thead>`
             + `<tbody>${relations.map(relation => `<tr><td><code>${escapeHtml(relation.sourceCode)}</code> → <code>${escapeHtml(relation.targetCode)}</code><div class="small">${escapeHtml(relation.relationType)}</div></td>`
-                + `<td>${Math.round(relation.relevance * 100)}%</td><td>${Math.round(relation.confidence * 100)}%</td><td>${escapeHtml(humanize(relation.reviewStatus))}</td></tr>`).join('')}</tbody></table>`;
+                + `<td>${Math.round(relation.relevance * 100)}%</td><td>${snapshotConfidence(relation.confidence)}</td><td>${escapeHtml(humanize(relation.reviewStatus))}</td></tr>`).join('')}</tbody></table>`;
     }
 
     function renderDecisions() {
