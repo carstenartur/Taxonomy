@@ -1,0 +1,60 @@
+name: Verify IP official boundary full
+on:
+  push:
+    branches: [ "verify/ip-official-boundary-full-20260923" ]
+permissions:
+  contents: read
+jobs:
+  knowledge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: ./mvnw -B -ntp -pl taxonomy-knowledge -am test
+  analysis:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: ./mvnw -B -ntp -pl taxonomy-analysis -am test
+  architecture:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: ./mvnw -B -ntp -pl taxonomy-architecture -am test
+  tooling-audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - name: Full tooling suite
+        run: ./mvnw -B -ntp -pl taxonomy-tooling -am test
+      - name: Real catalogue audit
+        run: |
+          java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.CatalogueOverlayProposalGenerator
+          python3 - <<'PY'
+          import json
+          d=json.load(open('target/catalogue-overlay/catalogue-overlay-proposal.json'))['hierarchyAudit']
+          print('AUDIT_COUNTS', {k:v for k,v in d.items() if not isinstance(v,list)})
+          print('GAPS', len(d['attachmentGapCandidates']))
+          print('LOCAL_GROUPS', len(d['navigationGroupProposals']))
+          assert len(d['navigationGroupProposals']) == 0
+          assert len(d['attachmentGapCandidates']) == d['missingSourceParentCount'] + d['invalidSourceParentCount']
+          PY
+  app-guards:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: { persist-credentials: false }
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: { distribution: temurin, java-version: "21", cache: maven }
+      - run: ./mvnw -B -ntp -pl taxonomy-app -am -Dtest=TaxonomyMigrationVersionContractTest,ArchitectureContextDependencyRatchetTest,ConfigurationReferenceContractTest -Dsurefire.failIfNoSpecifiedTests=false test
