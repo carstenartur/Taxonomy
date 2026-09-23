@@ -1,0 +1,64 @@
+name: Verify requirement relation downwalk
+on:
+  push:
+    branches: [verify/relation-downwalk-publish]
+permissions:
+  contents: read
+concurrency:
+  group: relation-downwalk-publication
+  cancel-in-progress: false
+jobs:
+  verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {persist-credentials: false, fetch-depth: 0}
+      - name: Reconstruct exact locally tested product tree
+        run: |
+          cp .verification-publication/prepare.py /tmp/prepare-relations.py
+          python3 /tmp/prepare-relations.py
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Compile reactor and run focused JUnit regression suites
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-analysis,taxonomy-portfolio -am -Dtest=RelationSearchEngineTest,RelationSearchIntegrationTest,EvidenceRelationProjectionTest,ScopedEvidenceDiagramTest,RelationEvidenceMappingTest,AnalyzeRequirementUseCaseTest -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee /tmp/relation-maven.log
+      - name: Execute production UI and streaming contracts
+        run: |
+          set -euo pipefail
+          node --test .github/scripts/relation-search-report.test.mjs .github/scripts/relation-search-confidence.test.mjs .github/scripts/product-score-streaming.test.mjs 2>&1 | tee /tmp/relation-node.log
+          git diff --exit-code
+          test "$(git write-tree)" = cd9be4de356bbe280685988134e6d373d5329082
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: relation-downwalk-focused-verification
+          path: |
+            /tmp/relation-maven.log
+            /tmp/relation-node.log
+            **/target/surefire-reports/**
+          if-no-files-found: warn
+          retention-days: 14
+  publish-feature:
+    needs: verification
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {persist-credentials: true, fetch-depth: 0}
+      - name: Reconstruct verified product tree without running product code
+        run: |
+          cp .verification-publication/prepare.py /tmp/prepare-relations.py
+          python3 /tmp/prepare-relations.py
+      - name: Publish only the authorized feature branch without force
+        run: |
+          set -euo pipefail
+          current=$(git ls-remote origin refs/heads/feature/requirement-relation-downwalk | cut -f1)
+          test "$current" = 409562e3eb739569aac3c56619207acd45bd09a8
+          test "$(git write-tree)" = cd9be4de356bbe280685988134e6d373d5329082
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'feat(analysis): add bounded requirement-scoped relation downwalk' -m 'Implements the scoped relationship search plan in #1111. Preserve evidence, alternatives, unresolved work and budget reports; opt-in activation. Exact product tree passed focused Java 21 reactor/JUnit and Node contracts. Full PR CI and independent review remain required.'
+          git push origin HEAD:refs/heads/feature/requirement-relation-downwalk
+          printf 'Published feature commit: %s\nProduct tree: %s\n' "$(git rev-parse HEAD)" "$(git rev-parse HEAD^{tree})" >> "$GITHUB_STEP_SUMMARY"
