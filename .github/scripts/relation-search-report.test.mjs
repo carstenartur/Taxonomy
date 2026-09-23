@@ -17,3 +17,12 @@ test('optional and alternative evidence is visible without adoption controls', (
 test('provider and requirement strings cannot inject markup', () => { const r = base(); r.warnings = ['<script>alert(1)</script>']; r.result.edges = [edge('REQUIRED')]; r.result.edges[0].evidence.rationale = '<img src=x onerror="alert(1)">'; const html = render(r); assert.doesNotMatch(html, /<script|<img/); assert.match(html, /&lt;script/); assert.match(html, /&lt;img/); });
 test('bounded rendering states omissions explicitly', () => { const r = base(); r.result.unfinished = Array.from({ length: 81 }, (_, i) => ({ sourceId: `n${i}`, reason: 'CALL_BUDGET', question: 'Pending' })); const html = render(r); assert.match(html, /relation.search.omitted/); assert.doesNotMatch(html, /n80/); });
 test('full requirement context and checked rationale are available', () => { const r = base(); r.result.edges = [edge('REQUIRED')]; const html = render(r); assert.match(html, /Read evidence\./); assert.match(html, /Read, not write/); assert.match(html, /existing record/); assert.match(html, /reader/); });
+test('regular UI verification executes both relationship report suites', async () => {
+  const { scripts } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+  for (const name of ['relation-search-report.test.mjs', 'relation-search-confidence.test.mjs']) {
+    assert.ok(scripts['test:requirement-relations'].includes(`scripts/${name}`), `missing regular suite: ${name}`);
+  }
+  for (const owner of ['verify:ui', 'verify:ui-contracts']) {
+    assert.ok(scripts[owner].includes('npm run test:requirement-relations'), `missing suite owner: ${owner}`);
+  }
+});
