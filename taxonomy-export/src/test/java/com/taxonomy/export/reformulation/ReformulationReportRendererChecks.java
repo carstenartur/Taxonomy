@@ -8,8 +8,8 @@ import java.util.*;
 public final class ReformulationReportRendererChecks {
     private ReformulationReportRendererChecks() {}
     public static void main(String[] args) {
-        literalMarkup(); historyAndOrigins(); immutableInputs();
-        System.out.println("REFORMULATION_REPORT_RENDERER_OK 3");
+        literalMarkup(); historyAndOrigins(); immutableInputs(); literalTildesInHeadings();
+        System.out.println("REFORMULATION_REPORT_RENDERER_OK 4");
     }
     static void literalMarkup() {
         String text="alpha\n``````\n<script>fail()</script>\n# forged heading & ÄÖÜ";
@@ -46,6 +46,28 @@ public final class ReformulationReportRendererChecks {
         require(before.indexOf("a: first")<before.indexOf("b: second"),"Unstable metadata order");
         try{input("xx",false,"x",List.of(),List.of(),List.of(),Map.of());throw new AssertionError("Invalid language accepted");}
         catch(IllegalArgumentException expected){/* required */}
+    }
+    static void literalTildesInHeadings() {
+        String title = "Erfassung ~~nicht freigegeben~~ und ~optional~";
+        var section = new Section("BP", "BP", title, "Keep the exact wording", List.of(), List.of(), List.of());
+        var question = new DecisionQuestion("q-tilde", new DecisionQuestion.Key("time", "channel", "BP"),
+                "~~Browser~~ oder ~Terminal~?", List.of(), List.of(),
+                new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT, List.of(), null, null, null),
+                List.of(), List.of(), "No decision made", DecisionQuestion.State.OPEN);
+        for (String language : List.of("de", "en")) {
+            var report = new ReformulationReportRenderer.Input(language, false, Map.of(), "original", "proposal",
+                    List.of(section), List.of(), List.of(question), List.of(), new ValidationReport(List.of()), "{}");
+            String markdown = ReformulationReportRenderer.markdown(report);
+            String literalTitle = title.replace("~", "\\~");
+            String literalQuestion = question.wording().replace("~", "\\~");
+            require(markdown.contains("### BP — " + literalTitle + "\n\n"),
+                    "Section title can be interpreted as strikethrough instead of literal text");
+            require(markdown.contains("### q-tilde — " + literalQuestion + "\n\n"),
+                    "Question wording can be interpreted as strikethrough instead of literal text");
+            require(ReformulationReportRenderer.html(report).contains(title), "HTML literal tildes changed");
+            require(report.sections().getFirst().title().equals(title)
+                    && report.questions().getFirst().wording().equals(question.wording()), "Persisted report text changed");
+        }
     }
     private static ReformulationReportRenderer.Input input(String language,boolean adopted,String text,List<DecisionQuestion> qs,List<DecisionAnswer> as,List<Statement> ss,Map<String,String> metadata){
         return new ReformulationReportRenderer.Input(language,adopted,metadata,"original",text,List.of(),ss,qs,as,new ValidationReport(List.of()),"{\"untrusted\":\"<script>\"}");

@@ -158,7 +158,7 @@ public final class ReformulationReportRenderer {
         return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;");
     }
     private static String heading(String text) {
-        return escape(text).replace("\\", "\\\\").replace("`", "\\`").replace("*", "\\*").replace("_", "\\_")
+        return escape(text).replace("\\", "\\\\").replace("`", "\\`").replace("*", "\\*").replace("_", "\\_").replace("~", "\\~")
                 .replace("[", "\\[").replace("]", "\\]").replace("#", "\\#").replace("\r", " ").replace("\n", " ");
     }
     /** User-provided backticks must never terminate a literal field block. */

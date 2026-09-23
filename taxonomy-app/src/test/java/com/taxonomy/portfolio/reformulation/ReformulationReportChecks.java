@@ -93,6 +93,7 @@ public final class ReformulationReportChecks {
                 }
                 Files.writeString(dir.resolve("adoption."+format),response.body());
             }
+            ReformulationReportBoundaryChecks.verify(app, http, base, f, command);
             proposals.saveDraft(f.project,f.requirement,f.proposal,3,new ReformulationDtos.SaveDraftRequest("Later offer text","Later draft"),"admin",f.scope);
             projects.addRequirementVersion(f.project,f.requirement,new CreateRequirementVersionRequest("Independent later version","Later",null),"admin",f.scope);
             var after=projects.getRequirement(f.project,f.requirement,"admin",f.scope); var offerAfter=proposals.get(f.project,f.requirement,f.proposal,"admin",f.scope);
