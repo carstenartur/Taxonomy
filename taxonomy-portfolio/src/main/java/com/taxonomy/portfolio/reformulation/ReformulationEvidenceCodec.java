@@ -23,6 +23,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -43,7 +44,6 @@ public class ReformulationEvidenceCodec {
 
     private final PortfolioJsonCodec json;
     private final ReformulationAdoptionRepository adoptions;
-    private final ReformulationAdoptionPreviewRepository previews;
     private final ReformulationPortableEvidenceRepository importedEvidence;
     private final ArchitectureProjectRepository projects;
     private final ProjectRequirementRepository requirements;
@@ -54,14 +54,12 @@ public class ReformulationEvidenceCodec {
     public ReformulationEvidenceCodec(
             PortfolioJsonCodec json,
             ReformulationAdoptionRepository adoptions,
-            ReformulationAdoptionPreviewRepository previews,
             ReformulationPortableEvidenceRepository importedEvidence,
             ArchitectureProjectRepository projects,
             ProjectRequirementRepository requirements,
             ProjectRequirementVersionRepository versions) {
         this.json = json;
         this.adoptions = adoptions;
-        this.previews = previews;
         this.importedEvidence = importedEvidence;
         this.projects = projects;
         this.requirements = requirements;
@@ -154,7 +152,24 @@ public class ReformulationEvidenceCodec {
         if (scopeKey == null || scopeKey.isBlank()) {
             throw PortfolioException.validation("Reformulation evidence requires an exact portfolio scope");
         }
-        for (Evidence item : evidence) {
+        List<Evidence> ordered = evidence.stream()
+                .sorted(Comparator.comparing(Evidence::projectKey)
+                        .thenComparing(Evidence::requirementKey)
+                        .thenComparingInt(Evidence::targetVersionNumber)
+                        .thenComparing(Evidence::evidenceHash))
+                .toList();
+        for (Evidence item : ordered) {
+            ArchitectureProject project = projects
+                    .findByScopeKeyAndProjectKeyIgnoreCase(scopeKey, item.projectKey())
+                    .orElseThrow(() -> PortfolioException.validation(
+                            "Reformulation evidence project was not materialized"));
+            requirements.findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCaseForUpdate(
+                            project.getId(), scopeKey, item.requirementKey())
+                    .orElseThrow(() -> PortfolioException.validation(
+                            "Reformulation evidence requirement was not materialized"));
+
+            // The pessimistic requirement-row lock serializes identical evidence imports
+            // across application instances before this idempotence check.
             var existing = importedEvidence.findByScopeKeyAndEvidenceHash(
                     scopeKey, item.evidenceHash());
             if (existing.isPresent()) {
@@ -180,9 +195,18 @@ public class ReformulationEvidenceCodec {
     }
 
     private List<Evidence> sourceEvidence(String scopeKey) {
-        List<Evidence> result = new ArrayList<>();
-        for (ReformulationAdoption adoption :
-                adoptions.findByScopeKeyOrderByCreatedAtAsc(scopeKey)) {
+        List<ReformulationAdoption> rows =
+                adoptions.findByScopeKeyOrderByCreatedAtAsc(scopeKey);
+        if (rows.isEmpty()) return List.of();
+
+        record SourceRow(
+                ReformulationAdoption adoption,
+                ReformulationAdoptionDtos.Result receipt,
+                ReformulationAdoptionDtos.PreviewContent preview) {}
+
+        List<SourceRow> sources = new ArrayList<>(rows.size());
+        var sourceVersionIds = new LinkedHashSet<Long>();
+        for (ReformulationAdoption adoption : rows) {
             ReformulationAdoptionDtos.Result receipt =
                     json.read(adoption.getPayload(), ReformulationAdoptionDtos.Result.class);
             if (receipt == null
@@ -192,13 +216,10 @@ public class ReformulationEvidenceCodec {
                 throw PortfolioException.conflict(
                         "Stored adoption receipt is inconsistent with its reformulation evidence");
             }
-            ReformulationAdoptionPreview previewRow = previews
-                    .findByIdAndProposalIdAndScopeKey(
-                            adoption.getPreviewId(), adoption.getProposalId(), scopeKey)
-                    .orElseThrow(() -> PortfolioException.conflict(
-                            "Adoption preview is missing for portable reformulation evidence"));
-            if (!StableIdentityHash.sha256(previewRow.getPayload())
-                    .equals(previewRow.getContentHash())) {
+            ReformulationAdoptionPreview previewRow = adoption.getPreview();
+            if (previewRow == null
+                    || !StableIdentityHash.sha256(previewRow.getPayload())
+                            .equals(previewRow.getContentHash())) {
                 throw PortfolioException.conflict(
                         "Stored adoption preview integrity check failed");
             }
@@ -210,26 +231,38 @@ public class ReformulationEvidenceCodec {
                 throw PortfolioException.conflict(
                         "Adoption preview is incomplete for portable reformulation evidence");
             }
+            sourceVersionIds.add(preview.sourceVersionId());
+            sources.add(new SourceRow(adoption, receipt, preview));
+        }
 
-            Long projectId = preview.currentRequirement().projectId();
-            ArchitectureProject project = projects.findByIdAndScopeKey(projectId, scopeKey)
-                    .orElseThrow(() -> PortfolioException.conflict(
-                            "Adoption project is missing for portable reformulation evidence"));
-            ProjectRequirement requirement = requirements
-                    .findByIdAndProjectIdAndScopeKey(
-                            adoption.getRequirementId(), projectId, scopeKey)
-                    .orElseThrow(() -> PortfolioException.conflict(
-                            "Adoption requirement is missing for portable reformulation evidence"));
-            ProjectRequirementVersion source = versions
-                    .findByIdAndRequirementIdAndScopeKey(
-                            preview.sourceVersionId(), requirement.getId(), scopeKey)
-                    .orElseThrow(() -> PortfolioException.conflict(
-                            "Adoption source version is missing for portable reformulation evidence"));
-            ProjectRequirementVersion target = versions
-                    .findByIdAndRequirementIdAndScopeKey(
-                            adoption.getTargetVersionId(), requirement.getId(), scopeKey)
-                    .orElseThrow(() -> PortfolioException.conflict(
-                            "Adoption target version is missing for portable reformulation evidence"));
+        Map<Long, ProjectRequirementVersion> sourceVersions = new LinkedHashMap<>();
+        for (ProjectRequirementVersion source :
+                versions.findByScopeKeyAndIdIn(scopeKey, sourceVersionIds)) {
+            sourceVersions.put(source.getId(), source);
+        }
+
+        List<Evidence> result = new ArrayList<>(sources.size());
+        for (SourceRow row : sources) {
+            ReformulationAdoption adoption = row.adoption();
+            ReformulationAdoptionDtos.Result receipt = row.receipt();
+            ReformulationAdoptionDtos.PreviewContent preview = row.preview();
+
+            ProjectRequirementVersion target = adoption.getVersion();
+            ProjectRequirement requirement = target == null ? null : target.getRequirement();
+            ArchitectureProject project = requirement == null ? null : requirement.getProject();
+            ProjectRequirementVersion source = sourceVersions.get(preview.sourceVersionId());
+            if (target == null || requirement == null || project == null
+                    || source == null
+                    || !scopeKey.equals(target.getScopeKey())
+                    || !scopeKey.equals(requirement.getScopeKey())
+                    || !scopeKey.equals(project.getScopeKey())
+                    || !scopeKey.equals(source.getScopeKey())
+                    || !Objects.equals(adoption.getRequirementId(), requirement.getId())
+                    || !Objects.equals(source.getRequirementId(), requirement.getId())) {
+                throw PortfolioException.conflict(
+                        "Adoption business identity is inconsistent with portable reformulation evidence");
+            }
+
             int previousVersion = preview.currentRequirement().currentVersion().versionNumber();
             if (target.getVersionNumber() != receipt.targetVersionNumber()
                     || receipt.previousVersionId()
