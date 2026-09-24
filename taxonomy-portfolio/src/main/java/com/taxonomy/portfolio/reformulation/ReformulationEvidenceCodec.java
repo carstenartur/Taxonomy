@@ -315,10 +315,13 @@ public class ReformulationEvidenceCodec {
                 || blank(decoded.rationale())
                 || !projectKey.equals(decoded.projectKey())
                 || !requirementKey.equals(decoded.requirementKey())
-                || targetVersion != decoded.targetVersionNumber()
-                || !targetTextHash.equals(decoded.targetContentHash())) {
+                || targetVersion != decoded.targetVersionNumber()) {
             throw PortfolioException.validation(
                     "Reformulation evidence integrity payload does not match its business identity");
+        }
+        if (!targetTextHash.equals(decoded.targetContentHash())) {
+            throw PortfolioException.validation(
+                    "Reformulation evidence does not match target requirement version");
         }
 
         List<BlockAst> targetBlocks = document.blocksOfKind(PortfolioGitService.VERSION_BLOCK)
