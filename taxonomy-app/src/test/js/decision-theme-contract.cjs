@@ -43,3 +43,11 @@ test('decision map light and dark semantic surfaces keep readable text contrast'
     assert.match(css, /\[data-bs-theme="dark"\]\s*\{[\s\S]*--decision-score-surface:/);
     assert.match(css, /\.decision-score-badge\s*\{[\s\S]*border:\s*2px solid var\(--decision-score-stroke\)/);
 });
+
+test('decision map keeps semantic theme tokens live after a theme toggle', () => {
+    const start = views.indexOf('function renderDecisionMap');
+    const end = views.indexOf('function renderDecisionTable', start);
+    const block = views.slice(start, end);
+    assert.match(block, /return ['"]var\\(['"] \\+ token/);
+    assert.doesNotMatch(block, /getComputedStyle\\(document\\.documentElement\\)\\.getPropertyValue\\(token\\)/);
+});

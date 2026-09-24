@@ -665,8 +665,9 @@
         var RANK_EMOJIS = ['', '\uD83E\uDD47', '\uD83E\uDD48', '\uD83E\uDD49']; // 🥇🥈🥉
 
         function dmTheme(token, fallback) {
-            var value = getComputedStyle(document.documentElement).getPropertyValue(token).trim();
-            return value || fallback;
+            // Keep the semantic token live so theme changes update existing SVG nodes
+            // without resetting zoom, collapsed branches or the reading position.
+            return 'var(' + token + ', ' + fallback + ')';
         }
 
         function dmNodeFill(d) {

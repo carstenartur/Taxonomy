@@ -262,3 +262,11 @@ test('Sparx export help has paired documents and translated table-of-contents en
         assert.match(bundle,/^help\.toc\.SPARX_CURRENT_VIEW_EXPORT=.+$/m);
     }
 });
+
+test('main Export SVG and PNG handlers request full-model exports rather than viewport captures',()=>{
+    const browse=readFileSync(path.resolve(__dirname,'../../main/resources/static/js/core/taxonomy-browse.js'),'utf8');
+    assert.match(browse,/btnId === 'exportSvg'[\\s\\S]*?TaxonomyExport\\.exportSvg\\(\\)/);
+    assert.match(browse,/btnId === 'exportPng'[\\s\\S]*?TaxonomyExport\\.exportPng\\(\\)/);
+    assert.doesNotMatch(browse,/btnId === 'exportSvg'[\\s\\S]{0,180}?exportSvg\\('taxonomyTree'\\)/);
+    assert.doesNotMatch(browse,/btnId === 'exportPng'[\\s\\S]{0,180}?exportPng\\('taxonomyTree'\\)/);
+});

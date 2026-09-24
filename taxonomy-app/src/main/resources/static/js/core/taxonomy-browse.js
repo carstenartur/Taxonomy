@@ -865,13 +865,13 @@
         }
         if (btnId === 'exportSvg') {
             if (window.TaxonomyExport) {
-                window.TaxonomyExport.exportSvg('taxonomyTree');
+                window.TaxonomyExport.exportSvg();
             }
             return;
         }
         if (btnId === 'exportPng') {
             if (window.TaxonomyExport) {
-                window.TaxonomyExport.exportPng('taxonomyTree');
+                window.TaxonomyExport.exportPng();
             }
             return;
         }
