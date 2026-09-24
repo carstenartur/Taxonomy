@@ -4,6 +4,8 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/css/taxonomy.css', import.meta.url), 'utf8');
+const template = readFileSync(new URL('../../taxonomy-app/src/main/resources/templates/index.html', import.meta.url), 'utf8');
 
 // Minimal DOM boundary. The production monitor, lifecycle and renderer run unchanged.
 class Element {
@@ -26,6 +28,7 @@ function fixture(detail, status = 'FAILED', options = {}) {
     const log = new Element('div'); log.id = 'llmCommLogContent';
     const anchor = new Element('div'); anchor.id = 'statusArea'; root.append(anchor, log);
     const timers = new Map(); let timerId = 0, detailCalls = 0;
+    const clipboardWrites = [];
     const runtime = { workspaceId: 'workspace', analysisGeneration: 1 };
     let snapshot = { operationId: 'run', sequence: 1, phase: 'SCORING', status: 'RUNNING',
         startedAt: 1000, serverTime: 4000, lastActivityAt: 4000, evaluatedNodes: 1,
@@ -43,9 +46,10 @@ function fixture(detail, status = 'FAILED', options = {}) {
             async cancelRun() {}
         }
     };
-    vm.runInNewContext(source, { window, document, AbortController, console });
+    const navigator = { clipboard: { async writeText(value) { clipboardWrites.push(value); } } };
+    vm.runInNewContext(source, { window, document, navigator, AbortController, console });
     const monitor = window.TaxonomyAnalysisProgress.start('run');
-    return { root, log, monitor, runtime,
+    return { root, log, monitor, runtime, clipboardWrites,
         get detailCalls() { return detailCalls; },
         get button() { return descendants(root).find(element => element.tagName === 'BUTTON'); },
         update(values) { snapshot = { ...snapshot, ...values, sequence: snapshot.sequence + 1 }; },
@@ -58,6 +62,28 @@ function fixture(detail, status = 'FAILED', options = {}) {
 const reply = 'please provide details.\nSecond line. <script>not executable</script>';
 const failure = { prompt: 'First prompt line\nSecond prompt line', response: reply,
     error: 'Expected a JSON object; inspect the LLM communication log.', truncated: false };
+
+test('expanded LLM diagnostics use the page flow instead of nested vertical scrollports', () => {
+    const logTag = template.match(/<div id="llmCommLogContent"[\\s\\S]*?>/);
+    assert.ok(logTag, 'LLM communication log container exists');
+    assert.doesNotMatch(logTag[0], /max-height\\s*:/i);
+    assert.doesNotMatch(logTag[0], /overflow-y\\s*:\\s*auto/i);
+
+    const diagnosticRule = css.match(/#llmCommLogContent \\.llm-log-prompt,\\s*#llmCommLogContent \\.llm-log-response\\s*\\{[^}]*\\}/);
+    assert.ok(diagnosticRule, 'prompt/response diagnostic style exists');
+    assert.doesNotMatch(diagnosticRule[0], /max-height\\s*:/i);
+    assert.doesNotMatch(diagnosticRule[0], /overflow-y\\s*:\\s*auto/i);
+});
+
+test('expanded response and prompt each provide a direct copy action', async () => {
+    const view = fixture(failure); await view.tick(); await view.open();
+    const copyButtons = descendants(view.log).filter(element =>
+        element.tagName === 'BUTTON' && element.className.split(/\\s+/).includes('llm-log-copy'));
+    assert.equal(copyButtons.length, 2, 'response and prompt both expose copy controls');
+    copyButtons[0].emit('click'); copyButtons[1].emit('click'); await flush();
+    assert.deepEqual(view.clipboardWrites, [reply, failure.prompt]);
+    view.monitor.stop();
+});
 
 test('failed call shows separate, whitespace-preserving response and prompt with its error', async () => {
     const view = fixture(failure); await view.tick(); await view.open();
