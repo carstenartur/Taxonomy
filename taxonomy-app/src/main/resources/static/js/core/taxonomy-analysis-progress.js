@@ -232,11 +232,10 @@
         button.addEventListener('click', async function () {
             if (!raw) return;
             try {
-                if (typeof navigator === 'undefined' || !navigator.clipboard
-                        || typeof navigator.clipboard.writeText !== 'function') {
+                if (!window.TaxonomyUtils || typeof window.TaxonomyUtils.copyText !== 'function') {
                     throw new Error('clipboard unavailable');
                 }
-                await navigator.clipboard.writeText(raw);
+                await window.TaxonomyUtils.copyText(raw);
                 button.textContent = text('Kopiert', 'Copied');
             } catch (_) {
                 button.textContent = text('Kopieren fehlgeschlagen', 'Copy failed');
