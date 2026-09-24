@@ -1,4 +1,5 @@
 package com.taxonomy.portfolio.reformulation;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import java.util.List;
 import java.util.Optional;
@@ -7,5 +8,6 @@ public interface ReformulationAdoptionRepository extends JpaRepository<Reformula
             String id, String proposalId, Long requirementId, String scopeKey);
     boolean existsByPreviewId(String previewId);
     List<ReformulationAdoption> findByProposalIdAndScopeKeyOrderByCreatedAtDesc(String proposalId,String scopeKey);
+    @EntityGraph(attributePaths = {"preview", "version", "version.requirement", "version.requirement.project"})
     List<ReformulationAdoption> findByScopeKeyOrderByCreatedAtAsc(String scopeKey);
 }
