@@ -74,7 +74,7 @@ public class PortablePortfolioGitService extends PortfolioGitService {
         String requirements = addPortableCurrentVersion(
                 super.exportPortfolio(username, context), username, context);
         String decisions = decisionContributor.contributeTo(requirements, username, context);
-        return reformulationEvidence.contributeTo(decisions, username, context);
+        return reformulationEvidence.contributeTo(decisions, PortfolioScope.key(username, context));
     }
 
     @Override
@@ -85,7 +85,7 @@ public class PortablePortfolioGitService extends PortfolioGitService {
         String requirements = addPortableCurrentVersion(
                 super.contributeTo(existingDsl, username, context), username, context);
         String decisions = decisionContributor.contributeTo(requirements, username, context);
-        return reformulationEvidence.contributeTo(decisions, username, context);
+        return reformulationEvidence.contributeTo(decisions, PortfolioScope.key(username, context));
     }
 
     @Override
@@ -98,7 +98,7 @@ public class PortablePortfolioGitService extends PortfolioGitService {
         restorePortableCurrentVersions(dsl, username, context);
         PortfolioDecisionGitContributor.DecisionMaterializeResult decisions =
                 decisionContributor.materialize(dsl, username, context);
-        reformulationEvidence.storeImported(portableEvidence, username, context);
+        reformulationEvidence.storeImported(portableEvidence, PortfolioScope.key(username, context));
         List<String> warnings = new ArrayList<>(result.warnings());
         warnings.addAll(decisions.warnings());
         return new MaterializeResult(
