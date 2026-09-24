@@ -48,6 +48,6 @@ test('decision map keeps semantic theme tokens live after a theme toggle', () =>
     const start = views.indexOf('function renderDecisionMap');
     const end = views.indexOf('function renderDecisionTable', start);
     const block = views.slice(start, end);
-    assert.match(block, /return ['"]var\\(['"] \\+ token/);
-    assert.doesNotMatch(block, /getComputedStyle\\(document\\.documentElement\\)\\.getPropertyValue\\(token\\)/);
+    assert.match(block, /return ['"]var\(['"] \+ token/);
+    assert.doesNotMatch(block, /getComputedStyle\(document\.documentElement\)\.getPropertyValue\(token\)/);
 });
