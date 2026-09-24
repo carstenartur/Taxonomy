@@ -243,8 +243,6 @@
     white-space: pre-wrap;
     word-break: break-word;
     overflow-wrap: break-word;
-    max-height: 200px;
-    overflow-y: auto;
     background: #f8f9fa;
     border: 1px solid #e9ecef;
     border-radius: 4px;

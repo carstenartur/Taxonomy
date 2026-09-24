@@ -4,6 +4,9 @@ import { readFileSync } from 'node:fs';
 import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', import.meta.url), 'utf8');
+const css = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/css/taxonomy.css', import.meta.url), 'utf8');
+const template = readFileSync(new URL('../../taxonomy-app/src/main/resources/templates/index.html', import.meta.url), 'utf8');
+const utilsSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js', import.meta.url), 'utf8');
 
 // Minimal DOM boundary. The production monitor, lifecycle and renderer run unchanged.
 class Element {
@@ -26,6 +29,7 @@ function fixture(detail, status = 'FAILED', options = {}) {
     const log = new Element('div'); log.id = 'llmCommLogContent';
     const anchor = new Element('div'); anchor.id = 'statusArea'; root.append(anchor, log);
     const timers = new Map(); let timerId = 0, detailCalls = 0;
+    const clipboardWrites = [];
     const runtime = { workspaceId: 'workspace', analysisGeneration: 1 };
     let snapshot = { operationId: 'run', sequence: 1, phase: 'SCORING', status: 'RUNNING',
         startedAt: 1000, serverTime: 4000, lastActivityAt: 4000, evaluatedNodes: 1,
@@ -37,15 +41,19 @@ function fixture(detail, status = 'FAILED', options = {}) {
     const window = { __TaxonomyAnalysisSessionContext: { runtime },
         setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id; },
         clearTimeout(id) { timers.delete(id); },
+        TaxonomyUtils: { async copyText(value) { clipboardWrites.push(value); } },
         TaxonomyAnalysisSessionApi: {
             async getRunStatus() { return { json: async () => snapshot }; },
             async getRunCallDetail() { detailCalls++; return { json: async () => typeof detail === 'function' ? await detail() : detail }; },
             async cancelRun() {}
         }
     };
-    vm.runInNewContext(source, { window, document, AbortController, console });
+    // No navigator.clipboard here: the renderer must delegate to the shared helper,
+    // which owns the secure-context and textarea fallback policy.
+    const navigator = {};
+    vm.runInNewContext(source, { window, document, navigator, AbortController, console });
     const monitor = window.TaxonomyAnalysisProgress.start('run');
-    return { root, log, monitor, runtime,
+    return { root, log, monitor, runtime, clipboardWrites,
         get detailCalls() { return detailCalls; },
         get button() { return descendants(root).find(element => element.tagName === 'BUTTON'); },
         update(values) { snapshot = { ...snapshot, ...values, sequence: snapshot.sequence + 1 }; },
@@ -58,6 +66,66 @@ function fixture(detail, status = 'FAILED', options = {}) {
 const reply = 'please provide details.\nSecond line. <script>not executable</script>';
 const failure = { prompt: 'First prompt line\nSecond prompt line', response: reply,
     error: 'Expected a JSON object; inspect the LLM communication log.', truncated: false };
+
+test('shared clipboard helper falls back to a temporary textarea outside secure clipboard contexts', async () => {
+    const appended = [];
+    let selected = false, removed = false, copied = false;
+    const body = {
+        appendChild(element) { appended.push(element); element.parent = this; }
+    };
+    const document = {
+        readyState: 'loading',
+        documentElement: { lang: 'de' },
+        body,
+        addEventListener() {},
+        createElement(tag) {
+            assert.equal(tag, 'textarea');
+            return {
+                value: '', readOnly: false, className: '',
+                select() { selected = true; },
+                remove() { removed = true; }
+            };
+        },
+        execCommand(command) { assert.equal(command, 'copy'); copied = true; return true; }
+    };
+    const window = { isSecureContext: false };
+    const navigator = {};
+    vm.runInNewContext(utilsSource, { window, document, navigator, console, DOMParser: class {} });
+    assert.equal(typeof window.TaxonomyUtils.copyText, 'function', 'shared copy helper is exported');
+    await window.TaxonomyUtils.copyText('exact diagnostic text');
+    assert.equal(appended.length, 1);
+    assert.equal(appended[0].value, 'exact diagnostic text');
+    assert.equal(appended[0].readOnly, true);
+    assert.equal(selected, true);
+    assert.equal(copied, true);
+    assert.equal(removed, true);
+});
+
+test('expanded LLM diagnostics use the page flow instead of nested vertical scrollports', () => {
+    const marker = 'id="llmCommLogContent"';
+    const idIndex = template.indexOf(marker);
+    assert.notEqual(idIndex, -1, 'LLM communication log container exists');
+    const tagStart = template.lastIndexOf('<div', idIndex);
+    const tagEnd = template.indexOf('>', idIndex);
+    const logTag = template.slice(tagStart, tagEnd + 1);
+    assert.doesNotMatch(logTag, /max-height\s*:/i);
+    assert.doesNotMatch(logTag, /overflow-y\s*:\s*auto/i);
+
+    const diagnosticRule = css.match(/#llmCommLogContent \.llm-log-prompt,\s*#llmCommLogContent \.llm-log-response\s*\{[^}]*\}/);
+    assert.ok(diagnosticRule, 'prompt/response diagnostic style exists');
+    assert.doesNotMatch(diagnosticRule[0], /max-height\s*:/i);
+    assert.doesNotMatch(diagnosticRule[0], /overflow-y\s*:\s*auto/i);
+});
+
+test('expanded response and prompt each provide a direct copy action', async () => {
+    const view = fixture(failure); await view.tick(); await view.open();
+    const copyButtons = descendants(view.log).filter(element =>
+        element.tagName === 'BUTTON' && element.className.split(/\s+/).includes('llm-log-copy'));
+    assert.equal(copyButtons.length, 2, 'response and prompt both expose copy controls');
+    copyButtons[0].emit('click'); copyButtons[1].emit('click'); await flush();
+    assert.deepEqual(view.clipboardWrites, [reply, failure.prompt]);
+    view.monitor.stop();
+});
 
 test('failed call shows separate, whitespace-preserving response and prompt with its error', async () => {
     const view = fixture(failure); await view.tick(); await view.open();
