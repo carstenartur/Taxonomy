@@ -28,14 +28,37 @@ test('streaming reconciliation does not require Object.hasOwn browser support', 
 
 function element(className = '') {
   const attributes = new Map();
+  const listeners = new Map();
   const el = { className, style: {}, children: [], textContent: '',
     setAttribute(key, value) { attributes.set(key, String(value)); },
     getAttribute(key) { return attributes.get(key) ?? null; },
     appendChild(child) { child.parent = this; this.children.push(child); },
-    replaceChildren(...children) { this.children = children; },
-    remove() { this.parent.children = this.parent.children.filter(child => child !== this); },
-    querySelector(selector) { return this.children.find(child =>
-      child.className.split(' ').includes(selector.slice(1))) || null; }
+    insertBefore(child, before) {
+      child.parent = this;
+      const index = this.children.indexOf(before);
+      if (index < 0) this.children.push(child); else this.children.splice(index, 0, child);
+    },
+    replaceChildren(...children) { this.children = children; children.forEach(child => { child.parent = this; }); },
+    remove() { if (this.parent) this.parent.children = this.parent.children.filter(child => child !== this); },
+    addEventListener(name, listener) { (listeners.get(name) || listeners.set(name, []).get(name)).push(listener); },
+    emit(name) { (listeners.get(name) || []).forEach(listener => listener({ target: this })); },
+    querySelector(selector) {
+      const className = selector.startsWith('.') ? selector.slice(1) : null;
+      if (!className) return null;
+      const visit = node => node.children.find(child =>
+        child.className.split(' ').includes(className)) || node.children.map(visit).find(Boolean);
+      return visit(this) || null;
+    },
+    querySelectorAll(selector) {
+      const className = selector.startsWith('.') ? selector.slice(1) : null;
+      if (!className) return [];
+      const result = [];
+      const visit = node => node.children.forEach(child => {
+        if (child.className.split(' ').includes(className)) result.push(child);
+        visit(child);
+      });
+      visit(this); return result;
+    }
   };
   el.classList = {
     add() {}, remove() {}, toggle() {}, contains() { return false; }
@@ -54,7 +77,9 @@ function harness(locale = 'en') {
     nodes.set(code, node);
   }
   const input = element(); input.value = 'A requirement';
-  const controls = { businessText: input, analyzeBtn: element(), analysisDurationDisplay: element() };
+  const llmLog = element();
+  const controls = { businessText: input, analyzeBtn: element(), analysisDurationDisplay: element(),
+    llmCommLogContent: llmLog };
   controls.analysisDurationDisplay.hidden = true;
   const focused = element();
   let renders = 0;
@@ -62,6 +87,7 @@ function harness(locale = 'en') {
   let transport;
   const statuses = [];
   const state = { taxonomyData: [], currentScores: {}, currentReasons: {} };
+  const copiedDiagnostics = [];
   const document = {
     documentElement: { lang: locale }, activeElement: focused, addEventListener() {},
     getElementById: id => controls[id] || null,
@@ -71,7 +97,11 @@ function harness(locale = 'en') {
       assert.equal(selector, '.tax-node[data-code]'); return [...nodes.values()];
     }
   };
-  const window = { TaxonomyState: state, TaxonomyI18n: { getLocale: () => locale },
+  const sharedUtils = {
+    escapeHtml: value => String(value),
+    async copyText(value) { copiedDiagnostics.push(value); }
+  };
+  const window = { TaxonomyState: state, TaxonomyI18n: { getLocale: () => locale }, TaxonomyUtils: sharedUtils,
     TaxonomyBrowse: {
       renderView() { renders++; }, ensureNodeRendered() {}, showStatus(...args) { statuses.push(args); }, clearStatus() {},
       updateExportGroupVisibility() {}
@@ -79,7 +109,7 @@ function harness(locale = 'en') {
   };
   const context = vm.createContext({
     window, document, console,
-    TaxonomyI18n: { t: key => key }, TaxonomyUtils: { escapeHtml: value => String(value) },
+    TaxonomyI18n: { t: key => key }, TaxonomyUtils: sharedUtils,
     CSS: { escape: value => value },
     EventSource: class {
       constructor() { transport = this; }
@@ -95,7 +125,8 @@ function harness(locale = 'en') {
   vm.runInContext(viewsSource, context);
   window.TaxonomyScoring.runStreamingAnalysis();
   return {
-    state, nodes, statuses, controls, document, focused, renders: () => renders, api: window.TaxonomyScoring, views: window.TaxonomyViews,
+    state, nodes, statuses, controls, document, focused, copiedDiagnostics,
+    renders: () => renders, api: window.TaxonomyScoring, views: window.TaxonomyViews,
     send(type, data) {
       const event = { data: JSON.stringify(data) };
       handlers.get(type)(event);
@@ -111,6 +142,18 @@ function harness(locale = 'en') {
     aria(code = product) { return nodes.get(code).getAttribute('aria-label'); }
   };
 }
+
+test('legacy LLM log renderer exposes copy controls for prompt and response', async () => {
+  const h = harness();
+  h.api.appendLlmLogEntry('IP', { IP: 80 }, {
+    prompt: 'legacy prompt', rawResponse: '{"IP":80}', provider: 'CUSTOM_OPENAI', durationMs: 25
+  });
+  const buttons = h.controls.llmCommLogContent.querySelectorAll('.llm-log-copy');
+  assert.equal(buttons.length, 2, 'legacy prompt and response each need a copy action');
+  buttons[0].emit('click'); buttons[1].emit('click');
+  await Promise.resolve();
+  assert.deepEqual(h.copiedDiagnostics, ['legacy prompt', '{"IP":80}']);
+});
 
 for (const language of ['en', 'de']) {
   test(`${language}: tree exports retain pending and zero-relevance product evidence`, () => {
