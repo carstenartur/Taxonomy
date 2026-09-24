@@ -109,54 +109,16 @@
             return rasterizeSvg(serializeSvg(viewSvg), scaleFactor, 'taxonomy-view.png')
                 .catch(function (error) { return unavailable('export.png.failed', error.message); });
         }
-        if (diagramExportBusy) return Promise.resolve(false);
-        var state = window.TaxonomyState;
         var requirement = document.getElementById('businessText');
-        var businessText = requirement ? requirement.value : '';
-        if (!state || !state.currentArchView || !Array.isArray(state.currentArchView.includedElements)
-                || !state.currentArchView.includedElements.length) {
-            return unavailable('export.png.failed', exportMessage(
-                'No existing architecture view is available. No new analysis was started.',
-                'Keine vorhandene Architekturansicht verfügbar. Es wurde keine neue Analyse gestartet.'));
-        }
-        if (typeof state.lastAnalyzedText !== 'string' || !state.lastAnalyzedText.trim()
-                || businessText !== state.lastAnalyzedText) {
-            return unavailable('export.png.failed', exportMessage(
-                'The requirement changed after analysis. Load the matching analysis before exporting.',
-                'Die Anforderung wurde nach der Analyse geändert. Laden Sie vor dem Export die passende Analyse.'));
-        }
-        var headers = { 'Content-Type': 'application/json' };
-        var csrf = document.querySelector('meta[name="_csrf"]');
-        var csrfHeader = document.querySelector('meta[name="_csrf_header"]');
-        if (csrf && csrfHeader) headers[csrfHeader.content] = csrf.content;
-        diagramExportBusy = true;
-        diagramStatus(exportMessage('Creating complete architecture PNG…',
-            'Vollständiges Architektur-PNG wird erstellt…'), true, false);
-        return fetch('/api/diagram/current/svg', {
-            method: 'POST',
-            headers: headers,
-            credentials: 'same-origin',
-            body: JSON.stringify(state.currentArchView)
-        }).then(function (response) {
-            if (!response.ok) {
-                return response.json().catch(function () { return {}; }).then(function (problem) {
-                    throw new Error(problem.error || problem.detail || 'HTTP ' + response.status);
-                });
+        return diagramDownload(
+            '/api/diagram/svg',
+            requirement ? requirement.value : '',
+            'requirement-architecture.svg',
+            'text',
+            function (svgText) {
+                return rasterizeSvg(svgText, scaleFactor, 'requirement-architecture.png');
             }
-            validateResponseType(response, 'requirement-architecture.svg');
-            return response.text();
-        }).then(function (svgText) {
-            return rasterizeSvg(svgText, scaleFactor, 'requirement-architecture.png');
-        }).then(function () {
-            diagramStatus(exportMessage('Download ready. Zoom and pan were not exported.',
-                'Download bereitgestellt. Zoom und Verschiebung wurden nicht exportiert.'), false, false);
-            return true;
-        }).catch(function (error) {
-            diagramStatus(exportMessage('Export failed: ', 'Export fehlgeschlagen: ') + error.message, false, true);
-            return false;
-        }).finally(function () {
-            diagramExportBusy = false;
-        });
+        );
     }
 
     /**
@@ -442,7 +404,7 @@
             'Die gelieferte Datei ist leer, unvollständig oder nicht im angeforderten Format. Keine Datei wurde gespeichert.'));
     }
 
-    function diagramDownload(url, businessText, filename, responseType) {
+    function diagramDownload(url, businessText, filename, responseType, contentHandler) {
         if (diagramExportBusy) return Promise.resolve(false);
         var state = window.TaxonomyState;
         if (!state || !state.currentArchView || !Array.isArray(state.currentArchView.includedElements)
@@ -493,7 +455,11 @@
         }).then(async function (content) {
             var blob = content instanceof Blob ? content : new Blob([content], { type: 'text/plain;charset=utf-8' });
             await validateDownloadBytes(blob, filename);
-            downloadBlob(blob, filename);
+            if (contentHandler) {
+                await contentHandler(content);
+            } else {
+                downloadBlob(blob, filename);
+            }
             diagramStatus(exportMessage('Download ready. The architecture was kept unchanged.',
                 'Download bereitgestellt. Die Architektur blieb unverändert.'), false, false);
             return true;
