@@ -19,6 +19,7 @@ import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.io.IOException;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -47,6 +48,7 @@ public class PortablePortfolioGitService extends PortfolioGitService {
     private final ProjectRequirementVersionRepository versionRepository;
     private final PortfolioDecisionGitContributor decisionContributor;
     private final ReformulationEvidenceCodec reformulationEvidence;
+    private final WorkspacePortfolioDocumentPort repositoryFactory;
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
@@ -66,6 +68,20 @@ public class PortablePortfolioGitService extends PortfolioGitService {
         this.versionRepository = versionRepository;
         this.decisionContributor = decisionContributor;
         this.reformulationEvidence = reformulationEvidence;
+        this.repositoryFactory = repositoryFactory;
+    }
+
+    @Override
+    @Transactional
+    public MaterializeResult materializeHead(String branch,
+                                             String username,
+                                             WorkspaceContext context) throws IOException {
+        var repository = repositoryFactory.resolveRepository(context);
+        String dsl = repository.getDslAtHead(branch);
+        if (dsl == null || dsl.isBlank()) {
+            return new MaterializeResult(0, 0, 0, List.of("Branch has no DSL content"));
+        }
+        return materialize(dsl, username, context);
     }
 
     @Override
