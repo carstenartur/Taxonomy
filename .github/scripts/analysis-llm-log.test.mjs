@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-progress.js', import.meta.url), 'utf8');
 const css = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/css/taxonomy.css', import.meta.url), 'utf8');
 const template = readFileSync(new URL('../../taxonomy-app/src/main/resources/templates/index.html', import.meta.url), 'utf8');
+const utilsSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/shared/taxonomy-utils.js', import.meta.url), 'utf8');
 
 // Minimal DOM boundary. The production monitor, lifecycle and renderer run unchanged.
 class Element {
@@ -62,6 +63,40 @@ function fixture(detail, status = 'FAILED', options = {}) {
 const reply = 'please provide details.\nSecond line. <script>not executable</script>';
 const failure = { prompt: 'First prompt line\nSecond prompt line', response: reply,
     error: 'Expected a JSON object; inspect the LLM communication log.', truncated: false };
+
+test('shared clipboard helper falls back to a temporary textarea outside secure clipboard contexts', async () => {
+    const appended = [];
+    let selected = false, removed = false, copied = false;
+    const body = {
+        appendChild(element) { appended.push(element); element.parent = this; }
+    };
+    const document = {
+        readyState: 'loading',
+        documentElement: { lang: 'de' },
+        body,
+        addEventListener() {},
+        createElement(tag) {
+            assert.equal(tag, 'textarea');
+            return {
+                value: '', readOnly: false, className: '',
+                select() { selected = true; },
+                remove() { removed = true; }
+            };
+        },
+        execCommand(command) { assert.equal(command, 'copy'); copied = true; return true; }
+    };
+    const window = { isSecureContext: false };
+    const navigator = {};
+    vm.runInNewContext(utilsSource, { window, document, navigator, console, DOMParser: class {} });
+    assert.equal(typeof window.TaxonomyUtils.copyText, 'function', 'shared copy helper is exported');
+    await window.TaxonomyUtils.copyText('exact diagnostic text');
+    assert.equal(appended.length, 1);
+    assert.equal(appended[0].value, 'exact diagnostic text');
+    assert.equal(appended[0].readOnly, true);
+    assert.equal(selected, true);
+    assert.equal(copied, true);
+    assert.equal(removed, true);
+});
 
 test('expanded LLM diagnostics use the page flow instead of nested vertical scrollports', () => {
     const marker = 'id="llmCommLogContent"';
