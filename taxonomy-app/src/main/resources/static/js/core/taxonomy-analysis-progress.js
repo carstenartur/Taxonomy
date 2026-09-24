@@ -223,10 +223,33 @@
         if (className) element.className = className;
         return element;
     }
+    function diagnosticCopyButton(title, raw) {
+        var button = node('button', text('Kopieren', 'Copy'),
+            'btn btn-sm btn-outline-secondary ms-2 llm-log-copy');
+        button.type = 'button';
+        button.disabled = !raw;
+        button.setAttribute('aria-label', text('Kopieren: ', 'Copy: ') + title);
+        button.addEventListener('click', async function () {
+            if (!raw) return;
+            try {
+                if (typeof navigator === 'undefined' || !navigator.clipboard
+                        || typeof navigator.clipboard.writeText !== 'function') {
+                    throw new Error('clipboard unavailable');
+                }
+                await navigator.clipboard.writeText(raw);
+                button.textContent = text('Kopiert', 'Copied');
+            } catch (_) {
+                button.textContent = text('Kopieren fehlgeschlagen', 'Copy failed');
+            }
+        });
+        return button;
+    }
     function diagnosticField(container, title, value, className, originalLength, emptyMessage, formatJson) {
         var raw = typeof value === 'string' ? value : '';
         var section = node('div', undefined, 'mb-2');
-        section.append(node('strong', title));
+        var heading = node('div', undefined, 'd-flex align-items-center justify-content-between gap-2');
+        heading.append(node('strong', title), diagnosticCopyButton(title, raw));
+        section.append(heading);
         if (Number.isSafeInteger(originalLength) && originalLength > raw.length) {
             section.append(node('div', text('Gekürzte Vorschau; ursprüngliche Länge: ',
                 'Truncated preview; original length: ') + originalLength + text(' Zeichen.', ' characters.'), 'text-muted'));
@@ -257,7 +280,7 @@
                 node('div', detail.error, 'llm-log-error-detail mb-2'));
         }
         // Keep the answer visible independently of a potentially much longer prompt.
-        // Reuse the bounded, pre-wrap log styles; Bootstrap text-wrap collapses newlines.
+        // Preserve pre-wrap formatting without creating nested scrollports.
         diagnosticField(body, text('LLM-Antwort', 'LLM response'), detail.response, 'llm-log-response',
             detail.responseLength, text('Keine Antwort im Diagnosepuffer vorhanden.',
                 'No response retained in the diagnostic buffer.'), true);
