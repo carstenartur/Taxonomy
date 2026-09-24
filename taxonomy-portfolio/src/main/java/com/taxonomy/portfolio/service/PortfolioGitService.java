@@ -192,6 +192,7 @@ public class PortfolioGitService {
     }
 
     /** Materialize the portfolio blocks at a branch HEAD into the target workspace. */
+    @Transactional
     public MaterializeResult materializeHead(String branch,
                                              String username,
                                              WorkspaceContext context) throws IOException {
