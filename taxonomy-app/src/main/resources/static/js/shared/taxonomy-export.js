@@ -338,6 +338,7 @@
         var type = (response.headers && response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
         var expected = filename.endsWith('.vsdx') ? ['application/vnd.ms-visio.drawing']
             : filename.endsWith('.zip') ? ['application/zip']
+            : filename.endsWith('.svg') ? ['image/svg+xml']
             : filename.endsWith('.xml') ? ['application/xml', 'text/xml'] : ['text/plain'];
         if (response.redirected || expected.indexOf(type) < 0) {
             throw new Error(exportMessage('The server did not return the requested file format. Sign in again and retry; no file was downloaded.',
