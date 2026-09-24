@@ -41,13 +41,16 @@ function fixture(detail, status = 'FAILED', options = {}) {
     const window = { __TaxonomyAnalysisSessionContext: { runtime },
         setTimeout(fn, delay) { const id = ++timerId; timers.set(id, { fn, delay }); return id; },
         clearTimeout(id) { timers.delete(id); },
+        TaxonomyUtils: { async copyText(value) { clipboardWrites.push(value); } },
         TaxonomyAnalysisSessionApi: {
             async getRunStatus() { return { json: async () => snapshot }; },
             async getRunCallDetail() { detailCalls++; return { json: async () => typeof detail === 'function' ? await detail() : detail }; },
             async cancelRun() {}
         }
     };
-    const navigator = { clipboard: { async writeText(value) { clipboardWrites.push(value); } } };
+    // No navigator.clipboard here: the renderer must delegate to the shared helper,
+    // which owns the secure-context and textarea fallback policy.
+    const navigator = {};
     vm.runInNewContext(source, { window, document, navigator, AbortController, console });
     const monitor = window.TaxonomyAnalysisProgress.start('run');
     return { root, log, monitor, runtime, clipboardWrites,
