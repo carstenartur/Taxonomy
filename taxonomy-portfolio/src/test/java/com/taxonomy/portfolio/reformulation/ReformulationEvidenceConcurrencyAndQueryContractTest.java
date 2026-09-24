@@ -19,7 +19,7 @@ class ReformulationEvidenceConcurrencyAndQueryContractTest {
 
     @Test
     void headMaterializationOwnsTheTransactionBoundary() throws Exception {
-        Method method = PortablePortfolioGitService.class.getDeclaredMethod(
+        Method method = PortablePortfolioGitService.class.getMethod(
                 "materializeHead", String.class, String.class, WorkspaceContext.class);
 
         assertThat(method.getAnnotation(Transactional.class))
