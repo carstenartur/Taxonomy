@@ -41,12 +41,10 @@ class VisioPackagePoiCompatibilityTest {
         byte[] packageBytes = builder.build(
                 VisioPackageBuilderTest.representativeDocument());
 
-        String windows = new String(
-                VisioPackageBuilderTest.readEntry(packageBytes, "visio/windows.xml"),
-                java.nio.charset.StandardCharsets.UTF_8);
-        String relationships = new String(
-                VisioPackageBuilderTest.readEntry(packageBytes, "visio/_rels/document.xml.rels"),
-                java.nio.charset.StandardCharsets.UTF_8);
+        String windows = VisioPackageBuilderTest.readEntry(
+                packageBytes, "visio/windows.xml");
+        String relationships = VisioPackageBuilderTest.readEntry(
+                packageBytes, "visio/_rels/document.xml.rels");
 
         assertThat(windows).contains("<Windows")
                 .contains("http://schemas.microsoft.com/office/visio/2012/main");
