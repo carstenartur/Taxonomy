@@ -64,21 +64,25 @@ const failure = { prompt: 'First prompt line\nSecond prompt line', response: rep
     error: 'Expected a JSON object; inspect the LLM communication log.', truncated: false };
 
 test('expanded LLM diagnostics use the page flow instead of nested vertical scrollports', () => {
-    const logTag = template.match(/<div id="llmCommLogContent"[\\s\\S]*?>/);
-    assert.ok(logTag, 'LLM communication log container exists');
-    assert.doesNotMatch(logTag[0], /max-height\\s*:/i);
-    assert.doesNotMatch(logTag[0], /overflow-y\\s*:\\s*auto/i);
+    const marker = 'id="llmCommLogContent"';
+    const idIndex = template.indexOf(marker);
+    assert.notEqual(idIndex, -1, 'LLM communication log container exists');
+    const tagStart = template.lastIndexOf('<div', idIndex);
+    const tagEnd = template.indexOf('>', idIndex);
+    const logTag = template.slice(tagStart, tagEnd + 1);
+    assert.doesNotMatch(logTag, /max-height\s*:/i);
+    assert.doesNotMatch(logTag, /overflow-y\s*:\s*auto/i);
 
-    const diagnosticRule = css.match(/#llmCommLogContent \\.llm-log-prompt,\\s*#llmCommLogContent \\.llm-log-response\\s*\\{[^}]*\\}/);
+    const diagnosticRule = css.match(/#llmCommLogContent \.llm-log-prompt,\s*#llmCommLogContent \.llm-log-response\s*\{[^}]*\}/);
     assert.ok(diagnosticRule, 'prompt/response diagnostic style exists');
-    assert.doesNotMatch(diagnosticRule[0], /max-height\\s*:/i);
-    assert.doesNotMatch(diagnosticRule[0], /overflow-y\\s*:\\s*auto/i);
+    assert.doesNotMatch(diagnosticRule[0], /max-height\s*:/i);
+    assert.doesNotMatch(diagnosticRule[0], /overflow-y\s*:\s*auto/i);
 });
 
 test('expanded response and prompt each provide a direct copy action', async () => {
     const view = fixture(failure); await view.tick(); await view.open();
     const copyButtons = descendants(view.log).filter(element =>
-        element.tagName === 'BUTTON' && element.className.split(/\\s+/).includes('llm-log-copy'));
+        element.tagName === 'BUTTON' && element.className.split(/\s+/).includes('llm-log-copy'));
     assert.equal(copyButtons.length, 2, 'response and prompt both expose copy controls');
     copyButtons[0].emit('click'); copyButtons[1].emit('click'); await flush();
     assert.deepEqual(view.clipboardWrites, [reply, failure.prompt]);
