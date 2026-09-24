@@ -17,8 +17,6 @@ import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioGitService;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
-import com.taxonomy.portfolio.service.PortfolioScope;
-import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -100,7 +98,7 @@ public class ReformulationEvidenceCodec {
     }
 
     /** Replace only this codec's blocks; all other portfolio/architecture DSL is preserved. */
-    public String contributeTo(String dsl, String username, WorkspaceContext context) {
+    public String contributeTo(String dsl, String scopeKey) {
         DocumentAst document = parse(dsl, "reformulation-evidence-contribute.taxdsl");
         List<BlockAst> blocks = new ArrayList<>();
         for (BlockAst block : document.getBlocks()) {
@@ -108,7 +106,9 @@ public class ReformulationEvidenceCodec {
         }
 
         Map<String, Evidence> byHash = new LinkedHashMap<>();
-        String scopeKey = PortfolioScope.key(username, context);
+        if (scopeKey == null || scopeKey.isBlank()) {
+            throw PortfolioException.validation("Reformulation evidence requires an exact portfolio scope");
+        }
         for (ReformulationPortableEvidence stored : importedEvidence
                 .findByScopeKeyOrderByProjectKeyAscRequirementKeyAscTargetVersionNumberAscEvidenceHashAsc(
                         scopeKey)) {
@@ -149,12 +149,11 @@ public class ReformulationEvidenceCodec {
     }
 
     /** Store only already validated imported evidence in the target tenant. */
-    public void storeImported(
-            List<Evidence> evidence,
-            String username,
-            WorkspaceContext context) {
+    public void storeImported(List<Evidence> evidence, String scopeKey) {
         if (evidence == null || evidence.isEmpty()) return;
-        String scopeKey = PortfolioScope.key(username, context);
+        if (scopeKey == null || scopeKey.isBlank()) {
+            throw PortfolioException.validation("Reformulation evidence requires an exact portfolio scope");
+        }
         for (Evidence item : evidence) {
             var existing = importedEvidence.findByScopeKeyAndEvidenceHash(
                     scopeKey, item.evidenceHash());
