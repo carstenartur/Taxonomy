@@ -40,5 +40,7 @@ public class ReformulationAdoption {
     public String getScopeKey(){return scopeKey;} public Long getRequirementId(){return requirementId;}
     public String getCommandHash(){return commandHash;} public String getPayload(){return payload;}
     public String getPreviewId(){return previewId;} public Long getTargetVersionId(){return targetVersionId;}
+    public ReformulationAdoptionPreview getPreview(){return preview;}
+    public ProjectRequirementVersion getVersion(){return version;}
     public Instant getCreatedAt(){return createdAt;}
 }
