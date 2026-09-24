@@ -280,6 +280,40 @@
         logEl.style.display = '';
     }
 
+    function llmLogDiagnosticField(label, value, className) {
+        const section = document.createElement('div');
+        section.className = 'mt-1';
+
+        const heading = document.createElement('div');
+        heading.className = 'd-flex align-items-center justify-content-between gap-2';
+        const title = document.createElement('strong');
+        title.textContent = label;
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'btn btn-sm btn-outline-secondary ms-2 llm-log-copy';
+        copy.textContent = isGermanLocale() ? 'Kopieren' : 'Copy';
+        copy.setAttribute('aria-label', (isGermanLocale() ? 'Kopieren: ' : 'Copy: ') + label);
+        copy.disabled = !value;
+        copy.addEventListener('click', async function () {
+            if (!value) return;
+            try {
+                await TaxonomyUtils.copyText(value);
+                copy.textContent = isGermanLocale() ? 'Kopiert' : 'Copied';
+            } catch (_) {
+                copy.textContent = isGermanLocale() ? 'Kopieren fehlgeschlagen' : 'Copy failed';
+            }
+        });
+        heading.appendChild(title);
+        heading.appendChild(copy);
+
+        const text = document.createElement('div');
+        text.className = className;
+        text.textContent = value;
+        section.appendChild(heading);
+        section.appendChild(text);
+        return section;
+    }
+
     function appendLlmLogEntry(parentCode, scores, detail) {
         const content = document.getElementById('llmCommLogContent');
         if (!content) { return; }
@@ -342,13 +376,14 @@
                 + '<div class="llm-log-reasons">' + reasonLines + '</div></div>';
         }
 
-        body.innerHTML =
-            errorHtml +
-            '<div class="mt-1"><strong>&#128228; PROMPT:</strong>' +
-            '<div class="llm-log-prompt">' + escapeHtml(prompt) + '</div></div>' +
-            '<div class="mt-1"><strong>&#128229; RESPONSE:</strong>' +
-            '<div class="llm-log-response">' + escapeHtml(rawResponse) + '</div></div>' +
-            reasonsHtml;
+        body.innerHTML = errorHtml;
+        body.appendChild(llmLogDiagnosticField('\u{1F4E4} PROMPT:', prompt, 'llm-log-prompt'));
+        body.appendChild(llmLogDiagnosticField('\u{1F4E5} RESPONSE:', rawResponse, 'llm-log-response'));
+        if (reasonsHtml) {
+            const reasonsContainer = document.createElement('div');
+            reasonsContainer.innerHTML = reasonsHtml;
+            body.appendChild(reasonsContainer);
+        }
 
         entry.appendChild(body);
 
