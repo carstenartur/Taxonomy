@@ -7,4 +7,5 @@ public interface ReformulationAdoptionRepository extends JpaRepository<Reformula
             String id, String proposalId, Long requirementId, String scopeKey);
     boolean existsByPreviewId(String previewId);
     List<ReformulationAdoption> findByProposalIdAndScopeKeyOrderByCreatedAtDesc(String proposalId,String scopeKey);
+    List<ReformulationAdoption> findByScopeKeyOrderByCreatedAtAsc(String scopeKey);
 }
