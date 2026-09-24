@@ -13,6 +13,7 @@ import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
 import com.taxonomy.portfolio.repository.RequirementElementMappingRepository;
+import com.taxonomy.portfolio.reformulation.ReformulationEvidenceCodec;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Service;
@@ -45,6 +46,7 @@ public class PortablePortfolioGitService extends PortfolioGitService {
     private final ProjectRequirementRepository requirementRepository;
     private final ProjectRequirementVersionRepository versionRepository;
     private final PortfolioDecisionGitContributor decisionContributor;
+    private final ReformulationEvidenceCodec reformulationEvidence;
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
@@ -55,13 +57,15 @@ public class PortablePortfolioGitService extends PortfolioGitService {
             ProjectRequirementVersionRepository versionRepository,
             RequirementElementMappingRepository elementMappingRepository,
             WorkspacePortfolioDocumentPort repositoryFactory,
-            PortfolioDecisionGitContributor decisionContributor) {
+            PortfolioDecisionGitContributor decisionContributor,
+            ReformulationEvidenceCodec reformulationEvidence) {
         super(projectService, projectRepository, requirementRepository,
                 versionRepository, elementMappingRepository, repositoryFactory);
         this.projectRepository = projectRepository;
         this.requirementRepository = requirementRepository;
         this.versionRepository = versionRepository;
         this.decisionContributor = decisionContributor;
+        this.reformulationEvidence = reformulationEvidence;
     }
 
     @Override
@@ -69,7 +73,8 @@ public class PortablePortfolioGitService extends PortfolioGitService {
     public String exportPortfolio(String username, WorkspaceContext context) {
         String requirements = addPortableCurrentVersion(
                 super.exportPortfolio(username, context), username, context);
-        return decisionContributor.contributeTo(requirements, username, context);
+        String decisions = decisionContributor.contributeTo(requirements, username, context);
+        return reformulationEvidence.contributeTo(decisions, username, context);
     }
 
     @Override
@@ -79,7 +84,8 @@ public class PortablePortfolioGitService extends PortfolioGitService {
                                WorkspaceContext context) {
         String requirements = addPortableCurrentVersion(
                 super.contributeTo(existingDsl, username, context), username, context);
-        return decisionContributor.contributeTo(requirements, username, context);
+        String decisions = decisionContributor.contributeTo(requirements, username, context);
+        return reformulationEvidence.contributeTo(decisions, username, context);
     }
 
     @Override
@@ -87,10 +93,12 @@ public class PortablePortfolioGitService extends PortfolioGitService {
     public MaterializeResult materialize(String dsl,
                                          String username,
                                          WorkspaceContext context) {
+        var portableEvidence = reformulationEvidence.validateForMaterialization(dsl);
         MaterializeResult result = super.materialize(dsl, username, context);
         restorePortableCurrentVersions(dsl, username, context);
         PortfolioDecisionGitContributor.DecisionMaterializeResult decisions =
                 decisionContributor.materialize(dsl, username, context);
+        reformulationEvidence.storeImported(portableEvidence, username, context);
         List<String> warnings = new ArrayList<>(result.warnings());
         warnings.addAll(decisions.warnings());
         return new MaterializeResult(
