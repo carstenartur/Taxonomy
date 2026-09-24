@@ -3,6 +3,8 @@ package com.taxonomy.analysis.service;
 import com.taxonomy.dto.LlmCallDetail;
 import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
+import java.util.function.Function;
+import java.util.Objects;
 
 /** Request/worker-scoped callbacks; no global prompt, result or credential retention. */
 public final class AnalysisRunControl implements AutoCloseable {
@@ -67,15 +69,25 @@ public final class AnalysisRunControl implements AutoCloseable {
     }
 
     public static LlmCallDetail call(String provider, String node, Supplier<LlmCallDetail> operation) {
+        return call(provider, node, operation, Function.identity());
+    }
+
+    /** Run a typed assessment through the existing cancellation, memory and evidence path. */
+    public static <T> T call(String provider, String node, Supplier<T> operation,
+                             Function<? super T, LlmCallDetail> describe) {
+        Objects.requireNonNull(operation, "operation");
+        Objects.requireNonNull(describe, "describe");
         checkpoint();
         var current = CURRENT.get();
         long id = current == null ? 0 : current.observer.started(provider, node);
         long started = System.nanoTime();
         long previousCallId = current == null ? -1 : current.activeCallId;
         if (current != null) current.activeCallId = id;
+        T result;
         LlmCallDetail detail;
         try {
-            detail = operation.get();
+            result = Objects.requireNonNull(operation.get(), "assessment result");
+            detail = Objects.requireNonNull(describe.apply(result), "assessment evidence");
         } catch (AnalysisStoppedException stopped) {
             // A cooperative stop is not a provider failure, including stops inside retries.
             if (current != null) current.observer.stopped(stopped.reason());
@@ -100,7 +112,7 @@ public final class AnalysisRunControl implements AutoCloseable {
             throw stopped.withPartial(detail);
         }
         if (current != null) current.observer.completed(id, detail, (System.nanoTime() - started) / 1_000_000);
-        return detail;
+        return result;
     }
 
     public static void pause(String phase, long millis) {

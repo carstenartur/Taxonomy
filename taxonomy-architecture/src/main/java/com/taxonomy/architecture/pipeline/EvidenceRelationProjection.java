@@ -8,11 +8,19 @@ import static com.taxonomy.dto.RelationSearchModel.*;
 public final class EvidenceRelationProjection {
     private EvidenceRelationProjection() { }
 
+    /** Effective scores without provenance do not establish an original model score. */
     public static void apply(ArchitectureViewContext context, RelationSearchReport report) {
+        apply(context, report, Map.of());
+    }
+
+    public static void apply(ArchitectureViewContext context, RelationSearchReport report,
+                             Map<String, AnalysisScoreDetail> scoreDetails) {
+        Objects.requireNonNull(context); Objects.requireNonNull(report);
+        Map<String, AnalysisScoreDetail> details = Map.copyOf(scoreDetails);
         Map<String, RequirementElementView> elements = new LinkedHashMap<>();
         Map<String, Node> identities = new HashMap<>();
         List<RequirementRelationshipView> relationships = new ArrayList<>();
-        Map<EdgeSignature, RequirementRelationshipView> relationIndex = new LinkedHashMap<>();
+        Map<EdgeSignature, Set<Edge>> grouped = new LinkedHashMap<>();
         List<String> notes = context.getView().getNotes();
         int omitted = 0, choices = 0;
         for (Edge edge : report.result().edges()) {
@@ -25,36 +33,35 @@ public final class EvidenceRelationProjection {
                 Node prior = identities.putIfAbsent(node.id(), node);
                 if (prior != null && !prior.equals(node)) throw new IllegalArgumentException("Conflicting catalogue endpoint identity");
             }
-            // Showing alternative and optional branches as simultaneous requirements would
-            // silently make an adoption decision. Their complete evidence stays in the report.
-            if (edge.evidence().necessity() != Necessity.REQUIRED) { choices++; continue; }
+            if (edge.evidence().necessity() != Necessity.REQUIRED) choices++;
             EdgeSignature signature = new EdgeSignature(edge.sourceId(), edge.targetId(), edge.type());
-            RequirementRelationshipView previous = relationIndex.get(signature);
-            if (previous != null) {
-                var evidence = new ArrayList<>(previous.getRequirementEvidence());
-                if (!evidence.contains(edge)) evidence.add(edge);
-                previous.setRequirementEvidence(evidence);
-                previous.setPresenceReason(summary(previous.getPresenceReason() + " | Additional requirement scope retained in evidence report."));
-                continue;
-            }
+            grouped.computeIfAbsent(signature, unused -> new LinkedHashSet<>()).add(edge);
+        }
+        for (Set<Edge> evidence : grouped.values()) {
+            // Group before filtering: options on an already-required signature remain
+            // inspectable, but options alone never create required nodes or relationships.
+            Edge edge = evidence.stream().filter(e -> e.evidence().necessity() == Necessity.REQUIRED)
+                    .findFirst().orElse(null);
+            if (edge == null) continue;
+            Node source = edge.contribution().source(), target = edge.target();
             int needed = (elements.containsKey(source.id()) ? 0 : 1) + (elements.containsKey(target.id()) ? 0 : 1);
             if (context.getMaxArchitectureNodes() > 0 && elements.size() + needed > context.getMaxArchitectureNodes()) {
                 omitted++; continue;
             }
-            elements.computeIfAbsent(source.id(), id -> element(source, context.getScores(), edge.contribution().text()));
-            elements.computeIfAbsent(target.id(), id -> element(target, context.getScores(), edge.evidence().contribution()));
+            elements.computeIfAbsent(source.id(), id -> element(source, context.getScores(), details, edge.contribution().text()));
+            elements.computeIfAbsent(target.id(), id -> element(target, context.getScores(), details, edge.evidence().contribution()));
             RequirementRelationshipView relation = new RequirementRelationshipView();
             relation.setSourceCode(edge.sourceId()); relation.setTargetCode(edge.targetId()); relation.setRelationType(edge.type());
             relation.setOrigin(RelationOrigin.LLM_SUPPORTED);
-            relation.setRequirementEvidence(List.of(edge));
+            relation.setRequirementEvidence(List.copyOf(evidence));
             String reason = "Proposed, separately checked against requirement: " + edge.evidence().rationale()
                     + " | Source contribution: " + edge.contribution().text() + " | Target contribution: " + edge.evidence().contribution()
                     + " | Evidence: " + edge.contribution().quote() + " / " + edge.evidence().quote()
                     + " | Conditions: " + edge.contribution().condition() + " / " + edge.evidence().condition();
+            if (evidence.size() > 1) reason += " | Additional requirement scopes and choices retained in structured evidence.";
             relation.setPresenceReason(summary(reason)); relation.setDerivationReason(summary(reason)); relation.setIncludedBecause(summary(reason));
-            // Confidence is intentionally left unset (legacy numeric DTO default 0).
-            // The source/target relevance scores are not probabilities of this relationship.
-            relationships.add(relation); relationIndex.put(signature, relation);
+            // Numeric confidence remains its legacy layout/index default, not measured evidence.
+            relationships.add(relation);
         }
         context.setAnchors(new ArrayList<>());
         context.getElements().clear(); context.getElements().addAll(elements.values());
@@ -65,7 +72,7 @@ public final class EvidenceRelationProjection {
         view.setTotalAnchors(0); view.setTotalElements(elements.size()); view.setTotalRelationships(relationships.size()); view.setMaxHopDistance(0);
         notes.add("Requirement-scoped relation proposals; not accepted into the active architecture. Confidence has not been calibrated.");
         if (relationships.isEmpty()) notes.add("No verified required relationships available; no score-product or catalogue-seed fallback was used.");
-        if (choices > 0) notes.add("DECISIONS_PENDING: " + choices + " optional/alternative relations remain in the analysis evidence report, not in the required view.");
+        if (choices > 0) notes.add("DECISIONS_PENDING: " + choices + " optional/alternative contexts remain unaccepted in structured evidence; no optional-only edge is included in the required view.");
         if (omitted > 0) notes.add("NODE_LIMIT: " + omitted + " relations omitted from this view; complete evidence is unchanged in the analysis report.");
         if (!report.isSearchExhausted()) notes.add("RELATION_SEARCH_PARTIAL: see the analysis report for unassessed work, questions and budget limits.");
     }
@@ -80,12 +87,20 @@ public final class EvidenceRelationProjection {
         return text.substring(0, end) + " [full evidence in analysis report]";
     }
 
-    private static RequirementElementView element(Node node, Map<String,Integer> scores, String contribution) {
+    private static RequirementElementView element(Node node, Map<String,Integer> effectiveScores,
+            Map<String, AnalysisScoreDetail> details, String contribution) {
         RequirementElementView element = new RequirementElementView();
         element.setNodeCode(node.id()); element.setTitle(node.name()); element.setTaxonomySheet(node.root());
-        Integer raw = scores.get(node.id());
-        int score = raw == null ? 0 : Math.max(0, Math.min(100, raw));
-        element.setDirectLlmScore(score); element.setRelevance(score / 100.0);
+        AnalysisScoreDetail detail = details.get(node.id());
+        if (detail != null && !node.id().equals(detail.nodeCode())) {
+            throw new IllegalArgumentException("Assessment belongs to another catalogue endpoint");
+        }
+        element.setScoreDetail(detail);
+        element.setDirectLlmScore(detail == null ? 0 : detail.rawScore());
+        Integer effective = effectiveScores.get(node.id());
+        // A numeric layout fallback is not an assessment; scoreDetail remains explicitly null.
+        element.setRelevance((detail != null ? detail.effectiveRelevance()
+                : effective == null ? 0 : Math.max(0, Math.min(100, effective))) / 100.0);
         element.setOrigin(NodeOrigin.RELATION_EVIDENCE); element.setSelectedForImpact(true);
         element.setIncludedBecause(summary(contribution)); element.setPresenceReason(summary("Requirement-scoped contribution: " + contribution));
         return element;

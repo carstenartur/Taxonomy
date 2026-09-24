@@ -7,6 +7,7 @@ import com.taxonomy.dto.AnalysisScoreSemantics;
 import com.taxonomy.dto.ProductCoverageGap;
 import com.taxonomy.dto.TaxonomyDiscrepancy;
 import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import com.taxonomy.catalog.model.TaxonomyNode;
 import com.taxonomy.catalog.service.CatalogueOverlayService;
 import org.slf4j.Logger;
@@ -498,14 +499,15 @@ public class LlmService {
                 // Score root independently (0-100) to gauge branch relevance
                 LlmCallDetail rootDetail = callLlmPropagatingDetailed(businessText, List.of(root), 100);
                 int rootScore = rootDetail.getScores().getOrDefault(root.getCode(), 0);
-                allScores.put(root.getCode(), rootScore);
+                allScores.putAll(rootDetail.getScores());
                 if (rootDetail.getReasons() != null) allReasons.putAll(rootDetail.getReasons());
                 if (rootDetail.getDiscrepancy() != null) {
                     allDiscrepancies.add(rootDetail.getDiscrepancy());
                 }
                 addAnalysisWarning(warnings, root.getCode(), rootDetail);
                 callback.onScores(rootDetail.getScores(), rootDetail.getReasons(),
-                        root.getName() + " scored " + rootScore + "/100", rootDetail);
+                        hasError(rootDetail) ? "Incomplete assessment for " + root.getName()
+                                : root.getName() + " scored " + rootScore + "/100", rootDetail);
 
                 if (rootScore > 0) {
                     // Score Level-1 children distributing the root's score
@@ -600,7 +602,7 @@ public class LlmService {
         } catch (LlmTimeoutException e) {
             log.warn("LLM API call timed out: {}", e.getMessage());
             LlmCallDetail detail = new LlmCallDetail();
-            detail.setScores(responseParser.zeroScores(nodes));
+            detail.setScores(Map.of());
             detail.setProvider(getActiveProviderName());
             detail.setPrompt("");
             detail.setRawResponse("");
@@ -614,7 +616,7 @@ public class LlmService {
         } catch (Exception e) {
             log.error("Error in detailed LLM call", e);
             LlmCallDetail detail = new LlmCallDetail();
-            detail.setScores(responseParser.zeroScores(nodes));
+            detail.setScores(Map.of());
             detail.setProvider(getActiveProviderName());
             detail.setPrompt("");
             detail.setRawResponse("");
@@ -652,6 +654,9 @@ public class LlmService {
             empty.setRawResponse("");
             return new SiblingBatchResult(empty, true);
         }
+
+        // Validate the offered set before splitting/sorting or spending a provider call.
+        ChildAssessmentContract.validateCandidates(nodes.stream().map(TaxonomyNode::getCode).toList());
 
         List<TaxonomyNode> categories = nodes.stream()
                 .filter(node -> !isProduct(node))
@@ -1096,6 +1101,7 @@ public class LlmService {
     private LlmCallDetail performLlmPropagatingDetailed(
             String businessText, List<TaxonomyNode> nodes, int parentScore) {
         LlmCallDetail detail = new LlmCallDetail();
+        detail.setReasons(Map.of());
         detail.setProvider(getActiveProviderName());
 
         // ── Mock path ─────────────────────────────────────────────────────────
@@ -1119,7 +1125,7 @@ public class LlmService {
                 String errorMsg = "LOCAL_ONNX embedding model is not available. "
                         + "Semantic scoring is disabled.";
                 detail.setError(errorMsg);
-                detail.setScores(responseParser.zeroScores(nodes));
+                detail.setScores(Map.of());
                 detail.setPrompt("(local embedding – no prompt sent)");
                 detail.setRawResponse("");
                 detail.setDurationMs(0);
@@ -1144,7 +1150,7 @@ public class LlmService {
             String errorMsg = "No API key configured for provider " + provider
                     + ". Set environment variable " + provider.name() + "_API_KEY.";
             log.warn("⚠️ LLM analysis skipped: {}", errorMsg);
-            detail.setScores(responseParser.zeroScores(nodes));
+            detail.setScores(Map.of());
             detail.setPrompt("");
             detail.setRawResponse("");
             detail.setDurationMs(0);
@@ -1171,7 +1177,7 @@ public class LlmService {
         } catch (LlmTimeoutException e) {
             detail.setDurationMs(System.currentTimeMillis() - start);
             String errorMsg = e.getMessage();
-            detail.setScores(responseParser.zeroScores(nodes));
+            detail.setScores(Map.of());
             detail.setRawResponse("");
             detail.setError(errorMsg);
             recordFailure(errorMsg);
@@ -1181,7 +1187,7 @@ public class LlmService {
 
         if (apiResponseBody == null) {
             String errorMsg = "LLM API call returned no response (possible network error or invalid key).";
-            detail.setScores(responseParser.zeroScores(nodes));
+            detail.setScores(Map.of());
             detail.setRawResponse("");
             detail.setError(errorMsg);
             recordFailure(errorMsg);
@@ -1202,13 +1208,13 @@ public class LlmService {
             throw stopped;
         } catch (Exception e) {
                 log.error("Failed to parse scores in detailed LLM call", e);
-                detail.setScores(responseParser.zeroScores(nodes));
+                detail.setScores(Map.of());
                 String errorMsg = "Failed to parse LLM response: " + e.getMessage();
                 detail.setError(errorMsg);
                 recordFailure(errorMsg);
             }
         } else {
-            detail.setScores(responseParser.zeroScores(nodes));
+            detail.setScores(Map.of());
             String errorMsg = "LLM response contained no usable text.";
             detail.setError(errorMsg);
             recordFailure(errorMsg);
@@ -1257,47 +1263,24 @@ public class LlmService {
         return sb.toString();
     }
 
-    /**
-     * Builds the node list for LLM prompts, optionally prepending the ancestor hierarchy as
-     * context when the nodes share a common parent.
-     *
-     * <p>All nodes in the list are expected to be siblings (i.e. share the same parent) — this is
-     * guaranteed by all callers, which always pass the result of {@link TaxonomyService#getChildrenOf}
-     * or a root node combined with its direct children. The ancestor path is derived from the first
-     * node's parent, which is representative for the whole batch. Nodes that have no parent (e.g. root
-     * nodes) receive the same plain formatting as {@link #buildNodeList} without any ancestor header.
-     */
+    /** Shared source context is sent once per sibling group, never inferred from the first node. */
     private String buildNodeListWithContext(List<TaxonomyNode> nodes) {
-        if (nodes.isEmpty()) {
-            return "";
+        // Root-only assessments have no inherited context and need no catalogue lookup.
+        if (nodes.isEmpty() || nodes.stream().allMatch(node -> node.getParentCode() == null
+                || node.getParentCode().isBlank())) return buildNodeList(nodes);
+        Map<String, String> contexts = taxonomyService.getAssessmentContexts(nodes);
+        Map<String, List<TaxonomyNode>> groups = new LinkedHashMap<>();
+        for (TaxonomyNode node : nodes) {
+            groups.computeIfAbsent(contexts.getOrDefault(node.getCode(), ""), unused -> new ArrayList<>())
+                    .add(node);
         }
-        StringBuilder sb = new StringBuilder();
-
-        // Use the first node's parent as the shared context anchor
-        String parentCode = nodes.get(0).getParentCode();
-        if (parentCode != null && !parentCode.isBlank()) {
-            List<TaxonomyNode> ancestors = taxonomyService.getPathToRoot(parentCode);
-            if (!ancestors.isEmpty()) {
-                sb.append("Parent hierarchy (for context — do NOT score these):\n");
-                for (TaxonomyNode ancestor : ancestors) {
-                    sb.append("  ").append(ancestor.getCode()).append(": ").append(ancestor.getName());
-                    if (ancestor.getDescription() != null && !ancestor.getDescription().isBlank()) {
-                        sb.append(" - ").append(ancestor.getDescription());
-                    }
-                    sb.append("\n");
-                }
-                sb.append("\nNodes to evaluate:\n");
-            }
+        StringBuilder text = new StringBuilder();
+        for (Map.Entry<String, List<TaxonomyNode>> group : groups.entrySet()) {
+            if (!group.getKey().isBlank()) text.append(group.getKey())
+                    .append("\nNodes to evaluate (only the following candidates):\n");
+            text.append(buildNodeList(group.getValue()));
         }
-
-        for (TaxonomyNode n : nodes) {
-            sb.append(n.getCode()).append(": ").append(n.getName());
-            if (n.getDescription() != null && !n.getDescription().isBlank()) {
-                sb.append(" - ").append(n.getDescription());
-            }
-            sb.append("\n");
-        }
-        return sb.toString();
+        return text.toString();
     }
 
     private String buildPrompt(String businessText, String nodeList) {

@@ -179,6 +179,61 @@ class LlmServiceBranchCoverageTest {
                 anyList(), anyList(), anyList());
     }
 
+    @Test
+    void incompleteCategoryBatchIsDiagnosedWithoutInventingScores() {
+        var nodes = List.of(node("IP-1065", "IP", "IP"), node("IP-1069", "IP", "IP"));
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("incomplete-body");
+        when(gateway.extractResponseText("incomplete-body")).thenReturn("{\"IP-1065\":60}");
+        LlmCallDetail detail = service.analyzeSingleBatchDetailed("requirement", nodes, 100);
+        assertThat(detail.getScores()).isEmpty();
+        assertThat(detail.getError()).contains("IP-1069");
+        assertThat(detail.getRawResponse()).isEqualTo("{\"IP-1065\":60}");
+        assertThat(detail.getPrompt()).isEqualTo("rendered prompt");
+    }
+
+    @Test
+    void failedRootStaysAbsentFromStreamingAndItsTerminalSnapshot() {
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(
+                node("BP", null, "BP"), node("CP", null, "CP"))));
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("valid", "incomplete");
+        when(gateway.extractResponseText("valid")).thenReturn("{\"BP\":100}");
+        when(gateway.extractResponseText("incomplete")).thenReturn("{}");
+        service.analyzeStreaming("requirement", callback);
+        verify(callback).onScores(eq(Map.of()), anyMap(), argThat(text -> !text.contains("0/100")),
+                argThat(detail -> detail.getError() != null && detail.getRawResponse().equals("{}")));
+        verify(callback).onComplete(eq("PARTIAL"), eq(Map.of("BP", 100)),
+                argThat(warnings -> warnings.stream().anyMatch(w -> w.contains("CP"))), anyList(), anyList());
+    }
+
+    @Test
+    void incompleteDescendantsStayUnknownInSavedAnalysisJson() throws Exception {
+        when(taxonomyService.getRootNodes()).thenReturn(new ArrayList<>(List.of(node("IP", null, "IP"))));
+        when(taxonomyService.getChildrenOf("IP")).thenReturn(List.of(
+                node("IP-1065", "IP", "IP"), node("IP-1069", "IP", "IP")));
+        when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn("valid", "incomplete");
+        when(gateway.extractResponseText("valid")).thenReturn("{\"IP\":100}");
+        when(gateway.extractResponseText("incomplete")).thenReturn("{\"IP-1065\":60}");
+        AnalysisResult result = service.analyzeWithBudget("requirement");
+        assertThat(result.getStatus()).isEqualTo("PARTIAL");
+        assertThat(result.getRawScores()).containsOnlyKeys("IP");
+        assertThat(result.getWarnings()).anyMatch(w -> w.contains("IP-1069"));
+        var json = new ObjectMapper();
+        AnalysisResult saved = json.readValue(json.writeValueAsString(result), AnalysisResult.class);
+        assertThat(saved.getStatus()).isEqualTo("PARTIAL");
+        assertThat(saved.getRawScores()).isEqualTo(Map.of("IP", 100));
+        assertThat(saved.getScores()).doesNotContainKeys("IP-1065", "IP-1069");
+        verify(taxonomyService, never()).getChildrenOf("IP-1065");
+    }
+
+    @Test
+    void duplicateCategoryRequestDoesNotSpendAProviderCall() {
+        var root = node("BP", null, "BP");
+        LlmCallDetail detail = service.analyzeSingleBatchDetailed("requirement", List.of(root, root), 100);
+        assertThat(detail.getError()).containsIgnoringCase("duplicate");
+        assertThat(detail.getScores()).isEmpty();
+        verify(gateway, never()).sendHttpRequest(anyString(), anyString());
+    }
+
     @BeforeEach
     void setUp() {
         service = new LlmService(providerConfig, gatewayRegistry, new ObjectMapper(), taxonomyService,
@@ -227,7 +282,7 @@ class LlmServiceBranchCoverageTest {
         when(providerConfig.getApiKey(LlmProvider.OPENAI)).thenReturn(" ");
 
         LlmCallDetail noKey = service.analyzeSingleBatchDetailed("requirement", List.of(node), 100);
-        assertThat(noKey.getScores()).containsEntry("A", 0);
+        assertThat(noKey.getScores()).isEmpty();
         assertThat(noKey.getError()).contains("No API key configured");
 
         when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
@@ -235,7 +290,7 @@ class LlmServiceBranchCoverageTest {
         when(localEmbeddingService.isAvailable()).thenReturn(false);
         LlmCallDetail unavailable = service.analyzeSingleBatchDetailed("requirement", List.of(node), 100);
         assertThat(unavailable.getError()).contains("not available");
-        assertThat(unavailable.getScores()).containsEntry("A", 0);
+        assertThat(unavailable.getScores()).isEmpty();
 
         when(localEmbeddingService.isAvailable()).thenReturn(true);
         when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 17));
@@ -285,14 +340,14 @@ class LlmServiceBranchCoverageTest {
         assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 100);
 
         when(gateway.extractResponseText("body")).thenReturn("bad-json");
-        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 0);
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).isEmpty();
 
         when(gateway.sendHttpRequest("rendered prompt", "test-key")).thenReturn(null);
-        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 0);
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).isEmpty();
 
         when(providerConfig.getActiveProvider()).thenReturn(LlmProvider.LOCAL_ONNX);
         when(localEmbeddingService.isAvailable()).thenReturn(false);
-        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).containsEntry("A", 0);
+        assertThat(service.analyzeSingleBatch("requirement", List.of(node), 100)).isEmpty();
 
         when(localEmbeddingService.isAvailable()).thenReturn(true);
         when(localEmbeddingService.scoreNodes("requirement", List.of(node))).thenReturn(Map.of("A", 9));

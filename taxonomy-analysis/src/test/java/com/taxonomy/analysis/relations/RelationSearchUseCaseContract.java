@@ -74,7 +74,7 @@ public final class RelationSearchUseCaseContract {
         };
         TaxonomyNode source = node("process", "BP", "BP"), root = node("IP", "IP", null), target = node("evidence", "IP", "IP");
         TaxonomyService catalogue = new TaxonomyService(null, null, null) {
-            @Override public TaxonomyNode getNodeByCode(String id) { return Map.of("process", source, "IP", root, "evidence", target).get(id); }
+            @Override public TaxonomyNode getNodeByCode(String id) { return Map.of("process", source, "BP", node("BP", "BP", null), "IP", root, "evidence", target).get(id); }
             @Override public List<TaxonomyNode> getRootNodes() { return List.of(root); }
             @Override public List<TaxonomyNode> getChildrenOf(String id) { return id.equals("IP") ? List.of(target) : List.of(); }
         };

@@ -656,6 +656,17 @@
         return state.snapshotDetail?.analysis?.relationSearchReport ? '—' : `${Math.round(value * 100)}%`;
     }
 
+    function snapshotScore(mapping, field) {
+        const analysis = state.snapshotDetail?.analysis;
+        if (!analysis?.relationSearchReport) {
+            return field === 'rawScore' ? `${mapping.directScore}%` : `${Math.round(mapping.relevance * 100)}%`;
+        }
+        // The index uses numeric defaults. Only immutable analysis evidence can
+        // establish whether this node was assessed and what its original score was.
+        const value = analysis.scoreDetails?.[mapping.nodeCode]?.[field];
+        return Number.isFinite(value) && value >= 0 && value <= 100 ? `${value}%` : '—';
+    }
+
     function renderMappings(mappings) {
         const target = document.getElementById('mappingTable');
         if (!mappings.length) return renderEmpty(target, t('noMappings'));
@@ -663,7 +674,7 @@
             + `<thead><tr><th>${escapeHtml(t('node'))}</th><th>${escapeHtml(t('score'))}</th><th>${escapeHtml(t('relevance'))}</th>`
             + `<th>${escapeHtml(t('confidence'))}</th><th>${escapeHtml(t('origin'))}</th><th>${escapeHtml(t('review'))}</th><th>${escapeHtml(t('action'))}</th></tr></thead>`
             + `<tbody>${mappings.map(mapping => `<tr><td><code>${escapeHtml(mapping.nodeCode)}</code><div class="small">${escapeHtml(mapping.nodeTitle || '')}</div><div class="small text-body-secondary">${escapeHtml(mapping.hierarchyPath || '')}</div></td>`
-                + `<td>${mapping.directScore}%</td><td>${Math.round(mapping.relevance * 100)}%</td><td>${snapshotConfidence(mapping.confidence)}</td>`
+                + `<td>${snapshotScore(mapping, 'rawScore')}</td><td>${snapshotScore(mapping, 'effectiveRelevance')}</td><td>${snapshotConfidence(mapping.confidence)}</td>`
                 + `<td>${escapeHtml(humanize(mapping.mappingOrigin))}</td><td>${escapeHtml(humanize(mapping.reviewStatus))}</td><td>${escapeHtml(humanize(mapping.actionStatus))}</td></tr>`).join('')}</tbody></table>`;
     }
 

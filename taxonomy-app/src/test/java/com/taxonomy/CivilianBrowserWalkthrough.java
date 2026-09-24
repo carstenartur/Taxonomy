@@ -301,12 +301,12 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         for (String language : List.of("en", "de")) {
             driver.get(origin + "/integrations" + scope + "&connection=" + context.path("connection").asText() + "&operation=" + preview.path("id").asText() + "&lang=" + language);
             wait.until(ExpectedConditions.elementToBeClickable(By.id("integrationApply")));
-            var row = wait.until(browser -> browser.findElements(By.cssSelector("#integrationChanges tr")).stream().filter(r -> r.getText().contains("000000000005")).findFirst().orElse(null));
+            var row = waitForIntegrationChangeRow("000000000005");
             var advanced = row.findElements(By.cssSelector("td:last-child details summary")); assertThat(advanced).isNotEmpty(); advanced.getFirst().click();
             var projection = row.findElements(By.tagName("select")).stream().filter(select -> select.findElements(By.cssSelector("option[value='REQUIREMENT_MAPPING']")).size() == 1).findFirst().orElseThrow();
             new Select(projection).selectByValue("REQUIREMENT_MAPPING");
             wait.until(browser -> browser.findElements(By.cssSelector("#integrationChanges select")).stream().anyMatch(select -> "REQUIREMENT_MAPPING".equals(select.getDomProperty("value"))));
-            var updated = driver.findElements(By.cssSelector("#integrationChanges tr")).stream().filter(r -> r.getText().contains("000000000005")).findFirst().orElseThrow();
+            var updated = waitForIntegrationChangeRow("000000000005");
             updated.findElements(By.cssSelector("td:last-child details summary")).getFirst().click();
             driver.executeScript("arguments[0].scrollIntoView({block:'center'})", updated);
             inventory("native-endpoint-review-" + language); screenshot("80-native-endpoint-review-" + language + ".png");
@@ -314,6 +314,21 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         var cancelRationale = driver.findElement(By.id("integrationRationale")); cancelRationale.clear(); cancelRationale.sendKeys("Cancel inspected native endpoint preview"); click(By.id("integrationCancel"));
         Files.writeString(output.resolve("native-browser.json"), new ObjectMapper().writeValueAsString(Map.of("nativePackageEdited", true,
                 "languages", List.of("en", "de"), "requestInterception", false, "productCompatibility", "NOT_EXECUTED")));
+    }
+
+    private WebElement waitForIntegrationChangeRow(String text) {
+        return wait.until(browser -> {
+            try {
+                return browser.findElements(By.cssSelector("#integrationChanges tr")).stream()
+                        .filter(row -> row.getText().contains(text))
+                        .findFirst()
+                        .orElse(null);
+            } catch (StaleElementReferenceException ignored) {
+                // The integration preview replaces its table rows while settling.
+                // Re-resolve them on the next wait poll instead of retaining a stale DOM reference.
+                return null;
+            }
+        });
     }
 
     private void inspectPublicationControls(CivilianArchitectureAcceptanceTest app) throws Exception {

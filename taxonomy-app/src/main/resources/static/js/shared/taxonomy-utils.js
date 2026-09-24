@@ -28,6 +28,30 @@ window.TaxonomyUtils = (function () {
         return (document.documentElement.lang || 'en').toLowerCase().startsWith('de') ? 'de' : 'en';
     }
 
+    async function copyText(value) {
+        var text = value == null ? '' : String(value);
+        if (typeof navigator !== 'undefined' && navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return;
+        }
+        if (!document.body || typeof document.execCommand !== 'function') {
+            throw new Error('Clipboard copy is unavailable');
+        }
+        var temporary = document.createElement('textarea');
+        temporary.value = text;
+        temporary.readOnly = true;
+        temporary.className = 'position-fixed top-0 start-0 opacity-0';
+        document.body.appendChild(temporary);
+        try {
+            temporary.select();
+            if (!document.execCommand('copy')) {
+                throw new Error('Clipboard copy failed');
+            }
+        } finally {
+            temporary.remove();
+        }
+    }
+
     function loadErgonomicsStyles() {
         if (document.querySelector('link[data-taxonomy-ergonomics]')) return;
         var link = document.createElement('link');
@@ -487,6 +511,7 @@ window.TaxonomyUtils = (function () {
     return {
         escapeHtml: escapeHtml,
         stripHtml: stripHtml,
+        copyText: copyText,
         showMessage: showMessage,
         requestScore: requestScore,
         syncTreeItemAccessibility: syncTreeItemAccessibility,

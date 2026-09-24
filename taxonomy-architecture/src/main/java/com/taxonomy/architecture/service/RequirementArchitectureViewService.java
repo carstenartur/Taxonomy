@@ -30,7 +30,14 @@ public class RequirementArchitectureViewService {
     /** Projects only requirement-scoped evidence; does not read or mutate catalogue relations. */
     public RequirementArchitectureView buildFromEvidence(Map<String,Integer> scores, int maxNodes,
                                                          com.taxonomy.dto.RelationSearchReport report) {
-        return pipeline.projectEvidence(report, scores, maxNodes);
+        return buildFromEvidence(scores, Map.of(), maxNodes, report);
+    }
+
+    /** Keeps original assessment provenance separate from comparable effective relevance. */
+    public RequirementArchitectureView buildFromEvidence(Map<String,Integer> effectiveScores,
+            Map<String,com.taxonomy.dto.AnalysisScoreDetail> scoreDetails, int maxNodes,
+            com.taxonomy.dto.RelationSearchReport report) {
+        return pipeline.projectEvidence(report, effectiveScores, scoreDetails, maxNodes);
     }
 
     /**

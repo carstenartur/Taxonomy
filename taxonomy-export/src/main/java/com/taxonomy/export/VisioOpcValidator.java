@@ -30,6 +30,7 @@ final class VisioOpcValidator {
     private static final Map<String, String> RELATION_CONTENT_TYPES = Map.of(
             "http://schemas.microsoft.com/visio/2010/relationships/document", "application/vnd.ms-visio.drawing.main+xml",
             "http://schemas.microsoft.com/visio/2010/relationships/pages", "application/vnd.ms-visio.pages+xml",
+            "http://schemas.microsoft.com/visio/2010/relationships/windows", "application/vnd.ms-visio.windows+xml",
             "http://schemas.microsoft.com/visio/2010/relationships/page", "application/vnd.ms-visio.page+xml",
             "http://schemas.openxmlformats.org/package/2006/relationships/metadata/core-properties", "application/vnd.openxmlformats-package.core-properties+xml",
             OFFICE_REL + "/extended-properties", "application/vnd.openxmlformats-officedocument.extended-properties+xml",
@@ -52,7 +53,7 @@ final class VisioOpcValidator {
                 if (entry.getKey().endsWith(".xml") || entry.getKey().endsWith(".rels")) xml.put(entry.getKey(), parse(value));
             }
             for (String required : List.of("[Content_Types].xml", "_rels/.rels", "docProps/core.xml", "docProps/app.xml",
-                    "docProps/custom.xml", "visio/document.xml", "visio/_rels/document.xml.rels", "visio/pages/pages.xml",
+                    "docProps/custom.xml", "visio/document.xml", "visio/windows.xml", "visio/_rels/document.xml.rels", "visio/pages/pages.xml",
                     "visio/pages/_rels/pages.xml.rels", "taxonomy/manifest.json", "taxonomy/mapping-profile.json")) {
                 check(parts.containsKey(required), "Missing required OPC part " + required);
             }
@@ -79,6 +80,10 @@ final class VisioOpcValidator {
                 }
                 check(references.putIfAbsent(source, ids) == null, "Duplicate relationship source");
             }
+            String windowsTarget = references.getOrDefault("visio/document.xml", Map.of()).values().stream()
+                    .filter(target -> "visio/windows.xml".equals(target)).findFirst().orElse(null);
+            check(windowsTarget != null, "Visio document must reference windows.xml");
+
             Set<String> reachable = new HashSet<>();
             visit("", graph, reachable);
             for (String part : parts.keySet()) {
@@ -95,6 +100,7 @@ final class VisioOpcValidator {
                 }
             }
             validateSchema(VisioDocumentDocument1.Factory.parse(xml.get("visio/document.xml")));
+            root(xml.get("visio/windows.xml"), VISIO, "Windows");
             validateSchema(PagesDocument.Factory.parse(xml.get("visio/pages/pages.xml")));
             validateSchema(org.openxmlformats.schemas.officeDocument.x2006.customProperties.PropertiesDocument.Factory.parse(xml.get("docProps/custom.xml")));
             validateSchema(org.openxmlformats.schemas.officeDocument.x2006.extendedProperties.PropertiesDocument.Factory.parse(xml.get("docProps/app.xml")));

@@ -15,9 +15,10 @@ function fixture(view = {viewTitle: 'Existing result', includedElements: [{nodeC
             remove() {}, click() {}, querySelector() {return null;}, querySelectorAll() {return [];} };
         return e;
     }
-    for (const id of ['exportGroup','exportVisio','exportArchiMate','exportMermaid','exportStructurizr']) {
+    for (const id of ['exportGroup','exportSvg','exportPng','exportVisio','exportArchiMate','exportMermaid','exportStructurizr']) {
         const el=element('button');el.id=id;elements.set(id,el);
     }
+    const businessText=element('textarea');businessText.id='businessText';businessText.value='original';elements.set('businessText',businessText);
     const requests=[]; const alerts=[]; const downloads=[]; let resolve; let reject;
     const pending=new Promise((yes,no)=>{resolve=yes;reject=no;});
     const document={documentElement:{lang:'en'},body:element('body'),
@@ -43,6 +44,16 @@ test('exports a frozen copy of the current architecture with visible busy state'
     assert.match(f.elements.get('diagramExportStatusText').textContent,/ready/i);
     assert.equal(JSON.stringify(f.state),original);
 });
+test('main SVG export posts the frozen architecture model instead of serializing the live viewport',async()=>{
+    const f=fixture();const work=f.api.exportSvg();await Promise.resolve();
+    assert.equal(f.requests[0].url,'/api/diagram/current/svg');
+    assert.deepEqual(JSON.parse(f.requests[0].options.body),f.state.currentArchView);
+    f.resolve({ok:true,redirected:false,headers:{get:()=> 'image/svg+xml'},
+        text:async()=>'<svg xmlns="http://www.w3.org/2000/svg"><text>A</text></svg>'});
+    assert.equal(await work,true);
+    assert.equal(f.downloads.length,1);
+});
+
 test('missing architecture never triggers a new analysis',async()=>{
     const f=fixture(null);f.resolve({ok:true,blob:async()=>new Blob(['unexpected'])});await f.run();assert.equal(f.requests.length,0);
     assert.match(f.elements.get('diagramExportStatusText').textContent,/architecture/i);
@@ -250,4 +261,12 @@ test('Sparx export help has paired documents and translated table-of-contents en
         const bundle=readFileSync(path.join(root,'taxonomy-app/src/main/resources/i18n',language==='en'?'messages_sparx_export.properties':'messages_sparx_export_de.properties'),'utf8');
         assert.match(bundle,/^help\.toc\.SPARX_CURRENT_VIEW_EXPORT=.+$/m);
     }
+});
+
+test('main Export SVG and PNG handlers request full-model exports rather than viewport captures',()=>{
+    const browse=readFileSync(path.resolve(__dirname,'../../main/resources/static/js/core/taxonomy-browse.js'),'utf8');
+    assert.match(browse,/btnId === 'exportSvg'[\s\S]*?TaxonomyExport\.exportSvg\(\)/);
+    assert.match(browse,/btnId === 'exportPng'[\s\S]*?TaxonomyExport\.exportPng\(\)/);
+    assert.doesNotMatch(browse,/btnId === 'exportSvg'[\s\S]{0,180}?exportSvg\('taxonomyTree'\)/);
+    assert.doesNotMatch(browse,/btnId === 'exportPng'[\s\S]{0,180}?exportPng\('taxonomyTree'\)/);
 });

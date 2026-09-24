@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.relations;
 
+import com.taxonomy.analysis.assessment.ChildAssessmentContract;
 import tools.jackson.core.StreamReadFeature;
 import tools.jackson.databind.DeserializationFeature;
 import tools.jackson.databind.JsonNode;
@@ -28,6 +29,8 @@ public final class RelationSearchProtocol {
     }
 
     public List<SourceAssessment> contributions(String original, List<Node> nodes) {
+        nodes = List.copyOf(nodes);
+        List<String> candidateIds = ChildAssessmentContract.validateCandidates(nodes.stream().map(Node::id).toList());
         String prompt = PREAMBLE + """
             Extract ONLY each source element's contribution actually requested by the original.
             A taxonomy category's entire scope is not requested merely because the category matches.
@@ -44,15 +47,10 @@ public final class RelationSearchProtocol {
         JsonNode response = read(complete.apply(prompt));
         fields(response, "selections");
         JsonNode selections = array(response, "selections");
-        if (selections.size() != nodes.size()) invalid("Every offered source requires exactly one selection");
         Map<String, Node> offered = new LinkedHashMap<>();
         nodes.forEach(n -> offered.put(n.id(), n));
-        Set<String> seen = new HashSet<>();
-        List<SourceAssessment> result = new ArrayList<>();
-        for (JsonNode selected : selections) {
+        return decodeChildren(candidateIds, selections, "nodeId", (id, selected) -> {
             fields(selected, "nodeId", "outcome", "contributions", "rationale", "question");
-            String id = text(selected, "nodeId", false);
-            if (!offered.containsKey(id) || !seen.add(id)) invalid("Unknown or duplicate source ID");
             String outcome = text(selected, "outcome", false);
             String rationale = text(selected, "rationale", false);
             String question = text(selected, "question", true);
@@ -73,12 +71,15 @@ public final class RelationSearchProtocol {
                 if (contributions.contains(contribution)) invalid("Duplicate source contribution");
                 contributions.add(contribution);
             }
-            result.add(new SourceAssessment(offered.get(id), contributions, rationale, question));
-        }
-        return List.copyOf(result);
+            contributions.sort(Comparator.comparing(Contribution::text)
+                    .thenComparing(Contribution::quote).thenComparing(Contribution::condition));
+            return new SourceAssessment(offered.get(id), contributions, rationale, question);
+        });
     }
 
     public List<Decision> evaluate(Query query) {
+        List<String> candidateIds = ChildAssessmentContract.validateCandidates(
+                query.candidates().stream().map(Node::id).toList());
         String prompt = PREAMBLE + """
             Source contribution and original remain binding at every depth. Interpret direction:
             OUTGOING = source contribution -> candidate; INCOMING = candidate -> source contribution.
@@ -107,19 +108,31 @@ public final class RelationSearchProtocol {
             """ + JSON.writeValueAsString(query);
         JsonNode response = read(complete.apply(prompt));
         fields(response, "decisions");
-        List<Decision> decisions = new ArrayList<>();
-        for (JsonNode item : array(response, "decisions")) {
+        return decodeChildren(candidateIds, array(response, "decisions"), "targetId", (id, item) -> {
             fields(item, "targetId", "outcome", "contribution", "quote", "necessity", "condition",
                     "alternativeGroup", "rationale", "question");
             try {
                 JsonNode necessity = item.get("necessity");
-                decisions.add(new Decision(text(item, "targetId", false), Outcome.valueOf(text(item, "outcome", false)),
+                return new Decision(id, Outcome.valueOf(text(item, "outcome", false)),
                         text(item, "contribution", true), text(item, "quote", true), necessity.isNull() ? null
                         : Necessity.valueOf(text(item, "necessity", false)), text(item, "condition", true),
-                        text(item, "alternativeGroup", true), text(item, "rationale", false), text(item, "question", true)));
-            } catch (IllegalArgumentException invalidEnum) { invalid("Unknown relation decision or necessity"); }
+                        text(item, "alternativeGroup", true), text(item, "rationale", false), text(item, "question", true));
+            } catch (IllegalArgumentException invalidEnum) {
+                throw new RelationSearchEngine.InvalidResponseException("Unknown relation decision or necessity");
+            }
+        });
+    }
+
+    private static <T> List<T> decodeChildren(List<String> candidateIds, JsonNode array, String identityField,
+                                                java.util.function.BiFunction<String, JsonNode, T> policy) {
+        List<JsonNode> answers = new ArrayList<>();
+        array.forEach(answers::add);
+        try {
+            return List.copyOf(ChildAssessmentContract.decodeEntries(candidateIds, answers,
+                    item -> text(item, identityField, false), policy).values());
+        } catch (IllegalArgumentException invalidSet) {
+            throw new RelationSearchEngine.InvalidResponseException(invalidSet.getMessage());
         }
-        return List.copyOf(decisions);
     }
 
     private static JsonNode read(String raw) {

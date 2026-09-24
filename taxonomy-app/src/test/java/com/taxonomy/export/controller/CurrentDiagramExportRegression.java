@@ -4,12 +4,15 @@ import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.RequirementElementView;
 import com.taxonomy.dto.RequirementRelationshipView;
 import com.taxonomy.export.DiagramProjectionService;
+import com.taxonomy.export.LayeredDiagramLayoutService;
+import com.taxonomy.export.SvgDiagramRenderer;
 import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.export.service.ExportFacade;
 import com.taxonomy.export.service.ExportFormatExtensionRegistry;
 import com.taxonomy.export.service.VisioExportExtension;
 import com.taxonomy.export.service.SparxExportExtension;
+import com.taxonomy.export.service.SvgExportExtension;
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -28,7 +31,9 @@ final class CurrentDiagramExportRegression {
 
     private static ExportApiController controller() {
         var registry = new ExportFormatExtensionRegistry(List.of(
-                new VisioExportExtension(new VisioDiagramService(), new VisioPackageBuilder()), new SparxExportExtension()));
+                new VisioExportExtension(new VisioDiagramService(), new VisioPackageBuilder()),
+                new SparxExportExtension(),
+                new SvgExportExtension(new LayeredDiagramLayoutService(), new SvgDiagramRenderer())));
         return new ExportApiController(facade(), registry);
     }
 
@@ -56,6 +61,21 @@ final class CurrentDiagramExportRegression {
             check(view.getIncludedElements().equals(before), "Export mutated working state");
             check(view.getIncludedRelationships().size() == size - 1, "Export mutated relationships");
         }
+    }
+
+    static void exportsCompleteSvgFromWorkingModelWithoutViewportState() {
+        var view = view(12);
+        var response = controller().exportCurrentDiagram("svg", view);
+        check(response.getStatusCode().value() == 200, "SVG export status");
+        check("image/svg+xml".equals(response.getHeaders().getFirst("Content-Type")), "SVG media type");
+        check(response.getBody() instanceof byte[], "SVG body is not bytes");
+        String svg = new String((byte[]) response.getBody(), StandardCharsets.UTF_8);
+        check(svg.startsWith("<svg") || svg.contains("<svg"), "SVG root missing");
+        for (int i = 0; i < 12; i++) {
+            check(svg.contains("NODE-" + i + "-END"), "Full-model SVG lost node " + i);
+        }
+        check(!svg.contains("impact-map-viewport") && !svg.contains("decision-map-svg"),
+                "Model export leaked browser viewport markup");
     }
 
     static void exportsSparxWorkingViewWithoutScoringOrSyncMutation() throws Exception {
@@ -147,8 +167,9 @@ final class CurrentDiagramExportRegression {
 
     public static void main(String[] args) throws Exception {
         exportsAllCurrentNodesWithoutScoring();
+        exportsCompleteSvgFromWorkingModelWithoutViewportState();
         rejectsInvalidSnapshotsWithoutScoring();
         exportsSparxWorkingViewWithoutScoringOrSyncMutation();
-        System.out.println("PASS: complete 50/150-node VSDX exports without LLM/derivation; invalid inputs and normalized score ranges checked");
+        System.out.println("PASS: complete VSDX/SVG exports without LLM/viewport state; invalid inputs and normalized score ranges checked");
     }
 }
