@@ -40,43 +40,85 @@
     }
 
     function exportSvg(containerId) {
-        var svg = standaloneSvg(containerId);
-        if (!svg) return unavailable('export.no.svg');
-        downloadBlob(
-            new Blob([serializeSvg(svg)], { type: 'image/svg+xml;charset=utf-8' }),
-            'taxonomy-view.svg'
-        );
+        // An explicit container is a view-level capture. The main Export action is
+        // model-level and must not inherit transient zoom, pan, focus or filter state.
+        if (containerId) {
+            var svg = standaloneSvg(containerId);
+            if (!svg) return unavailable('export.no.svg');
+            downloadBlob(
+                new Blob([serializeSvg(svg)], { type: 'image/svg+xml;charset=utf-8' }),
+                'taxonomy-view.svg'
+            );
+            return true;
+        }
+        var requirement = document.getElementById('businessText');
+        return diagramDownload('/api/diagram/svg', requirement ? requirement.value : '',
+            'requirement-architecture.svg', 'text');
     }
 
-    function exportPng(containerId, scaleFactor) {
-        var svg = standaloneSvg(containerId);
-        if (!svg) return unavailable('export.no.svg');
+    function rasterizeSvg(svgText, scaleFactor, filename) {
+        var parsed = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+        var svg = parsed.documentElement;
+        if (!svg || svg.localName !== 'svg' || parsed.querySelector('parsererror')) {
+            return Promise.reject(new Error(exportMessage('The architecture SVG is invalid.',
+                'Das Architektur-SVG ist ungültig.')));
+        }
         var width = dimension(svg, 'width', 800);
         var height = dimension(svg, 'height', 400);
         var resolution = document.getElementById('pngResolution');
         var scale = scaleFactor || (resolution ? parseInt(resolution.value, 10) : 2) || 2;
-        var blob = new Blob([serializeSvg(svg)], { type: 'image/svg+xml;charset=utf-8' });
+        var blob = new Blob([svgText], { type: 'image/svg+xml;charset=utf-8' });
         var url = URL.createObjectURL(blob);
-        var image = new Image();
-        image.onload = function () {
-            var canvas = document.createElement('canvas');
-            canvas.width = width * scale;
-            canvas.height = height * scale;
-            var context = canvas.getContext('2d');
-            context.fillStyle = '#ffffff';
-            context.fillRect(0, 0, canvas.width, canvas.height);
-            context.scale(scale, scale);
-            context.drawImage(image, 0, 0);
-            URL.revokeObjectURL(url);
-            canvas.toBlob(function (png) {
-                if (png) downloadBlob(png, 'taxonomy-view.png');
-            }, 'image/png');
-        };
-        image.onerror = function () {
-            URL.revokeObjectURL(url);
-            unavailable('export.png.failed');
-        };
-        image.src = url;
+        return new Promise(function (resolve, reject) {
+            var image = new Image();
+            image.onload = function () {
+                var canvas = document.createElement('canvas');
+                canvas.width = Math.ceil(width * scale);
+                canvas.height = Math.ceil(height * scale);
+                var context = canvas.getContext('2d');
+                context.fillStyle = '#ffffff';
+                context.fillRect(0, 0, canvas.width, canvas.height);
+                context.scale(scale, scale);
+                context.drawImage(image, 0, 0, width, height);
+                URL.revokeObjectURL(url);
+                canvas.toBlob(function (png) {
+                    if (!png) {
+                        reject(new Error(exportMessage('PNG conversion failed.',
+                            'PNG-Konvertierung fehlgeschlagen.')));
+                        return;
+                    }
+                    downloadBlob(png, filename);
+                    resolve(true);
+                }, 'image/png');
+            };
+            image.onerror = function () {
+                URL.revokeObjectURL(url);
+                reject(new Error(exportMessage('PNG conversion failed.',
+                    'PNG-Konvertierung fehlgeschlagen.')));
+            };
+            image.src = url;
+        });
+    }
+
+    function exportPng(containerId, scaleFactor) {
+        // Explicit callers keep the view-capture contract. The main export button
+        // obtains a fresh deterministic full-model SVG from the server first.
+        if (containerId) {
+            var viewSvg = standaloneSvg(containerId);
+            if (!viewSvg) return unavailable('export.no.svg');
+            return rasterizeSvg(serializeSvg(viewSvg), scaleFactor, 'taxonomy-view.png')
+                .catch(function (error) { return unavailable('export.png.failed', error.message); });
+        }
+        var requirement = document.getElementById('businessText');
+        return diagramDownload(
+            '/api/diagram/svg',
+            requirement ? requirement.value : '',
+            'requirement-architecture.svg',
+            'text',
+            function (svgText) {
+                return rasterizeSvg(svgText, scaleFactor, 'requirement-architecture.png');
+            }
+        );
     }
 
     /**
@@ -258,6 +300,7 @@
         var type = (response.headers && response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase();
         var expected = filename.endsWith('.vsdx') ? ['application/vnd.ms-visio.drawing']
             : filename.endsWith('.zip') ? ['application/zip']
+            : filename.endsWith('.svg') ? ['image/svg+xml']
             : filename.endsWith('.xml') ? ['application/xml', 'text/xml'] : ['text/plain'];
         if (response.redirected || expected.indexOf(type) < 0) {
             throw new Error(exportMessage('The server did not return the requested file format. Sign in again and retry; no file was downloaded.',
@@ -361,7 +404,7 @@
             'Die gelieferte Datei ist leer, unvollständig oder nicht im angeforderten Format. Keine Datei wurde gespeichert.'));
     }
 
-    function diagramDownload(url, businessText, filename, responseType) {
+    function diagramDownload(url, businessText, filename, responseType, contentHandler) {
         if (diagramExportBusy) return Promise.resolve(false);
         var state = window.TaxonomyState;
         if (!state || !state.currentArchView || !Array.isArray(state.currentArchView.includedElements)
@@ -412,7 +455,11 @@
         }).then(async function (content) {
             var blob = content instanceof Blob ? content : new Blob([content], { type: 'text/plain;charset=utf-8' });
             await validateDownloadBytes(blob, filename);
-            downloadBlob(blob, filename);
+            if (contentHandler) {
+                await contentHandler(content);
+            } else {
+                downloadBlob(blob, filename);
+            }
             diagramStatus(exportMessage('Download ready. The architecture was kept unchanged.',
                 'Download bereitgestellt. Die Architektur blieb unverändert.'), false, false);
             return true;

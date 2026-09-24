@@ -373,6 +373,23 @@
 }
 
 /* ── Decision Map ─────────────────────────────────────────── */
+:root {
+    --decision-map-text: #1f2937;
+    --decision-score-surface: #dbeafe;
+    --decision-score-stroke: #1d4ed8;
+    --decision-score-line: #2563eb;
+    --decision-ancestor-surface: #f1f5f9;
+    --decision-ancestor-stroke: #64748b;
+    --decision-link: #64748b;
+    --decision-rank-1-surface: #f6c344;
+    --decision-rank-2-surface: #cbd5e1;
+    --decision-rank-3-surface: #c98958;
+    --decision-rank-stroke: #475569;
+    --decision-rank-1-line: #8a5a00;
+    --decision-rank-2-line: #64748b;
+    --decision-rank-3-line: #7c3f17;
+}
+
 .decision-stats {
     display: flex;
     flex-wrap: wrap;
@@ -415,7 +432,10 @@
 .decision-score-badge {
     display: inline-block;
     padding: 2px 8px;
+    border: 2px solid var(--decision-score-stroke);
     border-radius: 10px;
+    background: var(--decision-score-surface);
+    color: var(--decision-map-text);
     font-weight: 700;
     font-size: 0.8rem;
 }
@@ -683,6 +703,23 @@
 [data-bs-theme="dark"] #diagnosticsContent {
     background-color: #2b3035 !important;
     color: #dee2e6;
+}
+
+[data-bs-theme="dark"] {
+    --decision-map-text: #f8fafc;
+    --decision-score-surface: #173b66;
+    --decision-score-stroke: #93c5fd;
+    --decision-score-line: #93c5fd;
+    --decision-ancestor-surface: #334155;
+    --decision-ancestor-stroke: #cbd5e1;
+    --decision-link: #94a3b8;
+    --decision-rank-1-surface: #765b00;
+    --decision-rank-2-surface: #475569;
+    --decision-rank-3-surface: #713f20;
+    --decision-rank-stroke: #f8fafc;
+    --decision-rank-1-line: #facc15;
+    --decision-rank-2-line: #cbd5e1;
+    --decision-rank-3-line: #fdba74;
 }
 
 [data-bs-theme="dark"] .decision-stats,

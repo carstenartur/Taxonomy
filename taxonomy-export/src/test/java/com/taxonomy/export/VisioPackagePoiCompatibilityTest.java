@@ -37,6 +37,23 @@ class VisioPackagePoiCompatibilityTest {
     }
 
     @Test
+    void generatedPackageContainsDesktopWindowPartAndRelationship() throws Exception {
+        byte[] packageBytes = builder.build(
+                VisioPackageBuilderTest.representativeDocument());
+
+        String windows = VisioPackageBuilderTest.readEntry(
+                packageBytes, "visio/windows.xml");
+        String relationships = VisioPackageBuilderTest.readEntry(
+                packageBytes, "visio/_rels/document.xml.rels");
+
+        assertThat(windows).contains("<Windows")
+                .contains("http://schemas.microsoft.com/office/visio/2012/main");
+        assertThat(relationships)
+                .contains("http://schemas.microsoft.com/visio/2010/relationships/windows")
+                .contains("Target=\"windows.xml\"");
+    }
+
+    @Test
     void generatedPackageIsReadableByApachePoiXdGF() throws Exception {
         byte[] packageBytes = builder.build(
                 VisioPackageBuilderTest.representativeDocument());

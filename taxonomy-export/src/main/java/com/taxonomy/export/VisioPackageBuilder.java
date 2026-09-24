@@ -109,6 +109,7 @@ public class VisioPackageBuilder {
         parts.put("taxonomy/manifest.json", VisioHandoffProfile.manifest(doc));
         parts.put("taxonomy/mapping-profile.json", VisioHandoffProfile.profileJson());
         parts.put("visio/document.xml", buildDocumentXml(doc));
+        parts.put("visio/windows.xml", buildWindowsXml());
         parts.put("visio/_rels/document.xml.rels", buildDocumentRelationships());
         parts.put("visio/pages/pages.xml", buildPagesXml(doc));
         parts.put("visio/pages/_rels/pages.xml.rels", buildPagesRelationships(doc));
@@ -143,6 +144,8 @@ public class VisioPackageBuilder {
         xml.append("  <Override PartName=\"/taxonomy/mapping-profile.json\" ContentType=\"application/json\"/>\n");
         xml.append("  <Override PartName=\"/visio/document.xml\" ")
                 .append("ContentType=\"application/vnd.ms-visio.drawing.main+xml\"/>\n");
+        xml.append("  <Override PartName=\"/visio/windows.xml\" ")
+                .append("ContentType=\"application/vnd.ms-visio.windows+xml\"/>\n");
         xml.append("  <Override PartName=\"/visio/pages/pages.xml\" ")
                 .append("ContentType=\"application/vnd.ms-visio.pages+xml\"/>\n");
         for (int index = 0; index < doc.getPages().size(); index++) {
@@ -214,11 +217,17 @@ public class VisioPackageBuilder {
         return XML_DECLARATION + xstream.toXML(doc);
     }
 
+    private String buildWindowsXml() {
+        return XML_DECLARATION
+                + "<Windows xmlns=\"http://schemas.microsoft.com/office/visio/2012/main\"/>";
+    }
+
     private String buildDocumentRelationships() {
         return """
                 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
                 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
                   <Relationship Id="rId1" Type="http://schemas.microsoft.com/visio/2010/relationships/pages" Target="pages/pages.xml"/>
+                  <Relationship Id="rId2" Type="http://schemas.microsoft.com/visio/2010/relationships/windows" Target="windows.xml"/>
                 </Relationships>""";
     }
 
