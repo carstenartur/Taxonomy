@@ -1338,12 +1338,15 @@
                 <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
                     <h5 class="mb-0" th:text="#{preferences.title}">&#9881;&#65039; Application Preferences</h5>
                     <div class="d-flex gap-2 flex-wrap">
-                        <button id="prefSaveBtn" class="btn btn-primary btn-sm" th:text="#{preferences.btn.save}">&#128190; Save</button>
-                        <button id="prefResetBtn" class="btn btn-outline-secondary btn-sm" th:text="#{preferences.btn.reset}">&#8617;&#65039; Reset to Defaults</button>
+                        <button type="button" id="prefSaveBtn" class="btn btn-primary btn-sm" disabled
+                                aria-disabled="true" th:text="#{preferences.btn.save}">&#128190; Save</button>
+                        <button type="button" id="prefResetBtn" class="btn btn-outline-secondary btn-sm" disabled
+                                aria-disabled="true" th:text="#{preferences.btn.reset}">&#8617;&#65039; Reset to Defaults</button>
                     </div>
                 </div>
-                <p class="text-muted small mb-3" th:text="#{preferences.scope.info}">All settings are system-wide &#9729;&#65039; — they apply to all users and workspaces.</p>
-                <div id="prefStatusMsg" class="alert d-none mb-3" role="alert"></div>
+                <p class="text-muted small mb-1" th:text="#{preferences.scope.info}">All settings are system-wide &#9729;&#65039; — they apply to all users and workspaces.</p>
+                <p class="text-muted small mb-3" th:text="#{preferences.session.info}">Saving preferences keeps the current analysis and workspace intact; changed settings apply to subsequent operations.</p>
+                <div id="prefStatusMsg" class="alert d-none mb-3" role="status" aria-live="polite"></div>
 
                 <!-- Section 1: LLM Configuration -->
                 <div class="card mb-3">
@@ -2260,18 +2263,80 @@
 (function () {
     'use strict';
 
+    var t = TaxonomyI18n.t;
     var currentPrefs = {};
+    var preferencesLoaded = false;
+    var requestInFlight = false;
+    var statusTimer = null;
 
-    function loadPreferences() {
-        fetch('/api/preferences')
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                currentPrefs = data;
-                populateForm(data);
-            })
-            .catch(function (e) {
-                showPrefStatus('Could not load preferences: ' + e.message, 'danger');
-            });
+    function requestJson(url, options) {
+        return fetch(url, options).then(function (response) {
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            return response.json();
+        });
+    }
+
+    function preferenceValue(el) {
+        if (el.type === 'checkbox') return { present: true, value: el.checked };
+        if (el.type === 'password') {
+            return el.value === ''
+                ? { present: false, value: null }
+                : { present: true, value: el.value };
+        }
+        if (el.type === 'number') {
+            if (el.value === '') return { present: false, value: null };
+            var numeric = Number(el.value);
+            return { present: Number.isFinite(numeric), value: numeric };
+        }
+        return { present: true, value: el.value };
+    }
+
+    function samePreferenceValue(current, next) {
+        if (typeof next === 'number') return Number(current) === next;
+        if (typeof next === 'boolean') return (current === true || current === 'true') === next;
+        return String(current === undefined || current === null ? '' : current) === String(next);
+    }
+
+    function collectChanges() {
+        var changes = {};
+        var valid = true;
+        document.querySelectorAll('[data-pref-key]').forEach(function (el) {
+            if (typeof el.checkValidity === 'function' && !el.checkValidity()) {
+                valid = false;
+                return;
+            }
+            var key = el.getAttribute('data-pref-key');
+            var candidate = preferenceValue(el);
+            if (!candidate.present) return;
+            if (!samePreferenceValue(currentPrefs[key], candidate.value)) {
+                changes[key] = candidate.value;
+            }
+        });
+        return { changes: changes, valid: valid };
+    }
+
+    function refreshPreferenceControls() {
+        var saveBtn = document.getElementById('prefSaveBtn');
+        var resetBtn = document.getElementById('prefResetBtn');
+        var result = collectChanges();
+        var saveDisabled = requestInFlight || !preferencesLoaded
+            || !result.valid || Object.keys(result.changes).length === 0;
+        var resetDisabled = requestInFlight || !preferencesLoaded;
+        if (saveBtn) {
+            saveBtn.disabled = saveDisabled;
+            saveBtn.setAttribute('aria-disabled', String(saveDisabled));
+            saveBtn.setAttribute('aria-busy', requestInFlight ? 'true' : 'false');
+        }
+        if (resetBtn) {
+            resetBtn.disabled = resetDisabled;
+            resetBtn.setAttribute('aria-disabled', String(resetDisabled));
+            resetBtn.setAttribute('aria-busy', requestInFlight ? 'true' : 'false');
+        }
+    }
+
+    function setPreferenceBusy(busy) {
+        requestInFlight = busy;
+        refreshPreferenceControls();
     }
 
     function populateForm(data) {
@@ -2282,127 +2347,182 @@
             if (el.type === 'checkbox') {
                 el.checked = (val === true || val === 'true');
             } else if (el.type === 'password') {
-                // Show masked value as placeholder; keep field empty so blank = no change
-                el.placeholder = val ? String(val) : 'Leave blank to keep existing token';
+                // Keep the translated initial placeholder for an empty token; a
+                // returned masked value is display-only and never becomes a field value.
+                if (!el.dataset.emptyTokenPlaceholder) {
+                    el.dataset.emptyTokenPlaceholder = el.placeholder;
+                }
+                el.placeholder = val ? String(val) : el.dataset.emptyTokenPlaceholder;
                 el.value = '';
             } else {
                 el.value = String(val);
             }
         });
-    }
-
-    function collectChanges() {
-        var changes = {};
-        document.querySelectorAll('[data-pref-key]').forEach(function (el) {
-            var key = el.getAttribute('data-pref-key');
-            if (el.type === 'checkbox') {
-                changes[key] = el.checked;
-            } else if (el.type === 'password') {
-                // Only include token if user actually typed something
-                if (el.value !== '') {
-                    changes[key] = el.value;
-                }
-            } else if (el.type === 'number') {
-                var n = parseInt(el.value, 10);
-                if (!isNaN(n)) { changes[key] = n; }
-            } else {
-                changes[key] = el.value;
-            }
-        });
-        return changes;
+        refreshPreferenceControls();
     }
 
     function showPrefStatus(msg, type) {
         var el = document.getElementById('prefStatusMsg');
+        if (!el) return;
+        if (statusTimer) window.clearTimeout(statusTimer);
         el.textContent = msg;
         el.className = 'alert alert-' + type + ' mb-3';
+        el.setAttribute('role', type === 'danger' ? 'alert' : 'status');
+        el.setAttribute('aria-live', type === 'danger' ? 'assertive' : 'polite');
         el.classList.remove('d-none');
-        setTimeout(function () { el.classList.add('d-none'); }, 5000);
+        statusTimer = window.setTimeout(function () {
+            el.classList.add('d-none');
+            statusTimer = null;
+        }, 5000);
+    }
+
+    function loadPreferences() {
+        if (requestInFlight) return;
+        setPreferenceBusy(true);
+        requestJson('/api/preferences')
+            .then(function (data) {
+                currentPrefs = data || {};
+                preferencesLoaded = true;
+                populateForm(currentPrefs);
+            })
+            .catch(function (error) {
+                preferencesLoaded = false;
+                showPrefStatus(t('preferences.load.failed', error.message), 'danger');
+            })
+            .finally(function () {
+                setPreferenceBusy(false);
+            });
+    }
+
+    function firstInvalidPreference() {
+        return Array.from(document.querySelectorAll('[data-pref-key]')).find(function (el) {
+            return typeof el.checkValidity === 'function' && !el.checkValidity();
+        }) || null;
     }
 
     function savePreferences() {
-        var changes = collectChanges();
-        fetch('/api/preferences', {
+        var result = collectChanges();
+        if (!result.valid) {
+            var invalid = firstInvalidPreference();
+            if (invalid && typeof invalid.reportValidity === 'function') invalid.reportValidity();
+            showPrefStatus(t('preferences.invalid'), 'danger');
+            refreshPreferenceControls();
+            return;
+        }
+        if (Object.keys(result.changes).length === 0) {
+            showPrefStatus(t('preferences.no.changes'), 'info');
+            refreshPreferenceControls();
+            return;
+        }
+
+        setPreferenceBusy(true);
+        requestJson('/api/preferences', {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(changes)
+            body: JSON.stringify(result.changes)
         })
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
             .then(function (data) {
-                currentPrefs = data;
-                populateForm(data);
-                showPrefStatus('Preferences saved successfully.', 'success');
+                currentPrefs = data || {};
+                preferencesLoaded = true;
+                populateForm(currentPrefs);
+                showPrefStatus(t('preferences.saved'), 'success');
             })
-            .catch(function (e) {
-                showPrefStatus('Save failed: ' + e.message, 'danger');
+            .catch(function (error) {
+                showPrefStatus(t('preferences.save.failed', error.message), 'danger');
+            })
+            .finally(function () {
+                setPreferenceBusy(false);
             });
     }
 
     function resetPreferences() {
-        if (!confirm('Reset all preferences to application defaults?')) return;
-        fetch('/api/preferences/reset', { method: 'POST' })
-            .then(function (r) {
-                if (!r.ok) throw new Error('HTTP ' + r.status);
-                return r.json();
-            })
+        if (!window.confirm(t('preferences.reset.confirm'))) return;
+        setPreferenceBusy(true);
+        requestJson('/api/preferences/reset', { method: 'POST' })
             .then(function (data) {
-                currentPrefs = data;
-                populateForm(data);
-                showPrefStatus('Preferences reset to defaults.', 'info');
+                currentPrefs = data || {};
+                preferencesLoaded = true;
+                populateForm(currentPrefs);
+                showPrefStatus(t('preferences.reset'), 'info');
             })
-            .catch(function (e) {
-                showPrefStatus('Reset failed: ' + e.message, 'danger');
+            .catch(function (error) {
+                showPrefStatus(t('preferences.reset.failed', error.message), 'danger');
+            })
+            .finally(function () {
+                setPreferenceBusy(false);
             });
     }
 
     function loadHistory() {
-        fetch('/api/preferences/history')
-            .then(function (r) { return r.json(); })
+        requestJson('/api/preferences/history')
             .then(function (commits) {
                 var tbody = document.getElementById('prefHistoryBody');
+                if (!tbody) return;
                 if (!commits || commits.length === 0) {
-                    tbody.innerHTML = '<tr><td colspan="4" class="text-muted small">No history yet.</td></tr>';
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-muted small">'
+                        + escapeHtml(t('preferences.no.history')) + '</td></tr>';
                     return;
                 }
                 tbody.innerHTML = commits.map(function (c) {
                     var ts = c.timestamp ? new Date(c.timestamp).toLocaleString() : '';
                     var sha = c.commitId ? c.commitId.substring(0, 7) : '';
-                    return '<tr><td class="font-monospace small">' + sha + '</td>'
+                    return '<tr><td class="font-monospace small">' + escapeHtml(sha) + '</td>'
                         + '<td class="small">' + escapeHtml(c.author || '') + '</td>'
-                        + '<td class="small text-nowrap">' + ts + '</td>'
+                        + '<td class="small text-nowrap">' + escapeHtml(ts) + '</td>'
                         + '<td class="small">' + escapeHtml(c.message || '') + '</td></tr>';
                 }).join('');
             })
-            .catch(function () {});
+            .catch(function (error) {
+                var tbody = document.getElementById('prefHistoryBody');
+                if (tbody) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="text-danger small">'
+                        + escapeHtml(t('preferences.history.failed', error.message)) + '</td></tr>';
+                }
+            });
     }
 
-    function escapeHtml(s) {
-        return s.replace(/[&<>"']/g, function (c) {
-            return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
-        });
+    function escapeHtml(value) {
+        return String(value === undefined || value === null ? '' : value)
+            .replace(/[&<>"']/g, function (c) {
+                return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+            });
     }
 
-    // Wire up buttons
+    function isPreferencesActive() {
+        var pane = document.getElementById('tab-preferences');
+        return Boolean(pane && !pane.classList.contains('d-none'));
+    }
+
     document.addEventListener('DOMContentLoaded', function () {
-        var saveBtn  = document.getElementById('prefSaveBtn');
+        var saveBtn = document.getElementById('prefSaveBtn');
         var resetBtn = document.getElementById('prefResetBtn');
         var histSect = document.getElementById('prefHistorySection');
 
-        if (saveBtn)  saveBtn.addEventListener('click',  savePreferences);
+        if (saveBtn) saveBtn.addEventListener('click', savePreferences);
         if (resetBtn) resetBtn.addEventListener('click', resetPreferences);
         if (histSect) histSect.addEventListener('toggle', function () {
             if (histSect.open) loadHistory();
         });
+        document.querySelectorAll('[data-pref-key]').forEach(function (control) {
+            control.addEventListener('input', refreshPreferenceControls);
+            control.addEventListener('change', refreshPreferenceControls);
+        });
+        refreshPreferenceControls();
+
+        // Page navigation runs before this script. A direct #preferences link is
+        // therefore already active when DOMContentLoaded fires and must load too.
+        if (isPreferencesActive()) loadPreferences();
     });
 
-    // Load preferences when the tab becomes active
+    // Normal navigation uses replaceState (no hashchange event), so retain the
+    // explicit tab activation hook in addition to direct/hash navigation.
     document.querySelectorAll('#mainNavTabs .nav-link').forEach(function (link) {
         if (link.getAttribute('data-page') === 'preferences') {
             link.addEventListener('click', loadPreferences);
         }
+    });
+    window.addEventListener('hashchange', function () {
+        if (window.location.hash === '#preferences') loadPreferences();
     });
 }());
 </script>
