@@ -65,6 +65,8 @@ class RequirementCopilotUiContractTest {
 
         assertThat(loader).contains("taxonomy-operation-coordinator.js");
         assertThat(coordinator)
+                .contains("var scores = C.S.currentScores;")
+                .doesNotContain("var scores = window._taxonomyCurrentScores;")
                 .contains("taxonomy:operation-state")
                 .contains("applicationApiPath(url) === '/api/analyze'")
                 .contains("TaxonomyI18n", "getBasePath")
@@ -76,6 +78,7 @@ class RequirementCopilotUiContractTest {
                 .contains("window.TaxonomyAnalysis.runCopilotFlow()")
                 .contains("progress-bar-striped progress-bar-animated");
         assertThat(adHocCopilot)
+                .contains("window.TaxonomyState && window.TaxonomyState.currentScores")
                 .contains("operation coordinator owns the complete scoring lifecycle")
                 .doesNotContain("analyzeBtn.click()", "waitForScores", "maxAttempts", "60s timeout");
         assertThat(terminalState)
