@@ -13,8 +13,10 @@ import org.springframework.test.context.TestPropertySource;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
  * Integration tests for {@link PreferencesService} with an in-memory JGit repository.
@@ -39,17 +41,36 @@ import static org.assertj.core.api.Assertions.assertThat;
 @WithMockUser(roles = "ADMIN")
 class PreferencesServiceTest {
 
+    static final class ControllablePreferencesGitRepository extends PreferencesGitRepository {
+        private final AtomicBoolean failNextCommit = new AtomicBoolean();
+
+        void failNextCommit() {
+            failNextCommit.set(true);
+        }
+
+        @Override
+        public String commit(String jsonContent, String author, String message) throws IOException {
+            if (failNextCommit.getAndSet(false)) {
+                throw new IOException("simulated preferences commit failure");
+            }
+            return super.commit(jsonContent, author, message);
+        }
+    }
+
     @TestConfiguration
     static class InMemoryPreferencesConfig {
         @Bean
         @Primary
-        public PreferencesGitRepository testPreferencesGitRepository() {
-            return new PreferencesGitRepository(); // in-memory, no DB
+        public ControllablePreferencesGitRepository testPreferencesGitRepository() {
+            return new ControllablePreferencesGitRepository();
         }
     }
 
     @Autowired
     private PreferencesService preferencesService;
+
+    @Autowired
+    private ControllablePreferencesGitRepository preferencesRepository;
 
     @BeforeEach
     void reset() throws IOException {
@@ -89,6 +110,38 @@ class PreferencesServiceTest {
         assertThat(preferencesService.getInt("llm.rpm", 0)).isEqualTo(3);
         // Other keys should remain unchanged
         assertThat(preferencesService.getInt("llm.timeout.seconds", 0)).isEqualTo(45);
+    }
+
+    @Test
+    void failedUpdateDoesNotLeakUncommittedRuntimePreferences() throws IOException {
+        int before = preferencesService.getInt("limits.max-architecture-nodes", 0);
+        int historyBefore = preferencesService.getHistory().size();
+
+        preferencesRepository.failNextCommit();
+
+        assertThatThrownBy(() -> preferencesService.update(
+                Map.of("limits.max-architecture-nodes", before + 100), "tester"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("simulated preferences commit failure");
+
+        assertThat(preferencesService.getInt("limits.max-architecture-nodes", 0))
+                .isEqualTo(before);
+        assertThat(preferencesService.getHistory()).hasSize(historyBefore);
+    }
+
+    @Test
+    void failedResetDoesNotReplaceActiveRuntimePreferences() throws IOException {
+        preferencesService.update(Map.of("llm.rpm", 99), "tester");
+        int historyBefore = preferencesService.getHistory().size();
+
+        preferencesRepository.failNextCommit();
+
+        assertThatThrownBy(() -> preferencesService.resetToDefaults("tester"))
+                .isInstanceOf(IOException.class)
+                .hasMessageContaining("simulated preferences commit failure");
+
+        assertThat(preferencesService.getInt("llm.rpm", 0)).isEqualTo(99);
+        assertThat(preferencesService.getHistory()).hasSize(historyBefore);
     }
 
     @Test
