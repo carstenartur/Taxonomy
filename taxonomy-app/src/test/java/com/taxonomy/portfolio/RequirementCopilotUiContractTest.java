@@ -56,6 +56,12 @@ class RequirementCopilotUiContractTest {
         String coordinator = Files.readString(ROOT.resolve(
                 "taxonomy-app/src/main/resources/static/js/core/taxonomy-operation-coordinator.js"),
                 StandardCharsets.UTF_8);
+        String adHocCopilot = Files.readString(ROOT.resolve(
+                "taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis.js"),
+                StandardCharsets.UTF_8);
+        String terminalState = Files.readString(ROOT.resolve(
+                "taxonomy-app/src/main/resources/static/js/core/taxonomy-copilot-terminal-state.js"),
+                StandardCharsets.UTF_8);
 
         assertThat(loader).contains("taxonomy-operation-coordinator.js");
         assertThat(coordinator)
@@ -65,9 +71,15 @@ class RequirementCopilotUiContractTest {
                 .doesNotContain("url.pathname === '/api/analyze'")
                 .contains("status: 'RUNNING'")
                 .contains("status: cancelled ? 'CANCELLED' : 'FAILED'")
+                .contains("waitForMainAnalysis()")
+                .contains("terminal.status === 'SUCCEEDED'")
                 .contains("window.TaxonomyAnalysis.runCopilotFlow()")
-                .contains("progress-bar-striped progress-bar-animated")
-                .doesNotContain("maxAttempts", "60s timeout", "waitForScores");
+                .contains("progress-bar-striped progress-bar-animated");
+        assertThat(adHocCopilot)
+                .contains("operation coordinator owns the complete scoring lifecycle")
+                .doesNotContain("analyzeBtn.click()", "waitForScores", "maxAttempts", "60s timeout");
+        assertThat(terminalState)
+                .doesNotContain("__taxonomyCopilotTerminalGuard", "window.setInterval =");
     }
 
     @Test
