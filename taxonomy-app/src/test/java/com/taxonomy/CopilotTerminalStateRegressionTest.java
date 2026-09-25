@@ -20,6 +20,7 @@ class CopilotTerminalStateRegressionTest {
                 .contains("taxonomy-copilot-terminal-state.js")
                 .contains("taxonomy-operation-coordinator.js");
         assertThat(guard)
+                .contains("return hasScores(C.S.currentScores);")
                 .contains("hasKnownNonAuthoritativeStatus")
                 .contains("status !== 'SUCCESS' && status !== 'IMPORTED'")
                 .contains("!target || !hasCurrentScores() || !hasKnownNonAuthoritativeStatus()")
