@@ -11,6 +11,7 @@ import { runRelationWorkflows } from './ui-primary-relation-workflows.mjs';
 import { runImportWorkflows } from './ui-primary-import-workflows.mjs';
 import { runPasswordWorkflows, runWorkspaceSyncWorkflows,
   verifyUserMutationDenied } from './ui-primary-account-workflows.mjs';
+import { runPreferencesWorkflow } from './ui-primary-preferences-workflow.mjs';
 
 const baseUrl = process.env.TAXONOMY_BASE_URL || 'http://127.0.0.1:8080';
 const role = process.env.TAXONOMY_ROLE || 'USER';
@@ -98,7 +99,10 @@ try {
   } else {
     await verifyUserMutationDenied(workflow);
   }
-  if (role === 'ADMIN') await runWorkspaceSyncWorkflows(workflow);
+  if (role === 'ADMIN') {
+    await runWorkspaceSyncWorkflows(workflow);
+    await runPreferencesWorkflow(workflow);
+  }
   if (role === 'USER') await runPasswordWorkflows(workflow);
 } catch (error) {
   auditError = error?.stack || String(error);
