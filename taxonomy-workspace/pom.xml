@@ -115,6 +115,9 @@
                     </includes>
                     <skipITs>${skipITs}</skipITs>
                     <excludedGroups>${excludedGroups}</excludedGroups>
+                    <!-- Reactor-wide profiles (database-*, core-integration, ...) select integration
+                         tests that live in other modules. Those selectors must not fail this module. -->
+                    <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
                 </configuration>
                 <executions>
                     <execution>
