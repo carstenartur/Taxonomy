@@ -95,8 +95,14 @@ class AnalysisSessionFrontendContractTest {
         String projects = resource("/static/js/core/taxonomy-analysis-session-projects.js");
 
         assertThat(core)
-                .contains("payload.draftState = meaningful(payload) ? 'ACTIVE' : 'EMPTY'");
+                .contains("payload.draftState = meaningful(payload) ? 'ACTIVE' : 'EMPTY'")
+                .contains("lastAnalysisProvider: S.lastAnalysisProvider")
+                .contains("lastAnalysisStatus: S.lastAnalysisStatus");
         assertThat(draft)
+                .contains("S.lastAnalysisProvider = null")
+                .contains("S.lastAnalysisStatus = null")
+                .contains("S.lastAnalysisProvider = payload.lastAnalysisProvider || null")
+                .contains("S.lastAnalysisStatus = payload.lastAnalysisStatus || null")
                 .contains("function resetDraft()")
                 .contains("endpoint + '/reset'")
                 .contains("taxonomy:analysis-draft-reset")

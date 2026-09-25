@@ -121,7 +121,6 @@ Click **↩️ Reset to Defaults** to restore all settings to the values from `a
 | `llm.rpm` | int | `5` | ☁️ System | Maximum API requests per minute (outgoing LLM throttle) |
 | `llm.timeout.seconds` | int | `30` | ☁️ System | HTTP read timeout for LLM API calls |
 | `rate-limit.per-minute` | int | `10` | ☁️ System | Incoming LLM quota per authenticated identity and minute (`0` disables) |
-| `analysis.min-relevance-score` | int | `70` | ☁️ System | Minimum score for nodes to appear in analysis results |
 
 The `llm.rpm` setting controls the sliding-window throttle for outgoing LLM API calls. The system maintains a FIFO queue of timestamps and sleeps the thread if the rate limit would be exceeded. A 50ms grace period is added for clock drift.
 
@@ -129,26 +128,16 @@ The `llm.timeout.seconds` setting dynamically updates the `RestTemplate` read ti
 
 The incoming `rate-limit.per-minute` quota is evaluated only after authentication and authorization and applies to each stable authenticated identity. Local accounts are keyed by their canonical authenticated username; Keycloak browser OIDC and bearer JWT access for one account share the immutable issuer/subject (`iss`/`sub`) identity. Forwarding headers, peer addresses, and the editable `preferred_username` claim do not create quota identities, and rejected requests do not allocate or consume quota state. Exactly `0` disables this limiter; negative values fail closed to one admitted request per minute. Inactive identities expire, the in-memory identity set is bounded, and HTTP `429` responses include `Retry-After` and `Cache-Control: no-store`. Counters are in-memory per application instance; multi-replica deployments need a distributed outer quota or must account for the multiplied aggregate allowance.
 
-### DSL and Git Configuration
+### Repository and legacy keys
 
-| Key | Type | Default | Scope | Description |
-|---|---|---|---|---|
-| `dsl.default-branch` | string | `"draft"` | ☁️ System | Active branch for DSL materialization |
-| `dsl.project-name` | string | `"Taxonomy Architecture"` | ☁️ System | Human-readable project display name |
-| `dsl.auto-save.interval-seconds` | int | `0` | ☁️ System | Auto-save frequency (0 = disabled) |
-| `dsl.remote.url` | string | `""` | ☁️ System | Remote Git URL for push/pull operations |
-| `dsl.remote.token` | string | `""` | ☁️ System | Authentication token for remote Git (masked in API responses) |
-| `dsl.remote.push-on-commit` | boolean | `false` | ☁️ System | Automatically push to remote after local commits |
-
-> **Security note:** The `dsl.remote.token` value is masked in all API responses. When retrieved via `GET /api/preferences`, it appears as `"****{last4chars}"`. The full token is only used internally for Git remote operations.
+Repository branches, remotes, credentials, and workspace synchronization are repository-scoped. They are not global runtime preferences. Historical `dsl.*` keys and `analysis.min-relevance-score` may still occur in existing preference snapshots for compatibility, but changing those stored keys does not control the current repository/workspace or analysis-result filtering and they are therefore not shown in the Preferences UI.
 
 ### Size Limits
 
 | Key | Type | Default | Scope | Description |
 |---|---|---|---|---|
-| `limits.max-business-text` | int | `5000` | ☁️ System | Maximum characters in a business requirement text |
-| `limits.max-architecture-nodes` | int | `50` | ☁️ System | Maximum nodes displayed in the architecture view |
-| `limits.max-export-nodes` | int | `200` | ☁️ System | Maximum nodes included in an export operation |
+| `limits.max-business-text` | int | `5000` | ☁️ System | Maximum characters accepted by the ad-hoc analysis POST/SSE endpoints |
+| `limits.max-architecture-nodes` | int | `50` | ☁️ System | Default maximum nodes for ad-hoc architecture analysis when the API request does not supply `maxArchitectureNodes` |
 
 ### Diagram Configuration
 

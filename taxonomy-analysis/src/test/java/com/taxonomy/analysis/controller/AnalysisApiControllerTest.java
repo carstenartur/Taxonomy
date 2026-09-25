@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.controller;
 
+import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
 import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
 import com.taxonomy.analysis.usecase.AnalysisStreamEventHandler;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
@@ -42,6 +43,7 @@ import java.util.concurrent.ExecutorService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
@@ -65,6 +67,7 @@ class AnalysisApiControllerTest {
     @Mock private MessageSource messageSource;
     @Mock private RepositoryStateService repositoryStateService;
     @Mock private WorkspaceResolver workspaceResolver;
+    @Mock private AnalysisRuntimeSettings analysisRuntimeSettings;
 
     private ExecutorService analysisExecutor;
     private AnalysisApiController controller;
@@ -92,11 +95,15 @@ class AnalysisApiControllerTest {
                 repositoryStateService,
                 workspaceResolver,
                 messageSource);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                controller, "analysisRuntimeSettings", analysisRuntimeSettings);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         lenient().when(taxonomyService.isInitialized()).thenReturn(true);
         lenient().when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
         lenient().when(workspaceResolver.resolveCurrentContext())
                 .thenReturn(new WorkspaceContext("alice", "alice-ws", "draft"));
+        lenient().when(analysisRuntimeSettings.getInt(
+                "limits.max-architecture-nodes", 50)).thenReturn(50);
     }
 
     @Test
@@ -128,9 +135,79 @@ class AnalysisApiControllerTest {
         ArgumentCaptor<com.taxonomy.analysis.usecase.AnalyzeRequirementCommand> captor =
                 ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand.class);
         verify(analyzeRequirementUseCase).analyze(captor.capture());
+        assertThat(captor.getValue().maxArchitectureNodes()).isEqualTo(9);
         assertThat(captor.getValue().username()).isEqualTo("alice");
         assertThat(captor.getValue().workspaceContext())
                 .isEqualTo(new WorkspaceContext("alice", "alice-ws", "draft"));
+    }
+
+    @Test
+    void analyzeRejectsBusinessTextAboveLivePreferenceLimitBeforeDelegation() {
+        when(analysisRuntimeSettings.getInt("limits.max-business-text", 5_000))
+                .thenReturn(100);
+        AnalysisRequest request = new AnalysisRequest();
+        request.setBusinessText("x".repeat(101));
+
+        assertThatThrownBy(() -> controller.analyze(request))
+                .isInstanceOfSatisfying(
+                        org.springframework.web.server.ResponseStatusException.class,
+                        failure -> assertThat(failure.getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
+        verifyNoInteractions(analyzeRequirementUseCase);
+    }
+
+    @Test
+    void analyzeStreamRejectsBusinessTextAboveLivePreferenceLimitBeforeDelegation() throws Exception {
+        when(analysisRuntimeSettings.getInt("limits.max-business-text", 5_000))
+                .thenReturn(100);
+
+        mockMvc.perform(get("/api/analyze-stream")
+                        .param("businessText", "x".repeat(101))
+                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:error")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "configured limit of 100 characters")));
+        verifyNoInteractions(streamRequirementAnalysisUseCase);
+    }
+
+    @Test
+    void analyzeRejectsArchitectureNodeLimitOutsideSupportedRange() {
+        AnalysisRequest request = new AnalysisRequest();
+        request.setBusinessText("Need secure voice comms");
+        request.setIncludeArchitectureView(true);
+        request.setMaxArchitectureNodes(1001);
+
+        assertThatThrownBy(() -> controller.analyze(request))
+                .isInstanceOfSatisfying(
+                        org.springframework.web.server.ResponseStatusException.class,
+                        failure -> {
+                            assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                            assertThat(failure.getReason()).contains("between 1 and 1000");
+                        });
+        verifyNoInteractions(analyzeRequirementUseCase);
+    }
+
+    @Test
+    void analyzeUsesLiveArchitectureNodePreferenceWhenRequestOmitsLimit() {
+        AnalysisRequest request = new AnalysisRequest();
+        request.setBusinessText("Need secure voice comms");
+        request.setIncludeArchitectureView(true);
+        when(analysisRuntimeSettings.getInt("limits.max-business-text", 5000))
+                .thenReturn(5000);
+        when(analysisRuntimeSettings.getInt("limits.max-architecture-nodes", 50))
+                .thenReturn(150);
+        AnalysisResult analysisResult = new AnalysisResult();
+        analysisResult.setStatus("SUCCESS");
+        when(analyzeRequirementUseCase.analyze(any()))
+                .thenReturn(new AnalyzeRequirementResult(analysisResult));
+
+        controller.analyze(request);
+
+        ArgumentCaptor<com.taxonomy.analysis.usecase.AnalyzeRequirementCommand> captor =
+                ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand.class);
+        verify(analyzeRequirementUseCase).analyze(captor.capture());
+        assertThat(captor.getValue().maxArchitectureNodes()).isEqualTo(150);
     }
 
     @Test

@@ -11,7 +11,6 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.io.IOException;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Service that manages runtime application preferences backed by a dedicated JGit repository.
@@ -37,8 +36,11 @@ public class PreferencesService implements com.taxonomy.analysis.service.Analysi
     private final PreferencesGitRepository gitRepository;
     private final ObjectMapper objectMapper;
 
-    // In-memory cache of the current preferences
-    private final Map<String, Object> cache = new ConcurrentHashMap<>();
+    // Atomically published immutable snapshot of the current preferences.
+    //
+    // Persist first and publish second: a failed Git commit must never change the
+    // runtime settings observed by analysis or export code.
+    private volatile Map<String, Object> cache = Map.of();
 
     // ── Default values loaded from application.properties ─────────────────────
 
@@ -99,18 +101,19 @@ public class PreferencesService implements com.taxonomy.analysis.service.Analysi
             if (json != null) {
                 @SuppressWarnings("unchecked")
                 Map<String, Object> loaded = objectMapper.readValue(json, Map.class);
-                cache.putAll(loaded);
+                cache = immutableSnapshot(loaded);
                 log.info("Preferences loaded from JGit repository ({} entries)", cache.size());
             } else {
                 // No commits yet — initialise from property defaults and commit
-                cache.putAll(buildDefaults());
-                String initialJson = objectMapper.writeValueAsString(cache);
+                Map<String, Object> defaults = buildDefaults();
+                String initialJson = objectMapper.writeValueAsString(defaults);
                 gitRepository.commit(initialJson, "system", "Initial preferences from application.properties");
+                cache = immutableSnapshot(defaults);
                 log.info("Preferences initialised from defaults and committed to JGit");
             }
         } catch (IOException e) {
             log.warn("Could not load preferences from JGit, using defaults: {}", e.getMessage());
-            cache.putAll(buildDefaults());
+            cache = immutableSnapshot(buildDefaults());
         }
     }
 
@@ -173,11 +176,16 @@ public class PreferencesService implements com.taxonomy.analysis.service.Analysi
      * @param author    the user making the change (for the Git commit author)
      * @throws IOException if the JGit commit fails
      */
-    public void update(Map<String, Object> changes, String author) throws IOException {
-        cache.putAll(changes);
-        String json = objectMapper.writeValueAsString(cache);
+    public synchronized void update(Map<String, Object> changes, String author) throws IOException {
+        Map<String, Object> updated = new LinkedHashMap<>(cache);
+        updated.putAll(changes);
+        String json = objectMapper.writeValueAsString(updated);
         String commitMsg = "Preferences updated: " + String.join(", ", changes.keySet());
+
+        // The repository is the durable authority. Do not publish a new runtime
+        // snapshot until its commit has succeeded.
         gitRepository.commit(json, author, commitMsg);
+        cache = immutableSnapshot(updated);
         log.info("Preferences updated by '{}': {}", author, changes.keySet());
     }
 
@@ -188,12 +196,14 @@ public class PreferencesService implements com.taxonomy.analysis.service.Analysi
      * @param author the user requesting the reset
      * @throws IOException if the JGit commit fails
      */
-    public void resetToDefaults(String author) throws IOException {
+    public synchronized void resetToDefaults(String author) throws IOException {
         Map<String, Object> defaults = buildDefaults();
-        cache.clear();
-        cache.putAll(defaults);
-        String json = objectMapper.writeValueAsString(cache);
+        String json = objectMapper.writeValueAsString(defaults);
+
+        // As with update(), a failed reset must leave the active runtime
+        // preferences untouched.
         gitRepository.commit(json, author, "Preferences reset to defaults");
+        cache = immutableSnapshot(defaults);
         log.info("Preferences reset to defaults by '{}'", author);
     }
 
@@ -205,6 +215,10 @@ public class PreferencesService implements com.taxonomy.analysis.service.Analysi
     }
 
     // ── Private helpers ────────────────────────────────────────────────────────
+
+    private static Map<String, Object> immutableSnapshot(Map<String, Object> source) {
+        return Collections.unmodifiableMap(new LinkedHashMap<>(source));
+    }
 
     private Map<String, Object> buildDefaults() {
         Map<String, Object> defaults = new LinkedHashMap<>();

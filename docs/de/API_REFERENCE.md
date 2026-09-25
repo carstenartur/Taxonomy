@@ -81,7 +81,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/ana
 |---|---|---|---|
 | `businessText` | string | ✅ | Freitext-Anforderung zur Analyse |
 | `includeArchitectureView` | boolean | — | Architekturansicht generieren (Standard: false) |
-| `maxArchitectureNodes` | integer | — | Maximale Anzahl von Knoten in der Architekturansicht |
+| `maxArchitectureNodes` | integer | aktuelle Einstellung `limits.max-architecture-nodes` | Maximale Anzahl von Knoten in der Architekturansicht; ein expliziter Request-Wert überschreibt die aktuelle Laufzeiteinstellung |
 
 ### Streaming-Analyse (Server-Sent Events)
 

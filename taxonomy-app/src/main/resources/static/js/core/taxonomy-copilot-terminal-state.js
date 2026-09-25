@@ -25,7 +25,7 @@
     }
 
     function hasCurrentScores() {
-        return hasScores(window._taxonomyCurrentScores);
+        return hasScores(C.S.currentScores);
     }
 
     function hasKnownNonAuthoritativeStatus() {
@@ -154,37 +154,7 @@
         }, true);
     }
 
-    function installTerminalIntervalGuard() {
-        if (window.setInterval.__taxonomyCopilotTerminalGuard === true) return;
-        var delegatedSetInterval = window.setInterval.bind(window);
-        var delegatedClearInterval = window.clearInterval.bind(window);
-
-        function terminalSetInterval(callback, delay) {
-            var tracked = copilotRunning() && analysisRunning();
-            var id = delegatedSetInterval(function () {
-                if (tracked && analysisRunning()) return;
-                if (tracked && C.S.lastAnalysisStatus !== 'SUCCESS') {
-                    delegatedClearInterval(id);
-                    resetCopilotControls();
-                    showIncompleteAnalysis();
-                    return;
-                }
-                callback();
-            }, delay);
-            return id;
-        }
-
-        Object.defineProperty(terminalSetInterval, '__taxonomyCopilotTerminalGuard', {
-            configurable: false,
-            enumerable: false,
-            value: true,
-            writable: false
-        });
-        window.setInterval = terminalSetInterval;
-    }
-
     installCompleteAnalysisRouting();
-    installTerminalIntervalGuard();
 
     document.addEventListener('click', function (event) {
         var target = event.target && typeof event.target.closest === 'function'

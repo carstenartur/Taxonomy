@@ -280,7 +280,7 @@
     }
 
     function currentScoresAreAuthoritative() {
-        var scores = window._taxonomyCurrentScores;
+        var scores = C.S.currentScores;
         var status = String(C.S.lastAnalysisStatus || '').toUpperCase();
         return Boolean(scores && typeof scores === 'object'
             && Object.keys(scores).length > 0

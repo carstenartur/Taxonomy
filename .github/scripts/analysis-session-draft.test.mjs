@@ -75,6 +75,8 @@ function createHarness({ inputText = '', payload, request }) {
   };
   const state = {
     currentScores: null,
+    lastAnalysisProvider: null,
+    lastAnalysisStatus: null,
     currentReasons: {},
     currentDiscrepancies: [],
     currentArchView: null,
@@ -368,6 +370,55 @@ test('explicit reset remains repeatable and uses the server reset command', asyn
   assert.equal(harness.runtime.resetting, false);
 });
 
+test('ACTIVE restore retains analysis provider and terminal authority', () => {
+  const payload = {
+    current: {
+      draftState: 'ACTIVE',
+      businessText: 'Need resilient communications',
+      scores: { BP: 77 }
+    }
+  };
+  const harness = createHarness({
+    inputText: '',
+    payload,
+    request: async () => null
+  });
+  harness.state.taxonomyData = [{}];
+  harness.window.TaxonomyBrowse = {
+    renderView() {},
+    updateExportGroupVisibility() {}
+  };
+  harness.window.TaxonomyScoring = {
+    renderArchitectureView() {},
+    renderSuggestedRelations() {}
+  };
+
+  harness.context.applyDraft({
+    version: 4,
+    payload: {
+      draftState: 'ACTIVE',
+      businessText: 'Need resilient communications',
+      scores: { BP: 77 },
+      rawScores: { BP: 77 },
+      effectiveScores: { BP: 77 },
+      lastAnalysisProvider: 'MOCK',
+      lastAnalysisStatus: 'SUCCESS',
+      reasons: { BP: 'relevant' },
+      discrepancies: [],
+      productCoverageGaps: [],
+      architectureView: { includedElements: [{ nodeCode: 'BP' }] },
+      provisionalRelations: [],
+      evaluatedNodes: ['BP'],
+      currentView: 'summary'
+    }
+  });
+
+  assert.equal(harness.state.lastAnalysisProvider, 'MOCK');
+  assert.equal(harness.state.lastAnalysisStatus, 'SUCCESS');
+  assert.equal(harness.state.currentScores.BP, 77);
+  assert.equal(harness.input.value, 'Need resilient communications');
+});
+
 test('authoritative EMPTY restore discards every stale analysis envelope', () => {
   const payload = { current: { businessText: '' } };
   const harness = createHarness({
@@ -377,6 +428,8 @@ test('authoritative EMPTY restore discards every stale analysis envelope', () =>
   });
   harness.state.taxonomyData = [{}];
   harness.state.currentScores = { OLD: 99 };
+  harness.state.lastAnalysisProvider = 'OPENAI';
+  harness.state.lastAnalysisStatus = 'SUCCESS';
   harness.state.currentArchView = { includedElements: ['OLD'] };
   harness.window._taxonomyCurrentScores = { OLD: 99 };
   harness.window._currentProvisionalRelations = [{ source: 'OLD' }];
@@ -401,6 +454,8 @@ test('authoritative EMPTY restore discards every stale analysis envelope', () =>
       architectureView: { includedElements: ['STALE'] },
       storedBusinessText: 'stale',
       lastAnalyzedText: 'stale',
+      lastAnalysisProvider: 'GEMINI',
+      lastAnalysisStatus: 'PARTIAL',
       evaluatedNodes: ['STALE'],
       provisionalRelations: [{ source: 'STALE' }]
     }
@@ -411,6 +466,8 @@ test('authoritative EMPTY restore discards every stale analysis envelope', () =>
   assert.equal(harness.runtime.draftDecisionPending, false);
   assert.equal(harness.input.value, '');
   assert.equal(harness.state.currentScores, null);
+  assert.equal(harness.state.lastAnalysisProvider, null);
+  assert.equal(harness.state.lastAnalysisStatus, null);
   assert.equal(Object.keys(harness.state.currentRawScores).length, 0);
   assert.equal(Object.keys(harness.state.currentEffectiveScores).length, 0);
   assert.equal(Object.keys(harness.state.currentScoreDetails).length, 0);

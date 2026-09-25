@@ -64,7 +64,7 @@ function createHarness({
     clearedIntervals.push(id);
   }
   const context = {
-    S: { lastAnalysisStatus: status, currentScores: null },
+    S: { lastAnalysisStatus: status, currentScores },
     language: () => 'en'
   };
   const window = {
@@ -105,6 +105,8 @@ function createHarness({
 
   return {
     window,
+    nativeSetInterval: setInterval,
+    nativeClearInterval: clearInterval,
     context,
     elements,
     intervals,
@@ -127,34 +129,29 @@ function finishAnalysis(harness, status) {
   harness.context.S.lastAnalysisStatus = status;
 }
 
-test('partial terminal result cannot release Copilot dependent steps', () => {
+test('terminal-state validation leaves the global timer API untouched', () => {
   const harness = createHarness();
-  let dependentSteps = 0;
-  const id = harness.window.setInterval(() => { dependentSteps += 1; }, 1000);
 
-  finishAnalysis(harness, 'PARTIAL');
-  harness.intervals.get(id)();
+  assert.equal(harness.window.setInterval, harness.nativeSetInterval);
+  assert.equal(harness.window.clearInterval, harness.nativeClearInterval);
+});
 
-  assert.equal(dependentSteps, 0);
-  assert.ok(harness.clearedIntervals.includes(id));
-  assert.equal(harness.elements.copilotBtn.disabled, false);
-  assert.equal(harness.elements.copilotSpinner.classList.contains('d-none'), true);
+test('a partial terminal result stays non-authoritative', () => {
+  const harness = createHarness({
+    status: 'PARTIAL',
+    currentScores: { IP: 40 },
+    analysisBusy: false,
+    copilotBusy: false
+  });
+
+  const event = harness.dispatchCopilotClick();
+
+  assert.equal(event.defaultPrevented, true);
+  assert.equal(event.immediatePropagationStopped, true);
   assert.match(
     harness.elements.copilotContent.rendered.textContent,
     /main analysis failed or did not complete successfully/i
   );
-});
-
-test('successful terminal result releases Copilot dependent steps', () => {
-  const harness = createHarness();
-  let dependentSteps = 0;
-  const id = harness.window.setInterval(() => { dependentSteps += 1; }, 1000);
-
-  finishAnalysis(harness, 'SUCCESS');
-  harness.intervals.get(id)();
-
-  assert.equal(dependentSteps, 1);
-  assert.equal(harness.clearedIntervals.includes(id), false);
 });
 
 test('a later Copilot click rejects any known non-authoritative score status', () => {

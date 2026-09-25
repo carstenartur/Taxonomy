@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.controller;
 
+import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
 import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenCommand;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
@@ -77,6 +78,13 @@ public class AnalysisApiController {
     @Autowired
     private AnalysisProgressRegistry analysisProgressRegistry;
 
+    /**
+     * Optional live application settings port. The analysis module remains usable
+     * standalone, while the assembled application supplies PreferencesService.
+     */
+    @Autowired(required = false)
+    private AnalysisRuntimeSettings analysisRuntimeSettings;
+
     private final TaxonomyService taxonomyService;
     private final ExecutorService analysisExecutor;
     private final ObjectMapper objectMapper;
@@ -126,6 +134,8 @@ public class AnalysisApiController {
                 || request.getBusinessText().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
+        enforceBusinessTextLimit(request.getBusinessText());
+        int maxArchitectureNodes = resolveMaxArchitectureNodes(request);
 
         String operationId = newOperationId();
         try {
@@ -137,7 +147,7 @@ public class AnalysisApiController {
                     new AnalyzeRequirementCommand(
                             request.getBusinessText(),
                             request.isIncludeArchitectureView(),
-                            request.getMaxArchitectureNodes(),
+                            maxArchitectureNodes,
                             request.getProvider(),
                             username,
                             context));
@@ -212,6 +222,14 @@ public class AnalysisApiController {
             sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
                     "status", "ERROR",
                     "errorMessage", "businessText must not be blank"));
+            emitter.complete();
+            return emitter;
+        }
+        int businessTextLimit = businessTextLimit();
+        if (businessText.length() > businessTextLimit) {
+            sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
+                    "status", "ERROR",
+                    "errorMessage", businessTextTooLongMessage(businessTextLimit)));
             emitter.complete();
             return emitter;
         }
@@ -475,6 +493,48 @@ public class AnalysisApiController {
                     error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis());
         }
         return event;
+    }
+
+    private int businessTextLimit() {
+        int configured = analysisRuntimeSettings != null
+                ? analysisRuntimeSettings.getInt("limits.max-business-text", 5_000)
+                : 5_000;
+        // Invalid persisted/operator values must fail bounded rather than disabling the guard.
+        return Math.max(100, Math.min(100_000, configured));
+    }
+
+    private void enforceBusinessTextLimit(String businessText) {
+        int limit = businessTextLimit();
+        if (businessText.length() > limit) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    businessTextTooLongMessage(limit));
+        }
+    }
+
+    private String businessTextTooLongMessage(int limit) {
+        String fallback = "Business requirement exceeds the configured limit of "
+                + limit + " characters.";
+        String resolved = messageSource.getMessage(
+                "analysis.error.businessTextTooLong",
+                new Object[]{limit},
+                fallback,
+                LocaleContextHolder.getLocale());
+        return resolved == null || resolved.isBlank() ? fallback : resolved;
+    }
+
+    private int resolveMaxArchitectureNodes(AnalysisRequest request) {
+        Integer requested = request.getMaxArchitectureNodes();
+        if (requested != null) {
+            if (requested < 1 || requested > 1_000) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "maxArchitectureNodes must be between 1 and 1000.");
+            }
+            return requested;
+        }
+        int configured = analysisRuntimeSettings != null
+                ? analysisRuntimeSettings.getInt("limits.max-architecture-nodes", 50)
+                : 50;
+        return Math.max(1, Math.min(1_000, configured));
     }
 
     private String newOperationId() {
