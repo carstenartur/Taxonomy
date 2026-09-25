@@ -22,8 +22,11 @@
     }
 
     function getCurrentScores() {
-        // Access the scores from the main taxonomy.js module via the shared state
-        return window._taxonomyCurrentScores || {};
+        // TaxonomyState is the authoritative browser state. The legacy global is
+        // retained only as a compatibility fallback for older/manual paths.
+        var stateScores = window.TaxonomyState && window.TaxonomyState.currentScores;
+        return stateScores && typeof stateScores === 'object'
+            ? stateScores : (window._taxonomyCurrentScores || {});
     }
 
     function hasScores() {
