@@ -4,7 +4,10 @@ public class AnalysisRequest {
 
     private String businessText;
     private boolean includeArchitectureView;
-    private int maxArchitectureNodes = 20;
+    // Null means "use the live server-side runtime preference". Keeping this
+    // nullable is essential: an explicit API value (including 0) must remain
+    // distinguishable from an omitted field.
+    private Integer maxArchitectureNodes;
     private String provider;
 
     public AnalysisRequest() {}
@@ -19,8 +22,8 @@ public class AnalysisRequest {
     public boolean isIncludeArchitectureView() { return includeArchitectureView; }
     public void setIncludeArchitectureView(boolean includeArchitectureView) { this.includeArchitectureView = includeArchitectureView; }
 
-    public int getMaxArchitectureNodes() { return maxArchitectureNodes; }
-    public void setMaxArchitectureNodes(int maxArchitectureNodes) { this.maxArchitectureNodes = maxArchitectureNodes; }
+    public Integer getMaxArchitectureNodes() { return maxArchitectureNodes; }
+    public void setMaxArchitectureNodes(Integer maxArchitectureNodes) { this.maxArchitectureNodes = maxArchitectureNodes; }
 
     public String getProvider() { return provider; }
     public void setProvider(String provider) { this.provider = provider; }
