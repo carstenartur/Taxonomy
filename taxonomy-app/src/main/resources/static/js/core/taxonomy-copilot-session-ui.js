@@ -18,7 +18,7 @@
     var overlayRepositionFrame = null;
 
     function scoresPresent() {
-        var scores = window._taxonomyCurrentScores;
+        var scores = C.S.currentScores;
         return Boolean(scores && typeof scores === 'object' && Object.keys(scores).length);
     }
 
