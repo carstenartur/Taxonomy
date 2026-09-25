@@ -135,6 +135,39 @@ async function saveDraftNow(page) {
   });
 }
 
+async function installRequestGate(page, pattern, method) {
+  let releaseRequest;
+  let markSeen;
+  let released = false;
+  const gate = new Promise(resolve => { releaseRequest = resolve; });
+  const seen = new Promise(resolve => { markSeen = resolve; });
+  const handler = async route => {
+    if (route.request().method() !== method) {
+      await route.continue();
+      return;
+    }
+    markSeen();
+    await gate;
+    await route.continue();
+  };
+  await page.route(pattern, handler);
+  return {
+    seen,
+    release() {
+      if (released) return;
+      released = true;
+      releaseRequest();
+    },
+    async dispose() {
+      if (!released) {
+        released = true;
+        releaseRequest();
+      }
+      await page.unroute(pattern, handler);
+    }
+  };
+}
+
 export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
   const { assert, passed, saveState, axeState } = evidence;
 
@@ -202,7 +235,7 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
   });
   assert(await saveDraftNow(page) === true,
     'Unable to persist the preference-preservation analysis draft');
-  const sentinelState = await page.evaluate(workingStateExpression());
+  let sentinelState = await page.evaluate(workingStateExpression());
 
   const field = page.locator('#pref-max-arch-nodes');
   const originalLimit = Number(await field.inputValue());
@@ -212,10 +245,32 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
   let preferenceRestored = false;
 
   try {
-    await saveArchitectureLimit(page, changedLimit);
-    const afterSave = await page.evaluate(workingStateExpression());
-    assert(afterSave === sentinelState,
-      'Saving Preferences changed or cleared the active analysis/architecture state');
+    // Hold the real draft PUT open while Preferences are persisted. This catches
+    // races between the autosave lifecycle and the independent preferences
+    // repository instead of exercising only a quiescent page.
+    const autosaveGate = await installRequestGate(
+      page, '**/api/analysis-drafts/**', 'PUT');
+    try {
+      await page.evaluate(() => {
+        window.TaxonomyState.currentReasons = {
+          BP: 'QA preference preservation sentinel — autosave pending'
+        };
+        window.__taxonomyQaPendingDraftSave = window.TaxonomyAnalysisSession.saveNow();
+      });
+      await autosaveGate.seen;
+      sentinelState = await page.evaluate(workingStateExpression());
+
+      await saveArchitectureLimit(page, changedLimit);
+      const afterSave = await page.evaluate(workingStateExpression());
+      assert(afterSave === sentinelState,
+        'Saving Preferences during draft autosave changed or cleared the working state');
+
+      autosaveGate.release();
+      assert(await page.evaluate(async () => window.__taxonomyQaPendingDraftSave) === true,
+        'The delayed analysis draft autosave did not complete successfully');
+    } finally {
+      await autosaveGate.dispose();
+    }
 
     // Reproduce the reported user path, not only the state while Preferences is
     // still visible. Returning to both architecture and analysis must retain the
@@ -258,31 +313,56 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
     assert(afterRestore === sentinelState,
       'Restoring a Preference changed or cleared the active analysis/architecture state');
 
-    // Reload through the actual application lifecycle. Because the sentinel was
-    // saved as the current working draft, startup must restore it automatically,
-    // not show an empty screen or an older-draft choice.
-    await page.reload({ waitUntil: 'networkidle' });
-    await page.evaluate(() => window.TaxonomyI18n?.ready?.());
-    await page.waitForFunction(() => {
-      const session = window.TaxonomyAnalysisSession;
-      const state = window.TaxonomyState;
-      return session?.state?.().ready === true
-        && state?.lastAnalyzedText === 'QA preference preservation sentinel'
-        && state?.lastAnalysisStatus === 'SUCCESS'
-        && state?.lastAnalysisProvider === 'MOCK'
-        && Boolean(state?.currentArchView);
-    }, null, { timeout: 30_000 });
+    // Hold the initial draft GET open after reload. Preferences must remain
+    // independently usable while restoration is pending, and releasing the GET
+    // must hydrate the exact current draft without an obsolete restore choice.
+    const restoreGate = await installRequestGate(
+      page, '**/api/analysis-drafts/**', 'GET');
+    try {
+      await page.reload({ waitUntil: 'domcontentloaded' });
+      await restoreGate.seen;
+      await page.evaluate(() => window.TaxonomyI18n?.ready?.());
+      await page.waitForFunction(() =>
+        window.TaxonomyAnalysisSession?.state?.().restoring === true,
+      null, { timeout: 30_000 });
+      await waitForPreferenceLoad(page);
+
+      await saveArchitectureLimit(page, changedLimit);
+      preferenceRestored = false;
+
+      restoreGate.release();
+      await page.waitForFunction(() => {
+        const session = window.TaxonomyAnalysisSession;
+        const state = window.TaxonomyState;
+        return session?.state?.().ready === true
+          && state?.lastAnalyzedText === 'QA preference preservation sentinel'
+          && state?.lastAnalysisStatus === 'SUCCESS'
+          && state?.lastAnalysisProvider === 'MOCK'
+          && Boolean(state?.currentArchView);
+      }, null, { timeout: 30_000 });
+    } finally {
+      await restoreGate.dispose();
+    }
+
     const afterReload = await page.evaluate(workingStateExpression());
     assert(afterReload === sentinelState,
-      'Reload restored an older, empty, or incomplete analysis working draft');
+      'Pending initial restore produced an older, empty, or incomplete working draft');
     assert(await page.locator('[data-analysis-session-action="load-saved"]').count() === 0,
       'Reload offered an obsolete saved draft instead of restoring the current working draft');
 
+    await navigateToPage(page, 'architecture');
+    const afterReloadArchitecture = await page.evaluate(workingStateExpression());
+    assert(afterReloadArchitecture === sentinelState,
+      'Architecture navigation after pending restore replaced the restored working draft');
+
     await navigateToPage(page, 'preferences');
     await waitForPreferenceLoad(page);
+    await saveArchitectureLimit(page, originalLimit);
+    preferenceRestored = true;
+
     await axeState('preferences-state-preserved', '#tab-preferences');
     await saveState('preferences-state-preserved', '#tab-preferences');
-    passed('preferences save, failure, return and reload preserve the active working draft');
+    passed('preferences remain isolated across autosave, failure, return and pending restore');
   } finally {
     if (!preferenceRestored) {
       try {
