@@ -23,6 +23,22 @@ class PreferencesUiContractTest {
                 .contains("type=\"button\" id=\"prefSaveBtn\"")
                 .contains("type=\"button\" id=\"prefResetBtn\"")
                 .contains("th:text=\"#{preferences.session.info}\"")
+                .contains("th:text=\"#{preferences.repository.info}\"")
+                .contains("data-pref-key=\"llm.rpm\"")
+                .contains("data-pref-key=\"llm.timeout.seconds\"")
+                .contains("data-pref-key=\"rate-limit.per-minute\"")
+                .contains("data-pref-key=\"limits.max-business-text\"")
+                .contains("data-pref-key=\"limits.max-architecture-nodes\"")
+                .contains("data-pref-key=\"diagram.policy\"")
+                .doesNotContain(
+                        "data-pref-key=\"analysis.min-relevance-score\"",
+                        "data-pref-key=\"dsl.default-branch\"",
+                        "data-pref-key=\"dsl.project-name\"",
+                        "data-pref-key=\"dsl.auto-save.interval-seconds\"",
+                        "data-pref-key=\"dsl.remote.url\"",
+                        "data-pref-key=\"dsl.remote.token\"",
+                        "data-pref-key=\"dsl.remote.push-on-commit\"",
+                        "data-pref-key=\"limits.max-export-nodes\"")
                 .contains("var preferencesLoaded = false;")
                 .contains("var requestInFlight = false;")
                 .contains("function collectChanges()")
@@ -59,6 +75,7 @@ class PreferencesUiContractTest {
 
         for (String key : new String[]{
                 "preferences.session.info=",
+                "preferences.repository.info=",
                 "preferences.load.failed=",
                 "preferences.no.changes=",
                 "preferences.invalid=",
