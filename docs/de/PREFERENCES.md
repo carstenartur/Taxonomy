@@ -121,7 +121,6 @@ Klicken Sie auf **↩️ Reset to Defaults**, um alle Einstellungen auf die Wert
 | `llm.rpm` | int | `5` | ☁️ System | Maximale API-Anfragen pro Minute (ausgehende LLM-Drosselung) |
 | `llm.timeout.seconds` | int | `30` | ☁️ System | HTTP-Lese-Timeout für LLM-API-Aufrufe |
 | `rate-limit.per-minute` | int | `10` | ☁️ System | Eingehendes LLM-Kontingent je authentifizierter Identität und Minute (`0` deaktiviert) |
-| `analysis.min-relevance-score` | int | `70` | ☁️ System | Mindestbewertung, damit Knoten in Analyseergebnissen erscheinen |
 
 Die Einstellung `llm.rpm` steuert die gleitende Fensterdrosselung für ausgehende LLM-API-Aufrufe. Das System verwaltet eine FIFO-Warteschlange von Zeitstempeln und lässt den Thread warten, wenn das Ratenlimit überschritten würde. Eine Toleranz von 50 ms wird für Taktabweichungen hinzugefügt.
 
@@ -129,18 +128,9 @@ Die Einstellung `llm.timeout.seconds` aktualisiert dynamisch das Lese-Timeout de
 
 Das eingehende Kontingent `rate-limit.per-minute` wird erst nach Authentifizierung und Autorisierung geprüft und gilt je stabiler authentifizierter Identität. Lokale Konten werden über ihren kanonischen authentifizierten Benutzernamen zugeordnet; Browser-OIDC und Bearer-JWT desselben Keycloak-Kontos teilen die unveränderliche Issuer/Subject-Identität (`iss`/`sub`). Forwarding-Header, Peer-Adressen und der veränderliche Claim `preferred_username` erzeugen keine Kontingentidentitäten; abgewiesene Aufrufe belegen oder verbrauchen keinen Kontingentzähler. Genau `0` deaktiviert diesen Begrenzer; negative Werte wirken fehlersicher als ein zugelassener Aufruf pro Minute. Inaktive Identitäten laufen ab, die In-Memory-Menge ist begrenzt, und HTTP-`429`-Antworten enthalten `Retry-After` sowie `Cache-Control: no-store`. Die Zähler gelten je laufender Anwendungsinstanz; bei mehreren Replikaten ist ein verteilter äußerer Begrenzer nötig oder das vervielfachte Gesamtkontingent muss eingeplant werden.
 
-### DSL- und Git-Konfiguration
+### Repository- und Altschlüssel
 
-| Schlüssel | Typ | Standard | Geltungsbereich | Beschreibung |
-|---|---|---|---|---|
-| `dsl.default-branch` | string | `"draft"` | ☁️ System | Aktiver Branch für die DSL-Materialisierung |
-| `dsl.project-name` | string | `"Taxonomy Architecture"` | ☁️ System | Menschenlesbarer Projekt-Anzeigename |
-| `dsl.auto-save.interval-seconds` | int | `0` | ☁️ System | Automatische Speicherfrequenz (0 = deaktiviert) |
-| `dsl.remote.url` | string | `""` | ☁️ System | Remote-Git-URL für Push-/Pull-Operationen |
-| `dsl.remote.token` | string | `""` | ☁️ System | Authentifizierungs-Token für Remote-Git (in API-Antworten maskiert) |
-| `dsl.remote.push-on-commit` | boolean | `false` | ☁️ System | Nach lokalen Commits automatisch zum Remote pushen |
-
-> **Sicherheitshinweis:** Der Wert von `dsl.remote.token` wird in allen API-Antworten maskiert. Beim Abrufen über `GET /api/preferences` erscheint er als `"****{letzte4Zeichen}"`. Das vollständige Token wird nur intern für Git-Remote-Operationen verwendet.
+Repository-Branches, Remotes, Zugangsdaten und Workspace-Synchronisierung sind repositorybezogen. Sie sind keine globalen Laufzeiteinstellungen. Historische `dsl.*`-Schlüssel und `analysis.min-relevance-score` können aus Kompatibilitätsgründen weiterhin in bestehenden Preferences-Snapshots vorkommen; Änderungen dieser gespeicherten Schlüssel steuern jedoch weder das aktuelle Repository/Workspace noch die Filterung der Analyseergebnisse und werden deshalb nicht in der Preferences-Oberfläche angeboten.
 
 ### Größenbeschränkungen
 
@@ -148,7 +138,6 @@ Das eingehende Kontingent `rate-limit.per-minute` wird erst nach Authentifizieru
 |---|---|---|---|---|
 | `limits.max-business-text` | int | `5000` | ☁️ System | Maximale Zeichenanzahl in einem geschäftlichen Anforderungstext |
 | `limits.max-architecture-nodes` | int | `50` | ☁️ System | Standard-Obergrenze für Knoten der Ad-hoc-Architekturanalyse, sofern der API-Request kein `maxArchitectureNodes` vorgibt |
-| `limits.max-export-nodes` | int | `200` | ☁️ System | Maximale Anzahl von Knoten in einem Export-Vorgang |
 
 ### Diagramm-Konfiguration
 
