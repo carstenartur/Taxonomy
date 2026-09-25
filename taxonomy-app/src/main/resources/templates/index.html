@@ -1860,6 +1860,13 @@
                 window.TaxonomyBrowse.updateExportGroupVisibility();
             }
         }
+
+        // One navigation lifecycle for desktop tabs, responsive selection and
+        // programmatic navigation. Feature modules must not depend on a
+        // particular control having been clicked.
+        document.dispatchEvent(new CustomEvent('taxonomy:page-activated', {
+            detail: { page: pageName }
+        }));
     }
 
     // Architecture sub-tab click handlers
@@ -2461,15 +2468,11 @@
         if (isPreferencesActive()) loadPreferences();
     });
 
-    // Normal navigation uses replaceState (no hashchange event), so retain the
-    // explicit tab activation hook in addition to direct/hash navigation.
-    document.querySelectorAll('#mainNavTabs .nav-link').forEach(function (link) {
-        if (link.getAttribute('data-page') === 'preferences') {
-            link.addEventListener('click', loadPreferences);
-        }
-    });
-    window.addEventListener('hashchange', function () {
-        if (window.location.hash === '#preferences') loadPreferences();
+    // Desktop tabs, responsive selection and programmatic navigation all pass
+    // through activatePage(). Direct initial #preferences activation happens
+    // before this listener exists and is handled by the DOMContentLoaded check.
+    document.addEventListener('taxonomy:page-activated', function (event) {
+        if (event.detail && event.detail.page === 'preferences') loadPreferences();
     });
 }());
 </script>
