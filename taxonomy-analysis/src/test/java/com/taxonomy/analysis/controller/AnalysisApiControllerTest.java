@@ -193,6 +193,8 @@ class AnalysisApiControllerTest {
         AnalysisRequest request = new AnalysisRequest();
         request.setBusinessText("Need secure voice comms");
         request.setIncludeArchitectureView(true);
+        when(analysisRuntimeSettings.getInt("limits.max-business-text", 5000))
+                .thenReturn(5000);
         when(analysisRuntimeSettings.getInt("limits.max-architecture-nodes", 50))
                 .thenReturn(150);
         AnalysisResult analysisResult = new AnalysisResult();
