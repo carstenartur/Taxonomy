@@ -66,7 +66,7 @@ class AnalysisWorkflowRegressionTest {
     }
 
     @Test
-    void copilotPreflightRejectsUnavailableAnalysisBeforeStartingItsTimeout()
+    void copilotPreflightRejectsUnavailableAnalysisBeforeStartingAnalysis()
             throws IOException {
         String authority = resource(
                 "/static/js/core/taxonomy-copilot-terminal-state.js");
@@ -80,16 +80,23 @@ class AnalysisWorkflowRegressionTest {
     }
 
     @Test
-    void copilotWaitsForAnExactSuccessfulTerminalState() throws IOException {
+    void copilotWaitsForAnExactSuccessfulTerminalOperation() throws IOException {
         String authority = resource(
                 "/static/js/core/taxonomy-copilot-terminal-state.js");
+        String coordinator = resource(
+                "/static/js/core/taxonomy-operation-coordinator.js");
 
         assertThat(authority)
-                .contains("var tracked = copilotRunning() && analysisRunning();")
-                .contains("if (tracked && analysisRunning()) return;")
-                .contains("C.S.lastAnalysisStatus !== 'SUCCESS'")
-                .contains("showIncompleteAnalysis();")
-                .contains("resetCopilotControls();");
+                .contains("return hasScores(C.S.currentScores);")
+                .contains("hasKnownNonAuthoritativeStatus")
+                .doesNotContain("__taxonomyCopilotTerminalGuard", "window.setInterval =");
+        assertThat(coordinator)
+                .contains("function waitForMainAnalysis()")
+                .contains("taxonomy:operation-state")
+                .contains("if (!TERMINAL.has(detail.status)) return;")
+                .contains("if (terminal.status === 'SUCCEEDED')")
+                .contains("window.TaxonomyAnalysis.runCopilotFlow()")
+                .contains("var scores = C.S.currentScores;");
     }
 
     private static String resource(String path) throws IOException {
