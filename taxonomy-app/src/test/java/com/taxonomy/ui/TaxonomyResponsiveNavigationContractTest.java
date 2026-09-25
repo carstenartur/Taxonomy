@@ -17,6 +17,11 @@ class TaxonomyResponsiveNavigationContractTest {
     void narrowViewportsUseAnExplicitSectionSelectorAndTaskJump() throws Exception {
         String utils = resource("/static/js/shared/taxonomy-utils.js");
         String css = resource("/static/css/taxonomy-ergonomics.css");
+        String template = resource("/templates/index.html");
+
+        assertThat(template)
+                .contains("taxonomy:page-activated")
+                .contains("detail: { page: pageName }");
 
         assertThat(utils)
                 .contains("function installResponsiveMainNavigation()")
