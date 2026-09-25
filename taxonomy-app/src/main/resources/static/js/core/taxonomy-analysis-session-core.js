@@ -326,6 +326,8 @@
             schemaVersion: SCHEMA_VERSION,
             businessText: input ? input.value : '',
             lastAnalyzedText: S.lastAnalyzedText,
+            lastAnalysisProvider: S.lastAnalysisProvider,
+            lastAnalysisStatus: S.lastAnalysisStatus,
             analysisDurationMillis: S.lastAnalysisDurationMillis,
             storedBusinessText: S.storedBusinessText,
             scores: S.currentScores,
