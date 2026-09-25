@@ -114,6 +114,24 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
     assert(afterSave === sentinelState,
       'Saving Preferences changed or cleared the active analysis/architecture state');
 
+    // Reproduce the reported user path, not only the state while Preferences is
+    // still visible. Returning to both architecture and analysis must retain the
+    // same working result; page activation must not replace it with an empty or
+    // older draft.
+    await navigateToPage(page, 'architecture');
+    await page.locator('#tab-architecture').waitFor({ state: 'visible', timeout: 20_000 });
+    const afterArchitectureReturn = await page.evaluate(workingStateExpression());
+    assert(afterArchitectureReturn === sentinelState,
+      'Returning to Architecture after saving Preferences cleared or replaced the working state');
+
+    await navigateToPage(page, 'analyze');
+    await page.locator('#tab-analyze').waitFor({ state: 'visible', timeout: 20_000 });
+    const afterAnalyzeReturn = await page.evaluate(workingStateExpression());
+    assert(afterAnalyzeReturn === sentinelState,
+      'Returning to Analyze after saving Preferences cleared or replaced the working state');
+
+    await navigateToPage(page, 'preferences');
+    await waitForPreferenceLoad(page);
     await saveArchitectureLimit(page, originalLimit);
     const afterRestore = await page.evaluate(workingStateExpression());
     assert(afterRestore === sentinelState,
@@ -121,7 +139,7 @@ export async function runPreferencesWorkflow({ page, baseUrl, evidence }) {
 
     await axeState('preferences-state-preserved', '#tab-preferences');
     await saveState('preferences-state-preserved', '#tab-preferences');
-    passed('preferences save preserves active analysis and architecture state');
+    passed('preferences save and return preserve active analysis and architecture state');
   } finally {
     // Leave the browser state as it was before this acceptance scenario. The
     // preference itself is restored above before this assignment.
