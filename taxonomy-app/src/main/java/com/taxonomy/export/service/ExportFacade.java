@@ -1,6 +1,5 @@
 package com.taxonomy.export.service;
 
-import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.analysis.service.SavedAnalysisService;
 import com.taxonomy.archimate.ArchiMateModel;
@@ -19,7 +18,6 @@ import com.taxonomy.export.VisioDiagramService;
 import com.taxonomy.export.VisioPackageBuilder;
 import com.taxonomy.export.spi.ExportFormatExtension;
 import com.taxonomy.visio.VisioDocument;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -40,9 +38,6 @@ public class ExportFacade {
     private final MermaidExportService mermaidExportService;
     private final StructurizrExportService structurizrExportService;
     private final SavedAnalysisService savedAnalysisService;
-
-    @Autowired(required = false)
-    private AnalysisRuntimeSettings analysisRuntimeSettings;
 
     public ExportFacade(LlmService llmService,
                         RequirementArchitectureViewService architectureViewService,
@@ -154,12 +149,8 @@ public class ExportFacade {
 
     private DiagramModel analyzeAndProject(String businessText) {
         AnalysisResult result = llmService.analyzeWithBudget(businessText);
-        int maxArchitectureNodes = analysisRuntimeSettings != null
-                ? analysisRuntimeSettings.getInt("limits.max-architecture-nodes", 50)
-                : 50;
-        maxArchitectureNodes = Math.max(1, Math.min(1_000, maxArchitectureNodes));
         RequirementArchitectureView view = architectureViewService.build(
-                result.getScores(), businessText, maxArchitectureNodes);
+                result.getScores(), businessText, 20);
         String title = businessText.length() > 60
                 ? businessText.substring(0, 57) + "..."
                 : businessText;
