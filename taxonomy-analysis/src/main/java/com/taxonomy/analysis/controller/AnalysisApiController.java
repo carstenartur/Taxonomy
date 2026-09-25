@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.controller;
 
+import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
 import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenCommand;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
@@ -77,6 +78,13 @@ public class AnalysisApiController {
     @Autowired
     private AnalysisProgressRegistry analysisProgressRegistry;
 
+    /**
+     * Optional live application settings port. The analysis module remains usable
+     * standalone, while the assembled application supplies PreferencesService.
+     */
+    @Autowired(required = false)
+    private AnalysisRuntimeSettings analysisRuntimeSettings;
+
     private final TaxonomyService taxonomyService;
     private final ExecutorService analysisExecutor;
     private final ObjectMapper objectMapper;
@@ -137,7 +145,7 @@ public class AnalysisApiController {
                     new AnalyzeRequirementCommand(
                             request.getBusinessText(),
                             request.isIncludeArchitectureView(),
-                            request.getMaxArchitectureNodes(),
+                            resolveMaxArchitectureNodes(request),
                             request.getProvider(),
                             username,
                             context));
@@ -475,6 +483,14 @@ public class AnalysisApiController {
                     error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis());
         }
         return event;
+    }
+
+    private int resolveMaxArchitectureNodes(AnalysisRequest request) {
+        Integer requested = request.getMaxArchitectureNodes();
+        if (requested != null) return requested;
+        return analysisRuntimeSettings != null
+                ? analysisRuntimeSettings.getInt("limits.max-architecture-nodes", 50)
+                : 50;
     }
 
     private String newOperationId() {
