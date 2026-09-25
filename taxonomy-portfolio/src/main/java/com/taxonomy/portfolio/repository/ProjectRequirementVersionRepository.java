@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 
@@ -24,6 +25,9 @@ public interface ProjectRequirementVersionRepository
 
     Optional<ProjectRequirementVersion> findByRequirementIdAndScopeKeyAndContentHash(
             Long requirementId, String scopeKey, String contentHash);
+
+    List<ProjectRequirementVersion> findByScopeKeyAndIdIn(
+            String scopeKey, Collection<Long> ids);
 
     /**
      * Resolve from the already populated persistence context when a requirement

@@ -39,6 +39,15 @@ public interface ProjectRequirementRepository extends JpaRepository<ProjectRequi
     Optional<ProjectRequirement> findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCase(
             Long projectId, String scopeKey, String requirementKey);
 
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select requirement from ProjectRequirement requirement "
+            + "where requirement.projectId = :projectId and requirement.scopeKey = :scopeKey "
+            + "and lower(requirement.requirementKey) = lower(:requirementKey)")
+    Optional<ProjectRequirement> findByProjectIdAndScopeKeyAndRequirementKeyIgnoreCaseForUpdate(
+            @Param("projectId") Long projectId,
+            @Param("scopeKey") String scopeKey,
+            @Param("requirementKey") String requirementKey);
+
     long countByProjectIdAndScopeKey(Long projectId, String scopeKey);
 
     /**

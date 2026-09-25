@@ -36,6 +36,11 @@ public class ReformulationAdoption {
         this.id=id;this.proposalId=proposalId;this.previewId=previewId;this.scopeKey=scope;this.commandHash=commandHash;
         this.requirementId=requirementId;this.targetVersionId=targetVersionId;this.payload=payload;this.createdAt=now;
     }
+    public String getId(){return id;} public String getProposalId(){return proposalId;}
+    public String getScopeKey(){return scopeKey;} public Long getRequirementId(){return requirementId;}
     public String getCommandHash(){return commandHash;} public String getPayload(){return payload;}
     public String getPreviewId(){return previewId;} public Long getTargetVersionId(){return targetVersionId;}
+    public ReformulationAdoptionPreview getPreview(){return preview;}
+    public ProjectRequirementVersion getVersion(){return version;}
+    public Instant getCreatedAt(){return createdAt;}
 }

@@ -150,7 +150,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29");
     }
 
     @Test
@@ -225,7 +225,7 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
     }
@@ -233,6 +233,13 @@ class TaxonomySchemaPostgresMigrationIT {
     private static void assertReformulationSchema(DataSource dataSource) throws SQLException {
         com.taxonomy.portfolio.reformulation.ReformulationCheckpointIndexContract.verify(dataSource);
         com.taxonomy.portfolio.reformulation.ReformulationAdoptionSchemaContract.verify(dataSource);
+        assertThat(tableExists(dataSource, "reformulation_portable_evidence")).isTrue();
+        for (String column : List.of("id", "scope_key", "project_key", "requirement_key",
+                "target_version_number", "schema_version", "evidence_hash", "target_text_hash",
+                "evidence_payload", "created_at")) {
+            assertThat(columnExists(dataSource, "reformulation_portable_evidence", column))
+                    .as("portable reformulation evidence " + column).isTrue();
+        }
         for (String table : List.of("reformulation_usage_session", "reformulation_usage_attempt")) assertThat(tableExists(dataSource, table)).isTrue();
         for (String column : List.of("run_id", "proposal_id", "scope_key", "created_at", "schema_version", "from_first_attempt"))
             assertThat(columnExists(dataSource, "reformulation_usage_session", column)).as("usage session " + column).isTrue();
