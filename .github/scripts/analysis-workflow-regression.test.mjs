@@ -211,6 +211,21 @@ test('Copilot terminal authority leaves the browser timer API untouched', () => 
   assert.deepEqual(harness.cleared, []);
 });
 
+test('shared state remains authoritative when the legacy score alias is stale', () => {
+  const harness = createHarness({
+    status: 'SUCCESS',
+    currentScores: { IP: 100 },
+    analysisBusy: false,
+    copilotBusy: false
+  });
+  harness.window._taxonomyCurrentScores = {};
+
+  const event = harness.clickCopilot();
+
+  assert.equal(event.defaultPrevented, false);
+  assert.equal(event.immediatePropagationStopped, false);
+});
+
 test('manual scores explicitly replace an earlier failed AI authority', () => {
   const harness = createHarness({ status: 'PARTIAL' });
   harness.applyManualScores({ IP: 100 });
