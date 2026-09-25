@@ -43,6 +43,7 @@ import java.util.concurrent.ExecutorService;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.lenient;
@@ -138,6 +139,36 @@ class AnalysisApiControllerTest {
         assertThat(captor.getValue().username()).isEqualTo("alice");
         assertThat(captor.getValue().workspaceContext())
                 .isEqualTo(new WorkspaceContext("alice", "alice-ws", "draft"));
+    }
+
+    @Test
+    void analyzeRejectsBusinessTextAboveLivePreferenceLimitBeforeDelegation() {
+        when(analysisRuntimeSettings.getInt("limits.max-business-text", 5_000))
+                .thenReturn(100);
+        AnalysisRequest request = new AnalysisRequest();
+        request.setBusinessText("x".repeat(101));
+
+        assertThatThrownBy(() -> controller.analyze(request))
+                .isInstanceOfSatisfying(
+                        org.springframework.web.server.ResponseStatusException.class,
+                        failure -> assertThat(failure.getStatusCode())
+                                .isEqualTo(HttpStatus.BAD_REQUEST));
+        verifyNoInteractions(analyzeRequirementUseCase);
+    }
+
+    @Test
+    void analyzeStreamRejectsBusinessTextAboveLivePreferenceLimitBeforeDelegation() throws Exception {
+        when(analysisRuntimeSettings.getInt("limits.max-business-text", 5_000))
+                .thenReturn(100);
+
+        mockMvc.perform(get("/api/analyze-stream")
+                        .param("businessText", "x".repeat(101))
+                        .accept(MediaType.TEXT_EVENT_STREAM_VALUE))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("event:error")))
+                .andExpect(content().string(org.hamcrest.Matchers.containsString(
+                        "configured limit of 100 characters")));
+        verifyNoInteractions(streamRequirementAnalysisUseCase);
     }
 
     @Test
