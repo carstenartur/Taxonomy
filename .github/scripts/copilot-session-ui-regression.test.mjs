@@ -42,11 +42,17 @@ function createPreflightHarness({ stale = false, invalidationSucceeds = true } =
       conflict: false,
       invalidating: false
     },
+    S: {
+      currentScores: stale ? { IP: 92 } : null
+    },
     language: () => 'en',
     isStale: () => stale,
     invalidate(options) {
       invalidations.push(options);
-      if (invalidationSucceeds) window._taxonomyCurrentScores = null;
+      if (invalidationSucceeds) {
+        context.S.currentScores = null;
+        window._taxonomyCurrentScores = null;
+      }
     }
   };
   const document = {
