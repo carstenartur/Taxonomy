@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -74,6 +75,8 @@ class WorkspaceManagerConcurrencyTest {
                     "concurrent first access must persist one default workspace");
         } finally {
             executor.shutdownNow();
+            assertTrue(executor.awaitTermination(5, TimeUnit.SECONDS),
+                    "concurrency-test workers must terminate before the Maven fork exits");
         }
     }
 }
