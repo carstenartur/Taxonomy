@@ -64,7 +64,7 @@ function createHarness({
     clearedIntervals.push(id);
   }
   const context = {
-    S: { lastAnalysisStatus: status, currentScores: null },
+    S: { lastAnalysisStatus: status, currentScores },
     language: () => 'en'
   };
   const window = {
