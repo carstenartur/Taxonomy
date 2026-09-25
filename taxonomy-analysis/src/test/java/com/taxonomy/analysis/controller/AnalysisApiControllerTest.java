@@ -172,6 +172,23 @@ class AnalysisApiControllerTest {
     }
 
     @Test
+    void analyzeRejectsArchitectureNodeLimitOutsideSupportedRange() {
+        AnalysisRequest request = new AnalysisRequest();
+        request.setBusinessText("Need secure voice comms");
+        request.setIncludeArchitectureView(true);
+        request.setMaxArchitectureNodes(1001);
+
+        assertThatThrownBy(() -> controller.analyze(request))
+                .isInstanceOfSatisfying(
+                        org.springframework.web.server.ResponseStatusException.class,
+                        failure -> {
+                            assertThat(failure.getStatusCode()).isEqualTo(HttpStatus.BAD_REQUEST);
+                            assertThat(failure.getReason()).contains("between 1 and 1000");
+                        });
+        verifyNoInteractions(analyzeRequirementUseCase);
+    }
+
+    @Test
     void analyzeUsesLiveArchitectureNodePreferenceWhenRequestOmitsLimit() {
         AnalysisRequest request = new AnalysisRequest();
         request.setBusinessText("Need secure voice comms");
