@@ -1,5 +1,6 @@
 package com.taxonomy.analysis.controller;
 
+import com.taxonomy.analysis.service.AnalysisRuntimeSettings;
 import com.taxonomy.analysis.usecase.AnalysisStreamEvent;
 import com.taxonomy.analysis.usecase.AnalysisStreamEventHandler;
 import com.taxonomy.analysis.usecase.AnalyzeNodeChildrenResult;
@@ -65,6 +66,7 @@ class AnalysisApiControllerTest {
     @Mock private MessageSource messageSource;
     @Mock private RepositoryStateService repositoryStateService;
     @Mock private WorkspaceResolver workspaceResolver;
+    @Mock private AnalysisRuntimeSettings analysisRuntimeSettings;
 
     private ExecutorService analysisExecutor;
     private AnalysisApiController controller;
@@ -92,11 +94,15 @@ class AnalysisApiControllerTest {
                 repositoryStateService,
                 workspaceResolver,
                 messageSource);
+        org.springframework.test.util.ReflectionTestUtils.setField(
+                controller, "analysisRuntimeSettings", analysisRuntimeSettings);
         mockMvc = MockMvcBuilders.standaloneSetup(controller).build();
         lenient().when(taxonomyService.isInitialized()).thenReturn(true);
         lenient().when(workspaceResolver.resolveCurrentUsername()).thenReturn("alice");
         lenient().when(workspaceResolver.resolveCurrentContext())
                 .thenReturn(new WorkspaceContext("alice", "alice-ws", "draft"));
+        lenient().when(analysisRuntimeSettings.getInt(
+                "limits.max-architecture-nodes", 50)).thenReturn(50);
     }
 
     @Test
@@ -128,9 +134,30 @@ class AnalysisApiControllerTest {
         ArgumentCaptor<com.taxonomy.analysis.usecase.AnalyzeRequirementCommand> captor =
                 ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand.class);
         verify(analyzeRequirementUseCase).analyze(captor.capture());
+        assertThat(captor.getValue().maxArchitectureNodes()).isEqualTo(9);
         assertThat(captor.getValue().username()).isEqualTo("alice");
         assertThat(captor.getValue().workspaceContext())
                 .isEqualTo(new WorkspaceContext("alice", "alice-ws", "draft"));
+    }
+
+    @Test
+    void analyzeUsesLiveArchitectureNodePreferenceWhenRequestOmitsLimit() {
+        AnalysisRequest request = new AnalysisRequest();
+        request.setBusinessText("Need secure voice comms");
+        request.setIncludeArchitectureView(true);
+        when(analysisRuntimeSettings.getInt("limits.max-architecture-nodes", 50))
+                .thenReturn(150);
+        AnalysisResult analysisResult = new AnalysisResult();
+        analysisResult.setStatus("SUCCESS");
+        when(analyzeRequirementUseCase.analyze(any()))
+                .thenReturn(new AnalyzeRequirementResult(analysisResult));
+
+        controller.analyze(request);
+
+        ArgumentCaptor<com.taxonomy.analysis.usecase.AnalyzeRequirementCommand> captor =
+                ArgumentCaptor.forClass(com.taxonomy.analysis.usecase.AnalyzeRequirementCommand.class);
+        verify(analyzeRequirementUseCase).analyze(captor.capture());
+        assertThat(captor.getValue().maxArchitectureNodes()).isEqualTo(150);
     }
 
     @Test
