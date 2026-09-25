@@ -18,6 +18,8 @@
     <properties>
         <documentTemplateE2E>false</documentTemplateE2E>
         <taxonomy.node.executable></taxonomy.node.executable>
+        <!-- Repository-wide policy tests inspect current reactor outputs and shared files. -->
+        <maven.build.cache.enabled>false</maven.build.cache.enabled>
     </properties>
 
     <dependencies>

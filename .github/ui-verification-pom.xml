@@ -10,6 +10,8 @@
     <name>Taxonomy UI Verification Authority</name>
 
     <properties>
+        <!-- Browser/contract lanes produce commit-bound evidence and must execute. -->
+        <maven.build.cache.enabled>false</maven.build.cache.enabled>
         <frontend-maven-plugin.version>2.0.2</frontend-maven-plugin.version>
         <node.version>v24.18.0</node.version>
     </properties>

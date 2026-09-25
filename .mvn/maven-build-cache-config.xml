@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<cache xmlns="http://maven.apache.org/BUILD-CACHE-CONFIG/1.4.0"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://maven.apache.org/BUILD-CACHE-CONFIG/1.4.0 https://maven.apache.org/xsd/build-cache-config-1.4.0.xsd">
+    <configuration>
+        <enabled>true</enabled>
+        <hashAlgorithm>XX</hashAlgorithm>
+        <mandatoryClean>false</mandatoryClean>
+        <local>
+            <maxBuildsCached>4</maxBuildsCached>
+        </local>
+        <attachedOutputs>
+            <!-- Cached modules must restore the physical reactor outputs consumed
+                 by repository-wide architecture tests, plus test/coverage evidence.
+                 A restored JAR alone is insufficient because those tests deliberately
+                 inspect sibling modules' target/classes directories. -->
+            <preservePermissions>true</preservePermissions>
+            <preserveTimestamps>true</preserveTimestamps>
+            <dirNames>
+                <dirName>classes</dirName>
+                <dirName>test-classes</dirName>
+                <dirName>surefire-reports</dirName>
+                <dirName>failsafe-reports</dirName>
+                <dirName>site</dirName>
+                <dirName glob="jacoco.exec"></dirName>
+            </dirNames>
+        </attachedOutputs>
+    </configuration>
+
+    <!-- Root-level aggregate/tooling executions depend on reactor-wide or
+         checkout-wide state that is intentionally broader than one module key. -->
+    <executionControl>
+        <runAlways>
+            <executions>
+                <execution groupId="org.cyclonedx" artifactId="cyclonedx-maven-plugin">
+                    <execIds>
+                        <execId>generate-aggregate-sbom</execId>
+                    </execIds>
+                </execution>
+                <execution groupId="org.codehaus.mojo" artifactId="exec-maven-plugin">
+                    <execIds>
+                        <execId>download-pinned-embedding-model</execId>
+                    </execIds>
+                </execution>
+            </executions>
+        </runAlways>
+        <!-- Command-line test skip flags and focused selectors are runtime
+             plugin properties, not part of the effective POM. Reconcile them so
+             neither a skipped nor a focused test invocation can satisfy a later
+             verification with a different test scope. -->
+        <reconcile>
+            <plugins>
+                <plugin groupId="org.apache.maven.plugins" artifactId="maven-surefire-plugin" goal="test">
+                    <reconciles>
+                        <reconcile propertyName="skip" skipValue="true"/>
+                        <reconcile propertyName="skipExec" skipValue="true"/>
+                        <reconcile propertyName="skipTests" skipValue="true"/>
+                        <reconcile propertyName="testFailureIgnore" skipValue="true"/>
+                        <reconcile propertyName="test"/>
+                    </reconciles>
+                </plugin>
+                <plugin groupId="org.apache.maven.plugins" artifactId="maven-failsafe-plugin" goal="integration-test">
+                    <reconciles>
+                        <reconcile propertyName="skip" skipValue="true"/>
+                        <reconcile propertyName="skipITs" skipValue="true"/>
+                        <reconcile propertyName="skipTests" skipValue="true"/>
+                        <reconcile propertyName="testFailureIgnore" skipValue="true"/>
+                        <reconcile propertyName="test"/>
+                    </reconciles>
+                </plugin>
+                <plugin groupId="org.apache.maven.plugins" artifactId="maven-failsafe-plugin" goal="verify">
+                    <reconciles>
+                        <reconcile propertyName="skip" skipValue="true"/>
+                        <reconcile propertyName="skipITs" skipValue="true"/>
+                        <reconcile propertyName="skipTests" skipValue="true"/>
+                        <reconcile propertyName="testFailureIgnore" skipValue="true"/>
+                    </reconciles>
+                </plugin>
+            </plugins>
+        </reconcile>
+    </executionControl>
+</cache>
