@@ -523,10 +523,17 @@ public class AnalysisApiController {
 
     private int resolveMaxArchitectureNodes(AnalysisRequest request) {
         Integer requested = request.getMaxArchitectureNodes();
-        if (requested != null) return requested;
-        return analysisRuntimeSettings != null
+        if (requested != null) {
+            if (requested < 1 || requested > 1_000) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                        "maxArchitectureNodes must be between 1 and 1000.");
+            }
+            return requested;
+        }
+        int configured = analysisRuntimeSettings != null
                 ? analysisRuntimeSettings.getInt("limits.max-architecture-nodes", 50)
                 : 50;
+        return Math.max(1, Math.min(1_000, configured));
     }
 
     private String newOperationId() {
