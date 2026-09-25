@@ -200,22 +200,15 @@ test('Copilot preflight rejects a disabled or running analysis', () => {
   assert.match(harness.elements.copilotContent.rendered.textContent, /cannot start yet/i);
 });
 
-test('score poll waits for success and rejects partial completion', () => {
-  const success = createHarness({ analysisBusy: true, copilotBusy: true, status: 'IN_PROGRESS' });
-  let released = 0;
-  const successId = success.window.setInterval(() => { released += 1; }, 1000);
-  success.intervals.get(successId)();
-  assert.equal(released, 0);
-  success.finishAnalysis('SUCCESS');
-  success.intervals.get(successId)();
-  assert.equal(released, 1);
+test('Copilot terminal authority leaves the browser timer API untouched', () => {
+  const harness = createHarness({ analysisBusy: true, copilotBusy: true, status: 'IN_PROGRESS' });
+  let ticks = 0;
+  const id = harness.window.setInterval(() => { ticks += 1; }, 1000);
 
-  const partial = createHarness({ analysisBusy: true, copilotBusy: true, status: 'IN_PROGRESS' });
-  const partialId = partial.window.setInterval(() => { throw new Error('must not run'); }, 1000);
-  partial.finishAnalysis('PARTIAL');
-  partial.intervals.get(partialId)();
-  assert.ok(partial.cleared.includes(partialId));
-  assert.match(partial.elements.copilotContent.rendered.textContent, /did not complete successfully/i);
+  harness.intervals.get(id)();
+
+  assert.equal(ticks, 1);
+  assert.deepEqual(harness.cleared, []);
 });
 
 test('manual scores explicitly replace an earlier failed AI authority', () => {
