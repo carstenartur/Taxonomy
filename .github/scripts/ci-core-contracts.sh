@@ -21,6 +21,7 @@ bash -n deploy/helm/taxonomy/verify.sh
 python3 .github/scripts/check-release-delivery-contract.py
 python3 .github/scripts/check-delivery-hardening.py
 python3 .github/scripts/check-observability-performance-scope.py
+node .github/scripts/check-maven-build-cache.mjs
 
 current_version=$(./mvnw -q -DforceStdout help:evaluate -Dexpression=project.version)
 if [[ "$current_version" == *-SNAPSHOT ]]; then

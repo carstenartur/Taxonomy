@@ -15,6 +15,11 @@
     <name>Taxonomy Aggregate Coverage</name>
     <description>Authoritative JaCoCo report across every shipped Taxonomy module</description>
 
+    <properties>
+        <!-- Aggregate coverage is a current-reactor gate, not a reusable module result. -->
+        <maven.build.cache.enabled>false</maven.build.cache.enabled>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>com.taxonomy</groupId>
