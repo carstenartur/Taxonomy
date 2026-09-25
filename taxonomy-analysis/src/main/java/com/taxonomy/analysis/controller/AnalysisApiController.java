@@ -135,6 +135,7 @@ public class AnalysisApiController {
             return ResponseEntity.badRequest().build();
         }
         enforceBusinessTextLimit(request.getBusinessText());
+        int maxArchitectureNodes = resolveMaxArchitectureNodes(request);
 
         String operationId = newOperationId();
         try {
@@ -146,7 +147,7 @@ public class AnalysisApiController {
                     new AnalyzeRequirementCommand(
                             request.getBusinessText(),
                             request.isIncludeArchitectureView(),
-                            resolveMaxArchitectureNodes(request),
+                            maxArchitectureNodes,
                             request.getProvider(),
                             username,
                             context));
