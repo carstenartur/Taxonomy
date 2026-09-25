@@ -147,7 +147,7 @@ The incoming `rate-limit.per-minute` quota is evaluated only after authenticatio
 | Key | Type | Default | Scope | Description |
 |---|---|---|---|---|
 | `limits.max-business-text` | int | `5000` | ☁️ System | Maximum characters in a business requirement text |
-| `limits.max-architecture-nodes` | int | `50` | ☁️ System | Maximum nodes displayed in the architecture view |
+| `limits.max-architecture-nodes` | int | `50` | ☁️ System | Default maximum nodes for ad-hoc architecture analysis when the API request does not supply `maxArchitectureNodes` |
 | `limits.max-export-nodes` | int | `200` | ☁️ System | Maximum nodes included in an export operation |
 
 ### Diagram Configuration
