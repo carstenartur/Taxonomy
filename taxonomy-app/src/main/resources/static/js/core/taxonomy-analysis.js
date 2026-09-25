@@ -559,39 +559,15 @@
                 '<span id="copilotStepLabel">' + t('analyze.copilot.step1') + '</span></div>';
         }
 
-        // Step 1: Trigger the main analysis (use existing analyze button logic)
-        var analyzeBtn = document.getElementById('analyzeBtn');
-        if (analyzeBtn && !hasScores()) {
-            // Trigger analysis and wait for scores
-            showCopilotStep(t('analyze.copilot.step1'));
-            analyzeBtn.click();
-            // Poll for scores to appear
-            waitForScores(function () {
-                continueCopilotFlow();
-            });
-        } else if (hasScores()) {
-            // Already have scores, continue
-            continueCopilotFlow();
-        } else {
+        // The operation coordinator owns the complete scoring lifecycle and invokes
+        // this flow only after an authoritative SUCCESS. Do not start a second
+        // analysis or infer completion from a browser timer/score side effect here.
+        if (!hasScores()) {
             showCopilotStatus('danger', t('analyze.copilot.cannot.start'));
             resetCopilotBtn();
+            return;
         }
-    }
-
-    function waitForScores(callback) {
-        var attempts = 0;
-        var maxAttempts = 60; // 60 attempts at 1s intervals = 60s timeout
-        var interval = setInterval(function () {
-            attempts++;
-            if (hasScores()) {
-                clearInterval(interval);
-                callback();
-            } else if (attempts >= maxAttempts) {
-                clearInterval(interval);
-                showCopilotStatus('warning', t('analyze.copilot.timeout'));
-                resetCopilotBtn();
-            }
-        }, 1000);
+        continueCopilotFlow();
     }
 
     function continueCopilotFlow() {
