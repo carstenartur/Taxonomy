@@ -25,7 +25,7 @@
     }
 
     function hasCurrentScores() {
-        return hasScores(window._taxonomyCurrentScores);
+        return hasScores(C.S.currentScores);
     }
 
     function hasKnownNonAuthoritativeStatus() {
