@@ -1371,63 +1371,15 @@
                                 <input type="number" class="form-control" id="pref-rate-limit"
                                        data-pref-key="rate-limit.per-minute" min="0" max="1000"/>
                             </div>
-                            <div class="col-md-6">
-                                <label for="pref-min-score" class="form-label" th:text="#{preferences.llm.minscore}">Minimum Relevance Score (0–100)</label>
-                                <input type="number" class="form-control" id="pref-min-score"
-                                       data-pref-key="analysis.min-relevance-score" min="0" max="100"/>
-                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Section 2: JGit / DSL Configuration -->
-                <div class="card mb-3">
-                    <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-                        <span th:text="#{preferences.section.jgit}">&#128194; JGit / DSL Configuration</span>
-                        <span class="badge bg-info text-dark" th:text="#{preferences.scope.system}">&#9729;&#65039; System</span>
-                    </div>
-                    <div class="card-body">
-                        <div class="row g-3">
-                            <div class="col-md-6">
-                                <label for="pref-dsl-branch" class="form-label" th:text="#{preferences.dsl.branch}">Default Branch</label>
-                                <input type="text" class="form-control" id="pref-dsl-branch"
-                                       data-pref-key="dsl.default-branch"/>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="pref-dsl-project" class="form-label" th:text="#{preferences.dsl.project}">Project Name</label>
-                                <input type="text" class="form-control" id="pref-dsl-project"
-                                       data-pref-key="dsl.project-name"/>
-                            </div>
-                            <div class="col-md-6">
-                                <label for="pref-dsl-autosave" class="form-label" th:text="#{preferences.dsl.autosave}">Auto-Save Interval (seconds, 0 = disabled)</label>
-                                <input type="number" class="form-control" id="pref-dsl-autosave"
-                                       data-pref-key="dsl.auto-save.interval-seconds" min="0" max="86400"/>
-                            </div>
-                            <div class="col-md-6 d-flex align-items-end">
-                                <div class="form-check">
-                                    <input class="form-check-input" type="checkbox" id="pref-dsl-push-on-commit"
-                                           data-pref-key="dsl.remote.push-on-commit"/>
-                                    <label class="form-check-label" for="pref-dsl-push-on-commit" th:text="#{preferences.dsl.pushoncommit}">
-                                        Push to Remote after each Commit
-                                    </label>
-                                </div>
-                            </div>
-                            <div class="col-12">
-                                <label for="pref-dsl-remote-url" class="form-label" th:text="#{preferences.dsl.remoteurl}">Remote Git URL</label>
-                                <input type="text" class="form-control" id="pref-dsl-remote-url"
-                                       data-pref-key="dsl.remote.url" th:placeholder="#{preferences.dsl.remoteurl.placeholder}" placeholder="https://github.com/org/repo.git"/>
-                            </div>
-                            <div class="col-12">
-                                <label for="pref-dsl-remote-token" class="form-label" th:text="#{preferences.dsl.remotetoken}">Remote Git Token (stored securely, last 4 chars shown)</label>
-                                <input type="password" class="form-control" id="pref-dsl-remote-token"
-                                       data-pref-key="dsl.remote.token" autocomplete="new-password"
-                                       th:placeholder="#{preferences.dsl.remotetoken.placeholder}" placeholder="Leave blank to keep existing token"/>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <p class="text-muted small mb-3" th:text="#{preferences.repository.info}">
+                    Repository branches, remotes, credentials and workspace synchronization are repository-scoped and are not global runtime preferences.
+                </p>
 
-                <!-- Section 3: Size Limits -->
+                <!-- Section 2: Size Limits -->
                 <div class="card mb-3">
                     <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
                         <span th:text="#{preferences.section.limits}">&#128200; Size Limits</span>
@@ -1435,26 +1387,21 @@
                     </div>
                     <div class="card-body">
                         <div class="row g-3">
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <label for="pref-max-business-text" class="form-label" th:text="#{preferences.limits.businesstext}">Max Business Text Length</label>
                                 <input type="number" class="form-control" id="pref-max-business-text"
                                        data-pref-key="limits.max-business-text" min="100" max="100000"/>
                             </div>
-                            <div class="col-md-4">
+                            <div class="col-md-6">
                                 <label for="pref-max-arch-nodes" class="form-label" th:text="#{preferences.limits.archnodes}">Max Architecture Nodes</label>
                                 <input type="number" class="form-control" id="pref-max-arch-nodes"
                                        data-pref-key="limits.max-architecture-nodes" min="1" max="1000"/>
-                            </div>
-                            <div class="col-md-4">
-                                <label for="pref-max-export-nodes" class="form-label" th:text="#{preferences.limits.exportnodes}">Max Export Nodes</label>
-                                <input type="number" class="form-control" id="pref-max-export-nodes"
-                                       data-pref-key="limits.max-export-nodes" min="1" max="10000"/>
                             </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Section 4: Diagram Configuration -->
+                <!-- Section 3: Diagram Configuration -->
                 <div class="card mb-3">
                     <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
                         <span th:text="#{preferences.section.diagram}">&#128202; Diagram Configuration</span>
