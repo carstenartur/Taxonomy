@@ -136,7 +136,7 @@ Repository-Branches, Remotes, Zugangsdaten und Workspace-Synchronisierung sind r
 
 | Schlüssel | Typ | Standard | Geltungsbereich | Beschreibung |
 |---|---|---|---|---|
-| `limits.max-business-text` | int | `5000` | ☁️ System | Maximale Zeichenanzahl in einem geschäftlichen Anforderungstext |
+| `limits.max-business-text` | int | `5000` | ☁️ System | Maximale Zeichenanzahl für die Ad-hoc-Analyse über POST/SSE |
 | `limits.max-architecture-nodes` | int | `50` | ☁️ System | Standard-Obergrenze für Knoten der Ad-hoc-Architekturanalyse, sofern der API-Request kein `maxArchitectureNodes` vorgibt |
 
 ### Diagramm-Konfiguration
