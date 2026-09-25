@@ -89,7 +89,7 @@ curl -u "admin:${TAXONOMY_ADMIN_PASSWORD}" -X POST http://localhost:8080/api/ana
 |---|---|---|---|
 | `businessText` | string | ✅ | Free-text requirement to analyze |
 | `includeArchitectureView` | boolean | — | Generate architecture view (default: false) |
-| `maxArchitectureNodes` | integer | — | Max nodes in architecture view |
+| `maxArchitectureNodes` | integer | current `limits.max-architecture-nodes` preference | Max nodes in the architecture view; an explicit request value overrides the live runtime preference |
 
 ### Streaming analysis (Server-Sent Events)
 
