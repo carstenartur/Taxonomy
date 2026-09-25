@@ -147,7 +147,7 @@ Das eingehende Kontingent `rate-limit.per-minute` wird erst nach Authentifizieru
 | Schlüssel | Typ | Standard | Geltungsbereich | Beschreibung |
 |---|---|---|---|---|
 | `limits.max-business-text` | int | `5000` | ☁️ System | Maximale Zeichenanzahl in einem geschäftlichen Anforderungstext |
-| `limits.max-architecture-nodes` | int | `50` | ☁️ System | Maximale Anzahl angezeigter Knoten in der Architekturansicht |
+| `limits.max-architecture-nodes` | int | `50` | ☁️ System | Standard-Obergrenze für Knoten der Ad-hoc-Architekturanalyse, sofern der API-Request kein `maxArchitectureNodes` vorgibt |
 | `limits.max-export-nodes` | int | `200` | ☁️ System | Maximale Anzahl von Knoten in einem Export-Vorgang |
 
 ### Diagramm-Konfiguration
