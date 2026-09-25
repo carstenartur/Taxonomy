@@ -511,11 +511,14 @@ public class AnalysisApiController {
     }
 
     private String businessTextTooLongMessage(int limit) {
-        return messageSource.getMessage(
+        String fallback = "Business requirement exceeds the configured limit of "
+                + limit + " characters.";
+        String resolved = messageSource.getMessage(
                 "analysis.error.businessTextTooLong",
                 new Object[]{limit},
-                "Business requirement exceeds the configured limit of " + limit + " characters.",
+                fallback,
                 LocaleContextHolder.getLocale());
+        return resolved == null || resolved.isBlank() ? fallback : resolved;
     }
 
     private int resolveMaxArchitectureNodes(AnalysisRequest request) {
