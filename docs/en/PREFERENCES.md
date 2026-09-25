@@ -136,7 +136,7 @@ Repository branches, remotes, credentials, and workspace synchronization are rep
 
 | Key | Type | Default | Scope | Description |
 |---|---|---|---|---|
-| `limits.max-business-text` | int | `5000` | ☁️ System | Maximum characters in a business requirement text |
+| `limits.max-business-text` | int | `5000` | ☁️ System | Maximum characters accepted by the ad-hoc analysis POST/SSE endpoints |
 | `limits.max-architecture-nodes` | int | `50` | ☁️ System | Default maximum nodes for ad-hoc architecture analysis when the API request does not supply `maxArchitectureNodes` |
 
 ### Diagram Configuration
