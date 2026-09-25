@@ -134,6 +134,7 @@ public class AnalysisApiController {
                 || request.getBusinessText().isBlank()) {
             return ResponseEntity.badRequest().build();
         }
+        enforceBusinessTextLimit(request.getBusinessText());
 
         String operationId = newOperationId();
         try {
@@ -220,6 +221,14 @@ public class AnalysisApiController {
             sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
                     "status", "ERROR",
                     "errorMessage", "businessText must not be blank"));
+            emitter.complete();
+            return emitter;
+        }
+        int businessTextLimit = businessTextLimit();
+        if (businessText.length() > businessTextLimit) {
+            sendEvent(emitter, operationId, eventSequence.incrementAndGet(), "error", Map.of(
+                    "status", "ERROR",
+                    "errorMessage", businessTextTooLongMessage(businessTextLimit)));
             emitter.complete();
             return emitter;
         }
@@ -483,6 +492,30 @@ public class AnalysisApiController {
                     error.productCoverageGaps(), error.partialReasons(), error.analysisDurationMillis());
         }
         return event;
+    }
+
+    private int businessTextLimit() {
+        int configured = analysisRuntimeSettings != null
+                ? analysisRuntimeSettings.getInt("limits.max-business-text", 5_000)
+                : 5_000;
+        // Invalid persisted/operator values must fail bounded rather than disabling the guard.
+        return Math.max(100, Math.min(100_000, configured));
+    }
+
+    private void enforceBusinessTextLimit(String businessText) {
+        int limit = businessTextLimit();
+        if (businessText.length() > limit) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
+                    businessTextTooLongMessage(limit));
+        }
+    }
+
+    private String businessTextTooLongMessage(int limit) {
+        return messageSource.getMessage(
+                "analysis.error.businessTextTooLong",
+                new Object[]{limit},
+                "Business requirement exceeds the configured limit of " + limit + " characters.",
+                LocaleContextHolder.getLocale());
     }
 
     private int resolveMaxArchitectureNodes(AnalysisRequest request) {
