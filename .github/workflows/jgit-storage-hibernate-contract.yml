@@ -99,4 +99,6 @@ jobs:
             target/jgit-storage-hibernate-contract/**
             taxonomy-app/target/surefire-reports/**
             taxonomy-app/target/failsafe-reports/**
+            taxonomy-workspace/target/surefire-reports/**
+            taxonomy-workspace/target/failsafe-reports/**
           if-no-files-found: error
