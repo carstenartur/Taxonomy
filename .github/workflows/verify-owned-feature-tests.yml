@@ -1,0 +1,52 @@
+name: Verify owned feature tests
+on:
+  push:
+    branches: [maintenance/verify-feature-test-ownership-20260926]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 2, persist-credentials: false}
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Validate payload and exact source tree
+        run: |
+          cp .github/maintenance/ownership/verify.py "$RUNNER_TEMP/ownership-verify.py"
+          python "$RUNNER_TEMP/ownership-verify.py" prepare
+      - name: Check ownership and production cancellation scripts
+        run: |
+          javac -d "$RUNNER_TEMP/ownership-classes" taxonomy-build/src/test/java/com/taxonomy/build/FeatureTestOwnershipContract.java
+          java -cp "$RUNNER_TEMP/ownership-classes" com.taxonomy.build.FeatureTestOwnershipContract "$PWD"
+          node taxonomy-build/src/test/resources/reformulation/cancellation-api-contract.cjs taxonomy-app/src/main/resources/static/js/api/portfolio-api.js
+          node taxonomy-build/src/test/resources/reformulation/cancellation-contract.cjs taxonomy-app/src/main/resources/static/js/portfolio/requirement-reformulation.js
+      - name: Verify clean packaging with tests disabled
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-analysis,taxonomy-interop -am clean package -Dmaven.test.skip=true 2>&1 | tee "$RUNNER_TEMP/ownership-evidence/skip-package.log"
+      - name: Run owning-module tests with no application module
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-analysis,taxonomy-interop -am test 2>&1 | tee "$RUNNER_TEMP/ownership-evidence/owner-tests.log"
+          python "$RUNNER_TEMP/ownership-verify.py" reports
+      - name: Execute placement and cancellation regressions and compile app tests
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-build -am test -Dtest=FeatureTestOwnershipTest,RepositoryResourcesTest,ReformulationCancellationAdapterTest,ReformulationCancellationControlsTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$RUNNER_TEMP/ownership-evidence/build-guards.log"
+      - name: Create verified commit object without changing refs
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python "$RUNNER_TEMP/ownership-verify.py" publish-object
+      - name: Retain verification evidence even on failure
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: owned-feature-test-verification
+          path: |
+            ${{ runner.temp }}/ownership-evidence/**
+            **/target/surefire-reports/**
+          retention-days: 7
+          if-no-files-found: error
