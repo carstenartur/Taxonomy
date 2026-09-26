@@ -89,7 +89,7 @@ excluded_groups=${contract_selectors[2]}
 
 set -o pipefail
 "${maven[@]}" -B -ntp -nsu \
-  -pl taxonomy-app -am \
+  -pl taxonomy-workspace,taxonomy-app -am \
   -DskipITs=false \
   -DexcludedGroups="$excluded_groups" \
   -Dtaxonomy.model.download.skip=true \
@@ -103,9 +103,9 @@ set -o pipefail
 
 required_reports=(
   taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageHibernateIntegrationTest.xml
-  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageOptimizedIndexContractTest.xml
-  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageSchemaIndexValidationTest.xml
-  taxonomy-app/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfigTest.xml
+  taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageOptimizedIndexContractTest.xml
+  taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageSchemaIndexValidationTest.xml
+  taxonomy-workspace/target/surefire-reports/TEST-com.taxonomy.workspace.storage.JgitStorageSchemaMigrationConfigTest.xml
   taxonomy-app/target/surefire-reports/TEST-com.taxonomy.dsl.CommitIndexHibernateSearchTest.xml
   taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.workspace.storage.JgitStoragePostgresMigrationIT.xml
   taxonomy-app/target/failsafe-reports/TEST-com.taxonomy.composition.persistence.TaxonomyPostgresValidateStartupIT.xml
@@ -121,7 +121,7 @@ done
 printf '%s\n' "${required_reports[@]}" > "$evidence_dir/required-reports.txt"
 
 "${maven[@]}" -B -ntp -nsu \
-  -pl taxonomy-app -am \
+  -pl taxonomy-workspace,taxonomy-app -am \
   -Dincludes=io.github.carstenartur \
   -DoutputType=text \
   -DoutputFile="$PWD/$evidence_dir/dependency-tree.txt" \
