@@ -7,7 +7,7 @@ rm -rf target/quality-reports
 # failed find from set -e. Keep the NUL-delimited inventory outside the checkout.
 report_inventory=$(mktemp)
 trap 'rm -f "$report_inventory"' EXIT
-find . -path './target/quality-reports' -prune -o -type f \
+find . -path '*/target/quality-reports' -prune -o -type f \
   \( -path '*/target/surefire-reports/*' -o -path '*/target/failsafe-reports/*' \) \
   \( -name 'TEST-*.xml' -o -name '*.txt' -o -name '*.dump' -o -name '*.dumpstream' \) -print0 \
   > "$report_inventory"
