@@ -246,7 +246,8 @@ class JgitStorageDocumentationContractTest {
 
         while (repositories.find()) {
             String block = repositories.group(1);
-            if (!hasTagValueContaining(block, "jgit-storage-hibernate")) {
+            String repositoryUrl = firstTagValue(block, "url");
+            if (repositoryUrl == null || !repositoryUrl.contains("jgit-storage-hibernate")) {
                 continue;
             }
             return new Distribution(
@@ -274,17 +275,6 @@ class JgitStorageDocumentationContractTest {
                                 + Pattern.quote(tagName) + ">")
                 .matcher(xml);
         return matcher.find() ? matcher.group(1).trim() : null;
-    }
-
-    private static boolean hasTagValueContaining(String xml, String fragment) {
-        Matcher matcher = Pattern.compile("<([A-Za-z0-9_.-]+)>\\s*([^<]+?)\\s*</\\1>")
-                .matcher(xml);
-        while (matcher.find()) {
-            if (matcher.group(2).contains(fragment)) {
-                return true;
-            }
-        }
-        return false;
     }
 
     private static String read(Path path) throws IOException {
