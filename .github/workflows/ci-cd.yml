@@ -65,6 +65,11 @@ jobs:
           key: ${{ runner.os }}-taxonomy-maven-build-cache-verify-v2-${{ github.sha }}
           restore-keys: |
             ${{ runner.os }}-taxonomy-maven-build-cache-verify-v2-
+      # Clean before any root target/ evidence exists. A clean in the later
+      # tee pipeline would unlink the log and delete the rendered Helm files.
+      - name: Clean reactor before producing evidence
+        if: github.event_name != 'pull_request'
+        run: ./mvnw -B clean -Dmaven.build.cache.enabled=false
       - name: Verify release and delivery contracts
         run: |
           set -euo pipefail
@@ -158,7 +163,7 @@ jobs:
             ./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true \
               2>&1 | tee target/maven-verification.log
           else
-            ./mvnw -B clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true \
+            ./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true \
               -Dmaven.build.cache.skipCache=true \
               2>&1 | tee target/maven-verification.log
           fi
