@@ -1,0 +1,19 @@
+[
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/AiAutomationDeploymentContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/AnalysisArtifactTenantRepositoryBoundaryTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/PortfolioDocumentationContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/PortfolioTenantMigrationContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/PortfolioTestArchitectureContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/RequirementCopilotUiContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/RequirementTenantRepositoryBoundaryTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/reformulation/ReformulationCancellationAdapterTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/reformulation/ReformulationCancellationControlsTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureExportDocumentationContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureSnapshotExportUiContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureWorkbenchAssetContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/templates/DocumentTemplateDetailPageContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/templates/DocumentTemplateQaContractTest.java",
+  "taxonomy-build/src/test/java/com/taxonomy/templates/DocumentTemplateWordLinkContractTest.java",
+  "taxonomy-portfolio/src/test/java/com/taxonomy/portfolio/reformulation/ReformulationImpactTest.java",
+  "taxonomy-portfolio/src/test/java/com/taxonomy/portfolio/workbench/ArchitectureArchiMateExchangeAcceptanceTest.java"
+]
