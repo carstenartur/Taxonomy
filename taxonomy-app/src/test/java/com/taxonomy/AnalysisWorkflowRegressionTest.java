@@ -88,7 +88,8 @@ class AnalysisWorkflowRegressionTest {
 
         assertThat(authority)
                 .contains("return hasScores(C.S.currentScores);")
-                .contains("hasKnownNonAuthoritativeStatus")
+                .contains("function hasAuthoritativeStatus()")
+                .contains("return status === 'SUCCESS' || status === 'IMPORTED';")
                 .doesNotContain("__taxonomyCopilotTerminalGuard", "window.setInterval =");
         assertThat(coordinator)
                 .contains("function waitForMainAnalysis()")

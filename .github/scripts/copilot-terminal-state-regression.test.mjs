@@ -155,7 +155,7 @@ test('a partial terminal result stays non-authoritative', () => {
 });
 
 test('a later Copilot click rejects any known non-authoritative score status', () => {
-  for (const status of ['PARTIAL', 'ERROR', 'IN_PROGRESS', 'UNKNOWN', 'CANCELLED']) {
+  for (const status of [null, '', 'PARTIAL', 'ERROR', 'IN_PROGRESS', 'UNKNOWN', 'CANCELLED']) {
     const harness = createHarness({
       status,
       currentScores: { IP: 40 },
@@ -174,8 +174,8 @@ test('a later Copilot click rejects any known non-authoritative score status', (
   }
 });
 
-test('legacy manual and imported scores remain reusable', () => {
-  for (const status of [null, 'IMPORTED', 'SUCCESS']) {
+test('explicitly authorized manual and imported scores remain reusable', () => {
+  for (const status of ['IMPORTED', 'SUCCESS']) {
     const harness = createHarness({
       status,
       currentScores: { IP: 100 },

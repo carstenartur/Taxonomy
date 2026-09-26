@@ -182,13 +182,13 @@ test('Copilot forces complete analysis without changing interactive preference',
   assert.equal(event.defaultPrevented, true);
 });
 
-test('Copilot preflight rejects manual provider only when scores are missing', () => {
+test('Copilot preflight rejects manual provider when authoritative scores are missing', () => {
   const missing = createHarness({ provider: 'MANUAL' });
   const blocked = missing.clickCopilot();
   assert.equal(blocked.defaultPrevented, true);
   assert.match(missing.elements.copilotContent.rendered.textContent, /requires an AI provider/i);
 
-  const completed = createHarness({ provider: 'MANUAL', currentScores: { IP: 100 } });
+  const completed = createHarness({ provider: 'MANUAL', status: 'SUCCESS', currentScores: { IP: 100 } });
   const allowed = completed.clickCopilot();
   assert.equal(allowed.defaultPrevented, false);
 });
