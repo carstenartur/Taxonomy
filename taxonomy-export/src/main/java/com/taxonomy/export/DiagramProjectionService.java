@@ -122,6 +122,18 @@ public class DiagramProjectionService {
                     new DiagramLayout("LR", true));
         }
 
+        if (view.getAnalysisCoverage() != null && view.getAnalysisCoverage().hasOpenEvaluations()) {
+            var coverage = view.getAnalysisCoverage();
+            String open = coverage.nodes().entrySet().stream()
+                    .filter(e -> e.getValue().reason() != null && (e.getValue().reason().startsWith("FAILED:")
+                            || e.getValue().reason().startsWith("LEFT_OPEN:")))
+                    .map(Map.Entry::getKey).sorted().limit(6).collect(java.util.stream.Collectors.joining(", "));
+            // Titles are carried by every supported diagram format. Do not create an invented
+            // architecture node to represent analysis metadata. Full coverage travels in JSON.
+            title = title + " — PARTIAL / TEILERGEBNIS: " + coverage.failedOrBlockedNodes()
+                    + " unassessed / unbewertet (" + open + ")";
+        }
+
         // Build a lookup for parentId resolution from hierarchy paths
         Map<String, String> parentMap = buildParentMap(view.getIncludedElements());
 

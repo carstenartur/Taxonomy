@@ -78,6 +78,9 @@ public class AnalysisApiController {
     @Autowired
     private AnalysisProgressRegistry analysisProgressRegistry;
 
+    @Autowired(required = false)
+    private com.taxonomy.analysis.recovery.AnalysisContinuationService continuationService;
+
     /**
      * Optional live application settings port. The analysis module remains usable
      * standalone, while the assembled application supplies PreferencesService.
@@ -141,6 +144,15 @@ public class AnalysisApiController {
         try {
             String username = workspaceResolver.resolveCurrentUsername();
             WorkspaceContext context = resolveWorkspaceContext(username);
+            if (request.isResumable() && continuationService == null) {
+                throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Durable continuation is unavailable");
+            }
+            try (var continuation = request.isResumable()
+                    ? continuationService.begin(request, username, context, maxArchitectureNodes) : null) {
+            if (continuation != null && continuation.replay() != null) {
+                return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
+                        .header(ANALYSIS_OPERATION_ID_HEADER, operationId).body(continuation.replay());
+            }
             try (var run = analysisProgressRegistry == null ? null
                     : analysisProgressRegistry.open(operationId, username, context, null)) {
             AnalyzeRequirementResult result = analyzeRequirementUseCase.analyze(
@@ -152,9 +164,11 @@ public class AnalysisApiController {
                             username,
                             context));
             if (run != null) run.finish(result.analysisResult());
-            return ResponseEntity.ok()
+            AnalysisResult response = continuation == null ? result.analysisResult() : continuation.complete(result.analysisResult());
+            return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
                     .header(ANALYSIS_OPERATION_ID_HEADER, operationId)
-                    .body(result.analysisResult());
+                    .body(response);
+            }
             }
         } catch (UnknownAnalysisProviderException e) {
             @SuppressWarnings("unchecked")

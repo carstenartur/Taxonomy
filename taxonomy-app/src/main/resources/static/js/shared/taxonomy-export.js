@@ -195,9 +195,10 @@
             });
         }
         taxonomyData.forEach(function (root) { visit(root, [], 0); });
-        var lines = ['Rank,Code,Name,Score,Path,Level'];
+        var coverage = window.TaxonomyState && window.TaxonomyState.analysisCoverage;
+        var lines = ['Rank,Code,Name,Score,Path,Level' + (coverage ? ',Assessment,Subtree,Reason' : '')];
         Object.entries(scores)
-            .filter(function (entry) { return entry[1] > 0; })
+            .filter(function (entry) { return Number.isFinite(entry[1]) && (coverage || entry[1] > 0); })
             .sort(function (left, right) { return right[1] - left[1]; })
             .forEach(function (entry, index) {
                 var code = entry[0];
@@ -208,8 +209,15 @@
                     entry[1],
                     csvField((paths[code] || []).join(' > ')),
                     levels[code] || 0
-                ].join(','));
+                ].concat(coverage ? [coverage.nodes[code]?.state || 'UNKNOWN',
+                    coverage.nodes[code]?.descendants || 'UNASSESSED', csvField(coverage.nodes[code]?.reason || '')] : []).join(','));
             });
+        if (coverage) Object.entries(coverage.nodes).forEach(function (entry) {
+            var code = entry[0], assessment = entry[1];
+            if (Object.prototype.hasOwnProperty.call(scores, code) || assessment.state !== 'UNKNOWN') return;
+            lines.push(['', csvField(code), csvField(names[code] || ''), '', csvField((paths[code] || []).join(' > ')),
+                levels[code] || 0, 'UNKNOWN', assessment.descendants, csvField(assessment.reason || '')].join(','));
+        });
         downloadBlob(
             new Blob(['\uFEFF' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' }),
             'taxonomy-scores.csv'
@@ -224,7 +232,10 @@
             requirement: businessText || '',
             scores: scores,
             reasons: reasons || {},
-            provider: provider || ''
+            provider: provider || '',
+            analysisStatus: window.TaxonomyState?.lastAnalysisStatus || 'UNKNOWN',
+            analysisCoverage: window.TaxonomyState?.analysisCoverage || null,
+            rawScores: window.TaxonomyState?.currentRawScores || null
         }).then(function (data) {
             downloadBlob(
                 new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' }),

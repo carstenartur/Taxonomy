@@ -61,6 +61,10 @@
     // ── Gap Analysis ──────────────────────────────────────────────────────────
 
     function runGapAnalysis() {
+        if (window.TaxonomyAnalysisRecovery?.hasOpenEvaluations()) {
+            window.TaxonomyAnalysisRecovery.open();
+            return;
+        }
         if (!hasScores()) {
             showPanelError('gapAnalysisContent', t('analyze.scores.required'));
             return;
@@ -167,6 +171,10 @@
     // ── Pattern Detection ─────────────────────────────────────────────────────
 
     function runPatternDetection() {
+        if (window.TaxonomyAnalysisRecovery?.hasOpenEvaluations()) {
+            window.TaxonomyAnalysisRecovery.open();
+            return;
+        }
         if (!hasScores()) {
             showPanelError('patternDetectionContent', t('analyze.scores.required'));
             return;
@@ -270,6 +278,10 @@
     // ── Architecture Recommendation ───────────────────────────────────────────
 
     function runRecommendation() {
+        if (window.TaxonomyAnalysisRecovery?.hasOpenEvaluations()) {
+            window.TaxonomyAnalysisRecovery.open();
+            return;
+        }
         if (!hasScores()) {
             showPanelError('recommendationContent', t('analyze.scores.required'));
             return;
@@ -570,75 +582,54 @@
             resetCopilotBtn();
             return;
         }
-        continueCopilotFlow();
+        return continueCopilotFlow();
     }
 
-    function continueCopilotFlow() {
+    async function continueCopilotFlow() {
         var results = {};
-
-        // Step 2: Gap Analysis
-        showCopilotStep(t('analyze.copilot.step2'));
-        fetch('/api/gap/analyze', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                scores: getCurrentScores(),
-                businessText: getBusinessText(),
-                minScore: 50
-            })
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (gapData) {
-            results.gaps = gapData;
-            renderGapAnalysis(gapData);
-            var gapPanel = document.getElementById('gapAnalysisPanel');
-            if (gapPanel) gapPanel.open = true;
-
-            // Step 3: Pattern Detection
-            showCopilotStep(t('analyze.copilot.step3'));
-            return fetch('/api/patterns/detect', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scores: getCurrentScores(),
-                    minScore: 50
-                })
-            });
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (patternData) {
-            results.patterns = patternData;
-            renderPatternDetection(patternData);
-            var patternPanel = document.getElementById('patternDetectionPanel');
-            if (patternPanel) patternPanel.open = true;
-
-            // Step 4: Recommendation
-            showCopilotStep(t('analyze.copilot.step4'));
-            return fetch('/api/recommend', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    scores: getCurrentScores(),
-                    businessText: getBusinessText(),
-                    minScore: 50
-                })
-            });
-        })
-        .then(function (r) { return r.json(); })
-        .then(function (recData) {
-            results.recommendation = recData;
-            renderRecommendation(recData);
-            var recPanel = document.getElementById('recommendationPanel');
-            if (recPanel) recPanel.open = true;
-
-            // Render copilot summary
+        var recovery = window.TaxonomyAnalysisRecovery;
+        async function step(key, label, url, body, render, panelId) {
+            showCopilotStep(label);
+            var execute = async function () {
+                var response = await fetch(url, { method: 'POST',
+                    headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+                if (!response.ok) throw new Error('HTTP ' + response.status);
+                var result = await response.json();
+                if (!result || typeof result !== 'object' || Array.isArray(result)) {
+                    throw new Error('Invalid Copilot response');
+                }
+                return result;
+            };
+            var data = recovery ? await recovery.stage(key, execute, label) : await execute();
+            render(data);
+            var panel = document.getElementById(panelId); if (panel) panel.open = true;
+            return data;
+        }
+        try {
+            results.gaps = await step('gap', t('analyze.copilot.step2'), '/api/gap/analyze', {
+                scores: getCurrentScores(), businessText: getBusinessText(), minScore: 50
+            }, renderGapAnalysis, 'gapAnalysisPanel');
+            results.patterns = await step('patterns', t('analyze.copilot.step3'), '/api/patterns/detect', {
+                scores: getCurrentScores(), minScore: 50
+            }, renderPatternDetection, 'patternDetectionPanel');
+            results.recommendation = await step('recommendation', t('analyze.copilot.step4'), '/api/recommend', {
+                scores: getCurrentScores(), businessText: getBusinessText(), minScore: 50
+            }, renderRecommendation, 'recommendationPanel');
             renderCopilotSummary(results);
-            resetCopilotBtn();
-        })
-        .catch(function (err) {
+            return results;
+        } catch (err) {
             showCopilotStatus('danger', t('analyze.copilot.failed', err.message));
-            resetCopilotBtn();
+            if (recovery && recovery.isManaged()) throw err;
+        } finally { resetCopilotBtn(); }
+    }
+
+    function renderPartialCopilot(message) {
+        var panel = document.getElementById('copilotPanel'); if (panel) panel.style.display = '';
+        showCopilotStatus('warning', message);
+        ['gapAnalysisContent', 'patternDetectionContent', 'recommendationContent'].forEach(function (id) {
+            showPanelError(id, message);
         });
+        resetCopilotBtn();
     }
 
     function showCopilotStep(text) {
@@ -693,7 +684,8 @@
         html += '</div></div></div>';
 
         // Recommendation summary card
-        var conf = results.recommendation ? results.recommendation.confidence.toFixed(0) : 0;
+        var conf = results.recommendation && Number.isFinite(results.recommendation.confidence)
+            ? results.recommendation.confidence.toFixed(0) : '—';
         var confColor = conf >= 70 ? 'success' : (conf >= 40 ? 'warning' : 'danger');
         html += '<div class="col-4">';
         html += '<div class="card text-center border-' + confColor + '">';
@@ -742,6 +734,7 @@
         runRecommendation: runRecommendation,
         runEnrichedFailureImpact: runEnrichedFailureImpact,
         runCopilotFlow: runCopilotFlow,
+        renderPartialCopilot: renderPartialCopilot,
         runArchiMateImport: runArchiMateImport
     };
 

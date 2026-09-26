@@ -711,18 +711,54 @@ public class LlmService {
         return result;
     }
 
+    /** Semantic input identity deliberately excludes credentials and transport-only retry settings. */
+    public String recoveryPolicyFingerprint(String requestedProvider) {
+        LlmProvider provider = requestedProvider == null || requestedProvider.isBlank() || "MOCK".equalsIgnoreCase(requestedProvider)
+                ? getActiveProvider() : LlmProvider.valueOf(requestedProvider.toUpperCase(Locale.ROOT));
+        String endpoint = provider == LlmProvider.GEMINI ? providerConfig.getGeminiUrl()
+                : provider == LlmProvider.LOCAL_ONNX ? "LOCAL_ONNX" : providerConfig.getOpenAiCompatibleUrl(provider);
+        String model = provider == LlmProvider.GEMINI || provider == LlmProvider.LOCAL_ONNX ? endpoint
+                : providerConfig.getOpenAiCompatibleModel(provider);
+        String templates = promptTemplateService.getAllTemplateCodes().stream().sorted()
+                .map(code -> code + ":" + promptTemplateService.getTemplate(code)).collect(java.util.stream.Collectors.joining("\n"));
+        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.digest(provider.name(), endpoint, model,
+                Boolean.toString(providerConfig.isMockMode()), Integer.toString(productBatchSize),
+                Integer.toString(minimumProductScore()), templates);
+    }
+    private String productQuestionPrompt(String text, List<TaxonomyNode> nodes) {
+        return promptTemplateService.renderProductPrompt(text, buildNodeListWithContext(nodes),
+                String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList()), minimumProductScore());
+    }
+    private String categoryQuestionPrompt(String text, List<TaxonomyNode> nodes, int parentScore) {
+        return promptTemplateService.renderPrompt(nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot(),
+                text, buildNodeListWithContext(nodes), parentScore,
+                String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList()));
+    }
+
     private LlmCallDetail callProductBatchDetailed(String businessText, List<TaxonomyNode> products) {
-        return AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
-                () -> performProductBatchDetailed(businessText, products));
+        if (!com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active())
+            return AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
+                    () -> performProductBatchDetailed(businessText, products, null));
+        String prompt = productQuestionPrompt(businessText, products);
+        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.evaluate(
+                "PRODUCT", getActiveProviderName(), products.stream().map(TaxonomyNode::getCode).toList(), prompt,
+                () -> AnalysisRunControl.call(getActiveProviderName(), siblingScope(products),
+                        () -> performProductBatchDetailed(businessText, products, prompt)));
     }
 
     private LlmCallDetail callLlmPropagatingDetailed(String businessText, List<TaxonomyNode> nodes, int parentScore) {
-        return AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
-                () -> performLlmPropagatingDetailed(businessText, nodes, parentScore));
+        if (!com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active())
+            return AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
+                    () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, null));
+        String prompt = categoryQuestionPrompt(businessText, nodes, parentScore);
+        return com.taxonomy.analysis.recovery.AnalysisCheckpointSession.evaluate(
+                "CATEGORY", getActiveProviderName(), nodes.stream().map(TaxonomyNode::getCode).toList(), prompt,
+                () -> AnalysisRunControl.call(getActiveProviderName(), siblingScope(nodes),
+                        () -> performLlmPropagatingDetailed(businessText, nodes, parentScore, prompt)));
     }
 
     private LlmCallDetail performProductBatchDetailed(
-            String businessText, List<TaxonomyNode> products) {
+            String businessText, List<TaxonomyNode> products, String preparedPrompt) {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setProvider(getActiveProviderName());
         int minimumScore = minimumProductScore();
@@ -776,8 +812,7 @@ public class LlmService {
         String nodeList = buildNodeListWithContext(products);
         String expectedKeys = String.join(", ",
                 products.stream().map(TaxonomyNode::getCode).toList());
-        String prompt = promptTemplateService.renderProductPrompt(
-                businessText, nodeList, expectedKeys, minimumScore);
+        String prompt = preparedPrompt != null ? preparedPrompt : productQuestionPrompt(businessText, products);
         detail.setPrompt(prompt);
 
         log.info("LLM Request [{}] — independently scoring {} concrete products", provider,
@@ -1099,7 +1134,7 @@ public class LlmService {
      * raw LLM text response, returning them in a {@link com.taxonomy.dto.LlmCallDetail}.
      */
     private LlmCallDetail performLlmPropagatingDetailed(
-            String businessText, List<TaxonomyNode> nodes, int parentScore) {
+            String businessText, List<TaxonomyNode> nodes, int parentScore, String preparedPrompt) {
         LlmCallDetail detail = new LlmCallDetail();
         detail.setReasons(Map.of());
         detail.setProvider(getActiveProviderName());
@@ -1162,7 +1197,7 @@ public class LlmService {
         String nodeList = buildNodeListWithContext(nodes);
         String taxonomyCode = nodes.isEmpty() ? "default" : nodes.get(0).getTaxonomyRoot();
         String expectedKeys = String.join(", ", nodes.stream().map(TaxonomyNode::getCode).toList());
-        String prompt = promptTemplateService.renderPrompt(taxonomyCode, businessText, nodeList, parentScore, expectedKeys);
+        String prompt = preparedPrompt != null ? preparedPrompt : categoryQuestionPrompt(businessText, nodes, parentScore);
         detail.setPrompt(prompt);
 
         log.info("LLM Request [{}] — sending prompt for {} nodes: {}",

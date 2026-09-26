@@ -60,6 +60,32 @@ public record DecisionRationaleReport(
                 leadingLeaves,warnings,productCoverageGaps,discrepancies,viewContext,scoreDetails,document);
     }
 
+    /** Coverage changes the qualification of conclusions, never the original requirement or scores. */
+    public DecisionRationaleReport withAnalysisCoverage(com.taxonomy.dto.AnalysisCoverage coverage) {
+        if (coverage == null || !coverage.hasOpenEvaluations()) return this;
+        var notes = new java.util.ArrayList<>(warnings);
+        boolean de = languageTag.startsWith("de");
+        notes.add((de ? "Teilergebnis: " : "Partial result: ") + coverage.failedOrBlockedNodes()
+                + (de ? " Knoten nicht bewertet. Fehlende Bewertungen sind keine negativen Befunde."
+                      : " nodes unassessed. Missing assessments are not negative findings."));
+        coverage.nodes().entrySet().stream()
+                .filter(e -> e.getValue().reason() != null && (e.getValue().reason().startsWith("FAILED:")
+                        || e.getValue().reason().startsWith("LEFT_OPEN:")))
+                .sorted(java.util.Map.Entry.comparingByKey()).limit(50)
+                .forEach(e -> notes.add(e.getKey() + ": " + e.getValue().reason()));
+        if (coverage.nodes().values().stream().filter(n -> n.reason() != null
+                && (n.reason().startsWith("FAILED:") || n.reason().startsWith("LEFT_OPEN:"))).count() > 50)
+            notes.add(de ? "Weitere offene Bewertungen sind im vollständigen JSON-Export aufgeführt."
+                    : "Additional open assessments are listed in the complete JSON export.");
+        var summary = executiveSummary == null ? null : new ExecutiveSummary(
+                executiveSummary.leadingLeaf(), executiveSummary.path(),
+                (de ? "Vorläufig unter den bisher bewerteten Kandidaten: " : "Provisional among assessed candidates: ")
+                        + executiveSummary.conciseConclusion(), executiveSummary.methodologyNote());
+        return new DecisionRationaleReport(title, languageTag, requirement, ReportStatus.DRAFT_INCOMPLETE,
+                metadata, summary, chapters, leadingLeaves, notes, productCoverageGaps,
+                discrepancies, viewContext, scoreDetails, architecture);
+    }
+
     /** Backward-compatible constructor used by the hierarchy builder before score adaptation. */
     public DecisionRationaleReport(
             String title,

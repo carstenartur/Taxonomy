@@ -5,6 +5,10 @@ import java.util.List;
 
 public class RequirementArchitectureView {
 
+    private AnalysisCoverage analysisCoverage;
+    public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }
+    public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }
+
     /** Full immutable evidence behind this proposal view; filters do not mutate this report. */
     private RelationSearchReport relationSearchReport;
     public RelationSearchReport getRelationSearchReport() { return relationSearchReport; }
