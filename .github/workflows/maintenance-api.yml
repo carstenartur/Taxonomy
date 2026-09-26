@@ -1,0 +1,57 @@
+name: Scoped maintainer API transport
+on:
+  push:
+    branches: [maintenance/pr-triage-20260926]
+    paths: [.github/maintenance/**, .github/workflows/maintenance-api.yml]
+permissions: {}
+jobs:
+  scoped-api:
+    if: github.repository == 'carstenartur/Taxonomy' && github.ref == 'refs/heads/maintenance/pr-triage-20260926'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+      actions: write
+    strategy:
+      fail-fast: false
+      matrix:
+        operation: [mergeReviewed, approveReviewed]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify scoped mutation guards
+        run: node --test .github/maintenance/maintainer-api.test.mjs
+      - name: Execute the reviewed API operation
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPERATION: ${{ matrix.operation }}
+        run: |
+          node --input-type=module <<'JS'
+          import assert from 'node:assert/strict';
+          import { appendFileSync } from 'node:fs';
+          import { setTimeout as delay } from 'node:timers/promises';
+          import { mergeReviewed, approveReviewed, repository } from './.github/maintenance/maintainer-api.mjs';
+          assert(process.env.GH_TOKEN);
+          const operations = { mergeReviewed, approveReviewed };
+          const request = async (path, method = 'GET', body) => {
+            assert(path.startsWith('/') && !path.includes('..'));
+            const response = await fetch('https://api.github.com/repos/' + repository + path, {
+              method, redirect: 'error', signal: AbortSignal.timeout(60000),
+              headers: { Accept: 'application/vnd.github+json', Authorization: 'Bearer ' + process.env.GH_TOKEN,
+                'X-GitHub-Api-Version': '2026-03-10', 'Content-Type': 'application/json' },
+              ...(body === undefined ? {} : { body: JSON.stringify(body) })
+            });
+            const text = await response.text();
+            const result = text ? JSON.parse(text) : {};
+            if (!response.ok) throw Error(method + ' ' + path + ': HTTP ' + response.status + ' ' + result.message);
+            return result;
+          };
+          assert(Object.hasOwn(operations, process.env.OPERATION));
+          const result = await operations[process.env.OPERATION](request, delay);
+          console.log(JSON.stringify(result));
+          appendFileSync(process.env.GITHUB_STEP_SUMMARY, '## ' + process.env.OPERATION + '\n```json\n' + JSON.stringify(result,null,2) + '\n```\n');
+          if (process.env.OPERATION === 'mergeReviewed') assert.equal(result.status, 'merged', 'No completed merge confirmed');
+          JS
