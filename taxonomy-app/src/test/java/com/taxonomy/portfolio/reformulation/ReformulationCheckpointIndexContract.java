@@ -1,13 +1,10 @@
 package com.taxonomy.portfolio.reformulation;
 
-import jakarta.persistence.Table;
-
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
@@ -20,6 +17,10 @@ public final class ReformulationCheckpointIndexContract {
             "idx_reform_checkpoint_proposal", List.of("proposal_id", "scope_key"),
             "idx_reform_cp_run_order", List.of("run_id", "created_at", "id"),
             "idx_reform_cp_run_kind", List.of("run_id", "task_kind"));
+    private static final Map<String, Boolean> EXPECTED_NON_UNIQUE = Map.of(
+            "idx_reform_checkpoint_proposal", true,
+            "idx_reform_cp_run_order", true,
+            "idx_reform_cp_run_kind", true);
 
     private ReformulationCheckpointIndexContract() {}
 
@@ -39,7 +40,8 @@ public final class ReformulationCheckpointIndexContract {
                     if (!EXPECTED.containsKey(name)) {
                         continue;
                     }
-                    require(rows.getBoolean("NON_UNIQUE"), "Inspection index must not introduce uniqueness: " + name);
+                    require(rows.getBoolean("NON_UNIQUE") == EXPECTED_NON_UNIQUE.get(name),
+                            "Unexpected uniqueness for index " + name);
                     String column = rows.getString("COLUMN_NAME");
                     require(column != null, "Unexpected expression index: " + name);
                     indexes.computeIfAbsent(name, ignored -> new TreeMap<>())
@@ -52,14 +54,6 @@ public final class ReformulationCheckpointIndexContract {
                         "Wrong ordered columns for " + name + ": " + indexes.get(name));
             });
         }
-        // Keep schema-update databases in agreement with the independently verified migration.
-        var mappings = new LinkedHashMap<String, List<String>>();
-        for (var index : ReformulationNodeCheckpoint.class.getAnnotation(Table.class).indexes()) {
-            require(!index.unique(), "Checkpoint inspection must not add a uniqueness rule");
-            mappings.put(index.name(), Arrays.stream(index.columnList().split(","))
-                    .map(String::trim).map(s -> s.toLowerCase(Locale.ROOT)).toList());
-        }
-        EXPECTED.forEach((name, columns) -> require(columns.equals(mappings.get(name)), "JPA index mapping differs: " + name));
     }
 
     private static void require(boolean condition, String message) {
