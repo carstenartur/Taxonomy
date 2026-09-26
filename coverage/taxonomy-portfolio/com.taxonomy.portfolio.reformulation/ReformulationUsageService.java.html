@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationUsageService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationUsageService.java</span></div><h1>ReformulationUsageService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.reformulation.ReformulationRecoveryService.Claim;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioScope;
+import com.taxonomy.portfolio.service.ProjectPortfolioService;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
+import java.math.BigInteger;
+import java.time.Instant;
+import java.util.Set;
+
+/** Durable attempt evidence. No prompt storage, estimated billing or authority to publish proposals. */
+@Service
+public class ReformulationUsageService {
+    public record Start(String id, String invocationId, String provider, String source, int retryIndex) {
+<span class="fc" id="L22">        public Start {</span>
+<span class="fc" id="L23">            identifier(id); identifier(invocationId);</span>
+<span class="fc bfc" id="L24" title="All 10 branches covered.">            if (provider == null || !provider.matches(&quot;[A-Z_0-9]{1,32}&quot;) || source == null || !Set.of(&quot;HTTP&quot;, &quot;RECORDING_REPLAY&quot;).contains(source)</span>
+<span class="fc bfc" id="L25" title="All 4 branches covered.">                    || retryIndex &lt; 0 || (&quot;RECORDING_REPLAY&quot;.equals(source) &amp;&amp; retryIndex != 0))</span>
+<span class="fc" id="L26">                throw new IllegalArgumentException(&quot;Invalid usage start&quot;);</span>
+<span class="fc" id="L27">        }</span>
+    }
+    public record Completion(Integer statusCode, String outcome, long durationMillis, Long inputTokens,
+                             Long outputTokens, Long totalTokens, Long cachedInputTokens, Long reasoningTokens, boolean invalidUsage) {
+<span class="fc" id="L31">        public Completion {</span>
+<span class="fc bfc" id="L32" title="All 8 branches covered.">            if (outcome == null || !Set.of(&quot;RESPONSE&quot;, &quot;HTTP_ERROR&quot;, &quot;TRANSPORT_ERROR&quot;).contains(outcome) || durationMillis &lt; 0</span>
+<span class="fc bfc" id="L33" title="All 4 branches covered.">                    || (statusCode != null &amp;&amp; (statusCode &lt; 100 || statusCode &gt; 599))) throw new IllegalArgumentException(&quot;Invalid usage result&quot;);</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            for (Long value : new Long[]{inputTokens, outputTokens, totalTokens, cachedInputTokens, reasoningTokens})</span>
+<span class="fc bfc" id="L35" title="All 4 branches covered.">                if (value != null &amp;&amp; value &lt; 0) throw new IllegalArgumentException(&quot;Invalid reported token count&quot;);</span>
+<span class="fc bfc" id="L36" title="All 6 branches covered.">            if (&quot;HTTP_ERROR&quot;.equals(outcome) &amp;&amp; (statusCode == null || statusCode &lt; 400)) throw new IllegalArgumentException(&quot;Missing HTTP error status&quot;);</span>
+<span class="fc bfc" id="L37" title="All 4 branches covered.">            if (&quot;TRANSPORT_ERROR&quot;.equals(outcome) &amp;&amp; statusCode != null) throw new IllegalArgumentException(&quot;Transport error has HTTP status&quot;);</span>
+<span class="fc bfc" id="L38" title="All 6 branches covered.">            if (&quot;RESPONSE&quot;.equals(outcome) &amp;&amp; statusCode != null &amp;&amp; statusCode &gt;= 400) throw new IllegalArgumentException(&quot;Error status labelled response&quot;);</span>
+<span class="fc" id="L39">        }</span>
+    }
+    /** Strings preserve sums beyond JavaScript's exact integer range. Null means no reported values. */
+<span class="fc" id="L42">    public record TokenSum(String reported, long reports, long unknown) {}</span>
+<span class="fc" id="L43">    public record Summary(String runId, boolean recorded, boolean fromFirstAttempt, Instant recordedSince, long httpAttempts, long replays, long pendingAttempts,</span>
+                          long retries, long httpErrors, long transportErrors, long invalidUsage,
+                          TokenSum inputTokens, TokenSum outputTokens, TokenSum totalTokens,
+                          TokenSum cachedInputTokens, TokenSum reasoningTokens) {}
+    private final ReformulationRecoveryService recovery;
+    private final ProjectPortfolioService projects;
+    @PersistenceContext private EntityManager em;
+<span class="fc" id="L50">    public ReformulationUsageService(ReformulationRecoveryService recovery, ProjectPortfolioService projects) {</span>
+<span class="fc" id="L51">        this.recovery = recovery; this.projects = projects;</span>
+<span class="fc" id="L52">    }</span>
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void activate(Claim token) {
+<span class="fc" id="L56">        recovery.checkActive(token);</span>
+<span class="fc" id="L57">        var d = token.dispatch();</span>
+<span class="fc" id="L58">        var session = em.find(ReformulationUsageSession.class, d.run().id());</span>
+<span class="fc" id="L59">        String scope = PortfolioScope.key(d.actor(), d.context());</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">        if (session == null) {</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">            boolean fromFirst = token.epoch() == 1 &amp;&amp; em.createQuery(</span>
+                    &quot;select count(c) from ReformulationNodeCheckpoint c where c.runId=:run&quot;, Long.class)
+<span class="pc bpc" id="L63" title="1 of 2 branches missed.">                    .setParameter(&quot;run&quot;, d.run().id()).getSingleResult() == 0;</span>
+<span class="fc" id="L64">            em.persist(new ReformulationUsageSession(d.run().id(), d.proposalId(), scope, recovery.databaseTime(d.run().id()), fromFirst));</span>
+<span class="fc" id="L65">        }</span>
+<span class="pc bpc" id="L66" title="1 of 2 branches missed.">        else if (!session.matches(d.proposalId(), scope)) throw PortfolioException.notFound(&quot;Usage run not found&quot;);</span>
+<span class="fc" id="L67">    }</span>
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void start(Claim token, Start start) {
+<span class="fc" id="L71">        recovery.checkActive(token); // Hold the same proposal -&gt; run -&gt; lease locks through admission commit.</span>
+<span class="fc" id="L72">        var d = token.dispatch();</span>
+<span class="fc" id="L73">        session(token);</span>
+<span class="pc bpc" id="L74" title="1 of 4 branches missed.">        if (start == null || !d.run().provider().equals(start.provider())) throw PortfolioException.validation(&quot;Usage provider does not match captured run&quot;);</span>
+<span class="fc" id="L75">        var previous = em.find(ReformulationUsageAttempt.class, start.id());</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        if (previous != null) {</span>
+<span class="pc bpc" id="L77" title="1 of 4 branches missed.">            if (!previous.ownedBy(d.run().id(), token.owner(), token.epoch()) || !previous.matches(start))</span>
+<span class="fc" id="L78">                throw PortfolioException.conflict(&quot;Usage start identity conflict&quot;);</span>
+<span class="fc" id="L79">            return;</span>
+        }
+<span class="fc" id="L81">        em.persist(new ReformulationUsageAttempt(d.run().id(), token.owner(), token.epoch(), start, recovery.databaseTime(d.run().id())));</span>
+<span class="fc" id="L82">        em.flush();</span>
+<span class="fc" id="L83">    }</span>
+
+    /** A late result may finish ONLY its own committed start, irrespective of current lease ownership. */
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void complete(Claim token, String attemptId, Completion result) {
+<span class="fc" id="L88">        identifier(attemptId);</span>
+<span class="fc" id="L89">        var d = token.dispatch();</span>
+<span class="fc" id="L90">        projects.requireRequirement(d.projectId(), d.requirementId(), d.actor(), d.context());</span>
+<span class="fc" id="L91">        session(token);</span>
+<span class="fc" id="L92">        var attempt = em.find(ReformulationUsageAttempt.class, attemptId, LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="pc bpc" id="L93" title="1 of 4 branches missed.">        if (attempt == null || !attempt.ownedBy(d.run().id(), token.owner(), token.epoch())) throw PortfolioException.notFound(&quot;Usage attempt not found&quot;);</span>
+<span class="pc bpc" id="L94" title="1 of 2 branches missed.">        if (result == null) throw PortfolioException.validation(&quot;Usage result is required&quot;);</span>
+<span class="pc bpc" id="L95" title="1 of 6 branches missed.">        if (&quot;RECORDING_REPLAY&quot;.equals(attempt.source()) &amp;&amp; (!&quot;RESPONSE&quot;.equals(result.outcome()) || result.statusCode() != null</span>
+<span class="pc bpc" id="L96" title="4 of 8 branches missed.">                || result.durationMillis() != 0 || result.invalidUsage() || result.inputTokens() != null || result.outputTokens() != null</span>
+<span class="pc bpc" id="L97" title="3 of 6 branches missed.">                || result.totalTokens() != null || result.cachedInputTokens() != null || result.reasoningTokens() != null))</span>
+<span class="fc" id="L98">            throw PortfolioException.validation(&quot;Replay is not new transport usage&quot;);</span>
+<span class="fc" id="L99">        var previous = attempt.result();</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        if (previous != null) {</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">            if (!previous.equals(result)) throw PortfolioException.conflict(&quot;Usage completion is immutable&quot;);</span>
+<span class="fc" id="L102">            return;</span>
+        }
+<span class="fc" id="L104">        attempt.complete(result, recovery.databaseTime(d.run().id()));</span>
+<span class="fc" id="L105">    }</span>
+
+    @Transactional(readOnly = true)
+    public Summary summary(Long project, Long requirement, String proposal, String run, String actor, WorkspaceContext context) {
+<span class="fc" id="L109">        projects.requireRequirement(project, requirement, actor, context);</span>
+<span class="fc" id="L110">        String scope = PortfolioScope.key(actor, context);</span>
+<span class="fc" id="L111">        var runFound = em.createQuery(&quot;select r.id from ReformulationRun r, ReformulationProposal p where r.id=:run and r.proposalId=p.id and r.scopeKey=:scope and p.scopeKey=:scope and p.id=:proposal and p.projectId=:project and p.requirementId=:requirement&quot;, String.class)</span>
+<span class="fc" id="L112">                .setParameter(&quot;run&quot;, run).setParameter(&quot;scope&quot;, scope).setParameter(&quot;proposal&quot;, proposal)</span>
+<span class="fc" id="L113">                .setParameter(&quot;project&quot;, project).setParameter(&quot;requirement&quot;, requirement).getResultStream().findFirst();</span>
+<span class="fc bfc" id="L114" title="All 2 branches covered.">        if (runFound.isEmpty()) throw PortfolioException.notFound(&quot;Usage run not found&quot;);</span>
+<span class="fc" id="L115">        var recording = em.find(ReformulationUsageSession.class, run);</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">        boolean recorded = recording != null;</span>
+<span class="fc" id="L117">        var sums = new Sum[]{new Sum(), new Sum(), new Sum(), new Sum(), new Sum()};</span>
+<span class="fc" id="L118">        long http = 0, replay = 0, pending = 0, retries = 0, httpErrors = 0, transportErrors = 0, invalid = 0;</span>
+        // Stream scalar metadata; never read baseline, proposal text, prompts or checkpoint result LOBs.
+<span class="fc" id="L120">        try (var rows = em.createQuery(&quot;select a.source, a.retryIndex, a.completedAt, a.outcome, a.inputTokens, a.outputTokens, a.totalTokens, a.cachedInputTokens, a.reasoningTokens, a.invalidUsage from ReformulationUsageAttempt a where a.runId=:run&quot;, Object[].class)</span>
+<span class="fc" id="L121">                .setParameter(&quot;run&quot;, run).getResultStream()) {</span>
+<span class="fc" id="L122">            var iterator = rows.iterator();</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            while (iterator.hasNext()) {</span>
+<span class="fc" id="L124">                Object[] row = iterator.next();</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">                if (row[2] == null) pending++;</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">                if (&quot;RECORDING_REPLAY&quot;.equals(row[0])) { replay++; continue; }</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">                http++; if (((Integer)row[1]) &gt; 0) retries++;</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                if (&quot;HTTP_ERROR&quot;.equals(row[3])) httpErrors++;</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">                if (&quot;TRANSPORT_ERROR&quot;.equals(row[3])) transportErrors++;</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">                if (Boolean.TRUE.equals(row[9])) invalid++;</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                for (int i = 0; i &lt; sums.length; i++) sums[i].add((Long)row[i + 4]);</span>
+<span class="fc" id="L132">            }</span>
+        }
+<span class="fc bfc" id="L134" title="All 6 branches covered.">        return new Summary(run, recorded, recorded &amp;&amp; recording.fromFirstAttempt(), recorded ? recording.recordedSince() : null, http, replay, pending, retries, httpErrors, transportErrors, invalid,</span>
+<span class="fc" id="L135">                sums[0].value(), sums[1].value(), sums[2].value(), sums[3].value(), sums[4].value());</span>
+    }
+    private void session(Claim token) {
+<span class="fc" id="L138">        var d = token.dispatch(); var session = em.find(ReformulationUsageSession.class, d.run().id());</span>
+<span class="pc bpc" id="L139" title="1 of 4 branches missed.">        if (session == null || !session.matches(d.proposalId(), PortfolioScope.key(d.actor(), d.context())))</span>
+<span class="fc" id="L140">            throw PortfolioException.notFound(&quot;Usage recording is not active for this run&quot;);</span>
+<span class="fc" id="L141">    }</span>
+    private static void identifier(String id) {
+<span class="fc bfc" id="L143" title="All 4 branches covered.">        if (id == null || !id.matches(&quot;[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}&quot;)) throw new IllegalArgumentException(&quot;Invalid usage identifier&quot;);</span>
+<span class="fc" id="L144">    }</span>
+<span class="fc" id="L145">    private static final class Sum {</span>
+<span class="fc" id="L146">        BigInteger total = BigInteger.ZERO; long known, unknown;</span>
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        void add(Long value) { if (value == null) unknown++; else { total = total.add(BigInteger.valueOf(value)); known++; } }</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">        TokenSum value() { return new TokenSum(known == 0 ? null : total.toString(), known, unknown); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

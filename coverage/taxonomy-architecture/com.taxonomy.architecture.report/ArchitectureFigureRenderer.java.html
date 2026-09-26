@@ -1,0 +1,283 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureFigureRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">ArchitectureFigureRenderer.java</span></div><h1>ArchitectureFigureRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.architecture.decision.DecisionReportLabels;
+import com.taxonomy.diagram.*;
+
+import java.awt.*;
+import java.awt.geom.*;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
+import java.util.List;
+
+import javax.imageio.ImageIO;
+
+/** Bounded Java2D renderer. One panel is allocated and released at a time. */
+<span class="fc" id="L15">public final class ArchitectureFigureRenderer {</span>
+    public static final int MAX_WIDTH = 1800, MAX_HEIGHT = 1300;
+
+    public record RenderedFigure(
+            String id,
+            byte[] png,
+            int width,
+            int height,
+            String caption,
+            String altDescription,
+            List&lt;String&gt; nodeIds,
+            List&lt;String&gt; edgeIds) {
+<span class="fc" id="L27">        public RenderedFigure {</span>
+<span class="fc" id="L28">            png = png.clone();</span>
+<span class="fc" id="L29">            nodeIds = List.copyOf(nodeIds);</span>
+<span class="fc" id="L30">            edgeIds = List.copyOf(edgeIds);</span>
+<span class="fc" id="L31">        }</span>
+
+        @Override
+        public byte[] png() {
+<span class="fc" id="L35">            return png.clone();</span>
+        }
+    }
+
+    public RenderedFigure render(ArchitectureFigurePlanner.Panel panel, String language) {
+<span class="fc" id="L40">        var labels = new DecisionReportLabels(language);</span>
+<span class="fc" id="L41">        var scene = panel.scene();</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">        if (!Double.isFinite(scene.width())</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">                || !Double.isFinite(scene.height())</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">                || scene.width() &lt;= 0</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">                || scene.height() &lt;= 0)</span>
+<span class="nc" id="L46">            throw new IllegalArgumentException(&quot;Invalid architecture figure dimensions&quot;);</span>
+        // Keep the overview's frozen frame. Details remove only unused canvas around their
+        // evidence.
+<span class="fc" id="L49">        Rectangle2D bounds = new Rectangle2D.Double(0, 0, scene.width(), scene.height());</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (!panel.overview()) {</span>
+<span class="fc" id="L51">            bounds = null;</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            for (var node : scene.nodes()) {</span>
+<span class="fc" id="L53">                var occupied =</span>
+<span class="fc" id="L54">                        new Rectangle2D.Double(node.x(), node.y(), node.width(), node.height());</span>
+<span class="fc bfc" id="L55" title="All 2 branches covered.">                if (bounds == null) bounds = occupied;</span>
+<span class="fc" id="L56">                else bounds.add(occupied);</span>
+<span class="fc" id="L57">            }</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            for (var edge : scene.edges()) bounds.add(curve(edge, scene).getBounds2D());</span>
+<span class="fc" id="L59">            bounds =</span>
+                    new Rectangle2D.Double(
+<span class="fc" id="L61">                            bounds.getX() - 24,</span>
+<span class="fc" id="L62">                            bounds.getY() - 24,</span>
+<span class="fc" id="L63">                            bounds.getWidth() + 48,</span>
+<span class="fc" id="L64">                            bounds.getHeight() + 48);</span>
+        }
+<span class="fc" id="L66">        double scale =</span>
+<span class="fc" id="L67">                Math.min(</span>
+                        1.5,
+<span class="fc" id="L69">                        Math.min(MAX_WIDTH / bounds.getWidth(), MAX_HEIGHT / bounds.getHeight()));</span>
+<span class="fc" id="L70">        int width = (int) Math.ceil(bounds.getWidth() * scale),</span>
+<span class="fc" id="L71">                height = (int) Math.ceil(bounds.getHeight() * scale);</span>
+<span class="pc bpc" id="L72" title="3 of 6 branches missed.">        if (width &lt; 1 || height &lt; 1 || (long) width * height &gt; 2_340_000)</span>
+<span class="nc" id="L73">            throw new IllegalArgumentException(&quot;Word figure pixel policy ceiling exceeded&quot;);</span>
+<span class="fc" id="L74">        var image = new BufferedImage(width, height, BufferedImage.TYPE_INT_RGB);</span>
+<span class="fc" id="L75">        var g = image.createGraphics();</span>
+        try {
+<span class="fc" id="L77">            g.setColor(Color.WHITE);</span>
+<span class="fc" id="L78">            g.fillRect(0, 0, width, height);</span>
+<span class="fc" id="L79">            g.scale(scale, scale);</span>
+<span class="fc" id="L80">            g.translate(-bounds.getX(), -bounds.getY());</span>
+<span class="fc" id="L81">            g.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            for (var edge : scene.edges()) {</span>
+<span class="fc" id="L83">                g.setColor(new Color(0x64748B));</span>
+<span class="fc" id="L84">                g.setStroke(stroke(edge.relationCategory()));</span>
+<span class="fc" id="L85">                var path = curve(edge, scene);</span>
+<span class="fc" id="L86">                g.draw(path);</span>
+<span class="fc" id="L87">                double angle = Math.atan2(path.y2 - path.ctrly2, path.x2 - path.ctrlx2);</span>
+<span class="pc bpc" id="L88" title="1 of 4 branches missed.">                if (path.x2 == path.ctrlx2 &amp;&amp; path.y2 == path.ctrly2)</span>
+<span class="nc" id="L89">                    angle = Math.atan2(path.y2 - path.y1, path.x2 - path.x1);</span>
+<span class="fc" id="L90">                double dx = Math.cos(angle), dy = Math.sin(angle);</span>
+<span class="fc" id="L91">                var arrow = new Path2D.Double();</span>
+<span class="fc" id="L92">                arrow.moveTo(path.x2, path.y2);</span>
+<span class="fc" id="L93">                arrow.lineTo(path.x2 - 11 * dx + 6 * dy, path.y2 - 11 * dy - 6 * dx);</span>
+<span class="fc" id="L94">                arrow.lineTo(path.x2 - 11 * dx - 6 * dy, path.y2 - 11 * dy + 6 * dx);</span>
+<span class="fc" id="L95">                arrow.closePath();</span>
+<span class="fc" id="L96">                g.fill(arrow);</span>
+<span class="fc" id="L97">            }</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">            for (var node : scene.nodes()) {</span>
+<span class="fc" id="L99">                var box =</span>
+                        new RoundRectangle2D.Double(
+<span class="fc" id="L101">                                node.x(), node.y(), node.width(), node.height(), 12, 12);</span>
+<span class="fc" id="L102">                g.setColor(color(node.type()));</span>
+<span class="fc" id="L103">                g.fill(box);</span>
+<span class="fc bfc" id="L104" title="All 2 branches covered.">                g.setColor(node.anchor() ? new Color(0x007A78) : new Color(0x475569));</span>
+<span class="fc" id="L105">                g.setStroke(</span>
+<span class="pc bpc" id="L106" title="1 of 2 branches missed.">                        node.container()</span>
+<span class="nc" id="L107">                                ? new BasicStroke(2, 0, 0, 10, new float[] {7, 4}, 0)</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                                : new BasicStroke(node.anchor() ? 3 : 2));</span>
+<span class="fc" id="L109">                g.draw(box);</span>
+<span class="fc" id="L110">                g.setFont(new Font(&quot;SansSerif&quot;, Font.BOLD, 20));</span>
+<span class="fc" id="L111">                String score = Math.round(node.relevance() * 100) + &quot;%&quot;;</span>
+<span class="fc" id="L112">                int scoreWidth = g.getFontMetrics().stringWidth(score);</span>
+<span class="fc" id="L113">                drawBounded(</span>
+                        g,
+<span class="fc" id="L115">                        node.id(),</span>
+<span class="fc" id="L116">                        (float) node.x() + 10,</span>
+<span class="fc" id="L117">                        (float) node.y() + 23,</span>
+<span class="fc" id="L118">                        (int) node.width() - scoreWidth - 30);</span>
+<span class="fc" id="L119">                g.drawString(</span>
+                        score,
+<span class="fc" id="L121">                        (float) (node.x() + node.width() - scoreWidth - 10),</span>
+<span class="fc" id="L122">                        (float) node.y() + 23);</span>
+<span class="fc" id="L123">                g.setFont(new Font(&quot;SansSerif&quot;, Font.PLAIN, 20));</span>
+<span class="fc" id="L124">                drawTitle(</span>
+                        g,
+<span class="fc" id="L126">                        node.label(),</span>
+<span class="fc" id="L127">                        (float) node.x() + 10,</span>
+<span class="fc" id="L128">                        (float) node.y() + 47,</span>
+<span class="fc" id="L129">                        (int) node.width() - 20);</span>
+<span class="fc" id="L130">            }</span>
+            // Compact stable IDs cross-reference the adjacent native relation key and full
+            // inventory.
+            // Long source identifiers remain in those tables rather than covering nearby graph
+            // evidence.
+<span class="fc bfc" id="L135" title="All 2 branches covered.">            if (!panel.overview())</span>
+<span class="fc bfc" id="L136" title="All 2 branches covered.">                for (var edge : scene.edges()) {</span>
+<span class="fc" id="L137">                    var path = curve(edge, scene);</span>
+<span class="fc" id="L138">                    double x = (path.x1 + 3 * path.ctrlx1 + 3 * path.ctrlx2 + path.x2) / 8;</span>
+<span class="fc" id="L139">                    double y = (path.y1 + 3 * path.ctrly1 + 3 * path.ctrly2 + path.y2) / 8;</span>
+<span class="fc" id="L140">                    g.setFont(new Font(&quot;SansSerif&quot;, Font.BOLD, 20));</span>
+<span class="fc" id="L141">                    String key = edge.id();</span>
+<span class="fc" id="L142">                    int keyWidth = g.getFontMetrics().stringWidth(key);</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                    if (keyWidth &gt; 120) continue;</span>
+<span class="fc" id="L144">                    var labelBounds =</span>
+                            new Rectangle2D.Double(
+                                    x - keyWidth / 2.0 - 3, y - 18, keyWidth + 6, 24);
+<span class="fc" id="L147">                    if (scene.nodes().stream()</span>
+<span class="fc bfc" id="L148" title="All 2 branches covered.">                            .anyMatch(</span>
+                                    node -&gt;
+<span class="fc" id="L150">                                            labelBounds.intersects(</span>
+<span class="fc" id="L151">                                                    node.x(),</span>
+<span class="fc" id="L152">                                                    node.y(),</span>
+<span class="fc" id="L153">                                                    node.width(),</span>
+<span class="fc" id="L154">                                                    node.height()))) continue;</span>
+<span class="fc" id="L155">                    g.setColor(Color.WHITE);</span>
+<span class="fc" id="L156">                    g.fill(</span>
+                            new Rectangle2D.Double(
+                                    x - keyWidth / 2.0 - 3, y - 18, keyWidth + 6, 24));
+<span class="fc" id="L159">                    g.setColor(new Color(0x334155));</span>
+<span class="fc" id="L160">                    g.drawString(key, (float) (x - keyWidth / 2.0), (float) y);</span>
+<span class="fc" id="L161">                }</span>
+<span class="fc" id="L162">            var output = new ByteArrayOutputStream();</span>
+<span class="fc" id="L163">            ImageIO.write(image, &quot;png&quot;, output);</span>
+            String caption =
+<span class="fc bfc" id="L165" title="All 2 branches covered.">                    panel.overview()</span>
+<span class="fc" id="L166">                            ? labels.architectureOverview()</span>
+<span class="fc" id="L167">                            : labels.architectureDetail()</span>
+                                    + &quot; &quot;
+<span class="fc" id="L169">                                    + panel.id().substring(panel.id().lastIndexOf('-') + 1);</span>
+            String description =
+<span class="fc bfc" id="L171" title="All 2 branches covered.">                    (panel.overview() ? labels.overviewPurpose() : labels.detailPurpose())</span>
+                            + &quot; &quot;
+                            + caption
+                            + &quot;. &quot;
+<span class="fc" id="L175">                            + labels.includedNodes()</span>
+                            + &quot;: &quot;
+<span class="fc" id="L177">                            + String.join(&quot;, &quot;, panel.nodeIds())</span>
+                            + &quot;. &quot;
+<span class="fc" id="L179">                            + labels.relationTypes()</span>
+                            + &quot;: &quot;
+<span class="fc" id="L181">                            + String.join(</span>
+                                    &quot;; &quot;,
+<span class="fc" id="L183">                                    panel.diagram().edges().stream()</span>
+<span class="fc" id="L184">                                            .map(</span>
+                                                    e -&gt;
+<span class="fc" id="L186">                                                            e.id()</span>
+                                                                    + &quot;: &quot;
+<span class="fc" id="L188">                                                                    + e.sourceId()</span>
+                                                                    + &quot; → &quot;
+<span class="fc" id="L190">                                                                    + e.targetId()</span>
+                                                                    + &quot; / &quot;
+<span class="fc" id="L192">                                                                    + e.relationType()</span>
+                                                                    + &quot; / &quot;
+<span class="fc" id="L194">                                                                    + e.relationCategory())</span>
+<span class="fc" id="L195">                                            .toList());</span>
+<span class="fc" id="L196">            return new RenderedFigure(</span>
+<span class="fc" id="L197">                    panel.id(),</span>
+<span class="fc" id="L198">                    output.toByteArray(),</span>
+                    width,
+                    height,
+                    caption,
+                    description,
+<span class="fc" id="L203">                    panel.nodeIds(),</span>
+<span class="fc" id="L204">                    panel.edgeIds());</span>
+<span class="nc" id="L205">        } catch (java.io.IOException exception) {</span>
+<span class="nc" id="L206">            throw new IllegalStateException(&quot;Could not render architecture figure&quot;, exception);</span>
+        } finally {
+<span class="fc" id="L208">            g.dispose();</span>
+<span class="fc" id="L209">            image.flush();</span>
+        }
+    }
+
+    static CubicCurve2D.Double curve(DiagramSceneEdge edge, DiagramScene scene) {
+<span class="fc bfc" id="L214" title="All 2 branches covered.">        if (edge.sourceId().equals(edge.targetId())) {</span>
+<span class="fc" id="L215">            var node =</span>
+<span class="fc" id="L216">                    scene.nodes().stream()</span>
+<span class="fc" id="L217">                            .filter(n -&gt; n.id().equals(edge.sourceId()))</span>
+<span class="fc" id="L218">                            .findFirst()</span>
+<span class="fc" id="L219">                            .orElseThrow();</span>
+<span class="fc" id="L220">            double right = node.x() + node.width(), top = node.y();</span>
+            // Right side to top, entirely outside the node fill; arrow approaches the top edge.
+<span class="fc" id="L222">            return new CubicCurve2D.Double(</span>
+                    right,
+<span class="fc" id="L224">                    top + node.height() * .35,</span>
+                    right + 44,
+                    top - 44,
+<span class="fc" id="L227">                    node.x() + node.width() * .65,</span>
+                    top - 44,
+<span class="fc" id="L229">                    node.x() + node.width() * .65,</span>
+                    top);
+        }
+<span class="fc" id="L232">        double sx = edge.sourceX(), sy = edge.sourceY(), tx = edge.targetX(), ty = edge.targetY();</span>
+<span class="fc bfc" id="L233" title="All 2 branches covered.">        if (Math.abs(tx - sx) &gt;= Math.abs(ty - sy))</span>
+<span class="fc" id="L234">            return new CubicCurve2D.Double(sx, sy, (sx + tx) / 2, sy, (sx + tx) / 2, ty, tx, ty);</span>
+<span class="fc" id="L235">        return new CubicCurve2D.Double(sx, sy, sx, (sy + ty) / 2, tx, (sy + ty) / 2, tx, ty);</span>
+    }
+
+    private BasicStroke stroke(String category) {
+<span class="fc bfc" id="L239" title="All 2 branches covered.">        if (&quot;trace&quot;.equals(category)) return new BasicStroke(2, 0, 0, 10, new float[] {8, 5}, 0);</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        if (&quot;seed&quot;.equals(category)) return new BasicStroke(2, 0, 0, 10, new float[] {2, 5}, 0);</span>
+<span class="fc" id="L241">        return new BasicStroke(2);</span>
+    }
+
+    private Color color(String type) {
+<span class="pc bpc" id="L245" title="1 of 2 branches missed.">        if (type == null) return new Color(0xF1F5F9);</span>
+<span class="fc" id="L246">        return new Color(</span>
+<span class="fc bfc" id="L247" title="All 7 branches covered.">                switch (type) {</span>
+<span class="fc" id="L248">                    case &quot;Capabilities&quot; -&gt; 0xDBEAFE;</span>
+<span class="fc" id="L249">                    case &quot;Business Processes&quot;, &quot;Business Roles&quot; -&gt; 0xDCFCE7;</span>
+<span class="fc" id="L250">                    case &quot;Core Services&quot;, &quot;COI Services&quot;, &quot;Services&quot; -&gt; 0xFEF3C7;</span>
+<span class="fc" id="L251">                    case &quot;User Applications&quot;, &quot;Applications&quot; -&gt; 0xF3E8FF;</span>
+<span class="fc" id="L252">                    case &quot;Information Products&quot; -&gt; 0xFFE4E6;</span>
+<span class="fc" id="L253">                    case &quot;Communications Services&quot; -&gt; 0xCFFAFE;</span>
+<span class="fc" id="L254">                    default -&gt; 0xF1F5F9;</span>
+                });
+    }
+
+    private void drawTitle(Graphics2D g, String title, float x, float y, int width) {
+<span class="pc bpc" id="L259" title="1 of 2 branches missed.">        if (title == null) return;</span>
+<span class="fc" id="L260">        int end = title.length();</span>
+<span class="pc bpc" id="L261" title="1 of 4 branches missed.">        while (end &gt; 0 &amp;&amp; g.getFontMetrics().stringWidth(title.substring(0, end)) &gt; width) end--;</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        if (end == title.length()) {</span>
+<span class="fc" id="L263">            g.drawString(title, x, y);</span>
+<span class="fc" id="L264">            return;</span>
+        }
+<span class="fc" id="L266">        int space = title.lastIndexOf(' ', end);</span>
+<span class="pc bpc" id="L267" title="1 of 2 branches missed.">        if (space &gt; 0) end = space;</span>
+<span class="fc" id="L268">        g.drawString(title.substring(0, end), x, y);</span>
+<span class="fc" id="L269">        drawBounded(g, title.substring(end).stripLeading(), x, y + 23, width);</span>
+<span class="fc" id="L270">    }</span>
+
+    private void drawBounded(Graphics2D g, String text, float x, float y, int width) {
+<span class="pc bpc" id="L273" title="1 of 2 branches missed.">        if (text == null) return;</span>
+<span class="fc" id="L274">        int end = text.length();</span>
+<span class="pc bpc" id="L275" title="1 of 2 branches missed.">        while (end &gt; 0</span>
+<span class="fc" id="L276">                &amp;&amp; g.getFontMetrics()</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">                                .stringWidth(</span>
+<span class="fc bfc" id="L278" title="All 2 branches covered.">                                        text.substring(0, end) + (end &lt; text.length() ? &quot;…&quot; : &quot;&quot;))</span>
+<span class="fc" id="L279">                        &gt; width) end--;</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        g.drawString(text.substring(0, end) + (end &lt; text.length() ? &quot;…&quot; : &quot;&quot;), x, y);</span>
+<span class="fc" id="L281">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

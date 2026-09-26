@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionQuestion.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.reformulation</a> &gt; <span class="el_source">DecisionQuestion.java</span></div><h1>DecisionQuestion.java</h1><pre class="source lang-java linenums">package com.taxonomy.reformulation;
+import java.util.*;
+/** Semantic identity, discovery evidence and original aliases survive reconciliation. */
+public record DecisionQuestion(String id, Key key, String wording, List&lt;Discovery&gt; discoveries,
+        List&lt;String&gt; affectedStatementIds, AnswerSchema answerSchema, List&lt;String&gt; prerequisites,
+        List&lt;String&gt; dependentQuestionIds, String consequences, State state, List&lt;String&gt; aliases,
+        List&lt;Origin&gt; origins,List&lt;SourceResolution&gt; sourceResolutions) {
+<span class="fc" id="L8">    public enum State { OPEN, ANSWERED, DEFERRED, NOT_APPLICABLE, CONFLICT }</span>
+<span class="fc" id="L9">    public record Key(String subject,String dimension,String scope) {}</span>
+    public record Discovery(String location,String context,String rationale,List&lt;Statement.SourceSpan&gt; sourceSpans,
+            List&lt;String&gt; nodeIds,List&lt;String&gt; edgeIds) {
+<span class="fc" id="L12">        public Discovery { sourceSpans=List.copyOf(sourceSpans); nodeIds=List.copyOf(nodeIds); edgeIds=List.copyOf(edgeIds); }</span>
+    }
+    public record AnswerSchema(Kind kind,List&lt;String&gt; options,String unit,Double minimum,Double maximum,
+            Map&lt;String,OptionMeaning&gt; optionMeanings,List&lt;List&lt;String&gt;&gt; incompatibleOptions,List&lt;AnswerCondition&gt; applicability) {
+<span class="fc" id="L16">        public enum Kind { SINGLE_CHOICE, MULTIPLE_CHOICE, TEXT, NUMBER, BOOLEAN }</span>
+<span class="fc" id="L17">        public enum OptionMeaning { VALUE, OTHER, OPEN, NOT_NEEDED }</span>
+        public record AnswerCondition(String questionId,List&lt;String&gt; anyOf) {
+<span class="fc" id="L19">            public AnswerCondition {anyOf=List.copyOf(anyOf);}</span>
+        }
+        public AnswerSchema(Kind kind,List&lt;String&gt; options,String unit,Double minimum,Double maximum) {
+<span class="fc" id="L22">            this(kind,options,unit,minimum,maximum,Map.of(),List.of(),List.of());</span>
+<span class="fc" id="L23">        }</span>
+<span class="fc" id="L24">        public AnswerSchema {</span>
+<span class="fc" id="L25">            options=List.copyOf(options); Objects.requireNonNull(kind);</span>
+<span class="pc bpc" id="L26" title="1 of 2 branches missed.">            optionMeanings=optionMeanings==null?Map.of():Map.copyOf(optionMeanings);</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">            incompatibleOptions=incompatibleOptions==null?List.of():incompatibleOptions.stream().map(List::copyOf).toList();</span>
+<span class="pc bpc" id="L28" title="1 of 2 branches missed.">            applicability=applicability==null?List.of():List.copyOf(applicability);</span>
+<span class="fc" id="L29">        }</span>
+    }
+    /** Exact pre-merge identity and meaning, including all local references. Never a new vote. */
+    public record Origin(String id,Key key,String wording,List&lt;Discovery&gt; discoveries,List&lt;String&gt; affectedStatementIds,
+            AnswerSchema answerSchema,List&lt;String&gt; prerequisites,List&lt;String&gt; dependentQuestionIds,String consequences,State state) {
+<span class="fc" id="L34">        public Origin {discoveries=List.copyOf(discoveries);affectedStatementIds=List.copyOf(affectedStatementIds);</span>
+<span class="fc" id="L35">            prerequisites=List.copyOf(prerequisites);dependentQuestionIds=List.copyOf(dependentQuestionIds);}</span>
+    }
+    /** Source evidence is distinct from a human DecisionAnswer. Semantic entailment remains reviewable. */
+    public record SourceResolution(List&lt;String&gt; values,List&lt;Statement.SourceSpan&gt; sourceSpans,String rationale) {
+<span class="fc" id="L39">        public SourceResolution {values=List.copyOf(values);sourceSpans=List.copyOf(sourceSpans);}</span>
+    }
+    public DecisionQuestion(String id,Key key,String wording,List&lt;Discovery&gt; discoveries,List&lt;String&gt; affectedStatementIds,
+            AnswerSchema answerSchema,List&lt;String&gt; prerequisites,List&lt;String&gt; dependentQuestionIds,String consequences,State state) {
+<span class="fc" id="L43">        this(id,key,wording,discoveries,affectedStatementIds,answerSchema,prerequisites,dependentQuestionIds,consequences,state,List.of(),List.of(),List.of());</span>
+<span class="fc" id="L44">    }</span>
+<span class="fc" id="L45">    public DecisionQuestion { discoveries=List.copyOf(discoveries); affectedStatementIds=List.copyOf(affectedStatementIds);</span>
+<span class="fc" id="L46">        prerequisites=List.copyOf(prerequisites); dependentQuestionIds=List.copyOf(dependentQuestionIds);</span>
+<span class="pc bpc" id="L47" title="2 of 4 branches missed.">        aliases=aliases==null?List.of():List.copyOf(aliases);origins=origins==null?List.of():List.copyOf(origins);</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">        sourceResolutions=sourceResolutions==null?List.of():List.copyOf(sourceResolutions); }</span>
+<span class="fc" id="L49">    public Origin origin() {return new Origin(id,key,wording,discoveries,affectedStatementIds,answerSchema,prerequisites,dependentQuestionIds,consequences,state);}</span>
+<span class="fc" id="L50">    public Set&lt;String&gt; referenceIds() {var ids=new LinkedHashSet&lt;&gt;(aliases);ids.add(id);return Collections.unmodifiableSet(ids);}</span>
+    /** Conservative publication proof: compatible identity and all previous source/discovery/meaning evidence retained. */
+    public boolean retains(DecisionQuestion prior) {
+<span class="pc bpc" id="L53" title="3 of 6 branches missed.">        return referenceIds().containsAll(prior.referenceIds()) &amp;&amp; key.equals(prior.key()) &amp;&amp; compatible(answerSchema,prior.answerSchema())</span>
+<span class="pc bpc" id="L54" title="2 of 4 branches missed.">            &amp;&amp; discoveries.containsAll(prior.discoveries()) &amp;&amp; affectedStatementIds.containsAll(prior.affectedStatementIds())</span>
+<span class="pc bpc" id="L55" title="2 of 4 branches missed.">            &amp;&amp; prerequisites.containsAll(prior.prerequisites()) &amp;&amp; dependentQuestionIds.containsAll(prior.dependentQuestionIds())</span>
+<span class="pc bpc" id="L56" title="2 of 4 branches missed.">            &amp;&amp; sourceResolutions.containsAll(prior.sourceResolutions()) &amp;&amp; origins.containsAll(prior.origins())</span>
+<span class="pc bpc" id="L57" title="1 of 4 branches missed.">            &amp;&amp; (origin().equals(prior.origin()) || origins.contains(prior.origin()));</span>
+    }
+    public static boolean compatible(AnswerSchema a,AnswerSchema b) {
+<span class="pc bpc" id="L60" title="2 of 6 branches missed.">        return a.kind()==b.kind() &amp;&amp; new HashSet&lt;&gt;(a.options()).equals(new HashSet&lt;&gt;(b.options())) &amp;&amp; Objects.equals(a.unit(),b.unit())</span>
+<span class="pc bpc" id="L61" title="2 of 4 branches missed.">            &amp;&amp; Objects.equals(a.minimum(),b.minimum()) &amp;&amp; Objects.equals(a.maximum(),b.maximum())</span>
+<span class="pc bpc" id="L62" title="3 of 6 branches missed.">            &amp;&amp; a.optionMeanings().equals(b.optionMeanings()) &amp;&amp; a.incompatibleOptions().equals(b.incompatibleOptions()) &amp;&amp; a.applicability().equals(b.applicability());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

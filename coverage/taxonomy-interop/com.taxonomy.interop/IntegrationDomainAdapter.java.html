@@ -1,0 +1,669 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationDomainAdapter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">IntegrationDomainAdapter.java</span></div><h1>IntegrationDomainAdapter.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.interop.IntegrationPortfolioPort.*;
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.command.ArchitectureCommand;
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.command.ArchitectureDslCommands;
+import com.taxonomy.dsl.command.ArchitectureSemanticPatch;
+import com.taxonomy.exchange.ArchiMateExchangeCodec;
+import com.taxonomy.exchange.ReqifExchangeCodec;
+import com.taxonomy.exchange.OslcRdf;
+import com.taxonomy.exchange.sparx.SparxMappingProfile;
+import com.taxonomy.interop.sparx.SparxSnapshots;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.interop.persistence.IntegrationStore.Connection;
+import com.taxonomy.interop.persistence.IntegrationStore.Identity;
+import com.taxonomy.workspace.service.RepositoryContext;
+import com.taxonomy.workspace.service.WorkspaceArchitectureReadPort.WorkspaceDocument;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.UUID;
+import java.util.function.UnaryOperator;
+
+/** Adapts reviewed canonical DTOs to existing portfolio services and typed DSL commands. */
+@Service
+public class IntegrationDomainAdapter {
+    private final IntegrationPortfolioPort projects;
+    private final IntegrationJson json;
+    public record ProjectionProfile(String connectorId, String profileVersion) {
+<span class="pc bpc" id="L40" title="4 of 8 branches missed.">        public ProjectionProfile { if (connectorId == null || connectorId.isBlank() || profileVersion == null || profileVersion.isBlank()) throw new IllegalArgumentException(&quot;Exact projection profile required&quot;); }</span>
+    }
+    private final Set&lt;ProjectionProfile&gt; nativeProfiles;
+    @org.springframework.beans.factory.annotation.Autowired
+<span class="fc" id="L44">    public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json) { this(projects, json, List.of()); }</span>
+<span class="fc" id="L45">    public IntegrationDomainAdapter(IntegrationPortfolioPort projects, IntegrationJson json, List&lt;ProjectionProfile&gt; profiles) {</span>
+<span class="fc" id="L46">        this.projects = projects; this.json = json;</span>
+<span class="fc" id="L47">        this.nativeProfiles = Set.copyOf(profiles);</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (nativeProfiles.size() != profiles.size()) throw new IllegalArgumentException(&quot;Duplicate projection profile&quot;);</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">        if (profiles.stream().anyMatch(p -&gt; SparxSnapshots.isSparx(p.connectorId()))) throw new IllegalArgumentException(&quot;Built-in projection profiles cannot be overridden&quot;);</span>
+<span class="fc" id="L50">    }</span>
+<span class="fc bfc" id="L51" title="All 4 branches covered.">    public boolean supportsNativePackages(Connection connection) { return nativePackages(connection) || nativeProfiles.contains(new ProjectionProfile(connection.connectorId(), connection.profileVersion())); }</span>
+<span class="pc bpc" id="L52" title="1 of 4 branches missed.">    public boolean supportsArchitecture(Connection connection) { return architectureProfile(connection) || supportsNativePackages(connection); }</span>
+
+    public void refreshIntegrationRequirements(RepositoryContext context, Long projectId) {
+<span class="fc bfc" id="L55" title="All 2 branches covered.">        if (projectId != null) {</span>
+<span class="fc" id="L56">            projects.refreshIntegrationRequirements(projectId, context.username(), workspace(context));</span>
+        }
+<span class="fc" id="L58">    }</span>
+
+<span class="fc" id="L60">    public record Snapshot(InternalState state, Map&lt;String, Artifact&gt; items, List&lt;RequirementData&gt; requirements, List&lt;MappingLoss&gt; losses, String projectKey) {</span>
+        public Snapshot(InternalState state, Map&lt;String, Artifact&gt; items, List&lt;RequirementData&gt; requirements, List&lt;MappingLoss&gt; losses) {
+<span class="fc" id="L62">            this(state, items, requirements, losses, null);</span>
+<span class="fc" id="L63">        }</span>
+    }
+<span class="fc" id="L65">    public record AppliedRequirement(String businessIdentity, Long requirementId) {}</span>
+
+    /** Bind only identities actually delivered in a reviewed file; this is not an external acknowledgement. */
+    public Map&lt;String, AppliedRequirement&gt; exportBindings(Connection connection, Snapshot current,
+                                                          WorkspaceDocument document, Map&lt;String, Artifact&gt; selected) {
+<span class="fc" id="L70">        Map&lt;String, AppliedRequirement&gt; result = new TreeMap&lt;&gt;();</span>
+<span class="fc bfc" id="L71" title="All 2 branches covered.">        if (connection.projectId() != null) {</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">            for (RequirementData requirement : current.requirements()) {</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">                String external = connection.connectorId().equals(OslcRdf.RM_PROFILE)</span>
+<span class="nc" id="L74">                        ? &quot;urn:uuid:&quot; + UUID.nameUUIDFromBytes((connection.id() + &quot;:requirement:&quot; + requirement.id()).getBytes(StandardCharsets.UTF_8))</span>
+<span class="fc" id="L75">                        : requirementExternalId(connection, requirement.id());</span>
+<span class="fc" id="L76">                result.put(&quot;REQUIREMENT:&quot; + external, new AppliedRequirement(requirement.requirementKey(), requirement.id()));</span>
+<span class="fc" id="L77">            }</span>
+        }
+<span class="fc bfc" id="L79" title="All 8 branches covered.">        if (connection.projectId() == null || supportsNativePackages(connection) || SparxSnapshots.isSparx(connection.connectorId())) for (BlockAst block : ArchitectureSemanticPatch.index(document.dsl()).values()) {</span>
+<span class="fc" id="L80">            String kind = block.getKind();</span>
+<span class="fc bfc" id="L81" title="All 6 branches covered.">            if (!Set.of(&quot;element&quot;, &quot;view&quot;, &quot;relation&quot;).contains(kind) &amp;&amp; !(supportsNativePackages(connection) &amp;&amp; &quot;package&quot;.equals(kind))) continue;</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">            String business = kind.equals(&quot;relation&quot;) ? String.join(&quot; &quot;, block.getHeaderTokens()) : block.getHeaderTokens().getFirst();</span>
+<span class="fc bfc" id="L83" title="All 2 branches covered.">            result.put((&quot;package&quot;.equals(kind) ? &quot;SPECIFICATION&quot; : kind.toUpperCase(java.util.Locale.ROOT)) + &quot;:&quot; + externalId(connection, &quot;export-&quot; + kind + &quot;:&quot; + business), new AppliedRequirement(business, null));</span>
+<span class="fc" id="L84">        }</span>
+<span class="fc bfc" id="L85" title="All 6 branches covered.">        if (supportsNativePackages(connection)) for (Artifact a : selected.values()) if (a.kind() == ArtifactKind.RELATION</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">                &amp;&amp; &quot;REQUIREMENT_MAPPING&quot;.equals(a.extensions().get(&quot;nativeProjection&quot;)))</span>
+<span class="fc" id="L87">            result.put(ExchangeItems.key(a), new AppliedRequirement(a.extensions().get(&quot;nativeSource&quot;) + &quot; -&gt; &quot; + a.extensions().get(&quot;nativeTarget&quot;), null));</span>
+<span class="fc bfc" id="L88" title="All 4 branches covered.">        for (var entry : selected.entrySet()) if (!Set.of(ArtifactKind.REQUIREMENT, ArtifactKind.ELEMENT, ArtifactKind.VIEW, ArtifactKind.RELATION).contains(entry.getValue().kind()))</span>
+<span class="fc" id="L89">            result.putIfAbsent(entry.getKey(), new AppliedRequirement(businessId(connection, null, entry.getValue()), null));</span>
+<span class="fc" id="L90">        return result;</span>
+    }
+    public Snapshot snapshot(RepositoryContext context, Connection connection, List&lt;Identity&gt; mappings, WorkspaceDocument document) {
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        List&lt;RequirementData&gt; requirements = connection.projectId() == null ? List.of()</span>
+<span class="fc" id="L94">                : projects.listRequirements(connection.projectId(), context.username(), workspace(context));</span>
+<span class="fc" id="L95">        Map&lt;Long, RequirementData&gt; byId = new LinkedHashMap&lt;&gt;(); requirements.forEach(r -&gt; byId.put(r.id(), r));</span>
+<span class="fc" id="L96">        Map&lt;String, BlockAst&gt; blocks = ArchitectureSemanticPatch.index(document.dsl());</span>
+<span class="fc" id="L97">        Map&lt;String, Artifact&gt; items = new TreeMap&lt;&gt;();</span>
+<span class="fc" id="L98">        List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        for (Identity mapping : mappings) {</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">            if (mapping.removed()) continue;</span>
+<span class="pc bpc" id="L101" title="1 of 2 branches missed.">            Artifact baseline = mapping.internal(); if (baseline == null) continue;</span>
+<span class="fc" id="L102">            Artifact current = baseline;</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            if (connection.authority() == AuthorityMode.LINK_ONLY) {</span>
+                // A trace snapshot describes the external resource, independently of the linked object's display fields.
+<span class="fc" id="L105">                items.put(mapping.externalId(), current); continue;</span>
+            }
+<span class="pc bpc" id="L107" title="1 of 4 branches missed.">            if (baseline.kind() == ArtifactKind.REQUIREMENT &amp;&amp; mapping.requirementId() != null) {</span>
+<span class="fc" id="L108">                RequirementData requirement = byId.get(mapping.requirementId());</span>
+<span class="pc bpc" id="L109" title="2 of 4 branches missed.">                if (requirement == null || requirement.archived()) continue;</span>
+<span class="fc" id="L110">                current = new Artifact(baseline.id(), baseline.kind(), baseline.type(), requirement.title(), requirement.requireCurrentVersion().text(), baseline.attributes(), baseline.extensions());</span>
+<span class="fc bfc" id="L111" title="All 4 branches covered.">            } else if (baseline.kind() == ArtifactKind.ELEMENT || baseline.kind() == ArtifactKind.VIEW) {</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                String kind = baseline.kind() == ArtifactKind.ELEMENT ? &quot;element&quot; : &quot;view&quot;;</span>
+<span class="fc bfc" id="L113" title="All 2 branches covered.">                BlockAst block = blocks.get(kind + &quot;:&quot; + mapping.businessIdentity()); if (block == null) continue;</span>
+<span class="fc" id="L114">                Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;(baseline.extensions());</span>
+<span class="fc" id="L115">                String type = baseline.type();</span>
+<span class="fc bfc" id="L116" title="All 2 branches covered.">                if (baseline.kind() == ArtifactKind.ELEMENT) {</span>
+<span class="fc" id="L117">                    String canonical = block.getHeaderTokens().get(2);</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">                    if (!canonical.equals(baseline.extensions().get(&quot;canonicalType&quot;))) type = elementType(connection, canonical);</span>
+<span class="fc" id="L119">                    extensions.put(&quot;canonicalType&quot;, canonical);</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">                    if (extensions.containsKey(&quot;taxonomy:ElementType&quot;)) extensions.put(&quot;taxonomy:ElementType&quot;, canonical);</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">                    ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().filter(p -&gt; !Set.of(&quot;title&quot;, &quot;description&quot;).contains(p))</span>
+<span class="fc" id="L122">                            .forEach(p -&gt; extensions.remove(&quot;taxonomy:&quot; + p));</span>
+<span class="fc bfc" id="L123" title="All 4 branches covered.">                    for (var property : block.getProperties()) if (ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(property.key())</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">                            &amp;&amp; !Set.of(&quot;title&quot;, &quot;description&quot;).contains(property.key())) extensions.put(&quot;taxonomy:&quot; + property.key(), property.value());</span>
+                }
+<span class="fc" id="L126">                Map&lt;String, String&gt; attributes = new TreeMap&lt;&gt;(baseline.attributes());</span>
+<span class="pc bpc" id="L127" title="1 of 4 branches missed.">                if (SparxSnapshots.isSparx(connection.connectorId()) &amp;&amp; baseline.kind() == ArtifactKind.ELEMENT</span>
+<span class="fc bfc" id="L128" title="All 2 branches covered.">                        &amp;&amp; !Objects.equals(extensions.get(&quot;canonicalType&quot;), baseline.extensions().get(&quot;canonicalType&quot;)))</span>
+<span class="fc" id="L129">                    attributes.put(&quot;tag:taxonomy.elementType&quot;, block.getHeaderTokens().get(2));</span>
+<span class="fc" id="L130">                current = new Artifact(baseline.id(), baseline.kind(), type, value(block.property(&quot;title&quot;)), value(block.property(&quot;description&quot;)), attributes, extensions);</span>
+<span class="pc bpc" id="L131" title="1 of 4 branches missed.">            } else if (baseline.kind() == ArtifactKind.RELATION &amp;&amp; supportsArchitecture(connection)) {</span>
+<span class="pc bpc" id="L132" title="1 of 2 branches missed.">                if (&quot;PRESERVE_ONLY&quot;.equals(baseline.extensions().get(&quot;nativeProjection&quot;))) { items.put(mapping.externalId(), current); continue; }</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                if (&quot;REQUIREMENT_MAPPING&quot;.equals(baseline.extensions().get(&quot;nativeProjection&quot;))) {</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">                    if (blocks.containsKey(&quot;mapping:&quot; + mapping.businessIdentity())) items.put(mapping.externalId(), current);</span>
+                    continue;
+                }
+<span class="fc bfc" id="L137" title="All 2 branches covered.">                BlockAst relation = blocks.get(&quot;relation:&quot; + mapping.businessIdentity()); if (relation == null) continue;</span>
+<span class="fc" id="L138">                Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;(baseline.extensions());</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">                if (extensions.containsKey(&quot;taxonomy:RelationType&quot;)) extensions.put(&quot;taxonomy:RelationType&quot;, relation.getHeaderTokens().get(1));</span>
+<span class="pc bpc" id="L140" title="1 of 4 branches missed.">                if (extensions.containsKey(&quot;taxonomy:status&quot;) || !&quot;accepted&quot;.equals(relation.property(&quot;status&quot;)))</span>
+<span class="fc" id="L141">                    extensions.put(&quot;taxonomy:status&quot;, value(relation.property(&quot;status&quot;)));</span>
+<span class="fc" id="L142">                current = new Artifact(baseline.id(), baseline.kind(), baseline.type(), baseline.title(), baseline.text(), baseline.attributes(), extensions);</span>
+            }
+<span class="fc" id="L144">            items.put(mapping.externalId(), current);</span>
+<span class="fc" id="L145">        }</span>
+<span class="pc bpc" id="L146" title="1 of 4 branches missed.">        if (connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE) &amp;&amp; connection.authority() != AuthorityMode.LINK_ONLY) {</span>
+<span class="fc" id="L147">            Map&lt;String, String&gt; elements = new TreeMap&lt;&gt;(), views = new TreeMap&lt;&gt;();</span>
+<span class="pc bpc" id="L148" title="2 of 6 branches missed.">            for (Identity mapping : mappings) if (!mapping.removed() &amp;&amp; mapping.internal() != null) {</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">                if (mapping.internal().kind() == ArtifactKind.ELEMENT) elements.put(mapping.businessIdentity(), mapping.internal().id());</span>
+<span class="fc bfc" id="L150" title="All 2 branches covered.">                if (mapping.internal().kind() == ArtifactKind.VIEW) views.put(mapping.businessIdentity(), mapping.internal().id());</span>
+            }
+<span class="fc" id="L152">            synchronizeViews(connection, blocks, elements, views, items, losses);</span>
+<span class="fc" id="L153">            pruneConnections(items, losses);</span>
+        }
+<span class="pc bpc" id="L155" title="1 of 4 branches missed.">        if (supportsNativePackages(connection) &amp;&amp; connection.authority() != AuthorityMode.LINK_ONLY) {</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            String modelId = items.values().stream().filter(a -&gt; a.kind() == ArtifactKind.PLACEMENT)</span>
+<span class="fc" id="L157">                    .map(a -&gt; a.extensions().get(&quot;container&quot;)).filter(Objects::nonNull).findFirst().orElse(null);</span>
+<span class="fc" id="L158">            IntegrationPackageProjection.synchronize(connection, document.dsl(), mappings, items, modelId, false);</span>
+<span class="fc bfc" id="L159" title="All 6 branches covered.">            for (Artifact a : items.values()) if (a.kind() == ArtifactKind.PLACEMENT &amp;&amp; items.containsKey(&quot;REQUIREMENT:&quot; + a.extensions().get(&quot;artifact&quot;)))</span>
+<span class="fc" id="L160">                losses.add(new MappingLoss(a.id(), &quot;package&quot;, &quot;SPARX_REQUIREMENT_PACKAGE_PRESERVED_ONLY&quot;, LossDisposition.PRESERVED_EXTENSION,</span>
+                        &quot;Requirement package membership remains exchange evidence&quot;));
+        }
+<span class="fc" id="L163">        InternalState state = new InternalState(context.repositoryId(), document.state().workspaceScopeKey(), context.branch(), document.state().commitId(),</span>
+<span class="fc" id="L164">                document.state().semanticRevision(), connection.projectId(), json.fingerprint(requirements.stream().map(r -&gt; java.util.Arrays.asList(r.id(), r.title(), r.status(), r.currentVersionId(), r.updatedAt())).toList()));</span>
+<span class="fc bfc" id="L165" title="All 4 branches covered.">        return new Snapshot(state, Map.copyOf(items), requirements, List.copyOf(losses), supportsNativePackages(connection) &amp;&amp; connection.projectId() != null</span>
+<span class="fc" id="L166">                ? projects.getProject(connection.projectId(), context.username(), workspace(context)).projectKey() : null);</span>
+    }
+
+<span class="fc" id="L169">    public void requireProject(RepositoryContext context, Long projectId) { projects.requireProject(projectId, context.username(), workspace(context)); }</span>
+    public void lockProject(RepositoryContext context, Long projectId) {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (projectId != null) projects.requireProjectForUpdate(projectId, context.username(), workspace(context));</span>
+<span class="fc" id="L172">    }</span>
+
+    public AppliedRequirement linkTarget(RepositoryContext context, Connection connection, String dsl, String identity) {
+<span class="pc bpc" id="L175" title="2 of 4 branches missed.">        if (identity == null || identity.length() &gt; 300) throw new IllegalArgumentException(&quot;A bounded internal link target is required&quot;);</span>
+<span class="pc bpc" id="L176" title="2 of 4 branches missed.">        if (identity.startsWith(&quot;requirement:&quot;) &amp;&amp; connection.projectId() != null) {</span>
+<span class="fc" id="L177">            String key = identity.substring(&quot;requirement:&quot;.length());</span>
+<span class="fc" id="L178">            var requirement = projects.listRequirements(connection.projectId(), context.username(), workspace(context)).stream()</span>
+<span class="pc bpc" id="L179" title="1 of 4 branches missed.">                    .filter(r -&gt; r.requirementKey().equals(key) &amp;&amp; !r.archived()).findFirst().orElseThrow(IntegrationProblem::missing);</span>
+<span class="fc" id="L180">            return new AppliedRequirement(identity, requirement.id());</span>
+        }
+<span class="nc bnc" id="L182" title="All 4 branches missed.">        if (identity.startsWith(&quot;element:&quot;) &amp;&amp; ArchitectureSemanticPatch.index(dsl).containsKey(identity)) return new AppliedRequirement(identity, null);</span>
+<span class="nc" id="L183">        throw IntegrationProblem.missing();</span>
+    }
+
+    /** Capture the complete selected project/model, overlaying current canonical values on accepted exchange evidence. */
+    public ExchangeDocument exportDocument(Connection connection, Snapshot current, WorkspaceDocument document,
+                                           List&lt;Identity&gt; mappings, ExchangeDocument previous) {
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        ExchangeDocument template = previous == null ? new ExchangeDocument(connection.connectorId(), connection.profileVersion(), null, true, &quot;&quot;,</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">                List.of(), List.of(), List.of(), Map.of(&quot;identifier&quot;, SparxSnapshots.isSparx(connection.connectorId())</span>
+<span class="fc" id="L191">                        ? externalId(connection, &quot;model&quot;) : &quot;taxonomy-&quot; + connection.id(), &quot;title&quot;, connection.displayName()), List.of()) : previous;</span>
+<span class="fc" id="L192">        Map&lt;String, Artifact&gt; items = new TreeMap&lt;&gt;(current.items());</span>
+<span class="fc" id="L193">        List&lt;MappingLoss&gt; losses = new ArrayList&lt;&gt;(template.losses()); losses.addAll(current.losses());</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">        if (connection.projectId() != null) {</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            Map&lt;Long, Identity&gt; known = new LinkedHashMap&lt;&gt;(); mappings.stream().filter(m -&gt; m.requirementId() != null).forEach(m -&gt; known.put(m.requirementId(), m));</span>
+<span class="fc" id="L196">            List&lt;Artifact&gt; added = new ArrayList&lt;&gt;();</span>
+<span class="pc bpc" id="L197" title="1 of 4 branches missed.">            for (RequirementData requirement : current.requirements()) if (!requirement.archived()) {</span>
+<span class="fc" id="L198">                Identity existing = known.get(requirement.id());</span>
+<span class="pc bpc" id="L199" title="1 of 4 branches missed.">                if (existing != null &amp;&amp; items.containsKey(existing.externalId())) continue;</span>
+<span class="fc" id="L200">                boolean oslc = connection.connectorId().equals(OslcRdf.RM_PROFILE);</span>
+<span class="pc bpc" id="L201" title="1 of 2 branches missed.">                String id = existing != null ? existing.externalId().substring(&quot;REQUIREMENT:&quot;.length())</span>
+<span class="pc bpc" id="L202" title="1 of 2 branches missed.">                        : oslc ? &quot;urn:uuid:&quot; + UUID.nameUUIDFromBytes((connection.id() + &quot;:requirement:&quot; + requirement.id()).getBytes(StandardCharsets.UTF_8))</span>
+<span class="fc" id="L203">                        : requirementExternalId(connection, requirement.id());</span>
+<span class="pc bpc" id="L204" title="2 of 4 branches missed.">                Artifact artifact = new Artifact(id, ArtifactKind.REQUIREMENT, oslc ? OslcRdf.RM + &quot;Requirement&quot; : SparxSnapshots.isSparx(connection.connectorId()) ? &quot;Class&quot; : &quot;taxonomy-object&quot;, requirement.title(),</span>
+<span class="fc" id="L205">                        requirement.requireCurrentVersion().text(), Map.of(), Map.of()); items.put(ExchangeItems.key(artifact), artifact); added.add(artifact);</span>
+            }
+<span class="pc bpc" id="L207" title="1 of 6 branches missed.">            if (connection.connectorId().equals(ReqifExchangeCodec.PROFILE) &amp;&amp; previous != null &amp;&amp; !added.isEmpty()) {</span>
+                // Local additions have their own stable specification; imported multi-level hierarchies stay intact.
+<span class="fc" id="L209">                String specification = stableId(connection.id(), &quot;export-local-requirements&quot;);</span>
+<span class="fc" id="L210">                Artifact group = new Artifact(specification, ArtifactKind.SPECIFICATION, &quot;taxonomy-specification-type&quot;, &quot;Taxonomy additions&quot;, &quot;&quot;, Map.of(), Map.of());</span>
+<span class="fc" id="L211">                items.put(ExchangeItems.key(group), group); int position = 0;</span>
+<span class="fc bfc" id="L212" title="All 2 branches covered.">                for (Artifact artifact : added) {</span>
+<span class="fc" id="L213">                    Artifact placement = new Artifact(stableId(connection.id(), &quot;export-occurrence:&quot; + artifact.id()), ArtifactKind.PLACEMENT, &quot;placement&quot;, &quot;&quot;, &quot;&quot;, Map.of(),</span>
+<span class="fc" id="L214">                            Map.of(&quot;container&quot;, specification, &quot;parent&quot;, &quot;&quot;, &quot;artifact&quot;, artifact.id(), &quot;position&quot;, Integer.toString(position++)));</span>
+<span class="fc" id="L215">                    items.put(ExchangeItems.key(placement), placement);</span>
+<span class="fc" id="L216">                }</span>
+            }
+        }
+<span class="fc bfc" id="L219" title="All 6 branches covered.">        if (connection.projectId() == null || supportsNativePackages(connection) || SparxSnapshots.isSparx(connection.connectorId())) {</span>
+<span class="fc" id="L220">            Map&lt;String, BlockAst&gt; blocks = ArchitectureSemanticPatch.index(document.dsl());</span>
+<span class="fc" id="L221">            Map&lt;String, String&gt; ids = new TreeMap&lt;&gt;();</span>
+<span class="pc bpc" id="L222" title="1 of 6 branches missed.">            mappings.stream().filter(m -&gt; !m.removed()).forEach(m -&gt; { if (m.internal() != null &amp;&amp; m.internal().kind() == ArtifactKind.ELEMENT) ids.put(m.businessIdentity(), m.internal().id()); });</span>
+<span class="fc bfc" id="L223" title="All 4 branches covered.">            for (BlockAst block : blocks.values()) if (block.getKind().equals(&quot;element&quot;)) {</span>
+<span class="fc" id="L224">                String id = block.getHeaderTokens().getFirst(), canonical = block.getHeaderTokens().get(2);</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">                if (ids.containsKey(id)) continue;</span>
+<span class="fc" id="L226">                String external = externalId(connection, &quot;export-element:&quot; + id); ids.put(id, external);</span>
+<span class="fc" id="L227">                Map&lt;String, String&gt; extensions = new TreeMap&lt;&gt;(); extensions.put(&quot;canonicalType&quot;, canonical);</span>
+<span class="pc bpc" id="L228" title="1 of 6 branches missed.">                for (var property : block.getProperties()) if (ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(property.key()) &amp;&amp; !Set.of(&quot;title&quot;, &quot;description&quot;).contains(property.key()))</span>
+<span class="nc" id="L229">                    extensions.put(&quot;taxonomy:&quot; + property.key(), property.value());</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">                Map&lt;String, String&gt; attributes = SparxSnapshots.isSparx(connection.connectorId()) ? Map.of(&quot;tag:taxonomy.elementType&quot;, canonical) : Map.of();</span>
+<span class="fc" id="L231">                Artifact artifact = new Artifact(external, ArtifactKind.ELEMENT, elementType(connection, canonical), value(block.property(&quot;title&quot;)), value(block.property(&quot;description&quot;)), attributes, extensions);</span>
+<span class="fc" id="L232">                items.put(ExchangeItems.key(artifact), artifact);</span>
+            }
+<span class="fc bfc" id="L234" title="All 2 branches covered.">            Set&lt;String&gt; known = mappings.stream().filter(m -&gt; !m.removed()).map(Identity::businessIdentity).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc bfc" id="L235" title="All 4 branches covered.">            for (BlockAst block : blocks.values()) if (block.getKind().equals(&quot;relation&quot;)) {</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">                String key = String.join(&quot; &quot;, block.getHeaderTokens()); if (known.contains(key)) continue;</span>
+<span class="fc" id="L237">                String source = ids.get(block.getHeaderTokens().get(0)), target = ids.get(block.getHeaderTokens().get(2)), type = block.getHeaderTokens().get(1);</span>
+<span class="pc bpc" id="L238" title="2 of 4 branches missed.">                if (source == null || target == null) throw new IntegrationProblem(&quot;RELATION_MAPPING_REQUIRED&quot;, 422, &quot;Canonical relation has an unmapped endpoint&quot;);</span>
+<span class="fc" id="L239">                Map&lt;String, String&gt; extension = new TreeMap&lt;&gt;(Map.of(&quot;source&quot;, source, &quot;target&quot;, target, &quot;canonicalType&quot;, type, &quot;taxonomy:status&quot;, value(block.property(&quot;status&quot;))));</span>
+<span class="pc bpc" id="L240" title="1 of 2 branches missed.">                if (type.equals(&quot;PRODUCES&quot;)) extension.put(&quot;accessType&quot;, &quot;Write&quot;);</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">                String mappedType = SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.eaRelation(type) : archimateRelation(type);</span>
+<span class="fc" id="L242">                String externalId = externalId(connection, &quot;export-relation:&quot; + key);</span>
+<span class="pc bpc" id="L243" title="1 of 4 branches missed.">                if (SparxSnapshots.isSparx(connection.connectorId())) extension.put(&quot;direction&quot;, type.equals(&quot;RELATED_TO&quot;) ? &quot;Unspecified&quot; : &quot;Source -&gt; Destination&quot;);</span>
+<span class="fc bfc" id="L244" title="All 2 branches covered.">                if (mappedType == null) losses.add(new MappingLoss(externalId, &quot;type&quot;, &quot;UNSUPPORTED_RELATION_TYPE&quot;, LossDisposition.UNSUPPORTED,</span>
+                        &quot;Canonical &quot; + type + &quot; has no declared exchange mapping; reject this relation or explicitly select an export mapping&quot;));
+<span class="fc bfc" id="L246" title="All 2 branches covered.">                Map&lt;String, String&gt; attributes = SparxSnapshots.isSparx(connection.connectorId()) ? Map.of(&quot;tag:taxonomy.relationType&quot;, type) : Map.of();</span>
+<span class="fc bfc" id="L247" title="All 2 branches covered.">                Artifact artifact = new Artifact(externalId, ArtifactKind.RELATION, mappedType == null ? type : mappedType, &quot;&quot;, &quot;&quot;, attributes, extension);</span>
+<span class="fc" id="L248">                items.put(ExchangeItems.key(artifact), artifact);</span>
+            }
+<span class="fc bfc" id="L250" title="All 4 branches covered.">            if (supportsNativePackages(connection) &amp;&amp; connection.projectId() != null) {</span>
+<span class="fc" id="L251">                Map&lt;String, String&gt; requirementIds = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L252" title="All 2 branches covered.">                for (RequirementData requirement : current.requirements()) {</span>
+<span class="pc bpc" id="L253" title="1 of 4 branches missed.">                    Identity mapping = mappings.stream().filter(m -&gt; requirement.id().equals(m.requirementId()) &amp;&amp; !m.removed()).findFirst().orElse(null);</span>
+<span class="fc bfc" id="L254" title="All 2 branches covered.">                    String external = mapping == null ? requirementExternalId(connection, requirement.id()) : mapping.internal().id();</span>
+<span class="fc bfc" id="L255" title="All 2 branches covered.">                    List&lt;BlockAst&gt; candidates = blocks.values().stream().filter(b -&gt; b.getKind().equals(&quot;requirement&quot;)</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">                            &amp;&amp; Objects.equals(current.projectKey(), b.property(&quot;x-project-key&quot;))</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">                            &amp;&amp; requirement.requirementKey().equals(b.property(&quot;x-requirement-key&quot;))).toList();</span>
+<span class="fc bfc" id="L258" title="All 2 branches covered.">                    if (candidates.size() == 1) requirementIds.put(candidates.getFirst().getHeaderTokens().getFirst(), external);</span>
+<span class="fc" id="L259">                }</span>
+<span class="pc bpc" id="L260" title="1 of 6 branches missed.">                for (BlockAst block : blocks.values()) if (block.getKind().equals(&quot;mapping&quot;) &amp;&amp; block.property(&quot;x-exchange-id&quot;) != null) {</span>
+<span class="fc bfc" id="L261" title="All 2 branches covered.">                    String key = String.join(&quot; &quot;, block.getHeaderTokens()); if (known.contains(key)) continue;</span>
+<span class="fc" id="L262">                    String source = requirementIds.get(block.getHeaderTokens().get(0)), target = ids.get(block.getHeaderTokens().get(2));</span>
+<span class="pc bpc" id="L263" title="2 of 4 branches missed.">                    if (source == null || target == null) continue;</span>
+<span class="fc" id="L264">                    Artifact relation = new Artifact(externalId(connection, &quot;export-mapping:&quot; + key), ArtifactKind.RELATION, &quot;Dependency&quot;, &quot;&quot;, &quot;&quot;, Map.of(),</span>
+<span class="fc" id="L265">                            Map.of(&quot;source&quot;, source, &quot;target&quot;, target, &quot;canonicalType&quot;, &quot;DEPENDS_ON&quot;, &quot;direction&quot;, &quot;Source -&gt; Destination&quot;,</span>
+<span class="fc" id="L266">                                    &quot;nativeProjection&quot;, &quot;REQUIREMENT_MAPPING&quot;, &quot;nativeSource&quot;, block.getHeaderTokens().get(0), &quot;nativeTarget&quot;, block.getHeaderTokens().get(2)));</span>
+<span class="fc" id="L267">                    items.put(ExchangeItems.key(relation), relation);</span>
+                }
+            }
+<span class="pc bpc" id="L270" title="1 of 6 branches missed.">            for (BlockAst block : blocks.values()) if (block.getKind().equals(&quot;view&quot;) &amp;&amp; !known.contains(block.getHeaderTokens().getFirst())) {</span>
+<span class="nc bnc" id="L271" title="All 2 branches missed.">                if (SparxSnapshots.isSparx(connection.connectorId())) {</span>
+<span class="nc" id="L272">                    losses.add(new MappingLoss(block.getHeaderTokens().getFirst(), &quot;view&quot;, &quot;SPARX_LAYOUT_EXCLUDED&quot;, LossDisposition.UNSUPPORTED,</span>
+                            &quot;Taxonomy views are outside the Sparx semantic profile and are not exported&quot;));
+<span class="nc" id="L274">                    continue;</span>
+                }
+<span class="nc" id="L276">                String viewId = stableId(connection.id(), &quot;export-view:&quot; + block.getHeaderTokens().getFirst());</span>
+<span class="nc" id="L277">                Artifact view = new Artifact(viewId, ArtifactKind.VIEW, &quot;Diagram&quot;, value(block.property(&quot;title&quot;)), value(block.property(&quot;description&quot;)), Map.of(), Map.of());</span>
+<span class="nc" id="L278">                items.put(ExchangeItems.key(view), view); int position = 0;</span>
+<span class="nc bnc" id="L279" title="All 6 branches missed.">                for (var property : block.getProperties()) if (property.key().equals(&quot;include&quot;) &amp;&amp; ids.containsKey(property.value())) {</span>
+<span class="nc" id="L280">                    String elementId = ids.get(property.value());</span>
+<span class="nc" id="L281">                    Artifact placement = new Artifact(stableId(connection.id(), viewId + &quot;:&quot; + elementId), ArtifactKind.PLACEMENT, &quot;placement&quot;, &quot;&quot;, &quot;&quot;,</span>
+<span class="nc" id="L282">                            Map.of(&quot;x&quot;, Integer.toString(position % 5 * 180), &quot;y&quot;, Integer.toString(position / 5 * 100), &quot;w&quot;, &quot;160&quot;, &quot;h&quot;, &quot;70&quot;),</span>
+<span class="nc" id="L283">                            Map.of(&quot;container&quot;, viewId, &quot;parent&quot;, &quot;&quot;, &quot;artifact&quot;, elementId, &quot;position&quot;, Integer.toString(position++)));</span>
+<span class="nc" id="L284">                    items.put(ExchangeItems.key(placement), placement);</span>
+                }
+            }
+<span class="fc" id="L287">            Map&lt;String, String&gt; views = new TreeMap&lt;&gt;();</span>
+<span class="pc bpc" id="L288" title="1 of 6 branches missed.">            mappings.stream().filter(m -&gt; !m.removed() &amp;&amp; m.internal() != null &amp;&amp; m.internal().kind() == ArtifactKind.VIEW)</span>
+<span class="fc" id="L289">                    .forEach(m -&gt; views.put(m.businessIdentity(), m.internal().id()));</span>
+<span class="fc" id="L290">            synchronizeViews(connection, blocks, ids, views, items, losses);</span>
+        }
+        // Local removals have an explicit export loss report; never leave an orphaned hierarchy or view connection.
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        if (supportsNativePackages(connection)) IntegrationPackageProjection.synchronize(connection, document.dsl(), mappings, items,</span>
+<span class="fc" id="L294">                template.metadata().get(&quot;identifier&quot;), true);</span>
+        boolean removed;
+        do {
+<span class="fc bfc" id="L297" title="All 4 branches covered.">            Set&lt;String&gt; present = items.values().stream().filter(a -&gt; a.kind() != ArtifactKind.PLACEMENT &amp;&amp; a.kind() != ArtifactKind.METADATA).map(Artifact::id).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">            Set&lt;String&gt; placements = items.values().stream().filter(a -&gt; a.kind() == ArtifactKind.PLACEMENT).map(Artifact::id).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L299">            removed = items.entrySet().removeIf(e -&gt; {</span>
+<span class="fc" id="L300">                Artifact item = e.getValue(); Map&lt;String, String&gt; extension = item.extensions();</span>
+<span class="pc bpc" id="L301" title="2 of 6 branches missed.">                boolean omit = item.kind() == ArtifactKind.RELATION &amp;&amp; (!present.contains(extension.get(&quot;source&quot;)) || !present.contains(extension.get(&quot;target&quot;)))</span>
+<span class="pc bpc" id="L302" title="2 of 6 branches missed.">                        || item.kind() == ArtifactKind.PLACEMENT &amp;&amp; (!value(extension.get(&quot;artifact&quot;)).isEmpty() &amp;&amp; !present.contains(extension.get(&quot;artifact&quot;))</span>
+<span class="pc bpc" id="L303" title="1 of 4 branches missed.">                        || !value(extension.get(&quot;parent&quot;)).isEmpty() &amp;&amp; !placements.contains(extension.get(&quot;parent&quot;))</span>
+<span class="pc bpc" id="L304" title="1 of 4 branches missed.">                        || !&quot;organizations&quot;.equals(extension.get(&quot;container&quot;)) &amp;&amp; !present.contains(extension.get(&quot;container&quot;))</span>
+<span class="pc bpc" id="L305" title="2 of 6 branches missed.">                        &amp;&amp; !((SparxSnapshots.isSparx(connection.connectorId()) || supportsNativePackages(connection)) &amp;&amp; Objects.equals(template.metadata().get(&quot;identifier&quot;), extension.get(&quot;container&quot;))));</span>
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">                if (omit) losses.add(new MappingLoss(item.id(), &quot;dependency&quot;, &quot;LOCAL_DEPENDENCY_REMOVED&quot;, LossDisposition.TRANSFORMED,</span>
+                        &quot;Occurrence or relation is omitted because its canonical target was removed locally&quot;));
+<span class="fc" id="L308">                return omit;</span>
+            });
+<span class="pc bpc" id="L310" title="1 of 2 branches missed.">        } while (removed);</span>
+<span class="fc" id="L311">        pruneConnections(items, losses);</span>
+<span class="fc" id="L312">        ExchangeDocument result = ExchangeItems.expand(template, items);</span>
+<span class="fc bfc" id="L313" title="All 2 branches covered.">        if (SparxSnapshots.isSparx(connection.connectorId())) {</span>
+            // A native addition has a stable root occurrence; imported parent/occurrence identity is retained.
+<span class="fc" id="L315">            List&lt;Placement&gt; occurrences = new ArrayList&lt;&gt;(result.placements());</span>
+<span class="fc" id="L316">            Set&lt;String&gt; placed = occurrences.stream().map(Placement::artifactId).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc bfc" id="L317" title="All 2 branches covered.">            int position = occurrences.stream().filter(p -&gt; p.parentId() == null).mapToInt(Placement::position).max().orElse(-1) + 1;</span>
+<span class="fc bfc" id="L318" title="All 4 branches covered.">            for (Artifact artifact : result.artifacts()) if (!placed.contains(artifact.id()))</span>
+<span class="fc" id="L319">                occurrences.add(new Placement(&quot;placement:&quot; + artifact.id(), template.metadata().get(&quot;identifier&quot;), null, artifact.id(), position++, Map.of()));</span>
+<span class="fc" id="L320">            result = new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), result.completeScope(), result.source(),</span>
+<span class="fc" id="L321">                    result.artifacts(), result.relations(), occurrences, result.metadata(), result.losses());</span>
+        }
+<span class="fc" id="L323">        result = new ExchangeDocument(result.profile(), result.profileVersion(), result.externalVersion(), result.completeScope(), result.source(), result.artifacts(),</span>
+<span class="fc" id="L324">                result.relations(), result.placements(), result.metadata(), losses);</span>
+        // Freeze the identities even when unsupported features defer serialization until review.
+<span class="fc bfc" id="L326" title="All 2 branches covered.">        return SparxSnapshots.isSparx(connection.connectorId()) ? SparxSnapshots.identify(result, connection.id()) : result;</span>
+    }
+
+    private static void synchronizeViews(Connection connection, Map&lt;String, BlockAst&gt; blocks, Map&lt;String, String&gt; elements,
+                                          Map&lt;String, String&gt; views, Map&lt;String, Artifact&gt; items, List&lt;MappingLoss&gt; losses) {
+<span class="fc bfc" id="L331" title="All 2 branches covered.">        for (var view : views.entrySet()) {</span>
+<span class="pc bpc" id="L332" title="1 of 2 branches missed.">            BlockAst block = blocks.get(&quot;view:&quot; + view.getKey()); if (block == null) continue;</span>
+<span class="fc" id="L333">            Set&lt;String&gt; included = block.propertyValues(&quot;include&quot;).stream().map(elements::get).filter(Objects::nonNull).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L334">            Set&lt;String&gt; managed = Set.copyOf(elements.values());</span>
+<span class="pc bpc" id="L335" title="1 of 4 branches missed.">            items.entrySet().removeIf(e -&gt; e.getValue().kind() == ArtifactKind.PLACEMENT &amp;&amp; view.getValue().equals(e.getValue().extensions().get(&quot;container&quot;))</span>
+<span class="pc bpc" id="L336" title="1 of 4 branches missed.">                    &amp;&amp; managed.contains(e.getValue().extensions().get(&quot;artifact&quot;)) &amp;&amp; !included.contains(e.getValue().extensions().get(&quot;artifact&quot;)));</span>
+            // A removed semantic parent must not leave a dangling placement parent. Preserve surviving children explicitly at the root.
+<span class="fc bfc" id="L338" title="All 2 branches covered.">            Set&lt;String&gt; remaining = items.values().stream().filter(a -&gt; a.kind() == ArtifactKind.PLACEMENT).map(Artifact::id).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L339">            items.replaceAll((id, item) -&gt; {</span>
+<span class="pc bpc" id="L340" title="1 of 4 branches missed.">                if (item.kind() != ArtifactKind.PLACEMENT || !view.getValue().equals(item.extensions().get(&quot;container&quot;))</span>
+<span class="pc bpc" id="L341" title="1 of 4 branches missed.">                        || value(item.extensions().get(&quot;parent&quot;)).isEmpty() || remaining.contains(item.extensions().get(&quot;parent&quot;))) return item;</span>
+<span class="fc" id="L342">                Map&lt;String, String&gt; extension = new TreeMap&lt;&gt;(item.extensions()); extension.put(&quot;parent&quot;, &quot;&quot;);</span>
+<span class="fc" id="L343">                losses.add(new MappingLoss(item.id(), &quot;parent&quot;, &quot;VIEW_OCCURRENCE_REPARENTED&quot;, LossDisposition.TRANSFORMED,</span>
+                        &quot;The removed parent places this surviving occurrence at the view root; retained coordinates require layout review&quot;));
+<span class="fc" id="L345">                return new Artifact(item.id(), item.kind(), item.type(), item.title(), item.text(), item.attributes(), extension);</span>
+            });
+<span class="pc bpc" id="L347" title="1 of 4 branches missed.">            Set&lt;String&gt; represented = items.values().stream().filter(a -&gt; a.kind() == ArtifactKind.PLACEMENT &amp;&amp; view.getValue().equals(a.extensions().get(&quot;container&quot;)))</span>
+<span class="fc" id="L348">                    .map(a -&gt; a.extensions().get(&quot;artifact&quot;)).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L349">            int position = represented.size();</span>
+<span class="fc bfc" id="L350" title="All 4 branches covered.">            for (String element : included.stream().sorted().toList()) if (!represented.contains(element)) {</span>
+<span class="fc" id="L351">                Artifact placement = new Artifact(stableId(connection.id(), view.getValue() + &quot;:&quot; + element), ArtifactKind.PLACEMENT, &quot;placement&quot;, &quot;&quot;, &quot;&quot;,</span>
+<span class="fc" id="L352">                        Map.of(&quot;x&quot;, Integer.toString(position % 5 * 180), &quot;y&quot;, Integer.toString(position / 5 * 100), &quot;w&quot;, &quot;160&quot;, &quot;h&quot;, &quot;70&quot;),</span>
+<span class="fc" id="L353">                        Map.of(&quot;container&quot;, view.getValue(), &quot;parent&quot;, &quot;&quot;, &quot;artifact&quot;, element, &quot;position&quot;, Integer.toString(position++)));</span>
+<span class="fc" id="L354">                items.put(ExchangeItems.key(placement), placement);</span>
+            }
+<span class="fc" id="L356">        }</span>
+<span class="fc" id="L357">    }</span>
+
+    /** Only export removes stale presentation connections, with a visible loss for each removed reference. */
+    private static void pruneConnections(Map&lt;String, Artifact&gt; items, List&lt;MappingLoss&gt; losses) {
+<span class="fc bfc" id="L361" title="All 2 branches covered.">        Set&lt;String&gt; relations = items.values().stream().filter(a -&gt; a.kind() == ArtifactKind.RELATION).map(Artifact::id).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L362">        items.replaceAll((id, item) -&gt; {</span>
+<span class="fc" id="L363">            String evidence = item.extensions().get(&quot;connectionsXml&quot;);</span>
+<span class="pc bpc" id="L364" title="1 of 4 branches missed.">            if (item.kind() != ArtifactKind.VIEW || evidence == null) return item;</span>
+<span class="fc" id="L365">            var xml = com.taxonomy.exchange.ExchangeXml.parse(evidence.getBytes(StandardCharsets.UTF_8));</span>
+<span class="pc bpc" id="L366" title="1 of 4 branches missed.">            Set&lt;String&gt; targets = items.values().stream().filter(a -&gt; a.kind() == ArtifactKind.PLACEMENT &amp;&amp; item.id().equals(a.extensions().get(&quot;container&quot;)))</span>
+<span class="fc" id="L367">                    .map(Artifact::id).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L368">            com.taxonomy.exchange.ExchangeXml.children(xml.getDocumentElement()).forEach(c -&gt; targets.add(c.getAttribute(&quot;identifier&quot;)));</span>
+            boolean removed;
+            do {
+<span class="fc" id="L371">                removed = false;</span>
+<span class="pc bpc" id="L372" title="1 of 6 branches missed.">                for (var c : com.taxonomy.exchange.ExchangeXml.children(xml.getDocumentElement())) if (!targets.contains(c.getAttribute(&quot;source&quot;)) || !targets.contains(c.getAttribute(&quot;target&quot;))</span>
+<span class="nc bnc" id="L373" title="All 4 branches missed.">                        || c.hasAttribute(&quot;relationshipRef&quot;) &amp;&amp; !relations.contains(c.getAttribute(&quot;relationshipRef&quot;))) {</span>
+<span class="fc" id="L374">                    targets.remove(c.getAttribute(&quot;identifier&quot;)); xml.getDocumentElement().removeChild(c); removed = true;</span>
+<span class="fc" id="L375">                    losses.add(new MappingLoss(c.getAttribute(&quot;identifier&quot;), &quot;connection&quot;, &quot;LOCAL_DEPENDENCY_REMOVED&quot;, LossDisposition.TRANSFORMED,</span>
+                            &quot;View connection is omitted because its canonical relation or placement was removed locally&quot;));
+                }
+<span class="fc bfc" id="L378" title="All 2 branches covered.">            } while (removed);</span>
+<span class="fc" id="L379">            Map&lt;String, String&gt; extensions = new TreeMap&lt;&gt;(item.extensions()); extensions.put(&quot;connectionsXml&quot;, com.taxonomy.exchange.ExchangeXml.xml(xml));</span>
+<span class="fc" id="L380">            return new Artifact(item.id(), item.kind(), item.type(), item.title(), item.text(), item.attributes(), extensions);</span>
+        });
+<span class="fc" id="L382">    }</span>
+
+    public AppliedRequirement applyRequirement(RepositoryContext context, Connection connection, Artifact value, Identity previous, String rationale) {
+<span class="fc bfc" id="L385" title="All 2 branches covered.">        if (connection.projectId() == null)</span>
+<span class="fc" id="L386">            throw new IntegrationProblem(&quot;REQUIREMENT_PROJECT_REQUIRED&quot;, 422, &quot;Select a project for reviewed requirement changes or reject the requirements&quot;);</span>
+<span class="pc bpc" id="L387" title="1 of 2 branches missed.">        if (value == null) {</span>
+<span class="nc bnc" id="L388" title="All 4 branches missed.">            if (previous != null &amp;&amp; previous.requirementId() != null) projects.archiveRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context));</span>
+<span class="nc" id="L389">            return new AppliedRequirement(previous.businessIdentity(), previous.requirementId());</span>
+        }
+<span class="pc bpc" id="L391" title="4 of 8 branches missed.">        if (value.title().isBlank() || value.title().length() &gt; 240 || value.text().isBlank() || value.text().length() &gt; 100000)</span>
+<span class="nc" id="L392">            throw new IntegrationProblem(&quot;REQUIREMENT_MAPPING_REQUIRED&quot;, 422, &quot;Requirement title/text is outside the documented portfolio profile; reject or remap this object&quot;);</span>
+<span class="fc" id="L393">        ImportProvenance provenance = new ImportProvenance(&quot;integration:&quot; + connection.id() + &quot;:&quot; + stableId(connection.id(), value.id()), value.text());</span>
+<span class="pc bpc" id="L394" title="1 of 4 branches missed.">        if (previous == null || previous.requirementId() == null) {</span>
+<span class="fc" id="L395">            String key = &quot;EXT-&quot; + stableId(connection.id(), value.id()).substring(4).toUpperCase(java.util.Locale.ROOT);</span>
+<span class="fc" id="L396">            RequirementData created = projects.createRequirement(connection.projectId(), new ImportedRequirement(key, value.title(), value.text(), rationale, provenance),</span>
+<span class="fc" id="L397">                    context.username(), workspace(context));</span>
+<span class="fc" id="L398">            return new AppliedRequirement(created.requirementKey(), created.id());</span>
+        }
+<span class="fc" id="L400">        RequirementData before = projects.getRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context));</span>
+<span class="fc bfc" id="L401" title="All 2 branches covered.">        boolean textChanged = !before.requireCurrentVersion().text().equals(value.text());</span>
+<span class="pc bpc" id="L402" title="1 of 4 branches missed.">        boolean requiresReview = textChanged || before.archived();</span>
+<span class="pc bpc" id="L403" title="1 of 4 branches missed.">        if (!before.title().equals(value.title()) || requiresReview)</span>
+<span class="fc" id="L404">            projects.updateRequirement(connection.projectId(), previous.requirementId(), value.title(), requiresReview, context.username(), workspace(context));</span>
+<span class="fc bfc" id="L405" title="All 2 branches covered.">        if (textChanged) projects.addRequirementVersion(connection.projectId(), previous.requirementId(), value.text(), rationale, provenance, context.username(), workspace(context));</span>
+<span class="fc" id="L406">        return new AppliedRequirement(previous.businessIdentity(), previous.requirementId());</span>
+    }
+
+<span class="fc" id="L409">    public enum EndpointKind { ARCHITECTURE_ELEMENT, REQUIREMENT, PACKAGE }</span>
+<span class="fc" id="L410">    public record EndpointRef(EndpointKind kind, String businessIdentity, Long requirementId) {}</span>
+    public record EndpointIndex(Map&lt;String, EndpointRef&gt; external) {
+<span class="fc" id="L412">        public EndpointIndex { external = Map.copyOf(external); }</span>
+    }
+    public Map&lt;String, RequirementApplyPlan&gt; planRequirements(RepositoryContext context, Connection connection,
+            Map&lt;String, Artifact&gt; selected, List&lt;Identity&gt; mappings, String dsl) {
+<span class="fc" id="L416">        Map&lt;String, Identity&gt; known = new TreeMap&lt;&gt;(); mappings.forEach(m -&gt; known.put(m.externalId(), m));</span>
+<span class="fc" id="L417">        Map&lt;String, RequirementApplyPlan&gt; plans = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L418">        Map&lt;String, RequirementApplyPlan&gt; canonical = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L419" title="All 4 branches covered.">        for (Artifact artifact : selected.values()) if (artifact.kind() == ArtifactKind.REQUIREMENT) {</span>
+<span class="pc bpc" id="L420" title="1 of 2 branches missed.">            if (connection.projectId() == null) throw new IntegrationProblem(&quot;REQUIREMENT_PROJECT_REQUIRED&quot;, 422, &quot;Select a project for reviewed requirements&quot;);</span>
+<span class="pc bpc" id="L421" title="4 of 8 branches missed.">            if (artifact.title().isBlank() || artifact.title().length() &gt; 240 || artifact.text().isBlank() || artifact.text().length() &gt; 100000)</span>
+<span class="nc" id="L422">                throw new IntegrationProblem(&quot;REQUIREMENT_MAPPING_REQUIRED&quot;, 422, &quot;Requirement title/text is outside the portfolio profile&quot;);</span>
+<span class="fc" id="L423">            Identity previous = known.get(ExchangeItems.key(artifact));</span>
+<span class="pc bpc" id="L424" title="1 of 4 branches missed.">            String key = previous != null &amp;&amp; previous.requirementId() != null</span>
+<span class="fc" id="L425">                    ? projects.getRequirement(connection.projectId(), previous.requirementId(), context.username(), workspace(context)).requirementKey()</span>
+<span class="fc" id="L426">                    : &quot;EXT-&quot; + stableId(connection.id(), artifact.id()).substring(4).toUpperCase(java.util.Locale.ROOT);</span>
+<span class="fc" id="L427">            RequirementApplyPlan plan = projects.planRequirementApply(connection.projectId(), key, dsl, context.username(), workspace(context));</span>
+<span class="fc" id="L428">            RequirementApplyPlan collision = canonical.putIfAbsent(plan.canonicalIdentity(), plan);</span>
+<span class="pc bpc" id="L429" title="3 of 4 branches missed.">            if (collision != null &amp;&amp; !collision.equals(plan)) throw new IntegrationProblem(&quot;REQUIREMENT_IDENTITY_MISMATCH&quot;, 409, &quot;Planned requirement identities collide&quot;);</span>
+<span class="fc" id="L430">            plans.put(ExchangeItems.key(artifact), plan);</span>
+        }
+<span class="fc" id="L432">        return Map.copyOf(plans);</span>
+    }
+    public EndpointIndex indexEndpoints(Connection connection, Map&lt;String, Artifact&gt; selected, List&lt;Identity&gt; mappings,
+                                         Map&lt;String, RequirementApplyPlan&gt; plans) {
+<span class="fc" id="L436">        Map&lt;String, Identity&gt; known = new TreeMap&lt;&gt;(); mappings.forEach(m -&gt; known.put(m.externalId(), m));</span>
+<span class="fc" id="L437">        Map&lt;String, EndpointRef&gt; endpoints = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L438" title="All 2 branches covered.">        for (Artifact a : selected.values()) {</span>
+<span class="fc" id="L439">            Identity prior = known.get(ExchangeItems.key(a));</span>
+<span class="fc bfc" id="L440" title="All 4 branches covered.">            if (a.kind() == ArtifactKind.ELEMENT || a.kind() == ArtifactKind.SPECIFICATION)</span>
+<span class="fc bfc" id="L441" title="All 2 branches covered.">                endpoints.put(a.id(), new EndpointRef(a.kind() == ArtifactKind.ELEMENT ? EndpointKind.ARCHITECTURE_ELEMENT : EndpointKind.PACKAGE,</span>
+<span class="fc" id="L442">                        businessId(connection, prior, a), null));</span>
+<span class="fc bfc" id="L443" title="All 2 branches covered.">            else if (a.kind() == ArtifactKind.REQUIREMENT) {</span>
+<span class="fc" id="L444">                RequirementApplyPlan plan = plans.get(ExchangeItems.key(a));</span>
+<span class="fc bfc" id="L445" title="All 4 branches covered.">                if (plan != null) endpoints.put(a.id(), new EndpointRef(EndpointKind.REQUIREMENT, plan.canonicalIdentity(), prior == null ? null : prior.requirementId()));</span>
+            }
+<span class="fc" id="L447">        }</span>
+<span class="fc" id="L448">        return new EndpointIndex(endpoints);</span>
+    }
+    /** Pure validation of the full planned state, including real/planned requirement identities. */
+    public void validateCompletePlan(String dsl, List&lt;ArchitectureCommand&gt; commands, Map&lt;String, RequirementApplyPlan&gt; plans) {
+<span class="fc" id="L452">        String preview = dsl;</span>
+<span class="fc" id="L453">        ArchitectureDslCommands transformer = new ArchitectureDslCommands();</span>
+<span class="fc bfc" id="L454" title="All 4 branches covered.">        for (ArchitectureCommand command : commands) if (!(command instanceof UpsertRequirementMapping)) preview = transformer.apply(preview, command).dsl();</span>
+<span class="fc" id="L455">        Set&lt;String&gt; planned = plans.values().stream().map(RequirementApplyPlan::canonicalIdentity).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc bfc" id="L456" title="All 4 branches covered.">        for (ArchitectureCommand command : commands) if (command instanceof UpsertRequirementMapping mapping) {</span>
+<span class="fc" id="L457">            try { transformer.validatePlannedRequirementMapping(preview, mapping, planned); }</span>
+<span class="fc" id="L458">            catch (ArchitectureDslCommands.CommandProblem problem) {</span>
+<span class="fc" id="L459">                throw new IntegrationProblem(problem.code(), 422, problem.getMessage());</span>
+<span class="fc" id="L460">            }</span>
+        }
+<span class="fc" id="L462">    }</span>
+
+    public List&lt;ArchitectureCommand&gt; architectureCommands(Connection connection, String dsl, Map&lt;String, Artifact&gt; current,
+                                                         Map&lt;String, Artifact&gt; selected, List&lt;Identity&gt; mappings) {
+<span class="fc" id="L466">        return architectureCommands(connection, dsl, current, selected, mappings,</span>
+<span class="fc" id="L467">                indexEndpoints(connection, selected, mappings, Map.of()), Map.of());</span>
+    }
+
+    public List&lt;ArchitectureCommand&gt; architectureCommands(Connection connection, String dsl, Map&lt;String, Artifact&gt; current,
+            Map&lt;String, Artifact&gt; selected, List&lt;Identity&gt; mappings, EndpointIndex endpoints, Map&lt;String, EndpointOverride&gt; overrides) {
+<span class="fc" id="L472">        return architectureCommands(connection, dsl, current, selected, mappings, endpoints, overrides, &quot;Reviewed external connector&quot;);</span>
+    }
+    public List&lt;ArchitectureCommand&gt; architectureCommands(Connection connection, String dsl, Map&lt;String, Artifact&gt; current,
+            Map&lt;String, Artifact&gt; selected, List&lt;Identity&gt; mappings, EndpointIndex endpoints, Map&lt;String, EndpointOverride&gt; overrides, String rationale) {
+<span class="fc" id="L476">        Map&lt;String, Identity&gt; known = new TreeMap&lt;&gt;(); mappings.forEach(m -&gt; known.put(m.externalId(), m));</span>
+<span class="fc" id="L477">        Map&lt;String, String&gt; elementIds = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">        selected.values().stream().filter(a -&gt; a.kind() == ArtifactKind.ELEMENT).forEach(a -&gt; elementIds.put(a.id(), businessId(connection, known.get(ExchangeItems.key(a)), a)));</span>
+<span class="fc" id="L479">        List&lt;ArchitectureCommand&gt; commands = new ArrayList&lt;&gt;(); Map&lt;String, BlockAst&gt; blocks = ArchitectureSemanticPatch.index(dsl);</span>
+<span class="pc bpc" id="L480" title="1 of 6 branches missed.">        for (var entry : current.entrySet()) if (entry.getValue().kind() == ArtifactKind.VIEW &amp;&amp; !selected.containsKey(entry.getKey())) {</span>
+<span class="nc" id="L481">            Identity prior = known.get(entry.getKey());</span>
+<span class="nc bnc" id="L482" title="All 4 branches missed.">            if (prior != null &amp;&amp; blocks.containsKey(&quot;view:&quot; + prior.businessIdentity())) commands.add(new DeleteArchitectureView(prior.businessIdentity()));</span>
+        }
+<span class="fc" id="L484">        Map&lt;String, RelationTarget&gt; relationTargets = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L485" title="All 4 branches covered.">        for (Artifact relation : selected.values()) if (relation.kind() == ArtifactKind.RELATION)</span>
+<span class="fc" id="L486">            relationTargets.put(ExchangeItems.key(relation), relationTarget(relation, endpoints, overrides.get(ExchangeItems.key(relation))));</span>
+        // Remove replaced relations first; dependency checks remain server-authoritative.
+<span class="fc bfc" id="L488" title="All 4 branches covered.">        for (var entry : current.entrySet()) if (entry.getValue().kind() == ArtifactKind.RELATION) {</span>
+<span class="fc" id="L489">            Artifact next = selected.get(entry.getKey()); Identity prior = known.get(entry.getKey());</span>
+<span class="pc bpc" id="L490" title="1 of 6 branches missed.">            if (prior != null &amp;&amp; blocks.containsKey(&quot;relation:&quot; + prior.businessIdentity())</span>
+<span class="fc bfc" id="L491" title="All 2 branches covered.">                    &amp;&amp; (next == null || !prior.businessIdentity().equals(relationTargets.get(entry.getKey()).businessIdentity())))</span>
+<span class="fc" id="L492">                commands.add(new DeleteArchitectureRelation(parseRelation(prior.businessIdentity())));</span>
+<span class="pc bpc" id="L493" title="2 of 6 branches missed.">            if (prior != null &amp;&amp; blocks.containsKey(&quot;mapping:&quot; + prior.businessIdentity())</span>
+<span class="pc bpc" id="L494" title="1 of 2 branches missed.">                    &amp;&amp; (next == null || !prior.businessIdentity().equals(relationTargets.get(entry.getKey()).businessIdentity()))) {</span>
+<span class="nc" id="L495">                String[] pair = prior.businessIdentity().split(&quot; -&gt; &quot;, 2);</span>
+<span class="nc" id="L496">                commands.add(new DeleteRequirementMapping(pair[0], pair[1]));</span>
+            }
+        }
+<span class="fc bfc" id="L499" title="All 4 branches covered.">        for (Artifact artifact : selected.values()) if (artifact.kind() == ArtifactKind.ELEMENT) {</span>
+<span class="fc bfc" id="L500" title="All 2 branches covered.">            if (ExchangeItems.fields(artifact).equals(ExchangeItems.fields(current.get(ExchangeItems.key(artifact))))) continue;</span>
+<span class="fc" id="L501">            String internalId = elementIds.get(artifact.id()); String type = artifact.extensions().get(&quot;canonicalType&quot;);</span>
+<span class="pc bpc" id="L502" title="1 of 2 branches missed.">            if (type == null) throw new IntegrationProblem(&quot;UNSUPPORTED_ELEMENT_TYPE&quot;, 422, &quot;Reject or explicitly remap the unsupported element type&quot;);</span>
+<span class="fc" id="L503">            Map&lt;String, String&gt; properties = new TreeMap&lt;&gt;(Map.of(&quot;title&quot;, artifact.title(), &quot;description&quot;, artifact.text()));</span>
+<span class="fc bfc" id="L504" title="All 2 branches covered.">            ArchitectureDslCommands.ELEMENT_PROPERTIES.stream().filter(p -&gt; !Set.of(&quot;title&quot;, &quot;description&quot;).contains(p))</span>
+<span class="fc bfc" id="L505" title="All 2 branches covered.">                    .forEach(p -&gt; { if (artifact.extensions().containsKey(&quot;taxonomy:&quot; + p)) properties.put(p, artifact.extensions().get(&quot;taxonomy:&quot; + p)); });</span>
+<span class="fc bfc" id="L506" title="All 2 branches covered.">            commands.add(blocks.containsKey(&quot;element:&quot; + internalId) ? new UpdateArchitectureElement(internalId, type, properties) : new CreateArchitectureElement(internalId, type, properties));</span>
+<span class="fc" id="L507">            BlockAst priorBlock = blocks.get(&quot;element:&quot; + internalId);</span>
+<span class="fc bfc" id="L508" title="All 2 branches covered.">            if (priorBlock != null) {</span>
+<span class="fc" id="L509">                Set&lt;String&gt; cleared = priorBlock.getProperties().stream().map(com.taxonomy.dsl.ast.PropertyAst::key)</span>
+<span class="pc bpc" id="L510" title="1 of 4 branches missed.">                        .filter(p -&gt; ArchitectureDslCommands.ELEMENT_PROPERTIES.contains(p) &amp;&amp; !properties.containsKey(p)).collect(java.util.stream.Collectors.toSet());</span>
+<span class="pc bpc" id="L511" title="1 of 2 branches missed.">                if (!cleared.isEmpty()) commands.add(new ClearArchitectureElementProperties(internalId, cleared));</span>
+            }
+<span class="fc" id="L513">            commands.add(new SetExchangeProperties(&quot;element&quot;, internalId, exchangeProperties(connection, artifact)));</span>
+        }
+<span class="fc bfc" id="L515" title="All 2 branches covered.">        if (supportsNativePackages(connection)) commands.addAll(IntegrationPackageProjection.commands(connection, dsl, current, selected, mappings, this));</span>
+<span class="fc bfc" id="L516" title="All 4 branches covered.">        for (Artifact artifact : selected.values()) if (artifact.kind() == ArtifactKind.VIEW) {</span>
+<span class="pc bpc" id="L517" title="1 of 4 branches missed.">            boolean layoutChanged = !current.entrySet().stream().filter(e -&gt; e.getValue().kind() == ArtifactKind.PLACEMENT &amp;&amp; artifact.id().equals(e.getValue().extensions().get(&quot;container&quot;)))</span>
+<span class="fc" id="L518">                    .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -&gt; ExchangeItems.fields(e.getValue())))</span>
+<span class="pc bpc" id="L519" title="1 of 6 branches missed.">                    .equals(selected.entrySet().stream().filter(e -&gt; e.getValue().kind() == ArtifactKind.PLACEMENT &amp;&amp; artifact.id().equals(e.getValue().extensions().get(&quot;container&quot;)))</span>
+<span class="fc" id="L520">                            .collect(java.util.stream.Collectors.toMap(Map.Entry::getKey, e -&gt; ExchangeItems.fields(e.getValue()))));</span>
+<span class="pc bpc" id="L521" title="1 of 4 branches missed.">            if (!layoutChanged &amp;&amp; ExchangeItems.fields(artifact).equals(ExchangeItems.fields(current.get(ExchangeItems.key(artifact))))) continue;</span>
+<span class="pc bpc" id="L522" title="1 of 4 branches missed.">            Set&lt;String&gt; members = selected.values().stream().filter(a -&gt; a.kind() == ArtifactKind.PLACEMENT &amp;&amp; artifact.id().equals(a.extensions().get(&quot;container&quot;)))</span>
+<span class="fc" id="L523">                    .map(a -&gt; elementIds.get(a.extensions().get(&quot;artifact&quot;))).filter(Objects::nonNull).collect(java.util.stream.Collectors.toCollection(java.util.LinkedHashSet::new));</span>
+<span class="fc" id="L524">            String viewId = businessId(connection, known.get(ExchangeItems.key(artifact)), artifact);</span>
+<span class="fc" id="L525">            BlockAst existingView = blocks.get(&quot;view:&quot; + viewId);</span>
+<span class="pc bpc" id="L526" title="1 of 4 branches missed.">            Set&lt;String&gt; managed = mappings.stream().filter(m -&gt; m.internal() != null &amp;&amp; m.internal().kind() == ArtifactKind.ELEMENT).map(Identity::businessIdentity).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc bfc" id="L527" title="All 6 branches covered.">            if (existingView != null) existingView.getProperties().stream().filter(p -&gt; p.key().equals(&quot;include&quot;) &amp;&amp; !managed.contains(p.value())).forEach(p -&gt; members.add(p.value()));</span>
+<span class="fc" id="L528">            commands.add(new UpsertArchitectureView(viewId, artifact.title(), artifact.text(), List.copyOf(members), exchangeProperties(connection, artifact)));</span>
+        }
+<span class="fc bfc" id="L530" title="All 6 branches covered.">        for (var entry : current.entrySet()) if (entry.getValue().kind() == ArtifactKind.ELEMENT &amp;&amp; !selected.containsKey(entry.getKey())) {</span>
+<span class="pc bpc" id="L531" title="2 of 4 branches missed.">            Identity prior = known.get(entry.getKey()); if (prior != null &amp;&amp; blocks.containsKey(&quot;element:&quot; + prior.businessIdentity())) commands.add(new DeleteArchitectureElement(prior.businessIdentity()));</span>
+        }
+<span class="fc bfc" id="L533" title="All 4 branches covered.">        for (Artifact relation : selected.values()) if (relation.kind() == ArtifactKind.RELATION) {</span>
+<span class="fc bfc" id="L534" title="All 2 branches covered.">            if (ExchangeItems.fields(relation).equals(ExchangeItems.fields(current.get(ExchangeItems.key(relation))))) continue;</span>
+<span class="fc" id="L535">            RelationTarget target = relationTargets.get(ExchangeItems.key(relation));</span>
+<span class="fc bfc" id="L536" title="All 2 branches covered.">            if (target.projection() == RelationProjection.PRESERVE_ONLY) continue;</span>
+<span class="fc bfc" id="L537" title="All 2 branches covered.">            if (target.projection() == RelationProjection.REQUIREMENT_MAPPING) {</span>
+<span class="fc" id="L538">                commands.add(new UpsertRequirementMapping(target.source(), target.target(), rationale, exchangeProperties(connection, relation)));</span>
+<span class="fc" id="L539">                continue;</span>
+            }
+<span class="fc" id="L541">            RelationKey key = new RelationKey(target.source(), target.type(), target.target());</span>
+<span class="fc" id="L542">            String status = relation.extensions().getOrDefault(&quot;taxonomy:status&quot;, &quot;accepted&quot;);</span>
+<span class="pc bpc" id="L543" title="1 of 2 branches missed.">            if (!blocks.containsKey(&quot;relation:&quot; + key.id())) commands.add(new CreateArchitectureRelation(key, status));</span>
+<span class="nc bnc" id="L544" title="All 2 branches missed.">            else if (!status.equals(blocks.get(&quot;relation:&quot; + key.id()).property(&quot;status&quot;))) commands.add(new UpdateArchitectureRelation(key, status));</span>
+<span class="fc" id="L545">            commands.add(new SetExchangeProperties(&quot;relation&quot;, key.id(), exchangeProperties(connection, relation)));</span>
+        }
+<span class="pc bpc" id="L547" title="1 of 2 branches missed.">        if (commands.size() &gt; 2000) throw new IntegrationProblem(&quot;APPLY_COMMAND_LIMIT&quot;, 422, &quot;Review at most 1000 semantic objects per import; the preview can contain a larger scope&quot;);</span>
+<span class="fc" id="L548">        return List.copyOf(commands);</span>
+    }
+
+    public static boolean nativePackages(Connection connection) {
+<span class="fc bfc" id="L552" title="All 4 branches covered.">        return SparxSnapshots.isSparx(connection.connectorId()) &amp;&amp; &quot;2&quot;.equals(connection.profileVersion());</span>
+    }
+<span class="fc" id="L554">    public record RelationTarget(RelationProjection projection, String source, String target, String type) {</span>
+        public String businessIdentity() {
+<span class="pc bpc" id="L556" title="1 of 4 branches missed.">            return projection == RelationProjection.PRESERVE_ONLY ? &quot;preserved&quot; : source + (projection == RelationProjection.REQUIREMENT_MAPPING ? &quot; -&gt; &quot; : &quot; &quot; + type + &quot; &quot;) + target;</span>
+        }
+    }
+    /** Pure endpoint normalization shared by scoped publication review; callers supply locally validated identities. */
+    public static RelationTarget relationTarget(Artifact relation, EndpointIndex index, EndpointOverride override) {
+        // Retained approval authorizes projection/ends; canonicalType is the effective relation type.
+        // Historical nativeType evidence must not override a later reviewed canonical remap.
+<span class="fc bfc" id="L563" title="All 4 branches covered.">        if (override == null &amp;&amp; relation.extensions().containsKey(&quot;nativeProjection&quot;)) override = new EndpointOverride(</span>
+<span class="fc" id="L564">                relation.extensions().get(&quot;nativeSource&quot;), relation.extensions().get(&quot;nativeTarget&quot;),</span>
+<span class="fc" id="L565">                RelationProjection.valueOf(relation.extensions().get(&quot;nativeProjection&quot;)), null);</span>
+<span class="fc bfc" id="L566" title="All 4 branches covered.">        if (override != null &amp;&amp; override.projection() == RelationProjection.PRESERVE_ONLY)</span>
+<span class="fc" id="L567">            return new RelationTarget(RelationProjection.PRESERVE_ONLY, null, null, null);</span>
+<span class="fc bfc" id="L568" title="All 2 branches covered.">        if (&quot;Bi-Directional&quot;.equals(relation.extensions().get(&quot;direction&quot;)))</span>
+<span class="fc" id="L569">            throw new IntegrationProblem(&quot;SPARX_DIRECTION_UNMAPPED&quot;, 422, &quot;Bidirectional connector requires preserve-only review&quot;);</span>
+<span class="fc" id="L570">        EndpointRef source = index.external().get(relation.extensions().get(&quot;source&quot;));</span>
+<span class="fc" id="L571">        EndpointRef target = index.external().get(relation.extensions().get(&quot;target&quot;));</span>
+<span class="fc bfc" id="L572" title="All 2 branches covered.">        if (&quot;Destination -&gt; Source&quot;.equals(relation.extensions().get(&quot;direction&quot;))) { EndpointRef swap = source; source = target; target = swap; }</span>
+<span class="fc bfc" id="L573" title="All 2 branches covered.">        if (override != null) {</span>
+<span class="pc bpc" id="L574" title="1 of 2 branches missed.">            if (override.projection() == null) throw new IntegrationProblem(&quot;SPARX_ENDPOINT_MAPPING_REQUIRED&quot;, 422, &quot;Choose an endpoint projection&quot;);</span>
+<span class="fc" id="L575">            EndpointRef reviewedSource = nativeEndpoint(index, override.sourceInternalIdentity());</span>
+<span class="fc" id="L576">            EndpointRef reviewedTarget = nativeEndpoint(index, override.targetInternalIdentity());</span>
+<span class="pc bpc" id="L577" title="4 of 8 branches missed.">            if (source == null || target == null || reviewedSource == null || reviewedTarget == null</span>
+<span class="pc bpc" id="L578" title="1 of 4 branches missed.">                    || source.kind() != reviewedSource.kind() || target.kind() != reviewedTarget.kind()</span>
+<span class="pc bpc" id="L579" title="1 of 4 branches missed.">                    || !source.businessIdentity().equals(reviewedSource.businessIdentity()) || !target.businessIdentity().equals(reviewedTarget.businessIdentity()))</span>
+<span class="fc" id="L580">                throw new IntegrationProblem(&quot;SPARX_ENDPOINT_KIND_UNMAPPED&quot;, 422,</span>
+                        &quot;Reviewed identities must match the exact normalized connector ends; endpoint retargeting is unsupported&quot;);
+<span class="fc" id="L582">            source = reviewedSource; target = reviewedTarget;</span>
+        }
+<span class="pc bpc" id="L584" title="2 of 4 branches missed.">        if (source == null || target == null) throw new IntegrationProblem(&quot;SPARX_ENDPOINT_KIND_UNMAPPED&quot;, 422, &quot;Connector endpoint is outside the accepted scope&quot;);</span>
+<span class="fc bfc" id="L585" title="All 2 branches covered.">        RelationProjection projection = override == null ? RelationProjection.ARCHITECTURE_RELATION : override.projection();</span>
+<span class="pc bpc" id="L586" title="2 of 8 branches missed.">        if (source.kind() == EndpointKind.PACKAGE || target.kind() == EndpointKind.PACKAGE || source.kind() == EndpointKind.REQUIREMENT &amp;&amp; target.kind() == EndpointKind.REQUIREMENT)</span>
+<span class="fc" id="L587">            throw new IntegrationProblem(&quot;SPARX_ENDPOINT_KIND_UNMAPPED&quot;, 422, &quot;Package and requirement-pair connectors require preserve-only review&quot;);</span>
+<span class="fc bfc" id="L588" title="All 2 branches covered.">        if (projection == RelationProjection.REQUIREMENT_MAPPING) {</span>
+<span class="pc bpc" id="L589" title="2 of 4 branches missed.">            if (source.kind() != EndpointKind.REQUIREMENT || target.kind() != EndpointKind.ARCHITECTURE_ELEMENT)</span>
+<span class="nc" id="L590">                throw new IntegrationProblem(&quot;SPARX_ENDPOINT_KIND_UNMAPPED&quot;, 422, &quot;Requirement mapping direction is requirement to element&quot;);</span>
+<span class="fc" id="L591">            return new RelationTarget(projection, source.businessIdentity(), target.businessIdentity(), null);</span>
+        }
+<span class="pc bpc" id="L593" title="1 of 4 branches missed.">        if (source.kind() != EndpointKind.ARCHITECTURE_ELEMENT || target.kind() != EndpointKind.ARCHITECTURE_ELEMENT)</span>
+<span class="fc" id="L594">            throw new IntegrationProblem(&quot;SPARX_ENDPOINT_MAPPING_REQUIRED&quot;, 422, &quot;Requirement connectors need an explicit requirement mapping projection&quot;);</span>
+<span class="pc bpc" id="L595" title="1 of 4 branches missed.">        String type = override != null &amp;&amp; override.canonicalType() != null ? override.canonicalType() : relation.extensions().get(&quot;canonicalType&quot;);</span>
+<span class="pc bpc" id="L596" title="1 of 2 branches missed.">        if (type == null) throw new IntegrationProblem(&quot;RELATION_MAPPING_REQUIRED&quot;, 422, &quot;Select a native relation type&quot;);</span>
+<span class="fc" id="L597">        return new RelationTarget(projection, source.businessIdentity(), target.businessIdentity(), type);</span>
+    }
+    private static EndpointRef nativeEndpoint(EndpointIndex index, String identity) {
+<span class="fc" id="L600">        List&lt;EndpointRef&gt; matches = index.external().values().stream().filter(e -&gt; e.businessIdentity().equals(identity)).distinct().toList();</span>
+<span class="pc bpc" id="L601" title="1 of 2 branches missed.">        if (matches.size() &gt; 1) throw new IntegrationProblem(&quot;SPARX_ENDPOINT_KIND_UNMAPPED&quot;, 422, &quot;Native endpoint identity is ambiguous&quot;);</span>
+<span class="pc bpc" id="L602" title="1 of 2 branches missed.">        return matches.isEmpty() ? null : matches.getFirst();</span>
+    }
+    public String relationBusinessId(Artifact relation, EndpointIndex index, EndpointOverride override) {
+<span class="fc" id="L605">        RelationTarget target = relationTarget(relation, index, override);</span>
+<span class="fc bfc" id="L606" title="All 2 branches covered.">        return target.projection() == RelationProjection.PRESERVE_ONLY ? &quot;preserved:&quot; + relation.id() : target.businessIdentity();</span>
+    }
+
+    public String businessId(Connection connection, Identity existing, Artifact artifact) {
+<span class="fc bfc" id="L610" title="All 2 branches covered.">        if (existing != null) return existing.businessIdentity();</span>
+<span class="fc" id="L611">        return stableId(connection.id(), artifact.kind() + &quot;:&quot; + artifact.id());</span>
+    }
+    public String relationBusinessId(Artifact relation, Connection connection, Map&lt;String, Artifact&gt; selected, List&lt;Identity&gt; mappings) {
+<span class="pc" id="L614">        Map&lt;String, Identity&gt; known = new LinkedHashMap&lt;&gt;(); mappings.forEach(m -&gt; known.put(m.externalId(), m));</span>
+<span class="fc bfc" id="L615" title="All 2 branches covered.">        Map&lt;String, String&gt; ids = new LinkedHashMap&lt;&gt;(); selected.values().stream().filter(a -&gt; a.kind() == ArtifactKind.ELEMENT)</span>
+<span class="fc" id="L616">                .forEach(a -&gt; ids.put(a.id(), businessId(connection, known.get(ExchangeItems.key(a)), a)));</span>
+<span class="fc" id="L617">        return relationKey(relation, ids).id();</span>
+    }
+    public UnaryOperator&lt;String&gt; portfolioContribution(RepositoryContext context) {
+<span class="fc" id="L620">        return source -&gt; ArchitectureSemanticPatch.applyProjection(source, projects.contributeTo(source, context.username(), workspace(context)));</span>
+    }
+    private Map&lt;String, String&gt; exchangeProperties(Connection connection, Artifact artifact) {
+<span class="fc" id="L623">        return Map.of(&quot;x-exchange-connection&quot;, connection.id().toString(), &quot;x-exchange-id&quot;, artifact.id(), &quot;x-exchange-profile&quot;, connection.connectorId(),</span>
+<span class="fc" id="L624">                &quot;x-exchange-artifact&quot;, json.write(artifact));</span>
+    }
+    private static RelationKey relationKey(Artifact relation, Map&lt;String, String&gt; elements) {
+<span class="fc" id="L627">        String source = elements.get(relation.extensions().get(&quot;source&quot;)), target = elements.get(relation.extensions().get(&quot;target&quot;));</span>
+<span class="fc" id="L628">        String type = relation.extensions().get(&quot;canonicalType&quot;);</span>
+<span class="pc bpc" id="L629" title="3 of 6 branches missed.">        if (source == null || target == null || type == null) throw new IntegrationProblem(&quot;RELATION_MAPPING_REQUIRED&quot;, 422, &quot;Relation endpoints and type must belong to the accepted supported model&quot;);</span>
+<span class="fc" id="L630">        String direction = relation.extensions().get(&quot;direction&quot;);</span>
+<span class="fc bfc" id="L631" title="All 2 branches covered.">        if (&quot;Bi-Directional&quot;.equals(direction))</span>
+<span class="fc" id="L632">            throw new IntegrationProblem(&quot;SPARX_DIRECTION_UNMAPPED&quot;, 422, &quot;Reject the bidirectional connector; this profile cannot represent both directions as one native relation&quot;);</span>
+<span class="fc bfc" id="L633" title="All 2 branches covered.">        if (&quot;Destination -&gt; Source&quot;.equals(direction)) return new RelationKey(target, type, source);</span>
+<span class="fc" id="L634">        return new RelationKey(source, type, target);</span>
+    }
+<span class="fc" id="L636">    private static RelationKey parseRelation(String value) { String[] tokens = value.split(&quot; &quot;, 3); return new RelationKey(tokens[0], tokens[1], tokens[2]); }</span>
+<span class="fc" id="L637">    public static String stableId(UUID connection, String id) { return &quot;ext-&quot; + UUID.nameUUIDFromBytes((connection + &quot;\u0000&quot; + id).getBytes(StandardCharsets.UTF_8)).toString(); }</span>
+    static String externalId(Connection connection, String identity) {
+<span class="fc bfc" id="L639" title="All 2 branches covered.">        return SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.externalId(connection.id(), identity) : stableId(connection.id(), identity);</span>
+    }
+    private static String requirementExternalId(Connection connection, Long identity) {
+<span class="fc bfc" id="L642" title="All 2 branches covered.">        return SparxSnapshots.isSparx(connection.connectorId()) ? externalId(connection, &quot;export-requirement:&quot; + identity) : &quot;taxonomy-requirement-&quot; + identity;</span>
+    }
+    private static String elementType(Connection connection, String canonical) {
+<span class="fc bfc" id="L645" title="All 2 branches covered.">        return SparxSnapshots.isSparx(connection.connectorId()) ? SparxMappingProfile.umlType(canonical) : archimateType(canonical);</span>
+    }
+    public static boolean architectureProfile(Connection connection) {
+<span class="fc bfc" id="L648" title="All 4 branches covered.">        return connection.connectorId().equals(ArchiMateExchangeCodec.PROFILE) || SparxSnapshots.isSparx(connection.connectorId());</span>
+    }
+<span class="fc" id="L650">    public static WorkspaceContext workspace(RepositoryContext context) { return new WorkspaceContext(context.username(), context.workspaceId(), context.branch(), context.repositoryId()); }</span>
+<span class="fc bfc" id="L651" title="All 2 branches covered.">    private static String value(String value) { return value == null ? &quot;&quot; : value; }</span>
+    public static String archimateType(String canonical) {
+<span class="pc bpc" id="L653" title="7 of 9 branches missed.">        return switch (canonical) {</span>
+<span class="nc" id="L654">            case &quot;Capability&quot; -&gt; &quot;Capability&quot;; case &quot;Process&quot; -&gt; &quot;BusinessProcess&quot;; case &quot;BusinessRole&quot; -&gt; &quot;BusinessRole&quot;;</span>
+<span class="pc" id="L655">            case &quot;CoreService&quot; -&gt; &quot;ApplicationService&quot;; case &quot;COIService&quot; -&gt; &quot;BusinessService&quot;; case &quot;CommunicationsService&quot; -&gt; &quot;CommunicationNetwork&quot;;</span>
+<span class="pc" id="L656">            case &quot;InformationProduct&quot; -&gt; &quot;DataObject&quot;; case &quot;UserApplication&quot;, &quot;System&quot;, &quot;Component&quot; -&gt; &quot;ApplicationComponent&quot;;</span>
+<span class="nc" id="L657">            default -&gt; throw new IntegrationProblem(&quot;UNSUPPORTED_ELEMENT_TYPE&quot;, 422, &quot;Canonical element type has no exchange mapping&quot;);</span>
+        };
+    }
+    public static String archimateRelation(String canonical) {
+<span class="pc bpc" id="L661" title="7 of 8 branches missed.">        return switch (canonical) {</span>
+<span class="nc" id="L662">            case &quot;REALIZES&quot; -&gt; &quot;Realization&quot;; case &quot;SUPPORTS&quot; -&gt; &quot;Serving&quot;; case &quot;ASSIGNED_TO&quot; -&gt; &quot;Assignment&quot;;</span>
+<span class="nc" id="L663">            case &quot;CONSUMES&quot;, &quot;PRODUCES&quot; -&gt; &quot;Access&quot;; case &quot;COMMUNICATES_WITH&quot; -&gt; &quot;Flow&quot;; case &quot;CONTAINS&quot; -&gt; &quot;Composition&quot;;</span>
+<span class="nc" id="L664">            case &quot;RELATED_TO&quot; -&gt; &quot;Association&quot;;</span>
+<span class="fc" id="L665">            default -&gt; null;</span>
+        };
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

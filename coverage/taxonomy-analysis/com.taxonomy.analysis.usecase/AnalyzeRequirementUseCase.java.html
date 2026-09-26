@@ -1,0 +1,189 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalyzeRequirementUseCase.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.usecase</a> &gt; <span class="el_source">AnalyzeRequirementUseCase.java</span></div><h1>AnalyzeRequirementUseCase.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.usecase;
+
+import com.taxonomy.analysis.service.AiPromptBudgetPolicy;
+import com.taxonomy.analysis.service.AnalysisRelationGenerator;
+import com.taxonomy.analysis.service.LlmProvider;
+import com.taxonomy.analysis.service.LlmService;
+import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.export.DiagramViewMetadata;
+import com.taxonomy.architecture.service.ArchitectureReportMetadataPort;
+import com.taxonomy.relations.service.HypothesisService;
+import com.taxonomy.workspace.service.WorkspaceViewContextReadPort;
+import org.springframework.stereotype.Service;
+import org.springframework.beans.factory.annotation.Autowired;
+import com.taxonomy.analysis.service.AnalysisProgressRegistry;
+import com.taxonomy.analysis.service.AnalysisRunControl;
+import com.taxonomy.analysis.service.AnalysisStoppedException;
+
+import java.util.Locale;
+
+@Service
+public class AnalyzeRequirementUseCase {
+
+    @Autowired
+    private AnalysisProgressRegistry analysisProgressRegistry;
+
+    @Autowired
+    private com.taxonomy.analysis.relations.RequirementRelationSearchService requirementRelationSearch;
+
+    private final LlmService llmService;
+    private final AiPromptBudgetPolicy promptBudgetPolicy;
+    private final RequirementArchitectureViewService architectureViewService;
+    private final AnalysisRelationGenerator analysisRelationGenerator;
+    private final HypothesisService hypothesisService;
+    private final WorkspaceViewContextReadPort repositoryStateService;
+    private final ArchitectureReportMetadataPort metadataPort;
+
+    public AnalyzeRequirementUseCase(
+            LlmService llmService,
+            AiPromptBudgetPolicy promptBudgetPolicy,
+            RequirementArchitectureViewService architectureViewService,
+            AnalysisRelationGenerator analysisRelationGenerator,
+            HypothesisService hypothesisService,
+            WorkspaceViewContextReadPort repositoryStateService,
+<span class="fc" id="L46">            ArchitectureReportMetadataPort metadataPort) {</span>
+<span class="fc" id="L47">        this.llmService = llmService;</span>
+<span class="fc" id="L48">        this.promptBudgetPolicy = promptBudgetPolicy;</span>
+<span class="fc" id="L49">        this.architectureViewService = architectureViewService;</span>
+<span class="fc" id="L50">        this.analysisRelationGenerator = analysisRelationGenerator;</span>
+<span class="fc" id="L51">        this.hypothesisService = hypothesisService;</span>
+<span class="fc" id="L52">        this.repositoryStateService = repositoryStateService;</span>
+<span class="fc" id="L53">        this.metadataPort = metadataPort;</span>
+<span class="fc" id="L54">    }</span>
+
+    /**
+     * Analyze a request. Ad-hoc requests persist generated hypotheses immediately.
+     * Project analyses carry immutable snapshot provenance; their caller owns a
+     * durable claim boundary and therefore persists hypotheses only after that
+     * claim has been revalidated and locked.
+     */
+    public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
+<span class="fc bfc" id="L63" title="All 4 branches covered.">        if (analysisProgressRegistry == null || AnalysisRunControl.active()) {</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">            return analyze(command, command.provenance() == null);</span>
+        }
+        // Portfolio/Copilot callers retain their durable job and claim boundaries.
+<span class="fc" id="L67">        try (var run = analysisProgressRegistry.open(null, command.username(),</span>
+<span class="fc" id="L68">                command.workspaceContext(), command.provenance())) {</span>
+<span class="pc bpc" id="L69" title="1 of 2 branches missed.">            AnalyzeRequirementResult result = analyze(command, command.provenance() == null);</span>
+<span class="fc" id="L70">            run.finish(result.analysisResult());</span>
+<span class="fc" id="L71">            return result;</span>
+        }
+    }
+
+    private AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command,
+                                             boolean persistHypotheses) {
+<span class="fc" id="L77">        long startedNanos = System.nanoTime();</span>
+        try {
+<span class="fc" id="L79">            applyProviderOverride(command.provider());</span>
+<span class="fc" id="L80">            promptBudgetPolicy.requireWithinBudget(</span>
+<span class="fc" id="L81">                    command.businessText(), command.provider());</span>
+
+<span class="fc" id="L83">            AnalysisResult result = llmService.analyzeWithBudget(command.businessText());</span>
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">            if (result.getErrorMessage() == null || !isCooperativeStop(result.getErrorMessage())) {</span>
+                try {
+<span class="fc" id="L86">                    AnalysisRunControl.phase(&quot;RELATIONS&quot;, null);</span>
+<span class="fc" id="L87">                    enrichWithRelationHypotheses(command, result, persistHypotheses);</span>
+<span class="fc bfc" id="L88" title="All 2 branches covered.">                    if (result.getRelationSearchReport() == null</span>
+<span class="pc bpc" id="L89" title="1 of 2 branches missed.">                            || !isCooperativeStop(result.getRelationSearchReport().stopReason())) {</span>
+<span class="fc" id="L90">                        AnalysisRunControl.phase(&quot;ARCHITECTURE&quot;, null);</span>
+<span class="fc" id="L91">                        enrichWithArchitectureView(command, result);</span>
+                    }
+<span class="nc" id="L93">                } catch (AnalysisStoppedException stopped) {</span>
+<span class="nc" id="L94">                    result.setStatus(&quot;PARTIAL&quot;);</span>
+<span class="nc" id="L95">                    result.setErrorMessage(stopped.getMessage());</span>
+<span class="nc bnc" id="L96" title="All 2 branches missed.">                    var warnings = new java.util.ArrayList&lt;&gt;(result.getWarnings() == null</span>
+<span class="nc" id="L97">                            ? java.util.List.&lt;String&gt;of() : result.getWarnings());</span>
+<span class="nc" id="L98">                    warnings.add(stopped.getMessage());</span>
+<span class="nc" id="L99">                    result.setWarnings(warnings);</span>
+<span class="fc" id="L100">                }</span>
+            }
+<span class="fc" id="L102">            populateViewContext(command, result);</span>
+<span class="fc" id="L103">            result.setAnalysisDurationMillis(Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L));</span>
+<span class="fc" id="L104">            return new AnalyzeRequirementResult(result);</span>
+        } finally {
+<span class="fc" id="L106">            llmService.clearRequestProvider();</span>
+        }
+    }
+
+    private static boolean isCooperativeStop(String message) {
+<span class="pc bpc" id="L111" title="1 of 4 branches missed.">        return message.startsWith(&quot;MEMORY_PRESSURE:&quot;) || message.startsWith(&quot;CANCELLED:&quot;)</span>
+<span class="pc bpc" id="L112" title="1 of 2 branches missed.">                || message.startsWith(&quot;TIME_LIMIT:&quot;);</span>
+    }
+
+    private void applyProviderOverride(String provider) {
+<span class="pc bpc" id="L116" title="1 of 4 branches missed.">        if (provider == null || provider.isBlank()</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                || &quot;MOCK&quot;.equalsIgnoreCase(provider)) {</span>
+<span class="fc" id="L118">            return;</span>
+        }
+        try {
+<span class="fc" id="L121">            llmService.setRequestProvider(LlmProvider.valueOf(provider.toUpperCase(Locale.ROOT)));</span>
+<span class="fc" id="L122">        } catch (IllegalArgumentException e) {</span>
+<span class="fc" id="L123">            throw new UnknownAnalysisProviderException(provider);</span>
+<span class="fc" id="L124">        }</span>
+<span class="fc" id="L125">    }</span>
+
+    private void enrichWithRelationHypotheses(AnalyzeRequirementCommand command,
+                                               AnalysisResult result,
+                                               boolean persistHypotheses) {
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        if (result.getScores() == null) {</span>
+<span class="nc" id="L131">            return;</span>
+        }
+<span class="fc bfc" id="L133" title="All 4 branches covered.">        if (requirementRelationSearch != null &amp;&amp; requirementRelationSearch.isEnabled()) {</span>
+<span class="fc" id="L134">            var report = requirementRelationSearch.search(command.businessText(), result.getScores());</span>
+<span class="fc" id="L135">            result.setRelationSearchReport(report);</span>
+            // Scope, conditions and choices must not leak into globally accepted catalogue edges.
+            // The existing analysis snapshot persists the typed report; adoption is a separate action.
+<span class="fc" id="L138">            result.setProvisionalRelations(java.util.List.of());</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">            if (!report.isSearchExhausted()) {</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                if (!&quot;ERROR&quot;.equals(result.getStatus())) result.setStatus(&quot;PARTIAL&quot;);</span>
+<span class="fc" id="L141">                String summary = &quot;RELATION_SEARCH_PARTIAL: &quot; + report.totalCalls() + &quot;/&quot; + report.maxCalls()</span>
+<span class="fc" id="L142">                        + &quot; evaluation attempts; &quot; + report.result().unfinished().size() + &quot; unfinished search batches.&quot;</span>
+<span class="pc bpc" id="L143" title="1 of 2 branches missed.">                        + (report.stopReason().isEmpty() ? &quot;&quot; : &quot; &quot; + report.stopReason());</span>
+<span class="pc bpc" id="L144" title="1 of 2 branches missed.">                if (result.getErrorMessage() == null) result.setErrorMessage(summary);</span>
+<span class="fc" id="L145">                var warnings = new java.util.ArrayList&lt;&gt;(result.getWarnings());</span>
+<span class="fc" id="L146">                warnings.add(summary);</span>
+<span class="fc" id="L147">                report.warnings().stream().limit(8).forEach(warnings::add);</span>
+<span class="pc bnc" id="L148" title="All 2 branches missed.">                report.result().unfinished().stream().filter(u -&gt; !u.question().isBlank()).limit(8)</span>
+<span class="pc" id="L149">                        .map(u -&gt; u.sourceId() + &quot;: &quot; + u.question()).forEach(warnings::add);</span>
+<span class="fc" id="L150">                result.setWarnings(warnings);</span>
+            }
+<span class="fc" id="L152">            return;</span>
+        }
+<span class="fc" id="L154">        result.setProvisionalRelations(analysisRelationGenerator.generate(result.getScores()));</span>
+<span class="fc bfc" id="L155" title="All 4 branches covered.">        if (persistHypotheses &amp;&amp; !result.getProvisionalRelations().isEmpty()) {</span>
+<span class="fc" id="L156">            hypothesisService.persistFromAnalysis(</span>
+<span class="fc" id="L157">                    result.getProvisionalRelations(),</span>
+                    null,
+<span class="fc" id="L159">                    command.workspaceContext());</span>
+        }
+<span class="fc" id="L161">    }</span>
+
+    private void enrichWithArchitectureView(AnalyzeRequirementCommand command, AnalysisResult result) {
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">        if (!command.includeArchitectureView() || result.getScores() == null) {</span>
+<span class="fc" id="L165">            return;</span>
+        }
+<span class="fc bfc" id="L167" title="All 2 branches covered.">        RequirementArchitectureView archView = result.getRelationSearchReport() != null</span>
+<span class="fc" id="L168">                ? architectureViewService.buildFromEvidence(result.getScores(), result.getScoreDetails(), command.maxArchitectureNodes(),</span>
+<span class="fc" id="L169">                        result.getRelationSearchReport())</span>
+<span class="fc" id="L170">                : architectureViewService.build(result.getScores(), command.businessText(),</span>
+<span class="fc" id="L171">                        command.maxArchitectureNodes(), result.getProvisionalRelations());</span>
+<span class="fc" id="L172">        DiagramViewMetadata meta = metadataPort.resolve();</span>
+<span class="fc" id="L173">        archView.setViewTitle(meta.viewTitle());</span>
+<span class="fc" id="L174">        archView.setViewDescription(meta.viewDescription());</span>
+<span class="fc" id="L175">        archView.setContainmentEnabled(meta.containmentEnabled());</span>
+<span class="fc" id="L176">        archView.setActiveRules(meta.activeRules());</span>
+<span class="fc" id="L177">        result.setArchitectureView(archView);</span>
+<span class="fc" id="L178">    }</span>
+
+    private void populateViewContext(AnalyzeRequirementCommand command, AnalysisResult result) {
+<span class="fc" id="L181">        String effectiveUsername = command.workspaceContext().username();</span>
+<span class="fc" id="L182">        String branch = repositoryStateService.resolveWorkspaceBranch(effectiveUsername);</span>
+<span class="fc" id="L183">        result.setViewContext(repositoryStateService.getViewContext(</span>
+                effectiveUsername,
+                branch,
+<span class="fc" id="L186">                command.workspaceContext()));</span>
+<span class="fc" id="L187">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

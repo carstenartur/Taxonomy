@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationResponseParser.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">ReformulationResponseParser.java</span></div><h1>ReformulationResponseParser.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.reformulation.*;
+import tools.jackson.databind.*;
+import java.util.*;
+
+/** Strict schema and reference boundary; never accepts model-supplied business IDs. */
+public class ReformulationResponseParser {
+    private final ObjectMapper json;
+<span class="fc" id="L11">    public ReformulationResponseParser(ObjectMapper json) { this.json=json; }</span>
+    public NodeSynthesisResult parse(String response,NodeSynthesisInput input) {
+<span class="fc" id="L13">        try { return checked(response,input); }</span>
+<span class="fc" id="L14">        catch(IllegalArgumentException failure) { throw failure; }</span>
+<span class="fc" id="L15">        catch(RuntimeException failure) { throw new IllegalArgumentException(&quot;Invalid/truncated response JSON&quot;,failure); }</span>
+    }
+    private NodeSynthesisResult checked(String response,NodeSynthesisInput input) {
+<span class="pc bpc" id="L18" title="2 of 4 branches missed.">        if(response==null || response.isBlank()) throw invalid(&quot;Empty response&quot;);</span>
+<span class="fc" id="L19">        JsonNode root=json.reader().with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION).with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(response);</span>
+<span class="fc" id="L20">        fields(root,&quot;summary&quot;,&quot;statementProposals&quot;,&quot;preservedStatementIds&quot;,&quot;questionProposals&quot;,&quot;preservedQuestionIds&quot;,&quot;uncoveredSourceRefs&quot;,&quot;conflictCandidates&quot;);</span>
+<span class="fc" id="L21">        Set&lt;String&gt; statementIds=new TreeSet&lt;&gt;(),questionIds=new TreeSet&lt;&gt;(),nodes=new TreeSet&lt;&gt;();</span>
+<span class="fc bfc" id="L22" title="All 2 branches covered.">        nodes.add(input.nodeId());if(input.parentId()!=null) nodes.add(input.parentId());</span>
+<span class="fc" id="L23">        input.directContributions().forEach(s-&gt;{statementIds.add(s.id());nodes.addAll(s.architectureLinks());});</span>
+<span class="fc" id="L24">        input.children().forEach(c-&gt;{nodes.add(c.nodeId());c.statementProposals().forEach(s-&gt;{statementIds.add(s.id());nodes.addAll(s.architectureLinks());});statementIds.addAll(c.preservedStatementIds());c.questionProposals().forEach(q-&gt;questionIds.add(q.id()));questionIds.addAll(c.preservedQuestionIds());});</span>
+<span class="fc" id="L25">        input.openDecisions().forEach(q-&gt;questionIds.add(q.id()));</span>
+<span class="fc" id="L26">        var catalogue=input.baseline().frozenContext().get(&quot;catalogue&quot;);</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        if(catalogue!=null) catalogueIds(json.readTree(catalogue),nodes);</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        for(String edge:input.boundaryEdges().values()) {</span>
+<span class="fc" id="L29">            var value=json.readTree(edge);</span>
+<span class="pc bpc" id="L30" title="1 of 4 branches missed.">            for(String key:List.of(&quot;sourceCode&quot;,&quot;targetCode&quot;)) if(value.path(key).isString()) nodes.add(value.path(key).asText());</span>
+<span class="fc" id="L31">        }</span>
+<span class="fc" id="L32">        Set&lt;String&gt; links=new TreeSet&lt;&gt;(nodes);links.addAll(input.boundaryEdges().keySet());</span>
+<span class="fc" id="L33">        var preservedStatements=refs(root,&quot;preservedStatementIds&quot;,statementIds);</span>
+<span class="fc" id="L34">        var preservedQuestions=refs(root,&quot;preservedQuestionIds&quot;,questionIds);</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">        if(!new HashSet&lt;&gt;(preservedStatements).equals(statementIds) || !new HashSet&lt;&gt;(preservedQuestions).equals(questionIds)) throw invalid(&quot;Child/direct statement or question loss&quot;);</span>
+<span class="fc" id="L36">        var statementRefs=localRefs(statementIds,root,&quot;statementProposals&quot;,&quot;new-statement:&quot;,&quot;s&quot;,input);</span>
+<span class="fc" id="L37">        var questionRefs=localRefs(questionIds,root,&quot;questionProposals&quot;,&quot;new-question:&quot;,&quot;q&quot;,input);</span>
+<span class="fc" id="L38">        var statements=new ArrayList&lt;Statement&gt;();int index=0;</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        for(JsonNode node:array(root,&quot;statementProposals&quot;)) {</span>
+<span class="fc" id="L40">            fields(node,&quot;wording&quot;,&quot;provenance&quot;,&quot;sourceSpans&quot;,&quot;architectureLinks&quot;,&quot;questionDependencies&quot;,&quot;conditionalValidity&quot;);</span>
+<span class="fc" id="L41">            String wording=text(node,&quot;wording&quot;);var spans=spans(node,&quot;sourceSpans&quot;,input);</span>
+<span class="fc" id="L42">            var provenance=Statement.Provenance.valueOf(text(node,&quot;provenance&quot;));</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">            if(provenance==Statement.Provenance.HUMAN_DECISION) throw invalid(&quot;Model cannot create human decisions&quot;);</span>
+<span class="pc bpc" id="L44" title="3 of 6 branches missed.">            if(provenance==Statement.Provenance.ORIGINAL &amp;&amp; (spans.isEmpty() || !wording.equals(String.join(&quot;&quot;,spans.stream().map(Statement.SourceSpan::exactText).toList())))) throw invalid(&quot;ORIGINAL wording must exactly match source spans&quot;);</span>
+<span class="fc" id="L45">            statements.add(new Statement(id(&quot;s&quot;,input,index++,node),wording,spans,provenance,refs(node,&quot;architectureLinks&quot;,links),refs(node,&quot;questionDependencies&quot;,questionRefs),nullableText(node,&quot;conditionalValidity&quot;),Statement.EditingOrigin.MODEL,&quot;UNREVIEWED&quot;));</span>
+<span class="fc" id="L46">        }</span>
+<span class="fc" id="L47">        var questions=new ArrayList&lt;DecisionQuestion&gt;();index=0;</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        for(JsonNode node:array(root,&quot;questionProposals&quot;)) {</span>
+<span class="fc" id="L49">            fields(node,&quot;subject&quot;,&quot;dimension&quot;,&quot;scope&quot;,&quot;wording&quot;,&quot;rationale&quot;,&quot;affectedStatementIds&quot;,&quot;sourceSpans&quot;,&quot;nodeIds&quot;,&quot;edgeIds&quot;,&quot;answerSchema&quot;,&quot;prerequisites&quot;,&quot;consequences&quot;);</span>
+<span class="fc" id="L50">            var schema=node.get(&quot;answerSchema&quot;);</span>
+<span class="fc" id="L51">            boolean typed=&quot;reformulation-response-v2&quot;.equals(input.baseline().frozenContext().get(&quot;reformulationSchemaVersion&quot;));</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">            if(typed) {</span>
+<span class="fc" id="L53">                var legacy=schema.deepCopy();</span>
+<span class="fc" id="L54">                ((tools.jackson.databind.node.ObjectNode)legacy).remove(&quot;optionMeanings&quot;);</span>
+<span class="fc" id="L55">                ((tools.jackson.databind.node.ObjectNode)legacy).remove(&quot;incompatibleOptions&quot;);</span>
+<span class="fc" id="L56">                ((tools.jackson.databind.node.ObjectNode)legacy).remove(&quot;applicability&quot;);</span>
+<span class="fc" id="L57">                fields(legacy,&quot;kind&quot;,&quot;options&quot;,&quot;unit&quot;,&quot;minimum&quot;,&quot;maximum&quot;);</span>
+<span class="fc" id="L58">            } else fields(schema,&quot;kind&quot;,&quot;options&quot;,&quot;unit&quot;,&quot;minimum&quot;,&quot;maximum&quot;);</span>
+<span class="fc" id="L59">            var kind=DecisionQuestion.AnswerSchema.Kind.valueOf(text(schema,&quot;kind&quot;));var options=strings(schema,&quot;options&quot;);</span>
+<span class="pc bpc" id="L60" title="1 of 6 branches missed.">            if((kind==DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE || kind==DecisionQuestion.AnswerSchema.Kind.MULTIPLE_CHOICE) &amp;&amp; options.size()&lt;2) throw invalid(&quot;Choice question needs at least two options&quot;);</span>
+<span class="pc bpc" id="L61" title="5 of 6 branches missed.">            Double min=number(schema,&quot;minimum&quot;),max=number(schema,&quot;maximum&quot;);if(min!=null &amp;&amp; max!=null &amp;&amp; min&gt;max) throw invalid(&quot;Invalid numeric range&quot;);</span>
+<span class="fc" id="L62">            var discovery=new DecisionQuestion.Discovery(input.nodeId(),input.nodeDescription(),text(node,&quot;rationale&quot;),spans(node,&quot;sourceSpans&quot;,input),refs(node,&quot;nodeIds&quot;,nodes),refs(node,&quot;edgeIds&quot;,input.boundaryEdges().keySet()));</span>
+<span class="fc" id="L63">            questions.add(new DecisionQuestion(id(&quot;q&quot;,input,index++,node),new DecisionQuestion.Key(text(node,&quot;subject&quot;),text(node,&quot;dimension&quot;),text(node,&quot;scope&quot;)),text(node,&quot;wording&quot;),List.of(discovery),refs(node,&quot;affectedStatementIds&quot;,statementRefs),answerSchema(schema,kind,options,min,max,questionRefs),refs(node,&quot;prerequisites&quot;,questionRefs),List.of(),text(node,&quot;consequences&quot;),DecisionQuestion.State.OPEN));</span>
+<span class="fc" id="L64">        }</span>
+<span class="fc" id="L65">        var contracts=new HashMap&lt;String,DecisionQuestion&gt;();</span>
+<span class="fc" id="L66">        input.openDecisions().forEach(q-&gt;q.referenceIds().forEach(id-&gt;contracts.put(id,q)));</span>
+<span class="fc" id="L67">        input.children().forEach(c-&gt;c.questionProposals().forEach(q-&gt;q.referenceIds().forEach(id-&gt;contracts.put(id,q))));</span>
+<span class="fc" id="L68">        questions.forEach(q-&gt;contracts.put(q.id(),q));</span>
+<span class="fc bfc" id="L69" title="All 4 branches covered.">        for(var q:questions)for(var condition:q.answerSchema().applicability()) {</span>
+<span class="fc" id="L70">            var prerequisite=contracts.get(condition.questionId());</span>
+<span class="pc bpc" id="L71" title="3 of 6 branches missed.">            if(prerequisite==null || prerequisite.id().equals(q.id()) || !q.prerequisites().contains(condition.questionId()))throw invalid(&quot;Invalid conditional prerequisite&quot;);</span>
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">            var allowed=prerequisite.answerSchema().kind()==DecisionQuestion.AnswerSchema.Kind.BOOLEAN?List.of(&quot;true&quot;,&quot;false&quot;):prerequisite.answerSchema().options();</span>
+<span class="pc bpc" id="L73" title="1 of 4 branches missed.">            if(!allowed.containsAll(condition.anyOf()) || condition.anyOf().isEmpty())throw invalid(&quot;Unknown conditional choice&quot;);</span>
+<span class="fc" id="L74">        }</span>
+<span class="fc" id="L75">        var conflicts=new ArrayList&lt;ValidationReport.Finding&gt;();</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">        for(JsonNode node:array(root,&quot;conflictCandidates&quot;)) {</span>
+<span class="nc" id="L77">            fields(node,&quot;kind&quot;,&quot;code&quot;,&quot;message&quot;,&quot;statementIds&quot;,&quot;sourceSpans&quot;);</span>
+<span class="nc" id="L78">            conflicts.add(new ValidationReport.Finding(ValidationReport.Kind.valueOf(text(node,&quot;kind&quot;)),text(node,&quot;code&quot;),text(node,&quot;message&quot;),refs(node,&quot;statementIds&quot;,statementRefs),spans(node,&quot;sourceSpans&quot;,input)));</span>
+<span class="nc" id="L79">        }</span>
+<span class="fc" id="L80">        return new NodeSynthesisResult(input.nodeId(),text(root,&quot;summary&quot;),statements,preservedStatements,questions,preservedQuestions,spans(root,&quot;uncoveredSourceRefs&quot;,input),conflicts);</span>
+    }
+    private static DecisionQuestion.AnswerSchema answerSchema(JsonNode schema,DecisionQuestion.AnswerSchema.Kind kind,
+            List&lt;String&gt; options,Double min,Double max,Map&lt;String,String&gt; questionRefs) {
+<span class="fc" id="L84">        var meanings=new LinkedHashMap&lt;String,DecisionQuestion.AnswerSchema.OptionMeaning&gt;();</span>
+<span class="fc bfc" id="L85" title="All 2 branches covered.">        if(schema.has(&quot;optionMeanings&quot;)) {</span>
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">            if(!schema.path(&quot;optionMeanings&quot;).isObject())throw invalid(&quot;Expected option meanings object&quot;);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            for(var entry:schema.path(&quot;optionMeanings&quot;).properties()) {</span>
+<span class="pc bpc" id="L88" title="2 of 4 branches missed.">                if(!options.contains(entry.getKey()) || !entry.getValue().isString())throw invalid(&quot;Unknown semantic option&quot;);</span>
+<span class="fc" id="L89">                meanings.put(entry.getKey(),DecisionQuestion.AnswerSchema.OptionMeaning.valueOf(entry.getValue().asText()));</span>
+<span class="fc" id="L90">            }</span>
+        }
+<span class="fc" id="L92">        var incompatible=new ArrayList&lt;List&lt;String&gt;&gt;();</span>
+<span class="fc bfc" id="L93" title="All 4 branches covered.">        if(schema.has(&quot;incompatibleOptions&quot;))for(var group:array(schema,&quot;incompatibleOptions&quot;)) {</span>
+<span class="pc bpc" id="L94" title="2 of 4 branches missed.">            if(!group.isArray() || group.size()&lt;2)throw invalid(&quot;Incompatibility requires at least two options&quot;);</span>
+<span class="fc" id="L95">            var values=new ArrayList&lt;String&gt;();</span>
+<span class="pc bpc" id="L96" title="3 of 8 branches missed.">            for(var option:group)if(!option.isString() || !options.contains(option.asText()) || !values.add(option.asText()))throw invalid(&quot;Invalid incompatible option&quot;);</span>
+<span class="pc bpc" id="L97" title="1 of 2 branches missed.">            if(new HashSet&lt;&gt;(values).size()!=values.size())throw invalid(&quot;Duplicate incompatible option&quot;);</span>
+<span class="fc" id="L98">            incompatible.add(List.copyOf(values));</span>
+<span class="fc" id="L99">        }</span>
+<span class="fc" id="L100">        var conditions=new ArrayList&lt;DecisionQuestion.AnswerSchema.AnswerCondition&gt;();</span>
+<span class="fc bfc" id="L101" title="All 4 branches covered.">        if(schema.has(&quot;applicability&quot;))for(var condition:array(schema,&quot;applicability&quot;)) {</span>
+<span class="fc" id="L102">            fields(condition,&quot;questionId&quot;,&quot;anyOf&quot;);String id=questionRefs.get(text(condition,&quot;questionId&quot;));</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">            if(id==null)throw invalid(&quot;Unknown conditional question&quot;);</span>
+<span class="fc" id="L104">            conditions.add(new DecisionQuestion.AnswerSchema.AnswerCondition(id,strings(condition,&quot;anyOf&quot;)));</span>
+<span class="fc" id="L105">        }</span>
+<span class="fc" id="L106">        return new DecisionQuestion.AnswerSchema(kind,options,nullableText(schema,&quot;unit&quot;),min,max,meanings,incompatible,conditions);</span>
+    }
+    private Map&lt;String,String&gt; localRefs(Set&lt;String&gt; existing,JsonNode root,String field,String prefix,String idPrefix,NodeSynthesisInput input) {
+<span class="fc" id="L109">        var refs=new TreeMap&lt;String,String&gt;();existing.forEach(id-&gt;refs.put(id,id));int index=0;</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for(var node:array(root,field)) {refs.put(prefix+index,id(idPrefix,input,index,node));index++;}</span>
+<span class="fc" id="L111">        return refs;</span>
+    }
+    private static List&lt;String&gt; refs(JsonNode node,String key,Map&lt;String,String&gt; allowed) {
+<span class="fc" id="L114">        return refs(node,key,allowed.keySet()).stream().map(allowed::get).toList();</span>
+    }
+    private static void catalogueIds(JsonNode tree,Set&lt;String&gt; ids) {
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        if(!tree.isArray())return;</span>
+<span class="pc bpc" id="L118" title="1 of 4 branches missed.">        for(var node:tree) {if(node.path(&quot;code&quot;).isString())ids.add(node.path(&quot;code&quot;).asText());catalogueIds(node.path(&quot;children&quot;),ids);}</span>
+<span class="fc" id="L119">    }</span>
+    private static String id(String prefix,NodeSynthesisInput input,int index,JsonNode node) {
+<span class="fc" id="L121">        return prefix+&quot;-&quot;+StableIdentityHash.sha256(input.baseline().scope()+&quot;|&quot;+input.baseline().sourceVersionId()+&quot;|&quot;+input.baseline().originalTextHash()+&quot;|&quot;+input.nodeId()+&quot;|&quot;+index+&quot;|&quot;+node).substring(0,24);</span>
+    }
+    private static void fields(JsonNode node,String... expected) {
+<span class="pc bpc" id="L124" title="2 of 4 branches missed.">        if(node==null || !node.isObject()) throw invalid(&quot;Expected object&quot;);</span>
+<span class="fc" id="L125">        var actual=new HashSet&lt;String&gt;();node.properties().forEach(e-&gt;actual.add(e.getKey()));</span>
+<span class="fc bfc" id="L126" title="All 2 branches covered.">        if(!actual.equals(Set.of(expected))) throw invalid(&quot;Unexpected or missing schema fields&quot;);</span>
+<span class="fc" id="L127">    }</span>
+    private static String text(JsonNode node,String key) {
+<span class="pc bpc" id="L129" title="3 of 6 branches missed.">        var value=node.get(key);if(value==null || !value.isString() || value.asText().isBlank()) throw invalid(&quot;Expected nonblank string: &quot;+key);return value.asText();</span>
+    }
+<span class="fc bfc" id="L131" title="All 2 branches covered.">    private static String nullableText(JsonNode node,String key) { return node.get(key).isNull()?null:text(node,key); }</span>
+<span class="pc bpc" id="L132" title="5 of 6 branches missed.">    private static Double number(JsonNode node,String key) {var value=node.get(key);if(value.isNull())return null;if(!value.isNumber() || !Double.isFinite(value.asDouble()))throw invalid(&quot;Expected number: &quot;+key);return value.asDouble();}</span>
+<span class="pc bpc" id="L133" title="2 of 4 branches missed.">    private static JsonNode array(JsonNode node,String key) {var value=node.get(key);if(value==null || !value.isArray())throw invalid(&quot;Expected array: &quot;+key);return value;}</span>
+    private static List&lt;String&gt; strings(JsonNode node,String key) {
+<span class="pc bpc" id="L135" title="2 of 6 branches missed.">        var result=new ArrayList&lt;String&gt;();for(var item:array(node,key)) {if(!item.isString() || item.asText().isBlank())throw invalid(&quot;Invalid ID/option&quot;);result.add(item.asText());}</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">        if(new HashSet&lt;&gt;(result).size()!=result.size())throw invalid(&quot;Duplicate ID/option&quot;);return List.copyOf(result);</span>
+    }
+<span class="fc bfc" id="L138" title="All 2 branches covered.">    private static List&lt;String&gt; refs(JsonNode node,String key,Set&lt;String&gt; allowed) {var result=strings(node,key);if(!allowed.containsAll(result))throw invalid(&quot;Unknown reference: &quot;+key);return result;}</span>
+    private static List&lt;Statement.SourceSpan&gt; spans(JsonNode node,String key,NodeSynthesisInput input) {
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        var result=new ArrayList&lt;Statement.SourceSpan&gt;();for(var item:array(node,key)) {</span>
+<span class="pc bpc" id="L141" title="3 of 8 branches missed.">            fields(item,&quot;start&quot;,&quot;end&quot;,&quot;exactText&quot;);if(!item.get(&quot;start&quot;).isIntegralNumber() || !item.get(&quot;end&quot;).isIntegralNumber() || !item.get(&quot;start&quot;).canConvertToInt() || !item.get(&quot;end&quot;).canConvertToInt())throw invalid(&quot;Invalid span offsets&quot;);</span>
+<span class="pc bpc" id="L142" title="1 of 2 branches missed.">            var span=new Statement.SourceSpan(item.get(&quot;start&quot;).asInt(),item.get(&quot;end&quot;).asInt(),text(item,&quot;exactText&quot;));if(!span.matches(input.baseline().originalText()))throw invalid(&quot;Fabricated source span&quot;);result.add(span);</span>
+<span class="pc" id="L143">        }return List.copyOf(result);</span>
+    }
+<span class="fc" id="L145">    private static IllegalArgumentException invalid(String message) {return new IllegalArgumentException(message);}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

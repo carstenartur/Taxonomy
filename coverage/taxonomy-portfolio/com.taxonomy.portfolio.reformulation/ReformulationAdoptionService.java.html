@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationAdoptionService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationAdoptionService.java</span></div><h1>ReformulationAdoptionService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.dto.PortfolioDtos.*;
+import com.taxonomy.portfolio.model.ProjectRequirement;
+import com.taxonomy.portfolio.model.PortfolioTypes.*;
+import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
+import com.taxonomy.portfolio.service.*;
+import com.taxonomy.portfolio.reformulation.ReformulationAdoptionDtos.*;
+import com.taxonomy.reformulation.*;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
+import java.util.*;
+
+/** Sole proposal-to-version bridge. No analysis, Git commit, deletion or automatic approval. */
+@Service
+public class ReformulationAdoptionService {
+    private final ProjectPortfolioService projects;
+    private final ProjectRequirementRepository requirements;
+    private final ReformulationProposalRepository proposals;
+    private final ReformulationService reformulations;
+    private final ReformulationAdoptionPreviewRepository previews;
+    private final ReformulationAdoptionRepository receipts;
+    private final PortfolioJsonCodec json;
+    public ReformulationAdoptionService(ProjectPortfolioService projects,ProjectRequirementRepository requirements,
+            ReformulationProposalRepository proposals,ReformulationService reformulations,
+<span class="fc" id="L29">            ReformulationAdoptionPreviewRepository previews,ReformulationAdoptionRepository receipts,PortfolioJsonCodec json) {</span>
+<span class="fc" id="L30">        this.projects=projects;this.requirements=requirements;this.proposals=proposals;this.reformulations=reformulations;</span>
+<span class="fc" id="L31">        this.previews=previews;this.receipts=receipts;this.json=json;</span>
+<span class="fc" id="L32">    }</span>
+    @Transactional
+    public Preview preview(Long projectId,Long requirementId,String proposalId,long expected,String actor,WorkspaceContext context) {
+<span class="fc" id="L35">        var requirement=lockRequirement(projectId,requirementId,actor,context);</span>
+<span class="fc" id="L36">        var proposal=lockProposal(projectId,requirementId,proposalId,requirement.getScopeKey());</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">        if(proposal.getCurrentRevision()!=expected)throw new ReformulationPreconditionException();</span>
+<span class="fc" id="L38">        var offer=reformulations.get(projectId,requirementId,proposalId,actor,context);</span>
+<span class="fc" id="L39">        var revision=offer.currentRevision();</span>
+<span class="fc" id="L40">        var current=projects.getRequirement(projectId,requirementId,actor,context);</span>
+<span class="fc" id="L41">        String text=revision.text().strip();</span>
+<span class="pc bpc" id="L42" title="2 of 4 branches missed.">        if(text.isBlank() || text.length()&gt;100_000)throw invalid(&quot;INVALID_ADOPTION_TEXT&quot;,&quot;Adoption text must contain 1..100000 characters&quot;);</span>
+<span class="fc" id="L43">        var warnings=new ArrayList&lt;String&gt;();var blocked=new ArrayList&lt;String&gt;();var unresolved=new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        for(var finding:revision.validation().findings()) {</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">            (finding.kind()==ValidationReport.Kind.STRUCTURAL_LOSS?blocked:warnings).add(finding.code());</span>
+<span class="fc" id="L46">        }</span>
+<span class="pc bpc" id="L47" title="1 of 4 branches missed.">        revision.questions().stream().filter(q-&gt;q.state()!=DecisionQuestion.State.ANSWERED &amp;&amp; q.state()!=DecisionQuestion.State.NOT_APPLICABLE)</span>
+<span class="fc" id="L48">                .map(DecisionQuestion::id).forEach(unresolved::add);</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if(!unresolved.isEmpty())warnings.add(&quot;UNRESOLVED_QUESTIONS&quot;);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if(!revision.impact().equals(ReformulationImpact.empty()))warnings.add(&quot;REVIEW_PENDING_EDITS_AND_DECISIONS&quot;);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">        if(!Objects.equals(offer.baseline().sourceVersionId(),current.currentVersionId()))warnings.add(&quot;SOURCE_DIFFERS_FROM_CURRENT&quot;);</span>
+<span class="fc bfc" id="L52" title="All 2 branches covered.">        if(!text.equals(revision.text()))warnings.add(&quot;EXTERIOR_WHITESPACE_NORMALIZED&quot;);</span>
+<span class="pc bpc" id="L53" title="1 of 4 branches missed.">        if(revision.statements().stream().anyMatch(s-&gt;s.provenance()!=Statement.Provenance.ORIGINAL))warnings.add(&quot;ADDITIONS_REQUIRE_REVIEW&quot;);</span>
+<span class="fc" id="L54">        checkReferences(revision,offer.baseline().originalText(),blocked);</span>
+<span class="fc" id="L55">        var data=new PreviewContent(UUID.randomUUID().toString(),proposalId,offer.baseline().sourceVersionId(),offer.baseline().originalText(),</span>
+<span class="fc" id="L56">                offer.baseline().snapshotId(),current,requirement.getRowVersion(),revision,text,warnings.stream().distinct().toList(),</span>
+<span class="fc" id="L57">                blocked.stream().distinct().toList(),unresolved,PortfolioScope.username(actor,context),Instant.now());</span>
+<span class="fc" id="L58">        String payload=json.write(data);String hash=StableIdentityHash.sha256(payload);</span>
+<span class="fc" id="L59">        previews.saveAndFlush(new ReformulationAdoptionPreview(data.id(),proposalId,requirement.getScopeKey(),hash,payload,data.createdAt()));</span>
+<span class="fc" id="L60">        return new Preview(data,hash);</span>
+    }
+    @Transactional(readOnly=true)
+    public Preview readPreview(Long projectId,Long requirementId,String proposalId,String id,String actor,WorkspaceContext context) {
+<span class="fc" id="L64">        reformulations.get(projectId,requirementId,proposalId,actor,context);</span>
+<span class="fc" id="L65">        return storedPreview(id,proposalId,PortfolioScope.key(actor,context));</span>
+    }
+    @Transactional(readOnly=true)
+    public List&lt;Result&gt; history(Long projectId,Long requirementId,String proposalId,String actor,WorkspaceContext context) {
+<span class="fc" id="L69">        reformulations.get(projectId,requirementId,proposalId,actor,context);</span>
+<span class="fc" id="L70">        return receipts.findByProposalIdAndScopeKeyOrderByCreatedAtDesc(proposalId,PortfolioScope.key(actor,context)).stream()</span>
+<span class="fc" id="L71">                .map(r-&gt;json.read(r.getPayload(),Result.class)).toList();</span>
+    }
+    @Transactional
+    public Result adopt(Long projectId,Long requirementId,String proposalId,long expected,ConfirmRequest request,String actor,WorkspaceContext context) {
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">        if(request==null)throw invalid(&quot;CONFIRMATION_REQUIRED&quot;,&quot;Explicit confirmation is required&quot;);</span>
+<span class="fc" id="L76">        uuid(request.commandId());uuid(request.previewId());</span>
+<span class="pc bpc" id="L77" title="2 of 4 branches missed.">        if(request.previewHash()==null || !request.previewHash().matches(&quot;[a-f0-9]{64}&quot;))throw invalid(&quot;INVALID_PREVIEW_HASH&quot;,&quot;A preview hash is required&quot;);</span>
+<span class="pc bpc" id="L78" title="3 of 6 branches missed.">        if(request.rationale()==null || request.rationale().isBlank() || request.rationale().length()&gt;1000)throw invalid(&quot;INVALID_RATIONALE&quot;,&quot;A rationale of 1..1000 characters is required&quot;);</span>
+<span class="fc" id="L79">        var requirement=lockRequirement(projectId,requirementId,actor,context);</span>
+<span class="fc" id="L80">        String scope=requirement.getScopeKey();String author=PortfolioScope.username(actor,context);</span>
+<span class="fc" id="L81">        var proposal=lockProposal(projectId,requirementId,proposalId,scope);</span>
+<span class="fc" id="L82">        String id=StableIdentityHash.sha256(json.write(List.of(scope,request.commandId())));</span>
+<span class="fc" id="L83">        String commandHash=StableIdentityHash.sha256(json.write(List.of(projectId,requirementId,proposalId,expected,author,request)));</span>
+        // Authorization remains current, but a valid retry never replays the old version mutation.
+<span class="fc" id="L85">        var prior=receipts.findById(id);</span>
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if(prior.isPresent()) {</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">            if(!prior.get().getCommandHash().equals(commandHash))throw conflict(&quot;COMMAND_REUSED&quot;,&quot;Command ID was used with different contents&quot;);</span>
+<span class="fc" id="L88">            return json.read(prior.get().getPayload(),Result.class);</span>
+        }
+<span class="fc" id="L90">        var preview=storedPreview(request.previewId(),proposalId,scope);var data=preview.content();</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if(!preview.hash().equals(request.previewHash()))throw conflict(&quot;PREVIEW_CHANGED&quot;,&quot;Confirmation does not match the stored preview&quot;);</span>
+<span class="pc bpc" id="L92" title="1 of 2 branches missed.">        if(!data.actor().equals(author))throw conflict(&quot;PREVIEW_ACTOR_CHANGED&quot;,&quot;Create a preview as the current actor&quot;);</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if(receipts.existsByPreviewId(data.id()))throw conflict(&quot;PREVIEW_ALREADY_ADOPTED&quot;,&quot;This preview already has an adoption receipt&quot;);</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">        if(expected!=data.revision().number() || expected!=proposal.getCurrentRevision())throw new ReformulationPreconditionException();</span>
+<span class="pc bpc" id="L95" title="1 of 4 branches missed.">        if(requirement.getRowVersion()!=data.requirementRowVersion() || !Objects.equals(requirement.getCurrentVersionId(),data.currentRequirement().currentVersionId()))</span>
+<span class="fc" id="L96">            throw conflict(&quot;SOURCE_VERSION_CHANGED&quot;,&quot;The active requirement changed; create and review a new preview&quot;);</span>
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        if(!request.confirmed())throw invalid(&quot;CONFIRMATION_REQUIRED&quot;,&quot;Confirm this exact preview explicitly&quot;);</span>
+<span class="pc bpc" id="L98" title="1 of 4 branches missed.">        if(!data.warnings().isEmpty() &amp;&amp; !request.acknowledgeWarnings())throw invalid(&quot;WARNINGS_REQUIRE_ACKNOWLEDGMENT&quot;,&quot;Review the open questions and warnings before adopting a draft&quot;);</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">        if(!data.blockingReasons().isEmpty())throw invalid(&quot;STRUCTURALLY_INVALID_PROPOSAL&quot;,&quot;The stored proposal has structural errors and cannot be adopted&quot;);</span>
+<span class="fc bfc" id="L100" title="All 2 branches covered.">        boolean changed=!data.finalText().equals(data.currentRequirement().currentVersion().text());</span>
+<span class="fc" id="L101">        RequirementVersionView target=data.currentRequirement().currentVersion();</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if(changed) {</span>
+<span class="fc" id="L103">            target=projects.addRequirementVersion(projectId,requirementId,</span>
+<span class="fc" id="L104">                    new CreateRequirementVersionRequest(data.finalText(),request.rationale(),null),actor,context);</span>
+<span class="fc" id="L105">            requirement.updateMetadata(null,RequirementStatus.DRAFT,null,null,null,ReviewStatus.PROPOSED,null,Instant.now());</span>
+        }
+        // Keep the old immutable snapshot available; it is not evidence for newly adopted text.
+<span class="fc" id="L108">        var result=new Result(request.commandId(),data.id(),proposalId,expected,data.currentRequirement().currentVersionId(),</span>
+<span class="fc" id="L109">                target.id(),target.versionNumber(),changed,changed,data.unresolvedQuestionIds(),author,Instant.now(),request.rationale(),request.acknowledgeWarnings());</span>
+<span class="fc" id="L110">        receipts.saveAndFlush(new ReformulationAdoption(id,proposalId,data.id(),scope,commandHash,requirementId,target.id(),json.write(result),result.adoptedAt()));</span>
+<span class="fc" id="L111">        return result;</span>
+    }
+    private ProjectRequirement lockRequirement(Long projectId,Long requirementId,String actor,WorkspaceContext context) {
+<span class="fc" id="L114">        var project=projects.requireProjectForUpdate(projectId,actor,context);</span>
+<span class="fc" id="L115">        return requirements.findByIdAndProjectIdAndScopeKeyForUpdate(requirementId,projectId,project.getScopeKey())</span>
+<span class="pc" id="L116">                .orElseThrow(()-&gt;PortfolioException.notFound(&quot;Requirement not found&quot;));</span>
+    }
+    private ReformulationProposal lockProposal(Long projectId,Long requirementId,String id,String scope) {
+<span class="pc" id="L119">        return proposals.lockScoped(id,projectId,requirementId,scope).orElseThrow(()-&gt;PortfolioException.notFound(&quot;Reformulation proposal not found&quot;));</span>
+    }
+    private Preview storedPreview(String id,String proposalId,String scope) {
+<span class="pc" id="L122">        var row=previews.findByIdAndProposalIdAndScopeKey(id,proposalId,scope).orElseThrow(()-&gt;PortfolioException.notFound(&quot;Adoption preview not found&quot;));</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">        if(!StableIdentityHash.sha256(row.getPayload()).equals(row.getContentHash()))throw conflict(&quot;INVALID_PREVIEW_EVIDENCE&quot;,&quot;Stored preview integrity check failed&quot;);</span>
+<span class="fc" id="L124">        return new Preview(json.read(row.getPayload(),PreviewContent.class),row.getContentHash());</span>
+    }
+    private static void checkReferences(ReformulationDtos.Revision revision,String original,List&lt;String&gt; blocked) {
+<span class="fc" id="L127">        var statements=new HashSet&lt;String&gt;();var questions=new HashSet&lt;String&gt;();var sections=new HashSet&lt;String&gt;();</span>
+<span class="pc bpc" id="L128" title="4 of 6 branches missed.">        revision.statements().forEach(s-&gt;{if(!statements.add(s.id()))blocked.add(&quot;DUPLICATE_STATEMENT&quot;);if(s.sourceSpans().stream().anyMatch(p-&gt;!p.matches(original)))blocked.add(&quot;INVALID_SOURCE_SPAN&quot;);});</span>
+<span class="pc bpc" id="L129" title="1 of 4 branches missed.">        revision.questions().forEach(q-&gt;{for(String id:q.referenceIds())if(!questions.add(id))blocked.add(&quot;DUPLICATE_QUESTION_REFERENCE&quot;);});</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        revision.sections().forEach(s-&gt;{if(!sections.add(s.id()))blocked.add(&quot;DUPLICATE_SECTION&quot;);});</span>
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">        revision.statements().forEach(s-&gt;{if(!questions.containsAll(s.questionDependencies()))blocked.add(&quot;UNKNOWN_QUESTION_REFERENCE&quot;);});</span>
+<span class="pc bpc" id="L132" title="3 of 6 branches missed.">        revision.questions().forEach(q-&gt;{if(!statements.containsAll(q.affectedStatementIds()) || !questions.containsAll(q.prerequisites()) || !questions.containsAll(q.dependentQuestionIds()))blocked.add(&quot;UNKNOWN_DECISION_REFERENCE&quot;);});</span>
+<span class="pc bpc" id="L133" title="3 of 6 branches missed.">        revision.sections().forEach(s-&gt;{if(!statements.containsAll(s.statementIds()) || !questions.containsAll(s.questionIds()) || !sections.containsAll(s.children()))blocked.add(&quot;UNKNOWN_SECTION_REFERENCE&quot;);});</span>
+<span class="pc bpc" id="L134" title="1 of 2 branches missed.">        revision.answers().forEach(a-&gt;{if(!questions.contains(a.questionId()))blocked.add(&quot;UNKNOWN_ANSWER_REFERENCE&quot;);});</span>
+<span class="fc" id="L135">    }</span>
+    private static void uuid(String value) {
+<span class="pc bpc" id="L137" title="2 of 4 branches missed.">        if(value==null || !value.matches(&quot;[a-f0-9]{8}(-[a-f0-9]{4}){3}-[a-f0-9]{12}&quot;))throw invalid(&quot;INVALID_COMMAND_ID&quot;,&quot;Canonical UUID required&quot;);</span>
+<span class="fc" id="L138">    }</span>
+<span class="fc" id="L139">    private static PortfolioException invalid(String code,String message){return new PortfolioException(PortfolioException.Kind.ANALYSIS_FAILED,code,message,null);}</span>
+<span class="fc" id="L140">    private static PortfolioException conflict(String code,String message){return new PortfolioException(PortfolioException.Kind.CONFLICT,code,message,null);}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

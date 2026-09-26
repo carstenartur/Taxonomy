@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AiAvailabilityLevel.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">AiAvailabilityLevel.java</span></div><h1>AiAvailabilityLevel.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+/**
+ * Three-state AI availability level for the {@code GET /api/ai-status} endpoint.
+ *
+ * &lt;ul&gt;
+ *   &lt;li&gt;{@link #FULL} – a cloud LLM provider with a configured API key is active;
+ *       full reasoning/explanation capabilities are available.&lt;/li&gt;
+ *   &lt;li&gt;{@link #LIMITED} – only the local ONNX embedding model is available (no API key);
+ *       cosine-similarity scoring works but no LLM reasoning or explanations.&lt;/li&gt;
+ *   &lt;li&gt;{@link #UNAVAILABLE} – neither an API key nor a functioning local ONNX model
+ *       is available; AI features are disabled.&lt;/li&gt;
+ * &lt;/ul&gt;
+ */
+<span class="fc" id="L15">public enum AiAvailabilityLevel {</span>
+<span class="fc" id="L16">    FULL,</span>
+<span class="fc" id="L17">    LIMITED,</span>
+<span class="fc" id="L18">    UNAVAILABLE</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ProjectionState.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">ProjectionState.java</span></div><h1>ProjectionState.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.time.Instant;
+
+/**
+ * Tracks which Git commit the DB projection and search index are built from.
+ *
+ * &lt;p&gt;Used for diagnostics and staleness detection. When the HEAD commit
+ * of a branch moves ahead of the projection or index commit, consumers
+ * know they need to re-materialize or re-index.
+ *
+ * @param projectionCommit     commit SHA the DB projection is built from
+ * @param projectionBranch     branch of the last materialization
+ * @param projectionTimestamp  when the last projection was built
+ * @param indexCommit          commit SHA the search index is built from
+ * @param indexTimestamp       when the last index build completed
+ * @param projectionStale     true if HEAD has moved past the projection commit
+ * @param indexStale           true if the search index is behind HEAD
+ */
+<span class="fc" id="L20">public record ProjectionState(</span>
+    String projectionCommit,
+    String projectionBranch,
+    Instant projectionTimestamp,
+    String indexCommit,
+    Instant indexTimestamp,
+    boolean projectionStale,
+    boolean indexStale
+) {}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

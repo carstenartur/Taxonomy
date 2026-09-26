@@ -1,0 +1,229 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>FrozenReformulationEngine.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">FrozenReformulationEngine.java</span></div><h1>FrozenReformulationEngine.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.reformulation.*;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.*;
+import java.util.*;
+
+/** Reads only baseline content: never consults today's catalogue or workspace architecture. */
+@Service
+public class FrozenReformulationEngine {
+    private final NodeReformulationService nodes;
+    private final ObjectMapper json;
+    private final int parallelism;
+<span class="fc" id="L15">    public FrozenReformulationEngine(NodeReformulationService nodes,ObjectMapper json) {this(nodes,json,1);}</span>
+    @org.springframework.beans.factory.annotation.Autowired
+    public FrozenReformulationEngine(NodeReformulationService nodes,ObjectMapper json,
+<span class="fc" id="L18">            @org.springframework.beans.factory.annotation.Value(&quot;${reformulation.synthesis.parallelism:1}&quot;) int parallelism) {</span>
+<span class="fc" id="L19">        WalkUpExecution.validateParallelism(parallelism);</span>
+<span class="fc" id="L20">        this.nodes=nodes;this.json=json;this.parallelism=parallelism;</span>
+<span class="fc" id="L21">    }</span>
+<span class="fc" id="L22">    private record Completed(NodeSynthesisResult raw, NodeSynthesisResult complete) {}</span>
+    public ReformulationDocument synthesize(ReformulationBaseline baseline,List&lt;DecisionAnswer&gt; answers,List&lt;DecisionQuestion&gt; openDecisions) {
+<span class="fc" id="L24">        return synthesize(baseline,List.of(),answers,openDecisions);</span>
+    }
+    /** Existing statements remain evidence for retained questions until deliberate reconciliation. */
+    public ReformulationDocument synthesize(ReformulationBaseline baseline,List&lt;Statement&gt; priorStatements,List&lt;DecisionAnswer&gt; answers,List&lt;DecisionQuestion&gt; openDecisions) {
+<span class="fc" id="L28">        return synthesize(baseline,priorStatements,answers,openDecisions,ReformulationStepExecutor.direct());</span>
+    }
+    public ReformulationDocument synthesize(ReformulationBaseline baseline,List&lt;Statement&gt; priorStatements,List&lt;DecisionAnswer&gt; answers,List&lt;DecisionQuestion&gt; openDecisions,ReformulationStepExecutor steps) {
+<span class="fc bfc" id="L31" title="All 2 branches covered.">        if(org.springframework.transaction.support.TransactionSynchronizationManager.isActualTransactionActive())</span>
+<span class="fc" id="L32">            throw new IllegalStateException(&quot;LLM_CALL_INSIDE_TRANSACTION&quot;);</span>
+<span class="fc" id="L33">        var catalogue=json.readTree(baseline.frozenContext().getOrDefault(&quot;catalogue&quot;,&quot;[]&quot;));</span>
+<span class="pc bpc" id="L34" title="1 of 2 branches missed.">        if(!catalogue.isArray()) throw new IllegalArgumentException(&quot;Malformed frozen catalogue&quot;);</span>
+<span class="fc" id="L35">        var descriptions=new TreeMap&lt;String,String&gt;();var parents=new TreeMap&lt;String,Set&lt;String&gt;&gt;();</span>
+<span class="fc" id="L36">        collect(catalogue,null,descriptions,parents,new LinkedHashSet&lt;&gt;());</span>
+<span class="fc" id="L37">        var payload=json.readTree(baseline.snapshotPayload());</span>
+<span class="fc bfc" id="L38" title="All 2 branches covered.">        var raw=payload.has(&quot;rawScores&quot;)?payload.path(&quot;rawScores&quot;):payload.path(&quot;scores&quot;);</span>
+<span class="fc" id="L39">        var scores=new HashMap&lt;String,Integer&gt;();raw.properties().forEach(e-&gt;scores.put(e.getKey(),e.getValue().asInt()));</span>
+<span class="fc" id="L40">        var mappings=json.readTree(baseline.frozenContext().getOrDefault(&quot;elementMappings&quot;,&quot;[]&quot;));</span>
+<span class="pc bpc" id="L41" title="3 of 4 branches missed.">        for(var mapping:mappings) if(mapping.has(&quot;directScore&quot;)) scores.put(mapping.path(&quot;nodeCode&quot;).asText(),mapping.path(&quot;directScore&quot;).asInt());</span>
+<span class="fc" id="L42">        var hierarchy=descriptions.keySet().stream().map(id-&gt;new WalkUpPlanner.Node(id,parents.get(id).stream().sorted().toList(),descriptions.get(id),scores.getOrDefault(id,0),List.&lt;Statement&gt;of())).toList();</span>
+<span class="fc" id="L43">        var plan=new WalkUpPlanner().plan(hierarchy);var byId=new HashMap&lt;String,WalkUpPlanner.Node&gt;();hierarchy.forEach(n-&gt;byId.put(n.id(),n));</span>
+<span class="fc" id="L44">        var sourceSpans=anchors(baseline.originalText());var sourceStatements=new ArrayList&lt;Statement&gt;();</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">        var verbatimSource=baseline.originalText().isEmpty()?List.&lt;Statement.SourceSpan&gt;of():List.of(new Statement.SourceSpan(0,baseline.originalText().length(),baseline.originalText()));</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">        for(var span:verbatimSource) sourceStatements.add(new Statement(&quot;source-&quot;+StableIdentityHash.sha256(baseline.originalTextHash()+&quot;:&quot;+span.start()).substring(0,24),span.exactText(),List.of(span),Statement.Provenance.ORIGINAL,List.of(),List.of(),null,Statement.EditingOrigin.SOURCE,&quot;UNREVIEWED&quot;));</span>
+<span class="fc" id="L47">        var boundary=new TreeMap&lt;String,String&gt;();</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        for(var edge:json.readTree(baseline.frozenContext().getOrDefault(&quot;relationMappings&quot;,&quot;[]&quot;))) {</span>
+<span class="pc bpc" id="L49" title="1 of 2 branches missed.">            String id=&quot;edge-&quot;+edge.path(&quot;id&quot;).asText();if(boundary.put(id,edge.toString())!=null) throw new IllegalArgumentException(&quot;Duplicate frozen relation ID&quot;);</span>
+<span class="fc" id="L50">        }</span>
+<span class="fc" id="L51">        var statements=new LinkedHashMap&lt;String,Statement&gt;();sourceStatements.forEach(s-&gt;statements.put(s.id(),s));</span>
+<span class="fc" id="L52">        priorStatements.forEach(s-&gt;statements.put(s.id(),s));</span>
+<span class="fc" id="L53">        var retainedStatements=List.copyOf(statements.values());</span>
+<span class="fc" id="L54">        var results=new LinkedHashMap&lt;String,NodeSynthesisResult&gt;();</span>
+<span class="fc" id="L55">        var questions=new LinkedHashMap&lt;String,DecisionQuestion&gt;();openDecisions.forEach(q-&gt;questions.put(q.id(),q));</span>
+<span class="fc" id="L56">        var sections=new ArrayList&lt;Section&gt;();var findings=new ArrayList&lt;ValidationReport.Finding&gt;();</span>
+<span class="fc" id="L57">        var completed=WalkUpExecution.&lt;Completed&gt;run(plan,parallelism,(step,childResults)-&gt;{</span>
+<span class="fc" id="L58">            var node=byId.get(step.nodeId());</span>
+<span class="fc" id="L59">            var children=childResults.stream().map(Completed::complete).toList();</span>
+<span class="fc bfc" id="L60" title="All 2 branches covered.">            var data=new LinkedHashMap&lt;String,Object&gt;();data.put(&quot;current&quot;,node==null?&quot;Synthetic source-based document root&quot;:node);</span>
+<span class="fc" id="L61">            data.put(&quot;terminalContributions&quot;,step.terminalIds().stream().map(byId::get).toList());data.put(&quot;directParentContributions&quot;,step.directNodeIds().stream().map(byId::get).toList());</span>
+<span class="fc bfc" id="L62" title="All 4 branches covered.">            var input=new NodeSynthesisInput(baseline,step.nodeId(),node==null || node.parentIds().isEmpty()?null:node.parentIds().getFirst(),json.writeValueAsString(data),sourceSpans,retainedStatements,children,boundariesFor(step,node,children,boundary),answers,openDecisions,&quot;Preserve all original anchors and child IDs verbatim; additions are unreviewed.&quot;);</span>
+<span class="fc" id="L63">            java.util.function.Supplier&lt;Completed&gt; work=()-&gt;{</span>
+<span class="fc" id="L64">                var result=steps.execute(&quot;NODE&quot;,input,NodeSynthesisResult.class,()-&gt;nodes.synthesize(input,steps));</span>
+<span class="fc" id="L65">                var carriedStatements=new LinkedHashMap&lt;String,Statement&gt;();var carriedQuestions=new LinkedHashMap&lt;String,DecisionQuestion&gt;();</span>
+<span class="fc" id="L66">                retainedStatements.forEach(v-&gt;carriedStatements.put(v.id(),v));openDecisions.forEach(q-&gt;carriedQuestions.put(q.id(),q));</span>
+<span class="fc" id="L67">                children.forEach(c-&gt;{c.statementProposals().forEach(v-&gt;carriedStatements.put(v.id(),v));c.questionProposals().forEach(q-&gt;carriedQuestions.put(q.id(),q));});</span>
+<span class="fc" id="L68">                result.statementProposals().forEach(v-&gt;carriedStatements.put(v.id(),v));</span>
+<span class="fc" id="L69">                result.questionProposals().forEach(q-&gt;carriedQuestions.put(q.id(),q));</span>
+<span class="fc" id="L70">                var complete=new NodeSynthesisResult(result.nodeId(),result.summary(),List.copyOf(carriedStatements.values()),result.preservedStatementIds(),List.copyOf(carriedQuestions.values()),result.preservedQuestionIds(),result.uncoveredSourceRefs(),result.conflictCandidates());</span>
+<span class="fc" id="L71">                return new Completed(result,complete);</span>
+            };
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            return parallelism==1?work:nodes.captureProvider(work);</span>
+        });
+<span class="fc bfc" id="L75" title="All 2 branches covered.">        for(var step:plan) {</span>
+<span class="fc" id="L76">            var node=byId.get(step.nodeId());var outcome=completed.get(step.nodeId());</span>
+<span class="fc" id="L77">            var result=outcome.raw();var complete=outcome.complete();</span>
+<span class="fc" id="L78">            result.statementProposals().forEach(v-&gt;statements.putIfAbsent(v.id(),v));</span>
+<span class="fc" id="L79">            result.questionProposals().forEach(q-&gt;questions.putIfAbsent(q.id(),q));</span>
+<span class="fc" id="L80">            results.put(step.nodeId(),complete);</span>
+<span class="fc bfc" id="L81" title="All 4 branches covered.">            sections.add(new Section(step.nodeId(),node==null?null:root(node.id(),parents),node==null?&quot;Unmapped source&quot;:node.id(),result.summary(),step.childTaskIds(),complete.statementProposals().stream().map(Statement::id).toList(),complete.questionProposals().stream().map(DecisionQuestion::id).toList()));</span>
+<span class="fc" id="L82">            findings.addAll(result.conflictCandidates());</span>
+<span class="pc bpc" id="L83" title="1 of 2 branches missed.">            for(var span:result.uncoveredSourceRefs()) findings.add(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,&quot;MODEL_UNCOVERED&quot;,&quot;Source remains visible for review&quot;,List.of(),List.of(span)));</span>
+<span class="fc" id="L84">        }</span>
+        // Coverage is structurally preserved, not semantically certified; no-match remainder stays explicit.
+<span class="fc bfc" id="L86" title="All 2 branches covered.">        if(plan.getFirst().nodeId().equals(WalkUpPlanner.DOCUMENT_ROOT)) findings.add(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,&quot;NO_TAXONOMY_MATCH&quot;,&quot;Source-based offer without an invented taxonomy path&quot;,sourceStatements.stream().map(Statement::id).toList(),sourceSpans));</span>
+<span class="fc" id="L87">        findings.add(new ValidationReport.Finding(ValidationReport.Kind.SEMANTIC_REVIEW,&quot;UNREVIEWED_GENERATION&quot;,&quot;Generated offer requires human semantic review&quot;,List.of(),List.of()));</span>
+<span class="fc" id="L88">        String text=String.join(&quot;\n\n&quot;,statements.values().stream().map(Statement::wording).toList());</span>
+<span class="fc" id="L89">        return new ReformulationDocument(text,sections,List.copyOf(statements.values()),List.copyOf(questions.values()),new ValidationReport(findings),List.copyOf(results.values()));</span>
+    }
+    /** Reword only invalidated sections, bottom-up. Independent section records remain byte-stable. */
+    public ReformulationDocument synthesizeAffected(ReformulationBaseline baseline, ReformulationDocument before,
+            List&lt;DecisionAnswer&gt; answers, ReformulationImpact impact) {
+<span class="nc" id="L94">        return synthesizeAffected(baseline,before,answers,impact,ReformulationStepExecutor.direct());</span>
+    }
+    public ReformulationDocument synthesizeAffected(ReformulationBaseline baseline, ReformulationDocument before,
+            List&lt;DecisionAnswer&gt; answers, ReformulationImpact impact, ReformulationStepExecutor steps) {
+<span class="fc" id="L98">        var descriptions=new TreeMap&lt;String,String&gt;();var parents=new TreeMap&lt;String,Set&lt;String&gt;&gt;();</span>
+<span class="fc" id="L99">        collect(json.readTree(baseline.frozenContext().getOrDefault(&quot;catalogue&quot;,&quot;[]&quot;)),null,descriptions,parents,new LinkedHashSet&lt;&gt;());</span>
+<span class="fc" id="L100">        var sections=new LinkedHashMap&lt;String,Section&gt;();before.sections().forEach(s-&gt;sections.put(s.id(),s));</span>
+<span class="fc" id="L101">        var statements=new LinkedHashMap&lt;String,Statement&gt;();before.statements().forEach(s-&gt;statements.put(s.id(),s));</span>
+<span class="fc" id="L102">        var questions=new LinkedHashMap&lt;String,DecisionQuestion&gt;();before.questions().forEach(q-&gt;questions.put(q.id(),q));</span>
+<span class="fc" id="L103">        var boundaries=new TreeMap&lt;String,String&gt;();</span>
+<span class="pc bpc" id="L104" title="1 of 2 branches missed.">        for(var edge:json.readTree(baseline.frozenContext().getOrDefault(&quot;relationMappings&quot;,&quot;[]&quot;)))boundaries.put(&quot;edge-&quot;+edge.path(&quot;id&quot;).asText(),edge.toString());</span>
+<span class="fc" id="L105">        var results=new LinkedHashMap&lt;String,NodeSynthesisResult&gt;();</span>
+<span class="fc" id="L106">        var findings=new ArrayList&lt;&gt;(before.validation().findings());</span>
+<span class="fc" id="L107">        var visiting=new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        for(var section:before.sections()) rewordSection(section.id(),baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting,steps);</span>
+<span class="fc" id="L109">        StringBuilder text=new StringBuilder();var rendered=new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for(var section:sections.values()) {</span>
+<span class="fc" id="L111">            text.append(section.title()).append(&quot;\n&quot;).append(section.summary()).append(&quot;\n\n&quot;);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">            for(String id:section.statementIds()) {</span>
+<span class="fc" id="L113">                var statement=statements.get(id);</span>
+<span class="pc bpc" id="L114" title="3 of 6 branches missed.">                if(statement!=null &amp;&amp; !&quot;REJECTED&quot;.equals(statement.reviewState()) &amp;&amp; rendered.add(id))</span>
+<span class="fc" id="L115">                    text.append(statement.wording()).append(&quot; [&quot;).append(statement.provenance()).append(&quot;]\n\n&quot;);</span>
+<span class="fc" id="L116">            }</span>
+<span class="fc" id="L117">        }</span>
+<span class="pc bpc" id="L118" title="2 of 6 branches missed.">        for(var statement:statements.values())if(!&quot;REJECTED&quot;.equals(statement.reviewState()) &amp;&amp; rendered.add(statement.id()))</span>
+<span class="nc" id="L119">            text.append(statement.wording()).append(&quot; [&quot;).append(statement.provenance()).append(&quot;]\n\n&quot;);</span>
+<span class="pc bpc" id="L120" title="1 of 2 branches missed.">        text.append(baseline.language().equals(&quot;de&quot;)?&quot;Original (unverändert)\n&quot;:&quot;Original (unchanged)\n&quot;).append(baseline.originalText());</span>
+<span class="fc" id="L121">        return new ReformulationDocument(text.toString(),List.copyOf(sections.values()),List.copyOf(statements.values()),List.copyOf(questions.values()),</span>
+<span class="fc" id="L122">                new ValidationReport(findings),List.copyOf(results.values()),before.reconciliation());</span>
+    }
+    private NodeSynthesisResult rewordSection(String id,ReformulationBaseline baseline,Map&lt;String,Section&gt; sections,
+            Map&lt;String,Statement&gt; statements,Map&lt;String,DecisionQuestion&gt; questions,Map&lt;String,String&gt; descriptions,
+            Map&lt;String,Set&lt;String&gt;&gt; parents,Map&lt;String,String&gt; boundaries,List&lt;DecisionAnswer&gt; answers,ReformulationImpact impact,
+            Map&lt;String,NodeSynthesisResult&gt; results,List&lt;ValidationReport.Finding&gt; findings,Set&lt;String&gt; visiting,ReformulationStepExecutor steps) {
+<span class="fc bfc" id="L128" title="All 2 branches covered.">        if(results.containsKey(id))return results.get(id);</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if(!visiting.add(id))throw new IllegalArgumentException(&quot;Section cycle: &quot;+id);</span>
+<span class="pc bpc" id="L130" title="1 of 2 branches missed.">        var section=sections.get(id);if(section==null)throw new IllegalArgumentException(&quot;Unknown section: &quot;+id);</span>
+<span class="fc" id="L131">        var children=new ArrayList&lt;NodeSynthesisResult&gt;();</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">        for(String child:section.children())children.add(rewordSection(child,baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting,steps));</span>
+<span class="fc" id="L133">        var localStatementIds=new LinkedHashSet&lt;&gt;(section.statementIds());</span>
+<span class="fc bfc" id="L134" title="All 4 branches covered.">        var localQuestions=questions.values().stream().filter(q-&gt;section.questionIds().contains(q.id()) || q.key().scope().equals(id)</span>
+<span class="fc bfc" id="L135" title="All 2 branches covered.">                || Set.of(&quot;global&quot;,&quot;@document&quot;,&quot;*&quot;).contains(q.key().scope().toLowerCase(Locale.ROOT))</span>
+<span class="pc bpc" id="L136" title="1 of 2 branches missed.">                || !Collections.disjoint(q.affectedStatementIds(),localStatementIds)).toList();</span>
+<span class="fc" id="L137">        var localQIds=new LinkedHashSet&lt;String&gt;();localQuestions.forEach(q-&gt;localQIds.addAll(q.referenceIds()));</span>
+        boolean changed;
+<span class="pc bpc" id="L139" title="2 of 8 branches missed.">        do {int size=localQIds.size();for(var q:questions.values())if(!Collections.disjoint(q.referenceIds(),localQIds))localQIds.addAll(q.prerequisites());changed=size!=localQIds.size();}while(changed);</span>
+<span class="fc bfc" id="L140" title="All 2 branches covered.">        localQuestions=questions.values().stream().filter(q-&gt;!Collections.disjoint(q.referenceIds(),localQIds)).toList();</span>
+<span class="fc" id="L141">        localQuestions.forEach(q-&gt;localStatementIds.addAll(q.affectedStatementIds()));</span>
+<span class="fc" id="L142">        var direct=localStatementIds.stream().map(statements::get).filter(Objects::nonNull).toList();</span>
+<span class="fc" id="L143">        var localBoundary=new TreeMap&lt;String,String&gt;();boundaries.forEach((edgeId,value)-&gt;{</span>
+<span class="nc bnc" id="L144" title="All 6 branches missed.">            var edge=json.readTree(value);if(id.equals(edge.path(&quot;sourceCode&quot;).asText()) || id.equals(edge.path(&quot;targetCode&quot;).asText()) || impact.boundaryEdgeIds().contains(edgeId))localBoundary.put(edgeId,value);</span>
+<span class="nc" id="L145">        });</span>
+        NodeSynthesisResult result;
+<span class="fc bfc" id="L147" title="All 2 branches covered.">        if(impact.sectionIds().contains(id)) {</span>
+<span class="fc" id="L148">            var metadata=new LinkedHashMap&lt;String,Object&gt;();metadata.put(&quot;section&quot;,section);metadata.put(&quot;frozenDescription&quot;,descriptions.getOrDefault(id,&quot;Synthetic layout section&quot;));</span>
+<span class="fc" id="L149">            var parent=sections.values().stream().filter(s-&gt;s.children().contains(id)).map(Section::id).findFirst().orElse(null);</span>
+<span class="fc" id="L150">            var input=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(metadata),anchors(baseline.originalText()),direct,children,localBoundary,</span>
+<span class="fc" id="L151">                    answers.stream().filter(a-&gt;localQIds.contains(a.questionId())).toList(),localQuestions,</span>
+                    &quot;Only reword this affected section. Preserve human wording and all retained evidence. REJECTED additions must not be reintroduced or paraphrased. Independent branch records stay unchanged.&quot;);
+<span class="fc" id="L153">            var generated=steps.execute(&quot;REWORD&quot;,input,NodeSynthesisResult.class,()-&gt;nodes.synthesize(input,steps));</span>
+<span class="pc" id="L154">            var rejected=statements.values().stream().filter(s-&gt;&quot;REJECTED&quot;.equals(s.reviewState())).map(s-&gt;s.wording().strip()).collect(java.util.stream.Collectors.toSet());</span>
+<span class="fc" id="L155">            var additions=new ArrayList&lt;Statement&gt;();</span>
+<span class="pc bpc" id="L156" title="1 of 2 branches missed.">            for(var statement:generated.statementProposals()) {</span>
+<span class="nc bnc" id="L157" title="All 2 branches missed.">                if(rejected.contains(statement.wording().strip())) {</span>
+<span class="nc" id="L158">                    statement=new Statement(statement.id(),statement.wording(),statement.sourceSpans(),statement.provenance(),statement.architectureLinks(),statement.questionDependencies(),</span>
+<span class="nc" id="L159">                            statement.conditionalValidity(),statement.editingOrigin(),&quot;REJECTED&quot;);</span>
+<span class="nc" id="L160">                    findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT,&quot;REJECTED_ADDITION_REINTRODUCED&quot;,&quot;Candidate repeated rejected wording; retained as rejected evidence&quot;,List.of(statement.id()),List.of()));</span>
+                }
+<span class="nc" id="L162">                additions.add(statement);statements.put(statement.id(),statement);</span>
+<span class="nc" id="L163">            }</span>
+<span class="pc" id="L164">            generated.questionProposals().forEach(q-&gt;questions.put(q.id(),q));</span>
+<span class="pc" id="L165">            var sectionStatements=new LinkedHashSet&lt;&gt;(section.statementIds());additions.forEach(s-&gt;sectionStatements.add(s.id()));</span>
+<span class="pc" id="L166">            var sectionQuestions=new LinkedHashSet&lt;&gt;(section.questionIds());generated.questionProposals().forEach(q-&gt;sectionQuestions.add(q.id()));</span>
+<span class="fc" id="L167">            String summary=generated.summary();</span>
+<span class="pc bpc" id="L168" title="3 of 4 branches missed.">            for(String wording:rejected)if(summary.contains(wording))summary=section.summary();</span>
+<span class="fc" id="L169">            sections.put(id,new Section(section.id(),section.taxonomyCode(),section.title(),summary,section.children(),List.copyOf(sectionStatements),List.copyOf(sectionQuestions)));</span>
+<span class="fc" id="L170">            findings.addAll(generated.conflictCandidates());</span>
+<span class="fc" id="L171">            result=new NodeSynthesisResult(id,summary,additions,generated.preservedStatementIds(),generated.questionProposals(),generated.preservedQuestionIds(),generated.uncoveredSourceRefs(),generated.conflictCandidates());</span>
+<span class="fc" id="L172">        } else result=new NodeSynthesisResult(id,section.summary(),direct,List.of(),localQuestions,List.of(),List.of(),List.of());</span>
+        // Ancestors consume completed details including original preserved evidence, not only newly generated additions.
+<span class="fc" id="L174">        var allStatements=new LinkedHashMap&lt;String,Statement&gt;();direct.forEach(s-&gt;allStatements.put(s.id(),s));</span>
+<span class="fc" id="L175">        children.forEach(c-&gt;c.statementProposals().forEach(s-&gt;allStatements.put(s.id(),s)));result.statementProposals().forEach(s-&gt;allStatements.put(s.id(),s));</span>
+<span class="fc" id="L176">        var allQuestions=new LinkedHashMap&lt;String,DecisionQuestion&gt;();localQuestions.forEach(q-&gt;allQuestions.put(q.id(),q));</span>
+<span class="fc" id="L177">        children.forEach(c-&gt;c.questionProposals().forEach(q-&gt;allQuestions.put(q.id(),q)));result.questionProposals().forEach(q-&gt;allQuestions.put(q.id(),q));</span>
+<span class="fc" id="L178">        result=new NodeSynthesisResult(id,result.summary(),List.copyOf(allStatements.values()),result.preservedStatementIds(),List.copyOf(allQuestions.values()),result.preservedQuestionIds(),result.uncoveredSourceRefs(),result.conflictCandidates());</span>
+<span class="fc" id="L179">        results.put(id,result);visiting.remove(id);return result;</span>
+    }
+    /** Include only directed edges touching this step, collapsed terminals or carried child evidence. */
+    private Map&lt;String,String&gt; boundariesFor(WalkUpPlanner.Step step, WalkUpPlanner.Node node,
+            List&lt;NodeSynthesisResult&gt; children, Map&lt;String,String&gt; boundary) {
+<span class="fc" id="L184">        var selected = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L185">        selected.add(step.nodeId());</span>
+<span class="fc" id="L186">        selected.addAll(step.terminalIds());</span>
+<span class="fc" id="L187">        selected.addAll(step.directNodeIds());</span>
+<span class="fc" id="L188">        selected.addAll(step.childTaskIds());</span>
+<span class="fc bfc" id="L189" title="All 2 branches covered.">        if (node != null) selected.addAll(node.parentIds());</span>
+<span class="fc bfc" id="L190" title="All 2 branches covered.">        for (var child : children) {</span>
+<span class="fc" id="L191">            child.statementProposals().forEach(s -&gt; selected.addAll(s.architectureLinks()));</span>
+<span class="fc" id="L192">            child.questionProposals().forEach(q -&gt; q.discoveries().forEach(d -&gt; {</span>
+<span class="fc" id="L193">                selected.addAll(d.nodeIds());</span>
+<span class="fc" id="L194">                selected.addAll(d.edgeIds());</span>
+<span class="fc" id="L195">            }));</span>
+<span class="fc" id="L196">        }</span>
+<span class="fc" id="L197">        var local = new TreeMap&lt;String,String&gt;();</span>
+<span class="fc" id="L198">        boundary.forEach((id, value) -&gt; {</span>
+<span class="fc" id="L199">            var edge = json.readTree(value);</span>
+<span class="pc bpc" id="L200" title="1 of 4 branches missed.">            if (selected.contains(id) || selected.contains(edge.path(&quot;sourceCode&quot;).asText())</span>
+<span class="fc bfc" id="L201" title="All 2 branches covered.">                    || selected.contains(edge.path(&quot;targetCode&quot;).asText())) local.put(id, value);</span>
+<span class="fc" id="L202">        });</span>
+<span class="fc" id="L203">        return local;</span>
+    }
+<span class="fc bfc" id="L205" title="All 2 branches covered.">    private static String root(String id,Map&lt;String,Set&lt;String&gt;&gt; parents) {while(!parents.get(id).isEmpty())id=parents.get(id).stream().sorted().findFirst().orElseThrow();return id;}</span>
+    /** Exact clause anchors preserve punctuation, negation and numbers/units without splitting decimals. */
+    private static List&lt;Statement.SourceSpan&gt; anchors(String text) {
+<span class="fc" id="L208">        var spans=new ArrayList&lt;Statement.SourceSpan&gt;();int start=0;</span>
+<span class="fc" id="L209">        var boundaries=java.util.regex.Pattern.compile(&quot;[.!?;,](?=\\s|$)&quot;).matcher(text);</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">        while(boundaries.find()) {int end=boundaries.end();spans.add(new Statement.SourceSpan(start,end,text.substring(start,end)));start=end;}</span>
+<span class="fc bfc" id="L211" title="All 2 branches covered.">        if(start&lt;text.length())spans.add(new Statement.SourceSpan(start,text.length(),text.substring(start)));</span>
+<span class="fc" id="L212">        return List.copyOf(spans);</span>
+    }
+    private static void collect(JsonNode array,String nestedParent,Map&lt;String,String&gt; descriptions,Map&lt;String,Set&lt;String&gt;&gt; parents,Set&lt;String&gt; path) {
+<span class="fc bfc" id="L215" title="All 2 branches covered.">        for(var item:array) {</span>
+<span class="pc bpc" id="L216" title="2 of 4 branches missed.">            String id=item.path(&quot;code&quot;).asText();if(id.isBlank() || id.equals(WalkUpPlanner.DOCUMENT_ROOT))throw new IllegalArgumentException(&quot;Malformed frozen node ID&quot;);</span>
+<span class="pc bpc" id="L217" title="1 of 2 branches missed.">            if(!path.add(id))throw new IllegalArgumentException(&quot;Hierarchy cycle: &quot;+path+&quot; -&gt; &quot;+id);</span>
+<span class="fc bfc" id="L218" title="All 2 branches covered.">            String declared=item.path(&quot;parentCode&quot;).isString()?item.path(&quot;parentCode&quot;).asText():null;</span>
+<span class="pc bpc" id="L219" title="1 of 6 branches missed.">            if(nestedParent!=null &amp;&amp; declared!=null &amp;&amp; !declared.equals(nestedParent))throw new IllegalArgumentException(&quot;Conflicting hierarchy parent for &quot;+id);</span>
+<span class="fc" id="L220">            var description=item.deepCopy();((tools.jackson.databind.node.ObjectNode)description).remove(&quot;children&quot;);</span>
+<span class="fc" id="L221">            String previous=descriptions.putIfAbsent(id,description.toString());</span>
+<span class="pc bpc" id="L222" title="3 of 4 branches missed.">            if(previous!=null &amp;&amp; !previous.equals(description.toString()))throw new IllegalArgumentException(&quot;Conflicting duplicate catalogue node &quot;+id);</span>
+<span class="fc bfc" id="L223" title="All 4 branches covered.">            parents.computeIfAbsent(id,k-&gt;new TreeSet&lt;&gt;());String parent=nestedParent==null?declared:nestedParent;if(parent!=null)parents.get(id).add(parent);</span>
+<span class="pc bpc" id="L224" title="2 of 6 branches missed.">            var children=item.path(&quot;children&quot;);if(!children.isMissingNode() &amp;&amp; !children.isNull() &amp;&amp; !children.isArray())throw new IllegalArgumentException(&quot;Malformed children for &quot;+id);</span>
+<span class="fc bfc" id="L225" title="All 2 branches covered.">            if(children.isArray())collect(children,id,descriptions,parents,path);path.remove(id);</span>
+<span class="fc" id="L226">        }</span>
+<span class="fc" id="L227">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

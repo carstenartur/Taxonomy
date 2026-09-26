@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.interop.publication.PublicationPlannerTest
+-------------------------------------------------------------------------------
+Tests run: 23, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 3.457 s -- in com.taxonomy.interop.publication.PublicationPlannerTest

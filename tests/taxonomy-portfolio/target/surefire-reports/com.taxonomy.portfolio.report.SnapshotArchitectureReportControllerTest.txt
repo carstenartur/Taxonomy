@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.portfolio.report.SnapshotArchitectureReportControllerTest
+-------------------------------------------------------------------------------
+Tests run: 7, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 2.841 s -- in com.taxonomy.portfolio.report.SnapshotArchitectureReportControllerTest

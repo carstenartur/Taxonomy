@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PublicationLocalAuthority.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.publication</a> &gt; <span class="el_source">PublicationLocalAuthority.java</span></div><h1>PublicationLocalAuthority.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.publication;
+
+import com.taxonomy.interop.*;
+import com.taxonomy.interop.persistence.IntegrationStore.*;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.workspace.service.*;
+import org.springframework.stereotype.Component;
+import java.io.IOException;
+import java.util.List;
+import java.util.function.Function;
+
+/**
+ * Existing repository, workspace and portfolio authorities, shared by journal guards and orchestration.
+ */
+@Component
+public class PublicationLocalAuthority {
+
+    public final IntegrationDomainAdapter domain;
+
+    public final WorkspaceArchitectureIntegrationPort editor;
+
+    private final SystemRepositoryService repositories;
+
+    private final RepositoryMembershipService memberships;
+
+    private final WorkspaceAccessService workspaceAccess;
+
+<span class="fc" id="L28">    public PublicationLocalAuthority(IntegrationDomainAdapter domain, WorkspaceArchitectureIntegrationPort editor, SystemRepositoryService repositories, RepositoryMembershipService memberships, WorkspaceAccessService workspaceAccess) {</span>
+<span class="fc" id="L29">        this.domain = domain;</span>
+<span class="fc" id="L30">        this.editor = editor;</span>
+<span class="fc" id="L31">        this.repositories = repositories;</span>
+<span class="fc" id="L32">        this.memberships = memberships;</span>
+<span class="fc" id="L33">        this.workspaceAccess = workspaceAccess;</span>
+<span class="fc" id="L34">    }</span>
+
+    public void authorize(RepositoryContext context, boolean write, Connection connection) {
+<span class="pc bpc" id="L37" title="3 of 6 branches missed.">        if (context == null || context.username() == null || context.scope() != RepositoryScope.WORKSPACE) {</span>
+<span class="nc" id="L38">            throw IntegrationProblem.missing();</span>
+        }
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        if (!workspaceAccess.canUsePrivateWorkspace(context)) {</span>
+<span class="fc" id="L41">            throw IntegrationProblem.missing();</span>
+        }
+<span class="fc" id="L43">        var repository = repositories.getRepository(context.repositoryId());</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        boolean permitted = write ? memberships.canContribute(repository, context.username())</span>
+<span class="fc" id="L45">                : memberships.canRead(repository, context.username());</span>
+<span class="pc bpc" id="L46" title="1 of 2 branches missed.">        if (!permitted) {</span>
+<span class="nc" id="L47">            throw IntegrationProblem.missing();</span>
+        }
+<span class="pc bpc" id="L49" title="1 of 4 branches missed.">        if (connection != null &amp;&amp; !connection.organizationId().equals(repository.getOwnerType() + &quot;:&quot; + repository.getOwnerId())) {</span>
+<span class="nc" id="L50">            throw IntegrationProblem.missing();</span>
+        }
+<span class="fc bfc" id="L52" title="All 4 branches covered.">        if (connection != null &amp;&amp; connection.projectId() != null) {</span>
+<span class="fc" id="L53">            domain.requireProject(context, connection.projectId());</span>
+        }
+<span class="fc" id="L55">    }</span>
+
+    public &lt;T&gt; T locked(RepositoryContext context, Function&lt;WorkspaceArchitectureIntegrationPort.WorkspaceDocument, T&gt; action) {
+        try {
+<span class="fc" id="L59">            return editor.locked(context, action);</span>
+<span class="nc" id="L60">        } catch (IOException failure) {</span>
+<span class="nc" id="L61">            throw IntegrationProblem.conflict(&quot;PUBLICATION_LOCAL_UNAVAILABLE&quot;);</span>
+        }
+    }
+
+    public void requireExact(RepositoryContext context, Connection connection, List&lt;Identity&gt; mappings, InternalState expected, boolean checkpoint) {
+<span class="fc" id="L66">        authorize(context, true, connection);</span>
+<span class="fc" id="L67">        locked(context, document -&gt; {</span>
+<span class="fc" id="L68">            domain.lockProject(context, connection.projectId());</span>
+<span class="pc bpc" id="L69" title="1 of 4 branches missed.">            if (expected == null || !expected.equals(domain.snapshot(context, connection, mappings, document).state())) {</span>
+<span class="fc" id="L70">                throw IntegrationProblem.conflict(&quot;PUBLICATION_LOCAL_MOVED&quot;);</span>
+            }
+<span class="fc bfc" id="L72" title="All 6 branches covered.">            if (checkpoint &amp;&amp; connection.projectId() != null &amp;&amp; !document.dsl().equals(domain.portfolioContribution(context).apply(document.dsl()))) {</span>
+<span class="fc" id="L73">                throw IntegrationProblem.conflict(&quot;PUBLICATION_CHECKPOINT_REQUIRED&quot;);</span>
+            }
+<span class="fc bfc" id="L75" title="All 2 branches covered.">            if (checkpoint) {</span>
+                try {
+<span class="pc bpc" id="L77" title="1 of 2 branches missed.">                    if (!editor.isExactCheckpoint(context, document.state())) {</span>
+<span class="nc" id="L78">                        throw IntegrationProblem.conflict(&quot;PUBLICATION_CHECKPOINT_REQUIRED&quot;);</span>
+                    }
+<span class="nc" id="L80">                } catch (IOException failure) {</span>
+<span class="nc" id="L81">                    throw IntegrationProblem.conflict(&quot;PUBLICATION_LOCAL_UNAVAILABLE&quot;);</span>
+<span class="fc" id="L82">                }</span>
+            }
+<span class="fc" id="L84">            return null;</span>
+        });
+<span class="fc" id="L86">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

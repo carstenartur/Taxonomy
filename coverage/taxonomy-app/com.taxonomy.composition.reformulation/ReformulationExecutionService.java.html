@@ -1,0 +1,265 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationExecutionService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.reformulation</a> &gt; <span class="el_source">ReformulationExecutionService.java</span></div><h1>ReformulationExecutionService.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.reformulation;
+
+import com.taxonomy.analysis.reformulation.*;
+import com.taxonomy.analysis.service.*;
+import com.taxonomy.portfolio.reformulation.*;
+import com.taxonomy.portfolio.reformulation.ReformulationDtos.*;
+import com.taxonomy.portfolio.reformulation.ReformulationRecoveryService.Claim;
+import com.taxonomy.portfolio.reformulation.ReformulationRecoveryService.Dispatch;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.stereotype.Service;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.reformulation.ReformulationStepExecutor;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+/** Captured execution scope; recoverable dispatch never reads ambient authentication. */
+@Service
+public class ReformulationExecutionService {
+    private final ReformulationService proposals;
+    private final FrozenReformulationEngine engine;
+    private final CrossTaxonomyReconciler reconciler;
+    private final LlmProviderConfig providers;
+    private final AsyncTaskExecutor executor;
+    private final ObjectMapper checkpointJson;
+    private final ReformulationRecoveryService recovery;
+    private final ReformulationUsageService usage;
+<span class="fc" id="L34">    private final String owner = UUID.randomUUID().toString();</span>
+<span class="fc" id="L35">    private final Map&lt;String,LocalExecution&gt; scheduled = new ConcurrentHashMap&lt;&gt;();</span>
+    private volatile boolean stopping;
+<span class="fc" id="L37">    private String scanCursor = &quot;&quot;;</span>
+
+    public ReformulationExecutionService(ReformulationService proposals,FrozenReformulationEngine engine,
+            CrossTaxonomyReconciler reconciler,LlmProviderConfig providers,
+            @Qualifier(&quot;portfolioAnalysisExecutor&quot;) AsyncTaskExecutor executor,ObjectMapper json,
+<span class="fc" id="L42">            ReformulationRecoveryService recovery, ReformulationUsageService usage) {</span>
+<span class="fc" id="L43">        this.proposals=proposals;this.engine=engine;this.reconciler=reconciler;this.providers=providers;this.executor=executor;</span>
+<span class="fc" id="L44">        this.recovery=recovery; this.usage=usage;</span>
+<span class="fc" id="L45">        this.checkpointJson=json.rebuild().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();</span>
+<span class="fc" id="L46">    }</span>
+    public Run start(Long projectId,Long requirementId,String proposalId,long expectedRevision,String actor,WorkspaceContext context) {
+<span class="fc bfc" id="L48" title="All 2 branches covered.">        if (stopping) throw new IllegalStateException(&quot;REFORMULATION_EXECUTOR_STOPPED&quot;);</span>
+<span class="fc" id="L49">        var proposal=proposals.get(projectId,requirementId,proposalId,actor,context);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if(proposal.currentRevision().number()!=expectedRevision) throw new ReformulationPreconditionException();</span>
+<span class="fc" id="L51">        var provider=providers.getActiveProvider();</span>
+<span class="pc bpc" id="L52" title="1 of 2 branches missed.">        String model=provider==LlmProvider.LOCAL_ONNX?&quot;LOCAL_ONNX&quot;:model(provider);</span>
+<span class="fc" id="L53">        var frozen=proposal.baseline().frozenContext();</span>
+<span class="fc" id="L54">        String prompt=frozen.getOrDefault(&quot;reformulationPrompt&quot;,ReformulationPromptBuilder.template());</span>
+<span class="fc" id="L55">        var dispatch=recovery.enqueue(projectId,requirementId,proposalId,expectedRevision,provider.name(),model,</span>
+<span class="fc" id="L56">                frozen.getOrDefault(&quot;reformulationPromptVersion&quot;,ReformulationPromptBuilder.PROMPT_VERSION),</span>
+<span class="fc" id="L57">                frozen.getOrDefault(&quot;reformulationSchemaVersion&quot;,ReformulationPromptBuilder.SCHEMA_VERSION),prompt,</span>
+<span class="fc" id="L58">                ReconcilePromptBuilder.freeze(frozen),endpointHash(provider),actor,context);</span>
+<span class="fc" id="L59">        submit(dispatch);</span>
+<span class="fc" id="L60">        return proposals.runs(projectId,requirementId,proposalId,actor,context).stream()</span>
+<span class="fc" id="L61">                .filter(r-&gt;r.id().equals(dispatch.run().id())).findFirst().orElseThrow();</span>
+    }
+    /** Bounded timer tick; the persistent row remains queued if the shared executor is full. */
+    public synchronized void recoverAvailable(int maximumInFlight) {
+<span class="pc bpc" id="L65" title="1 of 2 branches missed.">        if (stopping) return;</span>
+<span class="fc" id="L66">        int remaining=maximumInFlight-scheduled.size();</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        if(remaining&lt;=0)return;</span>
+<span class="fc" id="L68">        var page=recovery.dueAfter(Math.min(remaining,100),scanCursor);</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        scanCursor=page.isEmpty()?&quot;&quot;:page.getLast().run().id();</span>
+<span class="fc bfc" id="L70" title="All 2 branches covered.">        for(var dispatch:page) submit(dispatch);</span>
+<span class="fc" id="L71">    }</span>
+    public void heartbeat() {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (var entry : scheduled.entrySet()) {</span>
+<span class="fc" id="L74">            var local = entry.getValue();</span>
+<span class="fc" id="L75">            Claim token = local.claim();</span>
+<span class="pc bpc" id="L76" title="1 of 2 branches missed.">            if (token == null) continue;</span>
+            try {
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                if (!recovery.heartbeat(token)) retire(entry.getKey(), local);</span>
+<span class="nc" id="L79">            } catch (RuntimeException failure) {</span>
+                // The next successful DB-clock check decides ownership. Do not
+                // replace authoritative lease time with a process-local clock.
+<span class="nc" id="L82">                org.slf4j.LoggerFactory.getLogger(getClass()).warn(&quot;Reformulation lease renewal failed for run {}&quot;, entry.getKey());</span>
+<span class="fc" id="L83">            }</span>
+<span class="fc" id="L84">        }</span>
+<span class="fc" id="L85">    }</span>
+    /** Stop local dispatch promptly; valid database leases expire for restart recovery. */
+    public void shutdown() {
+<span class="fc" id="L88">        stopping = true;</span>
+<span class="fc" id="L89">        scheduled.forEach(this::retire);</span>
+<span class="fc" id="L90">    }</span>
+    private void retire(String id, LocalExecution local) {
+<span class="fc" id="L92">        local.retire();</span>
+<span class="fc" id="L93">        scheduled.remove(id, local);</span>
+<span class="fc" id="L94">    }</span>
+    private void submit(Dispatch dispatch) {
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        if (stopping) return;</span>
+<span class="fc" id="L97">        String id = dispatch.run().id();</span>
+<span class="fc" id="L98">        var local = new LocalExecution();</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">        if (scheduled.putIfAbsent(id, local) != null) return;</span>
+<span class="pc bpc" id="L100" title="1 of 2 branches missed.">        if (stopping) { retire(id, local); return; }</span>
+        try {
+<span class="fc" id="L102">            executor.execute(() -&gt; local.runOnce(() -&gt; execute(dispatch, local),</span>
+<span class="fc" id="L103">                    () -&gt; scheduled.remove(id, local)));</span>
+        }
+<span class="pc" id="L105">        catch (org.springframework.core.task.TaskRejectedException rejected) { retire(id, local); }</span>
+<span class="fc" id="L106">    }</span>
+    /** A unique reservation per delivery, not just a run ID shared with its successor. */
+    private static final class LocalExecution {
+        private Thread runner;
+        private Claim claim;
+        private boolean entered;
+        private boolean retired;
+        private boolean finalizing;
+        /** Own admission and cleanup in one command; never hold the monitor over I/O. */
+        void runOnce(Runnable work, Runnable cleanup) {
+<span class="fc" id="L116">            synchronized (this) {</span>
+<span class="fc bfc" id="L117" title="All 4 branches covered.">                if (entered || retired) return;</span>
+<span class="fc" id="L118">                entered = true;</span>
+<span class="fc" id="L119">                runner = Thread.currentThread();</span>
+<span class="fc" id="L120">            }</span>
+            try {
+<span class="fc" id="L122">                work.run();</span>
+            } finally {
+                // Detach before releasing the reservation. A late retire must not
+                // interrupt a thread already returned to its shared executor.
+<span class="fc" id="L126">                synchronized (this) { runner = null; }</span>
+<span class="fc" id="L127">                cleanup.run();</span>
+            }
+<span class="fc" id="L129">        }</span>
+        synchronized boolean attach(Claim token) {
+<span class="pc bpc" id="L131" title="2 of 6 branches missed.">            if (retired || runner == null || claim != null) return false;</span>
+<span class="fc" id="L132">            claim = Objects.requireNonNull(token);</span>
+<span class="fc" id="L133">            return true;</span>
+        }
+<span class="fc" id="L135">        synchronized Claim claim() { return claim; }</span>
+<span class="fc" id="L136">        synchronized boolean retired() { return retired; }</span>
+        /** Called only after database authorization/lease locks, immediately before publication. */
+        synchronized boolean beginFinalization() {
+<span class="fc bfc" id="L139" title="All 4 branches covered.">            if (retired || finalizing) return false;</span>
+<span class="fc" id="L140">            finalizing = true;</span>
+<span class="fc" id="L141">            return true;</span>
+        }
+        synchronized void retire() {
+<span class="fc" id="L144">            retired = true;</span>
+            // Interrupt while holding the local monitor: finish cannot detach and
+            // return this thread to a shared executor between lookup and interrupt.
+            // Finalization that already won under the DB locks is allowed to commit.
+            // Shutdown never waits on network/DB I/O and must not interrupt that commit.
+<span class="fc bfc" id="L149" title="All 4 branches covered.">            if (runner != null &amp;&amp; !finalizing) runner.interrupt();</span>
+<span class="fc" id="L150">        }</span>
+    }
+    private void execute(Dispatch dispatch, LocalExecution local) {
+<span class="fc" id="L153">        Claim token=null;</span>
+        try {
+<span class="pc bpc" id="L155" title="1 of 2 branches missed.">            if (stopping) return;</span>
+<span class="pc" id="L156">            token=recovery.claim(dispatch,owner).orElseThrow(()-&gt;com.taxonomy.portfolio.service.PortfolioException.conflict(&quot;REFORMULATION_CLAIM_REJECTED&quot;));</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">            if (!local.attach(token)) {</span>
+                // The claim committed, but local retirement won before any work.
+                // Release only this owner/epoch without finalizing the queued run.
+<span class="fc" id="L160">                recovery.releaseUnadmitted(token);</span>
+<span class="fc" id="L161">                return;</span>
+            }
+<span class="fc" id="L163">            var run=dispatch.run();var provider=LlmProvider.valueOf(run.provider());</span>
+<span class="fc" id="L164">            providers.setRequestProvider(provider);</span>
+<span class="pc bpc" id="L165" title="1 of 4 branches missed.">            if(provider==LlmProvider.LOCAL_ONNX || !providers.isProviderConfigured(provider)</span>
+<span class="pc bpc" id="L166" title="2 of 4 branches missed.">                    || providers.getProviderConfigurationError(provider)!=null || providers.isMockMode())</span>
+<span class="fc" id="L167">                throw new IllegalStateException(&quot;PROVIDER_NOT_CONFIGURED&quot;);</span>
+<span class="pc bpc" id="L168" title="2 of 4 branches missed.">            if(!run.model().equals(model(provider)) || !dispatch.endpointHash().equals(endpointHash(provider)))</span>
+<span class="nc" id="L169">                throw new IllegalStateException(&quot;MODEL_CONFIGURATION_CHANGED&quot;);</span>
+<span class="fc" id="L170">            var proposal=recovery.source(dispatch);</span>
+<span class="fc" id="L171">            var baseline=proposal.baseline();var captured=new java.util.TreeMap&lt;&gt;(baseline.frozenContext());</span>
+<span class="fc" id="L172">            captured.put(&quot;reformulationPrompt&quot;,run.promptContent());captured.putAll(run.reconcileContext());</span>
+<span class="fc" id="L173">            captured.put(&quot;reformulationPromptVersion&quot;,run.promptVersion());captured.put(&quot;reformulationSchemaVersion&quot;,run.schemaVersion());</span>
+<span class="fc" id="L174">            var runBaseline=new com.taxonomy.reformulation.ReformulationBaseline(baseline.scope(),baseline.sourceVersionId(),baseline.originalText(),</span>
+<span class="fc" id="L175">                    baseline.originalTextHash(),baseline.snapshotId(),baseline.snapshotPayload(),captured,baseline.language(),baseline.algorithmVersion());</span>
+<span class="fc" id="L176">            var revision=proposal.currentRevision();</span>
+<span class="fc" id="L177">            var steps=checkpointExecutor(dispatch.projectId(),dispatch.requirementId(),proposal.id(),run,dispatch.actor(),dispatch.context(),token,local::retired);</span>
+<span class="fc" id="L178">            usage.activate(token);</span>
+<span class="fc" id="L179">            try (var journal = LlmTransportMeter.openJournal(usageJournal(token, local))) {</span>
+                com.taxonomy.reformulation.ReformulationDocument reconciled;
+<span class="fc bfc" id="L181" title="All 2 branches covered.">                if(!revision.impact().sectionIds().isEmpty()) {</span>
+<span class="fc" id="L182">                    var trace=proposals.runs(dispatch.projectId(),dispatch.requirementId(),proposal.id(),dispatch.actor(),dispatch.context()).stream()</span>
+<span class="pc bpc" id="L183" title="2 of 6 branches missed.">                            .filter(r-&gt;r.resultRevision()!=null &amp;&amp; r.candidate()!=null &amp;&amp; r.resultRevision()&lt;=revision.number())</span>
+<span class="fc" id="L184">                            .max(java.util.Comparator.comparingLong(Run::resultRevision)).map(r-&gt;r.candidate().reconciliation()).orElse(null);</span>
+<span class="fc" id="L185">                    var before=new com.taxonomy.reformulation.ReformulationDocument(revision.text(),revision.sections(),revision.statements(),revision.questions(),revision.validation(),java.util.List.of(),trace);</span>
+<span class="fc" id="L186">                    reconciled=engine.synthesizeAffected(runBaseline,before,revision.answers(),revision.impact(),steps);</span>
+<span class="fc" id="L187">                } else {</span>
+<span class="fc" id="L188">                    var result=engine.synthesize(runBaseline,revision.statements(),revision.answers(),revision.questions(),steps);</span>
+<span class="fc" id="L189">                    reconciled=reconciler.reconcile(runBaseline,result,revision.answers(),revision.questions(),steps);</span>
+                }
+<span class="fc" id="L191">                recovery.finish(token,reconciled,null,local::beginFinalization);</span>
+            }
+<span class="fc" id="L193">        } catch(RuntimeException failure) {</span>
+            // An unclaimed delivery cannot fail another worker. Expired owners also
+            // cannot publish failures because finish verifies the exact epoch again.
+<span class="pc bpc" id="L196" title="1 of 2 branches missed.">            if(token==null)throw failure;</span>
+<span class="fc" id="L197">            recovery.finish(token,null,failureCode(failure),local::beginFinalization);</span>
+        } finally {
+<span class="fc" id="L199">            providers.clearRequestProvider();</span>
+        }
+<span class="fc" id="L201">    }</span>
+    private LlmTransportMeter.Journal usageJournal(Claim token, LocalExecution local) {
+<span class="fc" id="L203">        return new LlmTransportMeter.Journal() {</span>
+            @Override public void started(LlmTransportMeter.Attempt attempt) {
+<span class="pc bpc" id="L205" title="1 of 2 branches missed.">                if (local.retired()) throw new IllegalStateException(&quot;REFORMULATION_EXECUTOR_STOPPED&quot;);</span>
+<span class="fc" id="L206">                usage.start(token, new ReformulationUsageService.Start(attempt.id(), attempt.invocationId(),</span>
+<span class="fc" id="L207">                        attempt.provider(), attempt.source().name(), attempt.retryIndex()));</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">                if (local.retired()) throw new IllegalStateException(&quot;REFORMULATION_EXECUTOR_STOPPED&quot;);</span>
+<span class="fc" id="L209">            }</span>
+            @Override public void completed(LlmTransportMeter.Attempt attempt, LlmTransportMeter.Observation result) {
+<span class="fc" id="L211">                var values = result.usage();</span>
+<span class="fc" id="L212">                usage.complete(token, attempt.id(), new ReformulationUsageService.Completion(result.statusCode(), result.outcome().name(),</span>
+<span class="fc" id="L213">                        result.durationMillis(), values.inputTokens(), values.outputTokens(), values.totalTokens(),</span>
+<span class="fc" id="L214">                        values.cachedInputTokens(), values.reasoningTokens(), values.invalid()));</span>
+<span class="fc" id="L215">            }</span>
+        };
+    }
+    /** Legacy direct runs retain explicit cancel/retry; new dispatched runs use the lease-bound overload. */
+    public ReformulationStepExecutor checkpoints(Long projectId,Long requirementId,String proposalId,Run run,String actor,WorkspaceContext context) {
+<span class="fc" id="L220">        return checkpointExecutor(projectId,requirementId,proposalId,run,actor,context,null);</span>
+    }
+    private ReformulationStepExecutor checkpointExecutor(Long projectId,Long requirementId,String proposalId,Run run,String actor,WorkspaceContext context,Claim token) {
+<span class="fc" id="L223">        return checkpointExecutor(projectId,requirementId,proposalId,run,actor,context,token,() -&gt; false);</span>
+    }
+    private ReformulationStepExecutor checkpointExecutor(Long projectId,Long requirementId,String proposalId,Run run,String actor,WorkspaceContext context,Claim token,
+            java.util.function.BooleanSupplier stopped) {
+<span class="fc" id="L227">        var provider=LlmProvider.valueOf(run.provider());String endpoint=endpoint(provider);</span>
+<span class="fc" id="L228">        return ReformulationStepExecutor.of((kind,input,type,work)-&gt;{</span>
+<span class="pc bpc" id="L229" title="1 of 2 branches missed.">            if (stopped.getAsBoolean()) throw new IllegalStateException(&quot;REFORMULATION_EXECUTOR_STOPPED&quot;);</span>
+<span class="pc bpc" id="L230" title="1 of 2 branches missed.">            if(TransactionSynchronizationManager.isActualTransactionActive())throw new IllegalStateException(&quot;CHECKPOINT_EXECUTION_INSIDE_TRANSACTION&quot;);</span>
+<span class="pc bpc" id="L231" title="2 of 4 branches missed.">            if(!run.model().equals(model(provider)) || !endpoint.equals(endpoint(provider)))throw new IllegalStateException(&quot;MODEL_CONFIGURATION_CHANGED&quot;);</span>
+<span class="fc" id="L232">            String fingerprint=StableIdentityHash.sha256(checkpointJson.writeValueAsString(Map.ofEntries(</span>
+<span class="fc" id="L233">                    Map.entry(&quot;format&quot;,&quot;reformulation-step-v1&quot;),Map.entry(&quot;inputEncoding&quot;,ReformulationPromptBuilder.INPUT_ENCODING_VERSION),Map.entry(&quot;provider&quot;,provider.name()),Map.entry(&quot;model&quot;,run.model()),</span>
+<span class="fc" id="L234">                    Map.entry(&quot;endpointHash&quot;,StableIdentityHash.sha256(endpoint)),Map.entry(&quot;prompt&quot;,run.promptContent()),</span>
+<span class="fc" id="L235">                    Map.entry(&quot;promptVersion&quot;,run.promptVersion()),Map.entry(&quot;schemaVersion&quot;,run.schemaVersion()),</span>
+<span class="fc" id="L236">                    Map.entry(&quot;reconciliation&quot;,run.reconcileContext()),Map.entry(&quot;resultType&quot;,type.getName()),Map.entry(&quot;input&quot;,input))));</span>
+<span class="fc bfc" id="L237" title="All 2 branches covered.">            var cached=token==null?proposals.checkpoint(projectId,requirementId,proposalId,run.id(),kind,fingerprint,actor,context)</span>
+<span class="fc" id="L238">                    :recovery.checkpoint(token,kind,fingerprint);</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">            if(cached.isPresent())return checkpointJson.readValue(cached.get(),type);</span>
+<span class="fc" id="L240">            Object result=Objects.requireNonNull(work.get(),&quot;Validated synthesis result is required&quot;);</span>
+<span class="fc bfc" id="L241" title="All 2 branches covered.">            if (stopped.getAsBoolean()) throw new IllegalStateException(&quot;REFORMULATION_EXECUTOR_STOPPED&quot;);</span>
+<span class="fc" id="L242">            String payload=checkpointJson.writeValueAsString(result);</span>
+<span class="fc bfc" id="L243" title="All 2 branches covered.">            String accepted=token==null?proposals.completeCheckpoint(projectId,requirementId,proposalId,run.id(),kind,fingerprint,payload,actor,context)</span>
+<span class="fc" id="L244">                    :recovery.completeCheckpoint(token,kind,fingerprint,payload);</span>
+<span class="fc" id="L245">            return checkpointJson.readValue(accepted,type);</span>
+        });
+    }
+<span class="pc bpc" id="L248" title="1 of 2 branches missed.">    private String endpointHash(LlmProvider provider) {return StableIdentityHash.sha256(provider==LlmProvider.LOCAL_ONNX?&quot;LOCAL_ONNX&quot;:endpoint(provider));}</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">    private String endpoint(LlmProvider provider) {return provider==LlmProvider.GEMINI?providers.getGeminiUrl():providers.getOpenAiCompatibleUrl(provider);}</span>
+    private String model(LlmProvider provider) {
+<span class="fc bfc" id="L251" title="All 2 branches covered.">        return provider==LlmProvider.GEMINI?java.net.URI.create(providers.getGeminiUrl()).getPath().replaceFirst(&quot;.*/models/&quot;, &quot;&quot;).split(&quot;:&quot;)[0]</span>
+<span class="fc" id="L252">                :providers.getOpenAiCompatibleModel(provider);</span>
+    }
+    private static String failureCode(RuntimeException failure) {
+<span class="pc bpc" id="L255" title="1 of 2 branches missed.">        if(failure instanceof LlmRateLimitException)return &quot;PROVIDER_RATE_LIMIT&quot;;</span>
+<span class="pc bpc" id="L256" title="1 of 2 branches missed.">        if(failure instanceof LlmTimeoutException)return &quot;PROVIDER_TIMEOUT&quot;;</span>
+<span class="pc bpc" id="L257" title="1 of 2 branches missed.">        if(failure instanceof LlmProviderException provider)return &quot;PROVIDER_&quot;+provider.getReason().name();</span>
+<span class="pc bpc" id="L258" title="1 of 2 branches missed.">        if(failure instanceof IllegalArgumentException)return &quot;INVALID_FROZEN_INPUT&quot;;</span>
+<span class="fc" id="L259">        String message=failure.getMessage();</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        for(String code:new String[]{&quot;INPUT_TOO_LARGE_FOR_PROVIDER&quot;,&quot;INVALID_MODEL_RESPONSE&quot;,&quot;PROVIDER_NOT_CONFIGURED&quot;,&quot;PROVIDER_TRANSPORT_FAILED&quot;,&quot;MODEL_CONFIGURATION_CHANGED&quot;,&quot;CHECKPOINT_EXECUTION_INSIDE_TRANSACTION&quot;,&quot;CHECKPOINT_RESULT_TOO_LARGE_OR_EMPTY&quot;,&quot;USAGE_RECORDING_UNAVAILABLE&quot;})</span>
+<span class="pc bpc" id="L261" title="1 of 4 branches missed.">            if(message!=null &amp;&amp; message.startsWith(code))return code;</span>
+<span class="fc" id="L262">        return &quot;SYNTHESIS_FAILED&quot;;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

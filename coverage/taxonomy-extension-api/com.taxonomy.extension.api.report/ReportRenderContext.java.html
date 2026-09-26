@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReportRenderContext.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.report</a> &gt; <span class="el_source">ReportRenderContext.java</span></div><h1>ReportRenderContext.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.report;
+
+import com.taxonomy.dto.ArchitectureReport;
+
+import java.io.Serial;
+import java.io.Serializable;
+import java.util.Map;
+import java.util.Objects;
+
+/**
+ * Immutable input for a report renderer extension.
+ *
+ * &lt;p&gt;The original architecture-report accessor is retained for source compatibility.
+ * New report families use {@link #ofPayload(Object)} and obtain their typed model with
+ * {@link #payloadAs(Class)}. This keeps the extension API framework-free while allowing
+ * more than one report family to share the same renderer registry.&lt;/p&gt;
+ */
+@SuppressWarnings(&quot;serial&quot;)
+public final class ReportRenderContext implements Serializable {
+
+    @Serial
+    private static final long serialVersionUID = 1L;
+
+    private final Object payload;
+    private final Map&lt;String, Object&gt; options;
+
+    /**
+     * Source-compatible constructor retained from the original record API.
+     */
+    public ReportRenderContext(
+            ArchitectureReport report,
+            Map&lt;String, Object&gt; options) {
+<span class="fc" id="L33">        this((Object) report, options);</span>
+<span class="fc" id="L34">    }</span>
+
+    private ReportRenderContext(
+            Object payload,
+<span class="fc" id="L38">            Map&lt;String, Object&gt; options) {</span>
+<span class="fc" id="L39">        this.payload = Objects.requireNonNull(payload, &quot;report payload must not be null&quot;);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">        this.options = options == null ? Map.of() : Map.copyOf(options);</span>
+<span class="fc" id="L41">    }</span>
+
+    /**
+     * Backward-compatible accessor for the built-in architecture report family.
+     */
+    public ArchitectureReport report() {
+<span class="fc" id="L47">        return payloadAs(ArchitectureReport.class);</span>
+    }
+
+    /** Returns the untyped report payload for generic infrastructure. */
+    public Object payload() {
+<span class="nc" id="L52">        return payload;</span>
+    }
+
+    /** Returns the immutable renderer options. */
+    public Map&lt;String, Object&gt; options() {
+<span class="nc" id="L57">        return options;</span>
+    }
+
+    /**
+     * Requires the payload to have the expected report-model type.
+     *
+     * @throws IllegalArgumentException when a renderer is invoked with the wrong model
+     */
+    public &lt;T&gt; T payloadAs(Class&lt;T&gt; expectedType) {
+<span class="fc" id="L66">        Objects.requireNonNull(expectedType, &quot;expectedType must not be null&quot;);</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        if (!expectedType.isInstance(payload)) {</span>
+<span class="nc" id="L68">            throw new IllegalArgumentException(</span>
+<span class="nc" id="L69">                    &quot;Report renderer expected &quot; + expectedType.getName()</span>
+<span class="nc" id="L70">                            + &quot; but received &quot; + payload.getClass().getName());</span>
+        }
+<span class="fc" id="L72">        return expectedType.cast(payload);</span>
+    }
+
+    @Override
+    public boolean equals(Object other) {
+<span class="nc" id="L77">        return this == other</span>
+<span class="nc bnc" id="L78" title="All 4 branches missed.">                || other instanceof ReportRenderContext context</span>
+<span class="nc bnc" id="L79" title="All 2 branches missed.">                &amp;&amp; payload.equals(context.payload)</span>
+<span class="nc bnc" id="L80" title="All 2 branches missed.">                &amp;&amp; options.equals(context.options);</span>
+    }
+
+    @Override
+    public int hashCode() {
+<span class="nc" id="L85">        return Objects.hash(payload, options);</span>
+    }
+
+    @Override
+    public String toString() {
+<span class="nc" id="L90">        return &quot;ReportRenderContext[payload=&quot; + payload + &quot;, options=&quot; + options + &quot;]&quot;;</span>
+    }
+
+    /** Creates a context for the original architecture-report family. */
+    public static ReportRenderContext of(ArchitectureReport report) {
+<span class="fc" id="L95">        return new ReportRenderContext(report, Map.of());</span>
+    }
+
+    /** Creates a context for any registered report family. */
+    public static ReportRenderContext ofPayload(Object payload) {
+<span class="fc" id="L100">        return new ReportRenderContext(payload, Map.of());</span>
+    }
+
+    /** Creates a context for any report family with renderer-specific options. */
+    public static ReportRenderContext ofPayload(
+            Object payload,
+            Map&lt;String, Object&gt; options) {
+<span class="nc" id="L107">        return new ReportRenderContext(payload, options);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

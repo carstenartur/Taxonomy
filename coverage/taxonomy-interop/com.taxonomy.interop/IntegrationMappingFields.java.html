@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationMappingFields.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">IntegrationMappingFields.java</span></div><h1>IntegrationMappingFields.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.exchange.ExchangeXml;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Pure canonical field mapping shared by inbound selection and publication planning. No authority is granted here. */
+public final class IntegrationMappingFields {
+    private IntegrationMappingFields() {}
+    public static Artifact remap(Artifact artifact, MappingOverride mapping) {
+<span class="fc bfc" id="L12" title="All 2 branches covered.">        if (mapping == null) return artifact;</span>
+<span class="fc" id="L13">        Map&lt;String, String&gt; extensions = new TreeMap&lt;&gt;(artifact.extensions()); String title = artifact.title(), text = artifact.text();</span>
+<span class="pc bpc" id="L14" title="1 of 4 branches missed.">        if (mapping.canonicalType() != null &amp;&amp; !mapping.canonicalType().isBlank()) {</span>
+<span class="pc bpc" id="L15" title="1 of 2 branches missed.">            Set&lt;String&gt; supported = artifact.kind() == ArtifactKind.ELEMENT</span>
+<span class="nc" id="L16">                    ? Set.of(&quot;Capability&quot;, &quot;Process&quot;, &quot;CoreService&quot;, &quot;COIService&quot;, &quot;CommunicationsService&quot;, &quot;UserApplication&quot;, &quot;InformationProduct&quot;, &quot;BusinessRole&quot;, &quot;System&quot;, &quot;Component&quot;)</span>
+<span class="pc bpc" id="L17" title="1 of 2 branches missed.">                    : artifact.kind() == ArtifactKind.RELATION ? com.taxonomy.dsl.validation.DslValidator.relationTypes() : Set.of();</span>
+<span class="pc bpc" id="L18" title="1 of 2 branches missed.">            if (!supported.contains(mapping.canonicalType())) throw new IllegalArgumentException(&quot;Unsupported canonical type mapping&quot;);</span>
+<span class="fc" id="L19">            extensions.put(&quot;canonicalType&quot;, mapping.canonicalType());</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">            extensions.put(&quot;taxonomy:&quot; + (artifact.kind() == ArtifactKind.ELEMENT ? &quot;ElementType&quot; : &quot;RelationType&quot;), mapping.canonicalType());</span>
+        }
+<span class="pc bpc" id="L22" title="1 of 4 branches missed.">        if (mapping.titleAttribute() != null &amp;&amp; !mapping.titleAttribute().isBlank()) {</span>
+<span class="fc" id="L23">            title = mappedText(artifact, mapping.titleAttribute()); extensions.put(&quot;titleAttribute&quot;, mapping.titleAttribute());</span>
+        }
+<span class="pc bpc" id="L25" title="1 of 4 branches missed.">        if (mapping.textAttribute() != null &amp;&amp; !mapping.textAttribute().isBlank()) {</span>
+<span class="fc" id="L26">            text = mappedText(artifact, mapping.textAttribute()); extensions.put(&quot;textAttribute&quot;, mapping.textAttribute());</span>
+        }
+<span class="fc bfc" id="L28" title="All 4 branches covered.">        if (extensions.get(&quot;titleAttribute&quot;) != null &amp;&amp; extensions.get(&quot;titleAttribute&quot;).equals(extensions.get(&quot;textAttribute&quot;)))</span>
+<span class="fc" id="L29">            throw new IllegalArgumentException(&quot;Title and body require independent mappings&quot;);</span>
+<span class="fc" id="L30">        return new Artifact(artifact.id(), artifact.kind(), artifact.type(), title, text, artifact.attributes(), extensions);</span>
+    }
+    private static String mappedText(Artifact artifact, String attribute) {
+<span class="pc bpc" id="L33" title="1 of 4 branches missed.">        if (artifact.kind() != ArtifactKind.REQUIREMENT || !artifact.attributes().containsKey(attribute)) throw new IllegalArgumentException(&quot;Unknown requirement attribute mapping&quot;);</span>
+<span class="fc" id="L34">        String value = artifact.attributes().get(attribute);</span>
+<span class="pc bpc" id="L35" title="1 of 2 branches missed.">        return &quot;XHTML&quot;.equals(artifact.extensions().get(&quot;kind:&quot; + attribute)) ? ExchangeXml.parse(value.getBytes(StandardCharsets.UTF_8)).getDocumentElement().getTextContent() : value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

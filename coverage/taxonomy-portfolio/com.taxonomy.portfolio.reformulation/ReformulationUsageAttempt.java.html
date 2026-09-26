@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationUsageAttempt.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationUsageAttempt.java</span></div><h1>ReformulationUsageAttempt.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import jakarta.persistence.*;
+import java.time.Instant;
+import com.taxonomy.portfolio.reformulation.ReformulationUsageService.Start;
+import com.taxonomy.portfolio.reformulation.ReformulationUsageService.Completion;
+
+/** A committed intent to exchange, followed by at most one immutable terminal observation. */
+@Entity
+@Table(name = &quot;reformulation_usage_attempt&quot;, indexes = @Index(name = &quot;idx_reform_usage_attempt_run&quot;, columnList = &quot;run_id&quot;),
+        uniqueConstraints = @UniqueConstraint(name = &quot;uk_reform_usage_invocation&quot;, columnNames = {&quot;run_id&quot;, &quot;invocation_id&quot;, &quot;source_kind&quot;, &quot;retry_index&quot;}))
+public class ReformulationUsageAttempt {
+    @Id @Column(length = 36, updatable = false) private String id;
+    @Column(name = &quot;run_id&quot;, nullable = false, length = 36, updatable = false) private String runId;
+    @Column(name = &quot;owner_id&quot;, nullable = false, length = 36, updatable = false) private String ownerId;
+    @Column(name = &quot;lease_epoch&quot;, nullable = false, updatable = false) private long epoch;
+    @Column(name = &quot;invocation_id&quot;, nullable = false, length = 36, updatable = false) private String invocationId;
+    @Column(nullable = false, length = 32, updatable = false) private String provider;
+    @Column(name = &quot;source_kind&quot;, nullable = false, length = 24, updatable = false) private String source;
+    @Column(name = &quot;retry_index&quot;, nullable = false, updatable = false) private int retryIndex;
+    @Column(name = &quot;started_at&quot;, nullable = false, updatable = false) private Instant startedAt;
+    @Column(name = &quot;completed_at&quot;) private Instant completedAt;
+    @Column(name = &quot;status_code&quot;) private Integer statusCode;
+    @Column(length = 24) private String outcome;
+    @Column(name = &quot;duration_millis&quot;) private Long durationMillis;
+    @Column(name = &quot;input_tokens&quot;) private Long inputTokens;
+    @Column(name = &quot;output_tokens&quot;) private Long outputTokens;
+    @Column(name = &quot;total_tokens&quot;) private Long totalTokens;
+    @Column(name = &quot;cached_input_tokens&quot;) private Long cachedInputTokens;
+    @Column(name = &quot;reasoning_tokens&quot;) private Long reasoningTokens;
+    @Column(name = &quot;invalid_usage&quot;) private Boolean invalidUsage;
+    @Version @Column(name = &quot;row_version&quot;, nullable = false) private long version;
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = &quot;run_id&quot;, insertable = false, updatable = false, foreignKey = @ForeignKey(name = &quot;fk_reform_usage_attempt_session&quot;))
+    private ReformulationUsageSession session;
+<span class="fc" id="L36">    protected ReformulationUsageAttempt() {}</span>
+<span class="fc" id="L37">    ReformulationUsageAttempt(String runId, String owner, long epoch, Start start, Instant now) {</span>
+<span class="fc" id="L38">        this.id = start.id(); this.runId = runId; this.ownerId = owner; this.epoch = epoch;</span>
+<span class="fc" id="L39">        this.invocationId = start.invocationId(); this.provider = start.provider(); this.source = start.source();</span>
+<span class="fc" id="L40">        this.retryIndex = start.retryIndex(); this.startedAt = now;</span>
+<span class="fc" id="L41">    }</span>
+<span class="fc bfc" id="L42" title="All 6 branches covered.">    boolean ownedBy(String run, String owner, long generation) { return runId.equals(run) &amp;&amp; ownerId.equals(owner) &amp;&amp; epoch == generation; }</span>
+<span class="fc bfc" id="L43" title="All 10 branches covered.">    boolean matches(Start start) { return id.equals(start.id()) &amp;&amp; invocationId.equals(start.invocationId()) &amp;&amp; provider.equals(start.provider()) &amp;&amp; source.equals(start.source()) &amp;&amp; retryIndex == start.retryIndex(); }</span>
+<span class="fc" id="L44">    String source() { return source; }</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">    Completion result() { return completedAt == null ? null : new Completion(statusCode, outcome, durationMillis,</span>
+<span class="fc" id="L46">            inputTokens, outputTokens, totalTokens, cachedInputTokens, reasoningTokens, invalidUsage); }</span>
+    void complete(Completion result, Instant now) {
+<span class="fc" id="L48">        completedAt = now; statusCode = result.statusCode(); outcome = result.outcome(); durationMillis = result.durationMillis();</span>
+<span class="fc" id="L49">        inputTokens = result.inputTokens(); outputTokens = result.outputTokens(); totalTokens = result.totalTokens();</span>
+<span class="fc" id="L50">        cachedInputTokens = result.cachedInputTokens(); reasoningTokens = result.reasoningTokens(); invalidUsage = result.invalidUsage();</span>
+<span class="fc" id="L51">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

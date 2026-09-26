@@ -1,0 +1,415 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>AnalysisProgressRegistry.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">AnalysisProgressRegistry.java</span></div><h1>AnalysisProgressRegistry.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+import com.taxonomy.dto.AnalysisProvenance;
+import com.taxonomy.dto.LlmCallDetail;
+import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.core.env.Environment;
+import org.springframework.http.HttpStatus;
+import org.springframework.stereotype.Component;
+import org.springframework.web.server.ResponseStatusException;
+
+import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.concurrent.TimeUnit;
+
+/** Bounded live telemetry, not a replacement for durable portfolio jobs or semantic history. */
+@Component
+public class AnalysisProgressRegistry {
+    static final int MAX_ACTIVE = 4, MAX_RETAINED = 16, MAX_CALLS = 32, MAX_SCORES = 8192, MAX_TEXT = 8192;
+    private static final long RETENTION_MILLIS = 10 * 60 * 1000;
+<span class="fc" id="L26">    private final Map&lt;String, Run&gt; runs = new LinkedHashMap&lt;&gt;();</span>
+    private final AnalysisMemoryGuard.Policy policy;
+    private final String databaseStorage;
+    private final String indexStorage;
+
+<span class="fc" id="L31">    public AnalysisProgressRegistry(Environment environment) {</span>
+<span class="fc" id="L32">        policy = new AnalysisMemoryGuard.Policy(</span>
+<span class="fc" id="L33">                environment.getProperty(&quot;taxonomy.analysis.runtime.warning-percent&quot;, Integer.class, 80),</span>
+<span class="fc" id="L34">                environment.getProperty(&quot;taxonomy.analysis.runtime.stop-percent&quot;, Integer.class, 92),</span>
+<span class="fc" id="L35">                environment.getProperty(&quot;taxonomy.analysis.runtime.minimum-headroom-mb&quot;, Long.class, 16L) * 1024 * 1024,</span>
+<span class="fc" id="L36">                environment.getProperty(&quot;taxonomy.analysis.runtime.pressure-seconds&quot;, Long.class, 5L) * 1000,</span>
+<span class="fc" id="L37">                environment.getProperty(&quot;taxonomy.analysis.runtime.maximum-duration-seconds&quot;, Long.class, 1800L) * 1000);</span>
+<span class="fc" id="L38">        String url = environment.getProperty(&quot;spring.datasource.url&quot;, &quot;&quot;);</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        databaseStorage = url.startsWith(&quot;jdbc:hsqldb:mem:&quot;) ? &quot;IN_MEMORY&quot;</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">                : url.startsWith(&quot;jdbc:hsqldb:file:&quot;) ? &quot;FILE&quot; : &quot;EXTERNAL_OR_UNKNOWN&quot;;</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">        indexStorage = &quot;local-heap&quot;.equals(environment.getProperty(</span>
+                &quot;spring.jpa.properties.hibernate.search.backend.directory.type&quot;, &quot;local-heap&quot;))
+<span class="pc" id="L43">                ? &quot;IN_MEMORY&quot; : &quot;FILESYSTEM_OR_EXTERNAL&quot;;</span>
+<span class="fc" id="L44">    }</span>
+
+<span class="fc" id="L46">    private record Scope(String owner, String workspace, String branch, String repository) {</span>
+        static Scope of(String owner, WorkspaceContext context) {
+<span class="pc bpc" id="L48" title="3 of 6 branches missed.">            if (owner == null || owner.isBlank() || context == null</span>
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">                    || context.currentBranch() == null || context.currentBranch().isBlank()) {</span>
+<span class="nc" id="L50">                throw new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Analysis not found&quot;);</span>
+            }
+<span class="fc" id="L52">            return new Scope(owner, context.workspaceId(), context.currentBranch(), context.repositoryId());</span>
+        }
+    }
+
+<span class="fc" id="L56">    public record CallView(long id, String provider, String node, String status, long startedAt, long durationMillis) { }</span>
+<span class="fc" id="L57">    public record CallDetail(String prompt, String response, boolean truncated, String error,</span>
+                             int promptLength, int responseLength) {
+        public CallDetail(String prompt, String response, boolean truncated) {
+<span class="nc" id="L60">            this(prompt, response, truncated, &quot;&quot;, length(prompt), length(response));</span>
+<span class="nc" id="L61">        }</span>
+    }
+<span class="fc" id="L63">    public record Snapshot(String operationId, String status, String phase, String node, String stopReason,</span>
+                           long sequence, long startedAt, long lastActivityAt, long serverTime,
+                           int evaluatedNodes, boolean scoresTruncated, Map&lt;String, Integer&gt; rawScores,
+                           List&lt;CallView&gt; calls, long omittedCalls, AnalysisMemoryGuard.Reading memory,
+                           String databaseStorage, String indexStorage, AnalysisProvenance provenance,
+                           Long finishedAt, long elapsedMillis) { }
+
+    /** Immutable decision made at the run's cancellation/completion linearization point. */
+<span class="fc" id="L71">    public record Terminal(String status, String stopReason) {</span>
+        public String resultStatus() {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">            return &quot;COMPLETED&quot;.equals(status) ? &quot;SUCCESS&quot;</span>
+<span class="fc bfc" id="L74" title="All 4 branches covered.">                    : &quot;CANCELLED&quot;.equals(status) || &quot;PARTIAL&quot;.equals(status) ? &quot;PARTIAL&quot; : &quot;ERROR&quot;;</span>
+        }
+        public String message(String previous) {
+<span class="fc bfc" id="L77" title="All 6 branches covered.">            if (stopReason == null || (previous != null &amp;&amp; previous.contains(stopReason))) return previous;</span>
+<span class="fc" id="L78">            String stopped = stopReason + &quot;: Analysis stopped cooperatively&quot;;</span>
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">            return previous == null || previous.isBlank() ? stopped : previous + &quot;; &quot; + stopped;</span>
+        }
+        public List&lt;String&gt; warnings(List&lt;String&gt; previous) {
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">            var warnings = new ArrayList&lt;String&gt;(previous == null ? List.of() : previous);</span>
+<span class="pc bpc" id="L83" title="1 of 8 branches missed.">            if (stopReason != null &amp;&amp; warnings.stream().noneMatch(value -&gt; value != null &amp;&amp; value.contains(stopReason))) {</span>
+<span class="fc" id="L84">                warnings.add(message(null));</span>
+            }
+<span class="fc" id="L86">            return List.copyOf(warnings);</span>
+        }
+        public void reconcile(AnalysisResult result) {
+<span class="fc" id="L89">            result.setStatus(resultStatus());</span>
+<span class="fc" id="L90">            result.setWarnings(warnings(result.getWarnings()));</span>
+<span class="fc" id="L91">            result.setErrorMessage(message(result.getErrorMessage()));</span>
+<span class="fc" id="L92">        }</span>
+    }
+
+    public Handle open(String requestedId, String owner, WorkspaceContext context,
+                       AnalysisProvenance provenance) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        return (provenance == null</span>
+<span class="fc" id="L98">                ? reserve(requestedId, owner, context, null)</span>
+<span class="fc" id="L99">                : awaitDurableAdmission(requestedId, owner, context, provenance)).open();</span>
+    }
+
+    /**
+     * Durable portfolio work already has a bounded executor and a persisted claim.
+     * Back-pressure its existing worker instead of turning transient telemetry
+     * saturation into a permanent item failure. Waiting allocates no run or extra
+     * task and binds no thread-local control; request/SSE admission remains fail-fast.
+     */
+    private synchronized Reservation awaitDurableAdmission(String requestedId, String owner,
+            WorkspaceContext context, AnalysisProvenance provenance) {
+<span class="fc" id="L110">        Scope.of(owner, context);</span>
+<span class="pc bpc" id="L111" title="1 of 2 branches missed.">        String id = requestedId == null ? UUID.randomUUID().toString() : canonicalId(requestedId);</span>
+        while (true) {
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">            if (Thread.currentThread().isInterrupted()) {</span>
+<span class="nc" id="L114">                throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);</span>
+            }
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">            if (runs.containsKey(id)) {</span>
+<span class="nc" id="L117">                throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Analysis ID already exists&quot;);</span>
+            }
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            if (runs.values().stream().filter(Run::active).count() &lt; MAX_ACTIVE) {</span>
+<span class="fc" id="L120">                return reserve(id, owner, context, provenance);</span>
+            }
+            try {
+<span class="fc" id="L123">                wait();</span>
+<span class="fc" id="L124">            } catch (InterruptedException interrupted) {</span>
+<span class="fc" id="L125">                Thread.currentThread().interrupt();</span>
+<span class="fc" id="L126">                throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);</span>
+<span class="fc" id="L127">            }</span>
+        }
+    }
+
+    private synchronized void capacityReleased() {
+<span class="fc" id="L132">        notifyAll();</span>
+<span class="fc" id="L133">    }</span>
+
+    /** Reserve admission on the request thread without binding its thread-local run control. */
+    public synchronized Reservation reserve(String requestedId, String owner, WorkspaceContext context,
+                                            AnalysisProvenance provenance) {
+<span class="fc" id="L138">        Scope scope = Scope.of(owner, context);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        String id = requestedId == null ? UUID.randomUUID().toString() : canonicalId(requestedId);</span>
+<span class="fc" id="L140">        reap();</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        if (runs.containsKey(id)) throw new ResponseStatusException(HttpStatus.CONFLICT, &quot;Analysis ID already exists&quot;);</span>
+<span class="fc bfc" id="L142" title="All 2 branches covered.">        if (runs.values().stream().filter(Run::active).count() &gt;= MAX_ACTIVE) {</span>
+<span class="fc" id="L143">            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, &quot;Analysis capacity reached; retry later&quot;);</span>
+        }
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        while (runs.size() &gt;= MAX_RETAINED) {</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            String oldest = runs.entrySet().stream().filter(e -&gt; !e.getValue().active())</span>
+<span class="fc" id="L147">                    .map(Map.Entry::getKey).findFirst().orElseThrow(() -&gt;</span>
+<span class="nc" id="L148">                            new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, &quot;Analysis capacity reached&quot;));</span>
+<span class="fc" id="L149">            runs.remove(oldest);</span>
+<span class="fc" id="L150">        }</span>
+<span class="fc" id="L151">        Run run = new Run(id, scope, provenance);</span>
+<span class="fc" id="L152">        runs.put(id, run);</span>
+<span class="fc" id="L153">        return new Reservation(run);</span>
+    }
+
+    public synchronized Snapshot snapshot(String id, String owner, WorkspaceContext context) {
+<span class="fc" id="L157">        return require(id, owner, context).snapshot();</span>
+    }
+
+    public synchronized Snapshot cancel(String id, String owner, WorkspaceContext context) {
+<span class="fc" id="L161">        Run run = require(id, owner, context);</span>
+<span class="fc" id="L162">        synchronized (run) {</span>
+<span class="fc" id="L163">            run.requestCancellation();</span>
+<span class="fc" id="L164">            return run.snapshot();</span>
+        }
+    }
+
+    public synchronized CallDetail callDetail(String id, long callId, String owner, WorkspaceContext context) {
+<span class="fc" id="L169">        Run run = require(id, owner, context);</span>
+<span class="fc" id="L170">        synchronized (run) {</span>
+<span class="fc bfc" id="L171" title="All 2 branches covered.">            return run.calls.stream().filter(c -&gt; c.id == callId)</span>
+<span class="fc" id="L172">                    .map(c -&gt; new CallDetail(c.prompt, c.response, c.truncated, c.error,</span>
+<span class="fc" id="L173">                            c.promptLength, c.responseLength)).findFirst()</span>
+<span class="pc" id="L174">                    .orElseThrow(() -&gt; new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Call detail expired&quot;));</span>
+        }
+    }
+
+    public synchronized List&lt;Snapshot&gt; recent(String owner, WorkspaceContext context, Long projectId, Long requirementId) {
+<span class="fc" id="L179">        Scope scope = Scope.of(owner, context);</span>
+<span class="fc" id="L180">        reap();</span>
+<span class="fc" id="L181">        List&lt;Snapshot&gt; result = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L182" title="All 2 branches covered.">        for (Run run : runs.values()) {</span>
+<span class="fc bfc" id="L183" title="All 2 branches covered.">            if (!run.scope.equals(scope)) continue;</span>
+<span class="pc bpc" id="L184" title="1 of 6 branches missed.">            if (projectId != null &amp;&amp; (run.provenance == null || !Objects.equals(projectId, run.provenance.projectId()))) continue;</span>
+<span class="pc bpc" id="L185" title="2 of 6 branches missed.">            if (requirementId != null &amp;&amp; (run.provenance == null || !Objects.equals(requirementId, run.provenance.requirementId()))) continue;</span>
+<span class="fc" id="L186">            result.add(run.snapshot());</span>
+<span class="fc" id="L187">        }</span>
+<span class="fc" id="L188">        return List.copyOf(result);</span>
+    }
+
+    private Run require(String id, String owner, WorkspaceContext context) {
+<span class="fc" id="L192">        Scope scope = Scope.of(owner, context);</span>
+<span class="fc" id="L193">        reap();</span>
+<span class="fc" id="L194">        Run run = runs.get(canonicalId(id));</span>
+<span class="fc bfc" id="L195" title="All 4 branches covered.">        if (run == null || !run.scope.equals(scope)) {</span>
+<span class="fc" id="L196">            throw new ResponseStatusException(HttpStatus.NOT_FOUND, &quot;Analysis not found&quot;);</span>
+        }
+<span class="fc" id="L198">        return run;</span>
+    }
+
+    private void reap() {
+<span class="fc" id="L202">        long now = System.currentTimeMillis();</span>
+<span class="pc bpc" id="L203" title="1 of 4 branches missed.">        runs.entrySet().removeIf(e -&gt; !e.getValue().active() &amp;&amp; now - e.getValue().finishedAt &gt; RETENTION_MILLIS);</span>
+<span class="fc" id="L204">    }</span>
+
+    /** Shared strict ID contract for admission headers and subsequent observation/cancellation. */
+    public static String canonicalId(String id) {
+        try {
+<span class="fc" id="L209">            String canonical = UUID.fromString(id).toString();</span>
+<span class="fc bfc" id="L210" title="All 2 branches covered.">            if (!canonical.equals(id)) throw new IllegalArgumentException();</span>
+<span class="fc" id="L211">            return canonical;</span>
+<span class="fc" id="L212">        } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L213">            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, &quot;Analysis ID must be a canonical UUID&quot;);</span>
+        }
+    }
+
+    /** A queued run counts toward capacity and can be cancelled before a worker claims it. */
+    public final class Reservation implements AutoCloseable {
+        private final Run run;
+        private boolean claimed, closed;
+
+<span class="fc" id="L222">        private Reservation(Run run) { this.run = run; }</span>
+
+        /** Attach control only on the thread that actually executes this run. */
+        public synchronized Handle open() {
+<span class="pc bpc" id="L226" title="2 of 4 branches missed.">            if (claimed || closed) throw new IllegalStateException(&quot;Analysis reservation is no longer available&quot;);</span>
+<span class="fc" id="L227">            Handle handle = new Handle(run);</span>
+<span class="fc" id="L228">            claimed = true;</span>
+<span class="fc" id="L229">            return handle;</span>
+        }
+
+        /** Retain a transport disconnect even if a provider consumes the thread interrupt. */
+<span class="fc" id="L233">        public void cancel() { run.requestCancellation(); }</span>
+
+        /** Roll back an unclaimed admission if scheduling fails; never remove a worker-owned run. */
+        @Override public synchronized void close() {
+<span class="pc bpc" id="L237" title="1 of 4 branches missed.">            if (claimed || closed) return;</span>
+<span class="fc" id="L238">            closed = true;</span>
+<span class="fc" id="L239">            synchronized (AnalysisProgressRegistry.this) {</span>
+<span class="fc" id="L240">                runs.remove(run.id, run);</span>
+<span class="fc" id="L241">                capacityReleased();</span>
+<span class="fc" id="L242">            }</span>
+<span class="fc" id="L243">        }</span>
+    }
+
+    public final class Handle implements AutoCloseable {
+        private final Run run;
+        private final AnalysisRunControl control;
+        private boolean closed;
+<span class="fc" id="L250">        private Handle(Run run) {</span>
+<span class="fc" id="L251">            this.run = run;</span>
+<span class="fc" id="L252">            control = new AnalysisRunControl(run, () -&gt; run.cancelled, run.guard);</span>
+<span class="fc" id="L253">        }</span>
+<span class="fc" id="L254">        public String id() { return run.id; }</span>
+<span class="fc" id="L255">        public void finish(String status) { finishAndGet(status); }</span>
+        public void finish(AnalysisResult result) {
+<span class="fc" id="L257">            finishAndGet(result.getStatus()).reconcile(result);</span>
+<span class="fc" id="L258">        }</span>
+        public Terminal finishAndGet(String status) {
+<span class="fc" id="L260">            Terminal terminal = run.finish(status);</span>
+            // Do not acquire the registry monitor while holding the run monitor.
+<span class="fc" id="L262">            capacityReleased();</span>
+<span class="fc" id="L263">            return terminal;</span>
+        }
+        @Override public void close() {
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">            if (closed) return;</span>
+<span class="fc" id="L267">            closed = true;</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">            try { if (run.active()) run.finish(&quot;ERROR&quot;); }</span>
+            finally {
+<span class="fc" id="L270">                control.close();</span>
+<span class="fc" id="L271">                capacityReleased();</span>
+            }
+<span class="fc" id="L273">        }</span>
+    }
+
+    private static final class Call {
+        final long id, startedAt;
+<span class="fc" id="L278">        final long startedNanos = System.nanoTime();</span>
+        final String provider, node;
+<span class="fc" id="L280">        String status = &quot;STARTED&quot;, prompt = &quot;&quot;, response = &quot;&quot;, error = &quot;&quot;;</span>
+        int promptLength, responseLength;
+        long duration;
+        boolean truncated;
+<span class="fc" id="L284">        Call(long id, String provider, String node) {</span>
+<span class="fc" id="L285">            this.id = id; this.provider = bounded(provider, 64); this.node = bounded(node, 256);</span>
+<span class="fc" id="L286">            startedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L287">        }</span>
+<span class="fc" id="L288">        CallView view() { return new CallView(id, provider, node, status, startedAt, duration); }</span>
+    }
+
+    private final class Run implements AnalysisRunControl.Observer {
+        final String id;
+        final Scope scope;
+        final AnalysisProvenance provenance;
+<span class="fc" id="L295">        final long startedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L296">        final long startedNanos = System.nanoTime();</span>
+        long finishedElapsedMillis;
+<span class="fc" id="L298">        final AnalysisMemoryGuard guard = new AnalysisMemoryGuard(policy, AnalysisMemoryGuard::heapSample,</span>
+<span class="fc" id="L299">                () -&gt; TimeUnit.NANOSECONDS.toMillis(System.nanoTime()));</span>
+<span class="fc" id="L300">        final ArrayDeque&lt;Call&gt; calls = new ArrayDeque&lt;&gt;();</span>
+<span class="fc" id="L301">        final Map&lt;String, Integer&gt; scores = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L302">        volatile String status = &quot;RUNNING&quot;;</span>
+        volatile boolean cancelled;
+        volatile long finishedAt;
+<span class="fc" id="L305">        String phase = &quot;PREPARING&quot;, node = &quot;&quot;, stopReason;</span>
+<span class="fc" id="L306">        long sequence = 1, lastActivityAt = startedAt, callSequence, omittedCalls;</span>
+        boolean scoresTruncated;
+<span class="fc" id="L308">        Run(String id, Scope scope, AnalysisProvenance provenance) { this.id = id; this.scope = scope; this.provenance = provenance; }</span>
+<span class="fc bfc" id="L309" title="All 4 branches covered.">        boolean active() { return &quot;RUNNING&quot;.equals(status) || &quot;CANCELLING&quot;.equals(status); }</span>
+        synchronized void requestCancellation() {
+<span class="fc bfc" id="L311" title="All 2 branches covered.">            if (active()) { cancelled = true; status = &quot;CANCELLING&quot;; touch(); }</span>
+<span class="fc" id="L312">        }</span>
+<span class="fc" id="L313">        void touch() { sequence++; lastActivityAt = System.currentTimeMillis(); }</span>
+        @Override public synchronized void phase(String phase, String node) {
+<span class="fc" id="L315">            this.phase = bounded(phase, 64);</span>
+<span class="fc bfc" id="L316" title="All 2 branches covered.">            if (node != null) this.node = bounded(node, 256);</span>
+<span class="fc" id="L317">            touch();</span>
+<span class="fc" id="L318">        }</span>
+        @Override public synchronized long started(String provider, String node) {
+<span class="fc bfc" id="L320" title="All 2 branches covered.">            if (calls.size() &gt;= MAX_CALLS) { calls.removeFirst(); omittedCalls++; }</span>
+<span class="fc" id="L321">            Call call = new Call(++callSequence, provider, node);</span>
+<span class="fc" id="L322">            calls.addLast(call);</span>
+<span class="fc" id="L323">            phase(&quot;LLM_PREPARING&quot;, node);</span>
+<span class="fc" id="L324">            return call.id;</span>
+        }
+        @Override public synchronized void prepared(long id, String prompt) {
+<span class="pc bpc" id="L327" title="1 of 2 branches missed.">            if (!active()) return;</span>
+<span class="fc bfc" id="L328" title="All 2 branches covered.">            Call call = calls.stream().filter(c -&gt; c.id == id).findFirst().orElse(null);</span>
+<span class="pc bpc" id="L329" title="2 of 4 branches missed.">            if (call == null || !&quot;STARTED&quot;.equals(call.status)) return;</span>
+<span class="fc" id="L330">            call.promptLength = length(prompt);</span>
+<span class="fc" id="L331">            call.prompt = bounded(prompt, MAX_TEXT);</span>
+<span class="fc bfc" id="L332" title="All 2 branches covered.">            call.truncated = call.promptLength &gt; MAX_TEXT;</span>
+<span class="fc" id="L333">            touch();</span>
+<span class="fc" id="L334">        }</span>
+        @Override public synchronized void completed(long id, LlmCallDetail detail, long duration) {
+<span class="fc bfc" id="L336" title="All 2 branches covered.">            Call call = calls.stream().filter(c -&gt; c.id == id).findFirst().orElse(null);</span>
+<span class="pc bpc" id="L337" title="1 of 2 branches missed.">            if (call != null) {</span>
+<span class="pc bpc" id="L338" title="1 of 4 branches missed.">                call.status = detail.getError() == null || detail.getError().isBlank() ? &quot;COMPLETED&quot; : &quot;FAILED&quot;;</span>
+<span class="fc" id="L339">                call.duration = duration;</span>
+<span class="fc" id="L340">                call.promptLength = length(detail.getPrompt());</span>
+<span class="fc" id="L341">                call.responseLength = length(detail.getRawResponse());</span>
+<span class="fc" id="L342">                call.error = bounded(detail.getError(), 1024);</span>
+<span class="fc" id="L343">                call.prompt = bounded(detail.getPrompt(), MAX_TEXT);</span>
+<span class="fc" id="L344">                call.response = bounded(detail.getRawResponse(), MAX_TEXT);</span>
+<span class="pc bpc" id="L345" title="1 of 4 branches missed.">                call.truncated = call.promptLength &gt; MAX_TEXT || call.responseLength &gt; MAX_TEXT;</span>
+            }
+<span class="fc bfc" id="L347" title="All 2 branches covered.">            if (detail.getScores() != null) detail.getScores().forEach((code, score) -&gt; {</span>
+<span class="pc bpc" id="L348" title="2 of 4 branches missed.">                if (code == null || score == null) return;</span>
+<span class="pc bpc" id="L349" title="2 of 4 branches missed.">                if (scores.containsKey(code) || scores.size() &lt; MAX_SCORES) scores.put(code, score);</span>
+<span class="nc" id="L350">                else scoresTruncated = true;</span>
+<span class="fc" id="L351">            });</span>
+<span class="fc" id="L352">            phase(&quot;SCORING&quot;, null);</span>
+<span class="fc" id="L353">        }</span>
+        @Override public synchronized void stoppedAfterResponse(long id, LlmCallDetail detail,
+                long duration, AnalysisStoppedException.Reason reason) {
+            // The provider response is complete even when subsequent work must stop.
+            // Keep the same bounded evidence as a normal response and publish STOPPING atomically.
+<span class="fc" id="L358">            completed(id, detail, duration);</span>
+<span class="fc bfc" id="L359" title="All 2 branches covered.">            calls.stream().filter(call -&gt; call.id == id).findFirst()</span>
+<span class="fc" id="L360">                    .ifPresent(call -&gt; call.status = &quot;STOPPED&quot;);</span>
+<span class="fc" id="L361">            stopped(reason);</span>
+<span class="fc" id="L362">        }</span>
+        @Override public synchronized void failed(long id, String failure, long duration) {
+<span class="fc bfc" id="L364" title="All 2 branches covered.">            calls.stream().filter(c -&gt; c.id == id).findFirst().ifPresent(c -&gt; {</span>
+<span class="fc" id="L365">                c.status = &quot;FAILED&quot;;</span>
+<span class="fc" id="L366">                c.duration = duration;</span>
+<span class="fc" id="L367">                c.error = bounded(failure, 1024);</span>
+<span class="fc" id="L368">            });</span>
+<span class="fc" id="L369">            phase(&quot;LLM_FAILED&quot;, null);</span>
+<span class="fc" id="L370">        }</span>
+        @Override public synchronized void stopped(AnalysisStoppedException.Reason reason) {
+<span class="fc bfc" id="L372" title="All 2 branches covered.">            if (stopReason == null) stopReason = reason.name();</span>
+<span class="fc" id="L373">            long now = System.nanoTime();</span>
+<span class="fc" id="L374">            calls.stream().filter(call -&gt; &quot;STARTED&quot;.equals(call.status)).forEach(call -&gt; {</span>
+<span class="fc" id="L375">                call.status = &quot;STOPPED&quot;;</span>
+<span class="fc" id="L376">                call.duration = TimeUnit.NANOSECONDS.toMillis(Math.max(0, now - call.startedNanos));</span>
+<span class="fc" id="L377">            });</span>
+<span class="fc" id="L378">            phase(&quot;STOPPING&quot;, null);</span>
+<span class="fc" id="L379">        }</span>
+        synchronized Terminal finish(String resultStatus) {
+<span class="fc bfc" id="L381" title="All 2 branches covered.">            if (!active()) return new Terminal(status, stopReason);</span>
+            // cancel() and finish() share the run monitor: a cancellation accepted first wins.
+            // Do not replace a resource-stop reason that the worker has already recorded.
+<span class="fc bfc" id="L384" title="All 4 branches covered.">            if (cancelled &amp;&amp; stopReason == null) stopped(AnalysisStoppedException.Reason.CANCELLED);</span>
+<span class="fc bfc" id="L385" title="All 2 branches covered.">            String terminalStatus = &quot;CANCELLED&quot;.equals(stopReason) ? &quot;CANCELLED&quot;</span>
+<span class="fc bfc" id="L386" title="All 2 branches covered.">                    : stopReason != null ? &quot;PARTIAL&quot;</span>
+<span class="fc bfc" id="L387" title="All 2 branches covered.">                    : &quot;SUCCESS&quot;.equals(resultStatus) ? &quot;COMPLETED&quot;</span>
+<span class="fc bfc" id="L388" title="All 2 branches covered.">                    : &quot;PARTIAL&quot;.equals(resultStatus) ? &quot;PARTIAL&quot; : &quot;ERROR&quot;;</span>
+<span class="fc" id="L389">            phase = &quot;FINISHED&quot;;</span>
+<span class="fc" id="L390">            finishedAt = System.currentTimeMillis();</span>
+<span class="fc" id="L391">            finishedElapsedMillis = Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L);</span>
+<span class="fc" id="L392">            touch();</span>
+            // reap() observes this volatile state without taking the run monitor.
+            // Publish the timestamp and terminal metadata before making the run inactive.
+<span class="fc" id="L395">            status = terminalStatus;</span>
+<span class="fc" id="L396">            return new Terminal(status, stopReason);</span>
+        }
+        synchronized Snapshot snapshot() {
+<span class="fc" id="L399">            return new Snapshot(id, status, phase, node, stopReason, sequence, startedAt, lastActivityAt,</span>
+<span class="fc" id="L400">                    System.currentTimeMillis(), scores.size(), scoresTruncated, Map.copyOf(scores),</span>
+<span class="fc" id="L401">                    calls.stream().map(Call::view).toList(), omittedCalls, guard.reading(),</span>
+<span class="fc bfc" id="L402" title="All 2 branches covered.">                    databaseStorage, indexStorage, provenance, active() ? null : finishedAt,</span>
+<span class="fc bfc" id="L403" title="All 2 branches covered.">                    active() ? Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L) : finishedElapsedMillis);</span>
+        }
+    }
+
+<span class="pc bpc" id="L407" title="1 of 2 branches missed.">    private static int length(String value) { return value == null ? 0 : value.length(); }</span>
+    private static String bounded(String value, int limit) {
+<span class="fc bfc" id="L409" title="All 2 branches covered.">        if (value == null) return &quot;&quot;;</span>
+<span class="fc bfc" id="L410" title="All 2 branches covered.">        if (value.length() &lt;= limit) return value;</span>
+<span class="fc" id="L411">        String marker = &quot;\n[truncated]&quot;;</span>
+<span class="fc" id="L412">        return value.substring(0, limit - marker.length()) + marker;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.portfolio.reformulation.ReformulationUsageTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 60.42 s -- in com.taxonomy.portfolio.reformulation.ReformulationUsageTest

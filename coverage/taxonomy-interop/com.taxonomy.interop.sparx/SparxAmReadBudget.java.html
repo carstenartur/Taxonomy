@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxAmReadBudget.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.sparx</a> &gt; <span class="el_source">SparxAmReadBudget.java</span></div><h1>SparxAmReadBudget.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.sparx;
+
+import com.taxonomy.interop.IntegrationProblem;
+import java.util.function.LongSupplier;
+
+/** One aggregate operation budget, including discovery and every feature collection. */
+public final class SparxAmReadBudget {
+    public record Limits(int roots, int pages, int responses, long bytes, long statements, int objects, long nanos) {
+<span class="fc" id="L9">        public Limits {</span>
+<span class="pc bpc" id="L10" title="14 of 28 branches missed.">            if (roots &lt; 1 || roots &gt; 250 || pages &lt; 1 || pages &gt; 20 || responses &lt; 1 || responses &gt; 1024</span>
+                    || bytes &lt; 1 || bytes &gt; 16777216 || statements &lt; 1 || statements &gt; 100000
+                    || objects &lt; 1 || objects &gt; 10000 || nanos &lt; 1 || nanos &gt; 30000000000L)
+<span class="nc" id="L13">                throw new IllegalArgumentException(&quot;Read limits must stay within the declared v2 bounds&quot;);</span>
+<span class="fc" id="L14">        }</span>
+<span class="fc" id="L15">        public static Limits defaults() { return new Limits(250, 20, 1024, 16777216, 100000, 10000, 30000000000L); }</span>
+    }
+    private final Limits limits;
+    private final LongSupplier clock;
+    private final long start;
+    private int responses;
+<span class="fc" id="L21">    private final java.util.Set&lt;String&gt; objects = new java.util.HashSet&lt;&gt;();</span>
+    private long bytes, statements;
+<span class="fc" id="L23">    public SparxAmReadBudget(Limits limits, LongSupplier clock) { this.limits = limits; this.clock = clock; this.start = clock.getAsLong(); }</span>
+<span class="fc bfc" id="L24" title="All 2 branches covered.">    public void checkTime() { if (clock.getAsLong() - start &gt;= limits.nanos()) throw failure(&quot;REMOTE_TIMEOUT&quot;); }</span>
+    public void beforeResponse(int chainPages) {
+<span class="fc" id="L26">        checkTime();</span>
+<span class="pc bpc" id="L27" title="1 of 2 branches missed.">        if (chainPages &gt;= limits.pages()) throw failure(&quot;SPARX_AM_PAGE_LIMIT&quot;);</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        if (responses &gt;= limits.responses()) throw failure(&quot;SPARX_AM_REQUEST_LIMIT&quot;);</span>
+<span class="fc" id="L29">        responses++;</span>
+<span class="fc" id="L30">    }</span>
+    public void received(long responseBytes, long rdfStatements, java.util.Set&lt;String&gt; identifiedObjects) {
+<span class="fc" id="L32">        checkTime(); bytes += responseBytes; statements += rdfStatements; objects.addAll(identifiedObjects);</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (bytes &gt; limits.bytes()) throw failure(&quot;REMOTE_RESPONSE_LIMIT&quot;);</span>
+<span class="fc bfc" id="L34" title="All 4 branches covered.">        if (statements &gt; limits.statements() || objects.size() &gt; limits.objects()) throw failure(&quot;ITEM_LIMIT&quot;);</span>
+<span class="fc" id="L35">    }</span>
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">    public void roots(int count) { if (count &gt; limits.roots()) throw failure(&quot;SPARX_AM_ENRICHMENT_LIMIT&quot;); }</span>
+<span class="fc" id="L37">    public int responseCount() { return responses; }</span>
+<span class="fc" id="L38">    public long byteCount() { return bytes; }</span>
+<span class="fc bfc" id="L39" title="All 2 branches covered.">    private static IntegrationProblem failure(String code) { return new IntegrationProblem(code, code.equals(&quot;REMOTE_TIMEOUT&quot;) ? 504 : 502, &quot;Complete AM read exceeded its aggregate bound; no partial preview is available&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

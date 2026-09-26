@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationAdoptionController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.reformulation</a> &gt; <span class="el_source">ReformulationAdoptionController.java</span></div><h1>ReformulationAdoptionController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.reformulation;
+
+import com.taxonomy.portfolio.reformulation.ReformulationAdoptionService;
+import com.taxonomy.portfolio.reformulation.ReformulationAdoptionDtos.*;
+import com.taxonomy.portfolio.reformulation.ReformulationPreconditionException;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.http.*;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.ResponseStatusException;
+import java.util.List;
+
+/** Dedicated two-stage command boundary, separate from proposal editing and generation. */
+@RestController
+@RequestMapping(&quot;/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}&quot;)
+public class ReformulationAdoptionController {
+    private final ReformulationAdoptionService service;
+    private final WorkspaceResolver resolver;
+<span class="fc" id="L18">    public ReformulationAdoptionController(ReformulationAdoptionService service,WorkspaceResolver resolver){this.service=service;this.resolver=resolver;}</span>
+    @PostMapping(&quot;/adoption-previews&quot;) public ResponseEntity&lt;Preview&gt; preview(@PathVariable Long projectId,@PathVariable Long requirementId,
+            @PathVariable String proposalId,@RequestHeader(value=&quot;If-Match&quot;,required=false) String expected) {
+<span class="fc" id="L21">        return ResponseEntity.status(201).cacheControl(CacheControl.noStore()).body(service.preview(projectId,requirementId,proposalId,</span>
+<span class="fc" id="L22">                expected(expected),resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    @GetMapping(&quot;/adoption-previews/{previewId}&quot;) public ResponseEntity&lt;Preview&gt; read(@PathVariable Long projectId,@PathVariable Long requirementId,
+            @PathVariable String proposalId,@PathVariable String previewId) {
+<span class="fc" id="L26">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.readPreview(projectId,requirementId,proposalId,previewId,</span>
+<span class="fc" id="L27">                resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    @PostMapping(&quot;/adoptions&quot;) public ResponseEntity&lt;Result&gt; adopt(@PathVariable Long projectId,@PathVariable Long requirementId,
+            @PathVariable String proposalId,@RequestHeader(value=&quot;If-Match&quot;,required=false) String expected,@RequestBody ConfirmRequest request) {
+<span class="fc" id="L31">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.adopt(projectId,requirementId,proposalId,expected(expected),request,</span>
+<span class="fc" id="L32">                resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    @GetMapping(&quot;/adoptions&quot;) public ResponseEntity&lt;List&lt;Result&gt;&gt; history(@PathVariable Long projectId,@PathVariable Long requirementId,@PathVariable String proposalId) {
+<span class="fc" id="L35">        return ResponseEntity.ok().cacheControl(CacheControl.noStore()).body(service.history(projectId,requirementId,proposalId,</span>
+<span class="fc" id="L36">                resolver.resolveCurrentUsername(),resolver.resolveCurrentContext()));</span>
+    }
+    private static long expected(String value) {
+<span class="fc bfc" id="L39" title="All 2 branches covered.">        if(value==null)throw new ResponseStatusException(HttpStatus.PRECONDITION_REQUIRED,&quot;If-Match is required&quot;);</span>
+<span class="pc bpc" id="L40" title="1 of 2 branches missed.">        if(!value.matches(&quot;\&quot;[1-9][0-9]*\&quot;&quot;))throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Expected quoted proposal revision&quot;);</span>
+<span class="fc" id="L41">        try{return Long.parseLong(value.substring(1,value.length()-1));}</span>
+<span class="nc" id="L42">        catch(NumberFormatException e){throw new ResponseStatusException(HttpStatus.BAD_REQUEST,&quot;Invalid proposal revision&quot;);}</span>
+    }
+    @ExceptionHandler(ReformulationPreconditionException.class) public ResponseEntity&lt;ProblemDetail&gt; stale(ReformulationPreconditionException e) {
+<span class="fc" id="L45">        return ResponseEntity.status(412).cacheControl(CacheControl.noStore()).body(ProblemDetail.forStatusAndDetail(HttpStatus.PRECONDITION_FAILED,e.getMessage()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WalkUpPlanner.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">WalkUpPlanner.java</span></div><h1>WalkUpPlanner.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.reformulation.Statement;
+import java.util.*;
+
+/** Deterministic DAG plan. Terminal analysis contributions are grouped at their nearest parent. */
+<span class="fc" id="L7">public class WalkUpPlanner {</span>
+    public static final String DOCUMENT_ROOT=&quot;@document&quot;;
+    public record Node(String id,List&lt;String&gt; parentIds,String description,int score,List&lt;Statement&gt; directContributions) {
+<span class="fc" id="L10">        public Node { parentIds=List.copyOf(parentIds);directContributions=List.copyOf(directContributions); }</span>
+    }
+    public record Step(String nodeId,List&lt;String&gt; terminalIds,List&lt;String&gt; childTaskIds,List&lt;String&gt; directNodeIds) {
+<span class="fc" id="L13">        public Step { terminalIds=List.copyOf(terminalIds);childTaskIds=List.copyOf(childTaskIds);directNodeIds=List.copyOf(directNodeIds); }</span>
+    }
+    public List&lt;Step&gt; plan(List&lt;Node&gt; nodes) {
+<span class="fc" id="L16">        var byId=new TreeMap&lt;String,Node&gt;();var children=new TreeMap&lt;String,SortedSet&lt;String&gt;&gt;();</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">        for(var node:nodes) {</span>
+<span class="pc bpc" id="L18" title="4 of 8 branches missed.">            if(node.id()==null || node.id().isBlank() || node.id().equals(DOCUMENT_ROOT) || byId.put(node.id(),node)!=null)</span>
+<span class="nc" id="L19">                throw new IllegalArgumentException(&quot;Duplicate/reserved node ID: &quot;+node.id());</span>
+<span class="fc" id="L20">            children.put(node.id(),new TreeSet&lt;&gt;());</span>
+<span class="fc" id="L21">        }</span>
+<span class="fc bfc" id="L22" title="All 4 branches covered.">        for(var node:nodes) for(String parent:node.parentIds()) {</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">            if(!byId.containsKey(parent)) throw new IllegalArgumentException(&quot;Unknown parent &quot;+parent+&quot; of &quot;+node.id());</span>
+<span class="fc" id="L24">            children.get(parent).add(node.id());</span>
+<span class="fc" id="L25">        }</span>
+<span class="fc" id="L26">        var ordered=new ArrayList&lt;String&gt;();var completed=new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        for(String id:byId.keySet()) visit(id,children,new LinkedHashSet&lt;&gt;(),completed,ordered);</span>
+<span class="fc" id="L28">        var relevant=new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L29" title="All 8 branches covered.">        for(String id:ordered) if(byId.get(id).score()&gt;0 || !byId.get(id).directContributions().isEmpty() || children.get(id).stream().anyMatch(relevant::contains)) relevant.add(id);</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">        if(relevant.isEmpty()) return List.of(new Step(DOCUMENT_ROOT,List.of(),List.of(),List.of()));</span>
+<span class="fc" id="L31">        var tasks=new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L32" title="All 8 branches covered.">        for(String id:ordered) if(relevant.contains(id) &amp;&amp; (children.get(id).stream().anyMatch(relevant::contains) || byId.get(id).parentIds().isEmpty())) tasks.add(id);</span>
+<span class="fc" id="L33">        var result=new ArrayList&lt;Step&gt;();</span>
+<span class="fc bfc" id="L34" title="All 4 branches covered.">        for(String id:ordered) if(tasks.contains(id)) {</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            var terminals=children.get(id).stream().filter(relevant::contains).filter(c-&gt;!tasks.contains(c)).toList();</span>
+<span class="fc" id="L36">            var childTasks=children.get(id).stream().filter(tasks::contains).toList();</span>
+<span class="fc" id="L37">            var node=byId.get(id);</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">            result.add(new Step(id,terminals,childTasks,node.score()&gt;0 || !node.directContributions().isEmpty()?List.of(id):List.of()));</span>
+        }
+<span class="fc" id="L40">        return List.copyOf(result);</span>
+    }
+    private void visit(String id,Map&lt;String,SortedSet&lt;String&gt;&gt; children,LinkedHashSet&lt;String&gt; path,Set&lt;String&gt; completed,List&lt;String&gt; ordered) {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if(completed.contains(id)) return;</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">        if(!path.add(id)) throw new IllegalArgumentException(&quot;Hierarchy cycle: &quot;+String.join(&quot; -&gt; &quot;,path)+&quot; -&gt; &quot;+id);</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        for(String child:children.get(id)) visit(child,children,path,completed,ordered);</span>
+<span class="fc" id="L46">        path.remove(id);completed.add(id);ordered.add(id);</span>
+<span class="fc" id="L47">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

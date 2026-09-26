@@ -1,0 +1,181 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationQuestionService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationQuestionService.java</span></div><h1>ReformulationQuestionService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.reformulation.ReformulationDtos.*;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.reformulation.*;
+import java.math.BigDecimal;
+import java.time.Instant;
+import java.util.*;
+
+/** Pure proposal decision operations. Authorization, locking and append-only persistence belong to the aggregate. */
+public final class ReformulationQuestionService {
+    private ReformulationQuestionService() {}
+
+    public static Revision answer(String proposalId, Revision prior, AnswerRequest request, String actor,
+            ReformulationBaseline baseline) {
+<span class="pc bpc" id="L16" title="2 of 4 branches missed.">        if (request == null || request.questionId() == null) throw invalid(&quot;Question is required&quot;);</span>
+<span class="fc" id="L17">        rationale(request.rationale());</span>
+<span class="fc" id="L18">        var question = prior.questions().stream().filter(q -&gt; q.referenceIds().contains(request.questionId()))</span>
+<span class="pc" id="L19">                .findFirst().orElseThrow(() -&gt; invalid(&quot;Unknown question&quot;));</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">        var values = request.values() == null ? List.&lt;String&gt;of() : request.values();</span>
+<span class="fc bfc" id="L21" title="All 2 branches covered.">        if(values.stream().anyMatch(Objects::isNull))throw invalid(&quot;Answer values cannot be null&quot;);</span>
+<span class="fc" id="L22">        String action = request.action();</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        if (!Set.of(&quot;ANSWER&quot;, &quot;DEFER&quot;, &quot;NOT_APPLICABLE&quot;).contains(Objects.toString(action, &quot;&quot;))) throw invalid(&quot;Invalid answer action&quot;);</span>
+<span class="fc bfc" id="L24" title="All 4 branches covered.">        if (&quot;NOT_APPLICABLE&quot;.equals(action) &amp;&amp; !values.isEmpty())</span>
+<span class="fc" id="L25">            throw invalid(&quot;Not-applicable must not contain answer values&quot;);</span>
+        // OPEN is an option meaning, not a reserved word in a free-text answer.
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        boolean choice = question.answerSchema().kind() == DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">                || question.answerSchema().kind() == DecisionQuestion.AnswerSchema.Kind.MULTIPLE_CHOICE;</span>
+<span class="fc bfc" id="L29" title="All 4 branches covered.">        boolean open = choice &amp;&amp; values.size() == 1</span>
+<span class="fc bfc" id="L30" title="All 2 branches covered.">                &amp;&amp; meaning(question.answerSchema(), values.getFirst()) == DecisionQuestion.AnswerSchema.OptionMeaning.OPEN;</span>
+<span class="fc bfc" id="L31" title="All 4 branches covered.">        var state = &quot;DEFER&quot;.equals(action) || open ? DecisionQuestion.State.DEFERRED</span>
+<span class="fc bfc" id="L32" title="All 2 branches covered.">                : &quot;NOT_APPLICABLE&quot;.equals(action) ? DecisionQuestion.State.NOT_APPLICABLE : DecisionQuestion.State.ANSWERED;</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        if (state == DecisionQuestion.State.ANSWERED) {</span>
+<span class="fc bfc" id="L34" title="All 2 branches covered.">            if (!applicable(question, prior.questions(), prior.answers())) throw invalid(&quot;Question is not applicable to the selected variant&quot;);</span>
+<span class="fc" id="L35">            validate(question.answerSchema(), values, request.otherText());</span>
+        }
+<span class="pc bpc" id="L37" title="1 of 4 branches missed.">        else if (!values.isEmpty() &amp;&amp; !open) throw invalid(&quot;Deferral and not-applicable must not contain answer values&quot;);</span>
+<span class="pc bpc" id="L38" title="1 of 4 branches missed.">        if (open &amp;&amp; !question.answerSchema().options().contains(values.getFirst())) throw invalid(&quot;Unknown open option&quot;);</span>
+<span class="fc" id="L39">        var supersedes = DecisionAnswer.active(prior.answers()).stream().filter(a -&gt; question.referenceIds().contains(a.questionId()))</span>
+<span class="fc" id="L40">                .map(DecisionAnswer::id).toList();</span>
+<span class="fc" id="L41">        var answer = new DecisionAnswer(UUID.randomUUID().toString(), request.questionId(), proposalId, prior.number() + 1,</span>
+<span class="fc bfc" id="L42" title="All 2 branches covered.">                state == DecisionQuestion.State.ANSWERED ? values : List.of(), state, actor, Instant.now(), request.rationale(),</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">                request.otherText(), state == DecisionQuestion.State.DEFERRED ? &quot;DEFER&quot; : action, supersedes);</span>
+<span class="fc" id="L44">        var answers = new ArrayList&lt;&gt;(prior.answers()); answers.add(answer);</span>
+<span class="fc" id="L45">        var findings = new ArrayList&lt;&gt;(prior.validation().findings());</span>
+<span class="pc bpc" id="L46" title="2 of 6 branches missed.">        boolean sourceConflict = !question.sourceResolutions().isEmpty() &amp;&amp; (state == DecisionQuestion.State.NOT_APPLICABLE</span>
+<span class="fc" id="L47">                || state == DecisionQuestion.State.ANSWERED &amp;&amp; question.sourceResolutions().stream()</span>
+<span class="pc bpc" id="L48" title="2 of 4 branches missed.">                .anyMatch(r -&gt; !comparison(question.answerSchema(), r.values()).equals(comparison(question.answerSchema(), values))));</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">        if (sourceConflict) {</span>
+<span class="fc" id="L50">            state = DecisionQuestion.State.CONFLICT;</span>
+<span class="fc" id="L51">            findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT, &quot;SOURCE_ANSWER_CONFLICT&quot;,</span>
+                    &quot;Human decision conflicts with frozen source; source and decision are retained for review&quot;,
+<span class="fc" id="L53">                    question.affectedStatementIds(), question.sourceResolutions().stream().flatMap(r -&gt; r.sourceSpans().stream()).toList()));</span>
+<span class="pc bpc" id="L54" title="1 of 2 branches missed.">        } else if (!question.sourceResolutions().isEmpty()) state = DecisionQuestion.State.ANSWERED;</span>
+<span class="fc" id="L55">        var updated = withState(question, state);</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        var questions = new ArrayList&lt;&gt;(prior.questions().stream().map(q -&gt; q.id().equals(question.id()) ? updated : q).toList());</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">        for (int i=0;i&lt;questions.size();i++) {</span>
+<span class="fc" id="L58">            var follow = questions.get(i);</span>
+<span class="pc bpc" id="L59" title="1 of 4 branches missed.">            if (follow.answerSchema().applicability().isEmpty() &amp;&amp; follow.prerequisites().isEmpty()) continue;</span>
+<span class="fc" id="L60">            boolean applicable = applicable(follow, questions, answers);</span>
+<span class="fc" id="L61">            var activeDecisions = DecisionAnswer.active(answers).stream().filter(a -&gt; follow.referenceIds().contains(a.questionId())).toList();</span>
+<span class="pc bpc" id="L62" title="1 of 6 branches missed.">            boolean hasAnswer = !follow.sourceResolutions().isEmpty() || activeDecisions.stream().anyMatch(a -&gt; a.state()==DecisionQuestion.State.ANSWERED);</span>
+<span class="fc bfc" id="L63" title="All 2 branches covered.">            boolean explicitDecision = !activeDecisions.isEmpty();</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">            if (!applicable &amp;&amp; hasAnswer) {</span>
+<span class="fc" id="L65">                questions.set(i, withState(follow, DecisionQuestion.State.CONFLICT));</span>
+<span class="fc" id="L66">                findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT, &quot;STALE_FOLLOW_UP_CONTEXT&quot;,</span>
+<span class="fc" id="L67">                        &quot;Earlier follow-up answer belongs to an incompatible variant; retained for review&quot;,follow.affectedStatementIds(),List.of()));</span>
+<span class="pc bpc" id="L68" title="3 of 4 branches missed.">            } else if (!applicable &amp;&amp; !explicitDecision) questions.set(i, withState(follow, DecisionQuestion.State.NOT_APPLICABLE));</span>
+<span class="pc bpc" id="L69" title="2 of 6 branches missed.">            else if (applicable &amp;&amp; follow.state()==DecisionQuestion.State.NOT_APPLICABLE &amp;&amp; !explicitDecision) questions.set(i, withState(follow,DecisionQuestion.State.OPEN));</span>
+        }
+<span class="fc" id="L71">        return new Revision(prior.number() + 1, prior.number(), prior.text(), prior.sections(), prior.statements(), questions,</span>
+<span class="fc" id="L72">                answers, new ValidationReport(findings), actor, answer.occurredAt(), request.rationale(),</span>
+<span class="fc" id="L73">                impact(prior, question, baseline), prior.variantOrigin());</span>
+    }
+
+    public static void rationale(String rationale) {
+<span class="pc bpc" id="L77" title="3 of 6 branches missed.">        if (rationale == null || rationale.isBlank() || rationale.length() &gt; 1000) throw invalid(&quot;Rationale must contain 1–1000 characters&quot;);</span>
+<span class="fc" id="L78">    }</span>
+    private static void validate(DecisionQuestion.AnswerSchema schema, List&lt;String&gt; values, String other) {
+<span class="pc bpc" id="L80" title="5 of 10 branches missed.">        if (values.isEmpty() || values.stream().anyMatch(v -&gt; v == null || v.isBlank()) || new HashSet&lt;&gt;(values).size() != values.size())</span>
+<span class="nc" id="L81">            throw invalid(&quot;Answer values must be nonblank and distinct&quot;);</span>
+<span class="pc bpc" id="L82" title="1 of 4 branches missed.">        if (schema.kind() != DecisionQuestion.AnswerSchema.Kind.MULTIPLE_CHOICE &amp;&amp; values.size() != 1) throw invalid(&quot;Exactly one value required&quot;);</span>
+<span class="pc bpc" id="L83" title="1 of 5 branches missed.">        switch (schema.kind()) {</span>
+            case SINGLE_CHOICE, MULTIPLE_CHOICE -&gt; {
+<span class="pc bpc" id="L85" title="2 of 6 branches missed.">                if (!schema.options().containsAll(values) || values.stream().anyMatch(v -&gt; meaning(schema,v)==DecisionQuestion.AnswerSchema.OptionMeaning.OPEN)) throw invalid(&quot;Invalid choice&quot;);</span>
+<span class="pc bpc" id="L86" title="1 of 8 branches missed.">                if (values.stream().anyMatch(v -&gt; meaning(schema,v)==DecisionQuestion.AnswerSchema.OptionMeaning.OTHER) &amp;&amp; (other == null || other.isBlank())) throw invalid(&quot;Other requires free text&quot;);</span>
+<span class="fc bfc" id="L87" title="All 2 branches covered.">                if (schema.incompatibleOptions().stream().anyMatch(values::containsAll)) throw invalid(&quot;Incompatible selections&quot;);</span>
+<span class="pc bpc" id="L88" title="2 of 6 branches missed.">                if (values.size() &gt; 1 &amp;&amp; values.stream().anyMatch(v -&gt; meaning(schema,v)==DecisionQuestion.AnswerSchema.OptionMeaning.NOT_NEEDED)) throw invalid(&quot;Not needed cannot be combined with another option&quot;);</span>
+            }
+            case NUMBER -&gt; {
+                try {
+<span class="fc" id="L92">                    var n = new BigDecimal(values.getFirst());</span>
+<span class="pc bpc" id="L93" title="2 of 4 branches missed.">                    if (schema.minimum() != null &amp;&amp; n.compareTo(BigDecimal.valueOf(schema.minimum())) &lt; 0</span>
+<span class="pc bpc" id="L94" title="1 of 4 branches missed.">                            || schema.maximum() != null &amp;&amp; n.compareTo(BigDecimal.valueOf(schema.maximum())) &gt; 0) throw invalid(&quot;Number outside range&quot;);</span>
+<span class="fc" id="L95">                } catch (NumberFormatException failure) { throw invalid(&quot;Finite decimal number required&quot;); }</span>
+            }
+<span class="fc bfc" id="L97" title="All 2 branches covered.">            case BOOLEAN -&gt; { if (!Set.of(&quot;true&quot;, &quot;false&quot;).contains(values.getFirst())) throw invalid(&quot;Boolean must be true or false&quot;); }</span>
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">            case TEXT -&gt; { if (values.getFirst().length() &gt; 20000) throw invalid(&quot;Text exceeds 20000 characters&quot;); }</span>
+        }
+<span class="pc bpc" id="L100" title="1 of 4 branches missed.">        if (other != null &amp;&amp; other.length() &gt; 20000) throw invalid(&quot;Other text exceeds 20000 characters&quot;);</span>
+<span class="fc" id="L101">    }</span>
+    private static boolean applicable(DecisionQuestion question, List&lt;DecisionQuestion&gt; questions, List&lt;DecisionAnswer&gt; history) {
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        for (String id : question.prerequisites()) {</span>
+<span class="fc" id="L104">            var prerequisite=questions.stream().filter(q -&gt; q.referenceIds().contains(id)).findFirst();</span>
+<span class="pc bpc" id="L105" title="1 of 4 branches missed.">            if(prerequisite.isEmpty() || prerequisite.get().state()!=DecisionQuestion.State.ANSWERED) return false;</span>
+<span class="fc" id="L106">        }</span>
+<span class="fc bfc" id="L107" title="All 2 branches covered.">        for (var condition : question.answerSchema().applicability()) {</span>
+<span class="fc" id="L108">            var parent=questions.stream().filter(q -&gt; q.referenceIds().contains(condition.questionId())).findFirst();</span>
+<span class="pc bpc" id="L109" title="2 of 4 branches missed.">            if(parent.isEmpty() || parent.get().state()!=DecisionQuestion.State.ANSWERED) return false;</span>
+<span class="fc" id="L110">            var q=parent.get();</span>
+<span class="pc bpc" id="L111" title="1 of 4 branches missed.">            boolean selected=DecisionAnswer.active(history).stream().filter(a -&gt; q.referenceIds().contains(a.questionId()) &amp;&amp; a.state()==DecisionQuestion.State.ANSWERED)</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">                    .anyMatch(a -&gt; !Collections.disjoint(a.values(),condition.anyOf()));</span>
+<span class="pc bpc" id="L113" title="3 of 6 branches missed.">            if(!selected &amp;&amp; q.sourceResolutions().stream().noneMatch(r -&gt; !Collections.disjoint(r.values(),condition.anyOf()))) return false;</span>
+<span class="fc" id="L114">        }</span>
+<span class="fc" id="L115">        return true;</span>
+    }
+    private static DecisionQuestion.AnswerSchema.OptionMeaning meaning(DecisionQuestion.AnswerSchema schema, String value) {
+<span class="fc" id="L118">        var explicit=schema.optionMeanings().get(value);</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        if(explicit!=null)return explicit;</span>
+<span class="fc bfc" id="L120" title="All 2 branches covered.">        if(isOpen(value))return DecisionQuestion.AnswerSchema.OptionMeaning.OPEN;</span>
+<span class="fc bfc" id="L121" title="All 2 branches covered.">        if(isOther(value))return DecisionQuestion.AnswerSchema.OptionMeaning.OTHER;</span>
+<span class="fc bfc" id="L122" title="All 2 branches covered.">        if(isNotNeeded(value))return DecisionQuestion.AnswerSchema.OptionMeaning.NOT_NEEDED;</span>
+<span class="fc" id="L123">        return DecisionQuestion.AnswerSchema.OptionMeaning.VALUE;</span>
+    }
+<span class="fc" id="L125">    public static boolean isOpen(String value) { return Set.of(&quot;still open&quot;, &quot;open&quot;, &quot;offen&quot;, &quot;noch offen&quot;).contains(value.toLowerCase(Locale.ROOT)); }</span>
+<span class="fc" id="L126">    public static boolean isOther(String value) { return Set.of(&quot;other&quot;, &quot;other…&quot;, &quot;sonstiges&quot;, &quot;andere&quot;, &quot;anderes&quot;).contains(value.toLowerCase(Locale.ROOT)); }</span>
+<span class="fc" id="L127">    private static boolean isNotNeeded(String value) { return Set.of(&quot;not needed&quot;, &quot;no correction required&quot;, &quot;keine korrektur erforderlich&quot;, &quot;nicht erforderlich&quot;).contains(value.toLowerCase(Locale.ROOT)); }</span>
+    private static Set&lt;?&gt; comparison(DecisionQuestion.AnswerSchema schema, List&lt;String&gt; values) {
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        if (schema.kind() != DecisionQuestion.AnswerSchema.Kind.NUMBER) return Set.copyOf(values);</span>
+<span class="nc" id="L130">        return values.stream().map(raw -&gt; {</span>
+<span class="nc" id="L131">            String v = raw.trim().replaceFirst(&quot;[dDfF]$&quot;, &quot;&quot;);</span>
+<span class="nc bnc" id="L132" title="All 2 branches missed.">            return v.matches(&quot;[+-]?0[xX].*&quot;) ? new BigDecimal(Double.parseDouble(v)).stripTrailingZeros() : new BigDecimal(v).stripTrailingZeros();</span>
+<span class="nc" id="L133">        }).collect(java.util.stream.Collectors.toSet());</span>
+    }
+    static DecisionQuestion withState(DecisionQuestion q, DecisionQuestion.State state) {
+<span class="fc bfc" id="L136" title="All 2 branches covered.">        if (q.state() == state) return q;</span>
+<span class="pc bpc" id="L137" title="1 of 2 branches missed.">        var origins = new ArrayList&lt;&gt;(q.origins()); if (!origins.contains(q.origin())) origins.add(q.origin());</span>
+<span class="fc" id="L138">        return new DecisionQuestion(q.id(), q.key(), q.wording(), q.discoveries(), q.affectedStatementIds(), q.answerSchema(),</span>
+<span class="fc" id="L139">                q.prerequisites(), q.dependentQuestionIds(), q.consequences(), state, q.aliases(), origins, q.sourceResolutions());</span>
+    }
+    public static ReformulationImpact impact(Revision prior, DecisionQuestion question, ReformulationBaseline baseline) {
+<span class="fc" id="L142">        var statements = new LinkedHashSet&lt;&gt;(prior.impact().statementIds()); statements.addAll(question.affectedStatementIds());</span>
+<span class="fc" id="L143">        var questions = new LinkedHashSet&lt;&gt;(prior.impact().questionIds());</span>
+<span class="fc bfc" id="L144" title="All 4 branches covered.">        if(prior.questions().stream().anyMatch(q -&gt; !Collections.disjoint(q.referenceIds(),question.referenceIds())))questions.addAll(question.referenceIds());</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        else prior.questions().stream().filter(q -&gt; !Collections.disjoint(q.affectedStatementIds(),question.affectedStatementIds()))</span>
+<span class="fc" id="L146">                .forEach(q -&gt; questions.addAll(q.referenceIds()));</span>
+<span class="fc bfc" id="L147" title="All 4 branches covered.">        boolean global = prior.impact().global() || Set.of(&quot;global&quot;, &quot;@document&quot;, &quot;*&quot;).contains(question.key().scope().toLowerCase(Locale.ROOT));</span>
+        boolean changed;
+        do {
+<span class="fc" id="L150">            int size = questions.size() + statements.size();</span>
+<span class="fc bfc" id="L151" title="All 6 branches covered.">            for (var q : prior.questions()) if (global || !Collections.disjoint(q.prerequisites(), questions)</span>
+<span class="fc bfc" id="L152" title="All 2 branches covered.">                    || !Collections.disjoint(q.referenceIds(), questions)) {</span>
+<span class="fc" id="L153">                questions.addAll(q.referenceIds()); questions.addAll(q.dependentQuestionIds()); statements.addAll(q.affectedStatementIds());</span>
+            }
+<span class="fc bfc" id="L155" title="All 6 branches covered.">            for (var s : prior.statements()) if (global || !Collections.disjoint(s.questionDependencies(), questions)) statements.add(s.id());</span>
+<span class="fc bfc" id="L156" title="All 2 branches covered.">            changed = size != questions.size() + statements.size();</span>
+<span class="fc bfc" id="L157" title="All 2 branches covered.">        } while (changed);</span>
+<span class="fc" id="L158">        var sections = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L159" title="All 6 branches covered.">        for (var section : prior.sections()) if (global || !Collections.disjoint(section.statementIds(), statements)</span>
+<span class="pc bpc" id="L160" title="1 of 2 branches missed.">                || !Collections.disjoint(section.questionIds(), questions)) sections.add(section.id());</span>
+<span class="fc" id="L161">        var edges = new LinkedHashSet&lt;&gt;(prior.impact().boundaryEdgeIds());</span>
+<span class="fc" id="L162">        var directlyAffected = Set.copyOf(sections);</span>
+<span class="fc" id="L163">        var json = new tools.jackson.databind.ObjectMapper();</span>
+<span class="fc bfc" id="L164" title="All 2 branches covered.">        for (var edge : json.readTree(baseline.frozenContext().getOrDefault(&quot;relationMappings&quot;, &quot;[]&quot;))) {</span>
+<span class="fc" id="L165">            String source = edge.path(&quot;sourceCode&quot;).asText(), target = edge.path(&quot;targetCode&quot;).asText();</span>
+<span class="pc bpc" id="L166" title="2 of 6 branches missed.">            if (global || directlyAffected.contains(source) || directlyAffected.contains(target)) {</span>
+<span class="fc" id="L167">                edges.add(&quot;edge-&quot; + edge.path(&quot;id&quot;).asText());</span>
+<span class="fc bfc" id="L168" title="All 6 branches covered.">                for (var section : prior.sections()) if (section.id().equals(source) || section.id().equals(target)) sections.add(section.id());</span>
+            }
+<span class="fc" id="L170">        }</span>
+        do {
+<span class="fc" id="L172">            int size = sections.size();</span>
+<span class="fc bfc" id="L173" title="All 4 branches covered.">            for (var section : prior.sections()) if (!Collections.disjoint(section.children(), sections)) sections.add(section.id());</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">            changed = size != sections.size();</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        } while (changed);</span>
+<span class="fc" id="L176">        sections.addAll(prior.impact().sectionIds());</span>
+<span class="fc" id="L177">        return new ReformulationImpact(List.copyOf(statements), List.copyOf(sections), List.copyOf(questions), List.copyOf(edges), global);</span>
+    }
+<span class="fc" id="L179">    private static ReformulationAnswerException invalid(String message) { return new ReformulationAnswerException(message); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

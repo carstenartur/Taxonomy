@@ -1,0 +1,180 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureReportDocument.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">ArchitectureReportDocument.java</span></div><h1>ArchitectureReportDocument.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.diagram.*;
+
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.*;
+
+/**
+ * Immutable evidence shared by both frozen Word artifacts. The graph content digest includes saved
+ * node labels as frozen evidence; report, diagram and scene presentation titles are excluded.
+ * This is a content digest, not a name-insensitive identity digest.
+ */
+public record ArchitectureReportDocument(
+        String title,
+        String languageTag,
+        String requirement,
+        String scope,
+        String recommendation,
+        List&lt;String&gt; unresolvedGaps,
+        DiagramModel diagram,
+        DiagramScene scene,
+        List&lt;ElementRow&gt; elements,
+        List&lt;RelationRow&gt; relations,
+        List&lt;LegendEntry&gt; legend,
+        DecisionTreeOverview decisionTree,
+        SnapshotEvidence evidence) {
+<span class="fc" id="L29">    public record ElementRow(</span>
+            String id,
+            String title,
+            String type,
+            double relevance,
+            boolean anchor,
+            String parentId,
+            boolean container) {}
+
+<span class="fc" id="L38">    public record RelationRow(</span>
+            String id,
+            String sourceId,
+            String targetId,
+            String type,
+            String category,
+            double relevance) {}
+
+<span class="fc" id="L46">    public record LegendEntry(String symbol, String meaning) {}</span>
+
+<span class="fc" id="L48">    public record SnapshotEvidence(</span>
+            Long projectId,
+            Long requirementId,
+            Long requirementVersionId,
+            Integer requirementVersionNumber,
+            String snapshotId,
+            String repositoryId,
+            String workspaceId,
+            String branch,
+            String commit,
+            String provider,
+            String model,
+            String taxonomyFingerprint,
+            String graphSha256) {}
+
+<span class="fc" id="L63">    public ArchitectureReportDocument {</span>
+<span class="fc" id="L64">        ArchitectureFigurePlanner.validate(diagram, scene);</span>
+<span class="fc" id="L65">        diagram =</span>
+                new DiagramModel(
+<span class="fc" id="L67">                        diagram.title(),</span>
+<span class="fc" id="L68">                        List.copyOf(diagram.nodes()),</span>
+<span class="fc" id="L69">                        List.copyOf(diagram.edges()),</span>
+<span class="fc" id="L70">                        diagram.layout());</span>
+<span class="fc" id="L71">        unresolvedGaps = List.copyOf(unresolvedGaps);</span>
+<span class="fc" id="L72">        elements = List.copyOf(elements);</span>
+<span class="fc" id="L73">        relations = List.copyOf(relations);</span>
+<span class="fc" id="L74">        legend = List.copyOf(legend);</span>
+<span class="pc bpc" id="L75" title="1 of 4 branches missed.">        if (evidence == null || !graphSha256(diagram).equals(evidence.graphSha256()))</span>
+<span class="fc" id="L76">            throw new IllegalArgumentException(</span>
+                    &quot;Frozen graph digest disagrees with source evidence&quot;);
+<span class="fc" id="L78">    }</span>
+
+    public static ArchitectureReportDocument from(
+            String title,
+            String language,
+            String requirement,
+            String scope,
+            String recommendation,
+            List&lt;String&gt; gaps,
+            DiagramModel graph,
+            DiagramScene scene,
+            DecisionTreeOverview tree,
+            SnapshotEvidence evidence) {
+<span class="fc" id="L91">        var labels = new com.taxonomy.architecture.decision.DecisionReportLabels(language);</span>
+<span class="fc" id="L92">        return new ArchitectureReportDocument(</span>
+                title,
+                language,
+                requirement,
+                scope,
+                recommendation,
+                gaps,
+                graph,
+                scene,
+<span class="fc" id="L101">                graph.nodes().stream()</span>
+<span class="fc" id="L102">                        .sorted(Comparator.comparing(DiagramNode::id))</span>
+<span class="fc" id="L103">                        .map(</span>
+                                n -&gt;
+<span class="fc" id="L105">                                        new ElementRow(</span>
+<span class="fc" id="L106">                                                n.id(),</span>
+<span class="fc" id="L107">                                                n.label(),</span>
+<span class="fc" id="L108">                                                n.type(),</span>
+<span class="fc" id="L109">                                                n.relevance(),</span>
+<span class="fc" id="L110">                                                n.anchor(),</span>
+<span class="fc" id="L111">                                                n.parentId(),</span>
+<span class="fc" id="L112">                                                n.container()))</span>
+<span class="fc" id="L113">                        .toList(),</span>
+<span class="fc" id="L114">                graph.edges().stream()</span>
+<span class="fc" id="L115">                        .sorted(Comparator.comparing(DiagramEdge::id))</span>
+<span class="fc" id="L116">                        .map(</span>
+                                e -&gt;
+<span class="fc" id="L118">                                        new RelationRow(</span>
+<span class="fc" id="L119">                                                e.id(),</span>
+<span class="fc" id="L120">                                                e.sourceId(),</span>
+<span class="fc" id="L121">                                                e.targetId(),</span>
+<span class="fc" id="L122">                                                e.relationType(),</span>
+<span class="fc" id="L123">                                                e.relationCategory(),</span>
+<span class="fc" id="L124">                                                e.relevance()))</span>
+<span class="fc" id="L125">                        .toList(),</span>
+<span class="fc" id="L126">                List.of(</span>
+<span class="fc" id="L127">                        new LegendEntry(&quot;●&quot;, labels.anchor()),</span>
+<span class="fc" id="L128">                        new LegendEntry(&quot;→&quot;, labels.directedRelation()),</span>
+<span class="fc" id="L129">                        new LegendEntry(&quot;□&quot;, labels.container())),</span>
+                tree,
+                evidence);
+    }
+
+    public static String graphSha256(DiagramModel graph) {
+        try {
+<span class="fc" id="L136">            var bytes = new ByteArrayOutputStream();</span>
+<span class="fc" id="L137">            var out = new DataOutputStream(bytes);</span>
+<span class="fc" id="L138">            field(out, &quot;taxonomy-frozen-graph-v1&quot;);</span>
+            for (var n :
+<span class="fc bfc" id="L140" title="All 2 branches covered.">                    graph.nodes().stream().sorted(Comparator.comparing(DiagramNode::id)).toList()) {</span>
+<span class="fc" id="L141">                field(out, &quot;node&quot;);</span>
+<span class="fc" id="L142">                field(out, n.id());</span>
+<span class="fc" id="L143">                field(out, n.label());</span>
+<span class="fc" id="L144">                field(out, n.type());</span>
+<span class="fc" id="L145">                out.writeDouble(n.relevance());</span>
+<span class="fc" id="L146">                out.writeBoolean(n.anchor());</span>
+<span class="fc" id="L147">                out.writeInt(n.layer());</span>
+<span class="fc" id="L148">                out.writeInt(n.depth());</span>
+<span class="fc" id="L149">                out.writeBoolean(n.selectedForImpact());</span>
+<span class="fc" id="L150">                field(out, n.parentId());</span>
+<span class="fc" id="L151">                out.writeBoolean(n.container());</span>
+<span class="fc" id="L152">            }</span>
+            for (var e :
+<span class="fc bfc" id="L154" title="All 2 branches covered.">                    graph.edges().stream().sorted(Comparator.comparing(DiagramEdge::id)).toList()) {</span>
+<span class="fc" id="L155">                field(out, &quot;edge&quot;);</span>
+<span class="fc" id="L156">                field(out, e.id());</span>
+<span class="fc" id="L157">                field(out, e.sourceId());</span>
+<span class="fc" id="L158">                field(out, e.targetId());</span>
+<span class="fc" id="L159">                field(out, e.relationType());</span>
+<span class="fc" id="L160">                out.writeDouble(e.relevance());</span>
+<span class="fc" id="L161">                field(out, e.relationCategory());</span>
+<span class="fc" id="L162">            }</span>
+<span class="fc" id="L163">            return HexFormat.of()</span>
+<span class="fc" id="L164">                    .formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(bytes.toByteArray()));</span>
+<span class="nc" id="L165">        } catch (Exception exception) {</span>
+<span class="nc" id="L166">            throw new IllegalStateException(&quot;Could not fingerprint architecture graph&quot;, exception);</span>
+        }
+    }
+
+    private static void field(DataOutputStream out, String value) throws IOException {
+<span class="fc bfc" id="L171" title="All 2 branches covered.">        if (value == null) {</span>
+<span class="fc" id="L172">            out.writeInt(-1);</span>
+<span class="fc" id="L173">            return;</span>
+        }
+<span class="fc" id="L175">        byte[] bytes = value.getBytes(StandardCharsets.UTF_8);</span>
+<span class="fc" id="L176">        out.writeInt(bytes.length);</span>
+<span class="fc" id="L177">        out.write(bytes);</span>
+<span class="fc" id="L178">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

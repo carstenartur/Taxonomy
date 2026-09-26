@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest
+-------------------------------------------------------------------------------
+Tests run: 28, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 1.535 s -- in com.taxonomy.workspace.service.WorkspaceCentralReadBoundaryTest

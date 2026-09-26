@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>LlmGateway.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.service</a> &gt; <span class="el_source">LlmGateway.java</span></div><h1>LlmGateway.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.service;
+
+/**
+ * Abstraction for LLM provider HTTP communication.
+ *
+ * &lt;p&gt;Each implementation encapsulates provider-specific request formatting,
+ * response parsing, throttling (RPM rate-limiting), and error handling.
+ * This allows different providers to have independent rate limits instead of
+ * sharing a single throttle.
+ *
+ * @see GeminiGateway
+ * @see OpenAiCompatibleGateway
+ * @see LlmGatewayRegistry
+ */
+public interface LlmGateway {
+
+    /**
+     * Sends a prompt to the LLM provider and returns the raw API response body.
+     *
+     * &lt;p&gt;Implementations handle provider-specific request formatting, per-gateway
+     * throttling, timeout configuration, and recording/replay integration.
+     *
+     * @param prompt the LLM prompt text
+     * @param apiKey the API key for authentication
+     * @return the raw API response body, or {@code null} on error
+     * @throws LlmRateLimitException if the provider returns a rate-limit response (HTTP 429)
+     */
+    String sendHttpRequest(String prompt, String apiKey);
+
+    /**
+     * Validates a fully assembled prompt without I/O, quota consumption or recording.
+     * Production gateways override this at their existing final-budget boundary;
+     * sending still validates again. Unbounded transports retain the default.
+     */
+<span class="fc" id="L35">    default void validatePromptBudget(String prompt) { }</span>
+
+
+    /**
+     * Extracts the usable text content from the provider-specific raw response body.
+     *
+     * @param rawResponseBody the raw JSON response body from the provider API
+     * @return the extracted text, or {@code null} if extraction failed
+     */
+    String extractResponseText(String rawResponseBody);
+
+    /**
+     * Returns the provider name for logging and diagnostics.
+     */
+    String providerName();
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

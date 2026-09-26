@@ -1,0 +1,54 @@
+{
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "serialNumber": "urn:uuid:c9a46bb2-c6bf-38bb-84eb-88424b1c68e6",
+  "metadata": {
+    "timestamp": "2026-09-26T09:44:53Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "name": "taxonomy-sbom-companion-generator",
+          "version": "2.0.0",
+          "description": "Links Taxonomy release metadata to its SBOM without making vulnerability or exploitability assertions"
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "name": "Taxonomy Architecture Analyzer",
+      "bom-ref": "taxonomy-app",
+      "purl": "pkg:github/carstenartur/Taxonomy",
+      "supplier": {
+        "name": "Carsten Hammer",
+        "url": [
+          "https://github.com/carstenartur"
+        ]
+      }
+    },
+    "properties": [
+      {
+        "name": "taxonomy:sbom-ref",
+        "value": "urn:uuid:5a7b67e3-8147-31d9-aed9-cede7dbb7e5a"
+      },
+      {
+        "name": "taxonomy:sbom-version",
+        "value": "1"
+      },
+      {
+        "name": "taxonomy:sbom-sha256",
+        "value": "89494d8643d58aafa0466f630ff5f0d3e8d73ab105fdb2c28578b83ac1a10f48"
+      },
+      {
+        "name": "vex:assessment-status",
+        "value": "not-assessed"
+      },
+      {
+        "name": "vex:policy",
+        "value": "No vulnerability scan or exploitability assessment is represented by this document. An empty vulnerabilities array is not evidence that the release has no known or exploitable vulnerabilities."
+      }
+    ]
+  },
+  "vulnerabilities": []
+}

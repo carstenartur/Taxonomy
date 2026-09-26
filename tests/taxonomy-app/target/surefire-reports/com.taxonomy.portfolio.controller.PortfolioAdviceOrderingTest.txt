@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.portfolio.controller.PortfolioAdviceOrderingTest
+-------------------------------------------------------------------------------
+Tests run: 18, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.162 s -- in com.taxonomy.portfolio.controller.PortfolioAdviceOrderingTest

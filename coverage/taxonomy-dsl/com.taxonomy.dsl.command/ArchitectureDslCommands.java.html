@@ -1,0 +1,531 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ArchitectureDslCommands.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-dsl</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dsl.command</a> &gt; <span class="el_source">ArchitectureDslCommands.java</span></div><h1>ArchitectureDslCommands.java</h1><pre class="source lang-java linenums">package com.taxonomy.dsl.command;
+
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.command.ArchitectureCommand.*;
+import com.taxonomy.dsl.mapper.AstToModelMapper;
+import com.taxonomy.dsl.model.CanonicalArchitectureModel;
+import com.taxonomy.dsl.model.TaxonomyRootTypes;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.validation.DslValidator;
+
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
+
+/** Strict commands layered over the tolerant import parser. No persistence or renderer dependencies. */
+<span class="fc" id="L21">public final class ArchitectureDslCommands {</span>
+<span class="fc" id="L22">    public static final Set&lt;String&gt; ELEMENT_PROPERTIES = Set.of(&quot;title&quot;, &quot;description&quot;,</span>
+            &quot;x-editor-status&quot;, &quot;x-owner&quot;, &quot;x-responsible-organization&quot;, &quot;x-product-reference&quot;, &quot;x-system-reference&quot;);
+
+    public record Change(String dsl, List&lt;ArchitectureSemanticPatch.BlockChange&gt; changes) {
+<span class="fc" id="L26">        public Change { changes = List.copyOf(changes); }</span>
+<span class="fc" id="L27">        public List&lt;String&gt; changedIds() { return changes.stream().map(ArchitectureSemanticPatch.BlockChange::id).toList(); }</span>
+<span class="fc" id="L28">        public List&lt;String&gt; getChangedIds() { return changedIds(); }</span>
+    }
+
+    public static final class CommandProblem extends IllegalArgumentException {
+        private final String code;
+        private final String field;
+        private final List&lt;String&gt; dependencies;
+        public CommandProblem(String code, String field, String message, List&lt;String&gt; dependencies) {
+<span class="fc" id="L36">            super(message);</span>
+<span class="fc" id="L37">            this.code = code;</span>
+<span class="fc" id="L38">            this.field = field;</span>
+<span class="fc" id="L39">            this.dependencies = List.copyOf(dependencies);</span>
+<span class="fc" id="L40">        }</span>
+<span class="fc" id="L41">        public String code() { return code; }</span>
+<span class="fc" id="L42">        public String field() { return field; }</span>
+<span class="fc" id="L43">        public List&lt;String&gt; dependencies() { return dependencies; }</span>
+    }
+
+    public CanonicalArchitectureModel model(String source) {
+<span class="fc" id="L47">        return new AstToModelMapper().map(new TaxDslParser().parse(source));</span>
+    }
+
+    public Change apply(String source, ArchitectureCommand command) {
+<span class="fc" id="L51">        Objects.requireNonNull(source, &quot;source&quot;);</span>
+<span class="fc" id="L52">        Map&lt;String, BlockAst&gt; blocks = ArchitectureSemanticPatch.index(source);</span>
+<span class="pc bpc" id="L53" title="4 of 18 branches missed.">        String next = switch (command) {</span>
+<span class="fc" id="L54">            case CreateArchitecturePackage create -&gt; createPackage(source, blocks, create);</span>
+<span class="fc" id="L55">            case UpdateArchitecturePackage update -&gt; updatePackage(source, blocks, update);</span>
+<span class="fc" id="L56">            case SetArchitecturePackagePlacements placements -&gt; placePackages(source, blocks, placements);</span>
+<span class="nc" id="L57">            case DeleteArchitecturePackage delete -&gt; deletePackage(source, blocks, delete.id());</span>
+<span class="fc" id="L58">            case UpsertRequirementMapping mapping -&gt; upsertMapping(source, blocks, mapping);</span>
+<span class="nc" id="L59">            case DeleteRequirementMapping mapping -&gt; deleteMapping(source, blocks, mapping);</span>
+<span class="fc" id="L60">            case CreateArchitectureElement create -&gt; createElement(source, blocks, create);</span>
+<span class="fc" id="L61">            case UpdateArchitectureElement update -&gt; updateElement(source, blocks, update);</span>
+<span class="fc" id="L62">            case DeleteArchitectureElement delete -&gt; deleteElement(source, blocks, delete.id());</span>
+<span class="fc" id="L63">            case CreateArchitectureRelation create -&gt; createRelation(source, blocks, create.relation(), create.status());</span>
+<span class="nc" id="L64">            case UpdateArchitectureRelation update -&gt; updateRelation(source, blocks, update.relation(), update.status());</span>
+<span class="fc" id="L65">            case DeleteArchitectureRelation delete -&gt; deleteRelation(source, blocks, delete.relation());</span>
+<span class="fc" id="L66">            case MoveOrGroupElement move -&gt; move(source, blocks, move);</span>
+<span class="fc" id="L67">            case SetExchangeProperties exchange -&gt; exchangeProperties(source, blocks, exchange);</span>
+<span class="fc" id="L68">            case ClearArchitectureElementProperties clear -&gt; clearElementProperties(source, blocks, clear);</span>
+<span class="fc" id="L69">            case UpsertArchitectureView view -&gt; exchangeView(source, blocks, view);</span>
+<span class="nc" id="L70">            case DeleteArchitectureView view -&gt; ArchitectureSemanticPatch.replace(source, require(blocks, &quot;view:&quot; + view.id()), null);</span>
+<span class="fc" id="L71">            case StoreExchangeEvidence evidence -&gt; exchangeEvidence(source, blocks, evidence);</span>
+        };
+<span class="fc" id="L73">        return new Change(next, ArchitectureSemanticPatch.between(source, next));</span>
+    }
+
+    /** Rechecks inverse preconditions and the resulting model, never restores a whole document. */
+    public Change inverse(String current, String before, String after) {
+<span class="fc" id="L78">        List&lt;ArchitectureSemanticPatch.BlockChange&gt; original = ArchitectureSemanticPatch.between(before, after);</span>
+<span class="pc bpc" id="L79" title="1 of 2 branches missed.">        if (original.isEmpty()) throw problem(&quot;NOT_UNDOABLE&quot;, &quot;targetOperationId&quot;, &quot;Target has no semantic changes&quot;);</span>
+<span class="pc bpc" id="L80" title="1 of 4 branches missed.">        if (original.stream().anyMatch(change -&gt; !change.id().startsWith(&quot;element:&quot;)</span>
+<span class="pc bpc" id="L81" title="1 of 4 branches missed.">                &amp;&amp; !change.id().startsWith(&quot;relation:&quot;) &amp;&amp; !change.id().startsWith(&quot;package:&quot;)</span>
+<span class="pc bpc" id="L82" title="1 of 2 branches missed.">                &amp;&amp; !change.id().startsWith(&quot;mapping:&quot;))) {</span>
+<span class="nc" id="L83">            throw problem(&quot;NOT_UNDOABLE&quot;, &quot;targetOperationId&quot;, &quot;Target contains unsupported semantic objects&quot;);</span>
+        }
+<span class="fc" id="L85">        String next = ArchitectureSemanticPatch.inverse(current, before, original);</span>
+<span class="fc" id="L86">        Map&lt;String, BlockAst&gt; blocks = ArchitectureSemanticPatch.index(next);</span>
+        // Deletion inverses must not silently strand mappings, views or evidence added later.
+<span class="fc" id="L88">        Map&lt;String, BlockAst&gt; currentBlocks = ArchitectureSemanticPatch.index(current);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        for (var change : ArchitectureSemanticPatch.between(current, next)) {</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">            if (change.after() == null) {</span>
+<span class="fc" id="L91">                BlockAst removed = currentBlocks.get(change.id());</span>
+<span class="fc" id="L92">                List&lt;String&gt; dependencies = dependencies(blocks, removed);</span>
+<span class="fc" id="L93">                requireNoDependencies(change.id(), dependencies);</span>
+            }
+<span class="fc" id="L95">        }</span>
+<span class="fc" id="L96">        Set&lt;String&gt; changed = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc" id="L97">        original.forEach(change -&gt; changed.add(change.id()));</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        for (BlockAst block : blocks.values()) {</span>
+<span class="pc bpc" id="L99" title="1 of 2 branches missed.">            if (!&quot;relation&quot;.equals(block.getKind())) continue;</span>
+<span class="nc" id="L100">            RelationKey key = relationKey(block);</span>
+<span class="nc bnc" id="L101" title="All 4 branches missed.">            if (changed.contains(ArchitectureSemanticPatch.key(block)) || changed.contains(&quot;element:&quot; + key.sourceId())</span>
+<span class="nc bnc" id="L102" title="All 2 branches missed.">                    || changed.contains(&quot;element:&quot; + key.targetId())) validateRelation(blocks, key);</span>
+<span class="nc" id="L103">        }</span>
+<span class="pc bpc" id="L104" title="3 of 6 branches missed.">        for (BlockAst mapping : blocks.values()) if (&quot;mapping&quot;.equals(mapping.getKind()) &amp;&amp; changed.contains(ArchitectureSemanticPatch.key(mapping))) {</span>
+<span class="nc" id="L105">            List&lt;String&gt; header = mapping.getHeaderTokens();</span>
+<span class="nc bnc" id="L106" title="All 4 branches missed.">            if (header.size() != 3 || !&quot;-&gt;&quot;.equals(header.get(1))) throw problem(&quot;INVALID_HEADER&quot;, &quot;mapping&quot;, &quot;Malformed requirement mapping&quot;);</span>
+<span class="nc" id="L107">            require(blocks, &quot;requirement:&quot; + header.get(0)); require(blocks, &quot;element:&quot; + header.get(2));</span>
+        }
+<span class="fc" id="L109">        validateContainment(blocks);</span>
+<span class="fc" id="L110">        validatePackages(next);</span>
+<span class="fc" id="L111">        return new Change(next, ArchitectureSemanticPatch.between(current, next));</span>
+    }
+
+    private void validatePackages(String dsl) {
+<span class="fc" id="L115">        com.taxonomy.dsl.model.ArchitecturePackageHierarchy.validate(model(dsl),</span>
+<span class="fc" id="L116">                (code, message) -&gt; { throw problem(code, &quot;placements&quot;, message); });</span>
+<span class="fc" id="L117">    }</span>
+
+    private String createPackage(String source, Map&lt;String, BlockAst&gt; blocks, CreateArchitecturePackage command) {
+<span class="fc" id="L120">        token(command.id(), &quot;id&quot;);</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">        if (blocks.containsKey(&quot;package:&quot; + command.id())) throw problem(&quot;DUPLICATE_ID&quot;, &quot;id&quot;, &quot;Package already exists&quot;);</span>
+<span class="fc" id="L122">        packageProperties(command.properties(), true);</span>
+<span class="pc bpc" id="L123" title="1 of 4 branches missed.">        int position = (int) blocks.values().stream().filter(b -&gt; &quot;package&quot;.equals(b.getKind()) &amp;&amp; &quot;&quot;.equals(b.property(&quot;parent&quot;))</span>
+<span class="pc bpc" id="L124" title="1 of 4 branches missed.">                || &quot;element&quot;.equals(b.getKind()) &amp;&amp; &quot;&quot;.equals(b.property(&quot;package&quot;))).count();</span>
+<span class="fc" id="L125">        Map&lt;String, String&gt; values = new LinkedHashMap&lt;&gt;(command.properties());</span>
+<span class="fc" id="L126">        values.put(&quot;parent&quot;, &quot;&quot;); values.put(&quot;position&quot;, Integer.toString(position));</span>
+<span class="fc" id="L127">        String next = ArchitectureSemanticPatch.replace(source, null, block(&quot;package&quot;, List.of(command.id()), values, null));</span>
+<span class="fc" id="L128">        validatePackages(next); return next;</span>
+    }
+
+    private String updatePackage(String source, Map&lt;String, BlockAst&gt; blocks, UpdateArchitecturePackage command) {
+<span class="fc" id="L132">        packageProperties(command.properties(), false);</span>
+<span class="fc" id="L133">        BlockAst existing = require(blocks, &quot;package:&quot; + command.id());</span>
+<span class="fc" id="L134">        return ArchitectureSemanticPatch.replace(source, existing, block(&quot;package&quot;, existing.getHeaderTokens(), command.properties(), existing));</span>
+    }
+
+    private static void packageProperties(Map&lt;String, String&gt; values, boolean creating) {
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        if (!Set.of(&quot;title&quot;, &quot;description&quot;).containsAll(values.keySet())) throw problem(&quot;READ_ONLY_PROPERTY&quot;, &quot;properties&quot;, &quot;Package placement requires the atomic placement command&quot;);</span>
+<span class="fc" id="L139">        requireProperties(values, creating);</span>
+<span class="fc" id="L140">    }</span>
+
+    private String deletePackage(String source, Map&lt;String, BlockAst&gt; blocks, String id) {
+<span class="fc" id="L143">        BlockAst existing = require(blocks, &quot;package:&quot; + id);</span>
+<span class="nc" id="L144">        requireNoDependencies(id, dependencies(blocks, existing));</span>
+<span class="nc" id="L145">        String parent = existing.property(&quot;parent&quot;);</span>
+<span class="nc" id="L146">        int position = Integer.parseInt(existing.property(&quot;position&quot;));</span>
+<span class="nc" id="L147">        String next = ArchitectureSemanticPatch.replace(source, existing, null);</span>
+<span class="nc bnc" id="L148" title="All 2 branches missed.">        for (BlockAst sibling : ArchitectureSemanticPatch.index(next).values()) {</span>
+<span class="nc bnc" id="L149" title="All 4 branches missed.">            String property = &quot;package&quot;.equals(sibling.getKind()) ? &quot;parent&quot; : &quot;element&quot;.equals(sibling.getKind()) ? &quot;package&quot; : null;</span>
+<span class="nc bnc" id="L150" title="All 6 branches missed.">            if (property != null &amp;&amp; Objects.equals(parent, sibling.property(property)) &amp;&amp; Integer.parseInt(sibling.property(&quot;position&quot;)) &gt; position)</span>
+<span class="nc" id="L151">                next = ArchitectureSemanticPatch.replace(next, require(ArchitectureSemanticPatch.index(next), ArchitectureSemanticPatch.key(sibling)),</span>
+<span class="nc" id="L152">                        block(sibling.getKind(), sibling.getHeaderTokens(), Map.of(&quot;position&quot;, Integer.toString(Integer.parseInt(sibling.property(&quot;position&quot;)) - 1)), sibling));</span>
+<span class="nc" id="L153">        }</span>
+<span class="nc" id="L154">        validatePackages(next); return next;</span>
+    }
+
+    private String placePackages(String source, Map&lt;String, BlockAst&gt; blocks, SetArchitecturePackagePlacements command) {
+<span class="fc" id="L158">        Map&lt;String, PackagePlacement&gt; requested = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L159" title="All 4 branches covered.">        for (String scope : command.completeParentScopes()) if (!scope.isEmpty()) require(blocks, &quot;package:&quot; + scope);</span>
+<span class="fc bfc" id="L160" title="All 2 branches covered.">        for (PackagePlacement placement : command.placements()) {</span>
+<span class="fc bfc" id="L161" title="All 2 branches covered.">            if (placement.kind() == null) throw problem(&quot;INVALID_VALUE&quot;, &quot;kind&quot;, &quot;Package member kind is required&quot;);</span>
+<span class="fc" id="L162">            token(placement.memberId(), &quot;memberId&quot;);</span>
+<span class="fc bfc" id="L163" title="All 2 branches covered.">            String key = placement.kind() == PackageMemberKind.PACKAGE ? &quot;package:&quot; : &quot;element:&quot;;</span>
+<span class="fc" id="L164">            BlockAst existing = require(blocks, key + placement.memberId());</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">            if (requested.putIfAbsent(key + placement.memberId(), placement) != null) throw problem(&quot;DUPLICATE_ID&quot;, &quot;memberId&quot;, &quot;Member placed more than once&quot;);</span>
+<span class="fc bfc" id="L166" title="All 2 branches covered.">            String oldParent = existing.property(placement.kind() == PackageMemberKind.PACKAGE ? &quot;parent&quot; : &quot;package&quot;);</span>
+<span class="fc" id="L167">            String newParent = placement.parentPackageId();</span>
+<span class="pc bpc" id="L168" title="1 of 8 branches missed.">            if (newParent == null &amp;&amp; (placement.kind() != PackageMemberKind.ELEMENT || placement.position() != -1)</span>
+<span class="pc bpc" id="L169" title="1 of 2 branches missed.">                    || newParent != null &amp;&amp; placement.position() &lt; 0) throw problem(&quot;PACKAGE_POSITION&quot;, &quot;position&quot;, &quot;Only an element may detach using null parent and position -1&quot;);</span>
+<span class="fc bfc" id="L170" title="All 6 branches covered.">            if (oldParent != null &amp;&amp; !command.completeParentScopes().contains(oldParent)</span>
+<span class="pc bpc" id="L171" title="1 of 2 branches missed.">                    || newParent != null &amp;&amp; !command.completeParentScopes().contains(newParent))</span>
+<span class="fc" id="L172">                throw problem(&quot;INCOMPLETE_PACKAGE_SCOPE&quot;, &quot;completeParentScopes&quot;, &quot;Both old and new parent scopes must be complete&quot;);</span>
+<span class="fc" id="L173">        }</span>
+<span class="fc bfc" id="L174" title="All 2 branches covered.">        for (var entry : blocks.entrySet()) {</span>
+<span class="fc" id="L175">            BlockAst b = entry.getValue();</span>
+<span class="fc bfc" id="L176" title="All 4 branches covered.">            String parent = &quot;package&quot;.equals(b.getKind()) ? b.property(&quot;parent&quot;) : &quot;element&quot;.equals(b.getKind()) ? b.property(&quot;package&quot;) : null;</span>
+<span class="fc bfc" id="L177" title="All 6 branches covered.">            if (parent != null &amp;&amp; command.completeParentScopes().contains(parent) &amp;&amp; !requested.containsKey(entry.getKey()))</span>
+<span class="fc" id="L178">                throw problem(&quot;INCOMPLETE_PACKAGE_SCOPE&quot;, &quot;placements&quot;, &quot;Retain every sibling or detach it explicitly&quot;);</span>
+<span class="fc" id="L179">        }</span>
+<span class="fc" id="L180">        String next = source;</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">        for (var entry : requested.entrySet()) {</span>
+<span class="fc" id="L182">            PackagePlacement placement = entry.getValue();</span>
+<span class="fc" id="L183">            BlockAst existing = require(ArchitectureSemanticPatch.index(next), entry.getKey());</span>
+<span class="fc bfc" id="L184" title="All 2 branches covered.">            String parentProperty = placement.kind() == PackageMemberKind.PACKAGE ? &quot;parent&quot; : &quot;package&quot;;</span>
+<span class="fc" id="L185">            List&lt;PropertyAst&gt; values = new ArrayList&lt;&gt;(existing.getProperties().stream()</span>
+<span class="fc bfc" id="L186" title="All 4 branches covered.">                    .filter(p -&gt; !p.key().equals(parentProperty) &amp;&amp; !p.key().equals(&quot;position&quot;)).toList());</span>
+<span class="fc bfc" id="L187" title="All 2 branches covered.">            if (placement.parentPackageId() != null) {</span>
+<span class="fc" id="L188">                values.add(new PropertyAst(parentProperty, placement.parentPackageId(), null));</span>
+<span class="fc" id="L189">                values.add(new PropertyAst(&quot;position&quot;, Integer.toString(placement.position()), null));</span>
+            }
+<span class="fc" id="L191">            next = ArchitectureSemanticPatch.replace(next, existing, new BlockAst(existing.getKind(), existing.getHeaderTokens(), values, existing.getChildren(), existing.getExtensions(), null));</span>
+<span class="fc" id="L192">        }</span>
+<span class="fc" id="L193">        validatePackages(next); return next;</span>
+    }
+
+    private static void mappingOwnership(BlockAst existing) {
+<span class="pc bpc" id="L197" title="1 of 6 branches missed.">        if (existing != null &amp;&amp; (existing.property(&quot;x-project-key&quot;) != null || existing.property(&quot;x-exchange-id&quot;) == null))</span>
+<span class="fc" id="L198">            throw problem(&quot;REQUIREMENT_MAPPING_OWNERSHIP_CONFLICT&quot;, &quot;mapping&quot;, &quot;An exchange mapping cannot overwrite an analysis-owned mapping&quot;);</span>
+<span class="fc" id="L199">    }</span>
+    /** Pure forward-plan validation; this never supplies a synthetic requirement to application. */
+    public void validatePlannedRequirementMapping(String source, UpsertRequirementMapping command, Set&lt;String&gt; plannedRequirements) {
+<span class="fc" id="L202">        validateMapping(ArchitectureSemanticPatch.index(source), command, plannedRequirements);</span>
+<span class="fc" id="L203">    }</span>
+    private static void validateMapping(Map&lt;String, BlockAst&gt; blocks, UpsertRequirementMapping command, Set&lt;String&gt; plannedRequirements) {
+<span class="fc" id="L205">        token(command.requirementIdentity(), &quot;requirementIdentity&quot;); token(command.elementId(), &quot;elementId&quot;);</span>
+<span class="fc bfc" id="L206" title="All 2 branches covered.">        if (!plannedRequirements.contains(command.requirementIdentity())) require(blocks, &quot;requirement:&quot; + command.requirementIdentity());</span>
+<span class="fc" id="L207">        require(blocks, &quot;element:&quot; + command.elementId());</span>
+<span class="fc" id="L208">        requireExchangeProperties(command.exchangeProperties());</span>
+<span class="pc bpc" id="L209" title="2 of 4 branches missed.">        if (command.rationale() == null || command.rationale().length() &gt; 8000) throw problem(&quot;INVALID_VALUE&quot;, &quot;rationale&quot;, &quot;A bounded rationale is required&quot;);</span>
+<span class="fc" id="L210">        mappingOwnership(blocks.get(&quot;mapping:&quot; + command.requirementIdentity() + &quot; -&gt; &quot; + command.elementId()));</span>
+<span class="fc" id="L211">    }</span>
+    private static String upsertMapping(String source, Map&lt;String, BlockAst&gt; blocks, UpsertRequirementMapping command) {
+<span class="fc" id="L213">        validateMapping(blocks, command, Set.of());</span>
+<span class="fc" id="L214">        BlockAst existing = blocks.get(&quot;mapping:&quot; + command.requirementIdentity() + &quot; -&gt; &quot; + command.elementId());</span>
+<span class="fc" id="L215">        Map&lt;String, String&gt; properties = new LinkedHashMap&lt;&gt;(command.exchangeProperties());</span>
+<span class="fc" id="L216">        properties.put(&quot;source&quot;, &quot;exchange&quot;); properties.put(&quot;x-exchange-rationale&quot;, command.rationale());</span>
+<span class="fc bfc" id="L217" title="All 2 branches covered.">        if (!properties.containsKey(&quot;x-exchange-id&quot;)) properties.put(&quot;x-exchange-id&quot;, command.requirementIdentity() + &quot; -&gt; &quot; + command.elementId());</span>
+<span class="fc" id="L218">        return ArchitectureSemanticPatch.replace(source, existing, block(&quot;mapping&quot;, List.of(command.requirementIdentity(), &quot;-&gt;&quot;, command.elementId()), properties, existing));</span>
+    }
+    private static String deleteMapping(String source, Map&lt;String, BlockAst&gt; blocks, DeleteRequirementMapping command) {
+<span class="nc" id="L221">        BlockAst existing = require(blocks, &quot;mapping:&quot; + command.requirementIdentity() + &quot; -&gt; &quot; + command.elementId());</span>
+<span class="nc" id="L222">        mappingOwnership(existing);</span>
+<span class="nc" id="L223">        return ArchitectureSemanticPatch.replace(source, existing, null);</span>
+    }
+
+    private String createElement(String source, Map&lt;String, BlockAst&gt; blocks, CreateArchitectureElement command) {
+<span class="fc" id="L227">        token(command.id(), &quot;id&quot;);</span>
+<span class="fc" id="L228">        requireType(command.type());</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        if (blocks.containsKey(&quot;element:&quot; + command.id())) throw problem(&quot;DUPLICATE_ID&quot;, &quot;id&quot;, &quot;Element already exists&quot;);</span>
+<span class="fc" id="L230">        requireProperties(command.properties(), true);</span>
+<span class="fc" id="L231">        return ArchitectureSemanticPatch.replace(source, null,</span>
+<span class="fc" id="L232">                block(&quot;element&quot;, List.of(command.id(), &quot;type&quot;, command.type()), command.properties(), null));</span>
+    }
+
+    private static String exchangeProperties(String source, Map&lt;String, BlockAst&gt; blocks, SetExchangeProperties command) {
+<span class="pc bpc" id="L236" title="1 of 2 branches missed.">        if (!Set.of(&quot;element&quot;, &quot;relation&quot;, &quot;view&quot;, &quot;package&quot;, &quot;mapping&quot;).contains(command.objectKind()))</span>
+<span class="nc" id="L237">            throw problem(&quot;INVALID_EXCHANGE_TARGET&quot;, &quot;objectKind&quot;, &quot;Exchange metadata requires a semantic target&quot;);</span>
+<span class="fc" id="L238">        requireExchangeProperties(command.properties());</span>
+<span class="fc" id="L239">        BlockAst existing = require(blocks, command.objectKind() + &quot;:&quot; + command.id());</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        BlockAst replacement = &quot;view&quot;.equals(existing.getKind())</span>
+<span class="fc" id="L241">                ? viewWithExchangeProperties(existing, command.properties())</span>
+<span class="fc" id="L242">                : block(existing.getKind(), existing.getHeaderTokens(), command.properties(), existing);</span>
+<span class="fc" id="L243">        return ArchitectureSemanticPatch.replace(source, existing, replacement);</span>
+    }
+
+    private static BlockAst viewWithExchangeProperties(BlockAst existing, Map&lt;String, String&gt; changes) {
+<span class="fc" id="L247">        requireUnambiguousViewProperties(existing);</span>
+<span class="fc" id="L248">        List&lt;PropertyAst&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L249" title="All 2 branches covered.">        for (PropertyAst property : existing.getProperties()) {</span>
+<span class="fc bfc" id="L250" title="All 2 branches covered.">            if (!changes.containsKey(property.key())) values.add(property);</span>
+<span class="fc" id="L251">        }</span>
+<span class="fc" id="L252">        changes.entrySet().stream().sorted(Map.Entry.comparingByKey())</span>
+<span class="fc" id="L253">                .forEach(entry -&gt; values.add(new PropertyAst(entry.getKey(), entry.getValue(), null)));</span>
+<span class="fc" id="L254">        Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;(existing.getExtensions());</span>
+<span class="fc" id="L255">        extensions.putAll(changes);</span>
+<span class="fc" id="L256">        return new BlockAst(existing.getKind(), existing.getHeaderTokens(), values,</span>
+<span class="fc" id="L257">                existing.getChildren(), extensions, null);</span>
+    }
+
+    private static void requireUnambiguousViewProperties(BlockAst view) {
+<span class="fc" id="L261">        Set&lt;String&gt; seen = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L262" title="All 2 branches covered.">        for (PropertyAst property : view.getProperties()) {</span>
+<span class="fc bfc" id="L263" title="All 4 branches covered.">            if (!&quot;include&quot;.equals(property.key()) &amp;&amp; !seen.add(property.key())) {</span>
+<span class="fc" id="L264">                throw problem(&quot;DUPLICATE_PROPERTY&quot;, property.key(), &quot;Ambiguous property on edited object&quot;);</span>
+            }
+<span class="fc" id="L266">        }</span>
+<span class="fc" id="L267">    }</span>
+
+    private static String exchangeView(String source, Map&lt;String, BlockAst&gt; blocks, UpsertArchitectureView command) {
+<span class="fc" id="L270">        token(command.id(), &quot;viewId&quot;);</span>
+<span class="pc bpc" id="L271" title="3 of 6 branches missed.">        if (command.title() == null || command.title().isBlank() || command.title().length() &gt; 8000)</span>
+<span class="nc" id="L272">            throw problem(&quot;INVALID_VALUE&quot;, &quot;title&quot;, &quot;View title must be bounded and nonempty&quot;);</span>
+<span class="fc" id="L273">        requireExchangeProperties(command.properties());</span>
+<span class="pc bpc" id="L274" title="2 of 4 branches missed.">        if (command.description() == null || command.description().length() &gt; 8000)</span>
+<span class="nc" id="L275">            throw problem(&quot;INVALID_VALUE&quot;, &quot;description&quot;, &quot;View description must be bounded&quot;);</span>
+<span class="pc bpc" id="L276" title="1 of 2 branches missed.">        if (command.members().size() &gt; 10000) throw problem(&quot;ITEM_LIMIT&quot;, &quot;members&quot;, &quot;View has too many members&quot;);</span>
+<span class="fc" id="L277">        command.members().forEach(id -&gt; require(blocks, &quot;element:&quot; + id));</span>
+<span class="fc" id="L278">        BlockAst existing = blocks.get(&quot;view:&quot; + command.id());</span>
+<span class="fc" id="L279">        List&lt;PropertyAst&gt; values = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">        if (existing != null) {</span>
+<span class="fc" id="L281">            requireUnambiguousViewProperties(existing);</span>
+<span class="fc" id="L282">            existing.getProperties().stream()</span>
+<span class="fc bfc" id="L283" title="All 2 branches covered.">                    .filter(p -&gt; !Set.of(&quot;title&quot;, &quot;description&quot;, &quot;include&quot;).contains(p.key())</span>
+<span class="fc bfc" id="L284" title="All 2 branches covered.">                            &amp;&amp; !command.properties().containsKey(p.key()))</span>
+<span class="fc" id="L285">                    .forEach(values::add);</span>
+        }
+<span class="fc" id="L287">        values.add(new PropertyAst(&quot;title&quot;, command.title(), null));</span>
+<span class="fc" id="L288">        values.add(new PropertyAst(&quot;description&quot;, command.description(), null));</span>
+<span class="fc" id="L289">        command.members().stream().distinct().forEach(id -&gt; values.add(new PropertyAst(&quot;include&quot;, id, null)));</span>
+<span class="fc" id="L290">        command.properties().entrySet().stream().sorted(Map.Entry.comparingByKey()).forEach(e -&gt; values.add(new PropertyAst(e.getKey(), e.getValue(), null)));</span>
+<span class="fc" id="L291">        return ArchitectureSemanticPatch.replace(source, existing, new BlockAst(&quot;view&quot;, List.of(command.id()), values, List.of(), command.properties(), null));</span>
+    }
+
+    private static String clearElementProperties(String source, Map&lt;String, BlockAst&gt; blocks, ClearArchitectureElementProperties command) {
+<span class="fc" id="L295">        BlockAst existing = require(blocks, &quot;element:&quot; + command.id());</span>
+<span class="pc bpc" id="L296" title="2 of 4 branches missed.">        if (command.properties().contains(&quot;title&quot;) || !ELEMENT_PROPERTIES.containsAll(command.properties()))</span>
+<span class="nc" id="L297">            throw problem(&quot;READ_ONLY_PROPERTY&quot;, &quot;properties&quot;, &quot;Only optional editable properties can be cleared&quot;);</span>
+<span class="fc bfc" id="L298" title="All 2 branches covered.">        List&lt;PropertyAst&gt; values = existing.getProperties().stream().filter(p -&gt; !command.properties().contains(p.key())).toList();</span>
+<span class="fc" id="L299">        Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;(existing.getExtensions()); command.properties().forEach(extensions::remove);</span>
+<span class="fc" id="L300">        return ArchitectureSemanticPatch.replace(source, existing, new BlockAst(existing.getKind(), existing.getHeaderTokens(), values, existing.getChildren(), extensions, null));</span>
+    }
+
+    private static String exchangeEvidence(String source, Map&lt;String, BlockAst&gt; blocks, StoreExchangeEvidence command) {
+<span class="fc" id="L304">        token(command.id(), &quot;exchangeId&quot;); token(command.profile(), &quot;profile&quot;); token(command.profileVersion(), &quot;profileVersion&quot;);</span>
+<span class="pc bpc" id="L305" title="4 of 8 branches missed.">        if (command.source() == null || command.source().length() &gt; 16 * 1024 * 1024 || command.fingerprint() == null || !command.fingerprint().matches(&quot;[a-f0-9]{64}&quot;))</span>
+<span class="nc" id="L306">            throw problem(&quot;INVALID_EXCHANGE_EVIDENCE&quot;, &quot;source&quot;, &quot;Exchange evidence must be bounded and fingerprinted&quot;);</span>
+<span class="fc" id="L307">        BlockAst existing = blocks.get(&quot;exchange:&quot; + command.id());</span>
+<span class="fc" id="L308">        return ArchitectureSemanticPatch.replace(source, existing, block(&quot;exchange&quot;, List.of(command.id()),</span>
+<span class="fc" id="L309">                Map.of(&quot;profile&quot;, command.profile(), &quot;profileVersion&quot;, command.profileVersion(), &quot;fingerprint&quot;, command.fingerprint(), &quot;source&quot;, command.source()), existing));</span>
+    }
+
+    private static void requireExchangeProperties(Map&lt;String, String&gt; properties) {
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">        if (properties.size() &gt; 128) throw problem(&quot;ITEM_LIMIT&quot;, &quot;properties&quot;, &quot;Too many exchange properties&quot;);</span>
+<span class="fc" id="L314">        properties.forEach((key, value) -&gt; {</span>
+<span class="pc bpc" id="L315" title="2 of 4 branches missed.">            if (!key.matches(&quot;x-exchange-[A-Za-z0-9_.-]{1,100}&quot;) || value.length() &gt; 500000)</span>
+<span class="nc" id="L316">                throw problem(&quot;INVALID_EXCHANGE_PROPERTY&quot;, &quot;properties&quot;, &quot;Only bounded exchange extension properties are permitted&quot;);</span>
+<span class="fc" id="L317">        });</span>
+<span class="fc" id="L318">    }</span>
+
+    private String updateElement(String source, Map&lt;String, BlockAst&gt; blocks, UpdateArchitectureElement command) {
+<span class="fc" id="L321">        BlockAst existing = require(blocks, &quot;element:&quot; + command.id());</span>
+<span class="fc bfc" id="L322" title="All 2 branches covered.">        String type = command.type() == null ? elementType(existing) : command.type();</span>
+<span class="fc" id="L323">        requireType(type);</span>
+<span class="fc" id="L324">        requireProperties(command.properties(), false);</span>
+<span class="fc" id="L325">        BlockAst replacement = block(&quot;element&quot;, List.of(command.id(), &quot;type&quot;, type), command.properties(), existing);</span>
+<span class="fc" id="L326">        Map&lt;String, BlockAst&gt; changed = new LinkedHashMap&lt;&gt;(blocks);</span>
+<span class="fc" id="L327">        changed.put(&quot;element:&quot; + command.id(), replacement);</span>
+<span class="fc bfc" id="L328" title="All 2 branches covered.">        for (BlockAst candidate : changed.values()) {</span>
+<span class="fc bfc" id="L329" title="All 2 branches covered.">            if (&quot;relation&quot;.equals(candidate.getKind())) {</span>
+<span class="fc" id="L330">                RelationKey relation = relationKey(candidate);</span>
+<span class="pc bpc" id="L331" title="1 of 4 branches missed.">                if (relation.sourceId().equals(command.id()) || relation.targetId().equals(command.id())) {</span>
+<span class="fc" id="L332">                    validateRelation(changed, relation);</span>
+                }
+            }
+<span class="fc" id="L335">        }</span>
+<span class="fc" id="L336">        return ArchitectureSemanticPatch.replace(source, existing, replacement);</span>
+    }
+
+    private String deleteElement(String source, Map&lt;String, BlockAst&gt; blocks, String id) {
+<span class="fc" id="L340">        BlockAst existing = require(blocks, &quot;element:&quot; + id);</span>
+<span class="pc bpc" id="L341" title="1 of 2 branches missed.">        if (existing.property(&quot;package&quot;) != null) throw new CommandProblem(&quot;DEPENDENCIES_EXIST&quot;, id,</span>
+<span class="nc" id="L342">                &quot;Detach the element from its package before deletion&quot;, List.of(&quot;package:&quot; + existing.property(&quot;package&quot;)));</span>
+<span class="fc" id="L343">        requireNoDependencies(id, dependencies(blocks, existing));</span>
+<span class="fc" id="L344">        return ArchitectureSemanticPatch.replace(source, existing, null);</span>
+    }
+
+    private String createRelation(String source, Map&lt;String, BlockAst&gt; blocks, RelationKey relation, String status) {
+<span class="fc" id="L348">        String key = &quot;relation:&quot; + relation.id();</span>
+<span class="fc bfc" id="L349" title="All 2 branches covered.">        if (blocks.containsKey(key)) throw problem(&quot;DUPLICATE_RELATION&quot;, &quot;relation&quot;, &quot;Relation already exists&quot;);</span>
+<span class="fc" id="L350">        validateRelation(blocks, relation);</span>
+<span class="fc" id="L351">        requireStatus(status);</span>
+<span class="fc" id="L352">        BlockAst created = block(&quot;relation&quot;, List.of(relation.sourceId(), relation.relationType(), relation.targetId()),</span>
+<span class="fc bfc" id="L353" title="All 2 branches covered.">                Map.of(&quot;status&quot;, status == null ? &quot;proposed&quot; : status), null);</span>
+<span class="fc" id="L354">        Map&lt;String, BlockAst&gt; changed = new LinkedHashMap&lt;&gt;(blocks);</span>
+<span class="fc" id="L355">        changed.put(key, created);</span>
+<span class="fc" id="L356">        validateContainment(changed);</span>
+<span class="fc" id="L357">        return ArchitectureSemanticPatch.replace(source, null, created);</span>
+    }
+
+    private String updateRelation(String source, Map&lt;String, BlockAst&gt; blocks, RelationKey relation, String status) {
+<span class="nc" id="L361">        BlockAst existing = require(blocks, &quot;relation:&quot; + relation.id());</span>
+<span class="nc" id="L362">        validateRelation(blocks, relation);</span>
+<span class="nc" id="L363">        requireStatus(status);</span>
+<span class="nc" id="L364">        return ArchitectureSemanticPatch.replace(source, existing,</span>
+<span class="nc bnc" id="L365" title="All 2 branches missed.">                block(&quot;relation&quot;, existing.getHeaderTokens(), status == null ? Map.of() : Map.of(&quot;status&quot;, status), existing));</span>
+    }
+
+    private String deleteRelation(String source, Map&lt;String, BlockAst&gt; blocks, RelationKey relation) {
+<span class="fc" id="L369">        BlockAst existing = require(blocks, &quot;relation:&quot; + relation.id());</span>
+<span class="fc" id="L370">        requireNoDependencies(relation.id(), dependencies(blocks, existing));</span>
+<span class="fc" id="L371">        return ArchitectureSemanticPatch.replace(source, existing, null);</span>
+    }
+
+    private String move(String source, Map&lt;String, BlockAst&gt; blocks, MoveOrGroupElement command) {
+<span class="fc" id="L375">        require(blocks, &quot;element:&quot; + command.id());</span>
+<span class="fc" id="L376">        long existingParents = blocks.values().stream().filter(block -&gt; &quot;relation&quot;.equals(block.getKind()))</span>
+<span class="fc" id="L377">                .map(ArchitectureDslCommands::relationKey)</span>
+<span class="pc bpc" id="L378" title="1 of 4 branches missed.">                .filter(key -&gt; &quot;CONTAINS&quot;.equals(key.relationType()) &amp;&amp; key.targetId().equals(command.id())).count();</span>
+<span class="fc bfc" id="L379" title="All 2 branches covered.">        if (existingParents &gt; 1) throw problem(&quot;MULTIPLE_PARENTS&quot;, command.id(),</span>
+                &quot;Resolve multiple existing containment parents before moving this element&quot;);
+<span class="fc" id="L381">        String next = source;</span>
+<span class="fc bfc" id="L382" title="All 2 branches covered.">        for (BlockAst candidate : blocks.values()) {</span>
+<span class="fc bfc" id="L383" title="All 2 branches covered.">            if (&quot;relation&quot;.equals(candidate.getKind())) {</span>
+<span class="fc" id="L384">                RelationKey key = relationKey(candidate);</span>
+<span class="pc bpc" id="L385" title="1 of 4 branches missed.">                if (&quot;CONTAINS&quot;.equals(key.relationType()) &amp;&amp; key.targetId().equals(command.id())) {</span>
+<span class="pc bpc" id="L386" title="1 of 2 branches missed.">                    if (key.sourceId().equals(command.parentId())) return source;</span>
+<span class="fc" id="L387">                    next = deleteRelation(next, ArchitectureSemanticPatch.index(next), key);</span>
+                }
+            }
+<span class="fc" id="L390">        }</span>
+<span class="fc bfc" id="L391" title="All 2 branches covered.">        return command.parentId() == null ? next : createRelation(next, ArchitectureSemanticPatch.index(next),</span>
+<span class="fc" id="L392">                new RelationKey(command.parentId(), &quot;CONTAINS&quot;, command.id()), &quot;proposed&quot;);</span>
+    }
+
+    private static void validateRelation(Map&lt;String, BlockAst&gt; blocks, RelationKey relation) {
+<span class="fc" id="L396">        token(relation.sourceId(), &quot;sourceId&quot;);</span>
+<span class="fc" id="L397">        token(relation.targetId(), &quot;targetId&quot;);</span>
+<span class="fc bfc" id="L398" title="All 2 branches covered.">        if (relation.sourceId().equals(relation.targetId())) throw problem(&quot;SELF_RELATION&quot;, &quot;targetId&quot;, &quot;Self-relations are not permitted&quot;);</span>
+<span class="pc bpc" id="L399" title="1 of 2 branches missed.">        if (!DslValidator.relationTypes().contains(relation.relationType())) throw problem(&quot;UNKNOWN_RELATION_TYPE&quot;, &quot;relationType&quot;, &quot;Unknown relation type&quot;);</span>
+<span class="fc" id="L400">        String sourceType = elementType(require(blocks, &quot;element:&quot; + relation.sourceId()));</span>
+<span class="fc" id="L401">        String targetType = elementType(require(blocks, &quot;element:&quot; + relation.targetId()));</span>
+<span class="fc" id="L402">        Map&lt;String, Set&lt;String&gt;&gt; rules = DslValidator.relationTypeRules().get(relation.relationType());</span>
+<span class="fc" id="L403">        String sourceRoot = TaxonomyRootTypes.rootFor(sourceType);</span>
+<span class="fc" id="L404">        String targetRoot = TaxonomyRootTypes.rootFor(targetType);</span>
+<span class="pc bpc" id="L405" title="2 of 6 branches missed.">        if (rules != null &amp;&amp; (sourceRoot == null || targetRoot == null</span>
+<span class="fc bfc" id="L406" title="All 2 branches covered.">                || !rules.getOrDefault(sourceRoot, Set.of()).contains(targetRoot))) {</span>
+<span class="fc" id="L407">            throw problem(&quot;INCOMPATIBLE_RELATION&quot;, &quot;relationType&quot;, &quot;Relation direction or endpoint types are incompatible&quot;);</span>
+        }
+<span class="fc" id="L409">    }</span>
+
+    private static void validateContainment(Map&lt;String, BlockAst&gt; blocks) {
+<span class="fc" id="L412">        Map&lt;String, String&gt; parents = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L413" title="All 2 branches covered.">        for (BlockAst block : blocks.values()) {</span>
+<span class="fc bfc" id="L414" title="All 2 branches covered.">            if (!&quot;relation&quot;.equals(block.getKind())) continue;</span>
+<span class="fc" id="L415">            RelationKey key = relationKey(block);</span>
+<span class="fc bfc" id="L416" title="All 4 branches covered.">            if (&quot;CONTAINS&quot;.equals(key.relationType()) &amp;&amp; parents.putIfAbsent(key.targetId(), key.sourceId()) != null) {</span>
+<span class="fc" id="L417">                throw problem(&quot;MULTIPLE_PARENTS&quot;, key.targetId(), &quot;An element can have at most one containment parent&quot;);</span>
+            }
+<span class="fc" id="L419">        }</span>
+<span class="fc bfc" id="L420" title="All 2 branches covered.">        for (String id : parents.keySet()) {</span>
+<span class="fc" id="L421">            Set&lt;String&gt; visited = new LinkedHashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L422" title="All 2 branches covered.">            for (String cursor = id; cursor != null; cursor = parents.get(cursor)) {</span>
+<span class="fc bfc" id="L423" title="All 2 branches covered.">                if (!visited.add(cursor)) throw problem(&quot;CONTAINMENT_CYCLE&quot;, id, &quot;Containment must be acyclic&quot;);</span>
+            }
+<span class="fc" id="L425">        }</span>
+<span class="fc" id="L426">    }</span>
+
+    private static List&lt;String&gt; dependencies(Map&lt;String, BlockAst&gt; blocks, BlockAst removed) {
+<span class="fc" id="L429">        List&lt;String&gt; dependencies = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L430">        String id = removed.getHeaderTokens().getFirst();</span>
+<span class="fc bfc" id="L431" title="All 2 branches covered.">        for (BlockAst candidate : blocks.values()) {</span>
+<span class="fc bfc" id="L432" title="All 2 branches covered.">            if (ArchitectureSemanticPatch.key(candidate).equals(ArchitectureSemanticPatch.key(removed))) continue;</span>
+<span class="fc" id="L433">            boolean references = false;</span>
+<span class="fc bfc" id="L434" title="All 2 branches covered.">            if (&quot;element&quot;.equals(removed.getKind())) {</span>
+<span class="pc bpc" id="L435" title="2 of 6 branches missed.">                references = switch (candidate.getKind()) {</span>
+                    case &quot;relation&quot; -&gt; {
+<span class="fc" id="L437">                        RelationKey key = relationKey(candidate);</span>
+<span class="pc bpc" id="L438" title="2 of 4 branches missed.">                        yield key.sourceId().equals(id) || key.targetId().equals(id);</span>
+                    }
+<span class="nc" id="L440">                    case &quot;mapping&quot; -&gt; candidate.getHeaderTokens().contains(id);</span>
+<span class="fc" id="L441">                    case &quot;view&quot; -&gt; candidate.propertyValues(&quot;include&quot;).contains(id);</span>
+<span class="pc bpc" id="L442" title="2 of 4 branches missed.">                    case &quot;element&quot; -&gt; id.equals(candidate.property(&quot;x-system-reference&quot;)) || id.equals(candidate.property(&quot;x-product-reference&quot;));</span>
+<span class="nc" id="L443">                    case &quot;evidence&quot; -&gt; referencesElement(candidate.property(&quot;for-relation&quot;), id);</span>
+<span class="fc" id="L444">                    default -&gt; false;</span>
+                };
+<span class="fc bfc" id="L446" title="All 2 branches covered.">            } else if (&quot;package&quot;.equals(removed.getKind())) {</span>
+<span class="pc bpc" id="L447" title="1 of 4 branches missed.">                references = &quot;package&quot;.equals(candidate.getKind()) &amp;&amp; id.equals(candidate.property(&quot;parent&quot;))</span>
+<span class="pc bpc" id="L448" title="2 of 4 branches missed.">                        || &quot;element&quot;.equals(candidate.getKind()) &amp;&amp; id.equals(candidate.property(&quot;package&quot;));</span>
+<span class="fc bfc" id="L449" title="All 2 branches covered.">            } else if (&quot;relation&quot;.equals(removed.getKind())) {</span>
+<span class="fc" id="L450">                references = relationKey(removed).id().equals(candidate.property(&quot;for-relation&quot;));</span>
+            }
+<span class="fc bfc" id="L452" title="All 2 branches covered.">            if (references) dependencies.add(ArchitectureSemanticPatch.key(candidate));</span>
+<span class="fc" id="L453">        }</span>
+<span class="fc" id="L454">        return List.copyOf(dependencies);</span>
+    }
+
+    private static boolean referencesElement(String relation, String id) {
+<span class="nc bnc" id="L458" title="All 4 branches missed.">        return relation != null &amp;&amp; List.of(relation.split(&quot;\\s+&quot;)).contains(id);</span>
+    }
+
+    private static void requireNoDependencies(String id, List&lt;String&gt; dependencies) {
+<span class="fc bfc" id="L462" title="All 2 branches covered.">        if (!dependencies.isEmpty()) throw new CommandProblem(&quot;DEPENDENCIES_EXIST&quot;, id,</span>
+                &quot;Remove or reassign dependent objects before deletion&quot;, dependencies);
+<span class="fc" id="L464">    }</span>
+
+    private static BlockAst block(String kind, List&lt;String&gt; header, Map&lt;String, String&gt; changes, BlockAst existing) {
+<span class="fc" id="L467">        Map&lt;String, String&gt; properties = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L468" title="All 2 branches covered.">        if (existing != null) {</span>
+<span class="fc bfc" id="L469" title="All 2 branches covered.">            for (PropertyAst property : existing.getProperties()) {</span>
+<span class="fc bfc" id="L470" title="All 2 branches covered.">                if (properties.putIfAbsent(property.key(), property.value()) != null) {</span>
+<span class="fc" id="L471">                    throw problem(&quot;DUPLICATE_PROPERTY&quot;, property.key(), &quot;Ambiguous property on edited object&quot;);</span>
+                }
+<span class="fc" id="L473">            }</span>
+        }
+<span class="fc" id="L475">        properties.putAll(changes);</span>
+<span class="fc" id="L476">        List&lt;PropertyAst&gt; values = properties.entrySet().stream().map(e -&gt; new PropertyAst(e.getKey(), e.getValue(), null)).toList();</span>
+<span class="fc" id="L477">        Map&lt;String, String&gt; extensions = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L478" title="All 2 branches covered.">        properties.forEach((key, value) -&gt; { if (key.startsWith(&quot;x-&quot;)) extensions.put(key, value); });</span>
+<span class="fc" id="L479">        return new BlockAst(kind, header, values, List.of(), extensions, null);</span>
+    }
+
+    private static BlockAst require(Map&lt;String, BlockAst&gt; blocks, String id) {
+<span class="fc" id="L483">        BlockAst block = blocks.get(id);</span>
+<span class="fc bfc" id="L484" title="All 2 branches covered.">        if (block == null) throw problem(&quot;NOT_FOUND&quot;, id, &quot;Object is not present in this context and commit&quot;);</span>
+<span class="fc" id="L485">        return block;</span>
+    }
+
+    private static String elementType(BlockAst block) {
+<span class="fc" id="L489">        List&lt;String&gt; header = block.getHeaderTokens();</span>
+<span class="pc bpc" id="L490" title="2 of 4 branches missed.">        if (header.size() != 3 || !&quot;type&quot;.equals(header.get(1))) throw problem(&quot;INVALID_HEADER&quot;, &quot;type&quot;, &quot;Malformed element header&quot;);</span>
+<span class="fc" id="L491">        return header.get(2);</span>
+    }
+
+    private static RelationKey relationKey(BlockAst block) {
+<span class="fc" id="L495">        List&lt;String&gt; header = block.getHeaderTokens();</span>
+<span class="pc bpc" id="L496" title="1 of 2 branches missed.">        if (header.size() != 3) throw problem(&quot;INVALID_HEADER&quot;, &quot;relation&quot;, &quot;Malformed relation header&quot;);</span>
+<span class="fc" id="L497">        return new RelationKey(header.get(0), header.get(1), header.get(2));</span>
+    }
+
+    private static void requireType(String type) {
+<span class="pc bpc" id="L501" title="1 of 4 branches missed.">        if (type == null || !TaxonomyRootTypes.TYPE_TO_ROOT.containsKey(type)) throw problem(&quot;UNKNOWN_ELEMENT_TYPE&quot;, &quot;type&quot;, &quot;Choose a metamodel element type&quot;);</span>
+<span class="fc" id="L502">    }</span>
+
+    private static void requireStatus(String status) {
+<span class="pc bpc" id="L505" title="1 of 4 branches missed.">        if (status != null &amp;&amp; !DslValidator.relationStatuses().contains(status)) throw problem(&quot;INVALID_STATUS&quot;, &quot;status&quot;, &quot;Choose a permitted relation status&quot;);</span>
+<span class="fc" id="L506">    }</span>
+
+    private static void requireProperties(Map&lt;String, String&gt; properties, boolean creating) {
+<span class="fc bfc" id="L509" title="All 2 branches covered.">        for (var entry : properties.entrySet()) {</span>
+<span class="pc bpc" id="L510" title="1 of 2 branches missed.">            if (entry.getValue() == null) throw problem(&quot;INVALID_VALUE&quot;, entry.getKey(), &quot;Property value must be a non-null string&quot;);</span>
+<span class="fc bfc" id="L511" title="All 2 branches covered.">            if (!ELEMENT_PROPERTIES.contains(entry.getKey())) throw problem(&quot;READ_ONLY_PROPERTY&quot;, entry.getKey(), &quot;Property is not editable&quot;);</span>
+<span class="pc bpc" id="L512" title="1 of 2 branches missed.">            if (entry.getValue().length() &gt; 8000) throw problem(&quot;VALUE_TOO_LONG&quot;, entry.getKey(), &quot;Property exceeds 8000 characters&quot;);</span>
+<span class="pc bpc" id="L513" title="8 of 14 branches missed.">            if (entry.getValue().chars().anyMatch(value -&gt; (value &lt; 32 &amp;&amp; value != '\n' &amp;&amp; value != '\r' &amp;&amp; value != '\t')</span>
+<span class="nc" id="L514">                    || value == 0xfffe || value == 0xffff)) throw problem(&quot;INVALID_VALUE&quot;, entry.getKey(), &quot;Property contains unsupported control characters&quot;);</span>
+<span class="fc" id="L515">        }</span>
+<span class="pc bpc" id="L516" title="1 of 8 branches missed.">        if ((creating || properties.containsKey(&quot;title&quot;)) &amp;&amp; (properties.get(&quot;title&quot;) == null || properties.get(&quot;title&quot;).isBlank())) {</span>
+<span class="fc" id="L517">            throw problem(&quot;REQUIRED_PROPERTY&quot;, &quot;title&quot;, &quot;Title is required&quot;);</span>
+        }
+<span class="fc" id="L519">        String status = properties.get(&quot;x-editor-status&quot;);</span>
+<span class="pc bpc" id="L520" title="3 of 4 branches missed.">        if (status != null &amp;&amp; !Set.of(&quot;draft&quot;, &quot;active&quot;, &quot;retired&quot;).contains(status)) throw problem(&quot;INVALID_STATUS&quot;, &quot;x-editor-status&quot;, &quot;Choose draft, active or retired&quot;);</span>
+<span class="fc" id="L521">    }</span>
+
+    private static void token(String value, String field) {
+<span class="pc bpc" id="L524" title="1 of 4 branches missed.">        if (value == null || !value.matches(&quot;[A-Za-z0-9][A-Za-z0-9_.-]{0,127}&quot;)) throw problem(&quot;INVALID_ID&quot;, field, &quot;Identity must be a bounded DSL identifier&quot;);</span>
+<span class="fc" id="L525">    }</span>
+
+    private static CommandProblem problem(String code, String field, String message) {
+<span class="fc" id="L528">        return new CommandProblem(code, field, message, List.of());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>IntegrationPortfolioPort.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop</a> &gt; <span class="el_source">IntegrationPortfolioPort.java</span></div><h1>IntegrationPortfolioPort.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop;
+
+import com.taxonomy.workspace.service.WorkspaceContext;
+import java.time.Instant;
+import java.util.List;
+
+/**
+ * Portfolio operations required by reviewed external-tool interoperability.
+ * The application binds these operations to the existing scoped portfolio services;
+ * no portfolio entities or implementation DTOs cross this boundary.
+ */
+public interface IntegrationPortfolioPort {
+<span class="fc" id="L13">    record ProjectData(Long id, String title, String projectKey) {</span>
+<span class="fc" id="L14">        public ProjectData(Long id, String title) { this(id, title, null); }</span>
+    }
+<span class="fc" id="L16">    record VersionData(String text, Instant createdAt) {}</span>
+    /** Status retains the portfolio's serialized enum name, including future values. */
+<span class="fc" id="L18">    record RequirementData(Long id, String requirementKey, String title, String status,</span>
+                           Long currentVersionId, Instant updatedAt, VersionData currentVersion) {
+<span class="fc" id="L20">        public boolean archived() { return &quot;ARCHIVED&quot;.equals(status); }</span>
+<span class="fc" id="L21">        public boolean approved() { return &quot;APPROVED&quot;.equals(status); }</span>
+        /**
+         * Content operations require a readable version. Optional status, version
+         * identity and timestamps remain unchanged; absent content must never be
+         * exported as empty text or mistaken for a deleted requirement.
+         */
+        public VersionData requireCurrentVersion() {
+<span class="fc bfc" id="L28" title="All 4 branches covered.">            if (currentVersion == null || currentVersion.text() == null) {</span>
+<span class="fc" id="L29">                throw new IntegrationProblem(&quot;REQUIREMENT_VERSION_UNAVAILABLE&quot;, 409,</span>
+                        &quot;Requirement has no readable current version; repair it before exchanging content&quot;);
+            }
+<span class="fc" id="L32">            return currentVersion;</span>
+        }
+    }
+<span class="fc" id="L35">    record RequirementsPage(List&lt;RequirementData&gt; requirements, boolean hasNext) {}</span>
+<span class="fc" id="L36">    record RequirementApplyPlan(String projectKey, String requirementKey, String canonicalIdentity) {}</span>
+    /** Pure business/canonical identity planning through the real portfolio contributor. */
+    RequirementApplyPlan planRequirementApply(Long projectId, String requirementKey, String dsl,
+                                             String username, WorkspaceContext context);
+<span class="fc" id="L40">    record ImportProvenance(String sectionReference, String originalText) {}</span>
+<span class="fc" id="L41">    record ImportedRequirement(String key, String title, String text, String rationale,</span>
+                               ImportProvenance source) {}
+
+    List&lt;ProjectData&gt; listProjects(String username, WorkspaceContext context);
+    ProjectData getProject(Long projectId, String username, WorkspaceContext context);
+    void requireProject(Long projectId, String username, WorkspaceContext context);
+    void requireProjectForUpdate(Long projectId, String username, WorkspaceContext context);
+    /** Flush and refresh scoped managed requirements without ending the caller's integration transaction. */
+    default void refreshIntegrationRequirements(Long projectId, String username, WorkspaceContext context) {
+<span class="nc" id="L50">        throw new UnsupportedOperationException(&quot;Persisted integration snapshot is unavailable&quot;);</span>
+    }
+    List&lt;RequirementData&gt; listRequirements(Long projectId, String username, WorkspaceContext context);
+    RequirementsPage listApprovedRequirements(Long projectId, String username, WorkspaceContext context,
+                                              int page, int pageSize);
+    RequirementData getRequirement(Long projectId, Long requirementId, String username, WorkspaceContext context);
+    RequirementData createRequirement(Long projectId, ImportedRequirement request,
+                                      String username, WorkspaceContext context);
+    void archiveRequirement(Long projectId, Long requirementId, String username, WorkspaceContext context);
+    void updateRequirement(Long projectId, Long requirementId, String title, boolean requiresReview,
+                           String username, WorkspaceContext context);
+    void addRequirementVersion(Long projectId, Long requirementId, String text, String rationale,
+                               ImportProvenance source, String username, WorkspaceContext context);
+    String contributeTo(String source, String username, WorkspaceContext context);
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

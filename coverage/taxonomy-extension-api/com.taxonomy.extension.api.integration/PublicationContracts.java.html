@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PublicationContracts.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-extension-api</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.extension.api.integration</a> &gt; <span class="el_source">PublicationContracts.java</span></div><h1>PublicationContracts.java</h1><pre class="source lang-java linenums">package com.taxonomy.extension.api.integration;
+
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import java.time.Instant;
+import java.util.*;
+import static com.taxonomy.extension.api.integration.PublicationBounds.*;
+
+/** Immutable, bounded conditional publication wire contract. No credentials or raw responses belong here. */
+public final class PublicationContracts {
+    private PublicationContracts() {}
+<span class="fc" id="L11">    public enum PublicationMode { PUSH, SYNCHRONIZE }</span>
+<span class="fc" id="L12">    public enum MutationKind { CREATE, UPDATE, DELETE }</span>
+<span class="fc" id="L13">    public enum ItemState { READY, IN_FLIGHT, UNKNOWN, ACKNOWLEDGED, REJECTED_STALE, REJECTED_PERMANENT, RETRYABLE_NO_EFFECT, BLOCKED }</span>
+<span class="fc" id="L14">    public enum ReceiptState { APPLIED, REJECTED_STALE, REJECTED_PERMANENT, RETRYABLE_NO_EFFECT }</span>
+<span class="fc" id="L15">    public enum LookupState { FOUND, IN_PROGRESS, NOT_FOUND, UNAVAILABLE, EXPIRED }</span>
+<span class="fc" id="L16">    public enum Guarantee { ATOMIC_SCOPE_COMPARE_AND_MUTATE, ATOMIC_RESOURCE_ABSENCE, DURABLE_IDEMPOTENCY, DURABLE_RECEIPT_LOOKUP, COMPLETE_VERSIONED_SCOPE_READ }</span>
+<span class="fc" id="L17">    public enum PublicationResolution { MERGE, KEEP_LOCAL, TAKE_REMOTE, SKIP }</span>
+<span class="fc" id="L18">    public enum PublicationPhase { PREVIEWED, LOCAL_APPLY_PENDING, LOCAL_CHECKPOINT_PENDING, PUBLISH_PENDING, RECOVERY_REQUIRED, VERIFY_PENDING, COMPLETED, PARTIAL, RECONCILIATION_REQUIRED, CANCELLED }</span>
+<span class="fc" id="L19">    public enum PublicationAction { REVIEW, PUBLISH, RETRY, RECONCILE, CANCEL }</span>
+<span class="fc" id="L20">    public enum AttemptKind { SEND, LOOKUP }</span>
+
+    public record PublicationScope(ExternalScope externalScope, String rootResource, String selectorFingerprint) {
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        public PublicationScope { Objects.requireNonNull(externalScope); resource(rootResource); text(selectorFingerprint); resource(externalScope.repository()); if (externalScope.configuration() != null) resource(externalScope.configuration()); }</span>
+    }
+    public record ProviderIdentity(String providerId, String repositoryId, String configurationId) {
+<span class="fc" id="L26">        public ProviderIdentity { resource(providerId); resource(repositoryId); resource(configurationId); }</span>
+    }
+    public record PublicationCapabilities(int schemaVersion, String contractVersion, ProviderIdentity provider, PublicationScope scope,
+            Set&lt;Guarantee&gt; guarantees, Set&lt;MutationKind&gt; mutations, Set&lt;ArtifactKind&gt; artifactKinds, String verificationReference,
+            String capabilityFingerprint, int maxItems, int maxRequestBytes, long receiptRetentionSeconds) {
+<span class="fc" id="L31">        public PublicationCapabilities { schema(schemaVersion); text(contractVersion); Objects.requireNonNull(provider); Objects.requireNonNull(scope);</span>
+<span class="fc" id="L32">            guarantees = set(guarantees, Guarantee.values().length); mutations = set(mutations, MutationKind.values().length); artifactKinds = set(artifactKinds, ArtifactKind.values().length);</span>
+<span class="pc bpc" id="L33" title="5 of 10 branches missed.">            text(verificationReference); text(capabilityFingerprint); if (maxItems &lt; 1 || maxItems &gt; MAX_MUTATIONS || maxRequestBytes &lt; 1 || maxRequestBytes &gt; MAX_ITEM_BYTES || receiptRetentionSeconds &lt; 1) throw new IllegalArgumentException(&quot;Invalid publication limits&quot;); }</span>
+    }
+    public record ScopeSnapshot(int schemaVersion, ProviderIdentity provider, PublicationScope scope, String revision, String semanticFingerprint,
+            boolean complete, ExchangeDocument document, Map&lt;String, ResourceState&gt; resources) {
+<span class="fc" id="L37">        public ScopeSnapshot { schema(schemaVersion); Objects.requireNonNull(provider); Objects.requireNonNull(scope); token(revision); text(semanticFingerprint);</span>
+<span class="pc bpc" id="L38" title="1 of 2 branches missed.">            PublicationBounds.document(document); resources = map(resources, MAX_SCOPE_ITEMS); resources.forEach((id, state) -&gt; { resource(id); if (!id.equals(state.resourceId())) throw new IllegalArgumentException(&quot;Resource identity mismatch&quot;); });</span>
+<span class="fc" id="L39">            bounded(MAX_DOCUMENT_BYTES, schemaVersion, provider, scope, revision, semanticFingerprint, complete, document, resources); }</span>
+    }
+    public record ResourceState(String resourceId, boolean exists, String version, String semanticFingerprint) {
+<span class="pc bpc" id="L42" title="2 of 6 branches missed.">        public ResourceState { resource(resourceId); if (exists) { token(version); text(semanticFingerprint); } else if (version != null || semanticFingerprint != null) throw new IllegalArgumentException(&quot;Absent resource has no version or semantics&quot;); }</span>
+    }
+    public record PublicationPreviewRequest(UUID operationId, InternalState expected, PublicationMode mode, PublicationScope scope, String expectedExternalRevision) {
+<span class="fc" id="L45">        public PublicationPreviewRequest { Objects.requireNonNull(operationId); Objects.requireNonNull(expected); Objects.requireNonNull(mode); Objects.requireNonNull(scope); token(expectedExternalRevision); bounded(MAX_DOCUMENT_BYTES, expected); }</span>
+    }
+    public record PublicationItemIntent(String itemId, String idempotencyKey, MutationKind mutation, String resourceId, ResourceState expectedResource,
+            Artifact target, Set&lt;String&gt; dependencies, String intentFingerprint) {
+<span class="fc" id="L49">        public PublicationItemIntent { text(itemId); text(idempotencyKey); Objects.requireNonNull(mutation); resource(resourceId); Objects.requireNonNull(expectedResource); text(intentFingerprint);</span>
+<span class="pc bpc" id="L50" title="2 of 10 branches missed.">            if (!resourceId.equals(expectedResource.resourceId()) || (mutation == MutationKind.DELETE) != (target == null)</span>
+<span class="pc bpc" id="L51" title="2 of 6 branches missed.">                    || (target != null &amp;&amp; !resourceId.equals(target.id())) || (mutation == MutationKind.CREATE) == expectedResource.exists()) throw new IllegalArgumentException(&quot;Inconsistent publication intent&quot;);</span>
+<span class="fc" id="L52">            dependencies = set(dependencies, MAX_MUTATIONS); dependencies.forEach(PublicationBounds::text);</span>
+<span class="fc" id="L53">            bounded(MAX_ITEM_BYTES, itemId, idempotencyKey, mutation, resourceId, expectedResource, target, dependencies, intentFingerprint); }</span>
+    }
+    public record PublicationPlan(int schemaVersion, UUID operationId, IntegrationContext context, PublicationMode mode, UUID commonCheckpointId,
+            long connectionRevision, String requestFingerprint, String reviewFingerprint, PublicationCapabilities capabilities, ScopeSnapshot remoteBefore,
+            ExchangeDocument localBefore, ExchangeDocument localTarget, ExchangeDocument remoteTarget, List&lt;PublicationItemIntent&gt; items,
+            List&lt;MappingLoss&gt; losses, String planFingerprint) {
+<span class="pc bpc" id="L59" title="1 of 2 branches missed.">        public PublicationPlan { schema(schemaVersion); Objects.requireNonNull(operationId); Objects.requireNonNull(context); Objects.requireNonNull(mode); if (connectionRevision &lt; 0) throw new IllegalArgumentException(&quot;Invalid connection revision&quot;);</span>
+<span class="fc" id="L60">            text(requestFingerprint); text(reviewFingerprint); Objects.requireNonNull(capabilities); Objects.requireNonNull(remoteBefore); document(localBefore); document(localTarget); document(remoteTarget);</span>
+<span class="fc" id="L61">            items = list(items, Math.min(MAX_MUTATIONS, capabilities.maxItems())); losses = list(losses, MAX_SCOPE_ITEMS); text(planFingerprint);</span>
+<span class="fc" id="L62">            bounded(MAX_DOCUMENT_BYTES, schemaVersion, operationId, context, mode, commonCheckpointId, connectionRevision, requestFingerprint, reviewFingerprint, capabilities, remoteBefore, localBefore, localTarget, remoteTarget, items, losses, planFingerprint); }</span>
+    }
+    public record PublicationItemRequest(int schemaVersion, UUID operationId, String planFingerprint, ProviderIdentity provider, PublicationScope scope,
+            PublicationItemIntent item, String expectedScopeRevision, String requestFingerprint) {
+<span class="fc" id="L66">        public PublicationItemRequest { schema(schemaVersion); Objects.requireNonNull(operationId); text(planFingerprint); Objects.requireNonNull(provider); Objects.requireNonNull(scope); Objects.requireNonNull(item); token(expectedScopeRevision); text(requestFingerprint);</span>
+<span class="fc" id="L67">            bounded(MAX_ITEM_BYTES, schemaVersion, operationId, planFingerprint, provider, scope, item, expectedScopeRevision, requestFingerprint); }</span>
+    }
+    public record PublicationReceipt(int schemaVersion, String contractVersion, ProviderIdentity provider, PublicationScope scope, UUID operationId,
+            String itemId, String idempotencyKey, String planFingerprint, String requestFingerprint, ReceiptState state, long receiptSequence, boolean terminal,
+            String beforeScopeRevision, String afterScopeRevision, ResourceState resultingResource, String failureCode, Instant recordedAt) {
+<span class="fc" id="L72">        public PublicationReceipt { schema(schemaVersion); text(contractVersion); Objects.requireNonNull(provider); Objects.requireNonNull(scope); Objects.requireNonNull(operationId); text(itemId); text(idempotencyKey); text(planFingerprint); text(requestFingerprint); Objects.requireNonNull(state);</span>
+<span class="pc bpc" id="L73" title="1 of 2 branches missed.">            if (receiptSequence &lt; 1) throw new IllegalArgumentException(&quot;Invalid receipt sequence&quot;); token(beforeScopeRevision); token(afterScopeRevision); Objects.requireNonNull(resultingResource); safeCode(failureCode); Objects.requireNonNull(recordedAt);</span>
+<span class="fc" id="L74">            bounded(MAX_DOCUMENT_BYTES, schemaVersion, contractVersion, provider, scope, operationId, itemId, idempotencyKey, planFingerprint, requestFingerprint, state, receiptSequence, terminal, beforeScopeRevision, afterScopeRevision, resultingResource, failureCode, recordedAt); }</span>
+    }
+    public record PublicationReceiptQuery(ProviderIdentity provider, PublicationScope scope, UUID operationId, String itemId, String idempotencyKey, String requestFingerprint) {
+<span class="fc" id="L77">        public PublicationReceiptQuery { Objects.requireNonNull(provider); Objects.requireNonNull(scope); Objects.requireNonNull(operationId); text(itemId); text(idempotencyKey); text(requestFingerprint); }</span>
+    }
+    public record PublicationReceiptLookup(LookupState state, PublicationReceipt receipt) {
+<span class="pc bpc" id="L80" title="1 of 6 branches missed.">        public PublicationReceiptLookup { Objects.requireNonNull(state); if ((state == LookupState.FOUND) != (receipt != null)) throw new IllegalArgumentException(&quot;Invalid receipt lookup&quot;); }</span>
+    }
+    public record PublicationCompletion(int schemaVersion, UUID operationId, String planFingerprint, List&lt;PublicationReceipt&gt; receipts,
+            ScopeSnapshot remoteAfter, InternalState localAfter, String commonSemanticFingerprint) {
+<span class="fc" id="L84">        public PublicationCompletion { schema(schemaVersion); Objects.requireNonNull(operationId); text(planFingerprint); receipts = list(receipts, MAX_MUTATIONS); Objects.requireNonNull(remoteAfter); Objects.requireNonNull(localAfter); text(commonSemanticFingerprint);</span>
+<span class="fc" id="L85">            bounded(MAX_DOCUMENT_BYTES, schemaVersion, operationId, planFingerprint, receipts, remoteAfter, localAfter, commonSemanticFingerprint); }</span>
+    }
+    public record PublicationChange(String id, String externalId, Artifact baseLocal, Artifact baseRemote, Artifact local, Artifact remote, Artifact merged,
+            Set&lt;String&gt; localFields, Set&lt;String&gt; remoteFields, List&lt;String&gt; conflicts, Set&lt;String&gt; dependencies) {
+<span class="fc" id="L89">        public PublicationChange { text(id); resource(externalId); localFields = set(localFields, MAX_SCOPE_ITEMS); remoteFields = set(remoteFields, MAX_SCOPE_ITEMS); conflicts = list(conflicts, MAX_SCOPE_ITEMS); dependencies = set(dependencies, MAX_SCOPE_ITEMS);</span>
+<span class="fc" id="L90">            bounded(MAX_DOCUMENT_BYTES, id, externalId, baseLocal, baseRemote, local, remote, merged, localFields, remoteFields, conflicts, dependencies); }</span>
+    }
+    public record PublicationReview(ReviewedChangeSet review, Map&lt;String, PublicationResolution&gt; resolutions) {
+<span class="fc" id="L93">        public PublicationReview { Objects.requireNonNull(review); resolutions = map(resolutions, MAX_SCOPE_ITEMS); bounded(MAX_DOCUMENT_BYTES, review, resolutions); }</span>
+    }
+    public record ReconciliationPreviewRequest(UUID predecessorOperationId, PublicationPreviewRequest request, String rationale) {
+<span class="pc bpc" id="L96" title="1 of 2 branches missed.">        public ReconciliationPreviewRequest { Objects.requireNonNull(predecessorOperationId); Objects.requireNonNull(request); text(rationale); if (predecessorOperationId.equals(request.operationId())) throw new IllegalArgumentException(&quot;Successor must have a new identity&quot;); }</span>
+    }
+    public record PublicationAvailability(boolean available, Set&lt;PublicationMode&gt; modes, Set&lt;MutationKind&gt; mutations, String reasonCode) {
+<span class="fc" id="L99">        public PublicationAvailability { modes = set(modes, PublicationMode.values().length); mutations = set(mutations, MutationKind.values().length); safeCode(reasonCode); }</span>
+    }
+    /** Public preview deliberately omits internal baseline, lease and frozen dispatch request. */
+    public record PublicationPreview(UUID operationId, PublicationMode mode, String fingerprint, List&lt;PublicationChange&gt; changes, List&lt;MappingLoss&gt; losses) {
+<span class="fc" id="L103">        public PublicationPreview { Objects.requireNonNull(operationId); Objects.requireNonNull(mode); text(fingerprint); changes = list(changes, MAX_SCOPE_ITEMS); losses = list(losses, MAX_SCOPE_ITEMS); bounded(MAX_DOCUMENT_BYTES, operationId, mode, fingerprint, changes, losses); }</span>
+    }
+    public record PublicationItemOutcome(String itemId, String resourceId, MutationKind mutation, ItemState state, int attempts, String failureCode, PublicationReceipt receipt) {
+<span class="pc bpc" id="L106" title="2 of 4 branches missed.">        public PublicationItemOutcome { text(itemId); resource(resourceId); Objects.requireNonNull(mutation); Objects.requireNonNull(state); if (attempts &lt; 0 || attempts &gt; MAX_ATTEMPTS) throw new IllegalArgumentException(&quot;Invalid attempt count&quot;); safeCode(failureCode); }</span>
+    }
+    public record PublicationOperation(int schemaVersion, UUID operationId, UUID connectionId, UUID predecessorOperationId, PublicationMode mode,
+            PublicationPhase phase, OperationStatus status, String planFingerprint, String reviewFingerprint, PublicationPreview preview,
+            List&lt;PublicationItemOutcome&gt; items, PublicationCompletion completion, UUID observationCheckpointId, UUID commonCheckpointId,
+            InternalState localCheckpoint, int acknowledgedCount, int remainingCount, int unknownCount, Set&lt;PublicationAction&gt; allowedActions, String failureCode, PublicationReview review, PublicationScope scope, String expectedExternalRevision, String requestFingerprint) {
+        /** Schema 1 additive read projection; old constructors retain their original meaning. */
+        public PublicationOperation(int schemaVersion, UUID operationId, UUID connectionId, UUID predecessorOperationId, PublicationMode mode, PublicationPhase phase, OperationStatus status, String planFingerprint, String reviewFingerprint, PublicationPreview preview, List&lt;PublicationItemOutcome&gt; items, PublicationCompletion completion, UUID observationCheckpointId, UUID commonCheckpointId, InternalState localCheckpoint, int acknowledgedCount, int remainingCount, int unknownCount, Set&lt;PublicationAction&gt; allowedActions, String failureCode) {
+<span class="fc" id="L114">            this(schemaVersion, operationId, connectionId, predecessorOperationId, mode, phase, status, planFingerprint, reviewFingerprint, preview, items, completion, observationCheckpointId, commonCheckpointId, localCheckpoint, acknowledgedCount, remainingCount, unknownCount, allowedActions, failureCode, null, null, null, null);</span>
+<span class="fc" id="L115">        }</span>
+<span class="fc" id="L116">        public PublicationOperation { schema(schemaVersion); Objects.requireNonNull(operationId); Objects.requireNonNull(connectionId); Objects.requireNonNull(mode); Objects.requireNonNull(phase); Objects.requireNonNull(status);</span>
+<span class="fc bfc" id="L117" title="All 4 branches covered.">            if (expectedExternalRevision != null) token(expectedExternalRevision); if (requestFingerprint != null) text(requestFingerprint);</span>
+<span class="fc bfc" id="L118" title="All 4 branches covered.">            if (planFingerprint != null) text(planFingerprint); if (reviewFingerprint != null) text(reviewFingerprint); items = list(items, MAX_MUTATIONS); allowedActions = set(allowedActions, PublicationAction.values().length); safeCode(failureCode);</span>
+<span class="pc bpc" id="L119" title="5 of 10 branches missed.">            if (acknowledgedCount &lt; 0 || remainingCount &lt; 0 || unknownCount &lt; 0 || acknowledgedCount + remainingCount != items.size() || unknownCount &gt; remainingCount) throw new IllegalArgumentException(&quot;Invalid publication counts&quot;);</span>
+<span class="fc" id="L120">            bounded(MAX_DOCUMENT_BYTES, schemaVersion, operationId, connectionId, predecessorOperationId, mode, phase, status, planFingerprint, reviewFingerprint, preview, items, completion, observationCheckpointId, commonCheckpointId, localCheckpoint, acknowledgedCount, remainingCount, unknownCount, allowedActions, failureCode, review, scope, expectedExternalRevision, requestFingerprint); }</span>
+    }
+<span class="pc bpc" id="L122" title="1 of 4 branches missed.">    private static void safeCode(String code) { if (code != null &amp;&amp; !code.matches(&quot;[A-Z][A-Z0-9_]{0,99}&quot;)) throw new IllegalArgumentException(&quot;Invalid publication outcome code&quot;); }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

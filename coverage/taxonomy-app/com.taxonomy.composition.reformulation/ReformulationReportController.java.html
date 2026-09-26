@@ -1,0 +1,100 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationReportController.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.reformulation</a> &gt; <span class="el_source">ReformulationReportController.java</span></div><h1>ReformulationReportController.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.reformulation;
+
+import com.taxonomy.export.reformulation.ReformulationReportRenderer;
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.reformulation.ReformulationReportService;
+import com.taxonomy.portfolio.reformulation.ReformulationReportService.Report;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.workspace.service.WorkspaceResolver;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.SerializationFeature;
+
+import java.nio.charset.StandardCharsets;
+import java.util.TreeMap;
+
+/** Explicit historical revision/receipt downloads; no live architecture or model lookup. */
+@RestController
+@RequestMapping(&quot;/api/projects/{projectId}/requirements/{requirementId}/reformulations/{proposalId}&quot;)
+public class ReformulationReportController {
+    private final ReformulationReportService reports;
+    private final WorkspaceResolver resolver;
+    private final ObjectMapper json;
+
+<span class="fc" id="L29">    public ReformulationReportController(ReformulationReportService reports, WorkspaceResolver resolver, ObjectMapper json) {</span>
+<span class="fc" id="L30">        this.reports = reports;</span>
+<span class="fc" id="L31">        this.resolver = resolver;</span>
+<span class="fc" id="L32">        this.json = json.rebuild().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();</span>
+<span class="fc" id="L33">    }</span>
+
+    @GetMapping(&quot;/revisions/{revision}/export&quot;)
+    public ResponseEntity&lt;byte[]&gt; revision(@PathVariable Long projectId, @PathVariable Long requirementId,
+            @PathVariable String proposalId, @PathVariable long revision, @RequestParam(defaultValue = &quot;json&quot;) String format) {
+<span class="fc" id="L38">        return response(reports.revision(projectId, requirementId, proposalId, revision,</span>
+<span class="fc" id="L39">                resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()), format);</span>
+    }
+
+    @GetMapping(&quot;/adoptions/{commandId}/export&quot;)
+    public ResponseEntity&lt;byte[]&gt; adoption(@PathVariable Long projectId, @PathVariable Long requirementId,
+            @PathVariable String proposalId, @PathVariable String commandId, @RequestParam(defaultValue = &quot;json&quot;) String format) {
+<span class="fc" id="L45">        return response(reports.adoption(projectId, requirementId, proposalId, commandId,</span>
+<span class="fc" id="L46">                resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()), format);</span>
+    }
+
+    private ResponseEntity&lt;byte[]&gt; response(Report report, String format) {
+<span class="fc bfc" id="L50" title="All 4 branches covered.">        MediaType type = switch (format) {</span>
+<span class="fc" id="L51">            case &quot;json&quot; -&gt; new MediaType(&quot;application&quot;, &quot;json&quot;, StandardCharsets.UTF_8);</span>
+<span class="fc" id="L52">            case &quot;md&quot; -&gt; new MediaType(&quot;text&quot;, &quot;markdown&quot;, StandardCharsets.UTF_8);</span>
+<span class="fc" id="L53">            case &quot;html&quot; -&gt; new MediaType(&quot;text&quot;, &quot;html&quot;, StandardCharsets.UTF_8);</span>
+<span class="fc" id="L54">            default -&gt; throw PortfolioException.validation(&quot;Supported report formats: json, md, html&quot;);</span>
+        };
+<span class="fc" id="L56">        String evidence = json.writerWithDefaultPrettyPrinter().writeValueAsString(report);</span>
+<span class="fc" id="L57">        var revision = report.revision();</span>
+<span class="fc" id="L58">        var metadata = new TreeMap&lt;String, String&gt;();</span>
+<span class="fc" id="L59">        metadata.put(&quot;Proposal&quot;, report.proposalId());</span>
+<span class="fc" id="L60">        metadata.put(&quot;Project / Requirement&quot;, report.source().projectId() + &quot; / &quot; + report.source().requirementId());</span>
+<span class="fc" id="L61">        metadata.put(&quot;Source version&quot;, Long.toString(report.source().versionId()));</span>
+<span class="fc" id="L62">        metadata.put(&quot;Source SHA-256&quot;, report.source().originalTextHash());</span>
+<span class="fc" id="L63">        metadata.put(&quot;Analysis snapshot&quot;, report.source().analysisSnapshotId());</span>
+<span class="fc" id="L64">        metadata.put(&quot;Proposal revision&quot;, Long.toString(revision.number()));</span>
+<span class="fc" id="L65">        metadata.put(&quot;Saved by&quot;, revision.actor());</span>
+<span class="fc" id="L66">        metadata.put(&quot;Saved at&quot;, revision.createdAt().toString());</span>
+<span class="fc" id="L67">        metadata.put(&quot;Revision rationale&quot;, revision.rationale());</span>
+<span class="fc" id="L68">        String identity = &quot;revision-&quot; + revision.number();</span>
+<span class="fc bfc" id="L69" title="All 2 branches covered.">        if (report.adoption() != null) {</span>
+<span class="fc" id="L70">            var adopted = report.adoption();</span>
+<span class="fc" id="L71">            metadata.put(&quot;Adoption command&quot;, adopted.commandId());</span>
+<span class="fc" id="L72">            metadata.put(&quot;Adopted by&quot;, adopted.actor());</span>
+<span class="fc" id="L73">            metadata.put(&quot;Adopted at&quot;, adopted.adoptedAt().toString());</span>
+<span class="fc" id="L74">            metadata.put(&quot;Adoption rationale&quot;, adopted.rationale());</span>
+<span class="fc" id="L75">            metadata.put(&quot;Target version&quot;, Long.toString(adopted.targetVersionId()));</span>
+<span class="fc" id="L76">            metadata.put(&quot;Warnings acknowledged&quot;, Boolean.toString(adopted.warningsAcknowledged()));</span>
+<span class="fc" id="L77">            metadata.put(&quot;Unresolved question IDs&quot;, adopted.unresolvedQuestionIds().toString());</span>
+<span class="fc" id="L78">            metadata.put(&quot;Preview SHA-256&quot;, report.preview().hash());</span>
+<span class="fc" id="L79">            identity = &quot;adoption-&quot; + adopted.commandId();</span>
+        }
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        var input = new ReformulationReportRenderer.Input(report.source().language(), report.adoption() != null,</span>
+<span class="fc" id="L82">                metadata, report.source().originalText(), report.reviewedText(), revision.sections(), revision.statements(),</span>
+<span class="fc" id="L83">                revision.questions(), revision.answers(), revision.validation(), evidence);</span>
+<span class="pc bpc" id="L84" title="1 of 4 branches missed.">        String body = switch (format) {</span>
+<span class="fc" id="L85">            case &quot;json&quot; -&gt; evidence + &quot;\n&quot;;</span>
+<span class="fc" id="L86">            case &quot;md&quot; -&gt; ReformulationReportRenderer.markdown(input);</span>
+<span class="fc" id="L87">            case &quot;html&quot; -&gt; ReformulationReportRenderer.html(input);</span>
+<span class="pc" id="L88">            default -&gt; throw new IllegalStateException(&quot;Validated format changed&quot;);</span>
+        };
+        // Identity comes only from the authorized persisted record; no user-supplied title in headers.
+<span class="fc" id="L91">        String filename = &quot;reformulation-&quot; + report.proposalId() + &quot;-&quot; + identity + &quot;.&quot; + format;</span>
+<span class="fc" id="L92">        return ResponseEntity.ok().contentType(type).cacheControl(CacheControl.noStore())</span>
+<span class="fc" id="L93">                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(filename).build().toString())</span>
+<span class="fc" id="L94">                .header(&quot;X-Content-Type-Options&quot;, &quot;nosniff&quot;)</span>
+<span class="fc" id="L95">                .header(&quot;Content-Security-Policy&quot;, &quot;default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'&quot;)</span>
+<span class="fc" id="L96">                .header(&quot;X-Content-SHA256&quot;, StableIdentityHash.sha256(body))</span>
+<span class="fc" id="L97">                .body(body.getBytes(StandardCharsets.UTF_8));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

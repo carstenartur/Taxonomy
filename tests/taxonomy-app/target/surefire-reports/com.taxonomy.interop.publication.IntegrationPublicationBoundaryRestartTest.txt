@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 247.7 s -- in com.taxonomy.interop.publication.IntegrationPublicationBoundaryRestartTest

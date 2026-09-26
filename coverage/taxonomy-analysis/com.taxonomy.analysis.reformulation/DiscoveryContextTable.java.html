@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DiscoveryContextTable.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">DiscoveryContextTable.java</span></div><h1>DiscoveryContextTable.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
+
+/** Lossless, request-local encoding. Never changes domain objects or removes unique context. */
+final class DiscoveryContextTable {
+    private DiscoveryContextTable() {}
+
+    static void encode(ObjectMapper json, ObjectNode data, List&lt;JsonNode&gt; questionLists) {
+<span class="fc" id="L17">        var discoveries = new ArrayList&lt;ObjectNode&gt;();</span>
+<span class="fc" id="L18">        questionLists.forEach(questions -&gt; questions.forEach(question -&gt; {</span>
+<span class="fc" id="L19">            collect(question.path(&quot;discoveries&quot;), discoveries);</span>
+<span class="fc" id="L20">            question.path(&quot;origins&quot;).forEach(origin -&gt; collect(origin.path(&quot;discoveries&quot;), discoveries));</span>
+<span class="fc" id="L21">        }));</span>
+<span class="fc" id="L22">        var counts = new HashMap&lt;String, Integer&gt;();</span>
+<span class="fc" id="L23">        discoveries.forEach(d -&gt; counts.merge(d.path(&quot;context&quot;).asText(), 1, Integer::sum));</span>
+<span class="fc" id="L24">        var table = json.createObjectNode();</span>
+<span class="fc" id="L25">        var references = new LinkedHashMap&lt;String, String&gt;();</span>
+<span class="fc bfc" id="L26" title="All 2 branches covered.">        for (var discovery : discoveries) {</span>
+<span class="fc" id="L27">            String context = discovery.path(&quot;context&quot;).asText();</span>
+            // Short strings cost less inline than a reference plus table entry.
+<span class="fc bfc" id="L29" title="All 4 branches covered.">            if (context.length() &lt;= 128 || counts.get(context) &lt; 2) continue;</span>
+<span class="fc" id="L30">            String key = references.computeIfAbsent(context, ignored -&gt; &quot;context-&quot; + (references.size() + 1));</span>
+<span class="fc" id="L31">            table.put(key, context);</span>
+<span class="fc" id="L32">            discovery.remove(&quot;context&quot;);</span>
+<span class="fc" id="L33">            discovery.put(&quot;contextRef&quot;, key);</span>
+<span class="fc" id="L34">        }</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">        if (!table.isEmpty()) data.set(&quot;discoveryContextTable&quot;, table);</span>
+<span class="fc" id="L36">    }</span>
+
+    private static void collect(JsonNode discoveries, List&lt;ObjectNode&gt; target) {
+<span class="fc" id="L39">        discoveries.forEach(discovery -&gt; {</span>
+<span class="pc bpc" id="L40" title="2 of 4 branches missed.">            if (discovery instanceof ObjectNode object &amp;&amp; discovery.path(&quot;context&quot;).isString()) target.add(object);</span>
+<span class="fc" id="L41">        });</span>
+<span class="fc" id="L42">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

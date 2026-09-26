@@ -1,0 +1,147 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementRelationSearch.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.relations</a> &gt; <span class="el_source">RequirementRelationSearch.java</span></div><h1>RequirementRelationSearch.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.relations;
+
+import com.taxonomy.dto.RelationSearchReport;
+import com.taxonomy.analysis.assessment.ChildAssessmentContract;
+import com.taxonomy.model.RelationType;
+import com.taxonomy.relations.service.RelationCompatibilityMatrix;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.*;
+import java.util.function.Function;
+import static com.taxonomy.dto.RelationSearchModel.*;
+
+/** One bounded analysis session; no writes, catalogue entities or cross-user caches. */
+public final class RequirementRelationSearch {
+    public interface InputCatalogue extends Catalogue {
+        Node find(String id);
+        List&lt;Node&gt; roots();
+    }
+    public record Options(Limits limits, int maxSources) {
+<span class="fc" id="L21">        public Options {</span>
+<span class="fc" id="L22">            Objects.requireNonNull(limits);</span>
+<span class="pc bpc" id="L23" title="2 of 4 branches missed.">            if (maxSources &lt; 1 || maxSources &gt; 256) throw new IllegalArgumentException(&quot;maxSources must be 1..256&quot;);</span>
+<span class="fc" id="L24">        }</span>
+    }
+    private final InputCatalogue catalogue;
+    private final RelationCompatibilityMatrix rules;
+    private final RelationSearchProtocol protocol;
+    private final Runnable checkpoint;
+
+    public RequirementRelationSearch(InputCatalogue catalogue, RelationCompatibilityMatrix rules,
+<span class="fc" id="L32">                                     Function&lt;String, String&gt; complete, Runnable checkpoint) {</span>
+<span class="fc" id="L33">        this.catalogue = Objects.requireNonNull(catalogue);</span>
+<span class="fc" id="L34">        this.rules = Objects.requireNonNull(rules);</span>
+<span class="fc" id="L35">        this.protocol = new RelationSearchProtocol(complete);</span>
+<span class="fc" id="L36">        this.checkpoint = Objects.requireNonNull(checkpoint);</span>
+<span class="fc" id="L37">    }</span>
+
+    public RelationSearchReport search(String original, Map&lt;String, Integer&gt; scores, Options options) {
+<span class="pc bpc" id="L40" title="2 of 4 branches missed.">        if (original == null || original.isBlank()) throw new IllegalArgumentException(&quot;Missing original requirement&quot;);</span>
+<span class="fc" id="L41">        Objects.requireNonNull(scores); Objects.requireNonNull(options);</span>
+<span class="fc" id="L42">        long start = System.nanoTime();</span>
+<span class="fc" id="L43">        int extractionCalls = 0;</span>
+<span class="fc" id="L44">        List&lt;SourceAssessment&gt; sources = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L45">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L46">        Result result = new Result(List.of(), List.of(), List.of(), 0, 0, 0);</span>
+<span class="fc" id="L47">        String stop = &quot;&quot;;</span>
+        try {
+<span class="fc" id="L49">            checkpoint.run();</span>
+            // Catalogue validity is a precondition for extraction, not a late
+            // engine concern after the caller has already paid for model calls.
+<span class="fc" id="L52">            List&lt;Node&gt; offeredRoots = List.copyOf(catalogue.roots());</span>
+<span class="fc" id="L53">            ChildAssessmentContract.validateCandidates(offeredRoots.stream().map(Node::id).toList());</span>
+<span class="fc" id="L54">            List&lt;Node&gt; roots = offeredRoots.stream().sorted(Comparator.comparing(Node::id)).toList();</span>
+<span class="fc" id="L55">            List&lt;Node&gt; nodes = sourceNodes(scores, options.maxSources(), warnings);</span>
+<span class="fc" id="L56">            int size = options.limits().batchSize();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            for (int i = 0; i &lt; nodes.size(); i += size) {</span>
+<span class="fc" id="L58">                checkpoint.run();</span>
+<span class="fc bfc" id="L59" title="All 2 branches covered.">                if (extractionCalls &gt;= options.limits().maxCalls()) {</span>
+<span class="fc" id="L60">                    warnings.add(&quot;EXTRACTION_CALL_BUDGET: &quot; + (nodes.size() - i) + &quot; sources remain unassessed.&quot;);</span>
+<span class="fc" id="L61">                    break;</span>
+                }
+<span class="fc" id="L63">                var batch = nodes.subList(i, Math.min(i + size, nodes.size()));</span>
+<span class="fc" id="L64">                extractionCalls++;</span>
+                try {
+<span class="fc" id="L66">                    var assessments = protocol.contributions(original, batch);</span>
+<span class="fc" id="L67">                    sources.addAll(assessments);</span>
+<span class="pc bpc" id="L68" title="1 of 4 branches missed.">                    for (var assessment : assessments) if (!assessment.question().isBlank()) {</span>
+<span class="nc" id="L69">                        warnings.add(&quot;SOURCE_UNRESOLVED &quot; + assessment.node().id() + &quot;: &quot; + assessment.question());</span>
+                    }
+<span class="fc" id="L71">                } catch (RelationSearchEngine.InvalidResponseException invalid) {</span>
+<span class="fc" id="L72">                    warnings.add(&quot;INVALID_SOURCE_RESPONSE &quot; + batch.stream().map(Node::id).toList() + &quot;: &quot; + invalid.getMessage());</span>
+<span class="fc" id="L73">                }</span>
+            }
+<span class="fc" id="L75">            List&lt;Intent&gt; intents = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L76" title="All 4 branches covered.">            for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {</span>
+<span class="fc" id="L77">                int before = intents.size();</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                for (RelationType type : RelationType.values()) {</span>
+<span class="fc" id="L79">                    Set&lt;String&gt; allowed = rules.allowedTargetRoots(contribution.source().root(), type);</span>
+<span class="fc" id="L80">                    List&lt;Node&gt; outgoing = roots.stream().filter(n -&gt; allowed.contains(n.root())).toList();</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                    if (!outgoing.isEmpty()) intents.add(new Intent(contribution, type.name(), Direction.OUTGOING, outgoing));</span>
+<span class="fc" id="L82">                    List&lt;Node&gt; incoming = roots.stream().filter(n -&gt; rules.allowedTargetRoots(n.root(), type)</span>
+<span class="fc" id="L83">                            .contains(contribution.source().root())).toList();</span>
+<span class="pc bpc" id="L84" title="1 of 2 branches missed.">                    if (!incoming.isEmpty()) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, incoming));</span>
+                }
+<span class="pc bpc" id="L86" title="1 of 2 branches missed.">                if (intents.size() == before) warnings.add(&quot;NO_STRUCTURAL_ROUTE &quot; + contribution.source().id()</span>
+                        + &quot;: the current root profile cannot route this contribution; not evidence of absence.&quot;);
+<span class="fc" id="L88">            }</span>
+<span class="fc" id="L89">            Limits l = options.limits();</span>
+<span class="fc" id="L90">            var engine = new RelationSearchEngine(node -&gt; {</span>
+<span class="fc" id="L91">                List&lt;Node&gt; children = catalogue.children(node);</span>
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">                if (children.stream().anyMatch(child -&gt; !child.root().equals(node.root()))) {</span>
+<span class="nc" id="L93">                    throw new IllegalStateException(&quot;CATALOGUE_ROOT_MISMATCH: child belongs to another taxonomy&quot;);</span>
+                }
+<span class="fc" id="L95">                return children;</span>
+<span class="fc" id="L96">            }, protocol::evaluate, checkpoint);</span>
+<span class="fc" id="L97">            result = engine.search(original, intents, new Limits(l.maxCalls() - extractionCalls,</span>
+<span class="fc" id="L98">                    l.maxDepth(), l.batchSize(), l.maxWorkItems()));</span>
+<span class="nc" id="L99">        } catch (RelationSearchEngine.InterruptedSearchException interrupted) {</span>
+<span class="nc" id="L100">            result = interrupted.partialResult();</span>
+<span class="nc" id="L101">            stop = failureReason(interrupted.getCause());</span>
+<span class="fc" id="L102">        } catch (RuntimeException failure) {</span>
+<span class="fc" id="L103">            stop = failureReason(failure);</span>
+<span class="pc" id="L104">        }</span>
+<span class="fc" id="L105">        return new RelationSearchReport(1, sha256(original), &quot;relation-downwalk-v1/root-compatibility-profile&quot;,</span>
+<span class="fc" id="L106">                sources, result, extractionCalls + result.calls(), options.limits().maxCalls(),</span>
+<span class="fc" id="L107">                (System.nanoTime() - start) / 1_000_000, warnings, stop);</span>
+    }
+
+    private List&lt;Node&gt; sourceNodes(Map&lt;String, Integer&gt; scores, int maxSources, List&lt;String&gt; warnings) {
+<span class="fc" id="L111">        List&lt;Map.Entry&lt;String,Integer&gt;&gt; positive = scores.entrySet().stream()</span>
+<span class="pc bpc" id="L112" title="1 of 4 branches missed.">                .filter(e -&gt; e.getValue() != null &amp;&amp; e.getValue() &gt; 0)</span>
+<span class="fc" id="L113">                .sorted(Map.Entry.&lt;String,Integer&gt;comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))</span>
+<span class="fc" id="L114">                .toList();</span>
+<span class="fc" id="L115">        List&lt;Node&gt; nodes = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L116">        Set&lt;String&gt; concreteRoots = new HashSet&lt;&gt;();</span>
+<span class="fc" id="L117">        Set&lt;String&gt; containerRoots = new TreeSet&lt;&gt;();</span>
+<span class="fc" id="L118">        int missing = 0, skipped = 0;</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">        for (var entry : positive) {</span>
+<span class="fc" id="L120">            checkpoint.run();</span>
+<span class="pc bpc" id="L121" title="1 of 2 branches missed.">            if (nodes.size() &gt;= maxSources) { skipped++; continue; }</span>
+<span class="fc" id="L122">            Node node = catalogue.find(entry.getKey());</span>
+<span class="fc bfc" id="L123" title="All 2 branches covered.">            if (node == null) { missing++; continue; }</span>
+<span class="fc bfc" id="L124" title="All 2 branches covered.">            if (node.container()) { containerRoots.add(node.root()); continue; }</span>
+<span class="fc" id="L125">            concreteRoots.add(node.root()); nodes.add(node);</span>
+<span class="fc" id="L126">        }</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        if (missing &gt; 0) warnings.add(&quot;MISSING_SOURCE: &quot; + missing + &quot; scored IDs are absent from the catalogue.&quot;);</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (skipped &gt; 0) warnings.add(&quot;SOURCE_LIMIT: &quot; + skipped + &quot; scored IDs remain unassessed.&quot;);</span>
+<span class="fc" id="L129">        containerRoots.removeAll(concreteRoots);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        for (String root : containerRoots) warnings.add(&quot;ROOT_SOURCE_UNRESOLVED &quot; + root</span>
+                + &quot;: identify a concrete required contribution below this catalogue container.&quot;);
+<span class="fc" id="L132">        return List.copyOf(nodes);</span>
+    }
+
+    private static String failureReason(Throwable failure) {
+        // Do not copy provider exception messages which can contain credentials or request bodies.
+<span class="fc bfc" id="L137" title="All 2 branches covered.">        if (failure instanceof com.taxonomy.analysis.service.AnalysisStoppedException stopped) {</span>
+<span class="fc" id="L138">            return stopped.reason().name() + &quot;: completed evidence retained; no further model evaluations.&quot;;</span>
+        }
+<span class="fc" id="L140">        return &quot;RELATION_SEARCH_STOPPED: &quot; + failure.getClass().getSimpleName();</span>
+    }
+    private static String sha256(String original) {
+<span class="fc" id="L143">        try { return HexFormat.of().formatHex(MessageDigest.getInstance(&quot;SHA-256&quot;).digest(original.getBytes(StandardCharsets.UTF_8))); }</span>
+<span class="nc" id="L144">        catch (NoSuchAlgorithmException impossible) { throw new IllegalStateException(impossible); }</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationRecoveryCoordinator.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.reformulation</a> &gt; <span class="el_source">ReformulationRecoveryCoordinator.java</span></div><h1>ReformulationRecoveryCoordinator.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.reformulation;
+
+import jakarta.annotation.PreDestroy;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
+import org.springframework.stereotype.Component;
+
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
+
+/** Application-lifetime timers only; work and retry state belong to the database. */
+@Component
+public class ReformulationRecoveryCoordinator {
+    private final ReformulationExecutionService execution;
+    private final long pollMillis;
+    private final long heartbeatMillis;
+    private final int maximumInFlight;
+    private ScheduledExecutorService timers;
+    public ReformulationRecoveryCoordinator(ReformulationExecutionService execution,
+            @Value(&quot;${reformulation.recovery.poll-ms:5000}&quot;) long pollMillis,
+            @Value(&quot;${reformulation.recovery.heartbeat-ms:10000}&quot;) long heartbeatMillis,
+            @Value(&quot;${reformulation.recovery.lease-ms:120000}&quot;) long leaseMillis,
+<span class="fc" id="L25">            @Value(&quot;${reformulation.recovery.max-in-flight:2}&quot;) int maximumInFlight) {</span>
+<span class="pc bpc" id="L26" title="5 of 10 branches missed.">        if(pollMillis&lt;100 || heartbeatMillis&lt;100 || heartbeatMillis&gt;leaseMillis/3 || maximumInFlight&lt;1 || maximumInFlight&gt;32)</span>
+<span class="nc" id="L27">            throw new IllegalArgumentException(&quot;Invalid reformulation recovery scheduling limits&quot;);</span>
+<span class="fc" id="L28">        this.execution=execution;this.pollMillis=pollMillis;this.heartbeatMillis=heartbeatMillis;this.maximumInFlight=maximumInFlight;</span>
+<span class="fc" id="L29">    }</span>
+    @EventListener(ApplicationReadyEvent.class)
+    public synchronized void start() {
+<span class="pc bpc" id="L32" title="1 of 2 branches missed.">        if(timers!=null)return;</span>
+<span class="fc" id="L33">        timers=Executors.newScheduledThreadPool(2,r-&gt;{var t=new Thread(r,&quot;reformulation-recovery&quot;);t.setDaemon(true);return t;});</span>
+<span class="fc" id="L34">        timers.scheduleWithFixedDelay(()-&gt;tick(()-&gt;execution.recoverAvailable(maximumInFlight)),pollMillis,pollMillis,TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L35">        timers.scheduleWithFixedDelay(()-&gt;tick(execution::heartbeat),heartbeatMillis,heartbeatMillis,TimeUnit.MILLISECONDS);</span>
+<span class="fc" id="L36">    }</span>
+    private void tick(Runnable work) {
+<span class="fc" id="L38">        try {work.run();}</span>
+<span class="fc" id="L39">        catch(RuntimeException failure) {</span>
+<span class="fc" id="L40">            org.slf4j.LoggerFactory.getLogger(getClass()).warn(&quot;Reformulation recovery tick failed ({})&quot;,failure.getClass().getSimpleName());</span>
+<span class="fc" id="L41">        }</span>
+<span class="fc" id="L42">    }</span>
+    @PreDestroy
+    public synchronized void stop() {
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        if(timers!=null) {timers.shutdownNow();timers=null;}</span>
+<span class="fc" id="L46">        execution.shutdown();</span>
+<span class="fc" id="L47">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>PreferenceArchitectureReportMetadata.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.composition.report</a> &gt; <span class="el_source">PreferenceArchitectureReportMetadata.java</span></div><h1>PreferenceArchitectureReportMetadata.java</h1><pre class="source lang-java linenums">package com.taxonomy.composition.report;
+
+import com.taxonomy.architecture.service.ArchitectureReportMetadataPort;
+import com.taxonomy.export.DiagramViewMetadata;
+import com.taxonomy.preferences.PreferencesService;
+import com.taxonomy.shared.config.ExportConfig;
+import org.springframework.stereotype.Component;
+
+/** Application-owned bridge from live preferences to architecture report metadata. */
+@Component
+public class PreferenceArchitectureReportMetadata implements ArchitectureReportMetadataPort {
+    private final PreferencesService preferencesService;
+
+<span class="fc" id="L14">    public PreferenceArchitectureReportMetadata(PreferencesService preferencesService) {</span>
+<span class="fc" id="L15">        this.preferencesService = preferencesService;</span>
+<span class="fc" id="L16">    }</span>
+
+    @Override
+    public DiagramViewMetadata resolve() {
+<span class="fc" id="L20">        return ExportConfig.resolveViewMetadata(preferencesService);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

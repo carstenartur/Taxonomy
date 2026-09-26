@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationReportRenderer.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export.reformulation</a> &gt; <span class="el_source">ReformulationReportRenderer.java</span></div><h1>ReformulationReportRenderer.java</h1><pre class="source lang-java linenums">package com.taxonomy.export.reformulation;
+
+import com.taxonomy.reformulation.DecisionAnswer;
+import com.taxonomy.reformulation.DecisionQuestion;
+import com.taxonomy.reformulation.Section;
+import com.taxonomy.reformulation.Statement;
+import com.taxonomy.reformulation.ValidationReport;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.TreeMap;
+
+/** Framework-free rendering of saved data. External strings are literal text, never markup. */
+public final class ReformulationReportRenderer {
+    private ReformulationReportRenderer() {}
+
+    public record Input(String language, boolean adoptionReceipt, Map&lt;String, String&gt; metadata,
+            String originalText, String reviewedText, List&lt;Section&gt; sections, List&lt;Statement&gt; statements,
+            List&lt;DecisionQuestion&gt; questions, List&lt;DecisionAnswer&gt; answers, ValidationReport validation,
+            String evidenceJson) {
+<span class="fc" id="L24">        public Input {</span>
+<span class="fc bfc" id="L25" title="All 2 branches covered.">            if (!List.of(&quot;de&quot;, &quot;en&quot;).contains(language)) throw new IllegalArgumentException(&quot;Report language must be de or en&quot;);</span>
+<span class="fc" id="L26">            metadata = Collections.unmodifiableMap(new TreeMap&lt;&gt;(metadata));</span>
+<span class="fc" id="L27">            Objects.requireNonNull(originalText); Objects.requireNonNull(reviewedText); Objects.requireNonNull(evidenceJson);</span>
+<span class="fc" id="L28">            sections = List.copyOf(sections); statements = List.copyOf(statements); questions = List.copyOf(questions);</span>
+<span class="fc" id="L29">            answers = List.copyOf(answers); Objects.requireNonNull(validation);</span>
+<span class="fc" id="L30">        }</span>
+    }
+<span class="fc" id="L32">    private record Block(int level, String text) {}</span>
+
+    public static String markdown(Input input) {
+<span class="fc" id="L35">        StringBuilder output = new StringBuilder();</span>
+<span class="fc bfc" id="L36" title="All 2 branches covered.">        for (Block block : blocks(input)) {</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            if (block.level() &gt; 0) output.append(&quot;#&quot;.repeat(block.level())).append(' ').append(heading(block.text())).append(&quot;\n\n&quot;);</span>
+<span class="fc" id="L38">            else output.append(fenced(block.text())).append(&quot;\n\n&quot;);</span>
+<span class="fc" id="L39">        }</span>
+<span class="fc" id="L40">        return output.toString();</span>
+    }
+
+    public static String html(Input input) {
+<span class="fc" id="L44">        StringBuilder output = new StringBuilder(&quot;&lt;!doctype html&gt;\n&lt;html lang=\&quot;&quot;)</span>
+<span class="fc" id="L45">                .append(input.language()).append(&quot;\&quot;&gt;&lt;head&gt;&lt;meta charset=\&quot;utf-8\&quot;&gt;&quot;)</span>
+<span class="fc" id="L46">                .append(&quot;&lt;meta name=\&quot;viewport\&quot; content=\&quot;width=device-width, initial-scale=1\&quot;&gt;&quot;)</span>
+<span class="fc" id="L47">                .append(&quot;&lt;meta http-equiv=\&quot;Content-Security-Policy\&quot; content=\&quot;default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'\&quot;&gt;&quot;)</span>
+<span class="fc" id="L48">                .append(&quot;&lt;title&gt;&quot;).append(escape(title(input))).append(&quot;&lt;/title&gt;&quot;)</span>
+<span class="fc" id="L49">                .append(&quot;&lt;style&gt;body{max-width:72rem;margin:2rem auto;padding:0 1rem;font:1rem/1.55 system-ui,sans-serif}&quot;)</span>
+<span class="fc" id="L50">                .append(&quot;pre{white-space:pre-wrap;overflow-wrap:anywhere;font:inherit}h2,h3{break-after:avoid;overflow-wrap:anywhere}&quot;)</span>
+<span class="fc" id="L51">                .append(&quot;h1{font-size:1.8rem}h2{border-top:1px solid;padding-top:1rem}&quot;)</span>
+<span class="fc" id="L52">                .append(&quot;@media print{body{margin:0}pre{orphans:3;widows:3}}&lt;/style&gt;&lt;/head&gt;&lt;body&gt;&lt;main&gt;\n&quot;);</span>
+<span class="fc bfc" id="L53" title="All 2 branches covered.">        for (Block block : blocks(input)) {</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            String tag = block.level() == 0 ? &quot;pre&quot; : &quot;h&quot; + block.level();</span>
+<span class="fc" id="L55">            output.append('&lt;').append(tag).append('&gt;').append(escape(block.text()))</span>
+<span class="fc" id="L56">                    .append(&quot;&lt;/&quot;).append(tag).append(&quot;&gt;\n&quot;);</span>
+<span class="fc" id="L57">        }</span>
+<span class="fc" id="L58">        return output.append(&quot;&lt;/main&gt;&lt;/body&gt;&lt;/html&gt;\n&quot;).toString();</span>
+    }
+
+    private static List&lt;Block&gt; blocks(Input in) {
+<span class="fc" id="L62">        var out = new ArrayList&lt;Block&gt;();</span>
+<span class="fc" id="L63">        out.add(new Block(1, title(in)));</span>
+<span class="fc bfc" id="L64" title="All 2 branches covered.">        out.add(new Block(0, in.adoptionReceipt()</span>
+<span class="fc" id="L65">                ? t(in, &quot;Dokumentierte Übernahme zum angegebenen Zeitpunkt. Keine Aussage über die heute aktive Version oder eine fachliche Freigabe.&quot;,</span>
+                        &quot;Documented adoption at the stated time. Not a claim about the currently active version or expert approval.&quot;)
+<span class="fc" id="L67">                : t(in, &quot;Gespeicherte Vorschlagsrevision – keine Übernahmebestätigung. Spätere Entscheidungen sind nicht Teil dieses historischen Stands.&quot;,</span>
+                        &quot;Saved proposal revision — not an adoption receipt. Later decisions are not part of this historical record.&quot;)));
+<span class="fc" id="L69">        in.metadata().forEach((key, value) -&gt; out.add(new Block(0, key + &quot;: &quot; + value)));</span>
+<span class="fc" id="L70">        section(out, t(in, &quot;Originalanforderung&quot;, &quot;Original requirement&quot;), in.originalText());</span>
+<span class="fc" id="L71">        section(out, t(in, &quot;Vollständiger Text dieses Stands&quot;, &quot;Complete text of this record&quot;), in.reviewedText());</span>
+<span class="fc" id="L72">        out.add(new Block(2, t(in, &quot;Taxonomienahe Gliederung&quot;, &quot;Taxonomy-aligned structure&quot;)));</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (Section section : in.sections()) {</span>
+<span class="fc" id="L74">            out.add(new Block(3, section.id() + &quot; — &quot; + section.title()));</span>
+<span class="fc" id="L75">            out.add(new Block(0, section.summary()));</span>
+<span class="fc" id="L76">            out.add(new Block(0, t(in, &quot;Taxonomie: &quot;, &quot;Taxonomy: &quot;) + section.taxonomyCode()</span>
+<span class="fc" id="L77">                    + &quot;\n&quot; + t(in, &quot;Unterabschnitte: &quot;, &quot;Children: &quot;) + section.children()</span>
+<span class="fc" id="L78">                    + &quot;\n&quot; + t(in, &quot;Aussagen: &quot;, &quot;Statements: &quot;) + section.statementIds()</span>
+<span class="fc" id="L79">                    + &quot;\n&quot; + t(in, &quot;Fragen: &quot;, &quot;Questions: &quot;) + section.questionIds()));</span>
+<span class="fc" id="L80">        }</span>
+<span class="fc" id="L81">        out.add(new Block(2, t(in, &quot;Aussagen, Bedingungen und Herkunft&quot;, &quot;Statements, conditions and provenance&quot;)));</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        for (Statement statement : in.statements()) {</span>
+<span class="fc" id="L83">            out.add(new Block(3, statement.id() + &quot; — &quot; + statement.provenance()));</span>
+<span class="fc" id="L84">            out.add(new Block(0, statement.wording()));</span>
+<span class="fc" id="L85">            out.add(new Block(0, t(in, &quot;Prüfstatus: &quot;, &quot;Review: &quot;) + statement.reviewState()</span>
+<span class="fc" id="L86">                    + &quot;\n&quot; + t(in, &quot;Bearbeitungsherkunft: &quot;, &quot;Editing origin: &quot;) + statement.editingOrigin()</span>
+<span class="fc" id="L87">                    + &quot;\n&quot; + t(in, &quot;Bedingung: &quot;, &quot;Condition: &quot;) + Objects.toString(statement.conditionalValidity(), &quot;&quot;)</span>
+<span class="fc" id="L88">                    + &quot;\n&quot; + t(in, &quot;Architekturbezüge: &quot;, &quot;Architecture references: &quot;) + statement.architectureLinks()</span>
+<span class="fc" id="L89">                    + &quot;\n&quot; + t(in, &quot;Fragen: &quot;, &quot;Questions: &quot;) + statement.questionDependencies()));</span>
+<span class="fc" id="L90">            spans(out, in, statement.sourceSpans());</span>
+<span class="fc" id="L91">        }</span>
+<span class="fc" id="L92">        out.add(new Block(2, t(in, &quot;Entscheidungsfragen&quot;, &quot;Decision questions&quot;)));</span>
+<span class="fc bfc" id="L93" title="All 2 branches covered.">        if (in.questions().isEmpty()) out.add(new Block(0, t(in, &quot;Keine Fragen gespeichert. Dies ist keine fachliche Freigabe.&quot;, &quot;No questions recorded. This does not mean expert approval.&quot;)));</span>
+<span class="fc bfc" id="L94" title="All 2 branches covered.">        for (DecisionQuestion q : in.questions()) {</span>
+<span class="fc" id="L95">            out.add(new Block(3, q.id() + &quot; — &quot; + q.wording()));</span>
+<span class="fc" id="L96">            out.add(new Block(0, &quot;Status: &quot; + q.state() + &quot;\n&quot; + t(in, &quot;Geltungsbereich: &quot;, &quot;Scope: &quot;) + q.key().scope()</span>
+<span class="fc" id="L97">                    + &quot;\n&quot; + t(in, &quot;Antwortmöglichkeiten: &quot;, &quot;Answer options: &quot;) + q.answerSchema().options()</span>
+<span class="fc" id="L98">                    + &quot;\n&quot; + t(in, &quot;Antworttyp: &quot;, &quot;Answer type: &quot;) + q.answerSchema().kind()</span>
+<span class="fc" id="L99">                    + &quot;\n&quot; + t(in, &quot;Einheit / Minimum / Maximum: &quot;, &quot;Unit / minimum / maximum: &quot;)</span>
+<span class="fc" id="L100">                    + Objects.toString(q.answerSchema().unit(), &quot;—&quot;) + &quot; / &quot; + q.answerSchema().minimum() + &quot; / &quot; + q.answerSchema().maximum()</span>
+<span class="fc" id="L101">                    + &quot;\n&quot; + t(in, &quot;Auswirkungen: &quot;, &quot;Consequences: &quot;) + Objects.toString(q.consequences(), &quot;&quot;)</span>
+<span class="fc" id="L102">                    + &quot;\n&quot; + t(in, &quot;Vorausgesetzte Fragen: &quot;, &quot;Prerequisite questions: &quot;) + q.prerequisites()</span>
+<span class="fc" id="L103">                    + &quot;\n&quot; + t(in, &quot;Abhängige Fragen: &quot;, &quot;Dependent questions: &quot;) + q.dependentQuestionIds()</span>
+<span class="fc" id="L104">                    + &quot;\n&quot; + t(in, &quot;Aussagen: &quot;, &quot;Statements: &quot;) + q.affectedStatementIds() + &quot;\nAliases: &quot; + q.aliases()));</span>
+<span class="fc bfc" id="L105" title="All 2 branches covered.">            for (DecisionQuestion.Discovery discovery : q.discoveries()) discovery(out, in, discovery);</span>
+<span class="fc bfc" id="L106" title="All 2 branches covered.">            for (DecisionQuestion.Origin origin : q.origins()) {</span>
+<span class="fc" id="L107">                out.add(new Block(0, t(in, &quot;Ursprüngliche Frage: &quot;, &quot;Original question: &quot;) + origin.id() + &quot; — &quot; + origin.wording()));</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">                for (DecisionQuestion.Discovery discovery : origin.discoveries()) discovery(out, in, discovery);</span>
+<span class="fc" id="L109">            }</span>
+<span class="pc bpc" id="L110" title="1 of 2 branches missed.">            for (DecisionQuestion.SourceResolution resolution : q.sourceResolutions()) {</span>
+<span class="nc" id="L111">                out.add(new Block(0, t(in, &quot;Aus dem Original abgeleitete Antwort: &quot;, &quot;Answer derived from original: &quot;)</span>
+<span class="nc" id="L112">                        + resolution.values() + &quot;\n&quot; + resolution.rationale()));</span>
+<span class="nc" id="L113">                spans(out, in, resolution.sourceSpans());</span>
+<span class="nc" id="L114">            }</span>
+<span class="fc" id="L115">        }</span>
+<span class="fc" id="L116">        out.add(new Block(2, t(in, &quot;Gespeicherte Antworten und Entscheidungsverlauf&quot;, &quot;Recorded answers and decision history&quot;)));</span>
+<span class="fc" id="L117">        var active = DecisionAnswer.active(in.answers());</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        for (DecisionAnswer answer : in.answers()) {</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            out.add(new Block(3, answer.questionId() + &quot; — &quot; + (active.contains(answer)</span>
+<span class="fc" id="L120">                    ? t(in, &quot;in diesem Stand wirksam&quot;, &quot;active in this record&quot;) : t(in, &quot;ersetzt&quot;, &quot;superseded&quot;))));</span>
+<span class="fc" id="L121">            out.add(new Block(0, &quot;ID: &quot; + answer.id() + &quot;\nStatus: &quot; + answer.state()</span>
+<span class="fc" id="L122">                    + &quot;\n&quot; + t(in, &quot;Werte: &quot;, &quot;Values: &quot;) + answer.values()</span>
+<span class="fc" id="L123">                    + &quot;\n&quot; + t(in, &quot;Andere Antwort: &quot;, &quot;Other: &quot;) + Objects.toString(answer.otherText(), &quot;&quot;)</span>
+<span class="fc" id="L124">                    + &quot;\n&quot; + t(in, &quot;Autor: &quot;, &quot;Author: &quot;) + answer.author()</span>
+<span class="fc" id="L125">                    + &quot;\n&quot; + t(in, &quot;Zeitpunkt: &quot;, &quot;Time: &quot;) + answer.occurredAt()</span>
+<span class="fc" id="L126">                    + &quot;\n&quot; + t(in, &quot;Begründung: &quot;, &quot;Rationale: &quot;) + answer.rationale()</span>
+<span class="fc" id="L127">                    + &quot;\nDisposition: &quot; + answer.disposition() + &quot;\n&quot; + t(in, &quot;Ersetzt: &quot;, &quot;Supersedes: &quot;) + answer.supersedes()));</span>
+<span class="fc" id="L128">        }</span>
+<span class="fc" id="L129">        out.add(new Block(2, t(in, &quot;Prüfhinweise&quot;, &quot;Validation findings&quot;)));</span>
+<span class="fc" id="L130">        in.validation().findings().forEach(f -&gt; {</span>
+<span class="nc" id="L131">            out.add(new Block(0, f.kind() + &quot; / &quot; + f.code() + &quot;\n&quot; + f.message()</span>
+<span class="nc" id="L132">                    + &quot;\n&quot; + t(in, &quot;Aussagen: &quot;, &quot;Statements: &quot;) + f.statementIds()));</span>
+<span class="nc" id="L133">            spans(out, in, f.sourceSpans());</span>
+<span class="nc" id="L134">        });</span>
+<span class="fc" id="L135">        section(out, t(in, &quot;Vollständige strukturierte Evidenz&quot;, &quot;Complete structured evidence&quot;), in.evidenceJson());</span>
+<span class="fc" id="L136">        return List.copyOf(out);</span>
+    }
+
+    private static void discovery(List&lt;Block&gt; out, Input in, DecisionQuestion.Discovery discovery) {
+<span class="fc" id="L140">        out.add(new Block(0, t(in, &quot;Entdeckt bei: &quot;, &quot;Discovered at: &quot;) + discovery.location()</span>
+<span class="fc" id="L141">                + &quot;\n&quot; + t(in, &quot;Kontext: &quot;, &quot;Context: &quot;) + discovery.context()</span>
+<span class="fc" id="L142">                + &quot;\n&quot; + t(in, &quot;Begründung: &quot;, &quot;Rationale: &quot;) + discovery.rationale()</span>
+<span class="fc" id="L143">                + &quot;\n&quot; + t(in, &quot;Knoten: &quot;, &quot;Nodes: &quot;) + discovery.nodeIds()</span>
+<span class="fc" id="L144">                + &quot;\n&quot; + t(in, &quot;Verbindungen: &quot;, &quot;Edges: &quot;) + discovery.edgeIds()));</span>
+<span class="fc" id="L145">        spans(out, in, discovery.sourceSpans());</span>
+<span class="fc" id="L146">    }</span>
+    private static void spans(List&lt;Block&gt; out, Input in, List&lt;Statement.SourceSpan&gt; spans) {
+<span class="pc bpc" id="L148" title="1 of 2 branches missed.">        for (var span : spans) out.add(new Block(0, t(in, &quot;Originalstelle (UTF-16): &quot;, &quot;Source span (UTF-16): &quot;)</span>
+<span class="nc" id="L149">                + span.start() + &quot;–&quot; + span.end() + &quot;\n&quot; + span.exactText()));</span>
+<span class="fc" id="L150">    }</span>
+<span class="fc" id="L151">    private static void section(List&lt;Block&gt; out, String title, String text) { out.add(new Block(2, title)); out.add(new Block(0, text)); }</span>
+    private static String title(Input in) {
+<span class="fc bfc" id="L153" title="All 2 branches covered.">        return in.adoptionReceipt() ? t(in, &quot;Neuformulierung — Übernahmebeleg&quot;, &quot;Reformulation — adoption receipt&quot;)</span>
+<span class="fc" id="L154">                : t(in, &quot;Neuformulierungsangebot — gespeicherte Revision&quot;, &quot;Reformulation offer — saved revision&quot;);</span>
+    }
+<span class="fc bfc" id="L156" title="All 2 branches covered.">    private static String t(Input in, String de, String en) { return in.language().equals(&quot;de&quot;) ? de : en; }</span>
+    private static String escape(String value) {
+<span class="fc" id="L158">        return value.replace(&quot;&amp;&quot;, &quot;&amp;amp;&quot;).replace(&quot;&lt;&quot;, &quot;&amp;lt;&quot;).replace(&quot;&gt;&quot;, &quot;&amp;gt;&quot;).replace(&quot;\&quot;&quot;, &quot;&amp;quot;&quot;).replace(&quot;'&quot;, &quot;&amp;#39;&quot;);</span>
+    }
+    private static String heading(String text) {
+<span class="fc" id="L161">        return escape(text).replace(&quot;\\&quot;, &quot;\\\\&quot;).replace(&quot;`&quot;, &quot;\\`&quot;).replace(&quot;*&quot;, &quot;\\*&quot;).replace(&quot;_&quot;, &quot;\\_&quot;).replace(&quot;~&quot;, &quot;\\~&quot;)</span>
+<span class="fc" id="L162">                .replace(&quot;[&quot;, &quot;\\[&quot;).replace(&quot;]&quot;, &quot;\\]&quot;).replace(&quot;#&quot;, &quot;\\#&quot;).replace(&quot;\r&quot;, &quot; &quot;).replace(&quot;\n&quot;, &quot; &quot;);</span>
+    }
+    /** User-provided backticks must never terminate a literal field block. */
+    private static String fenced(String text) {
+<span class="fc" id="L166">        int longest = 0, run = 0;</span>
+<span class="fc bfc" id="L167" title="All 4 branches covered.">        for (int i = 0; i &lt; text.length(); i++) { run = text.charAt(i) == '`' ? run + 1 : 0; longest = Math.max(longest, run); }</span>
+<span class="fc" id="L168">        String delimiter = &quot;`&quot;.repeat(Math.max(3, longest + 1));</span>
+<span class="fc" id="L169">        return delimiter + &quot;text\n&quot; + text + &quot;\n&quot; + delimiter;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

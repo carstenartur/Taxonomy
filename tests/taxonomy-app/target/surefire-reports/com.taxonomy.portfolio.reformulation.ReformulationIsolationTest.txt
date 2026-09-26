@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.portfolio.reformulation.ReformulationIsolationTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 5.678 s -- in com.taxonomy.portfolio.reformulation.ReformulationIsolationTest

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>StructurizrExportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.export</a> &gt; <span class="el_source">StructurizrExportService.java</span></div><h1>StructurizrExportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.export;
+
+import com.taxonomy.diagram.DiagramEdge;
+import com.taxonomy.diagram.DiagramModel;
+import com.taxonomy.diagram.DiagramNode;
+
+import java.util.HashMap;
+import java.util.Map;
+
+/**
+ * Exports a {@link DiagramModel} as Structurizr DSL text.
+ *
+ * &lt;p&gt;This is the reverse of {@code StructurizrDslParser}: given an internal architecture
+ * model, it produces a Structurizr custom view with explicit taxonomy identities.
+ * The flat model does not imply a C4 software-system/container hierarchy.&lt;/p&gt;
+ */
+<span class="fc" id="L17">public class StructurizrExportService {</span>
+
+    /**
+     * Exports the given {@link DiagramModel} as a Structurizr DSL workspace string.
+     *
+     * @param model the neutral diagram model
+     * @return Structurizr DSL text
+     */
+    public String export(DiagramModel model) {
+<span class="fc" id="L26">        StringBuilder sb = new StringBuilder();</span>
+<span class="fc" id="L27">        sb.append(&quot;workspace {\n\n&quot;);</span>
+<span class="fc" id="L28">        sb.append(&quot;    model {\n&quot;);</span>
+
+<span class="fc" id="L30">        Map&lt;String, String&gt; idMap = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L31">        int counter = 1;</span>
+
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (DiagramNode node : model.nodes()) {</span>
+            // Container-only nodes are visual grouping constructs — skip them
+            // so that they do not become false architecture semantics in the export.
+<span class="pc bpc" id="L36" title="1 of 2 branches missed.">            if (node.container()) continue;</span>
+            // Use node.id() to guarantee uniqueness; fall back to label for readability
+<span class="fc" id="L38">            String id = sanitizeId(node.id(), counter++);</span>
+            // Ensure uniqueness even after sanitization
+<span class="fc" id="L40">            String baseId = id;</span>
+<span class="fc bfc" id="L41" title="All 2 branches covered.">            while (idMap.containsValue(id)) id = baseId + &quot;_&quot; + counter++;</span>
+<span class="fc" id="L42">            idMap.put(node.id(), id);</span>
+            // The neutral graph has no C4 system/container hierarchy. Custom elements
+            // preserve its taxonomy semantics without inventing software boundaries.
+<span class="fc" id="L45">            String c4Type = &quot;element&quot;;</span>
+<span class="fc" id="L46">            sb.append(&quot;        &quot;).append(id).append(&quot; = &quot;).append(c4Type)</span>
+<span class="fc" id="L47">                    .append(&quot; \&quot;&quot;).append(escapeQuotes(node.label() + &quot; [&quot; + node.id() + &quot;]&quot;)).append(&quot;\&quot;&quot;);</span>
+<span class="pc bpc" id="L48" title="2 of 4 branches missed.">            if (node.type() != null &amp;&amp; !node.type().isEmpty()) {</span>
+<span class="fc" id="L49">                sb.append(&quot; \&quot;&quot;).append(escapeQuotes(node.type())).append(&quot;\&quot;&quot;);</span>
+            }
+<span class="fc" id="L51">            sb.append(&quot; {\n            properties {\n&quot;);</span>
+<span class="fc" id="L52">            sb.append(&quot;                \&quot;taxonomy.id\&quot; \&quot;&quot;).append(escapeQuotes(node.id())).append(&quot;\&quot;\n&quot;);</span>
+<span class="fc" id="L53">            sb.append(&quot;                \&quot;taxonomy.label\&quot; \&quot;&quot;).append(escapeQuotes(node.label())).append(&quot;\&quot;\n&quot;);</span>
+<span class="fc" id="L54">            sb.append(&quot;            }\n        }\n&quot;);</span>
+<span class="fc" id="L55">        }</span>
+
+<span class="fc bfc" id="L57" title="All 4 branches covered.">        if (!model.nodes().isEmpty() &amp;&amp; !model.edges().isEmpty()) {</span>
+<span class="fc" id="L58">            sb.append('\n');</span>
+        }
+
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        for (DiagramEdge edge : model.edges()) {</span>
+            // Skip edges referencing nodes not declared in the model
+<span class="pc bpc" id="L63" title="1 of 4 branches missed.">            if (!idMap.containsKey(edge.sourceId()) || !idMap.containsKey(edge.targetId())) {</span>
+<span class="fc" id="L64">                continue;</span>
+            }
+<span class="fc" id="L66">            String src = idMap.get(edge.sourceId());</span>
+<span class="fc" id="L67">            String tgt = idMap.get(edge.targetId());</span>
+<span class="pc bpc" id="L68" title="1 of 2 branches missed.">            String desc = edge.relationType() != null ? edge.relationType() : &quot;&quot;;</span>
+<span class="fc" id="L69">            sb.append(&quot;        &quot;).append(src).append(&quot; -&gt; &quot;).append(tgt)</span>
+<span class="fc" id="L70">                    .append(&quot; \&quot;&quot;).append(escapeQuotes(desc)).append(&quot;\&quot;&quot;)</span>
+<span class="fc" id="L71">                    .append('\n');</span>
+<span class="fc" id="L72">        }</span>
+
+<span class="fc" id="L74">        sb.append(&quot;    }\n\n&quot;);</span>
+<span class="fc" id="L75">        sb.append(&quot;    views {\n&quot;);</span>
+<span class="fc" id="L76">        sb.append(&quot;        custom \&quot;overview\&quot; {\n&quot;);</span>
+<span class="fc" id="L77">        sb.append(&quot;            include *\n&quot;);</span>
+<span class="fc" id="L78">        sb.append(&quot;            autoLayout\n&quot;);</span>
+<span class="fc" id="L79">        sb.append(&quot;        }\n&quot;);</span>
+<span class="fc" id="L80">        sb.append(&quot;    }\n&quot;);</span>
+<span class="fc" id="L81">        sb.append(&quot;}\n&quot;);</span>
+
+<span class="fc" id="L83">        return sb.toString();</span>
+    }
+
+    String sanitizeId(String label, int counter) {
+<span class="fc bfc" id="L87" title="All 4 branches covered.">        if (label == null || label.isBlank()) {</span>
+<span class="fc" id="L88">            return &quot;element&quot; + counter;</span>
+        }
+<span class="fc" id="L90">        String id = label.replaceAll(&quot;[^a-zA-Z0-9]&quot;, &quot;&quot;);</span>
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if (id.isEmpty()) {</span>
+<span class="fc" id="L92">            return &quot;element&quot; + counter;</span>
+        }
+<span class="fc" id="L94">        return Character.toLowerCase(id.charAt(0)) + id.substring(1);</span>
+    }
+
+    private String escapeQuotes(String s) {
+<span class="pc bpc" id="L98" title="1 of 2 branches missed.">        return s == null ? &quot;&quot; : s.replace(&quot;\&quot;&quot;, &quot;\\\&quot;&quot;);</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

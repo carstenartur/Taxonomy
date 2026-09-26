@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationDtos.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationDtos.java</span></div><h1>ReformulationDtos.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+import com.taxonomy.reformulation.*;
+import java.time.Instant;
+import java.util.List;
+public final class ReformulationDtos {
+    private ReformulationDtos(){}
+<span class="fc" id="L7">    public record CreateRequest(Long sourceVersionId,String snapshotId,String language) {}</span>
+<span class="fc" id="L8">    public record SaveDraftRequest(String text,String rationale,AnswerRequest answer,String statementId,StatementRequest statement) {</span>
+<span class="fc" id="L9">        public SaveDraftRequest(String text,String rationale) {this(text,rationale,null,null,null);}</span>
+    }
+<span class="fc" id="L11">    public record AnswerRequest(String questionId,String action,List&lt;String&gt; values,String otherText,String rationale) {}</span>
+<span class="fc" id="L12">    public record StatementRequest(String action,String text,String rationale) {}</span>
+<span class="fc" id="L13">    public record VariantRequest(String rationale) {}</span>
+<span class="fc" id="L14">    public record VariantOrigin(String proposalId,long revision) {}</span>
+    public record Revision(long number,Long predecessor,String text,List&lt;Section&gt; sections,List&lt;Statement&gt; statements,
+            List&lt;DecisionQuestion&gt; questions,List&lt;DecisionAnswer&gt; answers,ValidationReport validation,
+            String actor,Instant createdAt,String rationale,ReformulationImpact impact,VariantOrigin variantOrigin) {
+        public Revision(long number,Long predecessor,String text,List&lt;Section&gt; sections,List&lt;Statement&gt; statements,
+                List&lt;DecisionQuestion&gt; questions,List&lt;DecisionAnswer&gt; answers,ValidationReport validation,
+                String actor,Instant createdAt,String rationale) {
+<span class="fc" id="L21">            this(number,predecessor,text,sections,statements,questions,answers,validation,actor,createdAt,rationale,ReformulationImpact.empty(),null);</span>
+<span class="fc" id="L22">        }</span>
+<span class="pc bpc" id="L23" title="1 of 2 branches missed.">        public Revision { impact=impact==null?ReformulationImpact.empty():impact; sections=List.copyOf(sections);statements=List.copyOf(statements);questions=List.copyOf(questions);answers=List.copyOf(answers); }</span>
+    }
+    public record Run(String id,String proposalId,long sourceRevision,String status,String provider,String model,
+            String promptVersion,String schemaVersion,String promptContent,String failureCode,Long resultRevision,ReformulationDocument candidate,
+            String actor,Instant createdAt,java.util.Map&lt;String,String&gt; reconcileContext) {
+<span class="fc bfc" id="L28" title="All 2 branches covered.">        public Run {reconcileContext=reconcileContext==null?java.util.Map.of():java.util.Map.copyOf(reconcileContext);}</span>
+    }
+<span class="fc" id="L30">    public record Proposal(String id,ReformulationBaseline baseline,String creator,Instant createdAt,String status,Revision currentRevision) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

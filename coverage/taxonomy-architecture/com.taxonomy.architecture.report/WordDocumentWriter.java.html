@@ -1,0 +1,406 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>WordDocumentWriter.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">WordDocumentWriter.java</span></div><h1>WordDocumentWriter.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.architecture.decision.DecisionReportLabels;
+
+import org.apache.poi.util.Units;
+import org.apache.poi.xwpf.usermodel.*;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.*;
+
+import java.io.*;
+import java.math.BigInteger;
+import java.util.*;
+
+/** OOXML semantics shared by standalone and template-backed documents. */
+public final class WordDocumentWriter {
+    private final XWPFDocument document;
+    private final DecisionReportLabels labels;
+
+<span class="fc" id="L18">    public WordDocumentWriter(XWPFDocument document, DecisionReportLabels labels) {</span>
+<span class="fc" id="L19">        this.document = document;</span>
+<span class="fc" id="L20">        this.labels = labels;</span>
+<span class="fc" id="L21">        ensureStyles(document);</span>
+<span class="fc" id="L22">    }</span>
+
+    public static void ensureStyles(XWPFDocument document) {
+        XWPFStyles styles =
+<span class="fc bfc" id="L26" title="All 2 branches covered.">                document.getStyles() == null ? document.createStyles() : document.getStyles();</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        for (String id : List.of(&quot;Title&quot;, &quot;Heading1&quot;, &quot;Heading2&quot;, &quot;Heading3&quot;, &quot;TOCHeading&quot;, &quot;Caption&quot;)) {</span>
+<span class="fc bfc" id="L28" title="All 2 branches covered.">            if (styles.styleExist(id)) continue;</span>
+<span class="fc" id="L29">            CTStyle style = CTStyle.Factory.newInstance();</span>
+<span class="fc" id="L30">            style.setStyleId(id);</span>
+<span class="fc" id="L31">            style.setType(STStyleType.PARAGRAPH);</span>
+<span class="fc" id="L32">            style.addNewName().setVal(id);</span>
+<span class="fc" id="L33">            var p = style.addNewPPr();</span>
+<span class="fc" id="L34">            p.addNewKeepNext();</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (id.startsWith(&quot;Heading&quot;))</span>
+<span class="fc" id="L36">                p.addNewOutlineLvl()</span>
+<span class="fc" id="L37">                        .setVal(BigInteger.valueOf(Integer.parseInt(id.substring(7)) - 1));</span>
+<span class="fc" id="L38">            var run = style.addNewRPr();</span>
+<span class="fc" id="L39">            run.addNewRFonts().setAscii(&quot;Aptos&quot;);</span>
+<span class="fc" id="L40">            run.getRFontsArray(0).setHAnsi(&quot;Aptos&quot;);</span>
+<span class="fc" id="L41">            run.addNewSz()</span>
+<span class="fc" id="L42">                    .setVal(</span>
+<span class="fc" id="L43">                            BigInteger.valueOf(</span>
+<span class="fc bfc" id="L44" title="All 2 branches covered.">                                    id.equals(&quot;Title&quot;)</span>
+<span class="fc" id="L45">                                            ? 48</span>
+<span class="fc bfc" id="L46" title="All 2 branches covered.">                                            : id.equals(&quot;Heading1&quot;)</span>
+<span class="fc" id="L47">                                                    ? 34</span>
+<span class="fc bfc" id="L48" title="All 2 branches covered.">                                                    : id.equals(&quot;Caption&quot;) ? 18 : 26));</span>
+<span class="fc bfc" id="L49" title="All 2 branches covered.">            if (!id.equals(&quot;Caption&quot;)) run.addNewB();</span>
+<span class="fc" id="L50">            styles.addStyle(new XWPFStyle(style));</span>
+<span class="fc" id="L51">        }</span>
+<span class="fc" id="L52">    }</span>
+
+    public XWPFParagraph heading(String text, int level, String bookmark) {
+<span class="fc" id="L55">        XWPFParagraph p = document.createParagraph();</span>
+<span class="fc bfc" id="L56" title="All 2 branches covered.">        p.setStyle(level == 0 ? &quot;Title&quot; : &quot;Heading&quot; + level);</span>
+<span class="fc" id="L57">        p.setKeepNext(true);</span>
+<span class="fc" id="L58">        p.setSpacingBefore(180);</span>
+<span class="fc" id="L59">        p.setSpacingAfter(100);</span>
+<span class="fc" id="L60">        p.createRun().setText(value(text));</span>
+<span class="fc bfc" id="L61" title="All 2 branches covered.">        if (bookmark != null) bookmark(p, bookmark);</span>
+<span class="fc" id="L62">        return p;</span>
+    }
+
+    public XWPFParagraph paragraph(String text) {
+<span class="fc" id="L66">        var p = document.createParagraph();</span>
+<span class="fc" id="L67">        p.setSpacingAfter(100);</span>
+<span class="fc" id="L68">        var r = p.createRun();</span>
+<span class="fc" id="L69">        r.setFontSize(10);</span>
+<span class="fc" id="L70">        r.setText(value(text));</span>
+<span class="fc" id="L71">        return p;</span>
+    }
+
+    public void contents(Map&lt;String, String&gt; sections) {
+<span class="fc" id="L75">        contents(sections, 3);</span>
+<span class="fc" id="L76">    }</span>
+
+    /** The contents title itself is not an indexed section. */
+    public void contents(Map&lt;String, String&gt; sections, int outlineDepth) {
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">        if (outlineDepth &lt; 1 || outlineDepth &gt; 3)</span>
+<span class="nc" id="L81">            throw new IllegalArgumentException(&quot;Contents depth must be 1 to 3&quot;);</span>
+<span class="fc" id="L82">        heading(labels.contents(), 1, null).setStyle(&quot;TOCHeading&quot;);</span>
+<span class="fc" id="L83">        var p = document.createParagraph();</span>
+<span class="fc" id="L84">        p.getCTP().addNewPPr();</span>
+<span class="fc" id="L85">        var field = p.getCTP().addNewFldSimple();</span>
+<span class="fc" id="L86">        field.setInstr(&quot;TOC \\o \&quot;1-&quot; + outlineDepth + &quot;\&quot; \\h \\z \\u&quot;);</span>
+<span class="fc" id="L87">        p.setKeepNext(true);</span>
+<span class="fc" id="L88">        field.addNewR().addNewT().setStringValue(&quot;&quot;);</span>
+<span class="fc" id="L89">        var settings = document.getSettings().getCTSettings();</span>
+<span class="fc bfc" id="L90" title="All 2 branches covered.">        (settings.isSetUpdateFields() ? settings.getUpdateFields() : settings.addNewUpdateFields())</span>
+<span class="fc" id="L91">                .setVal(true);</span>
+<span class="fc" id="L92">        var table = table(List.of(labels.titleLabel(), labels.openChapter()), List.of());</span>
+<span class="fc" id="L93">        table.getRow(0).getTableCells().forEach(c -&gt;</span>
+<span class="fc" id="L94">                c.getParagraphs().forEach(paragraph -&gt; paragraph.setKeepNext(true)));</span>
+<span class="fc" id="L95">        sections.forEach(</span>
+                (anchor, title) -&gt; {
+<span class="fc" id="L97">                    var row = table.createRow();</span>
+<span class="fc" id="L98">                    cell(row.getCell(0), title);</span>
+<span class="fc" id="L99">                    link(row.getCell(1).getParagraphs().getFirst(), anchor, labels.openChapter());</span>
+<span class="fc" id="L100">                    row.setCantSplitRow(true);</span>
+<span class="fc" id="L101">                });</span>
+<span class="fc" id="L102">    }</span>
+
+    public XWPFTable table(List&lt;String&gt; headers, List&lt;List&lt;String&gt;&gt; values) {
+<span class="fc" id="L105">        XWPFTable table = document.createTable(1, headers.size());</span>
+<span class="fc" id="L106">        table.setWidth(&quot;100%&quot;);</span>
+<span class="fc" id="L107">        var header = table.getRow(0);</span>
+<span class="fc" id="L108">        header.setRepeatHeader(true);</span>
+<span class="fc" id="L109">        header.setCantSplitRow(true);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for (int i = 0; i &lt; headers.size(); i++) {</span>
+<span class="fc" id="L111">            cell(header.getCell(i), headers.get(i));</span>
+<span class="fc" id="L112">            header.getCell(i).setColor(&quot;E9F0F7&quot;);</span>
+<span class="fc" id="L113">            header.getCell(i).getParagraphs().getFirst().getRuns().forEach(r -&gt; r.setBold(true));</span>
+        }
+<span class="fc bfc" id="L115" title="All 2 branches covered.">        for (var valuesRow : values) {</span>
+<span class="fc" id="L116">            var row = table.createRow();</span>
+<span class="fc" id="L117">            row.setCantSplitRow(</span>
+<span class="pc bpc" id="L118" title="2 of 4 branches missed.">                    valuesRow.stream().mapToInt(v -&gt; v == null ? 0 : v.length()).sum() &lt; 1800);</span>
+<span class="fc bfc" id="L119" title="All 2 branches covered.">            for (int i = 0; i &lt; headers.size(); i++) cell(row.getCell(i), valuesRow.get(i));</span>
+<span class="fc" id="L120">        }</span>
+<span class="fc" id="L121">        return table;</span>
+    }
+
+    public void columnWidths(XWPFTable table, int... percentages) {
+<span class="pc bpc" id="L125" title="1 of 2 branches missed.">        if (Arrays.stream(percentages).sum() != 100)</span>
+<span class="nc" id="L126">            throw new IllegalArgumentException(&quot;Table widths must total 100 percent&quot;);</span>
+<span class="fc" id="L127">        var grid = table.getCTTbl().getTblGrid();</span>
+<span class="pc bpc" id="L128" title="1 of 2 branches missed.">        if (grid == null) grid = table.getCTTbl().addNewTblGrid();</span>
+<span class="pc bpc" id="L129" title="1 of 2 branches missed.">        while (grid.sizeOfGridColArray() &gt; 0) grid.removeGridCol(0);</span>
+<span class="fc bfc" id="L130" title="All 2 branches covered.">        for (int percent : percentages)</span>
+<span class="fc" id="L131">            grid.addNewGridCol()</span>
+<span class="fc" id="L132">                    .setW(BigInteger.valueOf(Math.round(printableWidth() * 20 * percent / 100)));</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        for (var row : table.getRows())</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            for (int i = 0; i &lt; percentages.length; i++)</span>
+<span class="fc" id="L135">                row.getCell(i).setWidth(percentages[i] + &quot;%&quot;);</span>
+<span class="fc" id="L136">    }</span>
+
+    public void caption(String text, boolean figure) {
+<span class="fc" id="L139">        var p = document.createParagraph();</span>
+<span class="fc" id="L140">        p.setStyle(&quot;Caption&quot;);</span>
+<span class="fc bfc" id="L141" title="All 2 branches covered.">        p.setKeepNext(!figure);</span>
+<span class="fc" id="L142">        p.setSpacingAfter(100);</span>
+<span class="fc bfc" id="L143" title="All 2 branches covered.">        p.createRun().setText((figure ? labels.figure() : labels.table()) + &quot; &quot;);</span>
+<span class="fc" id="L144">        var field = p.getCTP().addNewFldSimple();</span>
+<span class="fc bfc" id="L145" title="All 2 branches covered.">        String kind = figure ? &quot;Figure&quot; : &quot;Table&quot;;</span>
+<span class="fc" id="L146">        field.setInstr(&quot;SEQ &quot; + kind + &quot; \\* ARABIC&quot;);</span>
+<span class="fc" id="L147">        int count = 0;</span>
+        for (var existing :
+<span class="fc bfc" id="L149" title="All 2 branches covered.">                document.getDocument()</span>
+<span class="fc" id="L150">                        .selectPath(</span>
+                                &quot;declare namespace&quot;
+                                    + &quot; w='http://schemas.openxmlformats.org/wordprocessingml/2006/main';&quot;
+                                    + &quot; .//w:fldSimple&quot;)) {
+<span class="fc" id="L154">            var instruction =</span>
+<span class="fc" id="L155">                    existing.getDomNode()</span>
+<span class="fc" id="L156">                            .getAttributes()</span>
+<span class="fc" id="L157">                            .getNamedItemNS(</span>
+                                    &quot;http://schemas.openxmlformats.org/wordprocessingml/2006/main&quot;,
+                                    &quot;instr&quot;);
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">            if (instruction != null &amp;&amp; instruction.getNodeValue().startsWith(&quot;SEQ &quot; + kind + &quot; &quot;))</span>
+<span class="fc" id="L161">                count++;</span>
+        }
+<span class="fc" id="L163">        field.addNewR().addNewT().setStringValue(String.valueOf(count));</span>
+<span class="fc" id="L164">        p.createRun().setText(&quot; · &quot; + text);</span>
+<span class="fc" id="L165">    }</span>
+
+    public void picture(
+            byte[] png,
+            String id,
+            String title,
+            String description,
+            int width,
+            int height,
+            boolean readingScale)
+            throws Exception {
+<span class="pc bpc" id="L176" title="4 of 8 branches missed.">        if (png == null</span>
+                || width &lt;= 0
+                || height &lt;= 0
+                || description == null
+<span class="pc bpc" id="L180" title="1 of 2 branches missed.">                || description.isBlank())</span>
+<span class="nc" id="L181">            throw new IllegalArgumentException(&quot;Invalid accessible report figure&quot;);</span>
+<span class="fc" id="L182">        double targetWidth = Math.min(printableWidth(), 470);</span>
+<span class="pc bpc" id="L183" title="1 of 2 branches missed.">        if (targetWidth &lt;= 0)</span>
+<span class="nc" id="L184">            throw new WordReportLayoutException(</span>
+                    &quot;Word template has no printable width for readable evidence at 8pt&quot;);
+<span class="fc" id="L186">        double targetHeight = targetWidth * height / width;</span>
+<span class="fc" id="L187">        double availableHeight =</span>
+<span class="fc" id="L188">                Math.min(470, printableHeight() - captionAllowance(title, printableWidth()));</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">        if (availableHeight &lt;= 0)</span>
+<span class="nc" id="L190">            throw new WordReportLayoutException(</span>
+                    &quot;Word template has no printable height for a figure and its caption at 8pt&quot;
+                            + &quot; reading scale&quot;);
+<span class="fc bfc" id="L193" title="All 2 branches covered.">        if (targetHeight &gt; availableHeight) {</span>
+<span class="fc" id="L194">            targetWidth *= availableHeight / targetHeight;</span>
+<span class="fc" id="L195">            targetHeight = availableHeight;</span>
+        }
+        // Architecture renderer uses 20px node text at 1.5 raster scale.
+<span class="fc bfc" id="L198" title="All 4 branches covered.">        if (readingScale &amp;&amp; targetWidth * 30 / width &lt; 8)</span>
+<span class="fc" id="L199">            throw new WordReportLayoutException(</span>
+                    &quot;Word detail figure cannot meet minimum 8pt reading scale within this template&quot;
+                            + &quot; printable width and height, including its caption&quot;);
+<span class="fc" id="L202">        var p = document.createParagraph();</span>
+<span class="fc" id="L203">        p.setAlignment(ParagraphAlignment.CENTER);</span>
+<span class="fc" id="L204">        p.setKeepNext(true);</span>
+<span class="fc" id="L205">        p.setSpacingAfter(40);</span>
+<span class="fc" id="L206">        p.setSpacingBetween(1.0, LineSpacingRule.AUTO);</span>
+<span class="fc" id="L207">        var run = p.createRun();</span>
+<span class="fc" id="L208">        run.addPicture(</span>
+                new ByteArrayInputStream(png),
+                Document.PICTURE_TYPE_PNG,
+                id + &quot;.png&quot;,
+<span class="fc" id="L212">                Units.toEMU(targetWidth),</span>
+<span class="fc" id="L213">                Units.toEMU(targetHeight));</span>
+<span class="fc" id="L214">        setPictureMetadata(run, id, title, description);</span>
+<span class="fc" id="L215">    }</span>
+
+    private double printableWidth() {
+<span class="fc" id="L218">        return sectionValue(&quot;width&quot;, 612) - sectionValue(&quot;left&quot;, 81) - sectionValue(&quot;right&quot;, 81);</span>
+    }
+
+    private double printableHeight() {
+<span class="fc" id="L222">        return sectionValue(&quot;height&quot;, 792) - sectionValue(&quot;top&quot;, 72) - sectionValue(&quot;bottom&quot;, 72);</span>
+    }
+
+    // Generated body is appended in the final section. Omitted properties inherit from the
+    // preceding section, never from an unrelated first section or a hardcoded portrait frame.
+    private double sectionValue(String field, double fallback) {
+<span class="fc" id="L228">        var sections = new ArrayList&lt;CTSectPr&gt;();</span>
+<span class="fc bfc" id="L229" title="All 2 branches covered.">        for (var paragraph : document.getParagraphs()) {</span>
+<span class="fc" id="L230">            var properties = paragraph.getCTP().getPPr();</span>
+<span class="fc bfc" id="L231" title="All 4 branches covered.">            if (properties != null &amp;&amp; properties.isSetSectPr())</span>
+<span class="fc" id="L232">                sections.add(properties.getSectPr());</span>
+<span class="fc" id="L233">        }</span>
+<span class="fc bfc" id="L234" title="All 2 branches covered.">        if (document.getDocument().getBody().isSetSectPr())</span>
+<span class="fc" id="L235">            sections.add(document.getDocument().getBody().getSectPr());</span>
+<span class="fc bfc" id="L236" title="All 2 branches covered.">        for (int i = sections.size() - 1; i &gt;= 0; i--) {</span>
+<span class="fc" id="L237">            var section = sections.get(i);</span>
+<span class="fc" id="L238">            Object value = null;</span>
+<span class="fc bfc" id="L239" title="All 2 branches covered.">            if (section.isSetPgSz())</span>
+                value =
+<span class="fc bfc" id="L241" title="All 3 branches covered.">                        switch (field) {</span>
+<span class="fc" id="L242">                            case &quot;width&quot; -&gt; section.getPgSz().getW();</span>
+<span class="fc" id="L243">                            case &quot;height&quot; -&gt; section.getPgSz().getH();</span>
+<span class="fc" id="L244">                            default -&gt; null;</span>
+                        };
+<span class="fc bfc" id="L246" title="All 2 branches covered.">            if (section.isSetPgMar())</span>
+                value =
+<span class="fc bfc" id="L248" title="All 5 branches covered.">                        switch (field) {</span>
+<span class="fc" id="L249">                            case &quot;left&quot; -&gt; section.getPgMar().getLeft();</span>
+<span class="fc" id="L250">                            case &quot;right&quot; -&gt; section.getPgMar().getRight();</span>
+<span class="fc" id="L251">                            case &quot;top&quot; -&gt; section.getPgMar().getTop();</span>
+<span class="fc" id="L252">                            case &quot;bottom&quot; -&gt; section.getPgMar().getBottom();</span>
+<span class="fc" id="L253">                            default -&gt; value;</span>
+                        };
+<span class="fc bfc" id="L255" title="All 2 branches covered.">            if (value != null) return number(value) / 20.0;</span>
+        }
+<span class="fc" id="L257">        return fallback;</span>
+    }
+
+    private double captionAllowance(String title, double width) {
+<span class="fc" id="L261">        var defaults = document.getStyles().getDefaultRunStyle();</span>
+<span class="pc bpc" id="L262" title="1 of 2 branches missed.">        Double defaultSize = defaults == null ? null : defaults.getFontSizeAsDouble();</span>
+<span class="fc bfc" id="L263" title="All 2 branches covered.">        double font = defaultSize == null ? 11 : defaultSize, before = 0, line = 0, lineFactor = 1;</span>
+<span class="fc" id="L264">        boolean fontFound = false, beforeFound = false, lineFound = false;</span>
+<span class="fc" id="L265">        var visited = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L266">        var style = document.getStyles().getStyle(&quot;Caption&quot;);</span>
+<span class="pc bpc" id="L267" title="1 of 4 branches missed.">        while (style != null &amp;&amp; visited.add(style.getStyleId())) {</span>
+<span class="fc" id="L268">            var definition = style.getCTStyle();</span>
+<span class="pc bpc" id="L269" title="2 of 6 branches missed.">            if (!fontFound &amp;&amp; definition.isSetRPr() &amp;&amp; definition.getRPr().sizeOfSzArray() &gt; 0) {</span>
+<span class="fc" id="L270">                font = number(definition.getRPr().getSzArray(0).getVal()) / 2;</span>
+<span class="fc" id="L271">                fontFound = true;</span>
+            }
+<span class="pc bpc" id="L273" title="1 of 4 branches missed.">            if (definition.isSetPPr() &amp;&amp; definition.getPPr().isSetSpacing()) {</span>
+<span class="nc" id="L274">                var spacing = definition.getPPr().getSpacing();</span>
+<span class="nc bnc" id="L275" title="All 4 branches missed.">                if (!beforeFound &amp;&amp; spacing.isSetBefore()) {</span>
+<span class="nc" id="L276">                    before = number(spacing.getBefore()) / 20;</span>
+<span class="nc" id="L277">                    beforeFound = true;</span>
+                }
+<span class="nc bnc" id="L279" title="All 4 branches missed.">                if (!lineFound &amp;&amp; spacing.isSetLine()) {</span>
+<span class="nc bnc" id="L280" title="All 2 branches missed.">                    if (spacing.getLineRule() == null</span>
+<span class="nc bnc" id="L281" title="All 2 branches missed.">                            || spacing.getLineRule() == STLineSpacingRule.AUTO) {</span>
+<span class="nc" id="L282">                        lineFactor = number(spacing.getLine()) / 240;</span>
+                    } else {
+<span class="nc" id="L284">                        line = number(spacing.getLine()) / 20;</span>
+                    }
+<span class="nc" id="L286">                    lineFound = true;</span>
+                }
+            }
+            style =
+<span class="fc bfc" id="L290" title="All 2 branches covered.">                    definition.isSetBasedOn()</span>
+<span class="fc" id="L291">                            ? document.getStyles().getStyle(definition.getBasedOn().getVal())</span>
+<span class="fc" id="L292">                            : null;</span>
+<span class="fc" id="L293">        }</span>
+        // Include figure/caption paragraph spacing and a conservative text-line allowance.
+<span class="fc" id="L295">        double lines =</span>
+<span class="fc" id="L296">                Math.max(1, Math.ceil((title.length() + 20) * font * .65 / Math.max(1, width)));</span>
+<span class="fc" id="L297">        return Math.max(32, before + lines * Math.max(font * 1.5 * lineFactor, line) + 12);</span>
+    }
+
+    private double number(Object value) {
+<span class="fc" id="L301">        return Double.parseDouble(value.toString());</span>
+    }
+
+    public static void setPictureMetadata(
+            XWPFRun run, String name, String title, String description) {
+<span class="pc bpc" id="L306" title="1 of 2 branches missed.">        if (run.getEmbeddedPictures().isEmpty())</span>
+<span class="nc" id="L307">            throw new IllegalStateException(&quot;Picture metadata cannot be applied: no drawing&quot;);</span>
+<span class="fc" id="L308">        var picture = run.getEmbeddedPictures().getLast().getCTPicture().getNvPicPr().getCNvPr();</span>
+<span class="fc" id="L309">        picture.setName(name);</span>
+<span class="fc" id="L310">        picture.setTitle(title);</span>
+<span class="fc" id="L311">        picture.setDescr(description);</span>
+<span class="fc" id="L312">        var drawing = run.getCTR().getDrawingArray(run.getCTR().sizeOfDrawingArray() - 1);</span>
+<span class="pc bpc" id="L313" title="1 of 2 branches missed.">        if (drawing.sizeOfInlineArray() == 0)</span>
+<span class="nc" id="L314">            throw new IllegalStateException(</span>
+                    &quot;Picture metadata cannot be applied: no inline drawing&quot;);
+<span class="fc" id="L316">        var properties = drawing.getInlineArray(drawing.sizeOfInlineArray() - 1).getDocPr();</span>
+<span class="fc" id="L317">        properties.setName(name);</span>
+<span class="fc" id="L318">        properties.setTitle(title);</span>
+<span class="fc" id="L319">        properties.setDescr(description);</span>
+<span class="pc bpc" id="L320" title="1 of 2 branches missed.">        if (!description.equals(properties.getDescr()))</span>
+<span class="nc" id="L321">            throw new IllegalStateException(&quot;Picture description was not retained&quot;);</span>
+<span class="fc" id="L322">    }</span>
+
+    public void bookmark(XWPFParagraph paragraph, String name) {
+<span class="fc" id="L325">        BigInteger id = BigInteger.ZERO;</span>
+<span class="fc" id="L326">        var stories = new ArrayList&lt;org.apache.xmlbeans.XmlObject&gt;();</span>
+<span class="fc" id="L327">        stories.add(document.getDocument());</span>
+<span class="fc" id="L328">        document.getHeaderList().forEach(header -&gt; stories.add(header._getHdrFtr()));</span>
+<span class="fc" id="L329">        document.getFooterList().forEach(footer -&gt; stories.add(footer._getHdrFtr()));</span>
+<span class="fc" id="L330">        document.getFootnotes().forEach(note -&gt; stories.add(note.getCTFtnEdn()));</span>
+<span class="fc" id="L331">        document.getEndnotes().forEach(note -&gt; stories.add(note.getCTFtnEdn()));</span>
+<span class="fc" id="L332">        var policy = document.getHeaderFooterPolicy();</span>
+<span class="fc bfc" id="L333" title="All 2 branches covered.">        if (policy != null) {</span>
+            for (var story :
+<span class="fc bfc" id="L335" title="All 2 branches covered.">                    java.util.Arrays.asList(</span>
+<span class="fc" id="L336">                            policy.getDefaultHeader(),</span>
+<span class="fc" id="L337">                            policy.getFirstPageHeader(),</span>
+<span class="fc" id="L338">                            policy.getEvenPageHeader(),</span>
+<span class="fc" id="L339">                            policy.getDefaultFooter(),</span>
+<span class="fc" id="L340">                            policy.getFirstPageFooter(),</span>
+<span class="fc" id="L341">                            policy.getEvenPageFooter()))</span>
+<span class="fc bfc" id="L342" title="All 2 branches covered.">                if (story != null) stories.add(story._getHdrFtr());</span>
+        }
+<span class="fc bfc" id="L344" title="All 2 branches covered.">        for (var story : stories)</span>
+<span class="fc" id="L345">            for (var node :</span>
+<span class="fc bfc" id="L346" title="All 2 branches covered.">                    story.selectPath(</span>
+                            &quot;declare namespace&quot;
+                                + &quot; w='http://schemas.openxmlformats.org/wordprocessingml/2006/main';&quot;
+                                + &quot; .//w:bookmarkStart&quot;)) {
+<span class="fc" id="L350">                var attributes = node.getDomNode().getAttributes();</span>
+<span class="fc" id="L351">                var existing =</span>
+<span class="fc" id="L352">                        attributes.getNamedItemNS(</span>
+                                &quot;http://schemas.openxmlformats.org/wordprocessingml/2006/main&quot;,
+                                &quot;id&quot;);
+<span class="pc bpc" id="L355" title="1 of 2 branches missed.">                if (existing != null)</span>
+<span class="fc" id="L356">                    id = id.max(new BigInteger(existing.getNodeValue()).add(BigInteger.ONE));</span>
+<span class="fc" id="L357">                var existingName =</span>
+<span class="fc" id="L358">                        attributes.getNamedItemNS(</span>
+                                &quot;http://schemas.openxmlformats.org/wordprocessingml/2006/main&quot;,
+                                &quot;name&quot;);
+<span class="pc bpc" id="L361" title="1 of 4 branches missed.">                if (existingName != null &amp;&amp; name.equals(existingName.getNodeValue()))</span>
+<span class="fc" id="L362">                    throw new IllegalArgumentException(&quot;Duplicate Word bookmark: &quot; + name);</span>
+            }
+<span class="fc" id="L364">        var start = paragraph.getCTP().addNewBookmarkStart();</span>
+<span class="fc" id="L365">        start.setId(id);</span>
+<span class="fc" id="L366">        start.setName(name);</span>
+<span class="fc" id="L367">        paragraph.getCTP().addNewBookmarkEnd().setId(id);</span>
+<span class="fc" id="L368">    }</span>
+
+    public void link(XWPFParagraph paragraph, String anchor, String text) {
+<span class="fc" id="L371">        var hyperlink = paragraph.getCTP().addNewHyperlink();</span>
+<span class="fc" id="L372">        hyperlink.setAnchor(anchor);</span>
+<span class="fc" id="L373">        var run = hyperlink.addNewR();</span>
+<span class="fc" id="L374">        run.addNewRPr().addNewColor().setVal(&quot;007A78&quot;);</span>
+<span class="fc" id="L375">        run.getRPr().addNewSz().setVal(BigInteger.valueOf(18));</span>
+<span class="fc" id="L376">        run.addNewT().setStringValue(value(text));</span>
+<span class="fc" id="L377">    }</span>
+
+    public void properties(ArchitectureReportDocument report) {
+<span class="fc" id="L380">        property(&quot;taxonomy.snapshot.id&quot;, report.evidence().snapshotId());</span>
+<span class="fc" id="L381">        property(&quot;taxonomy.graph.sha256&quot;, report.evidence().graphSha256());</span>
+<span class="fc" id="L382">        property(</span>
+                &quot;taxonomy.requirement.version.id&quot;,
+<span class="fc" id="L384">                String.valueOf(report.evidence().requirementVersionId()));</span>
+<span class="fc" id="L385">        property(&quot;taxonomy.source.commit&quot;, report.evidence().commit());</span>
+<span class="fc" id="L386">    }</span>
+
+    private void property(String key, String value) {
+<span class="fc" id="L389">        var properties = document.getProperties().getCustomProperties();</span>
+<span class="pc bpc" id="L390" title="1 of 2 branches missed.">        if (properties.contains(key)) properties.getProperty(key).setLpwstr(value(value));</span>
+<span class="fc" id="L391">        else properties.addProperty(key, value(value));</span>
+<span class="fc" id="L392">    }</span>
+
+    public void cell(XWPFTableCell cell, String value) {
+<span class="fc" id="L395">        var p = cell.getParagraphs().getFirst();</span>
+<span class="fc" id="L396">        p.setSpacingAfter(60);</span>
+<span class="fc" id="L397">        var run = p.createRun();</span>
+<span class="fc" id="L398">        run.setFontSize(9);</span>
+<span class="fc" id="L399">        run.setText(value(value));</span>
+<span class="fc" id="L400">    }</span>
+
+    private String value(String value) {
+<span class="pc bpc" id="L403" title="1 of 2 branches missed.">        return value == null ? labels.unknown() : value;</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

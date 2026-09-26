@@ -1,0 +1,195 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationRecoveryService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationRecoveryService.java</span></div><h1>ReformulationRecoveryService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.reformulation.ReformulationDtos.Proposal;
+import com.taxonomy.portfolio.reformulation.ReformulationDtos.Run;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.portfolio.service.PortfolioScope;
+import com.taxonomy.reformulation.ReformulationDocument;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import jakarta.persistence.EntityManager;
+import jakarta.persistence.LockModeType;
+import jakarta.persistence.PersistenceContext;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.Duration;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+
+/** Short transactions fence every result by database-clock lease and monotonically increasing epoch. */
+@Service
+public class ReformulationRecoveryService {
+<span class="fc" id="L26">    public record Dispatch(Long projectId, Long requirementId, String proposalId, String actor,</span>
+                           WorkspaceContext context, Run run, String endpointHash) {}
+<span class="fc" id="L28">    public record Claim(Dispatch dispatch, String owner, long epoch) {}</span>
+    private final ReformulationService proposals;
+    private final ReformulationProposalRepository proposalRows;
+    private final ReformulationRunRepository runRows;
+    private final PortfolioJsonCodec json;
+    private final Duration leaseDuration;
+    private final int maxAttempts;
+    @PersistenceContext private EntityManager em;
+
+    public ReformulationRecoveryService(ReformulationService proposals, ReformulationProposalRepository proposalRows,
+            ReformulationRunRepository runRows, PortfolioJsonCodec json,
+            @Value(&quot;${reformulation.recovery.lease-ms:120000}&quot;) long leaseMillis,
+<span class="fc" id="L40">            @Value(&quot;${reformulation.recovery.max-attempts:3}&quot;) int maxAttempts) {</span>
+<span class="pc bpc" id="L41" title="3 of 6 branches missed.">        if (leaseMillis &lt; 1000 || maxAttempts &lt; 1 || maxAttempts &gt; 100)</span>
+<span class="nc" id="L42">            throw new IllegalArgumentException(&quot;Invalid reformulation recovery limits&quot;);</span>
+<span class="fc" id="L43">        this.proposals = proposals; this.proposalRows = proposalRows; this.runRows = runRows; this.json = json;</span>
+<span class="fc" id="L44">        this.leaseDuration = Duration.ofMillis(leaseMillis); this.maxAttempts = maxAttempts;</span>
+<span class="fc" id="L45">    }</span>
+
+    /** No crash window between recording the user run and making it recoverable. */
+    @Transactional
+    public Dispatch enqueue(Long projectId, Long requirementId, String proposalId, long revision,
+            String provider, String model, String promptVersion, String schemaVersion, String prompt,
+            Map&lt;String,String&gt; reconciliation, String endpointHash, String actor, WorkspaceContext context) {
+<span class="fc" id="L52">        var run = proposals.beginRun(projectId, requirementId, proposalId, revision, provider, model,</span>
+                promptVersion, schemaVersion, prompt, reconciliation, actor, context);
+<span class="fc" id="L54">        var dispatch = new Dispatch(projectId, requirementId, proposalId, run.actor(), context, run, endpointHash);</span>
+<span class="fc" id="L55">        em.persist(new ReformulationRecoveryLease(run.id(), json.write(dispatch)));</span>
+<span class="fc" id="L56">        return dispatch;</span>
+    }
+
+    /** Internal scheduler only; no global job list is exposed to the HTTP layer. */
+    @Transactional(readOnly = true)
+<span class="fc" id="L61">    public List&lt;Dispatch&gt; due(int limit) { return dueAfter(limit, &quot;&quot;); }</span>
+
+    @Transactional(readOnly = true)
+    public List&lt;Dispatch&gt; dueAfter(int limit, String afterId) {
+<span class="pc bpc" id="L65" title="2 of 4 branches missed.">        if (limit &lt; 1 || limit &gt; 100) throw new IllegalArgumentException(&quot;Invalid recovery page size&quot;);</span>
+<span class="fc" id="L66">        return em.createQuery(&quot;&quot;&quot;</span>
+                select l.dispatchPayload from ReformulationRecoveryLease l
+                where l.active = true and l.runId &gt; :afterId and (l.leaseUntil is null or l.leaseUntil &lt;= current_timestamp)
+                order by l.runId
+<span class="fc" id="L70">                &quot;&quot;&quot;, String.class).setParameter(&quot;afterId&quot;, afterId).setMaxResults(limit).getResultList().stream()</span>
+<span class="fc" id="L71">                .map(value -&gt; json.read(value, Dispatch.class)).toList();</span>
+    }
+
+    @Transactional
+    public Optional&lt;Claim&gt; claim(Dispatch d, String owner) {
+<span class="pc bpc" id="L76" title="3 of 6 branches missed.">        if (owner == null || owner.isBlank() || owner.length() &gt; 36) throw new IllegalArgumentException(&quot;Invalid lease owner&quot;);</span>
+<span class="fc" id="L77">        var locked = lock(d); var row = locked.lease(); var run = locked.run();</span>
+<span class="pc bpc" id="L78" title="1 of 2 branches missed.">        if (!row.active()) return Optional.empty();</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">        if (!active(run)) { row.retire(); return Optional.empty(); }</span>
+<span class="fc" id="L80">        Instant now = databaseTime(d.run().id());</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">        if (!row.available(now)) return Optional.empty();</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">        if (row.epoch() &gt;= maxAttempts) {</span>
+<span class="fc" id="L83">            proposals.finishRun(d.projectId(), d.requirementId(), d.proposalId(), run.id(), null,</span>
+<span class="fc" id="L84">                    &quot;RECOVERY_ATTEMPTS_EXHAUSTED&quot;, d.actor(), d.context());</span>
+<span class="fc" id="L85">            row.retire(); return Optional.empty();</span>
+        }
+<span class="fc bfc" id="L87" title="All 2 branches covered.">        if (run.status().equals(&quot;QUEUED&quot;))</span>
+<span class="fc" id="L88">            proposals.running(d.projectId(), d.requirementId(), d.proposalId(), run.id(), d.actor(), d.context());</span>
+<span class="fc" id="L89">        row.claim(owner, now.plus(leaseDuration));</span>
+<span class="fc" id="L90">        return Optional.of(new Claim(d, owner, row.epoch()));</span>
+    }
+
+    /**
+     * Release a committed claim whose local delivery was retired before admission.
+     * Scope, owner and epoch are checked under the usual DB locks: a stale delivery
+     * cannot release its successor. The run remains recoverable, not failed, and
+     * the fencing epoch and bounded-attempt policy are never reset.
+     */
+    @Transactional
+    public boolean releaseUnadmitted(Claim token) {
+<span class="fc" id="L101">        var locked = lock(token.dispatch());</span>
+<span class="fc bfc" id="L102" title="All 2 branches covered.">        if (!valid(locked, token)) return false;</span>
+<span class="fc" id="L103">        locked.lease().releaseUnadmitted();</span>
+<span class="fc" id="L104">        return true;</span>
+    }
+
+    /** Reads the exact requested revision, not a newer manual edit encountered after restart. */
+    @Transactional(readOnly = true)
+    public Proposal source(Dispatch d) {
+<span class="fc" id="L110">        var p = proposals.get(d.projectId(), d.requirementId(), d.proposalId(), d.actor(), d.context());</span>
+<span class="fc" id="L111">        return new Proposal(p.id(), p.baseline(), p.creator(), p.createdAt(), p.status(),</span>
+<span class="fc" id="L112">                proposals.revision(d.projectId(), d.requirementId(), d.proposalId(), d.run().sourceRevision(), d.actor(), d.context()));</span>
+    }
+
+    @Transactional
+    public boolean heartbeat(Claim token) {
+<span class="fc" id="L117">        var locked = lock(token.dispatch());</span>
+<span class="fc bfc" id="L118" title="All 2 branches covered.">        if (!valid(locked, token)) return false;</span>
+<span class="fc" id="L119">        locked.lease().renew(databaseTime(token.dispatch().run().id()).plus(leaseDuration));</span>
+<span class="fc" id="L120">        return true;</span>
+    }
+    @Transactional
+    public Optional&lt;String&gt; checkpoint(Claim token, String kind, String fingerprint) {
+<span class="fc" id="L124">        require(token); var d = token.dispatch();</span>
+<span class="fc" id="L125">        return proposals.checkpoint(d.projectId(), d.requirementId(), d.proposalId(), d.run().id(), kind, fingerprint, d.actor(), d.context());</span>
+    }
+    @Transactional
+    public String completeCheckpoint(Claim token, String kind, String fingerprint, String payload) {
+<span class="fc" id="L129">        require(token); var d = token.dispatch();</span>
+<span class="fc" id="L130">        return proposals.completeCheckpoint(d.projectId(), d.requirementId(), d.proposalId(), d.run().id(), kind, fingerprint, payload, d.actor(), d.context());</span>
+    }
+    @Transactional
+    public boolean finish(Claim token, ReformulationDocument document, String failure) {
+<span class="fc" id="L134">        return finish(token, document, failure, () -&gt; true);</span>
+    }
+
+    /**
+     * Admit finalization only after acquiring authoritative DB locks. The caller's
+     * nonblocking, one-shot permit serializes this decision with local retirement;
+     * it is never evaluated while still waiting for those locks.
+     */
+    @Transactional
+    public boolean finish(Claim token, ReformulationDocument document, String failure,
+            java.util.function.BooleanSupplier admitFinalization) {
+<span class="fc" id="L145">        java.util.Objects.requireNonNull(admitFinalization, &quot;Finalization permit is required&quot;);</span>
+<span class="fc" id="L146">        var locked = lock(token.dispatch());</span>
+<span class="fc bfc" id="L147" title="All 4 branches covered.">        if (!valid(locked, token) || !admitFinalization.getAsBoolean()) return false;</span>
+<span class="fc" id="L148">        var d = token.dispatch();</span>
+<span class="fc" id="L149">        proposals.finishRun(d.projectId(), d.requirementId(), d.proposalId(), d.run().id(), document, failure, d.actor(), d.context());</span>
+<span class="fc" id="L150">        locked.lease().retire(); return true;</span>
+    }
+
+    /** Admission guard for run-owned side effects; joins the caller's short transaction. */
+    @Transactional
+<span class="fc" id="L155">    public void checkActive(Claim token) { require(token); }</span>
+
+    private void require(Claim token) {
+<span class="fc bfc" id="L158" title="All 2 branches covered.">        if (!valid(lock(token.dispatch()), token)) throw PortfolioException.conflict(&quot;REFORMULATION_LEASE_LOST&quot;);</span>
+<span class="fc" id="L159">    }</span>
+    private boolean valid(Locked locked, Claim token) {
+<span class="fc bfc" id="L161" title="All 4 branches covered.">        return active(locked.run()) &amp;&amp; locked.lease().owns(token.owner(), token.epoch(), databaseTime(token.dispatch().run().id()));</span>
+    }
+<span class="fc bfc" id="L163" title="All 4 branches covered.">    private static boolean active(Run run) { return run.status().equals(&quot;RUNNING&quot;) || run.status().equals(&quot;QUEUED&quot;); }</span>
+<span class="fc" id="L164">    private record Locked(ReformulationRecoveryLease lease, Run run) {}</span>
+    private Locked lock(Dispatch d) {
+        // Existing authorization and lock order: proposal, then run, then execution ownership.
+<span class="fc" id="L167">        String scope = PortfolioScope.key(d.actor(), d.context());</span>
+<span class="fc" id="L168">        proposalRows.lockScoped(d.proposalId(), d.projectId(), d.requirementId(), scope)</span>
+<span class="fc" id="L169">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Reformulation proposal not found&quot;));</span>
+<span class="fc" id="L170">        proposals.get(d.projectId(), d.requirementId(), d.proposalId(), d.actor(), d.context());</span>
+<span class="fc" id="L171">        var run = runRows.lockScoped(d.run().id(), d.proposalId(), scope)</span>
+<span class="pc" id="L172">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Synthesis run not found&quot;));</span>
+<span class="fc" id="L173">        var lease = em.find(ReformulationRecoveryLease.class, d.run().id(), LockModeType.PESSIMISTIC_WRITE);</span>
+<span class="pc bpc" id="L174" title="2 of 4 branches missed.">        if (lease == null || !json.read(lease.payload(), Dispatch.class).equals(d))</span>
+<span class="nc" id="L175">            throw PortfolioException.conflict(&quot;REFORMULATION_DISPATCH_CHANGED&quot;);</span>
+<span class="fc" id="L176">        return new Locked(lease, json.read(run.getPayload(), Run.class));</span>
+    }
+    Instant databaseTime(String runId) {
+<span class="fc" id="L179">        return em.unwrap(org.hibernate.Session.class).doReturningWork(connection -&gt; {</span>
+<span class="fc" id="L180">            String product = connection.getMetaData().getDatabaseProductName();</span>
+<span class="pc bpc" id="L181" title="4 of 5 branches missed.">            String sql = switch (product) {</span>
+<span class="nc" id="L182">                case &quot;PostgreSQL&quot; -&gt; &quot;select clock_timestamp()&quot;;</span>
+<span class="nc" id="L183">                case &quot;Microsoft SQL Server&quot; -&gt; &quot;select SYSDATETIMEOFFSET()&quot;;</span>
+<span class="nc" id="L184">                case &quot;Oracle&quot; -&gt; &quot;select SYSTIMESTAMP from dual&quot;;</span>
+<span class="fc" id="L185">                case &quot;HSQL Database Engine&quot; -&gt; &quot;values (CURRENT_TIMESTAMP)&quot;;</span>
+<span class="pc" id="L186">                default -&gt; throw new java.sql.SQLException(&quot;Unsupported recovery clock database: &quot; + product);</span>
+            };
+<span class="fc" id="L188">            try (var statement = connection.createStatement(); var result = statement.executeQuery(sql)) {</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">                if (!result.next()) throw new java.sql.SQLException(&quot;Recovery database clock missing&quot;);</span>
+<span class="fc" id="L190">                return result.getTimestamp(1, java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone(&quot;UTC&quot;))).toInstant();</span>
+            }
+        });
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

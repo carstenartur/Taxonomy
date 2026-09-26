@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>NodeReformulationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">NodeReformulationService.java</span></div><h1>NodeReformulationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.analysis.service.*;
+import com.taxonomy.reformulation.*;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import tools.jackson.databind.ObjectMapper;
+
+/** Uses the existing throttled, recording-aware, final-prompt-budgeted provider transport. */
+@Service
+public class NodeReformulationService {
+    private final LlmGatewayRegistry registry;
+    private final LlmProviderConfig config;
+    private final ReformulationPromptBuilder prompts;
+    private final ReformulationResponseParser parser;
+    private final ObjectMapper json;
+<span class="fc" id="L17">    public NodeReformulationService(LlmGatewayRegistry registry,LlmProviderConfig config,ObjectMapper json) {</span>
+<span class="fc" id="L18">        this.json=json;this.registry=registry;this.config=config;this.prompts=new ReformulationPromptBuilder(json);this.parser=new ReformulationResponseParser(json);</span>
+<span class="fc" id="L19">    }</span>
+    /** Prepare on the run thread; execute only on dedicated child threads and always clear their override. */
+    &lt;T&gt; java.util.function.Supplier&lt;T&gt; captureProvider(java.util.function.Supplier&lt;T&gt; work) {
+<span class="fc" id="L22">        var provider = java.util.Objects.requireNonNull(config.getActiveProvider(), &quot;Missing captured provider&quot;);</span>
+<span class="fc" id="L23">        var observedWork = LlmTransportMeter.capture(work);</span>
+<span class="fc" id="L24">        return () -&gt; {</span>
+<span class="fc" id="L25">            config.setRequestProvider(provider);</span>
+<span class="fc" id="L26">            try { return observedWork.get(); }</span>
+<span class="fc" id="L27">            finally { config.clearRequestProvider(); }</span>
+        };
+    }
+    public NodeSynthesisResult synthesize(NodeSynthesisInput input) {
+<span class="fc" id="L31">        return synthesize(input, ReformulationStepExecutor.direct());</span>
+    }
+    public NodeSynthesisResult synthesize(NodeSynthesisInput input, ReformulationStepExecutor steps) {
+<span class="fc bfc" id="L34" title="All 2 branches covered.">        if (TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException(&quot;LLM_CALL_INSIDE_TRANSACTION&quot;);</span>
+<span class="fc" id="L35">        var provider = config.getActiveProvider();</span>
+<span class="pc bpc" id="L36" title="2 of 6 branches missed.">        if (provider == LlmProvider.LOCAL_ONNX || !config.isProviderConfigured(provider) || config.isMockMode())</span>
+<span class="fc" id="L37">            throw new IllegalStateException(&quot;PROVIDER_NOT_CONFIGURED: Generative provider required&quot;);</span>
+<span class="fc" id="L38">        var gateway = registry.getGateway(provider);</span>
+<span class="fc" id="L39">        java.util.function.Predicate&lt;NodeSynthesisInput&gt; fits = candidate -&gt; {</span>
+<span class="fc" id="L40">            try { gateway.validatePromptBudget(prompts.build(candidate, null)); return true; }</span>
+<span class="fc" id="L41">            catch (PromptBudgetExceededException tooLarge) { return false; }</span>
+        };
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (fits.test(input)) return single(input);</span>
+<span class="fc" id="L44">        var grouping = new BoundedNodeSynthesis(json);</span>
+<span class="fc" id="L45">        var plan = grouping.partition(input, fits); // Check every group before any provider call.</span>
+<span class="fc" id="L46">        var results = new java.util.ArrayList&lt;NodeSynthesisResult&gt;();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        for (var group : plan)</span>
+<span class="fc" id="L48">            results.add(steps.execute(&quot;NODE_GROUP&quot;, group, NodeSynthesisResult.class, () -&gt; single(group)));</span>
+<span class="fc" id="L49">        var aggregate = grouping.aggregate(input, results);</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">        if (!fits.test(aggregate)) throw new IllegalStateException(&quot;INPUT_TOO_LARGE_FOR_PROVIDER: complete aggregate decisions exceed budget&quot;);</span>
+<span class="fc" id="L51">        var summary = steps.execute(&quot;NODE_AGGREGATE&quot;, aggregate, NodeSynthesisResult.class, () -&gt; single(aggregate));</span>
+<span class="fc" id="L52">        return grouping.combine(input, results, summary);</span>
+    }
+    private NodeSynthesisResult single(NodeSynthesisInput input) {
+<span class="fc" id="L55">        return call(errors-&gt;prompts.build(input,errors),raw-&gt;parser.parse(raw,input));</span>
+    }
+    public ReconciliationResult reconcile(ReconciliationInput input) {
+<span class="fc" id="L58">        var builder=new ReconcilePromptBuilder(json);var responses=new ReconcileResponseParser(json);</span>
+<span class="fc" id="L59">        return call(errors-&gt;builder.build(input,errors),raw-&gt;responses.parse(raw,input));</span>
+    }
+    private &lt;T&gt; T call(java.util.function.Function&lt;String,String&gt; prompt,java.util.function.Function&lt;String,T&gt; response) {
+<span class="pc bpc" id="L62" title="1 of 2 branches missed.">        if(TransactionSynchronizationManager.isActualTransactionActive()) throw new IllegalStateException(&quot;LLM_CALL_INSIDE_TRANSACTION&quot;);</span>
+<span class="fc" id="L63">        var provider=config.getActiveProvider();String key=config.getApiKey(provider);</span>
+<span class="pc bpc" id="L64" title="3 of 6 branches missed.">        if(provider==LlmProvider.LOCAL_ONNX || !config.isProviderConfigured(provider) || config.isMockMode())</span>
+<span class="nc" id="L65">            throw new IllegalStateException(&quot;PROVIDER_NOT_CONFIGURED: &quot;+java.util.Objects.toString(config.getProviderConfigurationError(provider),&quot;Generative provider required&quot;));</span>
+<span class="fc" id="L66">        var gateway=registry.getGateway(provider);String errors=null;</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">        for(int attempt=0;attempt&lt;2;attempt++) {</span>
+            String raw;
+<span class="fc" id="L69">            try {raw=gateway.sendHttpRequest(prompt.apply(errors),key);}</span>
+<span class="fc" id="L70">            catch(PromptBudgetExceededException tooLarge) {throw new IllegalStateException(&quot;INPUT_TOO_LARGE_FOR_PROVIDER&quot;,tooLarge);}</span>
+<span class="pc bpc" id="L71" title="1 of 2 branches missed.">            if(raw==null) throw new IllegalStateException(&quot;PROVIDER_TRANSPORT_FAILED&quot;);</span>
+            try {
+<span class="fc bfc" id="L73" title="All 2 branches covered.">                if(truncated(raw)) throw new IllegalArgumentException(&quot;Provider reports truncated or filtered output&quot;);</span>
+<span class="fc" id="L74">                return response.apply(gateway.extractResponseText(raw));</span>
+            }
+<span class="fc" id="L76">            catch(IllegalArgumentException invalid) { errors=invalid.getMessage(); }</span>
+        }
+<span class="fc" id="L78">        throw new IllegalStateException(&quot;INVALID_MODEL_RESPONSE: bounded repair exhausted&quot;);</span>
+    }
+    private boolean truncated(String raw) {
+        tools.jackson.databind.JsonNode envelope;
+<span class="fc" id="L82">        try {envelope=json.readTree(raw);} catch(RuntimeException invalid) {return false;}</span>
+<span class="fc" id="L83">        String openAi=envelope.at(&quot;/choices/0/finish_reason&quot;).asText();</span>
+<span class="fc" id="L84">        String gemini=envelope.at(&quot;/candidates/0/finishReason&quot;).asText();</span>
+<span class="pc bpc" id="L85" title="2 of 6 branches missed.">        return &quot;length&quot;.equals(openAi) || &quot;content_filter&quot;.equals(openAi) || &quot;MAX_TOKENS&quot;.equals(gemini)</span>
+<span class="pc bpc" id="L86" title="2 of 4 branches missed.">                || &quot;SAFETY&quot;.equals(gemini) || &quot;RECITATION&quot;.equals(gemini);</span>
+    }
+
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

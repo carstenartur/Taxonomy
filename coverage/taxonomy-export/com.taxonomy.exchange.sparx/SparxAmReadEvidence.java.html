@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxAmReadEvidence.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-export</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.exchange.sparx</a> &gt; <span class="el_source">SparxAmReadEvidence.java</span></div><h1>SparxAmReadEvidence.java</h1><pre class="source lang-java linenums">package com.taxonomy.exchange.sparx;
+
+import com.taxonomy.exchange.ReqifExchangeCodec;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
+
+/** Complete sanitized read fingerprint. Callers pass only secured transport responses. */
+<span class="fc" id="L8">public final class SparxAmReadEvidence {</span>
+<span class="fc" id="L9">    private record Key(String kind, String owner, String uri) {}</span>
+<span class="fc" id="L10">    private final SortedMap&lt;Key,String&gt; records = new TreeMap&lt;&gt;(Comparator.comparing(Key::kind).thenComparing(Key::owner).thenComparing(Key::uri));</span>
+    public void add(String kind, String owner, SparxOslcAmCodec.Page page) {
+<span class="fc" id="L12">        Key key = new Key(kind, owner, page.resource().normalize().toASCIIString());</span>
+<span class="fc bfc" id="L13" title="All 2 branches covered.">        String value = field(page.etag() == null ? &quot;&lt;none&gt;&quot; : page.etag()) + field(ReqifExchangeCodec.digest(page.content()));</span>
+<span class="pc bpc" id="L14" title="1 of 2 branches missed.">        if (records.putIfAbsent(key, value) != null)</span>
+<span class="nc" id="L15">            throw com.taxonomy.exchange.ExchangeXml.invalid(&quot;DUPLICATE_IDENTITY&quot;, &quot;Duplicate collection evidence&quot;);</span>
+<span class="fc" id="L16">    }</span>
+    public String version() {
+<span class="fc" id="L18">        StringBuilder value = new StringBuilder(); records.forEach((key, evidence) -&gt; value.append(field(key.kind())).append(field(key.owner())).append(field(key.uri())).append(field(evidence)));</span>
+<span class="fc" id="L19">        return ReqifExchangeCodec.digest(value.toString().getBytes(StandardCharsets.UTF_8));</span>
+    }
+<span class="fc" id="L21">    private static String field(String value) { return value.length() + &quot;:&quot; + value; }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

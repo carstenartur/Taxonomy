@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationAdoption.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationAdoption.java</span></div><h1>ReformulationAdoption.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.model.*;
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import java.time.Instant;
+
+/** Insert-only receipt, committed in the SAME transaction as the explicit version transition. */
+@Entity
+@Table(name=&quot;reformulation_adoption&quot;,uniqueConstraints=@UniqueConstraint(name=&quot;uq_reform_adopt_preview&quot;,columnNames=&quot;preview_id&quot;),
+        indexes=@Index(name=&quot;idx_reform_adopt_offer&quot;,columnList=&quot;proposal_id,scope_key,created_at&quot;))
+public class ReformulationAdoption {
+    @Id @Column(length=64,updatable=false) private String id;
+    @Column(name=&quot;proposal_id&quot;,nullable=false,updatable=false,length=36) private String proposalId;
+    @Column(name=&quot;preview_id&quot;,nullable=false,updatable=false,length=36) private String previewId;
+    @Column(name=&quot;scope_key&quot;,nullable=false,updatable=false,length=PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH) private String scopeKey;
+    @Column(name=&quot;command_hash&quot;,nullable=false,updatable=false,length=64) private String commandHash;
+    @Column(name=&quot;requirement_id&quot;,nullable=false,updatable=false) private Long requirementId;
+    @Column(name=&quot;target_version_id&quot;,nullable=false,updatable=false) private Long targetVersionId;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR) @Column(name=&quot;receipt_payload&quot;,nullable=false,updatable=false) private String payload;
+    @Column(name=&quot;created_at&quot;,nullable=false,updatable=false) private Instant createdAt;
+    @ManyToOne(fetch=FetchType.LAZY,optional=false)
+    @JoinColumns(value={@JoinColumn(name=&quot;preview_id&quot;,referencedColumnName=&quot;id&quot;,insertable=false,updatable=false),
+            @JoinColumn(name=&quot;proposal_id&quot;,referencedColumnName=&quot;proposal_id&quot;,insertable=false,updatable=false),
+            @JoinColumn(name=&quot;scope_key&quot;,referencedColumnName=&quot;scope_key&quot;,insertable=false,updatable=false)},foreignKey=@ForeignKey(name=&quot;fk_reform_adopt_preview&quot;))
+    private ReformulationAdoptionPreview preview;
+    @ManyToOne(fetch=FetchType.LAZY,optional=false)
+    @JoinColumns(value={@JoinColumn(name=&quot;target_version_id&quot;,referencedColumnName=&quot;id&quot;,insertable=false,updatable=false),
+            @JoinColumn(name=&quot;requirement_id&quot;,referencedColumnName=&quot;requirement_id&quot;,insertable=false,updatable=false),
+            @JoinColumn(name=&quot;scope_key&quot;,referencedColumnName=&quot;scope_key&quot;,insertable=false,updatable=false)},foreignKey=@ForeignKey(name=&quot;fk_reform_adopt_version&quot;))
+    private ProjectRequirementVersion version;
+<span class="fc" id="L33">    protected ReformulationAdoption() {}</span>
+    public ReformulationAdoption(String id,String proposalId,String previewId,String scope,String commandHash,
+<span class="fc" id="L35">            Long requirementId,Long targetVersionId,String payload,Instant now) {</span>
+<span class="fc" id="L36">        this.id=id;this.proposalId=proposalId;this.previewId=previewId;this.scopeKey=scope;this.commandHash=commandHash;</span>
+<span class="fc" id="L37">        this.requirementId=requirementId;this.targetVersionId=targetVersionId;this.payload=payload;this.createdAt=now;</span>
+<span class="fc" id="L38">    }</span>
+<span class="pc" id="L39">    public String getId(){return id;} public String getProposalId(){return proposalId;}</span>
+<span class="pc" id="L40">    public String getScopeKey(){return scopeKey;} public Long getRequirementId(){return requirementId;}</span>
+<span class="fc" id="L41">    public String getCommandHash(){return commandHash;} public String getPayload(){return payload;}</span>
+<span class="fc" id="L42">    public String getPreviewId(){return previewId;} public Long getTargetVersionId(){return targetVersionId;}</span>
+<span class="fc" id="L43">    public ReformulationAdoptionPreview getPreview(){return preview;}</span>
+<span class="fc" id="L44">    public ProjectRequirementVersion getVersion(){return version;}</span>
+<span class="nc" id="L45">    public Instant getCreatedAt(){return createdAt;}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,208 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>CrossTaxonomyReconciler.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">CrossTaxonomyReconciler.java</span></div><h1>CrossTaxonomyReconciler.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.reformulation.*;
+import org.springframework.stereotype.Service;
+import tools.jackson.databind.ObjectMapper;
+import java.util.*;
+import java.math.BigDecimal;
+
+/** Phase B: immutable round snapshots, deterministic decision identity and bounded affected synthesis. */
+@Service
+public class CrossTaxonomyReconciler {
+    private final NodeReformulationService nodes;
+    private final ObjectMapper json;
+<span class="fc" id="L15">    public CrossTaxonomyReconciler(NodeReformulationService nodes,ObjectMapper json){this.nodes=nodes;this.json=json;}</span>
+    public ReformulationDocument reconcile(ReformulationBaseline baseline,ReformulationDocument phaseA,List&lt;DecisionAnswer&gt; answers,List&lt;DecisionQuestion&gt; priorQuestions) {
+<span class="fc" id="L17">        return reconcile(baseline,phaseA,answers,priorQuestions,ReformulationStepExecutor.direct());</span>
+    }
+    public ReformulationDocument reconcile(ReformulationBaseline baseline,ReformulationDocument phaseA,List&lt;DecisionAnswer&gt; answers,List&lt;DecisionQuestion&gt; priorQuestions,ReformulationStepExecutor steps) {
+        // Standalone callers freeze once here; production dispatch persists these bytes before Phase A.
+<span class="fc" id="L21">        var context=new TreeMap&lt;&gt;(baseline.frozenContext());context.putAll(ReconcilePromptBuilder.freeze(context));</span>
+<span class="fc" id="L22">        baseline=new ReformulationBaseline(baseline.scope(),baseline.sourceVersionId(),baseline.originalText(),baseline.originalTextHash(),baseline.snapshotId(),baseline.snapshotPayload(),context,baseline.language(),baseline.algorithmVersion());</span>
+<span class="fc" id="L23">        var findings=new ArrayList&lt;&gt;(phaseA.validation().findings());</span>
+<span class="fc" id="L24">        var current=canonicalize(preserveSource(baseline,phaseA),answers,priorQuestions,findings);</span>
+<span class="fc" id="L25">        int rounds=0;var touched=new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L26">        var boundary=boundaries(baseline,current);</span>
+<span class="fc bfc" id="L27" title="All 2 branches covered.">        for(int round=1;round&lt;=2;round++) {</span>
+<span class="fc" id="L28">            rounds=round;var input=input(baseline,round,current,answers,boundary);</span>
+<span class="fc" id="L29">            var review=steps.execute(&quot;RECONCILE&quot;,input,ReconciliationResult.class,()-&gt;nodes.reconcile(input));findings.addAll(review.findings());</span>
+<span class="fc" id="L30">            current=resolve(current,review.sourceResolutions(),answers,findings);</span>
+<span class="fc bfc" id="L31" title="All 2 branches covered.">            if(review.affectedSectionIds().isEmpty())break;</span>
+<span class="fc" id="L32">            current=reword(baseline,current,review,answers,boundary,touched,steps);</span>
+<span class="pc" id="L33">            current.nodeResults().forEach(n-&gt;{findings.addAll(n.conflictCandidates());n.uncoveredSourceRefs().forEach(span-&gt;findings.add(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,&quot;RECONCILED_UNCOVERED&quot;,&quot;Original remains visible for review&quot;,List.of(),List.of(span))));});</span>
+<span class="fc" id="L34">            current=canonicalize(current,answers,priorQuestions,findings);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if(round==2)findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT,&quot;RECONCILIATION_LIMIT&quot;,&quot;Two reconciliation rounds exhausted; proposed changes and residual differences require human review&quot;,List.of(),List.of()));</span>
+        }
+<span class="fc" id="L37">        current=layout(baseline,current,findings,boundary,answers);</span>
+<span class="fc" id="L38">        findings.addAll(new ReformulationCoverageValidator().validate(baseline,phaseA,current).findings());</span>
+<span class="fc" id="L39">        return new ReformulationDocument(current.text(),current.sections(),current.statements(),current.questions(),new ValidationReport(distinct(findings)),current.nodeResults(),new ReformulationDocument.ReconciliationTrace(phaseA.nodeResults(),rounds,List.copyOf(touched)));</span>
+    }
+    private ReformulationDocument canonicalize(ReformulationDocument doc,List&lt;DecisionAnswer&gt; answers,List&lt;DecisionQuestion&gt; prior,List&lt;ValidationReport.Finding&gt; findings) {
+<span class="fc" id="L42">        var groups=new ArrayList&lt;List&lt;DecisionQuestion&gt;&gt;();</span>
+<span class="fc" id="L43">        var priorIds=new HashSet&lt;String&gt;();prior.forEach(q-&gt;priorIds.add(q.id()));</span>
+<span class="fc" id="L44">        var answered=new HashSet&lt;String&gt;();answers.forEach(a-&gt;answered.add(a.questionId()));</span>
+<span class="fc bfc" id="L45" title="All 2 branches covered.">        var sorted=doc.questions().stream().sorted(Comparator.&lt;DecisionQuestion&gt;comparingInt(q-&gt;priorIds.contains(q.id())?0:1)</span>
+<span class="pc bpc" id="L46" title="1 of 4 branches missed.">            .thenComparingInt(q-&gt;q.state()==DecisionQuestion.State.ANSWERED || q.referenceIds().stream().anyMatch(answered::contains)?0:1).thenComparing(DecisionQuestion::id)).toList();</span>
+<span class="fc bfc" id="L47" title="All 2 branches covered.">        for(var q:sorted) {</span>
+<span class="fc" id="L48">            var sameKey=groups.stream().filter(g-&gt;g.getFirst().key().equals(q.key())).toList();</span>
+<span class="fc" id="L49">            var group=sameKey.stream().filter(g-&gt;DecisionQuestion.compatible(g.getFirst().answerSchema(),q.answerSchema())).findFirst();</span>
+<span class="fc bfc" id="L50" title="All 2 branches covered.">            if(group.isPresent())group.get().add(q);</span>
+<span class="fc bfc" id="L51" title="All 2 branches covered.">            else {if(!sameKey.isEmpty())findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT,&quot;INCOMPATIBLE_ANSWER_CONTRACTS&quot;,&quot;Same semantic key has incompatible answer contracts; retained separately&quot;,q.affectedStatementIds(),List.of()));groups.add(new ArrayList&lt;&gt;(List.of(q)));}</span>
+<span class="fc" id="L52">        }</span>
+<span class="fc" id="L53">        var canonical=new ArrayList&lt;DecisionQuestion&gt;();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">        for(var group:groups) {</span>
+<span class="fc" id="L55">            var first=group.getFirst();var ds=new ArrayList&lt;DecisionQuestion.Discovery&gt;();var affected=new ArrayList&lt;String&gt;();var aliases=new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L56">            var origins=new ArrayList&lt;DecisionQuestion.Origin&gt;();var resolutions=new ArrayList&lt;DecisionQuestion.SourceResolution&gt;();var pre=new ArrayList&lt;String&gt;();var dep=new ArrayList&lt;String&gt;();</span>
+<span class="fc bfc" id="L57" title="All 2 branches covered.">            for(var q:group){ds.addAll(q.discoveries());affected.addAll(q.affectedStatementIds());aliases.addAll(q.referenceIds());origins.addAll(q.origins());resolutions.addAll(q.sourceResolutions());pre.addAll(q.prerequisites());dep.addAll(q.dependentQuestionIds());}</span>
+<span class="fc bfc" id="L58" title="All 2 branches covered.">            if(group.size()&gt;1)group.forEach(q-&gt;origins.add(q.origin()));aliases.remove(first.id());</span>
+<span class="fc" id="L59">            var q=new DecisionQuestion(first.id(),first.key(),first.wording(),distinct(ds),distinct(affected),first.answerSchema(),distinct(pre),distinct(dep),first.consequences(),first.state(),List.copyOf(aliases),distinct(origins),distinct(resolutions));</span>
+<span class="fc" id="L60">            canonical.add(withState(q,answers,findings));</span>
+<span class="fc" id="L61">        }</span>
+<span class="fc" id="L62">        return replaceQuestions(doc,canonical);</span>
+    }
+    private static DecisionQuestion withState(DecisionQuestion q,List&lt;DecisionAnswer&gt; answers,List&lt;ValidationReport.Finding&gt; findings) {
+<span class="fc" id="L65">        var relevant=DecisionAnswer.active(answers).stream().filter(a-&gt;q.referenceIds().contains(a.questionId())).toList();</span>
+        // Multiple origins of the same value are not independent evidence; only disagreement matters.
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">        var values=new HashSet&lt;Set&lt;?&gt;&gt;();relevant.stream().filter(a-&gt;a.state()==DecisionQuestion.State.ANSWERED).forEach(a-&gt;values.add(humanAnswerComparisonKey(q.answerSchema(),a)));</span>
+<span class="fc" id="L68">        q.sourceResolutions().forEach(r-&gt;values.add(answerComparisonKey(q.answerSchema(),r.values())));</span>
+<span class="pc bpc" id="L69" title="3 of 8 branches missed.">        boolean conflict=values.size()&gt;1 || q.state()==DecisionQuestion.State.CONFLICT || relevant.stream().anyMatch(a-&gt;a.state()==DecisionQuestion.State.CONFLICT);</span>
+<span class="fc bfc" id="L70" title="All 4 branches covered.">        var state=conflict?DecisionQuestion.State.CONFLICT:!q.sourceResolutions().isEmpty()?DecisionQuestion.State.ANSWERED:</span>
+<span class="pc bpc" id="L71" title="1 of 4 branches missed.">            !values.isEmpty()?DecisionQuestion.State.ANSWERED:relevant.isEmpty()?q.state():relevant.getLast().state();</span>
+<span class="fc bfc" id="L72" title="All 2 branches covered.">        if(conflict)findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT,&quot;CONFLICTING_ANSWERS&quot;,&quot;Conflicting human/source evidence retained; no last-writer resolution&quot;,q.affectedStatementIds(),q.sourceResolutions().stream().flatMap(r-&gt;r.sourceSpans().stream()).distinct().toList()));</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        if(state==q.state())return q;</span>
+<span class="fc" id="L74">        var origins=new ArrayList&lt;&gt;(q.origins());origins.add(q.origin());</span>
+<span class="fc" id="L75">        return new DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),q.answerSchema(),q.prerequisites(),q.dependentQuestionIds(),q.consequences(),state,q.aliases(),distinct(origins),q.sourceResolutions());</span>
+    }
+    private static Set&lt;?&gt; humanAnswerComparisonKey(DecisionQuestion.AnswerSchema schema,DecisionAnswer answer) {
+<span class="fc" id="L78">        var key=new HashSet&lt;Object&gt;(answerComparisonKey(schema,answer.values()));</span>
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">        if(answer.otherText()!=null &amp;&amp; !answer.otherText().isBlank())key.add(List.of(&quot;OTHER_TEXT&quot;,answer.otherText()));</span>
+<span class="fc" id="L80">        return Set.copyOf(key);</span>
+    }
+    /** Normalize comparison keys only: stored human/source strings and provenance stay exact. */
+    private static Set&lt;?&gt; answerComparisonKey(DecisionQuestion.AnswerSchema schema,List&lt;String&gt; values) {
+<span class="fc bfc" id="L84" title="All 2 branches covered.">        if(schema.kind()!=DecisionQuestion.AnswerSchema.Kind.NUMBER)return Set.copyOf(values);</span>
+<span class="fc" id="L85">        return values.stream().map(CrossTaxonomyReconciler::numericComparisonKey)</span>
+<span class="fc" id="L86">            .collect(java.util.stream.Collectors.toUnmodifiableSet());</span>
+    }
+    private static BigDecimal numericComparisonKey(String raw) {
+<span class="fc" id="L89">        String value=raw.trim();</span>
+        // Preserve finite literal forms already accepted by the existing source-resolution parser.
+<span class="fc bfc" id="L91" title="All 2 branches covered.">        if(value.matches(&quot;.*[dDfF]$&quot;))value=value.substring(0,value.length()-1);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if(value.matches(&quot;[+-]?0[xX].*&quot;))return new BigDecimal(Double.parseDouble(value)).stripTrailingZeros();</span>
+        // Decimal/exponent values stay exact; a double conversion would erase real differences.
+<span class="fc" id="L94">        return new BigDecimal(value).stripTrailingZeros();</span>
+    }
+    private static ReformulationDocument resolve(ReformulationDocument doc,Map&lt;String,DecisionQuestion.SourceResolution&gt; resolutions,List&lt;DecisionAnswer&gt; answers,List&lt;ValidationReport.Finding&gt; findings) {
+<span class="fc" id="L97">        var questions=new ArrayList&lt;DecisionQuestion&gt;();</span>
+<span class="fc bfc" id="L98" title="All 2 branches covered.">        for(var q:doc.questions()) {</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">            var r=resolutions.get(q.id());if(r!=null){var evidence=new ArrayList&lt;&gt;(q.sourceResolutions());evidence.add(r);var origins=new ArrayList&lt;&gt;(q.origins());origins.add(q.origin());</span>
+<span class="fc" id="L100">                q=new DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),q.answerSchema(),q.prerequisites(),q.dependentQuestionIds(),q.consequences(),q.state(),q.aliases(),distinct(origins),distinct(evidence));}</span>
+<span class="fc" id="L101">            questions.add(withState(q,answers,findings));</span>
+<span class="fc" id="L102">        }</span>
+<span class="fc" id="L103">        return replaceQuestions(doc,questions);</span>
+    }
+    private static ReformulationDocument replaceQuestions(ReformulationDocument doc,List&lt;DecisionQuestion&gt; questions) {
+<span class="fc" id="L106">        var byId=new HashMap&lt;String,DecisionQuestion&gt;();questions.forEach(q-&gt;q.referenceIds().forEach(id-&gt;byId.put(id,q)));</span>
+<span class="fc" id="L107">        var sections=doc.sections().stream().map(s-&gt;new Section(s.id(),s.taxonomyCode(),s.title(),s.summary(),s.children(),s.statementIds(),s.questionIds().stream().map(id-&gt;required(byId,id).id()).distinct().toList())).toList();</span>
+<span class="fc" id="L108">        var results=doc.nodeResults().stream().map(n-&gt;new NodeSynthesisResult(n.nodeId(),n.summary(),n.statementProposals(),n.preservedStatementIds(),</span>
+<span class="fc" id="L109">            n.questionProposals().stream().map(q-&gt;required(byId,q.id())).distinct().toList(),n.preservedQuestionIds().stream().map(id-&gt;required(byId,id).id()).distinct().toList(),n.uncoveredSourceRefs(),n.conflictCandidates())).toList();</span>
+        // Statements retain exact provenance and dependencies; aliases keep their original references valid.
+<span class="fc" id="L111">        return new ReformulationDocument(doc.text(),sections,doc.statements(),questions,doc.validation(),results);</span>
+    }
+<span class="pc bpc" id="L113" title="1 of 2 branches missed.">    private static DecisionQuestion required(Map&lt;String,DecisionQuestion&gt; byId,String id){var q=byId.get(id);if(q==null)throw new IllegalArgumentException(&quot;Unknown question reference&quot;);return q;}</span>
+    private Map&lt;String,String&gt; boundaries(ReformulationBaseline b,ReformulationDocument d) {
+<span class="fc" id="L115">        var relevant=new HashSet&lt;String&gt;();d.sections().forEach(s-&gt;relevant.add(s.id()));d.statements().forEach(s-&gt;relevant.addAll(s.architectureLinks()));</span>
+<span class="fc" id="L116">        d.questions().forEach(q-&gt;q.discoveries().forEach(v-&gt;relevant.addAll(v.nodeIds())));var edges=new TreeMap&lt;String,String&gt;();</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">        for(var edge:json.readTree(b.frozenContext().getOrDefault(&quot;relationMappings&quot;,&quot;[]&quot;))) {</span>
+<span class="pc bpc" id="L118" title="3 of 4 branches missed.">            if(relevant.contains(edge.path(&quot;sourceCode&quot;).asText()) || relevant.contains(edge.path(&quot;targetCode&quot;).asText())) {</span>
+<span class="pc bpc" id="L119" title="1 of 2 branches missed.">                String id=&quot;edge-&quot;+edge.path(&quot;id&quot;).asText();if(edges.put(id,edge.toString())!=null)throw new IllegalArgumentException(&quot;Duplicate boundary edge&quot;);</span>
+            }
+<span class="fc" id="L121">        }return edges;</span>
+    }
+    private static ReconciliationInput input(ReformulationBaseline b,int round,ReformulationDocument d,List&lt;DecisionAnswer&gt; answers,Map&lt;String,String&gt; boundaries) {
+<span class="fc bfc" id="L124" title="All 4 branches covered.">        var shared=new TreeMap&lt;String,List&lt;String&gt;&gt;();for(var s:d.statements())for(String link:s.architectureLinks())shared.computeIfAbsent(link,k-&gt;new ArrayList&lt;&gt;()).add(s.id());</span>
+<span class="fc bfc" id="L125" title="All 2 branches covered.">        shared.entrySet().removeIf(e-&gt;e.getValue().size()&lt;2);</span>
+<span class="fc" id="L126">        return new ReconciliationInput(b,round,d.sections(),d.statements(),d.questions(),answers,boundaries,shared,</span>
+<span class="fc bfc" id="L127" title="All 2 branches covered.">            d.statements().stream().filter(s-&gt;s.provenance()==Statement.Provenance.ORIGINAL).map(Statement::id).toList());</span>
+    }
+    private ReformulationDocument reword(ReformulationBaseline baseline,ReformulationDocument before,ReconciliationResult review,List&lt;DecisionAnswer&gt; answers,Map&lt;String,String&gt; boundary,Set&lt;String&gt; touched,ReformulationStepExecutor steps) {
+<span class="fc" id="L130">        var affected=new LinkedHashSet&lt;&gt;(review.affectedSectionIds());boolean changed;</span>
+<span class="fc bfc" id="L131" title="All 6 branches covered.">        do {changed=false;for(var s:before.sections())if(s.children().stream().anyMatch(affected::contains))changed|=affected.add(s.id());}while(changed);</span>
+<span class="fc" id="L132">        touched.addAll(affected);</span>
+<span class="fc" id="L133">        var sections=new LinkedHashMap&lt;String,Section&gt;();before.sections().forEach(s-&gt;sections.put(s.id(),s));</span>
+<span class="fc" id="L134">        var results=new LinkedHashMap&lt;String,NodeSynthesisResult&gt;();before.nodeResults().forEach(n-&gt;results.put(n.nodeId(),n));</span>
+<span class="fc" id="L135">        var statements=new LinkedHashMap&lt;String,Statement&gt;();before.statements().forEach(s-&gt;statements.put(s.id(),s));</span>
+<span class="fc" id="L136">        var questions=new LinkedHashMap&lt;String,DecisionQuestion&gt;();before.questions().forEach(q-&gt;questions.put(q.id(),q));</span>
+        // Peers remain frozen for the round; ancestors receive completed child results in DAG order.
+<span class="fc bfc" id="L138" title="All 2 branches covered.">        var ordered=new ArrayList&lt;String&gt;();var visiting=new HashSet&lt;String&gt;();for(String id:affected)order(id,sections,affected,visiting,ordered);</span>
+<span class="fc bfc" id="L139" title="All 2 branches covered.">        for(String id:ordered) {</span>
+<span class="fc bfc" id="L140" title="All 4 branches covered.">            var section=sections.get(id);var localStatements=before.statements().stream().filter(s-&gt;section.statementIds().contains(s.id()) || s.provenance()==Statement.Provenance.ORIGINAL).toList();</span>
+<span class="pc bpc" id="L141" title="5 of 6 branches missed.">            var localQuestions=before.questions().stream().filter(q-&gt;!Collections.disjoint(q.referenceIds(),section.questionIds()) || !Collections.disjoint(q.affectedStatementIds(),section.statementIds()) || q.key().scope().equals(&quot;global&quot;)).toList();</span>
+<span class="fc" id="L142">            var localQIds=new HashSet&lt;String&gt;();localQuestions.forEach(q-&gt;localQIds.addAll(q.referenceIds()));</span>
+<span class="fc" id="L143">            var localAnswers=answers.stream().filter(a-&gt;localQIds.contains(a.questionId())).toList();</span>
+<span class="fc" id="L144">            var children=section.children().stream().map(results::get).filter(Objects::nonNull).toList();</span>
+<span class="fc" id="L145">            String parent=before.sections().stream().filter(s-&gt;s.children().contains(id)).map(Section::id).sorted().findFirst().orElse(null);</span>
+<span class="fc bfc" id="L146" title="All 2 branches covered.">            var selected=new TreeSet&lt;String&gt;();selected.add(id);selected.addAll(section.children());if(parent!=null)selected.add(parent);</span>
+<span class="fc" id="L147">            localStatements.forEach(v-&gt;selected.addAll(v.architectureLinks()));localQuestions.forEach(q-&gt;q.discoveries().forEach(d-&gt;selected.addAll(d.nodeIds())));</span>
+<span class="fc" id="L148">            children.forEach(c-&gt;c.statementProposals().forEach(v-&gt;selected.addAll(v.architectureLinks())));</span>
+<span class="fc" id="L149">            localQuestions.forEach(q-&gt;q.discoveries().forEach(d-&gt;selected.addAll(d.edgeIds())));</span>
+<span class="fc" id="L150">            var localEdges=new TreeMap&lt;String,String&gt;();boundary.forEach((k,v)-&gt;{var e=json.readTree(v);</span>
+<span class="pc bpc" id="L151" title="5 of 6 branches missed.">                if(selected.contains(e.path(&quot;sourceCode&quot;).asText()) || selected.contains(e.path(&quot;targetCode&quot;).asText()) || selected.contains(k))localEdges.put(k,v);});</span>
+<span class="fc" id="L152">            var frozenContext=new ReconcilePromptBuilder(json).scopedContext(baseline,selected);</span>
+<span class="pc bpc" id="L153" title="2 of 4 branches missed.">            var in=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(Map.of(&quot;section&quot;,section,&quot;frozenNodeContext&quot;,frozenContext,&quot;reconciliationFindings&quot;,review.findings().stream().filter(f-&gt;f.statementIds().isEmpty() || !Collections.disjoint(f.statementIds(),section.statementIds())).toList())),sourceSpans(baseline),localStatements,children,localEdges,localAnswers,localQuestions,&quot;Preserve exact original and prior evidence. Re-synthesize only this affected section, keeping peer outputs frozen within the round; summarize completed child details. Resolve findings visibly; do not overwrite human/source wording.&quot;);</span>
+<span class="pc" id="L154">            var result=steps.execute(&quot;REWORD&quot;,in,NodeSynthesisResult.class,()-&gt;nodes.synthesize(in,steps));result.statementProposals().forEach(s-&gt;statements.putIfAbsent(s.id(),s));result.questionProposals().forEach(q-&gt;questions.putIfAbsent(q.id(),q));</span>
+<span class="pc" id="L155">            var sids=new ArrayList&lt;&gt;(section.statementIds());sids.addAll(result.preservedStatementIds());result.statementProposals().forEach(s-&gt;sids.add(s.id()));</span>
+<span class="pc" id="L156">            var qids=new ArrayList&lt;&gt;(section.questionIds());qids.addAll(result.preservedQuestionIds());result.questionProposals().forEach(q-&gt;qids.add(q.id()));</span>
+<span class="fc" id="L157">            sections.put(id,new Section(id,section.taxonomyCode(),section.title(),result.summary(),section.children(),distinct(sids),distinct(qids)));</span>
+<span class="fc" id="L158">            results.put(id,new NodeSynthesisResult(id,result.summary(),distinct(sids).stream().map(statements::get).toList(),result.preservedStatementIds(),</span>
+<span class="fc" id="L159">                distinct(qids).stream().map(qid-&gt;questions.values().stream().filter(q-&gt;q.referenceIds().contains(qid)).findFirst().orElseThrow()).distinct().toList(),result.preservedQuestionIds(),result.uncoveredSourceRefs(),result.conflictCandidates()));</span>
+<span class="fc" id="L160">        }</span>
+<span class="fc" id="L161">        return new ReformulationDocument(before.text(),List.copyOf(sections.values()),List.copyOf(statements.values()),List.copyOf(questions.values()),before.validation(),List.copyOf(results.values()));</span>
+    }
+    private static void order(String id,Map&lt;String,Section&gt; sections,Set&lt;String&gt; affected,Set&lt;String&gt; visiting,List&lt;String&gt; ordered) {
+<span class="pc bpc" id="L164" title="1 of 4 branches missed.">        if(ordered.contains(id))return;if(!visiting.add(id))throw new IllegalArgumentException(&quot;Section cycle: &quot;+visiting);</span>
+<span class="pc bpc" id="L165" title="2 of 6 branches missed.">        var s=sections.get(id);if(s==null)throw new IllegalArgumentException(&quot;Unknown section&quot;);for(String child:s.children())if(affected.contains(child))order(child,sections,affected,visiting,ordered);visiting.remove(id);ordered.add(id);</span>
+<span class="fc" id="L166">    }</span>
+<span class="pc bpc" id="L167" title="1 of 2 branches missed.">    private static List&lt;Statement.SourceSpan&gt; sourceSpans(ReformulationBaseline b){return b.originalText().isEmpty()?List.of():List.of(new Statement.SourceSpan(0,b.originalText().length(),b.originalText()));}</span>
+    private static ReformulationDocument preserveSource(ReformulationBaseline baseline,ReformulationDocument doc) {
+<span class="pc bpc" id="L169" title="1 of 4 branches missed.">        var statements=new ArrayList&lt;&gt;(doc.statements());var source=statements.stream().filter(s-&gt;s.provenance()==Statement.Provenance.ORIGINAL &amp;&amp; s.wording().equals(baseline.originalText())).findFirst();</span>
+<span class="pc bpc" id="L170" title="1 of 4 branches missed.">        if(source.isEmpty() &amp;&amp; !baseline.originalText().isBlank()){var s=new Statement(&quot;source-&quot;+StableIdentityHash.sha256(baseline.originalTextHash()+&quot;:0&quot;).substring(0,24),baseline.originalText(),sourceSpans(baseline),Statement.Provenance.ORIGINAL,List.of(),List.of(),null,Statement.EditingOrigin.SOURCE,&quot;UNREVIEWED&quot;);statements.add(s);source=Optional.of(s);}</span>
+<span class="fc" id="L171">        return new ReformulationDocument(doc.text(),doc.sections(),statements,doc.questions(),doc.validation(),doc.nodeResults());</span>
+    }
+    private ReformulationDocument layout(ReformulationBaseline baseline,ReformulationDocument doc,List&lt;ValidationReport.Finding&gt; findings,Map&lt;String,String&gt; boundary,List&lt;DecisionAnswer&gt; answers) {
+<span class="fc" id="L174">        var statements=doc.statements();</span>
+<span class="fc bfc" id="L175" title="All 2 branches covered.">        var sourceIds=statements.stream().filter(s-&gt;s.provenance()==Statement.Provenance.ORIGINAL).map(Statement::id).toList();</span>
+<span class="fc" id="L176">        var bySection=new LinkedHashMap&lt;String,Section&gt;();doc.sections().forEach(v-&gt;bySection.put(v.id(),v));</span>
+<span class="fc" id="L177">        var nested=new HashSet&lt;String&gt;();doc.sections().forEach(v-&gt;nested.addAll(v.children()));</span>
+<span class="fc" id="L178">        var sorted=doc.sections().stream().sorted(Comparator.comparingInt(CrossTaxonomyReconciler::layoutPriority).thenComparing(Section::id)).toList();</span>
+<span class="fc" id="L179">        var sections=new ArrayList&lt;Section&gt;();var placed=new HashSet&lt;String&gt;();</span>
+<span class="fc bfc" id="L180" title="All 2 branches covered.">        sorted.stream().filter(v-&gt;!nested.contains(v.id())).forEach(v-&gt;place(v,bySection,placed,sections));</span>
+<span class="fc" id="L181">        sorted.forEach(v-&gt;place(v,bySection,placed,sections));</span>
+<span class="fc" id="L182">        var interfaceText=new ArrayList&lt;String&gt;();boundary.values().forEach(v-&gt;{var e=json.readTree(v);interfaceText.add(e.path(&quot;sourceCode&quot;).asText()+&quot; → &quot;+e.path(&quot;targetCode&quot;).asText()+&quot; [&quot;+e.path(&quot;relationType&quot;).asText()+&quot;; &quot;+e.path(&quot;reviewStatus&quot;).asText()+&quot;]&quot;);});</span>
+<span class="fc" id="L183">        sections.add(new Section(&quot;@interfaces&quot;,null,&quot;Schnittstellen / Interfaces&quot;,&quot;Directed boundary relations: &quot;+String.join(&quot;; &quot;,interfaceText),List.of(),statements.stream().filter(s-&gt;s.architectureLinks().stream().anyMatch(boundary::containsKey)).map(Statement::id).toList(),List.of()));</span>
+<span class="fc" id="L184">        sections.add(new Section(&quot;@cross-cutting&quot;,null,&quot;Übergreifende Vorgaben / Cross-cutting constraints&quot;,&quot;Original restrictions apply across taxonomy views.&quot;,List.of(),sourceIds,doc.questions().stream().filter(q-&gt;q.key().scope().equals(&quot;global&quot;)).map(DecisionQuestion::id).toList()));</span>
+<span class="fc" id="L185">        sections.add(new Section(&quot;@unmapped&quot;,null,&quot;Original / Unmapped source&quot;,&quot;Original text retained verbatim; mapping and semantic completeness require review.&quot;,List.of(),sourceIds,List.of()));</span>
+<span class="fc" id="L186">        findings.add(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,&quot;ORIGINAL_REMAINDER&quot;,&quot;Original clauses remain visibly available independently of architecture scores&quot;,sourceIds,sourceSpans(baseline)));</span>
+<span class="fc" id="L187">        var byId=new HashMap&lt;String,Statement&gt;();statements.forEach(s-&gt;byId.put(s.id(),s));var rendered=new HashSet&lt;String&gt;();var text=new StringBuilder();</span>
+<span class="fc bfc" id="L188" title="All 2 branches covered.">        for(var section:sections){text.append(section.title()).append(&quot;\n&quot;).append(&quot;[Unreviewed summary] &quot;).append(section.summary()).append(&quot;\n&quot;);</span>
+<span class="pc bpc" id="L189" title="1 of 10 branches missed.">            for(String id:section.statementIds()){var s=byId.get(id);if(s!=null &amp;&amp; (!sourceIds.contains(id) || section.id().equals(&quot;@unmapped&quot;)) &amp;&amp; rendered.add(id))text.append(&quot;[&quot;).append(s.provenance()).append(&quot;] &quot;).append(s.wording()).append(&quot;\n&quot;);}</span>
+<span class="fc" id="L190">            text.append(&quot;\n&quot;);}</span>
+<span class="pc bpc" id="L191" title="1 of 4 branches missed.">        for(var s:statements)if(rendered.add(s.id()))text.append(&quot;[&quot;).append(s.provenance()).append(&quot;] &quot;).append(s.wording()).append(&quot;\n\n&quot;);</span>
+<span class="fc bfc" id="L192" title="All 2 branches covered.">        for(var q:doc.questions()) {</span>
+<span class="fc" id="L193">            text.append(&quot;[&quot;).append(q.state()).append(&quot;] &quot;).append(q.wording());</span>
+<span class="fc bfc" id="L194" title="All 2 branches covered.">            if(q.state()==DecisionQuestion.State.OPEN)text.append(&quot; — &quot;).append(String.join(&quot; / &quot;,q.answerSchema().options()));</span>
+<span class="fc bfc" id="L195" title="All 2 branches covered.">            for(var resolution:q.sourceResolutions())text.append(&quot; — Original: &quot;).append(String.join(&quot;, &quot;,resolution.values())).append(&quot; (&quot;).append(resolution.rationale()).append(&quot;)&quot;);</span>
+<span class="fc bfc" id="L196" title="All 2 branches covered.">            answers.stream().filter(a-&gt;q.referenceIds().contains(a.questionId())).forEach(a-&gt;text.append(&quot; — Human decision: &quot;).append(String.join(&quot;, &quot;,a.values())).append(a.otherText()==null?&quot;&quot;:&quot; — &quot;+a.otherText()));</span>
+<span class="fc" id="L197">            text.append(&quot;\n&quot;);</span>
+<span class="fc" id="L198">        }</span>
+<span class="fc bfc" id="L199" title="All 2 branches covered.">        findings.stream().filter(f-&gt;f.kind()==ValidationReport.Kind.CONFLICT).distinct().forEach(f-&gt;text.append(&quot;[CONFLICT] &quot;).append(f.message()).append(&quot;\n&quot;));</span>
+<span class="fc" id="L200">        return new ReformulationDocument(text.toString(),sections,statements,doc.questions(),doc.validation(),doc.nodeResults());</span>
+    }
+    private static void place(Section s,Map&lt;String,Section&gt; byId,Set&lt;String&gt; placed,List&lt;Section&gt; result) {
+<span class="fc bfc" id="L203" title="All 2 branches covered.">        if(!placed.add(s.id()))return;result.add(s);s.children().stream().sorted().map(byId::get).filter(Objects::nonNull).forEach(child-&gt;place(child,byId,placed,result));</span>
+<span class="fc" id="L204">    }</span>
+<span class="pc bpc" id="L205" title="4 of 10 branches missed.">    private static int layoutPriority(Section s){String code=Objects.toString(s.taxonomyCode(),&quot;&quot;).toUpperCase(Locale.ROOT);return code.equals(&quot;BP&quot;) || code.startsWith(&quot;BP-&quot;) || code.equals(&quot;CP&quot;) || code.contains(&quot;CAPABILITY&quot;) || code.contains(&quot;PROCESS&quot;)?0:1;}</span>
+<span class="fc" id="L206">    private static &lt;T&gt; List&lt;T&gt; distinct(Collection&lt;T&gt; values){return List.copyOf(new LinkedHashSet&lt;&gt;(values));}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

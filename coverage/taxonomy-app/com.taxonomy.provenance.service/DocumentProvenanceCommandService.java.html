@@ -1,0 +1,243 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DocumentProvenanceCommandService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.service</a> &gt; <span class="el_source">DocumentProvenanceCommandService.java</span></div><h1>DocumentProvenanceCommandService.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.service;
+
+import com.taxonomy.model.LinkType;
+import com.taxonomy.model.SourceType;
+import com.taxonomy.provenance.config.DocumentImportLimits;
+import com.taxonomy.provenance.model.RequirementSourceLink;
+import com.taxonomy.provenance.model.SourceArtifact;
+import com.taxonomy.provenance.model.SourceFragment;
+import com.taxonomy.provenance.model.SourceVersion;
+import com.taxonomy.provenance.repository.RequirementSourceLinkRepository;
+import com.taxonomy.provenance.repository.SourceArtifactRepository;
+import com.taxonomy.provenance.repository.SourceFragmentRepository;
+import com.taxonomy.provenance.repository.SourceVersionRepository;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.HexFormat;
+import java.util.List;
+import java.util.Objects;
+import java.util.Set;
+
+/**
+ * Atomic command boundary for document registration and provenance materialization.
+ *
+ * &lt;p&gt;Parsing and hashing happen before these commands are called. Once a command
+ * enters its transaction, either the complete provenance graph is committed or
+ * no part of it is retained.&lt;/p&gt;
+ */
+@Service
+public class DocumentProvenanceCommandService {
+
+    private static final int MAX_CANDIDATE_TEXT_LENGTH = 2_000;
+    private static final int MAX_SECTION_PATH_LENGTH = 500;
+
+    private final SourceArtifactRepository artifactRepository;
+    private final SourceVersionRepository versionRepository;
+    private final SourceFragmentRepository fragmentRepository;
+    private final RequirementSourceLinkRepository linkRepository;
+    private final DocumentImportLimits limits;
+
+    public DocumentProvenanceCommandService(SourceArtifactRepository artifactRepository,
+                                            SourceVersionRepository versionRepository,
+                                            SourceFragmentRepository fragmentRepository,
+                                            RequirementSourceLinkRepository linkRepository,
+<span class="fc" id="L50">                                            DocumentImportLimits limits) {</span>
+<span class="fc" id="L51">        this.artifactRepository = artifactRepository;</span>
+<span class="fc" id="L52">        this.versionRepository = versionRepository;</span>
+<span class="fc" id="L53">        this.fragmentRepository = fragmentRepository;</span>
+<span class="fc" id="L54">        this.linkRepository = linkRepository;</span>
+<span class="fc" id="L55">        this.limits = limits;</span>
+<span class="fc" id="L56">    }</span>
+
+    /** Create the logical artifact and its concrete version in one transaction. */
+    @Transactional
+    public RegistrationResult registerDocument(SourceType sourceType,
+                                                String title,
+                                                String mimeType,
+                                                String contentHash) {
+<span class="pc bpc" id="L64" title="1 of 2 branches missed.">        if (sourceType == null) {</span>
+<span class="nc" id="L65">            throw new ProvenanceCommandException(</span>
+                    &quot;SOURCE_TYPE_REQUIRED&quot;, &quot;Source type is required&quot;);
+        }
+<span class="pc bpc" id="L68" title="2 of 4 branches missed.">        if (title == null || title.isBlank()) {</span>
+<span class="nc" id="L69">            throw new ProvenanceCommandException(</span>
+                    &quot;SOURCE_TITLE_REQUIRED&quot;, &quot;Source title is required&quot;);
+        }
+<span class="pc bpc" id="L72" title="1 of 2 branches missed.">        if (title.length() &gt; 500) {</span>
+<span class="nc" id="L73">            throw new ProvenanceCommandException(</span>
+                    &quot;SOURCE_TITLE_TOO_LARGE&quot;, &quot;Source title exceeds 500 characters&quot;);
+        }
+<span class="pc bpc" id="L76" title="2 of 4 branches missed.">        if (mimeType == null || mimeType.isBlank()) {</span>
+<span class="nc" id="L77">            throw new ProvenanceCommandException(</span>
+                    &quot;MIME_TYPE_REQUIRED&quot;, &quot;MIME type is required&quot;);
+        }
+<span class="pc bpc" id="L80" title="2 of 4 branches missed.">        if (contentHash == null || contentHash.isBlank()) {</span>
+<span class="nc" id="L81">            throw new ProvenanceCommandException(</span>
+                    &quot;CONTENT_HASH_REQUIRED&quot;, &quot;Content hash is required&quot;);
+        }
+
+<span class="fc" id="L85">        SourceArtifact artifact = artifactRepository.save(</span>
+                new SourceArtifact(sourceType, title));
+<span class="fc" id="L87">        SourceVersion version = new SourceVersion(artifact);</span>
+<span class="fc" id="L88">        version.setMimeType(mimeType);</span>
+<span class="fc" id="L89">        version.setContentHash(contentHash);</span>
+<span class="fc" id="L90">        version = versionRepository.save(version);</span>
+
+<span class="fc" id="L92">        return new RegistrationResult(artifact.getId(), version.getId());</span>
+    }
+
+    /**
+     * Validate and materialize all selected candidates atomically.
+     *
+     * &lt;p&gt;A pessimistic lock on the source version serializes concurrent retries
+     * for the same document version. Stable content-derived identities then make
+     * the operation idempotent without requiring an unsafe schema constraint to
+     * be added to installations that may already contain historic duplicates.&lt;/p&gt;
+     */
+    @Transactional
+    public ConfirmationResult confirmCandidates(long artifactId,
+                                                 long versionId,
+                                                 List&lt;CandidateInput&gt; requestedCandidates) {
+<span class="fc" id="L107">        List&lt;CandidateInput&gt; candidates = validateCandidates(requestedCandidates);</span>
+
+<span class="fc" id="L109">        SourceArtifact artifact = artifactRepository.findById(artifactId)</span>
+<span class="fc" id="L110">                .orElseThrow(() -&gt; new ProvenanceCommandException(</span>
+                        &quot;SOURCE_NOT_FOUND&quot;, &quot;Source artifact was not found&quot;));
+<span class="fc" id="L112">        SourceVersion version = versionRepository.findByIdForUpdate(versionId)</span>
+<span class="pc" id="L113">                .orElseThrow(() -&gt; new ProvenanceCommandException(</span>
+                        &quot;SOURCE_NOT_FOUND&quot;, &quot;Source version was not found&quot;));
+
+<span class="pc bpc" id="L116" title="1 of 2 branches missed.">        if (version.getSourceArtifact() == null</span>
+<span class="fc bfc" id="L117" title="All 2 branches covered.">                || !Objects.equals(version.getSourceArtifact().getId(), artifact.getId())) {</span>
+<span class="fc" id="L118">            throw new ProvenanceCommandException(</span>
+                    &quot;SOURCE_VERSION_MISMATCH&quot;,
+                    &quot;The selected source version does not belong to the selected artifact&quot;);
+        }
+
+<span class="fc" id="L123">        int linked = 0;</span>
+<span class="fc" id="L124">        int alreadyLinked = 0;</span>
+<span class="fc" id="L125">        Set&lt;String&gt; identitiesInRequest = new HashSet&lt;&gt;();</span>
+
+<span class="fc bfc" id="L127" title="All 2 branches covered.">        for (CandidateInput candidate : candidates) {</span>
+<span class="fc" id="L128">            String fragmentHash = candidateHash(candidate);</span>
+<span class="fc" id="L129">            String requirementId = &quot;DOC-&quot; + artifactId + &quot;-&quot; + versionId + &quot;-&quot; + fragmentHash;</span>
+
+<span class="pc bpc" id="L131" title="1 of 2 branches missed.">            if (!identitiesInRequest.add(requirementId)</span>
+                    || linkRepository
+<span class="fc bfc" id="L133" title="All 2 branches covered.">                    .existsByRequirementIdAndSourceArtifactIdAndSourceVersionIdAndLinkType(</span>
+                            requirementId,
+<span class="fc" id="L135">                            artifactId,</span>
+<span class="fc" id="L136">                            versionId,</span>
+                            LinkType.EXTRACTED_FROM)) {
+<span class="fc" id="L138">                alreadyLinked++;</span>
+<span class="fc" id="L139">                continue;</span>
+            }
+
+<span class="fc" id="L142">            SourceFragment fragment = new SourceFragment(version, candidate.text());</span>
+<span class="fc" id="L143">            fragment.setSectionPath(candidate.sectionHeading());</span>
+<span class="fc" id="L144">            fragment.setFragmentHash(fragmentHash);</span>
+<span class="fc" id="L145">            fragment = fragmentRepository.save(fragment);</span>
+
+<span class="fc" id="L147">            RequirementSourceLink link = new RequirementSourceLink(</span>
+                    requirementId, artifact, LinkType.EXTRACTED_FROM);
+<span class="fc" id="L149">            link.setSourceVersion(version);</span>
+<span class="fc" id="L150">            link.setSourceFragment(fragment);</span>
+<span class="fc" id="L151">            linkRepository.save(link);</span>
+<span class="fc" id="L152">            linked++;</span>
+<span class="fc" id="L153">        }</span>
+
+<span class="fc" id="L155">        return new ConfirmationResult(linked, alreadyLinked);</span>
+    }
+
+    private List&lt;CandidateInput&gt; validateCandidates(
+            List&lt;CandidateInput&gt; requestedCandidates) {
+<span class="pc bpc" id="L160" title="1 of 4 branches missed.">        if (requestedCandidates == null || requestedCandidates.isEmpty()) {</span>
+<span class="fc" id="L161">            throw new ProvenanceCommandException(</span>
+                    &quot;NO_CANDIDATES&quot;, &quot;No candidates were selected&quot;);
+        }
+<span class="pc bpc" id="L164" title="1 of 2 branches missed.">        if (requestedCandidates.size() &gt; limits.getMaxCandidates()) {</span>
+<span class="nc" id="L165">            throw new DocumentLimitException(</span>
+                    &quot;CANDIDATE_LIMIT_EXCEEDED&quot;,
+                    &quot;Candidate count exceeds the configured limit of &quot;
+<span class="nc" id="L168">                            + limits.getMaxCandidates());</span>
+        }
+
+<span class="fc" id="L171">        List&lt;CandidateInput&gt; validated = new ArrayList&lt;&gt;(requestedCandidates.size());</span>
+<span class="fc bfc" id="L172" title="All 2 branches covered.">        for (CandidateInput candidate : requestedCandidates) {</span>
+<span class="pc bpc" id="L173" title="1 of 2 branches missed.">            if (candidate == null</span>
+<span class="pc bpc" id="L174" title="1 of 2 branches missed.">                    || candidate.text() == null</span>
+<span class="pc bpc" id="L175" title="1 of 2 branches missed.">                    || candidate.text().isBlank()) {</span>
+<span class="nc" id="L176">                throw new ProvenanceCommandException(</span>
+                        &quot;CANDIDATE_TEXT_REQUIRED&quot;,
+                        &quot;Every candidate must contain text&quot;);
+            }
+<span class="fc" id="L180">            String text = candidate.text().strip();</span>
+<span class="fc bfc" id="L181" title="All 2 branches covered.">            if (text.length() &gt; MAX_CANDIDATE_TEXT_LENGTH) {</span>
+<span class="fc" id="L182">                throw new DocumentLimitException(</span>
+                        &quot;CANDIDATE_TEXT_TOO_LARGE&quot;,
+                        &quot;A requirement candidate exceeds &quot;
+                                + MAX_CANDIDATE_TEXT_LENGTH + &quot; characters&quot;);
+            }
+
+<span class="fc" id="L188">            String section = candidate.sectionHeading();</span>
+<span class="pc bpc" id="L189" title="1 of 2 branches missed.">            if (section != null) {</span>
+<span class="fc" id="L190">                section = section.strip();</span>
+<span class="pc bpc" id="L191" title="1 of 2 branches missed.">                if (section.isEmpty()) {</span>
+<span class="nc" id="L192">                    section = null;</span>
+<span class="pc bpc" id="L193" title="1 of 2 branches missed.">                } else if (section.length() &gt; MAX_SECTION_PATH_LENGTH) {</span>
+<span class="nc" id="L194">                    throw new DocumentLimitException(</span>
+                            &quot;CANDIDATE_SECTION_TOO_LARGE&quot;,
+                            &quot;A candidate section path exceeds &quot;
+                                    + MAX_SECTION_PATH_LENGTH + &quot; characters&quot;);
+                }
+            }
+<span class="fc" id="L200">            validated.add(new CandidateInput(text, section));</span>
+<span class="fc" id="L201">        }</span>
+<span class="fc" id="L202">        return List.copyOf(validated);</span>
+    }
+
+    private static String candidateHash(CandidateInput candidate) {
+        try {
+<span class="fc" id="L207">            MessageDigest digest = MessageDigest.getInstance(&quot;SHA-256&quot;);</span>
+<span class="pc bpc" id="L208" title="1 of 2 branches missed.">            String canonical = (candidate.sectionHeading() == null</span>
+<span class="nc" id="L209">                    ? &quot;&quot;</span>
+<span class="fc" id="L210">                    : candidate.sectionHeading())</span>
+                    + '\u0000'
+<span class="fc" id="L212">                    + candidate.text();</span>
+<span class="fc" id="L213">            return HexFormat.of().formatHex(</span>
+<span class="fc" id="L214">                    digest.digest(canonical.getBytes(StandardCharsets.UTF_8)));</span>
+<span class="nc" id="L215">        } catch (NoSuchAlgorithmException impossible) {</span>
+<span class="nc" id="L216">            throw new IllegalStateException(&quot;SHA-256 is not available&quot;, impossible);</span>
+        }
+    }
+
+<span class="fc" id="L220">    public record CandidateInput(String text, String sectionHeading) {</span>
+    }
+
+<span class="fc" id="L223">    public record RegistrationResult(long sourceArtifactId, long sourceVersionId) {</span>
+    }
+
+<span class="fc" id="L226">    public record ConfirmationResult(int linked, int alreadyLinked) {</span>
+    }
+
+    /** Typed validation failure converted to a bounded API response by the controller. */
+    public static class ProvenanceCommandException extends RuntimeException {
+        private final String code;
+
+        public ProvenanceCommandException(String code, String message) {
+<span class="fc" id="L234">            super(message);</span>
+<span class="fc" id="L235">            this.code = code;</span>
+<span class="fc" id="L236">        }</span>
+
+        public String getCode() {
+<span class="fc" id="L239">            return code;</span>
+        }
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

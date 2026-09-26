@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RelationSearchReport.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-domain</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.dto</a> &gt; <span class="el_source">RelationSearchReport.java</span></div><h1>RelationSearchReport.java</h1><pre class="source lang-java linenums">package com.taxonomy.dto;
+
+import java.util.List;
+import java.util.Objects;
+import static com.taxonomy.dto.RelationSearchModel.*;
+
+/** Immutable analysis evidence, persisted by the existing analysis JSON snapshot boundary. */
+public record RelationSearchReport(int schemaVersion, String originalSha256, String policy,
+                                   List&lt;SourceAssessment&gt; sources, Result result,
+                                   int totalCalls, int maxCalls, long durationMillis, List&lt;String&gt; warnings,
+                                   String stopReason) {
+<span class="fc" id="L12">    public RelationSearchReport {</span>
+<span class="fc" id="L13">        Objects.requireNonNull(originalSha256); Objects.requireNonNull(policy); Objects.requireNonNull(result);</span>
+<span class="fc" id="L14">        sources = List.copyOf(sources); warnings = List.copyOf(warnings);</span>
+<span class="pc bpc" id="L15" title="1 of 2 branches missed.">        stopReason = stopReason == null ? &quot;&quot; : stopReason;</span>
+<span class="fc" id="L16">    }</span>
+    /** Exhausted only under the declared pruning policy, not proof of architectural completeness. */
+    public boolean isSearchExhausted() {
+<span class="fc bfc" id="L19" title="All 6 branches covered.">        return warnings.isEmpty() &amp;&amp; stopReason.isEmpty() &amp;&amp; result.searchExhausted();</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

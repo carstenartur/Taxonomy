@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>RequirementSourceLink.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-app</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.provenance.model</a> &gt; <span class="el_source">RequirementSourceLink.java</span></div><h1>RequirementSourceLink.java</h1><pre class="source lang-java linenums">package com.taxonomy.provenance.model;
+
+import com.taxonomy.model.LinkType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.Table;
+
+/** Links a requirement to one or more source materials. */
+@Entity
+@Table(name = &quot;requirement_source_link&quot;)
+public class RequirementSourceLink {
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = &quot;requirement_id&quot;, nullable = false)
+    private String requirementId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;source_artifact_id&quot;, nullable = false)
+    private SourceArtifact sourceArtifact;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;source_version_id&quot;)
+    private SourceVersion sourceVersion;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = &quot;source_fragment_id&quot;)
+    private SourceFragment sourceFragment;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = &quot;link_type&quot;, nullable = false)
+    private LinkType linkType;
+
+    @Column
+    private Double confidence;
+
+    @Column(length = 1000)
+    private String note;
+
+<span class="fc" id="L50">    protected RequirementSourceLink() {</span>
+<span class="fc" id="L51">    }</span>
+
+    public RequirementSourceLink(String requirementId,
+                                 SourceArtifact sourceArtifact,
+<span class="fc" id="L55">                                 LinkType linkType) {</span>
+<span class="fc" id="L56">        this.requirementId = requirementId;</span>
+<span class="fc" id="L57">        this.sourceArtifact = sourceArtifact;</span>
+<span class="fc" id="L58">        this.linkType = linkType;</span>
+<span class="fc" id="L59">    }</span>
+
+    public Long getId() {
+<span class="fc" id="L62">        return id;</span>
+    }
+
+    public void setId(Long id) {
+<span class="fc" id="L66">        this.id = id;</span>
+<span class="fc" id="L67">    }</span>
+
+    public String getRequirementId() {
+<span class="fc" id="L70">        return requirementId;</span>
+    }
+
+    public void setRequirementId(String requirementId) {
+<span class="nc" id="L74">        this.requirementId = requirementId;</span>
+<span class="nc" id="L75">    }</span>
+
+    public SourceArtifact getSourceArtifact() {
+<span class="fc" id="L78">        return sourceArtifact;</span>
+    }
+
+    public void setSourceArtifact(SourceArtifact sourceArtifact) {
+<span class="nc" id="L82">        this.sourceArtifact = sourceArtifact;</span>
+<span class="nc" id="L83">    }</span>
+
+    public SourceVersion getSourceVersion() {
+<span class="fc" id="L86">        return sourceVersion;</span>
+    }
+
+    public void setSourceVersion(SourceVersion sourceVersion) {
+<span class="fc" id="L90">        this.sourceVersion = sourceVersion;</span>
+<span class="fc" id="L91">    }</span>
+
+    public SourceFragment getSourceFragment() {
+<span class="fc" id="L94">        return sourceFragment;</span>
+    }
+
+    public void setSourceFragment(SourceFragment sourceFragment) {
+<span class="fc" id="L98">        this.sourceFragment = sourceFragment;</span>
+<span class="fc" id="L99">    }</span>
+
+    public LinkType getLinkType() {
+<span class="fc" id="L102">        return linkType;</span>
+    }
+
+    public void setLinkType(LinkType linkType) {
+<span class="nc" id="L106">        this.linkType = linkType;</span>
+<span class="nc" id="L107">    }</span>
+
+    public Double getConfidence() {
+<span class="fc" id="L110">        return confidence;</span>
+    }
+
+    public void setConfidence(Double confidence) {
+<span class="fc" id="L114">        this.confidence = confidence;</span>
+<span class="fc" id="L115">    }</span>
+
+    public String getNote() {
+<span class="fc" id="L118">        return note;</span>
+    }
+
+    public void setNote(String note) {
+<span class="fc" id="L122">        this.note = note;</span>
+<span class="fc" id="L123">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

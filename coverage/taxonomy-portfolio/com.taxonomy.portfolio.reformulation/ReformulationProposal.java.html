@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationProposal.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationProposal.java</span></div><h1>ReformulationProposal.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.model.*;
+import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import java.time.Instant;
+
+/** Proposal owns only its own revision pointer. Baseline columns are insert-only. */
+@Entity
+@Table(name=&quot;reformulation_proposal&quot;, uniqueConstraints=@UniqueConstraint(name=&quot;uq_reform_proposal_scope&quot;,columnNames={&quot;id&quot;,&quot;scope_key&quot;}),
+        indexes=@Index(name=&quot;idx_reform_req&quot;,columnList=&quot;scope_key,project_id,requirement_id&quot;))
+public class ReformulationProposal {
+    @Id @Column(length=36) private String id;
+    @Column(name=&quot;scope_key&quot;,nullable=false,updatable=false,length=PortfolioTenantIdentity.MAX_SCOPE_KEY_LENGTH) private String scopeKey;
+    @Column(name=&quot;project_id&quot;,nullable=false,updatable=false) private Long projectId;
+    @Column(name=&quot;requirement_id&quot;,nullable=false,updatable=false) private Long requirementId;
+    @Column(name=&quot;source_version_id&quot;,nullable=false,updatable=false) private Long sourceVersionId;
+    @Column(name=&quot;snapshot_id&quot;,nullable=false,updatable=false,length=36) private String snapshotId;
+    @ManyToOne(fetch=FetchType.LAZY,optional=false)
+    @JoinColumns({@JoinColumn(name=&quot;source_version_id&quot;,referencedColumnName=&quot;id&quot;,insertable=false,updatable=false),
+        @JoinColumn(name=&quot;requirement_id&quot;,referencedColumnName=&quot;requirement_id&quot;,insertable=false,updatable=false),
+        @JoinColumn(name=&quot;scope_key&quot;,referencedColumnName=&quot;scope_key&quot;,insertable=false,updatable=false)})
+    private ProjectRequirementVersion sourceVersion;
+    @ManyToOne(fetch=FetchType.LAZY,optional=false)
+    @JoinColumns({@JoinColumn(name=&quot;snapshot_id&quot;,referencedColumnName=&quot;id&quot;,insertable=false,updatable=false),
+        @JoinColumn(name=&quot;source_version_id&quot;,referencedColumnName=&quot;requirement_version_id&quot;,insertable=false,updatable=false),
+        @JoinColumn(name=&quot;requirement_id&quot;,referencedColumnName=&quot;requirement_id&quot;,insertable=false,updatable=false),
+        @JoinColumn(name=&quot;project_id&quot;,referencedColumnName=&quot;project_id&quot;,insertable=false,updatable=false),
+        @JoinColumn(name=&quot;scope_key&quot;,referencedColumnName=&quot;scope_key&quot;,insertable=false,updatable=false)})
+    private RequirementAnalysisSnapshot snapshot;
+    @JdbcTypeCode(SqlTypes.LONG32VARCHAR)
+    @Column(name=&quot;baseline_payload&quot;,nullable=false,updatable=false) private String baselinePayload;
+    @Column(name=&quot;created_by&quot;,nullable=false,updatable=false,length=160) private String createdBy;
+    @Column(name=&quot;created_at&quot;,nullable=false,updatable=false) private Instant createdAt;
+    @Column(name=&quot;current_revision&quot;,nullable=false) private long currentRevision;
+    @Version @Column(name=&quot;row_version&quot;,nullable=false) private long rowVersion;
+<span class="fc" id="L38">    protected ReformulationProposal() {}</span>
+    public ReformulationProposal(String id,String scopeKey,Long projectId,Long requirementId,Long sourceVersionId,
+<span class="fc" id="L40">            String snapshotId,String baselinePayload,String actor,Instant now) {</span>
+<span class="fc" id="L41">        this.id=id;this.scopeKey=scopeKey;this.projectId=projectId;this.requirementId=requirementId;</span>
+<span class="fc" id="L42">        this.sourceVersionId=sourceVersionId;this.snapshotId=snapshotId;this.baselinePayload=baselinePayload;</span>
+<span class="fc" id="L43">        this.createdBy=actor;this.createdAt=now;this.currentRevision=1;</span>
+<span class="fc" id="L44">    }</span>
+<span class="fc" id="L45">    public String getId(){return id;} public String getScopeKey(){return scopeKey;}</span>
+<span class="fc" id="L46">    public String getBaselinePayload(){return baselinePayload;} public String getCreatedBy(){return createdBy;}</span>
+<span class="fc" id="L47">    public Instant getCreatedAt(){return createdAt;} public long getCurrentRevision(){return currentRevision;}</span>
+<span class="fc" id="L48">    public void advanceRevision(){currentRevision++;}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

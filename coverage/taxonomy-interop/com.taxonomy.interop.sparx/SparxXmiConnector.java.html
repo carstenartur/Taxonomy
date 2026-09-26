@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>SparxXmiConnector.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-interop</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.interop.sparx</a> &gt; <span class="el_source">SparxXmiConnector.java</span></div><h1>SparxXmiConnector.java</h1><pre class="source lang-java linenums">package com.taxonomy.interop.sparx;
+
+import com.taxonomy.exchange.sparx.SparxXmiCodec;
+import com.taxonomy.extension.api.integration.IntegrationContracts.*;
+import com.taxonomy.extension.api.integration.LifecycleIntegrationConnector;
+import org.springframework.stereotype.Component;
+
+@Component
+public class SparxXmiConnector implements LifecycleIntegrationConnector {
+    private final SparxXmiCodec codec;
+    private final String version;
+<span class="fc" id="L12">    public SparxXmiConnector() { this(&quot;1&quot;); }</span>
+<span class="fc" id="L13">    protected SparxXmiConnector(String version) { this.version = version; this.codec = new SparxXmiCodec(version); }</span>
+<span class="fc" id="L14">    @Override public IntegrationDescriptor descriptor() { return SparxIntegrationDescriptor.xmi(version); }</span>
+    @Override public ExchangeDocument previewInbound(InboundRequest request) {
+<span class="fc" id="L16">        return SparxSnapshots.identify(codec.read(request.content(), request.externalVersion(), request.completeScope()), request.context().connectionId());</span>
+    }
+    @Override public ExchangeFile previewOutbound(OutboundRequest request) {
+<span class="fc" id="L19">        var document = SparxSnapshots.identify(request.document(), request.context().connectionId());</span>
+<span class="fc" id="L20">        return new ExchangeFile(&quot;application/xmi+xml&quot;, &quot;taxonomy-sparx.xmi&quot;, codec.write(document), document.losses());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReconcileResponseParser.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">ReconcileResponseParser.java</span></div><h1>ReconcileResponseParser.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+import com.taxonomy.reformulation.*;
+import tools.jackson.databind.*;
+import java.util.*;
+/** Strict boundary for suggestions; merging/structural certification never belong to the model. */
+public class ReconcileResponseParser {
+    private final ObjectMapper json;
+<span class="fc" id="L8">    public ReconcileResponseParser(ObjectMapper json){this.json=json;}</span>
+    public ReconciliationResult parse(String raw,ReconciliationInput in) {
+        try {
+<span class="fc" id="L11">            var root=json.reader().with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION).with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(raw);</span>
+<span class="fc" id="L12">            fields(root,&quot;affectedSectionIds&quot;,&quot;sourceResolutions&quot;,&quot;findings&quot;);</span>
+<span class="fc" id="L13">            var sections=new HashSet&lt;String&gt;();in.sections().forEach(s-&gt;sections.add(s.id()));</span>
+<span class="fc" id="L14">            var statements=new HashSet&lt;String&gt;();in.statements().forEach(s-&gt;statements.add(s.id()));</span>
+<span class="fc" id="L15">            var questions=new HashMap&lt;String,DecisionQuestion&gt;();in.questions().forEach(q-&gt;q.referenceIds().forEach(id-&gt;questions.put(id,q)));</span>
+<span class="fc" id="L16">            var affected=refs(root,&quot;affectedSectionIds&quot;,sections);var resolutions=new LinkedHashMap&lt;String,DecisionQuestion.SourceResolution&gt;();</span>
+<span class="fc bfc" id="L17" title="All 2 branches covered.">            for(var n:array(root,&quot;sourceResolutions&quot;)) {</span>
+<span class="fc bfc" id="L18" title="All 2 branches covered.">                fields(n,&quot;questionId&quot;,&quot;values&quot;,&quot;rationale&quot;,&quot;sourceSpans&quot;);String id=text(n,&quot;questionId&quot;);var q=questions.get(id);if(q==null)throw invalid(&quot;Unknown question&quot;);</span>
+<span class="pc bpc" id="L19" title="1 of 2 branches missed.">                var values=strings(n,&quot;values&quot;);validateValues(q.answerSchema(),values);var spans=spans(n,&quot;sourceSpans&quot;,in.baseline().originalText());if(spans.isEmpty())throw invalid(&quot;Source resolution requires evidence&quot;);</span>
+<span class="pc bpc" id="L20" title="1 of 2 branches missed.">                if(resolutions.put(q.id(),new DecisionQuestion.SourceResolution(values,spans,text(n,&quot;rationale&quot;)))!=null)throw invalid(&quot;Duplicate resolution&quot;);</span>
+<span class="fc" id="L21">            }</span>
+<span class="fc" id="L22">            var findings=new ArrayList&lt;ValidationReport.Finding&gt;();</span>
+<span class="fc bfc" id="L23" title="All 2 branches covered.">            for(var n:array(root,&quot;findings&quot;)) {</span>
+<span class="fc" id="L24">                fields(n,&quot;kind&quot;,&quot;code&quot;,&quot;message&quot;,&quot;statementIds&quot;,&quot;sourceSpans&quot;);var kind=ValidationReport.Kind.valueOf(text(n,&quot;kind&quot;));</span>
+<span class="fc bfc" id="L25" title="All 4 branches covered.">                if(kind!=ValidationReport.Kind.CONFLICT &amp;&amp; kind!=ValidationReport.Kind.SEMANTIC_REVIEW)throw invalid(&quot;Model cannot certify structural coverage&quot;);</span>
+<span class="fc" id="L26">                findings.add(new ValidationReport.Finding(kind,text(n,&quot;code&quot;),text(n,&quot;message&quot;),refs(n,&quot;statementIds&quot;,statements),spans(n,&quot;sourceSpans&quot;,in.baseline().originalText())));</span>
+<span class="fc" id="L27">            }</span>
+<span class="fc bfc" id="L28" title="All 4 branches covered.">            if(!affected.isEmpty() &amp;&amp; findings.isEmpty())throw invalid(&quot;Affected sections require a review finding&quot;);</span>
+<span class="fc" id="L29">            return new ReconciliationResult(affected,resolutions,findings);</span>
+<span class="pc" id="L30">        }catch(IllegalArgumentException e){throw e;}catch(RuntimeException e){throw invalid(&quot;Invalid reconcile JSON&quot;);}</span>
+    }
+    static void validateValues(DecisionQuestion.AnswerSchema schema,List&lt;String&gt; values) {
+<span class="pc bpc" id="L33" title="1 of 2 branches missed.">        if(values.isEmpty())throw invalid(&quot;Empty resolution&quot;);</span>
+<span class="pc bpc" id="L34" title="4 of 6 branches missed.">        switch(schema.kind()) {</span>
+<span class="pc bpc" id="L35" title="1 of 4 branches missed.">            case SINGLE_CHOICE -&gt; {if(values.size()!=1 || !schema.options().containsAll(values))throw invalid(&quot;Invalid choice&quot;);}</span>
+<span class="nc bnc" id="L36" title="All 2 branches missed.">            case MULTIPLE_CHOICE -&gt; {if(!schema.options().containsAll(values))throw invalid(&quot;Invalid choices&quot;);}</span>
+<span class="nc bnc" id="L37" title="All 4 branches missed.">            case BOOLEAN -&gt; {if(values.size()!=1 || !Set.of(&quot;true&quot;,&quot;false&quot;).contains(values.getFirst()))throw invalid(&quot;Invalid boolean&quot;);}</span>
+<span class="nc bnc" id="L38" title="All 2 branches missed.">            case TEXT -&gt; {if(values.size()!=1)throw invalid(&quot;Invalid text&quot;);}</span>
+<span class="pc bpc" id="L39" title="7 of 12 branches missed.">            case NUMBER -&gt; {if(values.size()!=1)throw invalid(&quot;Invalid number&quot;);double v=Double.parseDouble(values.getFirst());if(!Double.isFinite(v) || schema.minimum()!=null &amp;&amp; v&lt;schema.minimum() || schema.maximum()!=null &amp;&amp; v&gt;schema.maximum())throw invalid(&quot;Invalid range&quot;);}</span>
+        }
+<span class="fc" id="L41">    }</span>
+    static List&lt;Statement.SourceSpan&gt; spans(JsonNode n,String key,String original) {
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        var result=new ArrayList&lt;Statement.SourceSpan&gt;();for(var s:array(n,key)){fields(s,&quot;start&quot;,&quot;end&quot;,&quot;exactText&quot;);</span>
+<span class="pc bpc" id="L44" title="3 of 8 branches missed.">            if(!s.path(&quot;start&quot;).isIntegralNumber() || !s.path(&quot;end&quot;).isIntegralNumber() || !s.path(&quot;start&quot;).canConvertToInt() || !s.path(&quot;end&quot;).canConvertToInt())throw invalid(&quot;Invalid span offset&quot;);</span>
+<span class="pc bpc" id="L45" title="1 of 2 branches missed.">            var span=new Statement.SourceSpan(s.path(&quot;start&quot;).asInt(),s.path(&quot;end&quot;).asInt(),text(s,&quot;exactText&quot;));if(!span.matches(original))throw invalid(&quot;Fabricated source span&quot;);result.add(span);}return List.copyOf(result);</span>
+    }
+<span class="pc bpc" id="L47" title="2 of 6 branches missed.">    private static void fields(JsonNode n,String... keys){if(n==null || !n.isObject())throw invalid(&quot;Expected object&quot;);var actual=new HashSet&lt;String&gt;();n.properties().forEach(e-&gt;actual.add(e.getKey()));if(!actual.equals(Set.of(keys)))throw invalid(&quot;Unexpected schema fields&quot;);}</span>
+<span class="pc bpc" id="L48" title="1 of 2 branches missed.">    private static JsonNode array(JsonNode n,String key){var a=n.path(key);if(!a.isArray())throw invalid(&quot;Expected array&quot;);return a;}</span>
+<span class="pc bpc" id="L49" title="2 of 4 branches missed.">    private static String text(JsonNode n,String key){var v=n.path(key);if(!v.isString() || v.asText().isBlank())throw invalid(&quot;Expected text&quot;);return v.asText();}</span>
+<span class="pc bpc" id="L50" title="3 of 8 branches missed.">    private static List&lt;String&gt; strings(JsonNode n,String key){var values=new ArrayList&lt;String&gt;();for(var v:array(n,key)){if(!v.isString() || v.asText().isBlank() || values.contains(v.asText()))throw invalid(&quot;Invalid value&quot;);values.add(v.asText());}return List.copyOf(values);}</span>
+<span class="pc bpc" id="L51" title="1 of 2 branches missed.">    private static List&lt;String&gt; refs(JsonNode n,String key,Set&lt;String&gt; allowed){var ids=strings(n,key);if(!allowed.containsAll(ids))throw invalid(&quot;Unknown reference&quot;);return ids;}</span>
+<span class="fc" id="L52">    private static IllegalArgumentException invalid(String m){return new IllegalArgumentException(m);}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

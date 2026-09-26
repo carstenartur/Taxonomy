@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>DecisionTreeOverview.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-architecture</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.architecture.report</a> &gt; <span class="el_source">DecisionTreeOverview.java</span></div><h1>DecisionTreeOverview.java</h1><pre class="source lang-java linenums">package com.taxonomy.architecture.report;
+
+import com.taxonomy.architecture.decision.DecisionRationaleReport.*;
+
+import java.util.*;
+
+/** Complete, ordered navigation evidence, independent of the leading decision path. */
+public record DecisionTreeOverview(List&lt;DecisionTreeRow&gt; rows, List&lt;String&gt; warnings) {
+<span class="fc" id="L9">    public DecisionTreeOverview {</span>
+<span class="fc" id="L10">        rows = List.copyOf(rows);</span>
+<span class="fc" id="L11">        warnings = List.copyOf(warnings);</span>
+<span class="fc" id="L12">    }</span>
+
+<span class="fc" id="L14">    public record DecisionTreeRow(</span>
+            int depth,
+            String code,
+            String title,
+            Integer score,
+            Disposition disposition,
+            Integer chapterNumber,
+            String bookmark) {}
+
+<span class="fc" id="L23">    private record Node(String code, String title, Integer score, boolean leaf, Disposition disposition) {}</span>
+
+    public static String bookmark(DecisionChapter chapter) {
+<span class="fc" id="L26">        String code = chapter.parentCode().replaceAll(&quot;[^A-Za-z0-9_]&quot;, &quot;_&quot;);</span>
+        // Chapter numbers are unique; truncation cannot collide even for non-Latin codes.
+<span class="fc" id="L28">        return &quot;decision_chapter_&quot;</span>
+<span class="fc" id="L29">                + chapter.number()</span>
+                + &quot;_&quot;
+<span class="fc" id="L31">                + code.substring(0, Math.min(12, code.length()));</span>
+    }
+
+    public static DecisionTreeOverview from(List&lt;DecisionChapter&gt; chapters) {
+<span class="fc" id="L35">        Map&lt;String, Node&gt; nodes = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L36">        Map&lt;String, DecisionChapter&gt; parents = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L37">        Map&lt;String, String&gt; parentOf = new HashMap&lt;&gt;();</span>
+<span class="fc" id="L38">        Map&lt;String, List&lt;String&gt;&gt; children = new LinkedHashMap&lt;&gt;();</span>
+<span class="fc" id="L39">        Set&lt;Integer&gt; numbers = new HashSet&lt;&gt;();</span>
+<span class="fc bfc" id="L40" title="All 2 branches covered.">        for (var chapter : chapters) {</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (chapter.number() &lt; 1</span>
+<span class="pc bpc" id="L42" title="1 of 2 branches missed.">                    || !numbers.add(chapter.number())</span>
+<span class="pc bpc" id="L43" title="1 of 2 branches missed.">                    || parents.putIfAbsent(chapter.parentCode(), chapter) != null)</span>
+<span class="nc" id="L44">                throw new IllegalArgumentException(&quot;Contradictory decision chapter identity&quot;);</span>
+<span class="fc" id="L45">            put(</span>
+                    nodes,
+                    new Node(
+<span class="fc" id="L48">                            chapter.parentCode(),</span>
+<span class="fc" id="L49">                            chapter.parentTitle(),</span>
+<span class="fc" id="L50">                            chapter.parentScore(),</span>
+                            false,
+<span class="fc" id="L52">                            disposition(chapter.parentScore(), false)));</span>
+<span class="fc" id="L53">            List&lt;String&gt; direct = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L54" title="All 2 branches covered.">            for (var child : chapter.children()) {</span>
+<span class="fc" id="L55">                put(</span>
+                        nodes,
+                        new Node(
+<span class="fc" id="L58">                                child.code(),</span>
+<span class="fc" id="L59">                                child.title(),</span>
+<span class="fc" id="L60">                                child.absoluteScore(),</span>
+<span class="fc" id="L61">                                child.leaf(),</span>
+<span class="fc" id="L62">                                disposition(child.absoluteScore(), child.leaf())));</span>
+<span class="fc" id="L63">                String previous = parentOf.putIfAbsent(child.code(), chapter.parentCode());</span>
+<span class="pc bpc" id="L64" title="1 of 4 branches missed.">                if (previous != null &amp;&amp; !previous.equals(chapter.parentCode()))</span>
+<span class="fc" id="L65">                    throw new IllegalArgumentException(</span>
+<span class="fc" id="L66">                            &quot;Contradictory decision parent for &quot; + child.code());</span>
+<span class="pc bpc" id="L67" title="1 of 2 branches missed.">                if (!direct.contains(child.code())) direct.add(child.code());</span>
+<span class="fc" id="L68">            }</span>
+<span class="fc" id="L69">            children.put(chapter.parentCode(), direct);</span>
+<span class="fc" id="L70">        }</span>
+        // Check every component, including components that have no root due to a cycle.
+<span class="fc" id="L72">        Map&lt;String, Integer&gt; state = new HashMap&lt;&gt;();</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        for (String code : nodes.keySet()) detectCycle(code, children, state);</span>
+<span class="fc" id="L74">        List&lt;DecisionTreeRow&gt; rows = new ArrayList&lt;&gt;();</span>
+<span class="fc" id="L75">        List&lt;String&gt; warnings = new ArrayList&lt;&gt;();</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">        for (String root : nodes.keySet()) {</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">            if (parentOf.containsKey(root)) continue;</span>
+<span class="fc" id="L78">            var chapter = parents.get(root);</span>
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">            if (chapter != null &amp;&amp; chapter.hierarchyLevel() &gt; 0) warnings.add(root);</span>
+<span class="fc" id="L80">            append(root, 0, nodes, parents, children, rows);</span>
+<span class="fc" id="L81">        }</span>
+<span class="fc" id="L82">        return new DecisionTreeOverview(rows, warnings);</span>
+    }
+
+    private static void put(Map&lt;String, Node&gt; nodes, Node node) {
+<span class="pc bpc" id="L86" title="2 of 4 branches missed.">        if (node.code() == null || node.code().isBlank())</span>
+<span class="nc" id="L87">            throw new IllegalArgumentException(&quot;Missing decision node ID&quot;);</span>
+<span class="fc" id="L88">        Node previous = nodes.putIfAbsent(node.code(), node);</span>
+<span class="fc bfc" id="L89" title="All 2 branches covered.">        if (previous != null</span>
+<span class="pc bpc" id="L90" title="1 of 2 branches missed.">                &amp;&amp; (!Objects.equals(previous.title(), node.title())</span>
+<span class="pc bpc" id="L91" title="1 of 2 branches missed.">                        || !Objects.equals(previous.score(), node.score())</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">                        || previous.leaf() != node.leaf()))</span>
+<span class="fc" id="L93">            throw new IllegalArgumentException(&quot;Contradictory decision node &quot; + node.code());</span>
+<span class="fc" id="L94">    }</span>
+
+    private static Disposition disposition(Integer score, boolean leaf) {
+<span class="fc bfc" id="L97" title="All 2 branches covered.">        return score == null</span>
+<span class="fc" id="L98">                ? Disposition.NOT_EVALUATED</span>
+<span class="fc bfc" id="L99" title="All 2 branches covered.">                : score == 0</span>
+<span class="fc" id="L100">                        ? Disposition.REJECTED</span>
+<span class="fc bfc" id="L101" title="All 2 branches covered.">                        : leaf ? Disposition.LEAF_CANDIDATE : Disposition.CONTINUED;</span>
+    }
+
+    private static void detectCycle(
+            String code, Map&lt;String, List&lt;String&gt;&gt; children, Map&lt;String, Integer&gt; state) {
+<span class="fc bfc" id="L106" title="All 2 branches covered.">        if (state.getOrDefault(code, 0) == 1)</span>
+<span class="fc" id="L107">            throw new IllegalArgumentException(&quot;Decision tree cycle at &quot; + code);</span>
+<span class="fc bfc" id="L108" title="All 2 branches covered.">        if (state.getOrDefault(code, 0) == 2) return;</span>
+<span class="fc" id="L109">        state.put(code, 1);</span>
+<span class="fc bfc" id="L110" title="All 2 branches covered.">        for (String child : children.getOrDefault(code, List.of()))</span>
+<span class="fc" id="L111">            detectCycle(child, children, state);</span>
+<span class="fc" id="L112">        state.put(code, 2);</span>
+<span class="fc" id="L113">    }</span>
+
+    private static void append(
+            String code,
+            int depth,
+            Map&lt;String, Node&gt; nodes,
+            Map&lt;String, DecisionChapter&gt; chapters,
+            Map&lt;String, List&lt;String&gt;&gt; children,
+            List&lt;DecisionTreeRow&gt; rows) {
+<span class="fc" id="L122">        Node node = nodes.get(code);</span>
+<span class="fc" id="L123">        DecisionChapter chapter = chapters.get(code);</span>
+<span class="fc" id="L124">        rows.add(</span>
+                new DecisionTreeRow(
+                        depth,
+                        code,
+<span class="fc" id="L128">                        node.title(),</span>
+<span class="fc" id="L129">                        node.score(),</span>
+<span class="fc" id="L130">                        node.disposition(),</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">                        chapter == null ? null : chapter.number(),</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                        chapter == null ? null : bookmark(chapter)));</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        for (String child : children.getOrDefault(code, List.of()))</span>
+<span class="fc" id="L134">            append(child, depth + 1, nodes, chapters, children, rows);</span>
+<span class="fc" id="L135">    }</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

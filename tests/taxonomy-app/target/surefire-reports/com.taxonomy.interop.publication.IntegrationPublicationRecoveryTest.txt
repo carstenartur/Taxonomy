@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.taxonomy.interop.publication.IntegrationPublicationRecoveryTest
+-------------------------------------------------------------------------------
+Tests run: 24, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 9.669 s -- in com.taxonomy.interop.publication.IntegrationPublicationRecoveryTest

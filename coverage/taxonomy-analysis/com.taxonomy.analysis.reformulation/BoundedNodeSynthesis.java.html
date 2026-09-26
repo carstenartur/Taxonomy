@@ -1,0 +1,183 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>BoundedNodeSynthesis.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-analysis</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.analysis.reformulation</a> &gt; <span class="el_source">BoundedNodeSynthesis.java</span></div><h1>BoundedNodeSynthesis.java</h1><pre class="source lang-java linenums">package com.taxonomy.analysis.reformulation;
+
+import com.taxonomy.reformulation.*;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.node.ObjectNode;
+
+import java.util.*;
+import java.util.function.Predicate;
+
+/** Bounded sibling grouping. Stored details are never replaced by an aggregate summary. */
+final class BoundedNodeSynthesis {
+    static final int MAX_GROUPS = 16;
+    private static final String GROUP_CONTRACT = &quot;\nBOUNDED_GROUP_V1: Formulate only the supplied sibling group. Other siblings still exist. &quot;
+            + &quot;Keep the complete original, restrictions, decisions and directed boundary relations. Do not invent a taxonomy node for the group.&quot;;
+    private static final String AGGREGATE_CONTRACT = &quot;\nBOUNDED_AGGREGATE_V2: Combine the group summaries into this parent's short formulation. &quot;
+            + &quot;Full group formulations, conditions and provenance are supplied in statementProposals. Deeper preserved references remain stored separately; do not claim to have rechecked unsupplied text. &quot;
+            + &quot;All questions and details must survive. Find cross-group decisions without deciding them. Do not infer absent features are excluded.&quot;;
+    private final ObjectMapper json;
+
+<span class="fc" id="L21">    BoundedNodeSynthesis(ObjectMapper json) { this.json = json; }</span>
+
+    List&lt;NodeSynthesisInput&gt; partition(NodeSynthesisInput input, Predicate&lt;NodeSynthesisInput&gt; fits) {
+<span class="fc" id="L24">        ObjectNode description = description(input.nodeDescription());</span>
+<span class="fc" id="L25">        var items = new ArrayList&lt;Item&gt;();</span>
+<span class="pc bpc" id="L26" title="1 of 4 branches missed.">        if (description != null &amp;&amp; description.path(&quot;terminalContributions&quot;).isArray()) {</span>
+<span class="fc" id="L27">            description.path(&quot;terminalContributions&quot;).forEach(n -&gt; items.add(new Item(null, n)));</span>
+        }
+<span class="fc" id="L29">        input.children().forEach(child -&gt; items.add(new Item(child, null)));</span>
+<span class="pc bpc" id="L30" title="1 of 4 branches missed.">        if (items.size() &lt; 2 || !fits.test(group(input, description, List.of()))) throw tooLarge();</span>
+<span class="fc" id="L31">        var groups = new ArrayList&lt;NodeSynthesisInput&gt;();</span>
+<span class="fc" id="L32">        var selected = new ArrayList&lt;Item&gt;();</span>
+<span class="fc bfc" id="L33" title="All 2 branches covered.">        for (Item item : items) {</span>
+<span class="fc" id="L34">            selected.add(item);</span>
+<span class="fc bfc" id="L35" title="All 2 branches covered.">            if (fits.test(group(input, description, selected))) continue;</span>
+<span class="fc" id="L36">            selected.removeLast();</span>
+<span class="fc bfc" id="L37" title="All 2 branches covered.">            if (selected.isEmpty()) throw tooLarge();</span>
+<span class="fc" id="L38">            groups.add(group(input, description, selected));</span>
+<span class="pc bpc" id="L39" title="1 of 2 branches missed.">            if (groups.size() &gt;= MAX_GROUPS) throw tooLarge();</span>
+<span class="fc" id="L40">            selected.clear(); selected.add(item);</span>
+<span class="pc bpc" id="L41" title="1 of 2 branches missed.">            if (!fits.test(group(input, description, selected))) throw tooLarge();</span>
+<span class="fc" id="L42">        }</span>
+<span class="fc" id="L43">        groups.add(group(input, description, selected));</span>
+<span class="pc bpc" id="L44" title="1 of 2 branches missed.">        if (groups.size() &lt; 2) throw tooLarge();</span>
+<span class="fc" id="L45">        return List.copyOf(groups);</span>
+    }
+
+    private NodeSynthesisInput group(NodeSynthesisInput input, ObjectNode description, List&lt;Item&gt; selected) {
+<span class="fc" id="L49">        String context = input.nodeDescription();</span>
+<span class="pc bpc" id="L50" title="1 of 4 branches missed.">        if (description != null &amp;&amp; description.path(&quot;terminalContributions&quot;).isArray()) {</span>
+<span class="fc" id="L51">            ObjectNode copy = description.deepCopy();</span>
+<span class="fc" id="L52">            var terminals = copy.putArray(&quot;terminalContributions&quot;);</span>
+<span class="pc bpc" id="L53" title="1 of 2 branches missed.">            selected.stream().filter(i -&gt; i.terminal() != null).forEach(i -&gt; terminals.add(i.terminal()));</span>
+<span class="fc" id="L54">            context = json.writeValueAsString(copy);</span>
+        }
+<span class="fc" id="L56">        var children = selected.stream().map(Item::child).filter(Objects::nonNull).toList();</span>
+<span class="fc" id="L57">        return dependencyClosedGroup(input, context, children);</span>
+    }
+
+    private NodeSynthesisInput dependencyClosedGroup(NodeSynthesisInput input, String context, List&lt;NodeSynthesisResult&gt; children) {
+<span class="fc" id="L61">        var available = new LinkedHashMap&lt;String, DecisionQuestion&gt;();</span>
+<span class="pc" id="L62">        input.openDecisions().forEach(q -&gt; q.referenceIds().forEach(id -&gt; available.put(id, q)));</span>
+<span class="fc" id="L63">        input.children().forEach(c -&gt; c.questionProposals().forEach(q -&gt; q.referenceIds().forEach(id -&gt; available.put(id, q))));</span>
+<span class="fc" id="L64">        var evidence = new LinkedHashMap&lt;String, Statement&gt;();</span>
+<span class="fc" id="L65">        input.directContributions().forEach(s -&gt; evidence.put(s.id(), s));</span>
+<span class="fc" id="L66">        input.children().forEach(c -&gt; c.statementProposals().forEach(s -&gt; evidence.put(s.id(), s)));</span>
+<span class="fc" id="L67">        var needed = new LinkedHashSet&lt;String&gt;();</span>
+<span class="pc" id="L68">        input.openDecisions().forEach(q -&gt; needed.add(q.id()));</span>
+<span class="fc" id="L69">        children.forEach(c -&gt; c.questionProposals().forEach(q -&gt; needed.add(q.id())));</span>
+<span class="fc" id="L70">        input.directContributions().forEach(s -&gt; needed.addAll(s.questionDependencies()));</span>
+<span class="fc" id="L71">        children.forEach(c -&gt; c.statementProposals().forEach(s -&gt; needed.addAll(s.questionDependencies())));</span>
+<span class="fc" id="L72">        var pending = new ArrayDeque&lt;&gt;(needed);</span>
+<span class="fc bfc" id="L73" title="All 2 branches covered.">        while (!pending.isEmpty()) {</span>
+<span class="fc" id="L74">            var question = available.get(pending.removeFirst());</span>
+<span class="pc bpc" id="L75" title="1 of 2 branches missed.">            if (question == null) throw new IllegalArgumentException(&quot;Unknown grouped decision prerequisite&quot;);</span>
+<span class="fc" id="L76">            var dependencies = new LinkedHashSet&lt;&gt;(question.prerequisites());</span>
+<span class="fc" id="L77">            question.affectedStatementIds().stream().map(evidence::get).filter(Objects::nonNull)</span>
+<span class="fc" id="L78">                    .forEach(s -&gt; dependencies.addAll(s.questionDependencies()));</span>
+<span class="pc bpc" id="L79" title="1 of 4 branches missed.">            for (String prerequisite : dependencies) if (needed.add(prerequisite)) pending.addLast(prerequisite);</span>
+<span class="fc" id="L80">        }</span>
+<span class="fc" id="L81">        var childQuestionIds = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L82">        var childStatementIds = new HashSet&lt;String&gt;();</span>
+<span class="fc" id="L83">        children.forEach(c -&gt; {</span>
+<span class="fc" id="L84">            c.questionProposals().forEach(q -&gt; childQuestionIds.addAll(q.referenceIds()));</span>
+<span class="fc" id="L85">            c.statementProposals().forEach(s -&gt; childStatementIds.add(s.id())); childStatementIds.addAll(c.preservedStatementIds());</span>
+<span class="fc" id="L86">        });</span>
+<span class="fc" id="L87">        var decisions = new LinkedHashMap&lt;String, DecisionQuestion&gt;();</span>
+<span class="pc" id="L88">        input.openDecisions().forEach(q -&gt; addQuestion(decisions, q));</span>
+<span class="fc bfc" id="L89" title="All 4 branches covered.">        for (String id : needed) if (!childQuestionIds.contains(id)) addQuestion(decisions, available.get(id));</span>
+<span class="fc" id="L90">        var direct = new LinkedHashMap&lt;String, Statement&gt;(); input.directContributions().forEach(s -&gt; direct.put(s.id(), s));</span>
+<span class="fc" id="L91">        decisions.values().forEach(q -&gt; q.affectedStatementIds().forEach(id -&gt; {</span>
+<span class="pc bpc" id="L92" title="2 of 4 branches missed.">            if (!childStatementIds.contains(id) &amp;&amp; evidence.containsKey(id)) direct.put(id, evidence.get(id));</span>
+<span class="fc" id="L93">        }));</span>
+<span class="fc" id="L94">        return new NodeSynthesisInput(input.baseline(), input.nodeId(), input.parentId(), context, input.sourceAnchors(),</span>
+<span class="fc" id="L95">                List.copyOf(direct.values()), children, input.boundaryEdges(), input.answers(), List.copyOf(decisions.values()),</span>
+<span class="fc" id="L96">                input.preservationContract() + GROUP_CONTRACT);</span>
+    }
+
+    NodeSynthesisInput aggregate(NodeSynthesisInput input, List&lt;NodeSynthesisResult&gt; parts) {
+        // Carry each group's actual formulation, not just its short summary or IDs.
+        // Deeper already-synthesized child evidence remains stored under its stable references.
+<span class="fc" id="L102">        var children = new ArrayList&lt;NodeSynthesisResult&gt;();</span>
+<span class="fc bfc" id="L103" title="All 2 branches covered.">        for (NodeSynthesisResult part : parts) {</span>
+<span class="fc" id="L104">            var statements = new LinkedHashSet&lt;&gt;(part.preservedStatementIds());</span>
+<span class="fc" id="L105">            part.statementProposals().forEach(s -&gt; statements.add(s.id()));</span>
+<span class="fc" id="L106">            children.add(new NodeSynthesisResult(input.nodeId(), part.summary(), part.statementProposals(), List.copyOf(statements),</span>
+<span class="fc" id="L107">                    part.questionProposals(), part.preservedQuestionIds(), part.uncoveredSourceRefs(), part.conflictCandidates()));</span>
+<span class="fc" id="L108">        }</span>
+<span class="fc" id="L109">        var retained = new LinkedHashMap&lt;String, DecisionQuestion&gt;();</span>
+<span class="fc" id="L110">        input.openDecisions().forEach(q -&gt; addQuestion(retained, q));</span>
+<span class="fc" id="L111">        input.children().forEach(c -&gt; c.questionProposals().forEach(q -&gt; addQuestion(retained, q)));</span>
+<span class="fc" id="L112">        String context = input.nodeDescription();</span>
+<span class="fc" id="L113">        ObjectNode description = description(context);</span>
+<span class="pc bpc" id="L114" title="1 of 4 branches missed.">        if (description != null &amp;&amp; description.path(&quot;terminalContributions&quot;).isArray()) {</span>
+            // Archive and group checkpoints retain the full terminal descriptions.
+<span class="fc" id="L116">            var terminalIds = description.putArray(&quot;groupedTerminalIds&quot;);</span>
+<span class="fc" id="L117">            description.path(&quot;terminalContributions&quot;).forEach(n -&gt; {</span>
+<span class="pc bpc" id="L118" title="1 of 2 branches missed.">                if (n.has(&quot;id&quot;)) terminalIds.add(n.path(&quot;id&quot;));</span>
+<span class="nc bnc" id="L119" title="All 2 branches missed.">                else if (n.has(&quot;code&quot;)) terminalIds.add(n.path(&quot;code&quot;));</span>
+<span class="fc" id="L120">            });</span>
+<span class="fc" id="L121">            description.putArray(&quot;terminalContributions&quot;);</span>
+<span class="fc" id="L122">            context = json.writeValueAsString(description);</span>
+        }
+<span class="fc" id="L124">        return copy(input, context, children, List.copyOf(retained.values()), AGGREGATE_CONTRACT);</span>
+    }
+
+    NodeSynthesisResult combine(NodeSynthesisInput input, List&lt;NodeSynthesisResult&gt; parts, NodeSynthesisResult aggregate) {
+<span class="fc" id="L128">        var statements = new LinkedHashMap&lt;String, Statement&gt;();</span>
+<span class="fc" id="L129">        var questions = new LinkedHashMap&lt;String, DecisionQuestion&gt;();</span>
+<span class="fc" id="L130">        var uncovered = new LinkedHashSet&lt;Statement.SourceSpan&gt;();</span>
+<span class="fc" id="L131">        var conflicts = new LinkedHashSet&lt;ValidationReport.Finding&gt;();</span>
+<span class="fc" id="L132">        var results = new ArrayList&lt;&gt;(parts); results.add(aggregate);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        for (NodeSynthesisResult result : results) {</span>
+<span class="fc bfc" id="L134" title="All 2 branches covered.">            for (Statement statement : result.statementProposals()) {</span>
+<span class="fc" id="L135">                var previous = statements.putIfAbsent(statement.id(), statement);</span>
+<span class="pc bpc" id="L136" title="3 of 4 branches missed.">                if (previous != null &amp;&amp; !previous.equals(statement)) throw new IllegalArgumentException(&quot;Conflicting grouped statement identity&quot;);</span>
+<span class="fc" id="L137">            }</span>
+<span class="fc" id="L138">            result.questionProposals().forEach(q -&gt; addQuestion(questions, q));</span>
+<span class="fc" id="L139">            uncovered.addAll(result.uncoveredSourceRefs()); conflicts.addAll(result.conflictCandidates());</span>
+<span class="fc" id="L140">        }</span>
+<span class="fc" id="L141">        var preservedStatements = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L142">        var preservedQuestions = new LinkedHashSet&lt;String&gt;();</span>
+<span class="fc" id="L143">        input.directContributions().forEach(s -&gt; preservedStatements.add(s.id()));</span>
+<span class="pc" id="L144">        input.openDecisions().forEach(q -&gt; preservedQuestions.add(q.id()));</span>
+<span class="fc" id="L145">        input.children().forEach(c -&gt; {</span>
+<span class="fc" id="L146">            c.statementProposals().forEach(s -&gt; preservedStatements.add(s.id())); preservedStatements.addAll(c.preservedStatementIds());</span>
+<span class="fc" id="L147">            c.questionProposals().forEach(q -&gt; preservedQuestions.add(q.id())); preservedQuestions.addAll(c.preservedQuestionIds());</span>
+<span class="fc" id="L148">        });</span>
+<span class="fc" id="L149">        conflicts.add(new ValidationReport.Finding(ValidationReport.Kind.SEMANTIC_REVIEW, &quot;GROUPED_SYNTHESIS&quot;,</span>
+<span class="fc" id="L150">                &quot;Parent composed from &quot; + parts.size() + &quot; bounded sibling groups; full detail evidence remains stored and requires semantic review&quot;,</span>
+<span class="fc" id="L151">                List.of(), List.of()));</span>
+<span class="fc" id="L152">        return new NodeSynthesisResult(input.nodeId(), aggregate.summary(), List.copyOf(statements.values()), List.copyOf(preservedStatements),</span>
+<span class="fc" id="L153">                List.copyOf(questions.values()), List.copyOf(preservedQuestions), List.copyOf(uncovered), List.copyOf(conflicts));</span>
+    }
+
+    private static void addQuestion(Map&lt;String, DecisionQuestion&gt; questions, DecisionQuestion next) {
+<span class="fc" id="L157">        var previous = questions.putIfAbsent(next.id(), next);</span>
+<span class="pc bpc" id="L158" title="3 of 4 branches missed.">        if (previous == null || previous.equals(next)) return;</span>
+        // Identical semantic output can occur in two groups. Keep all discoveries,
+        // but never resolve divergent answers/contracts by last-write-wins.
+<span class="nc" id="L161">        var comparable = new DecisionQuestion(next.id(), next.key(), next.wording(), previous.discoveries(), next.affectedStatementIds(),</span>
+<span class="nc" id="L162">                next.answerSchema(), next.prerequisites(), next.dependentQuestionIds(), next.consequences(), next.state(),</span>
+<span class="nc" id="L163">                next.aliases(), next.origins(), next.sourceResolutions());</span>
+<span class="nc bnc" id="L164" title="All 2 branches missed.">        if (!previous.equals(comparable)) throw new IllegalArgumentException(&quot;Conflicting grouped question identity&quot;);</span>
+<span class="nc" id="L165">        var discoveries = new LinkedHashSet&lt;&gt;(previous.discoveries()); discoveries.addAll(next.discoveries());</span>
+<span class="nc" id="L166">        questions.put(next.id(), new DecisionQuestion(previous.id(), previous.key(), previous.wording(), List.copyOf(discoveries),</span>
+<span class="nc" id="L167">                previous.affectedStatementIds(), previous.answerSchema(), previous.prerequisites(), previous.dependentQuestionIds(),</span>
+<span class="nc" id="L168">                previous.consequences(), previous.state(), previous.aliases(), previous.origins(), previous.sourceResolutions()));</span>
+<span class="nc" id="L169">    }</span>
+
+    private static NodeSynthesisInput copy(NodeSynthesisInput input, String description, List&lt;NodeSynthesisResult&gt; children,
+            List&lt;DecisionQuestion&gt; decisions, String contract) {
+<span class="fc" id="L173">        return new NodeSynthesisInput(input.baseline(), input.nodeId(), input.parentId(), description, input.sourceAnchors(),</span>
+<span class="fc" id="L174">                input.directContributions(), children, input.boundaryEdges(), input.answers(), decisions, input.preservationContract() + contract);</span>
+    }
+    private ObjectNode description(String value) {
+<span class="pc bpc" id="L177" title="1 of 2 branches missed.">        try { JsonNode node = json.readTree(value); return node instanceof ObjectNode object ? object : null; }</span>
+<span class="fc" id="L178">        catch (RuntimeException notStructured) { return null; }</span>
+    }
+<span class="fc" id="L180">    private static IllegalStateException tooLarge() { return new IllegalStateException(&quot;INPUT_TOO_LARGE_FOR_PROVIDER: bounded grouping cannot preserve this context&quot;); }</span>
+<span class="fc" id="L181">    private record Item(NodeSynthesisResult child, JsonNode terminal) {}</span>
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

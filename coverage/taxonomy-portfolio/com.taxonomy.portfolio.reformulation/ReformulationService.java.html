@@ -1,0 +1,345 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationService.java</span></div><h1>ReformulationService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.portfolio.reformulation.ReformulationDtos.*;
+import com.taxonomy.portfolio.service.*;
+import com.taxonomy.portfolio.repository.*;
+import com.taxonomy.reformulation.*;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import java.time.Instant;
+import java.util.*;
+
+/** Dedicated append-only proposal aggregate; never calls addRequirementVersion or analysis. */
+@Service
+public class ReformulationService {
+    private final ProjectPortfolioService projects;
+    private final ProjectRequirementVersionRepository versions;
+    private final RequirementAnalysisSnapshotRepository snapshots;
+    private final PortfolioAnalysisPersistenceService analysis;
+    private final ReformulationBaselineContextPort contextPort;
+    private final ReformulationProposalRepository proposals;
+    private final ReformulationRevisionRepository revisions;
+    private final PortfolioJsonCodec json;
+    private final ReformulationRunRepository runs;
+    private final ReformulationCheckpointStore checkpoints;
+    public ReformulationService(ProjectPortfolioService projects,
+            ProjectRequirementVersionRepository versions,
+            RequirementAnalysisSnapshotRepository snapshots,
+            PortfolioAnalysisPersistenceService analysis,
+            ReformulationBaselineContextPort contextPort,
+            ReformulationProposalRepository proposals,
+            ReformulationRevisionRepository revisions,
+            PortfolioJsonCodec json,
+            ReformulationRunRepository runs,
+<span class="fc" id="L35">            ReformulationCheckpointStore checkpoints) {</span>
+<span class="fc" id="L36">        this.projects = projects;</span>
+<span class="fc" id="L37">        this.versions = versions;</span>
+<span class="fc" id="L38">        this.snapshots = snapshots;</span>
+<span class="fc" id="L39">        this.analysis = analysis;</span>
+<span class="fc" id="L40">        this.contextPort = contextPort;</span>
+<span class="fc" id="L41">        this.proposals = proposals;</span>
+<span class="fc" id="L42">        this.revisions = revisions;</span>
+<span class="fc" id="L43">        this.json = json;</span>
+<span class="fc" id="L44">        this.runs = runs;</span>
+<span class="fc" id="L45">        this.checkpoints = checkpoints;</span>
+<span class="fc" id="L46">    }</span>
+    @Transactional
+    public Proposal create(Long projectId,Long requirementId,CreateRequest request,String actor,WorkspaceContext context) {
+<span class="fc" id="L49">        var requirement=projects.requireRequirement(projectId,requirementId,actor,context);</span>
+<span class="pc bpc" id="L50" title="4 of 8 branches missed.">        if(request==null || request.sourceVersionId()==null || request.snapshotId()==null || request.snapshotId().isBlank())</span>
+<span class="nc" id="L51">            throw PortfolioException.validation(&quot;sourceVersionId and snapshotId are required&quot;);</span>
+<span class="fc" id="L52">        var version=versions.findByIdAndRequirementIdAndScopeKey(request.sourceVersionId(),requirementId,requirement.getScopeKey())</span>
+<span class="fc" id="L53">                .orElseThrow(()-&gt;PortfolioException.notFound(&quot;Source version not found in requirement&quot;));</span>
+<span class="fc" id="L54">        var snapshot=snapshots.findByIdAndProjectIdAndScopeKey(request.snapshotId(),projectId,requirement.getScopeKey())</span>
+<span class="pc" id="L55">                .orElseThrow(()-&gt;PortfolioException.notFound(&quot;Snapshot not found in project&quot;));</span>
+<span class="fc bfc" id="L56" title="All 4 branches covered.">        if(!snapshot.getRequirementId().equals(requirementId) || !snapshot.getRequirementVersionId().equals(version.getId()))</span>
+<span class="fc" id="L57">            throw PortfolioException.conflict(&quot;Snapshot must match the selected requirement version&quot;);</span>
+<span class="pc bpc" id="L58" title="1 of 2 branches missed.">        String language=request.language()==null?&quot;de&quot;:request.language();</span>
+<span class="pc bpc" id="L59" title="3 of 4 branches missed.">        if(!language.equals(&quot;de&quot;) &amp;&amp; !language.equals(&quot;en&quot;)) throw PortfolioException.validation(&quot;language must be de or en&quot;);</span>
+<span class="fc" id="L60">        var detail=analysis.getSnapshot(projectId,snapshot.getId(),actor,context);</span>
+<span class="fc" id="L61">        var content=new TreeMap&lt;&gt;(contextPort.freeze(detail,actor,context));</span>
+<span class="fc" id="L62">        content.put(&quot;project&quot;,json.write(projects.getProject(projectId,actor,context)));</span>
+<span class="fc" id="L63">        content.put(&quot;sourceVersion&quot;,json.write(projects.toVersionView(version)));</span>
+<span class="fc" id="L64">        var scope=new ReformulationBaseline.Scope(PortfolioScope.repositoryId(context),PortfolioScope.workspaceId(context),</span>
+<span class="fc" id="L65">                PortfolioScope.branch(context),projectId,requirementId);</span>
+<span class="fc" id="L66">        var baseline=ReformulationBaseline.freeze(new ReformulationBaseline.Source(scope,version.getId(),version.getText()),</span>
+<span class="fc" id="L67">                new ReformulationBaseline.Snapshot(scope,snapshot.getId(),snapshot.getRequirementVersionId(),snapshot.getAnalysisPayload()),</span>
+                content,language,&quot;reformulation-v1&quot;);
+<span class="fc" id="L69">        String id=UUID.randomUUID().toString();Instant now=Instant.now();String author=PortfolioScope.username(actor,context);</span>
+<span class="fc" id="L70">        var proposal=new ReformulationProposal(id,requirement.getScopeKey(),projectId,requirementId,version.getId(),snapshot.getId(),json.write(baseline),author,now);</span>
+<span class="fc" id="L71">        proposals.saveAndFlush(proposal);</span>
+        // The initial draft deliberately preserves the original verbatim, with no generated claims.
+<span class="fc" id="L73">        saveRevision(proposal,version.getText(),&quot;Initial source-preserving draft&quot;,author,now);</span>
+<span class="fc" id="L74">        return view(proposal);</span>
+    }
+    @Transactional(readOnly=true)
+    public Proposal get(Long projectId,Long requirementId,String id,String actor,WorkspaceContext context) {
+<span class="fc" id="L78">        return view(require(projectId,requirementId,id,actor,context,false));</span>
+    }
+    @Transactional(readOnly=true)
+    public List&lt;ProposalSummary&gt; list(Long projectId,Long requirementId,String actor,WorkspaceContext context) {
+<span class="fc" id="L82">        var requirement=projects.requireRequirement(projectId,requirementId,actor,context);</span>
+<span class="fc" id="L83">        return proposals.findSummaries(projectId, requirementId, requirement.getScopeKey());</span>
+    }
+    @Transactional(readOnly=true)
+    public Revision revision(Long projectId,Long requirementId,String id,long number,String actor,WorkspaceContext context) {
+<span class="fc" id="L87">        return readRevision(require(projectId,requirementId,id,actor,context,false),number);</span>
+    }
+    @Transactional
+    public Proposal saveDraft(Long projectId,Long requirementId,String id,long expectedRevision,SaveDraftRequest request,String actor,WorkspaceContext context) {
+<span class="fc" id="L91">        var proposal=require(projectId,requirementId,id,actor,context,true);</span>
+<span class="fc bfc" id="L92" title="All 2 branches covered.">        if(proposal.getCurrentRevision()!=expectedRevision) throw new ReformulationPreconditionException();</span>
+<span class="pc bpc" id="L93" title="5 of 10 branches missed.">        if(request==null || request.text()==null || request.text().isBlank() || request.rationale()==null || request.rationale().isBlank())</span>
+<span class="nc" id="L94">            throw PortfolioException.validation(&quot;Draft text and rationale are required&quot;);</span>
+<span class="pc bpc" id="L95" title="1 of 2 branches missed.">        if(request.rationale().length()&gt;1000) throw PortfolioException.validation(&quot;Rationale exceeds 1000 characters&quot;);</span>
+<span class="fc" id="L96">        var previous=readRevision(proposal,proposal.getCurrentRevision());</span>
+<span class="fc" id="L97">        proposal.advanceRevision();</span>
+<span class="fc" id="L98">        var statements=new ArrayList&lt;&gt;(previous.statements());</span>
+<span class="fc" id="L99">        statements.add(new Statement(&quot;human-&quot;+UUID.randomUUID(),request.text(),List.of(),Statement.Provenance.HUMAN_DECISION,</span>
+<span class="fc" id="L100">                List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,&quot;UNREVIEWED&quot;));</span>
+<span class="fc" id="L101">        var editQuestion=new DecisionQuestion(&quot;document-edit&quot;,new DecisionQuestion.Key(&quot;document&quot;,&quot;edit&quot;,&quot;GLOBAL&quot;),&quot;Human document edit&quot;,List.of(),</span>
+<span class="fc" id="L102">                previous.statements().stream().map(Statement::id).toList(),new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),&quot;Recheck all sections&quot;,DecisionQuestion.State.ANSWERED);</span>
+<span class="fc" id="L103">        var impact=ReformulationQuestionService.impact(previous,editQuestion,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));</span>
+<span class="fc" id="L104">        var revision=new Revision(proposal.getCurrentRevision(),previous.number(),request.text(),previous.sections(),statements,</span>
+<span class="fc" id="L105">                previous.questions(),previous.answers(),previous.validation(),PortfolioScope.username(actor,context),Instant.now(),request.rationale(),impact,previous.variantOrigin());</span>
+<span class="fc" id="L106">        revisions.save(new ReformulationRevision(proposal.getId(),proposal.getScopeKey(),revision.number(),json.write(revision)));</span>
+<span class="fc" id="L107">        return view(proposal);</span>
+    }
+    @Transactional
+    public Proposal answer(Long projectId,Long requirementId,String id,long expected,AnswerRequest request,String actor,WorkspaceContext context) {
+<span class="fc" id="L111">        var proposal=require(projectId,requirementId,id,actor,context,true);</span>
+<span class="fc bfc" id="L112" title="All 2 branches covered.">        if(proposal.getCurrentRevision()!=expected) throw new ReformulationPreconditionException();</span>
+<span class="fc" id="L113">        var previous=readRevision(proposal,expected);</span>
+<span class="fc" id="L114">        var next=ReformulationQuestionService.answer(id,previous,request,PortfolioScope.username(actor,context),json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));</span>
+<span class="fc" id="L115">        proposal.advanceRevision();</span>
+<span class="fc" id="L116">        revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),next.number(),json.write(next)));</span>
+<span class="fc" id="L117">        return view(proposal);</span>
+    }
+    @Transactional
+    public Proposal statement(Long projectId,Long requirementId,String id,long expected,String statementId,StatementRequest request,String actor,WorkspaceContext context) {
+<span class="fc" id="L121">        var proposal=require(projectId,requirementId,id,actor,context,true);</span>
+<span class="pc bpc" id="L122" title="1 of 2 branches missed.">        if(proposal.getCurrentRevision()!=expected) throw new ReformulationPreconditionException();</span>
+<span class="pc bpc" id="L123" title="1 of 2 branches missed.">        if(request==null)throw PortfolioException.validation(&quot;Statement operation required&quot;);</span>
+<span class="fc" id="L124">        ReformulationQuestionService.rationale(request.rationale());</span>
+<span class="fc" id="L125">        var previous=readRevision(proposal,expected);</span>
+<span class="pc" id="L126">        var old=previous.statements().stream().filter(s-&gt;s.id().equals(statementId)).findFirst().orElseThrow(()-&gt;PortfolioException.notFound(&quot;Statement not found&quot;));</span>
+<span class="fc" id="L127">        boolean reject=&quot;REJECT&quot;.equals(request.action());</span>
+<span class="pc bpc" id="L128" title="1 of 4 branches missed.">        if(!reject &amp;&amp; !&quot;EDIT&quot;.equals(request.action()))throw PortfolioException.validation(&quot;Invalid statement operation&quot;);</span>
+<span class="pc bpc" id="L129" title="1 of 4 branches missed.">        if(reject &amp;&amp; old.provenance()==Statement.Provenance.ORIGINAL)throw PortfolioException.validation(&quot;Original source cannot be rejected&quot;);</span>
+<span class="pc bpc" id="L130" title="2 of 6 branches missed.">        if(!reject &amp;&amp; (request.text()==null || request.text().isBlank()))throw PortfolioException.validation(&quot;Statement text required&quot;);</span>
+<span class="fc bfc" id="L131" title="All 2 branches covered.">        var updated=new Statement(old.id(),reject?old.wording():request.text(),old.sourceSpans(),old.provenance(),old.architectureLinks(),</span>
+<span class="fc bfc" id="L132" title="All 2 branches covered.">                old.questionDependencies(),old.conditionalValidity(),Statement.EditingOrigin.HUMAN,reject?&quot;REJECTED&quot;:&quot;UNREVIEWED&quot;);</span>
+<span class="fc bfc" id="L133" title="All 2 branches covered.">        var statements=previous.statements().stream().map(s-&gt;s.id().equals(statementId)?updated:s).toList();</span>
+<span class="fc" id="L134">        var question=new DecisionQuestion(&quot;edit-&quot;+statementId,new DecisionQuestion.Key(statementId,&quot;edit&quot;,&quot;local&quot;),&quot;Human statement operation&quot;,List.of(),List.of(statementId),</span>
+<span class="fc" id="L135">                new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),&quot;Review affected architecture&quot;,DecisionQuestion.State.ANSWERED);</span>
+<span class="fc" id="L136">        var impact=ReformulationQuestionService.impact(previous,question,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class));</span>
+        // Recompose by stable IDs only when the entire flat layout can be proven and the
+        // selected wording is unambiguous. Never replace matching substrings in manual prose.
+<span class="fc" id="L139">        String canonical = String.join(&quot;\n\n&quot;, previous.statements().stream()</span>
+<span class="pc bpc" id="L140" title="1 of 2 branches missed.">                .filter(s -&gt; !&quot;REJECTED&quot;.equals(s.reviewState())).map(Statement::wording).toList());</span>
+<span class="fc" id="L141">        int first = previous.text().indexOf(old.wording());</span>
+<span class="pc bpc" id="L142" title="2 of 4 branches missed.">        boolean mapped = !&quot;REJECTED&quot;.equals(old.reviewState()) &amp;&amp; !old.wording().isEmpty()</span>
+<span class="pc bpc" id="L143" title="1 of 4 branches missed.">                &amp;&amp; previous.text().equals(canonical) &amp;&amp; first &gt;= 0</span>
+<span class="fc bfc" id="L144" title="All 2 branches covered.">                &amp;&amp; previous.text().indexOf(old.wording(), first + 1) &lt; 0;</span>
+<span class="fc" id="L145">        var findings = new ArrayList&lt;&gt;(previous.validation().findings());</span>
+<span class="pc bnc" id="L146" title="All 2 branches missed.">        findings.removeIf(f -&gt; f.code().equals(&quot;STATEMENT_TEXT_CONFLICT&quot;)</span>
+<span class="nc bnc" id="L147" title="All 2 branches missed.">                &amp;&amp; f.statementIds().equals(List.of(statementId)));</span>
+<span class="fc" id="L148">        String text = previous.text();</span>
+<span class="fc bfc" id="L149" title="All 2 branches covered.">        if (mapped) {</span>
+<span class="fc" id="L150">            text = String.join(&quot;\n\n&quot;, statements.stream()</span>
+<span class="fc bfc" id="L151" title="All 2 branches covered.">                    .filter(s -&gt; !&quot;REJECTED&quot;.equals(s.reviewState())).map(Statement::wording).toList());</span>
+        } else {
+<span class="fc" id="L153">            findings.add(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT, &quot;STATEMENT_TEXT_CONFLICT&quot;,</span>
+                    &quot;Statement changed by ID; document wording was retained because its mapping is ambiguous or manually edited&quot;,
+<span class="fc" id="L155">                    List.of(statementId), old.sourceSpans()));</span>
+        }
+<span class="fc" id="L157">        var next=new Revision(expected+1,expected,text,previous.sections(),statements,previous.questions(),previous.answers(),new ValidationReport(findings),</span>
+<span class="fc" id="L158">                PortfolioScope.username(actor,context),Instant.now(),request.rationale(),impact,previous.variantOrigin());</span>
+<span class="fc" id="L159">        proposal.advanceRevision();revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),next.number(),json.write(next)));</span>
+<span class="fc" id="L160">        return view(proposal);</span>
+    }
+    @Transactional
+    public Proposal variant(Long projectId,Long requirementId,String id,long expected,VariantRequest request,String actor,WorkspaceContext context) {
+<span class="fc" id="L164">        var original=require(projectId,requirementId,id,actor,context,true);</span>
+<span class="pc bpc" id="L165" title="1 of 2 branches missed.">        if(original.getCurrentRevision()!=expected)throw new ReformulationPreconditionException();</span>
+<span class="pc bpc" id="L166" title="1 of 2 branches missed.">        if(request==null)throw PortfolioException.validation(&quot;Variant rationale required&quot;);</span>
+<span class="fc" id="L167">        ReformulationQuestionService.rationale(request.rationale());</span>
+<span class="fc" id="L168">        var baseline=json.read(original.getBaselinePayload(),ReformulationBaseline.class);var previous=readRevision(original,expected);</span>
+<span class="fc" id="L169">        String author=PortfolioScope.username(actor,context);var now=Instant.now();</span>
+<span class="fc" id="L170">        var variant=new ReformulationProposal(UUID.randomUUID().toString(),original.getScopeKey(),projectId,requirementId,baseline.sourceVersionId(),baseline.snapshotId(),original.getBaselinePayload(),author,now);</span>
+<span class="fc" id="L171">        proposals.saveAndFlush(variant);</span>
+<span class="fc" id="L172">        var revision=new Revision(1,null,previous.text(),previous.sections(),previous.statements(),previous.questions(),previous.answers(),previous.validation(),author,now,request.rationale(),previous.impact(),new VariantOrigin(id,expected));</span>
+<span class="fc" id="L173">        revisions.save(new ReformulationRevision(variant.getId(),variant.getScopeKey(),1,json.write(revision)));</span>
+<span class="fc" id="L174">        return view(variant);</span>
+    }
+    @Transactional
+    public Run beginRun(Long projectId,Long requirementId,String id,long expectedRevision,String provider,String model,
+            String promptVersion,String schemaVersion,String promptContent,String actor,WorkspaceContext context) {
+<span class="fc" id="L179">        return beginRun(projectId,requirementId,id,expectedRevision,provider,model,promptVersion,schemaVersion,promptContent,Map.of(),actor,context);</span>
+    }
+    @Transactional
+    public Run beginRun(Long projectId,Long requirementId,String id,long expectedRevision,String provider,String model,
+            String promptVersion,String schemaVersion,String promptContent,Map&lt;String,String&gt; reconcileContext,String actor,WorkspaceContext context) {
+<span class="fc" id="L184">        var proposal=require(projectId,requirementId,id,actor,context,true);</span>
+<span class="pc bpc" id="L185" title="1 of 2 branches missed.">        if(proposal.getCurrentRevision()!=expectedRevision) throw new ReformulationPreconditionException();</span>
+<span class="fc" id="L186">        boolean active=runs.findByProposalIdAndScopeKey(id,proposal.getScopeKey()).stream()</span>
+<span class="fc" id="L187">                .map(r-&gt;json.read(r.getPayload(),Run.class)).anyMatch(r-&gt;Set.of(&quot;QUEUED&quot;,&quot;RUNNING&quot;).contains(r.status()));</span>
+<span class="pc bpc" id="L188" title="1 of 2 branches missed.">        if(active) throw PortfolioException.conflict(&quot;Cancel the active synthesis run before starting another run&quot;);</span>
+<span class="fc" id="L189">        var run=new Run(UUID.randomUUID().toString(),id,expectedRevision,&quot;QUEUED&quot;,provider,model,promptVersion,schemaVersion,promptContent,</span>
+<span class="fc" id="L190">                null,null,null,PortfolioScope.username(actor,context),Instant.now(),reconcileContext);</span>
+<span class="fc" id="L191">        runs.saveAndFlush(new ReformulationRun(run.id(),id,proposal.getScopeKey(),json.write(run)));</span>
+<span class="fc" id="L192">        return run;</span>
+    }
+    @Transactional(readOnly=true)
+    public List&lt;Run&gt; runs(Long projectId,Long requirementId,String id,String actor,WorkspaceContext context) {
+<span class="fc" id="L196">        var proposal=require(projectId,requirementId,id,actor,context,false);</span>
+<span class="fc" id="L197">        return runs.findByProposalIdAndScopeKey(id,proposal.getScopeKey()).stream().map(r-&gt;json.read(r.getPayload(),Run.class))</span>
+<span class="fc" id="L198">                .sorted(Comparator.comparing(Run::createdAt)).toList();</span>
+    }
+    @Transactional
+    public void running(Long projectId,Long requirementId,String id,String runId,String actor,WorkspaceContext context) {
+<span class="fc" id="L202">        var proposal=require(projectId,requirementId,id,actor,context,true);var entity=run(proposal,runId);</span>
+<span class="fc" id="L203">        var old=json.read(entity.getPayload(),Run.class);</span>
+<span class="pc bpc" id="L204" title="1 of 2 branches missed.">        if(!old.status().equals(&quot;QUEUED&quot;)) throw PortfolioException.conflict(&quot;Run is not queued&quot;);</span>
+<span class="fc" id="L205">        entity.setPayload(json.write(state(old,&quot;RUNNING&quot;,null,null,null)));</span>
+<span class="fc" id="L206">    }</span>
+    /** Active-run authority is checked even on cache hits; no provider calls enter this transaction. */
+    @Transactional
+    public Optional&lt;String&gt; checkpoint(Long projectId,Long requirementId,String id,String runId,String kind,String fingerprint,String actor,WorkspaceContext context) {
+<span class="fc" id="L210">        var proposal=require(projectId,requirementId,id,actor,context,true);</span>
+<span class="fc" id="L211">        requireActiveRun(proposal,runId);</span>
+<span class="fc" id="L212">        return checkpoints.lookup(proposal,kind,fingerprint);</span>
+    }
+    @Transactional
+    public String completeCheckpoint(Long projectId,Long requirementId,String id,String runId,String kind,String fingerprint,String payload,String actor,WorkspaceContext context) {
+<span class="fc" id="L216">        var proposal=require(projectId,requirementId,id,actor,context,true);</span>
+<span class="fc" id="L217">        requireActiveRun(proposal,runId);</span>
+<span class="fc" id="L218">        return checkpoints.complete(proposal,runId,kind,fingerprint,payload);</span>
+    }
+    private void requireActiveRun(ReformulationProposal proposal,String runId) {
+<span class="fc bfc" id="L221" title="All 2 branches covered.">        if(!&quot;RUNNING&quot;.equals(json.read(run(proposal,runId).getPayload(),Run.class).status()))</span>
+<span class="fc" id="L222">            throw PortfolioException.conflict(&quot;REFORMULATION_RUN_NOT_ACTIVE&quot;);</span>
+<span class="fc" id="L223">    }</span>
+    /** Cancellation is explicit and idempotent. Late workers cannot publish or persist more checkpoints. */
+    @Transactional
+    public Run cancelRun(Long projectId,Long requirementId,String id,String runId,long expectedRevision,String actor,WorkspaceContext context) {
+<span class="fc" id="L227">        var proposal=require(projectId,requirementId,id,actor,context,true);</span>
+<span class="fc bfc" id="L228" title="All 2 branches covered.">        if(proposal.getCurrentRevision()!=expectedRevision) throw new ReformulationPreconditionException();</span>
+<span class="fc" id="L229">        var entity=run(proposal,runId);var old=json.read(entity.getPayload(),Run.class);</span>
+<span class="fc bfc" id="L230" title="All 2 branches covered.">        if(!Set.of(&quot;QUEUED&quot;,&quot;RUNNING&quot;).contains(old.status())) return old;</span>
+<span class="fc" id="L231">        var cancelled=state(old,&quot;CANCELLED&quot;,null,null,null);</span>
+<span class="fc" id="L232">        entity.recordCancellation(PortfolioScope.username(actor,context),Instant.now());</span>
+<span class="fc" id="L233">        entity.setPayload(json.write(cancelled));return cancelled;</span>
+    }
+    @Transactional
+    public void finishRun(Long projectId,Long requirementId,String id,String runId,ReformulationDocument document,String failureCode,String actor,WorkspaceContext context) {
+<span class="fc" id="L237">        var proposal=require(projectId,requirementId,id,actor,context,true);var entity=run(proposal,runId);</span>
+<span class="fc" id="L238">        var old=json.read(entity.getPayload(),Run.class);</span>
+<span class="pc bpc" id="L239" title="1 of 4 branches missed.">        if(!old.status().equals(&quot;RUNNING&quot;) &amp;&amp; !old.status().equals(&quot;QUEUED&quot;)) return;</span>
+<span class="fc bfc" id="L240" title="All 2 branches covered.">        if(document==null) {entity.setPayload(json.write(state(old,&quot;FAILED&quot;,failureCode,null,null)));return;}</span>
+<span class="fc" id="L241">        var previous=readRevision(proposal,proposal.getCurrentRevision());</span>
+<span class="fc bfc" id="L242" title="All 2 branches covered.">        boolean human=previous.statements().stream().anyMatch(s-&gt;s.editingOrigin()==Statement.EditingOrigin.HUMAN);</span>
+<span class="fc bfc" id="L243" title="All 4 branches covered.">        if(previous.number()!=old.sourceRevision() || human) {</span>
+<span class="pc bpc" id="L244" title="1 of 2 branches missed.">            entity.setPayload(json.write(state(old,&quot;PARTIAL&quot;,human?&quot;MANUAL_DRAFT_PROTECTED&quot;:&quot;PROPOSAL_REVISION_CHANGED&quot;,null,document)));return;</span>
+        }
+<span class="fc bfc" id="L246" title="All 2 branches covered.">        if(!hasClosedReferences(document,previous,json.read(proposal.getBaselinePayload(),ReformulationBaseline.class))) {</span>
+<span class="fc" id="L247">            entity.setPayload(json.write(state(old,&quot;PARTIAL&quot;,&quot;INVALID_REFERENCE_CLOSURE&quot;,null,document)));return;</span>
+        }
+<span class="fc" id="L249">        proposal.advanceRevision();</span>
+<span class="fc" id="L250">        var revision=new Revision(proposal.getCurrentRevision(),previous.number(),document.text(),document.sections(),document.statements(),</span>
+<span class="fc" id="L251">                document.questions(),previous.answers(),document.validation(),old.actor(),Instant.now(),&quot;Generated requirement offer; not adopted or approved&quot;,ReformulationImpact.empty(),previous.variantOrigin());</span>
+<span class="fc" id="L252">        revisions.save(new ReformulationRevision(id,proposal.getScopeKey(),revision.number(),json.write(revision)));</span>
+<span class="fc" id="L253">        entity.setPayload(json.write(state(old,&quot;COMPLETED&quot;,null,revision.number(),document)));</span>
+<span class="fc" id="L254">    }</span>
+    /** Publication boundary: references resolve within this exact immutable candidate revision. */
+    private static boolean hasClosedReferences(ReformulationDocument document,Revision previous,ReformulationBaseline baseline) {
+<span class="fc" id="L257">        var statements=new HashMap&lt;String,Statement&gt;();</span>
+<span class="pc bpc" id="L258" title="1 of 4 branches missed.">        for(var statement:document.statements()) if(statements.put(statement.id(),statement)!=null) return false;</span>
+<span class="fc" id="L259">        var questions=new HashMap&lt;String,DecisionQuestion&gt;();</span>
+<span class="fc bfc" id="L260" title="All 2 branches covered.">        for(var question:document.questions()) {</span>
+<span class="pc bpc" id="L261" title="2 of 4 branches missed.">            if(question.id()==null || question.id().isBlank())return false;</span>
+<span class="pc bpc" id="L262" title="3 of 8 branches missed.">            for(String ref:question.referenceIds())if(ref==null || ref.isBlank() || questions.put(ref,question)!=null)return false;</span>
+<span class="fc bfc" id="L263" title="All 4 branches covered.">            for(String alias:question.aliases())if(question.origins().stream().noneMatch(o-&gt;o.id().equals(alias)))return false;</span>
+<span class="fc bfc" id="L264" title="All 2 branches covered.">            for(var origin:question.origins()) {</span>
+<span class="fc" id="L265">                var previousForm=new DecisionQuestion(origin.id(),origin.key(),origin.wording(),origin.discoveries(),origin.affectedStatementIds(),origin.answerSchema(),origin.prerequisites(),origin.dependentQuestionIds(),origin.consequences(),origin.state());</span>
+<span class="pc bpc" id="L266" title="1 of 2 branches missed.">                if(!question.retains(previousForm))return false;</span>
+<span class="fc" id="L267">            }</span>
+<span class="fc bfc" id="L268" title="All 2 branches covered.">            for(var resolution:question.sourceResolutions()) {</span>
+<span class="pc bpc" id="L269" title="4 of 8 branches missed.">                if(resolution.sourceSpans().isEmpty() || resolution.values().isEmpty() || resolution.rationale()==null || resolution.rationale().isBlank()</span>
+<span class="pc bpc" id="L270" title="2 of 4 branches missed.">                        || resolution.sourceSpans().stream().anyMatch(span-&gt;!span.matches(baseline.originalText()))</span>
+<span class="pc bpc" id="L271" title="3 of 4 branches missed.">                        || question.state()!=DecisionQuestion.State.ANSWERED &amp;&amp; question.state()!=DecisionQuestion.State.CONFLICT)return false;</span>
+<span class="fc" id="L272">            }</span>
+<span class="fc" id="L273">        }</span>
+<span class="fc" id="L274">        var sections=new HashSet&lt;String&gt;();</span>
+<span class="pc bpc" id="L275" title="3 of 8 branches missed.">        for(var section:document.sections()) if(section.id()==null || section.id().isBlank() || !sections.add(section.id())) return false;</span>
+<span class="pc bpc" id="L276" title="1 of 4 branches missed.">        for(var statement:statements.values()) if(!questions.keySet().containsAll(statement.questionDependencies())) return false;</span>
+<span class="fc bfc" id="L277" title="All 2 branches covered.">        for(var question:questions.values()) {</span>
+<span class="pc bpc" id="L278" title="1 of 4 branches missed.">            if(!statements.keySet().containsAll(question.affectedStatementIds()) || !questions.keySet().containsAll(question.prerequisites())</span>
+<span class="pc bpc" id="L279" title="1 of 2 branches missed.">                    || !questions.keySet().containsAll(question.dependentQuestionIds())) return false;</span>
+<span class="fc bfc" id="L280" title="All 2 branches covered.">            for(var condition:question.answerSchema().applicability()) {</span>
+<span class="fc" id="L281">                var prerequisite=questions.get(condition.questionId());</span>
+<span class="pc bpc" id="L282" title="3 of 8 branches missed.">                if(prerequisite==null || prerequisite.id().equals(question.id()) || !question.prerequisites().contains(condition.questionId()) || condition.anyOf().isEmpty())return false;</span>
+<span class="pc bpc" id="L283" title="1 of 2 branches missed.">                var allowed=prerequisite.answerSchema().kind()==DecisionQuestion.AnswerSchema.Kind.BOOLEAN?List.of(&quot;true&quot;,&quot;false&quot;):prerequisite.answerSchema().options();</span>
+<span class="pc bpc" id="L284" title="1 of 2 branches missed.">                if(!allowed.containsAll(condition.anyOf()))return false;</span>
+<span class="fc" id="L285">            }</span>
+<span class="fc" id="L286">        }</span>
+<span class="fc bfc" id="L287" title="All 2 branches covered.">        for(var section:document.sections()) {</span>
+<span class="pc bpc" id="L288" title="2 of 4 branches missed.">            if(!sections.containsAll(section.children()) || !statements.keySet().containsAll(section.statementIds())</span>
+<span class="pc bpc" id="L289" title="1 of 2 branches missed.">                    || !questions.keySet().containsAll(section.questionIds())) return false;</span>
+<span class="fc" id="L290">        }</span>
+<span class="pc bpc" id="L291" title="1 of 4 branches missed.">        for(var answer:previous.answers()) if(!questions.containsKey(answer.questionId())) return false;</span>
+<span class="pc bpc" id="L292" title="1 of 4 branches missed.">        for(var finding:document.validation().findings()) if(!statements.keySet().containsAll(finding.statementIds())) return false;</span>
+<span class="fc bfc" id="L293" title="All 2 branches covered.">        for(var node:document.nodeResults()) {</span>
+<span class="pc bpc" id="L294" title="2 of 4 branches missed.">            if(!statements.keySet().containsAll(node.preservedStatementIds()) || !questions.keySet().containsAll(node.preservedQuestionIds())) return false;</span>
+<span class="pc bpc" id="L295" title="1 of 4 branches missed.">            for(var statement:node.statementProposals()) if(!statement.equals(statements.get(statement.id()))) return false;</span>
+<span class="pc bpc" id="L296" title="1 of 4 branches missed.">            for(var question:node.questionProposals()) if(!question.equals(questions.get(question.id()))) return false;</span>
+<span class="pc bpc" id="L297" title="1 of 4 branches missed.">            for(var finding:node.conflictCandidates()) if(!statements.keySet().containsAll(finding.statementIds())) return false;</span>
+<span class="fc" id="L298">        }</span>
+        // A retained question cannot silently change meaning or point at rewritten old evidence.
+<span class="fc" id="L300">        var previousStatements=new HashMap&lt;String,Statement&gt;();previous.statements().forEach(s-&gt;previousStatements.put(s.id(),s));</span>
+<span class="pc bpc" id="L301" title="1 of 4 branches missed.">        for(var evidence:previous.statements())if(!evidence.equals(statements.get(evidence.id())))return false;</span>
+<span class="fc bfc" id="L302" title="All 2 branches covered.">        for(var question:previous.questions()) {</span>
+<span class="fc" id="L303">            var retained=questions.get(question.id());</span>
+<span class="pc bpc" id="L304" title="1 of 4 branches missed.">            if(retained==null || !retained.retains(question)) return false;</span>
+<span class="pc bpc" id="L305" title="3 of 6 branches missed.">            if(question.state()==DecisionQuestion.State.ANSWERED &amp;&amp; retained.state()!=DecisionQuestion.State.ANSWERED &amp;&amp; retained.state()!=DecisionQuestion.State.CONFLICT)return false;</span>
+<span class="pc bpc" id="L306" title="3 of 4 branches missed.">            if(question.state()==DecisionQuestion.State.CONFLICT &amp;&amp; retained.state()!=DecisionQuestion.State.CONFLICT)return false;</span>
+<span class="pc bpc" id="L307" title="2 of 6 branches missed.">            if(question.state()==DecisionQuestion.State.NOT_APPLICABLE &amp;&amp; retained.state()!=DecisionQuestion.State.NOT_APPLICABLE &amp;&amp; retained.state()!=DecisionQuestion.State.CONFLICT)return false;</span>
+<span class="pc bpc" id="L308" title="5 of 6 branches missed.">            if(question.state()==DecisionQuestion.State.DEFERRED &amp;&amp; retained.state()!=DecisionQuestion.State.DEFERRED &amp;&amp; retained.state()!=DecisionQuestion.State.CONFLICT</span>
+<span class="nc bnc" id="L309" title="All 4 branches missed.">                    &amp;&amp; !(retained.state()==DecisionQuestion.State.ANSWERED &amp;&amp; !retained.sourceResolutions().isEmpty()))return false;</span>
+<span class="fc bfc" id="L310" title="All 2 branches covered.">            for(String id:question.affectedStatementIds()) {</span>
+<span class="fc" id="L311">                var evidence=previousStatements.get(id);</span>
+<span class="pc bpc" id="L312" title="2 of 4 branches missed.">                if(evidence==null || !evidence.equals(statements.get(id))) return false;</span>
+<span class="fc" id="L313">            }</span>
+<span class="fc" id="L314">        }</span>
+<span class="fc" id="L315">        return true;</span>
+    }
+    private ReformulationRun run(ReformulationProposal proposal,String runId) {
+<span class="pc" id="L318">        return runs.lockScoped(runId,proposal.getId(),proposal.getScopeKey()).orElseThrow(()-&gt;PortfolioException.notFound(&quot;Synthesis run not found&quot;));</span>
+    }
+    private static Run state(Run old,String status,String failure,Long revision,ReformulationDocument candidate) {
+<span class="fc" id="L321">        return new Run(old.id(),old.proposalId(),old.sourceRevision(),status,old.provider(),old.model(),old.promptVersion(),old.schemaVersion(),old.promptContent(),failure,revision,candidate,old.actor(),old.createdAt(),old.reconcileContext());</span>
+    }
+    private void saveRevision(ReformulationProposal proposal,String text,String rationale,String actor,Instant now) {
+<span class="fc" id="L324">        long number=proposal.getCurrentRevision();</span>
+        // No particular source span was evaluated. The exact original is retained once in the baseline.
+<span class="fc" id="L326">        var validation=new ValidationReport(List.of(new ValidationReport.Finding(ValidationReport.Kind.UNMAPPED_SOURCE,</span>
+<span class="fc" id="L327">                &quot;NOT_SYNTHESIZED&quot;,&quot;Source coverage has not been evaluated&quot;,List.of(),List.of())));</span>
+<span class="pc bpc" id="L328" title="1 of 2 branches missed.">        var revision=new Revision(number,number==1?null:number-1,text,List.of(),List.of(),List.of(),List.of(),validation,actor,now,rationale);</span>
+<span class="fc" id="L329">        revisions.save(new ReformulationRevision(proposal.getId(),proposal.getScopeKey(),number,json.write(revision)));</span>
+<span class="fc" id="L330">    }</span>
+    private ReformulationProposal require(Long projectId,Long requirementId,String id,String actor,WorkspaceContext context,boolean lock) {
+<span class="fc" id="L332">        projects.requireRequirement(projectId,requirementId,actor,context);</span>
+<span class="fc" id="L333">        String scope=PortfolioScope.key(actor,context);</span>
+<span class="fc bfc" id="L334" title="All 2 branches covered.">        return (lock?proposals.lockScoped(id,projectId,requirementId,scope):proposals.findByIdAndProjectIdAndRequirementIdAndScopeKey(id,projectId,requirementId,scope))</span>
+<span class="fc" id="L335">                .orElseThrow(()-&gt;PortfolioException.notFound(&quot;Reformulation proposal not found&quot;));</span>
+    }
+    private Revision readRevision(ReformulationProposal proposal,long number) {
+<span class="fc" id="L338">        return json.read(revisions.findByProposalIdAndNumberAndScopeKey(proposal.getId(),number,proposal.getScopeKey())</span>
+<span class="fc" id="L339">                .orElseThrow(()-&gt;PortfolioException.notFound(&quot;Proposal revision not found&quot;)).getPayload(),Revision.class);</span>
+    }
+    private Proposal view(ReformulationProposal proposal) {
+<span class="fc" id="L342">        return new Proposal(proposal.getId(),json.read(proposal.getBaselinePayload(),ReformulationBaseline.class),proposal.getCreatedBy(),proposal.getCreatedAt(),&quot;SAVED&quot;,readRevision(proposal,proposal.getCurrentRevision()));</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>

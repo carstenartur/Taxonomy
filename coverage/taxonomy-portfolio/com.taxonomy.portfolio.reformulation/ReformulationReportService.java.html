@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd"><html xmlns="http://www.w3.org/1999/xhtml" lang="en"><head><meta http-equiv="Content-Type" content="text/html;charset=UTF-8"/><link rel="stylesheet" href="../../jacoco-resources/report.css" type="text/css"/><link rel="shortcut icon" href="../../jacoco-resources/report.gif" type="image/gif"/><title>ReformulationReportService.java</title><link rel="stylesheet" href="../../jacoco-resources/prettify.css" type="text/css"/><script type="text/javascript" src="../../jacoco-resources/prettify.js"></script></head><body onload="window['PR_TAB_WIDTH']=4;prettyPrint()"><div class="breadcrumb" id="breadcrumb"><span class="info"><a href="../../jacoco-sessions.html" class="el_session">Sessions</a></span><a href="../../index.html" class="el_report">Taxonomy Aggregate Coverage</a> &gt; <a href="../index.html" class="el_bundle">taxonomy-portfolio</a> &gt; <a href="index.source.html" class="el_package">com.taxonomy.portfolio.reformulation</a> &gt; <span class="el_source">ReformulationReportService.java</span></div><h1>ReformulationReportService.java</h1><pre class="source lang-java linenums">package com.taxonomy.portfolio.reformulation;
+
+import com.taxonomy.identity.StableIdentityHash;
+import com.taxonomy.portfolio.service.PortfolioException;
+import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.portfolio.service.PortfolioScope;
+import com.taxonomy.reformulation.ReformulationBaseline;
+import com.taxonomy.workspace.service.WorkspaceContext;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.List;
+import java.util.Objects;
+import java.util.UUID;
+
+/** Reads immutable report material. Never invokes adoption, analysis, generation or Git writes. */
+@Service
+@Transactional(readOnly = true)
+public class ReformulationReportService {
+    private final ReformulationService proposals;
+    private final ReformulationAdoptionService adoptions;
+    private final ReformulationAdoptionRepository receipts;
+    private final PortfolioJsonCodec json;
+
+    public ReformulationReportService(ReformulationService proposals, ReformulationAdoptionService adoptions,
+<span class="fc" id="L26">            ReformulationAdoptionRepository receipts, PortfolioJsonCodec json) {</span>
+<span class="fc" id="L27">        this.proposals = proposals;</span>
+<span class="fc" id="L28">        this.adoptions = adoptions;</span>
+<span class="fc" id="L29">        this.receipts = receipts;</span>
+<span class="fc" id="L30">        this.json = json;</span>
+<span class="fc" id="L31">    }</span>
+
+<span class="fc" id="L33">    public record Source(long projectId, long requirementId, long versionId, String analysisSnapshotId,</span>
+            String language, String originalText, String originalTextHash) {}
+<span class="fc" id="L35">    public record ProposalIdentity(String id, long revision) {}</span>
+<span class="fc" id="L36">    public record Report(String schemaVersion, String kind, String proposalId, Source source, ProposalIdentity proposal,</span>
+            ReformulationDtos.Revision revision, String reviewedText,
+            ReformulationAdoptionDtos.Preview preview, ReformulationAdoptionDtos.Result adoption) {}
+
+    public Report revision(Long projectId, Long requirementId, String proposalId, long number,
+            String actor, WorkspaceContext context) {
+<span class="fc" id="L42">        var offer = proposals.get(projectId, requirementId, proposalId, actor, context);</span>
+<span class="fc bfc" id="L43" title="All 2 branches covered.">        if (number &lt;= 0) throw PortfolioException.validation(&quot;A positive saved revision is required&quot;);</span>
+<span class="fc" id="L44">        var revision = proposals.revision(projectId, requirementId, proposalId, number, actor, context);</span>
+        // Neither current text nor later adoption status belongs in a historical revision export.
+<span class="fc" id="L46">        return new Report(&quot;reformulation-report-v1&quot;, &quot;PROPOSAL_REVISION&quot;, proposalId, source(offer.baseline()),</span>
+<span class="fc" id="L47">                new ProposalIdentity(proposalId, revision.number()), revision,</span>
+<span class="fc" id="L48">                revision.text(), null, null);</span>
+    }
+
+    public Report adoption(Long projectId, Long requirementId, String proposalId, String commandId,
+            String actor, WorkspaceContext context) {
+<span class="fc" id="L53">        var offer = proposals.get(projectId, requirementId, proposalId, actor, context);</span>
+        try {
+<span class="fc bfc" id="L55" title="All 2 branches covered.">            if (!UUID.fromString(commandId).toString().equals(commandId)) throw new IllegalArgumentException();</span>
+<span class="fc" id="L56">        } catch (IllegalArgumentException invalid) {</span>
+<span class="fc" id="L57">            throw PortfolioException.validation(&quot;A canonical adoption command UUID is required&quot;);</span>
+<span class="fc" id="L58">        }</span>
+        // Same scoped identity as the writer; no global command-ID or unbounded history lookup.
+<span class="fc" id="L60">        String scope = PortfolioScope.key(actor, context);</span>
+<span class="fc" id="L61">        String id = StableIdentityHash.sha256(json.write(List.of(scope, commandId)));</span>
+        // Bind physical ownership BEFORE reading possibly inconsistent serialized evidence.
+<span class="fc" id="L63">        var stored = receipts.findByIdAndProposalIdAndRequirementIdAndScopeKey(id, proposalId, requirementId, scope)</span>
+<span class="fc" id="L64">                .orElseThrow(() -&gt; PortfolioException.notFound(&quot;Adoption receipt not found&quot;));</span>
+<span class="fc" id="L65">        var receipt = json.read(stored.getPayload(), ReformulationAdoptionDtos.Result.class);</span>
+<span class="fc bfc" id="L66" title="All 4 branches covered.">        if (!Objects.equals(proposalId, receipt.proposalId()) || !Objects.equals(commandId, receipt.commandId())</span>
+<span class="fc bfc" id="L67" title="All 2 branches covered.">                || !Objects.equals(stored.getPreviewId(), receipt.previewId())</span>
+<span class="fc bfc" id="L68" title="All 2 branches covered.">                || !Objects.equals(stored.getTargetVersionId(), receipt.targetVersionId()))</span>
+<span class="fc" id="L69">            throw PortfolioException.notFound(&quot;Adoption receipt not found&quot;);</span>
+        // readPreview rechecks authorization and the saved payload's integrity hash.
+<span class="fc" id="L71">        var preview = adoptions.readPreview(projectId, requirementId, proposalId, stored.getPreviewId(), actor, context);</span>
+<span class="fc" id="L72">        var content = preview.content();</span>
+<span class="fc" id="L73">        var baseline = offer.baseline();</span>
+<span class="fc bfc" id="L74" title="All 2 branches covered.">        if (!Objects.equals(stored.getPreviewId(), content.id())</span>
+<span class="fc bfc" id="L75" title="All 2 branches covered.">                || !Objects.equals(proposalId, content.proposalId())</span>
+<span class="fc bfc" id="L76" title="All 2 branches covered.">                || !Objects.equals(requirementId, content.currentRequirement().id())</span>
+<span class="fc bfc" id="L77" title="All 2 branches covered.">                || !Objects.equals(projectId, content.currentRequirement().projectId())</span>
+<span class="fc bfc" id="L78" title="All 2 branches covered.">                || receipt.previousVersionId() != content.currentRequirement().currentVersionId()</span>
+<span class="fc bfc" id="L79" title="All 2 branches covered.">                || receipt.proposalRevision() != content.revision().number()</span>
+<span class="fc bfc" id="L80" title="All 2 branches covered.">                || content.sourceVersionId() != baseline.sourceVersionId()</span>
+<span class="fc bfc" id="L81" title="All 2 branches covered.">                || !content.originalText().equals(baseline.originalText())</span>
+<span class="fc bfc" id="L82" title="All 2 branches covered.">                || !content.analysisSnapshotId().equals(baseline.snapshotId()))</span>
+<span class="fc" id="L83">            throw PortfolioException.conflict(&quot;Adoption evidence does not match its immutable source&quot;);</span>
+<span class="fc" id="L84">        return new Report(&quot;reformulation-report-v1&quot;, &quot;ADOPTION_RECEIPT&quot;, proposalId, source(baseline),</span>
+<span class="fc" id="L85">                new ProposalIdentity(proposalId, content.revision().number()), content.revision(),</span>
+<span class="fc" id="L86">                content.finalText(), preview, receipt);</span>
+    }
+
+    private static Source source(ReformulationBaseline baseline) {
+<span class="fc" id="L90">        return new Source(baseline.scope().projectId(), baseline.scope().requirementId(), baseline.sourceVersionId(),</span>
+<span class="fc" id="L91">                baseline.snapshotId(), baseline.language(), baseline.originalText(), baseline.originalTextHash());</span>
+    }
+}
+</pre><div class="footer"><span class="right">Created with <a href="http://www.jacoco.org/jacoco">JaCoCo</a> 0.8.15.202606040825</span></div></body></html>
