@@ -14,6 +14,7 @@ python3 .github/scripts/test-generate-quality-site.py
 python3 .github/scripts/test-verify-quality-publication.py
 python3 .github/scripts/test-verify-deployment.py
 node .github/scripts/test-taxonomy-base-path.mjs
+node --test .github/scripts/stage-core-quality-reports.test.mjs
 bash -n .github/scripts/release.sh
 bash -n .github/scripts/install-helm.sh
 bash -n .github/scripts/download-embedding-model.sh
