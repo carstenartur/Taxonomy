@@ -1,0 +1,30 @@
+name: Exact reviewed PR fix transport
+on:
+  push:
+    branches: [maintenance/publish-pr-fixes-20260926]
+    paths: [.github/maintenance/**, .github/workflows/publish-pr-fixes.yml]
+permissions: {}
+jobs:
+  publish-objects:
+    if: github.repository == 'carstenartur/Taxonomy' && github.ref == 'refs/heads/maintenance/publish-pr-fixes-20260926'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Verify original and resulting Git blobs and run focused regressions
+        run: node .github/maintenance/publish-fixes.mjs prepare
+      - name: Publish verified objects without moving any branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node .github/maintenance/publish-fixes.mjs publish
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: exact-pr-fix-receipts
+          path: fix-receipts.json
+          if-no-files-found: error
+          retention-days: 7
