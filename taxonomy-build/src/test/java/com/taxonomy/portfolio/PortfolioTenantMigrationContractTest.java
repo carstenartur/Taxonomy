@@ -2,21 +2,21 @@ package com.taxonomy.portfolio;
 
 import org.junit.jupiter.api.Test;
 
-import java.nio.file.Files;
-import java.nio.file.Path;
+import org.springframework.core.io.ClassPathResource;
+
+import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 class PortfolioTenantMigrationContractTest {
 
-    private static final Path MIGRATION = Path.of(
-            "src/main/resources/db/migration/taxonomy/postgresql/"
-                    + "V12__scope_portfolio_by_repository_branch.sql");
+    private static final String MIGRATION =
+            "db/migration/taxonomy/postgresql/V12__scope_portfolio_by_repository_branch.sql";
 
     @Test
     void migrationBackfillsEveryPortfolioRootAndFailsClosedOnAmbiguousProvenance()
             throws Exception {
-        String sql = Files.readString(MIGRATION);
+        String sql = new ClassPathResource(MIGRATION).getContentAsString(StandardCharsets.UTF_8);
 
         assertThat(sql)
                 .contains("alter table arch_project")

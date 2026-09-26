@@ -246,7 +246,8 @@ class JgitStorageDocumentationContractTest {
 
         while (repositories.find()) {
             String block = repositories.group(1);
-            if (!block.contains("jgit-storage-hibernate")) {
+            String repositoryUrl = firstTagValue(block, "url");
+            if (repositoryUrl == null || !repositoryUrl.contains("jgit-storage-hibernate")) {
                 continue;
             }
             return new Distribution(
@@ -261,14 +262,19 @@ class JgitStorageDocumentationContractTest {
     }
 
     private static String requiredTagValue(String xml, String tagName) {
+        String value = firstTagValue(xml, tagName);
+        assertThat(value)
+                .as("POM tag <%s>", tagName)
+                .isNotNull();
+        return value;
+    }
+
+    private static String firstTagValue(String xml, String tagName) {
         Matcher matcher = Pattern.compile(
                         "<" + Pattern.quote(tagName) + ">\\s*([^<]+?)\\s*</"
                                 + Pattern.quote(tagName) + ">")
                 .matcher(xml);
-        assertThat(matcher.find())
-                .as("POM tag <%s>", tagName)
-                .isTrue();
-        return matcher.group(1).trim();
+        return matcher.find() ? matcher.group(1).trim() : null;
     }
 
     private static String read(Path path) throws IOException {
