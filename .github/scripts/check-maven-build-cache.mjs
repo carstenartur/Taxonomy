@@ -43,13 +43,25 @@ requireContract((workflow.match(/path: ~\/\.m2\/build-cache/g) ?? []).length >= 
   'application and core jobs must persist the Maven build cache');
 requireContract(workflow.includes('maven.build.cache.skipCache=true'),
   'authoritative non-PR verification must bypass cache reads');
-requireContract(workflow.includes('./mvnw -B clean verify -Pci'),
-  'authoritative non-PR verification must remain a clean full-reactor build');
 const coreStart = workflow.indexOf('\n  core:\n');
 const observabilityStart = workflow.indexOf('\n  observability:\n', coreStart);
 requireContract(coreStart >= 0 && observabilityStart > coreStart,
   'core workflow section must be identifiable');
 const coreWorkflow = workflow.slice(coreStart, observabilityStart);
+const cleanupStart = coreWorkflow.indexOf('      - name: Clean reactor before producing evidence\n');
+const contractsStart = coreWorkflow.indexOf('      - name: Verify release and delivery contracts\n');
+const helmStart = coreWorkflow.indexOf('      - name: Validate production and Rancher Helm profiles\n');
+requireContract(cleanupStart >= 0 && cleanupStart < contractsStart && contractsStart < helmStart,
+  'non-PR cleanup must precede contracts and Helm evidence generation');
+const cleanup = coreWorkflow.slice(cleanupStart, contractsStart);
+requireContract(cleanup.includes("if: github.event_name != 'pull_request'")
+    && cleanup.includes('run: ./mvnw -B clean -Dmaven.build.cache.enabled=false'),
+  'only non-PR builds must clean the complete reactor before producing evidence');
+requireContract(!coreWorkflow.includes('./mvnw -B clean verify'),
+  'clean must not remove prepared evidence or the open Maven log');
+requireContract(coreWorkflow.includes('./mvnw -B verify -Pci')
+    && coreWorkflow.includes('-Dmaven.build.cache.skipCache=true'),
+  'non-PR verification must still run the full suite without cache reads');
 requireContract(coreWorkflow.includes('${{ runner.os }}-taxonomy-maven-build-cache-verify-v2-'),
   'core verification must restore prior verification entries');
 requireContract(!coreWorkflow.includes('${{ runner.os }}-taxonomy-maven-build-cache-app-v2-'),

@@ -26,12 +26,24 @@ package and canonical verification lanes. The cache key carries an explicit
 namespace version; bump it whenever the set of restored outputs changes so old,
 incomplete cache entries cannot satisfy a newer contract.
 
-Pushes to `main`, tags, and manual workflow runs execute:
+Pushes to `main`, tags, and manual workflow runs clean the full reactor **before**
+release-contract preparation, Helm rendering, and opening the Maven log. After
+that preparation they run the uncached-read verification suite:
 
 ```bash
-./mvnw -B clean verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true \
+./mvnw -B clean -Dmaven.build.cache.enabled=false
+# CI prepares release-contract and Helm evidence here, then starts the log.
+./mvnw -B verify -Pci -DrunOnnxTests=true -Dtaxonomy.ui.skip=true \
   -Dmaven.build.cache.skipCache=true
 ```
+
+Do not move `clean` into the `verify | tee target/maven-verification.log`
+pipeline: it deletes the prepared Helm evidence and unlinks the already-open log.
+PR builds do not perform this cleanup. `CoreVerificationCleanlinessTest` exercises
+the actual workflow shell for PR, push, and manual events with successful and
+failed Maven exits, including preservation of stdout/stderr and failure status.
+Its test-only Maven substitute models deletion, output, and exit status; it is
+not a Maven build-cache integration test.
 
 `skipCache=true` disables cache reads but still allows the completed authoritative
 build to populate fresh entries for later PR builds.
