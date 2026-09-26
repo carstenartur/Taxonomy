@@ -107,7 +107,7 @@
                     showCopilotUnavailableFailure();
                     return;
                 }
-                var existingScores = hasCurrentScores();
+                var existingScores = hasCurrentScores() && !hasKnownNonAuthoritativeStatus();
                 var analyzeAction = document.getElementById('analyzeBtn');
                 if (!existingScores && (!analyzeAction || analyzeAction.disabled
                         || elementAriaDisabled(analyzeAction))) {
@@ -160,6 +160,10 @@
         var target = event.target && typeof event.target.closest === 'function'
             ? event.target.closest('#copilotBtn') : null;
         if (!target || !hasCurrentScores() || !hasKnownNonAuthoritativeStatus()) return;
+        // The installed coordinator starts a fresh complete operation for these
+        // scores. Blocking here would also block its own Retry control forever.
+        // Keep the fail-closed guard if coordination did not finish loading.
+        if (window.TaxonomyOperationCoordinator) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         resetCopilotControls();
