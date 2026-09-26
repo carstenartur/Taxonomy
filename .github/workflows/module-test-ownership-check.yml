@@ -1,0 +1,106 @@
+name: Module-owned test verification
+on:
+  push:
+    branches: [maintenance/verify-module-owned-tests-20260926]
+permissions:
+  contents: read
+jobs:
+  verify:
+    name: Verify ${{ matrix.lane }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [libraries, application]
+    env:
+      EVIDENCE: ${{ runner.temp }}/module-evidence
+      LLM_MOCK: 'true'
+      TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 0, persist-credentials: false}
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Reconstruct exact reviewed test changes and main integration
+        run: |
+          mkdir -p "$RUNNER_TEMP/module-maintenance" "$EVIDENCE"
+          cp .github/module-test-maintenance/* "$RUNNER_TEMP/module-maintenance/"
+          python "$RUNNER_TEMP/module-maintenance/prepare.py"
+          rm -rf "$HOME/.m2/repository/com/taxonomy"
+      - name: Run complete library unit suites with application absent
+        if: matrix.lane == 'libraries'
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-interop,taxonomy-analysis -am install -DskipITs=true -DexcludedGroups=real-llm,onnx -Dmaven.build.cache.enabled=false 2>&1 | tee "$EVIDENCE/libraries.log"
+          python "$RUNNER_TEMP/module-maintenance/reports.py" libraries
+          find taxonomy-* -path '*/target/surefire-reports/TEST-*.xml' -exec cp --parents {} "$EVIDENCE" \;
+          ./mvnw -B -ntp -pl taxonomy-interop test -Dtest=IntegrationJournalTest,IntegrationJournalRestartTest -DexcludedGroups=real-llm,onnx -Dmaven.build.cache.enabled=false 2>&1 | tee "$EVIDENCE/installed.log"
+          python "$RUNNER_TEMP/module-maintenance/reports.py" installed
+          jar tf taxonomy-workspace/target/*-editor-test-fixture.jar | tee "$EVIDENCE/fixture-contents.txt"
+          python - <<'PY'
+          from pathlib import Path
+          from zipfile import ZipFile
+          jars=list(Path('taxonomy-workspace/target').glob('*-editor-test-fixture.jar'));assert len(jars)==1
+          with ZipFile(jars[0]) as z:
+              classes=[p for p in z.namelist() if p.endswith('.class')]
+              assert classes and all(p=='com/taxonomy/editor/EditorPersistenceFixture.class' or p.startswith('com/taxonomy/editor/EditorPersistenceFixture$') for p in classes),classes
+          with ZipFile('taxonomy-workspace/target/taxonomy-workspace-1.4.0-SNAPSHOT.jar') as z:
+              assert not any('EditorPersistenceFixture' in p for p in z.namelist())
+          PY
+      - name: Verify packaging without test artifacts and retained application tests
+        if: matrix.lane == 'application'
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-build -am install -Dmaven.test.skip=true -Dmaven.build.cache.enabled=false 2>&1 | tee "$EVIDENCE/packaging.log"
+          ./mvnw -B -ntp -pl taxonomy-build test -Psupply-chain-policy -Dmaven.build.cache.enabled=false 2>&1 | tee "$EVIDENCE/packaged-consumer.log"
+          ./mvnw -B -ntp -pl taxonomy-build test -Dtest=FeatureTestOwnershipTest,ModuleOwnedTestPlacementTest,RepositoryResourcesTest -Dmaven.build.cache.enabled=false 2>&1 | tee "$EVIDENCE/ownership.log"
+          python "$RUNNER_TEMP/module-maintenance/reports.py" ownership
+          ./mvnw -B -ntp -pl taxonomy-app test -Dtest=ArchiMateDiagramTests,VisioDiagramTests,MermaidExportTests,IntegrationRestartTest -DexcludedGroups=real-llm,onnx -Dmaven.build.cache.enabled=false 2>&1 | tee "$EVIDENCE/application.log"
+          python "$RUNNER_TEMP/module-maintenance/reports.py" application
+      - name: Preserve actual logs and XML evidence
+        if: always()
+        run: |
+          mkdir -p "$EVIDENCE"
+          find taxonomy-* -path '*/target/surefire-reports/*' -type f -exec cp --parents {} "$EVIDENCE" \;
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: module-tests-${{ matrix.lane }}
+          path: ${{ runner.temp }}/module-evidence
+          retention-days: 7
+          if-no-files-found: error
+  candidate:
+    name: Publish verified candidate object only
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      EVIDENCE: ${{ runner.temp }}/module-evidence
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Reconstruct identical candidate
+        run: |
+          mkdir -p "$RUNNER_TEMP/module-maintenance" "$EVIDENCE"
+          cp .github/module-test-maintenance/* "$RUNNER_TEMP/module-maintenance/"
+          python "$RUNNER_TEMP/module-maintenance/prepare.py"
+      - name: Push only the verified candidate branch, never main or the PR branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          python - <<'PY'
+          import base64,os,subprocess
+          env=dict(os.environ)
+          auth=base64.b64encode(('x-access-token:'+env.pop('GH_TOKEN')).encode()).decode()
+          env.update(GIT_CONFIG_COUNT='2',GIT_CONFIG_KEY_0='http.https://github.com/.extraheader',GIT_CONFIG_VALUE_0='AUTHORIZATION: basic '+auth,GIT_CONFIG_KEY_1='credential.helper',GIT_CONFIG_VALUE_1='')
+          result=subprocess.run(['git','push','https://github.com/carstenartur/Taxonomy.git','HEAD:refs/heads/maintenance/module-tests-verified-20260926'],env=env)
+          raise SystemExit(result.returncode)
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: verified-module-test-candidate
+          path: ${{ runner.temp }}/module-evidence
+          retention-days: 7
+          if-no-files-found: error
