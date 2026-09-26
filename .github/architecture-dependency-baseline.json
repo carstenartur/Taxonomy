@@ -41,7 +41,7 @@
       "fromPackage": "com.taxonomy.analysis.recovery",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.workspace.service",
-      "classDependencyCount": 5
+      "classDependencyCount": 4
     },
     {
       "fromContext": "analysis",
