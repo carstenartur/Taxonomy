@@ -2,7 +2,7 @@
 import base64, collections, gzip, hashlib, json, os, pathlib, subprocess, sys, urllib.request
 import xml.etree.ElementTree as ET
 BASE = '1b165cb0c25088d9b406871c89b1e3cdd55b0a98'
-TREE = '3b7e5d68852ffb601135dfad106eea2d9a6a2dd8'
+TREE = '992a85d7ec24af8d3cf8b32d91b2b73269813d19'
 CHECKSUM = 'c7f1089ad06cb8e6670d3486b8cd3f578d290759cabeb5bbcb515a9a15710b14'
 E = pathlib.Path(os.environ['RUNNER_TEMP']) / 'ownership-evidence'
 E.mkdir(exist_ok=True)
@@ -15,10 +15,17 @@ if mode == 'prepare':
     encoded = ''.join(pathlib.Path(f'.github/maintenance/ownership/part{i}').read_text() for i in range(4))
     packed = base64.b64decode(encoded, validate=True)
     assert hashlib.sha256(packed).hexdigest() == CHECKSUM
-    p = json.loads(gzip.decompress(packed)); assert p['base'] == BASE and p['tree'] == TREE
+    p = json.loads(gzip.decompress(packed)); assert p['base'] == BASE and p['tree'] == '3b7e5d68852ffb601135dfad106eea2d9a6a2dd8'
+    correction = gzip.decompress(pathlib.Path('.github/maintenance/ownership/correction.patch.gz').read_bytes())
+    assert hashlib.sha256(correction).hexdigest() == '253af0cbce9456ef30b933351b8b4d4bb7bec917b259b922b1176f21c648b94b'
+    p['retainedAppCases'] = p['baselineCases'].pop('com.taxonomy.interop.IntegrationRestartTest')
+    p['moves'] = [m for m in p['moves'] if m['className'] != 'com.taxonomy.interop.IntegrationRestartTest']
+    p['tree'] = TREE
+    p['correctionPatch'] = correction.decode()
     (E/'payload.json').write_text(json.dumps(p))
     git('checkout', '--detach', BASE)
     git('apply', '--index', '--binary', data=p['patch'].encode())
+    git('apply', '--index', '--binary', data=correction)
     git('diff', '--cached', '--check')
     assert git('write-tree').decode().strip() == TREE
     unchanged = 0
@@ -27,7 +34,7 @@ if mode == 'prepare':
         if move['className'] != 'com.taxonomy.analysis.service.LlmRecordReplayServiceTest':
             assert git('hash-object', move['target']).decode().strip() == move['sha']
             unchanged += 1
-    assert unchanged == 19
+    assert unchanged == 18
     (E/'tree-verification.json').write_text(json.dumps({'base':BASE, 'tree':TREE,'unchangedJavaSources':unchanged}, indent=2))
     print('EXACT_TREE_AND_SOURCE_IDENTITIES_OK')
 elif mode == 'reports':
@@ -49,9 +56,9 @@ elif mode == 'reports':
             actual.append([case.get('classname'),case.get('name')])
         assert sorted(actual) == sorted(expected), (name,actual,expected)
         count += len(actual)
-    assert count == 126, count
-    (E/'owner-tests.json').write_text(json.dumps({'preservedTestCases':count,'preservedClasses':19,'suites':summaries},indent=2))
-    print(f'EXACT_TEST_INVENTORY_OK: {count} executed cases in 19 owning classes')
+    assert count == 124, count
+    (E/'owner-tests.json').write_text(json.dumps({'preservedTestCases':count,'preservedClasses':18,'suites':summaries},indent=2))
+    print(f'EXACT_TEST_INVENTORY_OK: {count} executed cases in 18 owning classes')
 elif mode == 'publish-object':
     assert (E/'owner-tests.json').is_file()
     required = ['FeatureTestOwnershipTest','RepositoryResourcesTest','ReformulationCancellationAdapterTest','ReformulationCancellationControlsTest']
@@ -60,6 +67,10 @@ elif mode == 'publish-object':
         matches = [r for r in roots if r.get('name','').endswith('.'+name)]
         assert len(matches) == 1 and int(matches[0].get('tests','0')) > 0, name
         assert all(int(matches[0].get(k,'0')) == 0 for k in ['failures','errors','skipped']), name
+    app_path = pathlib.Path('taxonomy-app/target/surefire-reports/TEST-com.taxonomy.interop.IntegrationRestartTest.xml')
+    app_cases = ET.parse(app_path).getroot().findall('testcase')
+    assert sorted([[c.get('classname'),c.get('name')] for c in app_cases]) == sorted(payload()['retainedAppCases'])
+    assert not any(c.find(tag) is not None for c in app_cases for tag in ['failure','error','skipped'])
     assert git('write-tree').decode().strip() == TREE
     git('diff','--exit-code'); git('diff','--cached','--check')
     def api(path, obj):
@@ -81,13 +92,13 @@ elif mode == 'publish-object':
     base_tree = git('rev-parse',BASE+'^{tree}').decode().strip()
     tree = api('/git/trees', {'base_tree':base_tree,'tree':entries}); assert tree['sha'] == TREE
     result = api('/git/commits',{'tree':TREE,'parents':[BASE], 'message':
-        'refactor(test): move 19 feature test classes into their owning modules\n\n'
-        'Preserve 126 executed test cases and actual persistence/restart behavior. '
+        'refactor(test): move 18 feature test classes into their owning modules\n\n'
+        'Preserve 124 moved test cases plus both retained application restart cases. '
         'Publish only the shared editor persistence fixture as a test-only archive. '
         'Retain the LLM recording with its test and fail when missing. '
         'Fix both build-owned cancellation resource lookups. '
         'Verified exact base and tree, owning-module Maven tests and build guards; '
         'full PR CI remains required before merging. No build speedup claim.'})
-    receipt = {'base':BASE,'tree':TREE,'commit':result['sha'],'preservedCases':126,'workflowRun':os.environ['GITHUB_RUN_ID']}
+    receipt = {'base':BASE,'tree':TREE,'commit':result['sha'],'movedCases':124,'retainedAppCases':2,'workflowRun':os.environ['GITHUB_RUN_ID']}
     (E/'receipt.json').write_text(json.dumps(receipt,indent=2)); print(json.dumps(receipt))
 else: raise ValueError(mode)

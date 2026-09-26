@@ -10,7 +10,7 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with: {fetch-depth: 2, persist-credentials: false}
+        with: {fetch-depth: 3, persist-credentials: false}
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
       - name: Validate payload and exact source tree
@@ -35,7 +35,7 @@ jobs:
       - name: Execute placement and cancellation regressions and compile app tests
         run: |
           set -o pipefail
-          ./mvnw -B -ntp -pl taxonomy-build -am test -Dtest=FeatureTestOwnershipTest,RepositoryResourcesTest,ReformulationCancellationAdapterTest,ReformulationCancellationControlsTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$RUNNER_TEMP/ownership-evidence/build-guards.log"
+          ./mvnw -B -ntp -pl taxonomy-build -am test -Dtest=FeatureTestOwnershipTest,RepositoryResourcesTest,ReformulationCancellationAdapterTest,ReformulationCancellationControlsTest,IntegrationRestartTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$RUNNER_TEMP/ownership-evidence/build-guards.log"
       - name: Create verified commit object without changing refs
         env:
           GH_TOKEN: ${{ github.token }}
