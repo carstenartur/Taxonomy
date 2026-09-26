@@ -9,7 +9,7 @@ const coordinator = await readFile(new URL('taxonomy-operation-coordinator.js', 
 
 // Execute both production listeners in loader order. Isolated guard tests cannot
 // detect a guard that prevents the coordinator's real Retry button from working.
-function fixture({ status = null, scores = null, start = 'request', provider = '' } = {}) {
+function fixture({ status = null, scores = null, start = 'request', provider = '', coordinatorInstalled = true } = {}) {
   const listeners = new Map();
   const timers = [];
   const requests = [];
@@ -99,7 +99,12 @@ function fixture({ status = null, scores = null, start = 'request', provider = '
   const sandbox = vm.createContext({ window, document, Request, URL, Set,
     CustomEvent: class { constructor(type, options) { this.type = type; this.detail = options.detail; } } });
   vm.runInContext(guard, sandbox, { filename: 'taxonomy-copilot-terminal-state.js' });
-  vm.runInContext(coordinator, sandbox, { filename: 'taxonomy-operation-coordinator.js' });
+  if (coordinatorInstalled) {
+    vm.runInContext(coordinator, sandbox, { filename: 'taxonomy-operation-coordinator.js' });
+  } else {
+    // Model the legacy click handler while the ordered loader has not installed coordination.
+    elements.copilotBtn.onclick = () => { enrichments++; };
+  }
   function descendants(value) { return [value, ...value.children.flatMap(descendants)]; }
   async function flush() {
     await new Promise(resolve => setImmediate(resolve));
@@ -186,3 +191,28 @@ test('partial results with MANUAL selected cannot start an automatic analysis', 
   assert.equal(f.listeners(), 0);
   assert.equal(f.elements.copilotBtn.disabled, false);
 });
+
+for (const status of [null, '', 'UNKNOWN', 'IN_PROGRESS']) {
+  test(`score-bearing ${String(status)} state fails closed before coordinator installation`, () => {
+    const f = fixture({ status, scores: { BP: 40 }, coordinatorInstalled: false });
+    assert.equal(f.click().prevented, true);
+    assert.equal(f.enrichments(), 0, 'Legacy enrichment must require explicit authoritative status');
+    assert.equal(f.requests.length, 0);
+  });
+}
+for (const status of ['SUCCESS', 'IMPORTED']) {
+  test(`${status} evidence remains usable before coordinator installation`, () => {
+    const f = fixture({ status, scores: { BP: 40 }, coordinatorInstalled: false });
+    assert.equal(f.click().prevented, false);
+    assert.equal(f.enrichments(), 1);
+    assert.equal(f.requests.length, 0);
+  });
+}
+for (const status of [null, '', 'UNKNOWN']) {
+  test(`unconfirmed ${String(status)} evidence does not bypass MANUAL provider preflight`, () => {
+    const f = fixture({ status, scores: { BP: 40 }, provider: 'MANUAL' });
+    assert.equal(f.click().prevented, true);
+    assert.equal(f.enrichments(), 0);
+    assert.equal(f.requests.length, 0);
+  });
+}
