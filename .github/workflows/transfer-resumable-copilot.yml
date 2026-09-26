@@ -1,0 +1,96 @@
+# One-off transport of the locally verified implementation; never merge this branch.
+# The destination is reconstructed from main, so neither this workflow nor its
+# compressed transport parts are included in the resulting feature branch.
+name: Transfer verified resumable Copilot implementation
+on:
+  push:
+    branches: [transfer/resumable-copilot-20260926]
+permissions:
+  contents: write
+concurrency:
+  group: transfer-resumable-copilot-20260926
+  cancel-in-progress: false
+jobs:
+  transfer:
+    if: github.repository == 'carstenartur/Taxonomy'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      BASE_SHA: 6f7f1e9c02ee6bcbd07186dd3c4ffb688ba4edeb
+      TARGET_BRANCH: feat/resumable-copilot-evaluation
+    steps:
+      - name: Read transport from this exact commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ github.sha }}
+          path: transport
+          persist-credentials: false
+      - name: Start destination at the verified main baseline
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 6f7f1e9c02ee6bcbd07186dd3c4ffb688ba4edeb
+          path: work
+          persist-credentials: true
+      - name: Refuse overwrite and verify transport plus exact source hashes
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C work rev-parse HEAD)" = "$BASE_SHA"
+          if git -C work ls-remote --exit-code --heads origin "refs/heads/$TARGET_BRANCH"; then
+            echo 'Refusing to overwrite an existing feature branch' >&2
+            exit 1
+          else
+            status=$?
+            test "$status" = 2
+          fi
+          python3 - "$GITHUB_WORKSPACE/transport/.github/transfer-resumable" "$GITHUB_WORKSPACE/work" <<'PY'
+          import hashlib
+          import json
+          import lzma
+          import pathlib
+          import subprocess
+          import sys
+          import tempfile
+
+          parts, work = (pathlib.Path(value).resolve() for value in sys.argv[1:])
+          expected = '650c59a6289584467ff161708c5cc825217cfd1fa4934337bebad5d014f9ef5c'
+          compressed = b''.join((parts / f'{index:02}.part').read_bytes() for index in range(8))
+          assert hashlib.sha256(compressed).hexdigest() == expected, 'Transfer checksum mismatch'
+          payload = json.loads(lzma.decompress(compressed))
+          assert len(payload['patches']) == 2 and len(payload['blobs']) == 60
+
+          def git(*args):
+              return subprocess.check_output(['git', '-C', str(work), *args], text=True).strip()
+
+          assert not git('status', '--porcelain'), 'Refusing a dirty destination'
+          for path, sha in payload['blobs'].items():
+              p = pathlib.PurePosixPath(path)
+              assert not p.is_absolute() and '..' not in p.parts and '.git' not in p.parts
+              assert not path.startswith('.github/transfer-resumable/')
+              assert len(sha) == 40 and all(c in '0123456789abcdef' for c in sha)
+          with tempfile.TemporaryDirectory() as temp:
+              for index, text in enumerate(payload['patches']):
+                  patch = pathlib.Path(temp) / f'{index}.patch'
+                  patch.write_text(text, encoding='utf-8')
+                  git('apply', '--check', '--index', str(patch))
+                  git('apply', '--index', str(patch))
+          changed = set(git('diff', '--cached', '--name-only').splitlines())
+          assert changed == set(payload['blobs']), 'Unexpected staged file set'
+          for path, expected_sha in payload['blobs'].items():
+              assert git('rev-parse', ':' + path) == expected_sha, f'Content mismatch: {path}'
+          git('diff', '--cached', '--check')
+          print(f'PASS: exact verified contents of {len(changed)} files staged; no transfer files included')
+          PY
+      - name: Publish only the new feature branch without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd work
+          git switch -c "$TARGET_BRANCH"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'feat(analysis): resume failed questions and preserve unknown subtrees' \
+            -m 'Includes the PR #1131 lifecycle prerequisite and the verified local implementation 5a1e07e. Preserves main CI cleanup #1132. Transport SHA-256: 650c59a6289584467ff161708c5cc825217cfd1fa4934337bebad5d014f9ef5c. Full repository CI is still required; this job verifies exact transport only.'
+          git push origin "HEAD:refs/heads/$TARGET_BRANCH"
+          echo "Feature commit: $(git rev-parse HEAD)"
+          echo "Published $TARGET_BRANCH at $(git rev-parse HEAD). Full PR CI remains required." >> "$GITHUB_STEP_SUMMARY"
