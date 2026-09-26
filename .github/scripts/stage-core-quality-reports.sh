@@ -2,15 +2,23 @@
 set -euo pipefail
 
 rm -rf target/quality-reports
+# Finish discovery before creating copies. A streaming find can otherwise walk
+# into its own output and duplicate reports; process substitution also hides a
+# failed find from set -e. Keep the NUL-delimited inventory outside the checkout.
+report_inventory=$(mktemp)
+trap 'rm -f "$report_inventory"' EXIT
+find . -path './target/quality-reports' -prune -o -type f \
+  \( -path '*/target/surefire-reports/*' -o -path '*/target/failsafe-reports/*' \) \
+  \( -name 'TEST-*.xml' -o -name '*.txt' -o -name '*.dump' -o -name '*.dumpstream' \) -print0 \
+  > "$report_inventory"
+
 mkdir -p target/quality-reports/{tests,coverage,evidence}
 while IFS= read -r -d '' report; do
   relative=${report#./}
   destination="target/quality-reports/tests/${relative}"
   mkdir -p "$(dirname "$destination")"
   cp "$report" "$destination"
-done < <(find . -type f \
-  \( -path '*/target/surefire-reports/*' -o -path '*/target/failsafe-reports/*' \) \
-  \( -name 'TEST-*.xml' -o -name '*.txt' -o -name '*.dump' -o -name '*.dumpstream' \) -print0)
+done < "$report_inventory"
 
 coverage=taxonomy-coverage/target/site/jacoco-aggregate
 [[ -f "$coverage/jacoco.xml" ]] || {
