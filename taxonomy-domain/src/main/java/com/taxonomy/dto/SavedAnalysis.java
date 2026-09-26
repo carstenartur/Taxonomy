@@ -16,6 +16,7 @@ import java.util.Map;
  * <ul>
  *   <li><b>Version 1</b>: Original format with requirement, scores, reasons</li>
  *   <li><b>Version 2</b>: Adds optional provenance data (sources, sourceVersions, sourceFragments, requirementSourceLinks)</li>
+ *   <li><b>Version 3</b>: Requires raw scores, own assessment/subtree coverage and analysis status; older readers reject it rather than silently losing unknowns.</li>
  * </ul>
  */
 public class SavedAnalysis {
@@ -55,6 +56,43 @@ public class SavedAnalysis {
 
     /** Requirement-to-source links (optional, may be null). */
     private List<RequirementSourceLinkDto> requirementSourceLinks;
+
+    private AnalysisCoverage analysisCoverage;
+    private String analysisStatus;
+    private Map<String, Integer> rawScores;
+    public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }
+    public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }
+    public String getAnalysisStatus() { return analysisStatus; }
+    public void setAnalysisStatus(String value) { analysisStatus = value; }
+    public Map<String, Integer> getRawScores() { return rawScores; }
+    public void setRawScores(Map<String, Integer> value) { rawScores = value; }
+
+    /** Validate version 3 before publishing or consuming a score file. */
+    public void validateCoverageEvidence() {
+        if (this.getVersion() >= 3) {
+            var coverage = this.getAnalysisCoverage(); var raw = this.getRawScores();
+            if (coverage == null || raw == null || this.getAnalysisStatus() == null
+                    || this.getAnalysisStatus().isBlank() || raw.size() > 25000
+                    || !raw.keySet().containsAll(this.getScores().keySet()))
+                throw new IllegalArgumentException("Version 3 requires complete raw evidence, status and coverage metadata");
+            for (var entry : raw.entrySet()) {
+                var assessment = coverage.nodes().get(entry.getKey());
+                if (assessment == null || assessment.state() == com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN
+                        || !java.util.Objects.equals(entry.getValue(), assessment.score()))
+                    throw new IllegalArgumentException("Raw evidence disagrees with assessment coverage");
+            }
+            for (var entry : coverage.nodes().entrySet()) if (entry.getValue().state() != com.taxonomy.dto.AnalysisCoverage.State.UNKNOWN
+                    && !raw.containsKey(entry.getKey()))
+                throw new IllegalArgumentException("Coverage contains a completed assessment without its raw evidence");
+            for (var entry : this.getScores().entrySet()) {
+                var assessment = coverage.nodes().get(entry.getKey());
+                if (assessment == null || !java.util.Objects.equals(entry.getValue(), assessment.effectiveRelevance()))
+                    throw new IllegalArgumentException("Effective evidence disagrees with assessment coverage");
+            }
+            if (coverage.hasOpenEvaluations()) this.setAnalysisStatus("PARTIAL");
+        }
+
+    }
 
     public SavedAnalysis() {}
 

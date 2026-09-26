@@ -51,6 +51,7 @@ function createHarness({
       if (!listeners.has(type)) listeners.set(type, []);
       listeners.get(type).push({ listener, capture });
     },
+    dispatchEvent(event) { (listeners.get(event.type) || []).forEach(entry => entry.listener(event)); return true; },
     getElementById(id) { return elements[id] || null; },
     createElement() { return { className: '', textContent: '' }; }
   };
@@ -76,6 +77,7 @@ function createHarness({
   vm.runInNewContext(guardSource, {
     window,
     document,
+    CustomEvent: class CustomEvent { constructor(type) { this.type = type; } },
     Boolean,
     Object,
     String,

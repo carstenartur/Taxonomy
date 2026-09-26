@@ -9,8 +9,14 @@ import java.util.Map;
 
 /** Cooperative stop at a call boundary, never recovery from OutOfMemoryError. */
 public final class AnalysisStoppedException extends RuntimeException {
-    public enum Reason { CANCELLED, MEMORY_PRESSURE, TIME_LIMIT }
+    public enum Reason { CANCELLED, MEMORY_PRESSURE, TIME_LIMIT, AWAITING_DECISION }
     private final Reason reason;
+    private LlmCallDetail completedCallEvidence;
+    public LlmCallDetail completedCallEvidence() { return completedCallEvidence; }
+    public AnalysisStoppedException withCompletedCall(LlmCallDetail detail) {
+        completedCallEvidence = detail;
+        return detail.getError() == null || detail.getError().isBlank() ? withPartial(detail) : this;
+    }
     private final Map<String, Integer> partialScores = new LinkedHashMap<>();
     private final Map<String, String> partialReasons = new LinkedHashMap<>();
     private final List<TaxonomyDiscrepancy> partialDiscrepancies = new ArrayList<>();

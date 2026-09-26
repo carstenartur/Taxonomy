@@ -35,6 +35,9 @@ import java.util.Optional;
 @RequestMapping("/api")
 @Tag(name = "Export")
 public class ExportApiController {
+    @org.springframework.beans.factory.annotation.Autowired
+    private tools.jackson.databind.ObjectMapper recoveryObjectMapper;
+
 
     private static final Logger log = LoggerFactory.getLogger(ExportApiController.class);
 
@@ -230,7 +233,24 @@ public class ExportApiController {
                 ? (Map<String, String>) body.get("reasons") : Map.of();
         String provider = body.get("provider") instanceof String p
                 ? p : exportFacade.getActiveProviderName();
-        return ResponseEntity.ok(exportFacade.buildExport(requirement, scores, reasons, provider));
+        SavedAnalysis exported = exportFacade.buildExport(requirement, scores, reasons, provider);
+        if (body.get("analysisCoverage") != null) {
+            try {
+                var coverage = recoveryObjectMapper.convertValue(body.get("analysisCoverage"), com.taxonomy.dto.AnalysisCoverage.class);
+                exported.setAnalysisCoverage(coverage);
+                exported.setVersion(3);
+                exported.setAnalysisStatus(coverage.hasOpenEvaluations() ? "PARTIAL" : String.valueOf(body.getOrDefault("analysisStatus", "UNKNOWN")));
+                if (body.get("rawScores") instanceof Map<?, ?>) {
+                    Map<String, Integer> raw = recoveryObjectMapper.convertValue(body.get("rawScores"),
+                            new tools.jackson.core.type.TypeReference<Map<String, Integer>>() { });
+                    if (raw.size() > 25000 || raw.values().stream().anyMatch(v -> v == null || v < 0 || v > 100))
+                        return ResponseEntity.badRequest().build();
+                    exported.setRawScores(raw);
+                }
+                exported.validateCoverageEvidence();
+            } catch (IllegalArgumentException | tools.jackson.core.JacksonException invalid) { return ResponseEntity.badRequest().build(); }
+        }
+        return ResponseEntity.ok(exported);
     }
 
     @Operation(summary = "Import analysis scores from JSON",
@@ -252,6 +272,10 @@ public class ExportApiController {
             result.put("reasons", saved.getReasons() != null ? saved.getReasons() : Map.of());
             result.put("provider", saved.getProvider());
             result.put("warnings", warnings);
+            result.put("analysisCoverage", saved.getAnalysisCoverage());
+            result.put("rawScores", saved.getRawScores());
+            result.put("analysisStatus", saved.getAnalysisCoverage() != null && saved.getAnalysisCoverage().hasOpenEvaluations()
+                    ? "PARTIAL" : saved.getAnalysisStatus());
             return ResponseEntity.ok(result);
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest()
