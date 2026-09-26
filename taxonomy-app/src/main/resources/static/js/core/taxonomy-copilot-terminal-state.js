@@ -28,9 +28,9 @@
         return hasScores(C.S.currentScores);
     }
 
-    function hasKnownNonAuthoritativeStatus() {
+    function hasAuthoritativeStatus() {
         var status = String(C.S.lastAnalysisStatus || '').toUpperCase();
-        return Boolean(status && status !== 'SUCCESS' && status !== 'IMPORTED');
+        return status === 'SUCCESS' || status === 'IMPORTED';
     }
 
     function elementAriaDisabled(element) {
@@ -107,7 +107,7 @@
                     showCopilotUnavailableFailure();
                     return;
                 }
-                var existingScores = hasCurrentScores();
+                var existingScores = hasCurrentScores() && hasAuthoritativeStatus();
                 var analyzeAction = document.getElementById('analyzeBtn');
                 if (!existingScores && (!analyzeAction || analyzeAction.disabled
                         || elementAriaDisabled(analyzeAction))) {
@@ -159,7 +159,11 @@
     document.addEventListener('click', function (event) {
         var target = event.target && typeof event.target.closest === 'function'
             ? event.target.closest('#copilotBtn') : null;
-        if (!target || !hasCurrentScores() || !hasKnownNonAuthoritativeStatus()) return;
+        if (!target || !hasCurrentScores() || hasAuthoritativeStatus()) return;
+        // The installed coordinator starts a fresh complete operation for these
+        // scores. Blocking here would also block its own Retry control forever.
+        // Keep the fail-closed guard if coordination did not finish loading.
+        if (window.TaxonomyOperationCoordinator) return;
         event.preventDefault();
         event.stopImmediatePropagation();
         resetCopilotControls();

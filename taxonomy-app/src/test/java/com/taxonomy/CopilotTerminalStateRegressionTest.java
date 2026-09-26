@@ -21,9 +21,9 @@ class CopilotTerminalStateRegressionTest {
                 .contains("taxonomy-operation-coordinator.js");
         assertThat(guard)
                 .contains("return hasScores(C.S.currentScores);")
-                .contains("hasKnownNonAuthoritativeStatus")
-                .contains("status !== 'SUCCESS' && status !== 'IMPORTED'")
-                .contains("!target || !hasCurrentScores() || !hasKnownNonAuthoritativeStatus()")
+                .contains("function hasAuthoritativeStatus()")
+                .contains("return status === 'SUCCESS' || status === 'IMPORTED';")
+                .contains("!target || !hasCurrentScores() || hasAuthoritativeStatus()")
                 .contains("lastAnalysisProvider = 'MANUAL'")
                 .contains("did not complete successfully")
                 .doesNotContain("__taxonomyCopilotTerminalGuard", "window.setInterval =", "waitForScores");
