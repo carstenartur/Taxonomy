@@ -10,13 +10,25 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with: {fetch-depth: 3, persist-credentials: false}
+        with: {fetch-depth: 4, persist-credentials: false}
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin, cache: maven}
       - name: Validate payload and exact source tree
         run: |
           cp .github/maintenance/ownership/verify.py "$RUNNER_TEMP/ownership-verify.py"
           python "$RUNNER_TEMP/ownership-verify.py" prepare
+      - name: Reproduce production architecture import of the test fixture
+        run: |
+          set +e
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=ArchitectureEditorBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$RUNNER_TEMP/ownership-evidence/fixture-architecture-red.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          test "$status" -ne 0
+          grep -F 'EditorPersistenceFixture' "$RUNNER_TEMP/ownership-evidence/fixture-architecture-red.log"
+          grep -F 'editorApplicationKeepsJpaInsideItsJournalAdapter' "$RUNNER_TEMP/ownership-evidence/fixture-architecture-red.log"
+      - name: Isolate fixture namespace without weakening production rules
+        run: python "$RUNNER_TEMP/ownership-verify.py" isolate-fixture
       - name: Check ownership and production cancellation scripts
         run: |
           javac -d "$RUNNER_TEMP/ownership-classes" taxonomy-build/src/test/java/com/taxonomy/build/FeatureTestOwnershipContract.java
@@ -35,7 +47,7 @@ jobs:
       - name: Execute placement and cancellation regressions and compile app tests
         run: |
           set -o pipefail
-          ./mvnw -B -ntp -pl taxonomy-build -am test -Dtest=FeatureTestOwnershipTest,RepositoryResourcesTest,ReformulationCancellationAdapterTest,ReformulationCancellationControlsTest,IntegrationRestartTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$RUNNER_TEMP/ownership-evidence/build-guards.log"
+          ./mvnw -B -ntp -pl taxonomy-build -am test -Dtest=FeatureTestOwnershipTest,RepositoryResourcesTest,ReformulationCancellationAdapterTest,ReformulationCancellationControlsTest,IntegrationRestartTest,ArchitectureEditorBoundaryTest,ArchitectureTest,ArchitectureContextDependencyRatchetTest,ArchitectureWorkspaceStorageOwnershipTest,ArchitectureCycleBoundaryTest,ArchitectureDslCompositionBoundaryTest,ArchitectureWorkspaceAuthorityBoundaryTest,ArchitectureApplicationSchemaCompositionTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee "$RUNNER_TEMP/ownership-evidence/build-guards.log"
       - name: Create verified commit object without changing refs
         env:
           GH_TOKEN: ${{ github.token }}
