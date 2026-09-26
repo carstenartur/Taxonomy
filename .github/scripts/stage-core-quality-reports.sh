@@ -8,11 +8,11 @@ rm -rf target/quality-reports
 report_inventory=$(mktemp)
 report_directories=$(mktemp)
 trap 'rm -f "$report_inventory" "$report_directories"' EXIT
-find . -type d \
+find . -path '*/target/quality-reports' -prune -o -type d \
   \( -path '*/target/surefire-reports' -o -path '*/target/failsafe-reports' \) -print0 \
   > "$report_directories"
 while IFS= read -r -d '' report_dir; do
-  find "$report_dir" -type f \
+  find "$report_dir" -path '*/target/quality-reports/*' -prune -o -type f \
     \( -name 'TEST-*.xml' -o -name '*.txt' -o -name '*.dump' -o -name '*.dumpstream' \) -print0
 done < "$report_directories" > "$report_inventory"
 
