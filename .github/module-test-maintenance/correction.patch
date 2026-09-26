@@ -1,0 +1,87 @@
+diff --git a/docs/qa/sparx-implementation-validation.md b/docs/qa/sparx-implementation-validation.md
+index ef32807d2cc83ff4e5f7625d0e6a7eaef816b11d..18d4772ad06f8201175a343e9e33d625953eda5a 100644
+--- a/docs/qa/sparx-implementation-validation.md
++++ b/docs/qa/sparx-implementation-validation.md
+@@ -113,7 +113,7 @@ Retained local evidence compiles for Java 21 using the verified JDK 25 wrapper:
+ | Native API/browser-context fixture correction | 1 actual civilian HTTP test passed; browser fixtures compiled | `evidence/task-2/fix2-civilian-green.log` |
+ | Terminal Copilot result consistency and unchanged civilian API workflow | 26 selected tests passed | `evidence/task-2/fix3-green.log` |
+ 
+-The original native six-process `IntegrationRestartTest` proved package and element
++The original native six-process `IntegrationJournalRestartTest` in `taxonomy-interop` proved package and element
+ membership recovery across fetch, preview, apply, Git, acknowledgement and delivery.
+ It did not prove a newly created typed requirement mapping across process restart.
+ The final corrective run adds that narrower requirement-specific case: **43 selected
+diff --git a/docs/qa/standards-interoperability.md b/docs/qa/standards-interoperability.md
+index 8af4bf4a8efa18cd554d16ad408fee1264388701..c57e266ea0b2837afa921af8dbba66d96f828a95 100644
+--- a/docs/qa/standards-interoperability.md
++++ b/docs/qa/standards-interoperability.md
+@@ -48,7 +48,7 @@ losses alongside the product result.
+ | Approved OSLC provider discovery/read, authorized stable links after rename, conditional versions and non-disclosure | `IntegrationFlowTest`, `OslcProviderProtocolTest`, `OslcRdfContractTest` |
+ | Real HTTP authorization, stale resources, rate limits, no redirects, bounded stalled responses and SSRF policy | `OslcTransportTest` |
+ | Atomic ORM acceptance, rollback, mappings, pending intents and one explicit Git batch checkpoint | `IntegrationJournalTest`, `IntegrationFlowTest` |
+-| Recovery after process termination during fetch/preview/apply/Git/delivery | `IntegrationRestartTest` starts six separate JVMs against the same durable database |
++| Recovery after process termination during fetch/preview/apply/Git/delivery | `taxonomy-interop`’s `IntegrationJournalRestartTest` starts six separate JVMs against the same durable database |
+ | Two concurrent HTTP writers, conflict/idempotent retry and mapping/checkpoint reload on real databases | Inherited interoperability case in `AbstractDatabaseContainerIT`, executed for PostgreSQL, SQL Server and Oracle |
+ | Fresh PostgreSQL schema and adoption of pre-migration installations | `TaxonomySchemaPostgresMigrationIT`, including all five V20 integration tables |
+ | Actual forms, role restrictions, review/apply/reload/cancel/download, DE/EN, keyboard, narrow viewports and axe | Maven-owned browser shards execute `integration-acceptance.mjs` |
+diff --git a/taxonomy-app/src/test/resources/llm-recordings/.gitkeep b/taxonomy-analysis/src/test/resources/llm-recordings/.gitkeep
+similarity index 100%
+rename from taxonomy-app/src/test/resources/llm-recordings/.gitkeep
+rename to taxonomy-analysis/src/test/resources/llm-recordings/.gitkeep
+diff --git a/taxonomy-app/src/test/resources/llm-recordings/sha256-c292fe61849d1dc5e334b26da23e4c25e326386cc2f767100acbb80ea9a3a575.json b/taxonomy-analysis/src/test/resources/llm-recordings/sha256-c292fe61849d1dc5e334b26da23e4c25e326386cc2f767100acbb80ea9a3a575.json
+similarity index 100%
+rename from taxonomy-app/src/test/resources/llm-recordings/sha256-c292fe61849d1dc5e334b26da23e4c25e326386cc2f767100acbb80ea9a3a575.json
+rename to taxonomy-analysis/src/test/resources/llm-recordings/sha256-c292fe61849d1dc5e334b26da23e4c25e326386cc2f767100acbb80ea9a3a575.json
+diff --git a/taxonomy-app/pom.xml b/taxonomy-app/pom.xml
+index 7afd23c04fa74b320c3c2c6c9ae77096816a340c..2e0bd601ecd91a7fb57ee8d75b43ce77223a9697 100644
+--- a/taxonomy-app/pom.xml
++++ b/taxonomy-app/pom.xml
+@@ -12,13 +12,6 @@
+     <name>Taxonomy Application</name>
+     <description>Spring Boot composition and deployment root, security and supporting application adapters</description>
+     <dependencies>
+-        <!-- Independent grammar/semantic validation of generated exchange files. -->
+-        <dependency>
+-            <groupId>com.structurizr</groupId>
+-            <artifactId>structurizr-dsl</artifactId>
+-            <version>6.2.3</version>
+-            <scope>test</scope>
+-        </dependency>
+         <dependency>
+             <groupId>com.taxonomy</groupId>
+             <artifactId>taxonomy-analysis</artifactId>
+diff --git a/taxonomy-build/src/test/java/com/taxonomy/build/FeatureTestOwnershipContract.java b/taxonomy-build/src/test/java/com/taxonomy/build/FeatureTestOwnershipContract.java
+index 60fd14b6b1162f4a4c86924954258cab764b20cc..5e27cbd752cd6f45f8b924fa7f23fb1cf2d78087 100644
+--- a/taxonomy-build/src/test/java/com/taxonomy/build/FeatureTestOwnershipContract.java
++++ b/taxonomy-build/src/test/java/com/taxonomy/build/FeatureTestOwnershipContract.java
+@@ -30,6 +30,12 @@ final class FeatureTestOwnershipContract {
+             Map.entry("com/taxonomy/workspace/storage/DslWorkspaceVersionAdapterTest.java", "taxonomy-knowledge"));
+ 
+     static void verify(Path root) throws Exception {
++        String recording = "src/test/resources/llm-recordings/"
++                + "sha256-c292fe61849d1dc5e334b26da23e4c25e326386cc2f767100acbb80ea9a3a575.json";
++        if (!Files.isRegularFile(root.resolve("taxonomy-analysis").resolve(recording))
++                || Files.exists(root.resolve("taxonomy-app").resolve(recording))) {
++            throw new AssertionError("The replay recording must live exactly once with its analysis test");
++        }
+         try (var modules = Files.list(root)) {
+             var modulePaths = modules.filter(p -> p.getFileName().toString().startsWith("taxonomy-"))
+                     .filter(Files::isDirectory).toList();
+diff --git a/taxonomy-export/pom.xml b/taxonomy-export/pom.xml
+index cf37445992b6154dd63379cc713fe27c09760434..8e53468f3ab77a35efe754b22aab568e41cbf225 100644
+--- a/taxonomy-export/pom.xml
++++ b/taxonomy-export/pom.xml
+@@ -12,6 +12,13 @@
+     <name>Taxonomy Export</name>
+     <description>Export formats, diagram models, converters, and the diagram export SPI</description>
+     <dependencies>
++        <!-- Independent grammar/semantic validation of generated exchange files. -->
++        <dependency>
++            <groupId>com.structurizr</groupId>
++            <artifactId>structurizr-dsl</artifactId>
++            <version>6.2.3</version>
++            <scope>test</scope>
++        </dependency>
+         <!-- Standards RDF parser for the OSLC surface. No SPARQL endpoint is exposed. -->
+         <dependency>
+             <groupId>org.apache.jena</groupId>

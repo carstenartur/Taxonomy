@@ -17,6 +17,9 @@ patch=OUT/'verified.patch';patch.write_text(payload['patch'])
 subprocess.run(['git','apply','--index',str(patch)],check=True)
 subprocess.run(['git','diff','--cached','--check'],check=True)
 assert git('write-tree')==T
+subprocess.run(['git','apply','--index',str(HERE/'correction.patch')],check=True)
+T='4211c6f6fc9d045e56dcc7e04d8c7a19f3c58aa0'
+assert git('write-tree')==T
 os.environ.update(GIT_AUTHOR_NAME='ChatGPT',GIT_AUTHOR_EMAIL='chatgpt@users.noreply.github.com',
                   GIT_COMMITTER_NAME='ChatGPT',GIT_COMMITTER_EMAIL='chatgpt@users.noreply.github.com',
                   GIT_AUTHOR_DATE='2026-09-26T19:40:00Z',GIT_COMMITTER_DATE='2026-09-26T19:40:00Z')
@@ -28,12 +31,12 @@ assert merge.returncode==0,merge.stdout
 assert not git('diff','--name-only','--diff-filter=U')
 subprocess.run(['git','diff','--cached','--check'],check=True)
 tree=git('write-tree')
-message='refactor(test): place 206 feature test methods with their owning modules\n\nPreserve existing test bodies and retain HTTP/full-application restart checks.\nReuse the workspace persistence helper only as a classified test JAR.\nIntegrate main 7778cf5 without changing its production code.\nNo measured build-time improvement is claimed.'
+message='refactor(test): place 206 feature test methods with their owning modules\n\nPreserve existing test bodies and retain HTTP/full-application restart checks.\nReuse the workspace persistence helper only as a classified test JAR.\nMove the replay recording and the existing test-only Structurizr parser with their tests.\nIntegrate main 7778cf5 without changing its production code.\nNo measured build-time improvement is claimed.'
 commit=git('commit-tree',tree,'-p',B,'-p',M,'-m',message)
 subprocess.run(['git','reset','--hard',commit],check=True)
 paths=git('diff','--name-only',M,commit).splitlines()
-assert paths
-assert all('/src/test/' in p or p in ['taxonomy-extension-api/pom.xml','taxonomy-workspace/pom.xml','taxonomy-interop/pom.xml'] for p in paths),paths
+allowed=['taxonomy-extension-api/pom.xml','taxonomy-workspace/pom.xml','taxonomy-interop/pom.xml','taxonomy-app/pom.xml','taxonomy-export/pom.xml','docs/qa/sparx-implementation-validation.md','docs/qa/standards-interoperability.md']
+assert paths and all('/src/test/' in p or p in allowed for p in paths),paths
 subprocess.run(['git','diff','--check',M,commit],check=True)
 receipt={'baseline':B,'main':M,'tree':tree,'commit':commit,'changedPaths':paths}
 (OUT/'candidate.json').write_text(json.dumps(receipt,indent=2))
