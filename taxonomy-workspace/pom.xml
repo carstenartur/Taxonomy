@@ -115,9 +115,8 @@
                     </includes>
                     <skipITs>${skipITs}</skipITs>
                     <excludedGroups>${excludedGroups}</excludedGroups>
-                    <!-- Reactor-wide -Dit.test selectors often target integration
-                         tests owned by taxonomy-app. A module with no matching IT
-                         must stay neutral rather than fail the whole reactor. -->
+                    <!-- Reactor-wide profiles (database-*, core-integration, ...) select integration
+                         tests that live in other modules. Those selectors must not fail this module. -->
                     <failIfNoSpecifiedTests>false</failIfNoSpecifiedTests>
                 </configuration>
                 <executions>
