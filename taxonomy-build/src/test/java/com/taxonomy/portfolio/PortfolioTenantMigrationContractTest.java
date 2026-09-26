@@ -1,10 +1,7 @@
 package com.taxonomy.portfolio;
 
+import com.taxonomy.build.RepositoryResources;
 import org.junit.jupiter.api.Test;
-
-import org.springframework.core.io.ClassPathResource;
-
-import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -16,7 +13,7 @@ class PortfolioTenantMigrationContractTest {
     @Test
     void migrationBackfillsEveryPortfolioRootAndFailsClosedOnAmbiguousProvenance()
             throws Exception {
-        String sql = new ClassPathResource(MIGRATION).getContentAsString(StandardCharsets.UTF_8);
+        String sql = RepositoryResources.applicationResource(MIGRATION);
 
         assertThat(sql)
                 .contains("alter table arch_project")

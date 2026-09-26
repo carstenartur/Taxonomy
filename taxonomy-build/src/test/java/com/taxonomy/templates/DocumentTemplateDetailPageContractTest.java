@@ -1,9 +1,7 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.build.RepositoryResources;
 import org.junit.jupiter.api.Test;
-
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -46,10 +44,6 @@ class DocumentTemplateDetailPageContractTest {
     }
 
     private static String resource(String path) throws Exception {
-        try (InputStream input = DocumentTemplateDetailPageContractTest.class
-                .getResourceAsStream(path)) {
-            assertThat(input).isNotNull();
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return RepositoryResources.applicationResource(path);
     }
 }
