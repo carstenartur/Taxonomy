@@ -202,20 +202,15 @@ class LlmRecordReplayServiceTest {
     class ClasspathRecording {
 
         @Test
-        void replayFromClasspathRecordingsDir() {
-            // Point the service at the real src/test/resources/llm-recordings directory
-            Path classPathDir = Path.of("src/test/resources/llm-recordings");
-            if (!Files.exists(classPathDir)) {
-                // Running from the module directory
-                classPathDir = Path.of("taxonomy-app/src/test/resources/llm-recordings");
-            }
-            if (!Files.exists(classPathDir)) {
-                // Skip if directory not found (shouldn't happen)
-                return;
+        void replayFromClasspathRecordingsDir() throws Exception {
+            String fileName = "sha256-c292fe61849d1dc5e334b26da23e4c25e326386cc2f767100acbb80ea9a3a575.json";
+            try (var recording = getClass().getResourceAsStream("/llm-recordings/" + fileName)) {
+                assertNotNull(recording, "The committed replay fixture must be packaged as a test resource");
+                Files.copy(recording, tempDir.resolve(fileName));
             }
 
             var replayer = new LlmRecordReplayService(
-                    classPathDir.toAbsolutePath().toString(),
+                    tempDir.toAbsolutePath().toString(),
                     true, false, "error", false, false);
 
             Optional<String> result = replayer.replay(SAMPLE_PROMPT);

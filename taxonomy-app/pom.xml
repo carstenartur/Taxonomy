@@ -346,6 +346,15 @@
             <artifactId>flexmark-ext-tables</artifactId>
             <version>${flexmark.version}</version>
         </dependency>
+        <!-- Full-application restart tests share the workspace-owned database fixture. -->
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-workspace</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <classifier>test-fixtures</classifier>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>

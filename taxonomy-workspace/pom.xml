@@ -88,6 +88,27 @@
         <plugins>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>editor-persistence-test-fixture</id>
+                        <!-- Attach after the default test compiler, including `mvn test-compile`. -->
+                        <phase>test-compile</phase>
+                        <goals><goal>test-jar</goal></goals>
+                        <configuration>
+                            <classifier>test-fixtures</classifier>
+                            <!-- A compile-only build still needs an attachable (possibly empty)
+                                 artifact for downstream test dependency resolution. -->
+                            <skip>false</skip>
+                            <includes>
+                                <include>com/taxonomy/editor/EditorPersistenceFixture.class</include>
+                            </includes>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-enforcer-plugin</artifactId>
                 <executions>
                     <execution>
