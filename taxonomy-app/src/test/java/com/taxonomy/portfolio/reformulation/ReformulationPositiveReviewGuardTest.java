@@ -24,6 +24,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
+import tools.jackson.databind.node.ObjectNode;
 
 import java.util.UUID;
 import java.util.List;
@@ -42,6 +43,19 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
     @Autowired ReformulationEvidenceCodec evidenceCodec;
     @Autowired ReformulationPortableEvidenceRepository importedEvidence;
     @Autowired ReformulationAdoptionRepository adoptionRows;
+
+    private enum DamagedAdoptionEvidence {
+        PREVIEW_HASH,
+        MISSING_REVISION,
+        MISSING_CURRENT_REQUIREMENT,
+        MISSING_CURRENT_VERSION,
+        WRONG_PREVIEW_ID,
+        WRONG_PROPOSAL_ID,
+        WRONG_PROJECT_ID,
+        WRONG_REQUIREMENT_ID,
+        WRONG_SOURCE_VERSION_ID,
+        WRONG_PREVIOUS_VERSION_ID
+    }
 
     private void adopt(boolean conflict) throws Exception {
         if (conflict) questionTransform = questions -> questions.stream().map(q -> q.id().equals("channel")
@@ -95,6 +109,44 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
         jdbc.update("update reformulation_adoption_preview set preview_payload = ?, content_hash = ? where id = ?",
                 payload, StableIdentityHash.sha256(payload), receipt.getPreviewId());
         positive(project.id(), requirement.id(), 409);
+    }
+
+    @ParameterizedTest(name = "{0} cannot authorize positive review")
+    @EnumSource(DamagedAdoptionEvidence.class)
+    void damagedLocalAdoptionEvidenceCannotAuthorizePositiveReviewOrChangeRequirement(DamagedAdoptionEvidence damage) throws Exception {
+        adopt(false);
+        var before = projects.getRequirement(project.id(), requirement.id(), "architect", context);
+        var receipt = adoptionRows.findByRequirementIdAndTargetVersionIdAndScopeKey(
+                requirement.id(), before.currentVersionId(), PortfolioScope.key("architect", context)).getFirst();
+
+        if (damage == DamagedAdoptionEvidence.WRONG_PREVIOUS_VERSION_ID) {
+            var result = (ObjectNode) json.readTree(receipt.getPayload());
+            result.put("previousVersionId", -1);
+            jdbc.update("update reformulation_adoption set receipt_payload = ? where id = ?",
+                    json.writeValueAsString(result), receipt.getId());
+        } else {
+            var preview = (ObjectNode) json.readTree(receipt.getPreview().getPayload());
+            switch (damage) {
+                case PREVIEW_HASH -> preview.put("actor", "damaged persisted preview");
+                case MISSING_REVISION -> preview.remove("revision");
+                case MISSING_CURRENT_REQUIREMENT -> preview.remove("currentRequirement");
+                case MISSING_CURRENT_VERSION -> ((ObjectNode) preview.get("currentRequirement")).remove("currentVersion");
+                case WRONG_PREVIEW_ID -> preview.put("id", UUID.randomUUID().toString());
+                case WRONG_PROPOSAL_ID -> preview.put("proposalId", UUID.randomUUID().toString());
+                case WRONG_PROJECT_ID -> ((ObjectNode) preview.get("currentRequirement")).put("projectId", -1);
+                case WRONG_REQUIREMENT_ID -> ((ObjectNode) preview.get("currentRequirement")).put("id", -1);
+                case WRONG_SOURCE_VERSION_ID -> preview.put("sourceVersionId", -1);
+                case WRONG_PREVIOUS_VERSION_ID -> throw new IllegalStateException("Receipt damage is handled separately");
+            }
+            String payload = json.writeValueAsString(preview);
+            String hash = damage == DamagedAdoptionEvidence.PREVIEW_HASH
+                    ? receipt.getPreview().getContentHash() : StableIdentityHash.sha256(payload);
+            jdbc.update("update reformulation_adoption_preview set preview_payload = ?, content_hash = ? where id = ?",
+                    payload, hash, receipt.getPreviewId());
+        }
+
+        positive(project.id(), requirement.id(), 409);
+        assertThat(projects.getRequirement(project.id(), requirement.id(), "architect", context)).isEqualTo(before);
     }
 
     @Test void acknowledgedOlderSourceAdoptionCanStillReceivePositiveReview() throws Exception {
