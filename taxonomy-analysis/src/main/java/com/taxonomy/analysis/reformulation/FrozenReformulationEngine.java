@@ -158,7 +158,8 @@ public class FrozenReformulationEngine {
             var generated=RejectedWordingGuard.review(steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps)),statements.values());
             var additions=new ArrayList<Statement>();
             for(var statement:generated.statementProposals()) {
-                additions.add(statement);statements.put(statement.id(),statement);
+                var retained=statements.putIfAbsent(statement.id(),statement);
+                additions.add(retained==null?statement:retained);
             }
             generated.questionProposals().forEach(q->questions.put(q.id(),q));
             var sectionStatements=new LinkedHashSet<>(section.statementIds());additions.forEach(s->sectionStatements.add(s.id()));

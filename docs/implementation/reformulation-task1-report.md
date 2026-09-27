@@ -23,4 +23,11 @@ The check is literal exact-wording replay (including the same contiguous wording
 
 ## Self-review
 
-The parser rejects replay before returning a node result, allowing its existing bounded repair/failure path. The publication guard additionally handles checkpointed or injected node results, marks new-ID replay evidence REJECTED, and replaces contaminated summaries with an explicit withheld marker plus conflict finding. Original rejected records are not rewritten; reconciliation and affected synthesis filter only active rendering. No provider, persistence, version, scope or architecture changes were made. The focused suite cannot prove semantic-equivalence detection, which is intentionally out of scope.
+The parser rejects replay before returning a node result, allowing its existing bounded repair/failure path. The publication guard additionally handles checkpointed or injected node results, marks new-ID replay evidence REJECTED, and withholds contaminated summaries with an empty value plus conflict finding. Original rejected records are not rewritten; reconciliation and affected synthesis filter only active rendering. No provider, persistence, version, scope or architecture changes were made. The focused suite cannot prove semantic-equivalence detection, which is intentionally out of scope.
+
+## Independent review correction, round 1
+
+The reviewer identified two edge cases: a fixed withheld-summary sentence could itself contain a short rejected phrase, and affected synthesis could replace an existing HUMAN rejected record on a same-ID replay. The first correction uses an empty summary plus the existing explicit conflict finding; the second retains the exact prior statement in both the document and node result.
+
+- RED before correction: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test -Dtest=FrozenReformulationEngineTest,CrossTaxonomyReconciliationTest -Dsurefire.failIfNoSpecifiedTests=false`: 20 tests, 2 expected failures, 0 errors. The collision case yielded `Summary withheld: rejected wording requires review.` for rejected `requires review`; the same-ID case returned MODEL editing origin in place of HUMAN.
+- Corrected focused GREEN: pending checkpoint and run.

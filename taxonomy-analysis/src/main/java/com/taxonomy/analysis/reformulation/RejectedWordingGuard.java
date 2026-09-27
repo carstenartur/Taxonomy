@@ -5,7 +5,6 @@ import java.util.*;
 
 /** Exact rejected wording is retained as evidence, never promoted by a later model result. */
 final class RejectedWordingGuard {
-    private static final String WITHHELD = "Summary withheld: rejected wording requires review.";
     private RejectedWordingGuard() {}
 
     static Set<String> from(Collection<Statement> statements) {
@@ -22,7 +21,7 @@ final class RejectedWordingGuard {
     static String safeSummary(String summary, Set<String> rejected, List<ValidationReport.Finding> findings) {
         if (!repeats(summary, rejected)) return summary;
         findings.add(conflict(List.of()));
-        return WITHHELD;
+        return "";
     }
 
     static NodeSynthesisResult review(NodeSynthesisResult result, Collection<Statement> retained) {
