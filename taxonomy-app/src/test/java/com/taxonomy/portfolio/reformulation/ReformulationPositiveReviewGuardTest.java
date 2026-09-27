@@ -211,6 +211,11 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
                 ORIGINAL, RequirementStatus.DRAFT, 50, Criticality.HIGH, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED,
                 "architect", "Original", null), "architect", target);
         git.materialize(dsl, "architect", target);
+        // The importer reuses the case-insensitive business identity but normalizes
+        // its spelling from the source. Restore the existing spelling to exercise a
+        // valid mixed-case persisted target without changing portable evidence bytes.
+        jdbc.update("update arch_project set project_key=? where id=?", "p", lowerProject.id());
+        jdbc.update("update project_requirement set requirement_key=? where id=?", "r", lowerRequirement.id());
         var current = projects.getRequirement(lowerProject.id(), lowerRequirement.id(), "architect", target);
         assertThat(projects.getProject(lowerProject.id(), "architect", target).projectKey()).isEqualTo("p");
         assertThat(current.requirementKey()).isEqualTo("r");
