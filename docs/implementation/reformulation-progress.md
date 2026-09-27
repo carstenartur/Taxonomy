@@ -13,8 +13,13 @@ at 16:39:57 UTC: 60 tests, zero failures/errors/skips, BUILD SUCCESS.
 Fresh DE/EN DOCX files from that run were independently rendered and all eight
 pages inspected. See the review-fixes report and Task 3 rereview for exact evidence.
 
-The whole-intermediate-branch review and applicable current-head CI remain merge
-gates. The user authorized useful intermediate merges; the boundary is recorded
+The whole-intermediate-branch review found one further current-question DOCX
+omission. Its test-first correction is secured at `0da2fdba` and independently
+accepted. Post-fix covering verification: 61/61, BUILD SUCCESS at 16:50:37 UTC;
+all eight freshly generated DE/EN document pages passed visual inspection.
+See `reformulation-final-question-fix.md` for hashes and exact test counts.
+Applicable current-head CI remains the final merge gate.
+The user authorized useful intermediate merges; the boundary is recorded
 in `reformulation-intermediate-scope.md`. Task 4 remains required after this merge;
 the complete original product specification is not yet accepted.
 

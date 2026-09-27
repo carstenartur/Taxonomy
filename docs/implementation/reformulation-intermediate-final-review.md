@@ -20,3 +20,13 @@ Render the current question's complete answer contract and dependency references
 - DOCX uses persisted report/baseline material and validated frozen architecture, including directed parallel mappings and missing-versus-empty gaps; controller output remains binary with response hash and restrictive download headers. The saved revision/receipt distinction is retained.
 - The supplied current-head evidence reports eight focused suites, 60 tests passing. I did not rerun them or claim full-reactor success; the controller's final Maven completion, refreshed all-page DE/EN visual inspection and current published-head CI remain separate gates.
 - Task 4 remains explicitly future work after this authorized intermediate delivery. This review does not require its browser/semantic/provider-quality acceptance before the Tasks 1–3 merge, or claim byte-for-byte DOCX package determinism.
+
+## Scoped rereview — sole P2 resolved
+
+Reviewed `bc45e2dc..0da2fdbab2454df274525c47f5cb8866ab633762`, limited to the finding above and new breakage in its fix. **Code-review verdict: approved for the authorized intermediate scope; no remaining actionable findings.**
+
+The current question now uses the same complete `answerSchema` helper as merged origins and renders its prerequisite/dependent IDs. The helper preserves the origin rendering's DE/EN labels, numeric units/bounds, options, naturally sorted option meanings, incompatible groups and applicability conditions. This extraction does not alter saved data or remove any origin fields.
+
+The new `currentQuestionsWithoutOriginsRetainCompleteAnswerContractInBothLanguages` test parses actual DOCX text with empty origins, checks numeric and conditional question contracts in both languages, and checks that origin output cannot accidentally satisfy the assertions. The controller reports a meaningful RED of six tests with one assertion failure; focused GREEN was still running when this rereview was requested. I did not rerun tests or count earlier green results as verification of this fix.
+
+The controller's post-fix focused/covering results, refreshed all-page DE/EN visual inspection and published-head CI remain required completion gates. Task 4 remains future work under the authorized intermediate boundary. No product edit, commit or publication was made by this rereview.
