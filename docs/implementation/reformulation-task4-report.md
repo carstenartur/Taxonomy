@@ -45,3 +45,13 @@ application requests in Task 4b without injecting prepared state.
 
 Real application/browser/restart, fixture score
 selection, exports, CI and real-provider quality gates remain open (Task 4b+).
+
+## Resumed 2026-09-27
+
+Task 4a accepted source recovered from 696130c8; full approved PR1135 corrections
+through 43992e1d merged without discarding earlier Task4 work. The original exact
+unapplied Task4b test draft is now applied with AnalysisStatus.SUCCESS corrected
+from its unverified COMPLETED assumption. Test-only checkpoint precedes execution.
+Expected RED: the sourced flood remote corpus has no application reformulation
+responses; observed actual prompt identities will bind authored response cases.
+No application memory/provider budgets or source requirements are changed.
