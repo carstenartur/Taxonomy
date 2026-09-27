@@ -20,8 +20,8 @@ public class RequirementRelationSearchService {
     private final LlmService llm;
     private final AiPromptBudgetPolicy promptBudget;
 
-    @Value("${taxonomy.analysis.relations.hierarchical.enabled:false}")
-    private boolean enabled;
+    @Value("${taxonomy.analysis.relations.hierarchical.enabled:true}")
+    private boolean enabled = true;
     @Value("${taxonomy.analysis.relations.hierarchical.max-calls:24}")
     private int maxCalls = 24;
     @Value("${taxonomy.analysis.relations.hierarchical.max-depth:8}")
@@ -56,7 +56,9 @@ public class RequirementRelationSearchService {
 
     private String complete(String prompt) {
         String provider = llm.getActiveProviderName();
-        promptBudget.requireWithinBudget(prompt, provider);
+        // Presentation labels (notably Custom OpenAI-compatible and Local ONNX)
+        // are not stable provider keys. Preserve them in logs, not in budget lookup.
+        promptBudget.requireWithinBudget(prompt, llm.getActiveProvider().name());
         return AnalysisRunControl.call(provider, "RELATION_SEARCH", () -> {
             LlmCallDetail detail = new LlmCallDetail();
             detail.setPrompt(prompt); detail.setProvider(provider);

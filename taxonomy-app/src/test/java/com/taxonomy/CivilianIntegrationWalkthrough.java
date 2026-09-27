@@ -63,17 +63,19 @@ final class CivilianIntegrationWalkthrough {
         var replay = codec.read(codec.write(read), "civilian-delivery", false);
         assertThat(replay.artifacts()).isEqualTo(read.artifacts());
         assertThat(replay.relations()).isEqualTo(read.relations());
-        assertThat(read.artifacts()).hasSize(38);
+        assertThat(read.artifacts()).hasSize(7);
         var source = new ArchiMateExchangeCodec().read(archimate, "civilian-snapshot", false);
         assertThat(read.artifacts()).extracting(a -> a.title())
                 .containsExactlyInAnyOrderElementsOf(source.artifacts().stream()
                         .filter(a -> a.kind() == com.taxonomy.extension.api.integration.IntegrationContracts.ArtifactKind.ELEMENT)
                         .map(a -> a.title()).toList());
         // These are explicit review boundaries, not an assertion of lossless export:
-        // 8/44 generated candidates fail native type rules; 28/36 native relations
-        // have no mapping in immutable Sparx profile v1, leaving 8 delivered relations.
-        assertThat(exportPreview.path("document").path("relations")).hasSize(36);
-        assertThat(read.relations()).hasSize(8);
+        // All seven evidence-based required relations satisfy native type rules.
+        // Immutable Sparx profile v1 maps only the two CONSUMES claims; five
+        // other types still require explicit unsupported-mapping review.
+        assertThat(source.relations()).hasSize(7);
+        assertThat(exportPreview.path("document").path("relations")).hasSize(7);
+        assertThat(read.relations()).hasSize(2);
         Set<String> expectedRelations = new TreeSet<>();
         var sourceLabels = new HashMap<String, String>();
         source.artifacts().forEach(a -> sourceLabels.put(a.id(), a.title()));
@@ -92,8 +94,8 @@ final class CivilianIntegrationWalkthrough {
         assertThat(read.relations()).extracting(r -> labels.get(r.source()) + "|" + r.extensions().get("canonicalType") + "|" + labels.get(r.target()))
                 .containsExactlyInAnyOrderElementsOf(expectedRelations);
         app.save("integration-quality.json", app.json.valueToTree(Map.of(
-                "generatedRelations", 44, "nativeAcceptedRelations", 36, "nativeRejectedRelations", 8,
-                "sparxDeliveredElements", 38, "sparxDeliveredRelations", 8, "sparxUnmappedRelations", 28,
+                "generatedRelations", 7, "nativeAcceptedRelations", 7, "nativeRejectedRelations", 0,
+                "sparxDeliveredElements", 7, "sparxDeliveredRelations", 2, "sparxUnmappedRelations", 5,
                 "sparxFileSha256", com.taxonomy.acceptance.CivilianExportQa.sha256(xmi),
                 "productCompatibility", "NOT_EXECUTED", "reviewEvidence", List.of("integration-import-review.json", "integration-sparx-review.json"))));
         // A delivered file is not a remote acknowledgement and must not advance a checkpoint.

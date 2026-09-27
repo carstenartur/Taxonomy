@@ -763,7 +763,7 @@ public class PortfolioAnalysisPersistenceService {
             case ENRICHED_LEAF -> MappingOrigin.ENRICHED;
             // The legacy query index has a coarse propagated category; exact
             // RELATION_EVIDENCE provenance remains in the immutable analysis JSON.
-            case TRACE_INTERMEDIATE, PROPAGATED, SEED_CONTEXT, IMPACT_PROMOTED, RELATION_EVIDENCE ->
+            case TRACE_INTERMEDIATE, PROPAGATED, SEED_CONTEXT, IMPACT_PROMOTED, RELATION_EVIDENCE, REQUIREMENT_EVIDENCE ->
                     MappingOrigin.PROPAGATED;
         };
     }
@@ -779,7 +779,8 @@ public class PortfolioAnalysisPersistenceService {
     }
 
     private static double confidence(RequirementElementView element) {
-        if (element.getOrigin() == NodeOrigin.RELATION_EVIDENCE) return 0.0;
+        if (element.getOrigin() == NodeOrigin.RELATION_EVIDENCE
+                || element.getOrigin() == NodeOrigin.REQUIREMENT_EVIDENCE) return 0.0;
         if (element.getDirectLlmScore() > 0) {
             return Math.min(1.0,
                     Math.max(0.0, element.getDirectLlmScore() / 100.0));

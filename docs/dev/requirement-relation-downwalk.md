@@ -3,10 +3,13 @@
 Implements the bounded relationship-search part of issue #1111, package 2. It does
 not complete the project's independent model identity, adoption, or exchange packages.
 
-## Enable explicitly
+## Enabled by default
 
-The initial delivery is **opt-in**. Existing installations keep their current
-score-based analysis and do not incur additional remote evaluations until enabled:
+Requirement-scoped discovery is **enabled by default** for new analyses through
+`AnalyzeRequirementUseCase`. An explicit server override to `false` retains the
+legacy algorithm for compatibility; errors and budget exhaustion never silently
+select that algorithm. Existing saved analyses are not recomputed or relabelled.
+The default adds bounded remote evaluations using the selected provider:
 
 ```properties
 taxonomy.analysis.relations.hierarchical.enabled=true
@@ -19,10 +22,20 @@ taxonomy.analysis.relations.hierarchical.max-sources=32
 
 These are server properties, not yet a new Preferences editor. The existing
 analysis endpoints and selected provider are reused. No additional credentials,
-microservice, database, or search engine is required. Existing `llm.mock=true`
-returns an empty array from the raw-completion API; it is **not** a realistic
-relation fixture and the enabled mode correctly reports an invalid response.
-The test fixtures below replace the remote boundary with protocol-aware replies.
+microservice, database, or search engine is required. Explicit `llm.mock=true`
+uses a bounded, clearly labelled **MOCK demonstration**, not a semantic assessment
+of the supplied requirement. It executes the real extraction/navigation/verification
+protocol using three concrete example nodes, keeps original text literal, and
+stays within the ordinary 24-call budget. The old saved example remains readable.
+Malformed-response tests inject their failures explicitly instead of using mock mode
+as a surrogate failure. Unrelated raw mock tasks retain their empty-array response.
+
+The civilian reference uses separately authored, requirement-specific replies at the
+remote HTTP boundary and checks exact required connections independently. Its
+exhaustive two-pass test budget is 256 calls per pass; production defaults remain
+unchanged. Optional SMS is retained in evidence, not promoted to a required edge.
+Source-only role contributions are visible but never selected for impact analysis.
+This proves software behavior, not real-provider architectural quality.
 
 `max-calls` covers contribution extraction, navigation and separate verification
 **evaluation attempts** in this additional phase. It does not include the earlier
@@ -37,13 +50,17 @@ remain active and partial evidence survives a stop.
 
 1. Positive **effective** scores order concrete source candidates; catalogue roots
    are navigation containers, not components. Unhandled sources are reported when
-   source limits, missing IDs or root-only analysis prevent extraction.
+   source limits, missing IDs or root-only analysis prevent extraction. An empty or
+   all-nonpositive source set is explicitly `SOURCE_DISCOVERY_REQUIRED`, never proof
+   that the requirement has no architectural dependencies.
 2. Sibling source candidates are assessed together. Each gets explicitly quoted,
    requirement-scoped contributions, a negative assessment or an open question.
    Multiple contributions and conditions are not merged merely because codes match.
 3. The existing `RelationCompatibilityMatrix` routes each contribution through
    permitted relation types and directions. Incoming and same-category routes are
-   considered; unrestricted `RELATED_TO` is not generated automatically.
+   considered; unrestricted `RELATED_TO` is not generated automatically. Both runtime
+   and DSL validation admit `UA -> IP CONSUMES` (reading), separately from
+   `UA -> IP PRODUCES` (writing). The profile still does not assert an edge exists.
 4. Navigation offers sibling candidates together, including unscored targets.
    `DESCEND` means inspect the subtree, **not** create an edge to its root. A concrete
    non-leaf can be a match when further detail would invent a design choice.
@@ -52,7 +69,12 @@ remain active and partial evidence survives a stop.
    optional and alternative outcomes retain their original quotes and conditions.
 6. The normal analysis result carries `relationSearchReport`. The architecture facade
    projects verified required relationships using existing view DTOs and invariants.
-   It does not run legacy seed propagation, score-product inference, or cartesian
+   It retains unconditional quoted source contributions as `REQUIREMENT_EVIDENCE`
+   proposals even when relationships remain open. These unverified sources are
+   not selected for impact analysis. This origin does not claim
+   separate relation verification; conditions, unresolved and rejected sources do
+   not create standalone required members. Verified endpoints take priority under
+   view caps. It does not run legacy seed propagation, score-product inference, or cartesian
    impact generation. Optional/alternative branches remain in the evidence report.
 
 Source, navigation and verification schemas are strict JSON objects with complete
@@ -98,7 +120,11 @@ separate packages of #1111; no ArchiMate/Sparx conformance certification is clai
 The root compatibility profile is the current application profile, not a full
 ArchiMate metamodel. Source limits, maximum work, depth and model evaluations can all
 leave explicit unfinished work. Roots are admitted lazily so they cannot consume
-all work slots before any promising path reaches independent verification.
+all work slots before any promising path reaches separate verification. Relation
+routes are interleaved between contributions, retaining source priority in each
+round and branch completion before the next route. This prevents one source from
+spending the budget on every relation type before another gets a turn; it does not
+guarantee equitable recall at very small budgets.
 
 A semantic rejection prunes under a heuristic policy. `searchExhausted` means no work
 remains under that policy, **not** that every necessary architectural dependency was
@@ -111,6 +137,11 @@ without a measured comparison against independent expert-reviewed cases.
 
 Normal Maven/JUnit discovery includes:
 
+- `RelationSearchIntegrationTest` also discovers `DefaultRelationArchitectureContract`:
+  real Spring defaults/explicit override, application read/write, matching DSL rules,
+  empty-source coverage and interleaved bounded work.
+- `EvidenceRelationProjectionTest` also discovers `SourceContributionProjectionContract`:
+  isolated source proposals, exact provenance/JSON, conditions and view caps.
 - `RelationSearchEngineTest`: bounded navigation, budgets, deduplication, typed
   evidence, cycles, cancellation and lazy admission.
 - `RelationSearchIntegrationTest`: strict real protocol parsing, read/write
@@ -143,3 +174,19 @@ compiler-generated references in its anonymous catalogue adapter do not constitu
 a second class pair under the existing inventory policy. The former jdeps-based
 count of six was incorrect. The baseline now records the five actual pairs and
 keeps every unrelated entry and the exact dependency ratchet unchanged.
+
+## Initial catalogue DSL and integration exports
+
+Fresh catalogue materialization excludes virtual root-to-root and root-to-element
+templates from architecture relationships, just as it already excludes virtual
+root elements. The catalogue rows themselves are unchanged. Concrete relationships
+and their provenance remain; a missing concrete endpoint fails explicitly instead
+of silently dropping the relationship. This keeps a newly initialized workspace
+referentially closed without inventing category containers as project components.
+Existing Git histories and saved workspace documents are not rewritten by this
+change. Historical documents with dangling references still require an explicit
+reviewed repair; the integration export validator remains fail-closed.
+
+Evidence-only diagrams contain no score-derived impact anchors. Their checked
+context control is disabled rather than offering a filter that would hide every
+element. Legacy diagrams with real anchors retain the context filter.

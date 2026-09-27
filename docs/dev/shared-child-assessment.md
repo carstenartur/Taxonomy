@@ -71,7 +71,7 @@ are unchanged; absence in the analysis score maps is authoritative, not the
 legacy numeric defaults of unrelated architecture DTO fields. A restart-safe
 resume queue for incomplete work is not introduced by this change. This increment
 does not claim a persistent shared cache, provider-retry/token budget, improved
-model recall or standards conformance. The opt-in relation phase and its configured limits are
+model recall or standards conformance. The default-enabled relation phase and its configured limits are
 unchanged; see `requirement-relation-downwalk.md` and both configuration references.
 
 A separate verification model call is not independent human review or formal

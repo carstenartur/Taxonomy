@@ -10,7 +10,7 @@ class NodeOriginTest {
 
     @Test
     void hasExpectedNumberOfValues() {
-        assertEquals(7, NodeOrigin.values().length);
+        assertEquals(8, NodeOrigin.values().length);
     }
 
     @ParameterizedTest
@@ -21,6 +21,7 @@ class NodeOriginTest {
 
     @Test
     void allExpectedValuesExist() {
+        assertNotNull(NodeOrigin.valueOf("REQUIREMENT_EVIDENCE"));
         assertNotNull(NodeOrigin.valueOf("RELATION_EVIDENCE"));
         assertNotNull(NodeOrigin.valueOf("DIRECT_SCORED"));
         assertNotNull(NodeOrigin.valueOf("TRACE_INTERMEDIATE"));
@@ -34,6 +35,12 @@ class NodeOriginTest {
     void relationEvidenceHasItsOwnMessageKey() {
         assertEquals("node.origin.relation.evidence", NodeOrigin.RELATION_EVIDENCE.messageKey());
         assertNotEquals(NodeOrigin.PROPAGATED.messageKey(), NodeOrigin.RELATION_EVIDENCE.messageKey());
+    }
+
+    @Test
+    void sourceEvidenceDoesNotClaimRelationVerification() {
+        assertEquals("node.origin.requirement.evidence", NodeOrigin.REQUIREMENT_EVIDENCE.messageKey());
+        assertNotEquals(NodeOrigin.RELATION_EVIDENCE.messageKey(), NodeOrigin.REQUIREMENT_EVIDENCE.messageKey());
     }
 
     @Test

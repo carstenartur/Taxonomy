@@ -42,7 +42,9 @@ public class RelationCompatibilityMatrix {
         addRule(RelationType.CONSUMES,          "CR",  Set.of("IP"));
         // COI Service → Information Product
         addRule(RelationType.CONSUMES,          "CI",  Set.of("IP"));
-        // User Application → Information Product / Core Service
+        // User Application → Information Product (read access, distinct from PRODUCES)
+        addRule(RelationType.CONSUMES,          "UA",  Set.of("IP"));
+        // User Application → Core / COI / Communications Service
         addRule(RelationType.USES,              "UA",  Set.of("CR", "CI", "CO"));
         // System → System / Core Service (C4 inter-system usage)
         addRule(RelationType.USES,              "SY",  Set.of("SY", "CR"));

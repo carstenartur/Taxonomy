@@ -9,9 +9,10 @@ import java.util.stream.Stream;
 class EvidenceRelationProjectionTest {
     @TestFactory
     Stream<DynamicTest> contracts() {
-        return Arrays.stream(EvidenceRelationProjectionContract.class.getDeclaredMethods())
+        return Stream.of(EvidenceRelationProjectionContract.class, SourceContributionProjectionContract.class)
+                .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                 .filter(method -> method.getName().startsWith("test"))
-                .map(method -> DynamicTest.dynamicTest(method.getName(), () -> {
+                .map(method -> DynamicTest.dynamicTest(method.getDeclaringClass().getSimpleName() + "." + method.getName(), () -> {
                     try { method.invoke(null); }
                     catch (InvocationTargetException failure) { throw failure.getCause(); }
                 }));

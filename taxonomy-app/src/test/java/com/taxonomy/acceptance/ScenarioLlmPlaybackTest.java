@@ -53,6 +53,16 @@ class ScenarioLlmPlaybackTest {
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Duplicate");
     }
 
+    @org.junit.jupiter.api.TestFactory
+    java.util.stream.Stream<org.junit.jupiter.api.DynamicTest> relationProtocolContracts() {
+        return java.util.Arrays.stream(RelationScenarioPlaybackContract.class.getDeclaredMethods())
+                .filter(method -> method.getName().startsWith("test"))
+                .map(method -> org.junit.jupiter.api.DynamicTest.dynamicTest(method.getName(), () -> {
+                    try { method.invoke(null); }
+                    catch (java.lang.reflect.InvocationTargetException failure) { throw failure.getCause(); }
+                }));
+    }
+
     static String prompt(ScenarioLlmPlayback playback, tools.jackson.databind.JsonNode rule) {
         var keys = new ArrayList<String>();
         rule.get("keys").forEach(key -> keys.add(key.asText()));
