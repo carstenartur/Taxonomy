@@ -60,3 +60,8 @@ Independent EN six-page render identified pages beginning too near the top edge,
 explicit section margins, and a provenance table with null project/requirement/version
 despite known frozen values. Standalone renderer layout and evidence binding are the next
 bounded fixes. DE page inspection is pending. No Task 3 visual acceptance claim.
+
+Subsequent DE three-page inspection confirmed the same top-edge margin defect and
+English metadata/identity keys, with some English history/provenance labels. DE and EN
+draft/adoption status and literal markup were readable. Bounded test-first layout,
+provenance and DE label checks are added; no production correction in this checkpoint.

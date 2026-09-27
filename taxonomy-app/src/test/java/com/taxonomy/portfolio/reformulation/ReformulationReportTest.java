@@ -28,6 +28,7 @@ import java.io.ByteArrayInputStream;
 import java.security.MessageDigest;
 import java.util.HexFormat;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
+import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -231,6 +232,12 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
             var xml = doc.getDocument().xmlText();
             assertThat(xml).contains("rf_ref_edge_" + mappingId, "w:anchor=\"rf_ref_edge_" + mappingId + "\"");
             assertThat(xml).doesNotContain("TargetMode=\"External\"");
+            var allText = new XWPFWordExtractor(doc).getText();
+            assertThat(allText).contains(project.id().toString(), requirement.id().toString(),
+                    requirement.currentVersionId() + " / v" + requirement.currentVersion().versionNumber())
+                    .doesNotContain("null / vnull", "{Analysis based-on");
+            assertThat(doc.getProperties().getCustomProperties().getProperty("taxonomy.requirement.version.id")
+                    .getLpwstr()).isEqualTo(requirement.currentVersionId().toString());
         }
         String qaPath = System.getProperty("reformulation.docx.qa.dir");
         if (qaPath != null && !qaPath.isBlank()) {

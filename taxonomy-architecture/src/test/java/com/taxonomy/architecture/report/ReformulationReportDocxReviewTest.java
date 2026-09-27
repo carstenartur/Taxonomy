@@ -9,6 +9,7 @@ import com.taxonomy.reformulation.ValidationReport;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.junit.jupiter.api.Test;
+import java.math.BigInteger;
 
 import java.io.ByteArrayInputStream;
 import java.util.LinkedHashMap;
@@ -54,5 +55,28 @@ class ReformulationReportDocxReviewTest {
     @Test void emptyGraphStillDisplaysSavedGapInventory() throws Exception {
         assertThat(text(input(List.of()), emptyGraph(List.of("Saved unresolved gap"))))
                 .contains("No architecture graph recorded", "Saved unresolved gap");
+    }
+
+    @Test void standaloneWordUsesSafePageMarginsAndConsistentDefaultFont() throws Exception {
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(renderer.render(input(List.of()), emptyGraph(List.of()))))) {
+            var section = doc.getDocument().getBody().getSectPr();
+            assertThat(section).isNotNull();
+            assertThat(section.getPgSz().getW()).isEqualTo(BigInteger.valueOf(11906));
+            assertThat(section.getPgMar().getTop()).isGreaterThanOrEqualTo(BigInteger.valueOf(1000));
+            assertThat(section.getPgMar().getBottom()).isGreaterThanOrEqualTo(BigInteger.valueOf(1000));
+            assertThat(doc.getStyles().getDefaultRunStyle().getRPr().getRFonts().getAscii()).isEqualTo("Aptos");
+        }
+    }
+
+    @Test void germanVisibleMetadataAndEmptyValidationAreLocalized() throws Exception {
+        var german = new ReformulationReportRenderer.Input("de", true,
+                Map.of("Adopted at", "2026-01-01", "Source version", "3"), "Original", "Vorschlag",
+                List.of(), List.of(), List.of(), List.of(), new ValidationReport(List.of()), "{}");
+        var architecture = new FrozenReformulationArchitecture(new DiagramModel("Frozen", List.of(), List.of(),
+                new DiagramLayout("LR", true)), Map.of("Includes provisional relations", "false"),
+                List.of(), List.of(), true, List.of(), List.of());
+        assertThat(text(german, architecture)).contains("Übernommen am: 2026-01-01", "Quellversion: 3",
+                "Vorläufige Beziehungen enthalten: false", "Keine Prüfbefunde gespeichert")
+                .doesNotContain("Adopted at:", "Source version:", "Includes provisional relations:");
     }
 }
