@@ -83,4 +83,13 @@ class ReformulationEvidenceCodecBoundaryTest {
 
         verifyNoInteractions(adoptions, imported, projects, requirements, versions);
     }
+
+    @Test
+    void publicPayloadDecoderRejectsUnknownStoredSchemaBeforeReadingAsV1() {
+        var future = new ReformulationEvidenceCodec.Evidence("P", "R", 2,
+                "reformulation-evidence-v99", "{}", "0".repeat(64), "1".repeat(64));
+        assertThatThrownBy(() -> codec.payload(future))
+                .isInstanceOf(PortfolioException.class)
+                .hasMessageContaining("Unsupported reformulation evidence schema");
+    }
 }

@@ -101,11 +101,16 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   bound to its physical version, but checksum-valid historical `originalText`
   has not been compared with the physical source version. A narrow import RED
   test and unknown-field schema test are added. No verification has run for
-  these two yet; the preceding 88/88 is pre-correction evidence.
+  RED verified: 17 RoundTrip cases, two expected failures (source mismatch and
+  unexpected JSON field accepted), zero errors. The preceding 88/88 is
+  pre-correction evidence.
+- Public decoder check added for an unknown stored schema: the positive-review
+  guard delegates to this decoder, so the decoder must reject v99 rather than
+  parse it as v1. RED not yet run for this additional case.
 
 ## Next exact command
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest -Dsurefire.failIfNoSpecifiedTests=false`
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-portfolio -am test -Dtest=ReformulationEvidenceCodecBoundaryTest#publicPayloadDecoderRejectsUnknownStoredSchemaBeforeReadingAsV1 -Dsurefire.failIfNoSpecifiedTests=false`
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.
