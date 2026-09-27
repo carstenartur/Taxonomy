@@ -252,3 +252,21 @@ page images, and requires one image per actual PDF page. Its regression verifies
 other documents and unrelated files survive. Tooling is GREEN 12/12, no failures,
 errors or skips. The final prompt-budget/playback/application run is in progress;
 native browser and full CI are still required on the final published head.
+
+2026-09-27 21:38 UTC: current implementation evidence after the edge corrections:
+prompt-budget/round-trip tests 3/3; playback contracts 17/17; document tooling 12/12.
+The separate real HTTP lifecycle passed 1/1 at 21:37:48 UTC, including both JVMs.
+Fresh run `26badadb-7483-4f05-a799-8830c843cdfc` rendered revision 25 pages/images
+and adoption 26 pages/images, with 7/8 content assertions and no empty body pages.
+A deliberately stale page-99 image was removed. An earlier interrupted combined
+run is not counted as passed.
+
+CI on `15a4c70e` completed the civilian tests with 26 tests / one browser failure;
+the other 25 passed. The failure screenshot and HTML show that the Questions tab
+had not activated, so the radio control remained in a hidden panel. The browser
+driver now uses the repository's existing instant-scroll convention, retains the
+stable native hit-target guard, and asserts the selected tab and visible panel
+before any answer operation. It also waits for the actual asynchronous comparison
+result and records click geometry on failure. No JavaScript click, hidden-header
+workaround, timeout increase or omitted assertion is introduced. These browser
+corrections require current-head CI execution; no browser success is claimed yet.

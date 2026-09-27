@@ -66,11 +66,12 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
         ((HasCdp) new Augmenter().augment(driver)).executeCdpCommand("Emulation.setDeviceMetricsOverride",
                 Map.of("width", 390, "height", 844, "deviceScaleFactor", 1, "mobile", true));
         wait.until(d -> ((Number) driver.executeScript("return window.innerWidth")).intValue() == 390);
-        click(By.cssSelector("[data-reformulation-view='questions']"));
+        selectView("questions");
         String cardId = "question-" + questionId;
         var card = driver.findElement(By.id(cardId));
         var choice = driver.findElement(By.cssSelector("#" + cardId + " input[value='Retain last observation with timestamp']"));
         scroll(choice); choice.sendKeys(Keys.SPACE);
+        wait.until(d -> choice.isSelected());
         var rationale = driver.findElement(By.cssSelector("#" + cardId + " label:last-of-type input"));
         rationale.clear(); rationale.sendKeys("Browser acceptance answer");
         var save = driver.findElement(By.xpath("//*[@id='" + cardId + "']//button[normalize-space()='Save answer']"));
@@ -78,7 +79,7 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
         assertThat(driver.switchTo().activeElement().getDomAttribute("id")).isEqualTo(cardId);
         assertThat(driver.findElements(By.cssSelector("#reformulationList input[type='number']"))).hasSize(2);
         shot("mobile-questions.png");
-        click(By.cssSelector("[data-reformulation-view='proposal']"));
+        selectView("proposal");
         click(By.xpath("//section[@id='reformulationOffers']//button[normalize-space()='Refresh status']"));
         wait.until(d -> d.findElement(By.cssSelector("[data-reformulation-editor]")).getDomProperty("value").startsWith("Unsaved civilian wording"));
         assertThat((Boolean) driver.executeScript("return document.documentElement.scrollWidth <= window.innerWidth")).isTrue();
@@ -93,7 +94,7 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
     }
     void preview(String path) throws Exception {
         open(path); click(By.xpath("//button[normalize-space()='Compare with predecessor']"));
-        assertThat(driver.findElement(By.id("reformulationComparison")).getText()).contains("15 minutes");
+        wait.until(ExpectedConditions.textToBePresentInElementLocated(By.id("reformulationComparison"), "15 minutes"));
         click(By.xpath("//button[normalize-space()='Review adoption…']"));
         wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("dialog [data-adoption-action='confirm']")));
         assertThat(driver.findElement(By.cssSelector("dialog [data-adoption-action='confirm']")).isEnabled()).isFalse();
@@ -115,9 +116,20 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
         try (var files = Files.list(downloads)) { return new TreeSet<>(files.map(p -> p.getFileName().toString()).toList()); }
         catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
     }
-    private void click(By by) { var element = wait.until(ExpectedConditions.elementToBeClickable(by)); scroll(element); element.click(); }
+    private void selectView(String view) {
+        By tab = By.cssSelector("[data-reformulation-view='" + view + "']");
+        click(tab);
+        wait.until(ExpectedConditions.attributeToBe(tab, "aria-pressed", "true"));
+        wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector("[data-panel='" + view + "']")));
+    }
+    private void click(By by) {
+        var element = wait.until(ExpectedConditions.elementToBeClickable(by)); scroll(element);
+        driver.executeScript("window.__reformulationLastClickGeometry=window.__reformulationClickGeometry");
+        element.click();
+    }
     private void scroll(WebElement element) {
-        driver.executeScript("arguments[0].scrollIntoView({block:'center'})", element);
+        // Native clicks must not race CSS smooth scrolling after a responsive layout change.
+        driver.executeScript("arguments[0].scrollIntoView({behavior:'instant',block:'center',inline:'nearest'})", element);
         String[] previous = {""};
         wait.until(d -> {
             @SuppressWarnings("unchecked") var geometry = (Map<String, Object>) driver.executeScript("""
@@ -136,7 +148,16 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
     }
     private void shot(String name) throws Exception { Files.write(output.resolve(name), driver.getScreenshotAs(OutputType.BYTES)); }
     @Override public void close() throws Exception {
-        try { if (!completed) { shot("failure.png"); Files.writeString(output.resolve("failure-page.html"), driver.getPageSource()); } }
+        try { if (!completed) {
+            shot("failure.png"); Files.writeString(output.resolve("failure-page.html"), driver.getPageSource());
+            Files.writeString(output.resolve("failure-geometry.json"), String.valueOf(driver.executeScript("""
+                    return JSON.stringify({lastClick:window.__reformulationLastClickGeometry,
+                      current:window.__reformulationClickGeometry,focus:document.activeElement?.outerHTML.slice(0,500),
+                      panels:Array.from(document.querySelectorAll('[data-panel]'),p=>({panel:p.dataset.panel,active:p.dataset.active})),
+                      viewport:{width:innerWidth,height:innerHeight,scale:visualViewport?.scale,
+                        left:visualViewport?.offsetLeft,top:visualViewport?.offsetTop}});
+                    """)));
+        } }
         finally { driver.quit(); if (container != null) container.close(); }
     }
 }
