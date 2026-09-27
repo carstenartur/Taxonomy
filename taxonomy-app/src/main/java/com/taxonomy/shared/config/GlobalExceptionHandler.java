@@ -2,6 +2,8 @@ package com.taxonomy.shared.config;
 
 import com.taxonomy.analysis.session.AnalysisDraftConflictException;
 import com.taxonomy.analysis.session.AnalysisDraftValidationException;
+import jakarta.servlet.http.HttpServletResponse;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.MessageSource;
@@ -13,8 +15,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.context.request.ServletWebRequest;
 import org.springframework.web.context.request.WebRequest;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
+import org.springframework.web.util.DisconnectedClientHelper;
 
 import java.time.Instant;
 import java.util.LinkedHashMap;
@@ -34,6 +38,8 @@ import java.util.Map;
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(GlobalExceptionHandler.class);
+    private static final DisconnectedClientHelper disconnectedClients =
+            new DisconnectedClientHelper(GlobalExceptionHandler.class.getName());
     private static final String DEFAULT_INTERNAL_MESSAGE =
             "An internal error occurred. Please try again or check the server logs.";
 
@@ -110,14 +116,20 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
     /**
      * Catch-all handler for any unhandled exception.
-     * Logs the full stack trace server-side but only returns a safe message to the client.
+     * Logs real failures server-side but does not write to a disconnected or committed response.
      */
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleGenericException(
+    public @Nullable ResponseEntity<Map<String, Object>> handleGenericException(
             Exception exception,
             WebRequest request) {
+        if (disconnectedClients.checkAndLogClientDisconnectedException(exception)) {
+            return null;
+        }
         log.error("Unhandled exception on {}: {}",
                 request.getDescription(false), exception.getMessage(), exception);
+        if (responseCommitted(request)) {
+            return null;
+        }
         return buildErrorResponse(
                 HttpStatus.INTERNAL_SERVER_ERROR,
                 internalErrorMessage(),
@@ -129,12 +141,17 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
      * for framework-level exceptions (missing params, type mismatches, etc.).
      */
     @Override
-    protected ResponseEntity<Object> handleExceptionInternal(
+    protected @Nullable ResponseEntity<Object> handleExceptionInternal(
             Exception exception,
             Object body,
             HttpHeaders headers,
             HttpStatusCode statusCode,
             WebRequest request) {
+        // JSON converters can wrap a servlet disconnect several causes deep. Do not
+        // report a serialization bug or attempt a second write to the closed connection.
+        if (disconnectedClients.checkAndLogClientDisconnectedException(exception)) {
+            return null;
+        }
         HttpStatus status = HttpStatus.resolve(statusCode.value());
         if (status == null) {
             status = HttpStatus.INTERNAL_SERVER_ERROR;
@@ -157,7 +174,16 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         errorBody.put("error", status.getReasonPhrase());
         errorBody.put("message", message);
         errorBody.put("path", request.getDescription(false).replace("uri=", ""));
-        return ResponseEntity.status(status).headers(headers).body(errorBody);
+        // Retain Spring's committed-response guard and servlet error attributes.
+        return super.handleExceptionInternal(exception, errorBody, headers, status, request);
+    }
+
+    private static boolean responseCommitted(WebRequest request) {
+        if (request instanceof ServletWebRequest servletRequest) {
+            HttpServletResponse response = servletRequest.getResponse();
+            return response != null && response.isCommitted();
+        }
+        return false;
     }
 
     private String internalErrorMessage() {

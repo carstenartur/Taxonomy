@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.support.ProcessTestDiagnostics;
 import org.springframework.test.context.TestContextManager;
 
 import java.lang.management.ManagementFactory;
@@ -41,10 +42,8 @@ public final class CivilianAcceptanceProcess {
         Process child = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start();
         try {
             assertThat(child.waitFor(300, TimeUnit.SECONDS))
-                    .as("Fresh civilian application must finish; evidence: %s", log).isTrue();
-            String output = Files.readString(log);
-            assertThat(child.exitValue()).as(output).isZero();
-            assertThat(output).contains(COMPLETED);
+                    .as(() -> "Fresh civilian application must finish; " + ProcessTestDiagnostics.describe(log)).isTrue();
+            ProcessTestDiagnostics.assertCompleted(child.exitValue(), log, COMPLETED);
         } finally {
             if (child.isAlive()) {
                 child.descendants().forEach(ProcessHandle::destroyForcibly);
