@@ -190,6 +190,34 @@ class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
     }
 
     @Test
+    void checksumValidV1SourceTextMismatchRejectsBeforeMaterialization() throws Exception {
+        String dsl = adoptAndExport();
+        String original = onlyEvidence(dsl).property("payload");
+        // Keep the schema shape exact: change just the value, not add a field.
+        var tree = (tools.jackson.databind.node.ObjectNode) json.readTree(original);
+        tree.put("originalText", "Forged old source");
+        String changed = json.writeValueAsString(tree);
+        assertThat(changed).isNotEqualTo(original);
+        WorkspaceContext target = newWorkspace("Mismatched v1 source rejected");
+
+        String tampered = withEvidencePayload(dsl, changed);
+        assertThatThrownBy(() -> git.materialize(tampered, "architect", target))
+                .isInstanceOf(PortfolioException.class);
+        assertThat(projects.listProjects("architect", target)).isEmpty();
+    }
+
+    @Test
+    void checksumValidUnexpectedV1FieldRejectsBeforeMaterialization() throws Exception {
+        String dsl = adoptAndExport();
+        String original = onlyEvidence(dsl).property("payload");
+        String extra = original.replaceFirst("\\\"projectKey\\\":", "\\\"unexpectedField\\\":true,\\\"projectKey\\\":");
+        WorkspaceContext target = newWorkspace("Unexpected evidence field rejected");
+        assertThatThrownBy(() -> git.materialize(withEvidencePayload(dsl, extra), "architect", target))
+                .isInstanceOf(PortfolioException.class);
+        assertThat(projects.listProjects("architect", target)).isEmpty();
+    }
+
+    @Test
     void localAdoptedSourceFreezesExactEvidenceAndConcreteDecisionsAtOfferCreation() throws Exception {
         String dsl = adoptAndExport();
         BlockAst sourceEvidence = onlyEvidence(dsl);
