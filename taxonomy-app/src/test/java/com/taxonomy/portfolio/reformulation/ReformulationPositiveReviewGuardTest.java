@@ -41,6 +41,7 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
     @Autowired PortablePortfolioGitService git;
     @Autowired ReformulationEvidenceCodec evidenceCodec;
     @Autowired ReformulationPortableEvidenceRepository importedEvidence;
+    @Autowired ReformulationAdoptionRepository adoptionRows;
 
     private void adopt(boolean conflict) throws Exception {
         if (conflict) questionTransform = questions -> questions.stream().map(q -> q.id().equals("channel")
@@ -81,6 +82,19 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
         adopt(true);
         patchMetadata(project.id(), requirement.id(), "{\"reviewStatus\":\"CONFIRMED\"}", 409);
         assertThat(projects.getRequirement(project.id(), requirement.id(), "architect", context).reviewStatus()).isEqualTo(ReviewStatus.PROPOSED);
+    }
+
+    @Test void mismatchedLocalPreviewCannotAuthorizePositiveReview() throws Exception {
+        adopt(false);
+        var current = projects.getRequirement(project.id(), requirement.id(), "architect", context);
+        var receipt = adoptionRows.findByRequirementIdAndTargetVersionIdAndScopeKey(
+                requirement.id(), current.currentVersionId(), PortfolioScope.key("architect", context)).getFirst();
+        var altered = (tools.jackson.databind.node.ObjectNode) json.readTree(receipt.getPreview().getPayload());
+        altered.put("finalText", "A different adopted target");
+        String payload = json.writeValueAsString(altered);
+        jdbc.update("update reformulation_adoption_preview set preview_payload = ?, content_hash = ? where id = ?",
+                payload, StableIdentityHash.sha256(payload), receipt.getPreviewId());
+        positive(project.id(), requirement.id(), 409);
     }
 
     @Test void deferredQuestionAloneIsNonblocking() throws Exception {

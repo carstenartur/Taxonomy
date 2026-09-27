@@ -5,6 +5,8 @@ import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
+import com.taxonomy.reformulation.ReformulationBaseline;
+import com.taxonomy.identity.StableIdentityHash;
 import org.junit.jupiter.api.Test;
 import tools.jackson.databind.ObjectMapper;
 
@@ -14,6 +16,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verifyNoInteractions;
+import static org.mockito.Mockito.when;
 
 class ReformulationEvidenceCodecBoundaryTest {
 
@@ -91,5 +94,29 @@ class ReformulationEvidenceCodecBoundaryTest {
         assertThatThrownBy(() -> codec.payload(future))
                 .isInstanceOf(PortfolioException.class)
                 .hasMessageContaining("Unsupported reformulation evidence schema");
+    }
+
+    @Test
+    void ancestryRejectsBaselineOutsidePhysicalProposalAndReceipt() {
+        var json = new PortfolioJsonCodec(new ObjectMapper());
+        String scopeKey = new com.taxonomy.portfolio.model.PortfolioTenantIdentity(
+                "repo", "workspace:workspace", "main").scopeKey();
+        var receipt = new ReformulationAdoption("receipt", "proposal", "preview", scopeKey, "command",
+                20L, 30L, "{}", java.time.Instant.now());
+        for (var scope : List.of(
+                new ReformulationBaseline.Scope("other-repo", "workspace", "main", 10L, 20L),
+                new ReformulationBaseline.Scope("repo", "other-workspace", "main", 10L, 20L),
+                new ReformulationBaseline.Scope("repo", "workspace", "other-branch", 10L, 20L),
+                new ReformulationBaseline.Scope("repo", "workspace", "main", 99L, 20L),
+                new ReformulationBaseline.Scope("repo", "workspace", "main", 10L, 99L))) {
+            var baseline = new ReformulationBaseline(scope, 40L, "original", StableIdentityHash.sha256("original"),
+                    "snapshot", "{}", java.util.Map.of("adoptedLineage", "{\"entries\":[],\"roots\":[],\"decisionContext\":\"[]\"}"), "en", "v1");
+            when(proposals.findById("proposal")).thenReturn(java.util.Optional.of(
+                    new ReformulationProposal("proposal", scopeKey, 10L, 20L, 40L, "snapshot",
+                            json.write(baseline), "actor", java.time.Instant.now())));
+            assertThatThrownBy(() -> org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                    codec, "ancestry", receipt, scopeKey))
+                    .isInstanceOf(PortfolioException.class).hasMessageContaining("baseline");
+        }
     }
 }
