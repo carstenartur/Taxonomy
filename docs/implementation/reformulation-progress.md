@@ -7,10 +7,10 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
 - Base: `025197b3193f4a86815408a61ed6fb3368967259`.
 - Remote branch created before implementation: `feature/reformulation-durable-completion`.
 - Previous local-only completion work is not being counted as delivered or verified.
-- Tasks 1 and 2a are complete and independently reviewed. Task 2b (lineage), Task 3
+- Tasks 1, 2a and 2b are complete and independently reviewed. Task 3
   (DOCX) and Task 4 (civilian acceptance/quality) remain open. Existing merged
   functionality is retained.
-- Current operation: finish Task 2b from docs/implementation/reformulation-task2b.md.
+- Current operation: Task 3 from docs/implementation/reformulation-task3.md.
   Task 2a corrections and report are remote at
   `426287fdab65ce0c1c76aff4f74eb111f5a8c7a2`. Scoped independent re-review accepted
   both fixes. Post-fix focused suite: 23/23; earlier broader suite: 48/48, explicitly
@@ -56,6 +56,13 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
   accepted inherited rejection enforcement and genuine post-adoption reanalysis.
   Fix round 2/5 is limited to the remaining reachable `scope=local` leak from a
   historical B-only edited statement into an A-node prompt. Tasks 3/4 remain open.
+- Task 2b accepted after scoped fix-round-2 review at remote
+  `b885b24724da54b8d32186b953997f4380745eab`, tree
+  `8e33bb326bbedad7ff1d0c69fbae846c64914916`. Remaining finding addressed, no new
+  Critical/Important breakage. Second correction: meaningful RED 1/1 failure,
+  then focused GREEN 16/16; the earlier 41/41 covering run predates that correction.
+  See task report/review for exact selectors, real-reanalysis limitations and
+  distinct runs. Do not repeat Tasks 1/2. Next: frozen DOCX, then civilian/quality.
 
 ## Local verification environment
 

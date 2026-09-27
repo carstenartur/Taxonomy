@@ -71,3 +71,23 @@ Controller checked the reachable `local` producer and selector. The remaining
 finding is accepted for bounded fix round 2/5. The other two findings stay closed.
 Covering run at the reviewed head: 41/41, no failures/errors/skips; this does not
 make the outstanding scope case correct. The complete reviewed tree is remote.
+
+## Scoped re-review of fix round 2 — accepted
+
+Reviewed range: `0f8a16320ec2762a063d3c3207ea2f5c3cd169cc` to
+`b885b24724da54b8d32186b953997f4380745eab`.
+
+- Remaining finding 2 — **ADDRESSED**: generic `local` now resolves through
+  affected statements/discoveries, rather than an unknown taxonomy node. The
+  regression verifies that A excludes the B-only edit, answer and rejected
+  statement; B retains them; retired unmappable evidence remains visible.
+- New Critical/Important breakage in this bounded fix diff: none identified.
+- Evidence: meaningful RED (1 test, 1 expected failure, 0 errors), then focused
+  GREEN (prompt 6/6 and parser 10/10, no failures/errors/skips). The reviewer
+  inspected the evidence but did not rerun tests. The earlier 41/41 covering run
+  predates this second correction and is not represented as a post-fix broad run.
+
+Task 2b is independently accepted. All three initial findings are addressed.
+The complete final code/test/report tree is remote at the reviewed head, with a
+clean aligned local worktree. Root's integrated gate and actual-provider/human
+language-quality gate remain separate and open. Next: Task 3 frozen DOCX export.
