@@ -219,3 +219,28 @@ main. Its squash-history reconciliation preserves the follow-up tree: main was
 verified byte-identical to the already-contained reviewed 43992e1d ancestor before
 resolving the mechanical conflicts. No application change was discarded. Current
 follow-up browser/full CI remain required separately from local 18/18 evidence.
+
+### Final review edge cases and actual browser failure
+
+Current-head civilian CI on `4ce5649d` completed with 24 tests / one failure:
+`ReformulationCivilianBrowserTest` clicked the proposal tab while it was moving
+under the fixed navbar (ElementClickInterceptedException, 2026-09-27 21:09 UTC).
+The other browser contract (4), HTTP lifecycle (1), authored scenarios (2), playback
+(15) and existing civilian lifecycle (1) passed. The new driver now uses the existing
+browser contract's native hit-target and stable-geometry wait; it does not invoke
+JavaScript clicks, hide the header or increase timeouts. Current-head reexecution is
+still required.
+
+The automatic review's child-prompt aggregation finding was not reproduced: the
+parent logs the prompt before dispatch, so aggregation would duplicate it. A direct
+contract now proves original and adopted prompts are recorded exactly once. Three
+other review-summary cases were checked rather than dismissed: small inherited
+context encoding grew due to instruction overhead (RED 3 tests / one failure),
+blank fixture answer IDs were accepted (RED 17 tests / one failure), and a repeated
+actual DOCX render reported 25 pages but retained a synthetic prior page-99 image
+(26 image hashes). These are being corrected without changing production budgets.
+
+Prompt encoding v6 selects the dictionary only when its full instruction+payload
+improves Unicode-character and UTF-8 byte budgets. The reconciliation rule is reused
+unchanged through a shared helper. The answer corpus requires nonblank event IDs.
+The work is remotely checkpointed before further verification.

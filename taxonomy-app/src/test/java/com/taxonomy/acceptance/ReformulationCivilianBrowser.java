@@ -116,7 +116,24 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
         catch (java.io.IOException failure) { throw new java.io.UncheckedIOException(failure); }
     }
     private void click(By by) { var element = wait.until(ExpectedConditions.elementToBeClickable(by)); scroll(element); element.click(); }
-    private void scroll(WebElement element) { driver.executeScript("arguments[0].scrollIntoView({block:'center'})", element); }
+    private void scroll(WebElement element) {
+        driver.executeScript("arguments[0].scrollIntoView({block:'center'})", element);
+        String[] previous = {""};
+        wait.until(d -> {
+            @SuppressWarnings("unchecked") var geometry = (Map<String, Object>) driver.executeScript("""
+                    const el=arguments[0], r=el.getBoundingClientRect();
+                    const x=r.left+r.width/2, y=r.top+r.height/2, hit=document.elementFromPoint(x,y);
+                    const g={scrollX,scrollY,width:innerWidth,height:innerHeight,
+                      rect:{x:r.x,y:r.y,width:r.width,height:r.height},
+                      target:el.outerHTML.slice(0,500),hit:hit?.outerHTML.slice(0,500),
+                      ready:x>=0 && x<innerWidth && y>=0 && y<innerHeight && !!hit && (hit===el || el.contains(hit))};
+                    window.__reformulationClickGeometry=g; return g;
+                    """, element);
+            String position = geometry.get("rect").toString() + geometry.get("scrollY");
+            boolean stable = position.equals(previous[0]); previous[0] = position;
+            return stable && Boolean.TRUE.equals(geometry.get("ready")) && element.isEnabled();
+        });
+    }
     private void shot(String name) throws Exception { Files.write(output.resolve(name), driver.getScreenshotAs(OutputType.BYTES)); }
     @Override public void close() throws Exception {
         try { if (!completed) { shot("failure.png"); Files.writeString(output.resolve("failure-page.html"), driver.getPageSource()); } }

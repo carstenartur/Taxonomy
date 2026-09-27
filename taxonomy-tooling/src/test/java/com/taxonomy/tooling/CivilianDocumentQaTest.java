@@ -118,6 +118,15 @@ class CivilianDocumentQaTest {
         assertThat(TaxonomyTooling.Arguments.parse(new String[]{"--artifacts", "actual"}).flag("reformulation-only")).isFalse();
     }
 
+    @Test
+    void failedRerenderCannotLeaveAnEarlierSuccessManifest(@org.junit.jupiter.api.io.TempDir java.nio.file.Path root) throws Exception {
+        var manifest = root.resolve("reformulation-document-quality.json");
+        java.nio.file.Files.writeString(manifest, "previous success");
+        assertThatThrownBy(() -> CivilianDocumentQa.inspectReformulations(root, "unused-renderer"))
+                .hasMessageContaining("No completed reformulation lifecycle artifacts");
+        assertThat(java.nio.file.Files.exists(manifest)).isFalse();
+    }
+
     private static String xml(String pages) {
         return "<html xmlns='http://www.w3.org/1999/xhtml'><body><doc>" + pages + "</doc></body></html>";
     }
