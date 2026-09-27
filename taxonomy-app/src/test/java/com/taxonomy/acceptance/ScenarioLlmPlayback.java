@@ -15,6 +15,7 @@ public final class ScenarioLlmPlayback {
     private final ObjectMapper json = new ObjectMapper();
     private final JsonNode fixture;
     private final ScenarioRelationPlayback relationPlayback;
+    private final ScenarioReformulationPlayback reformulationPlayback;
     private final Map<String, JsonNode> rules = new LinkedHashMap<>();
     private final List<Call> calls = new ArrayList<>();
     private final List<String> failures = new ArrayList<>();
@@ -22,6 +23,7 @@ public final class ScenarioLlmPlayback {
     public ScenarioLlmPlayback(JsonNode fixture) {
         this.fixture = fixture.deepCopy();
         this.relationPlayback = new ScenarioRelationPlayback(this.fixture);
+        this.reformulationPlayback = new ScenarioReformulationPlayback(this.fixture);
         require(fixture.path("schemaVersion").asInt() == 1, "Unsupported scenario schema");
         require(!fixture.at("/requirement/text").asText().isBlank(), "Missing requirement");
         Set<String> ids = new HashSet<>();
@@ -56,6 +58,13 @@ public final class ScenarioLlmPlayback {
 
     public synchronized String respond(String prompt) {
         try {
+            if (ScenarioReformulationPlayback.accepts(prompt)) {
+                var reply = reformulationPlayback.respond(prompt);
+                String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
+                        Map.of("role", "assistant", "content", reply.content())))));
+                calls.add(new Call(reply.id(), sha256(prompt), sha256(body)));
+                return body;
+            }
             if (prompt.startsWith(ScenarioRelationPlayback.PREFIX)) {
                 var reply = relationPlayback.respond(prompt);
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
@@ -84,9 +93,10 @@ public final class ScenarioLlmPlayback {
                     Map.of("role", "assistant", "content", json.writeValueAsString(answer))))));
             calls.add(new Call(rule.path("id").asText(), sha256(prompt), sha256(body)));
             return body;
-        } catch (IllegalArgumentException failure) {
+        } catch (RuntimeException failure) {
             failures.add(failure.getMessage());
-            throw failure;
+            throw failure instanceof IllegalArgumentException invalid ? invalid
+                    : new IllegalArgumentException("Invalid scenario request", failure);
         }
     }
 
@@ -107,6 +117,7 @@ public final class ScenarioLlmPlayback {
     }
 
     public synchronized void verifyRelationCoverage(int repetitions) {
+        if (!failures.isEmpty()) throw new AssertionError("Unmatched LLM calls: " + failures);
         relationPlayback.verifyCoverage(repetitions);
         Map<String, Long> frequencies = calls.stream().filter(call -> call.ruleId().startsWith("relation:"))
                 .collect(java.util.stream.Collectors.groupingBy(Call::ruleId, java.util.stream.Collectors.counting()));
@@ -114,6 +125,15 @@ public final class ScenarioLlmPlayback {
             if (entry.getValue() != repetitions) {
                 throw new AssertionError("Unstable repeated relation query " + entry.getKey() + ": " + entry.getValue());
             }
+        }
+    }
+
+    public synchronized void verifyReformulationCoverage(int repetitions) {
+        if (!failures.isEmpty()) throw new AssertionError("Unmatched LLM calls: " + failures);
+        for (var rule : fixture.path("reformulationReplies")) {
+            String id = rule.path("id").asText();
+            long actual = calls.stream().filter(call -> call.ruleId().equals(id)).count();
+            if (actual != repetitions) throw new AssertionError(id + ": expected " + repetitions + " calls, got " + actual);
         }
     }
 

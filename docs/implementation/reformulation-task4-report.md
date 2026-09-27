@@ -13,14 +13,24 @@ unknown calls and duplicate fixture scopes. REWORD has no separate wire task fie
 it uses the production node prompt with affected-section preservation instructions.
 Fixtures here are provider replies, not prepared application architectures.
 
-Evidence: not run yet. This commit is tests-first WIP, not acceptance evidence.
-Next: after root confirms exact-tree remote durability, execute:
+RED evidence at published test tree `9fcc0ac5ae5fd9019c5001fee123b0a267e34794`:
+10 tests, 1 failure, 1 error, no skips. New positive dispatch failed with
+`Missing requirement`; duplicate reformulation scopes were silently accepted.
+The existing relation contracts passed. Log: scratch `task4a-red.log`.
+
+Implementation adds semantic reformulation dispatch, exact source/hash validation,
+child/section identities, complete boundary-edge content and answer history/state.
+Malformed calls are retained in the shared fatal ledger even if callers catch them;
+all three coverage entry points inspect that ledger. REWORD is distinguished using
+the actual affected-section preservation contracts. A real production prompt-builder
+and response-parser contract covers the wire boundary. No production code changed.
+
+Next: after root confirms exact-tree remote durability, execute focused GREEN:
 
 ```sh
 python .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ScenarioLlmPlaybackTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Expect the new semantic dispatch and duplicate-scope contracts to fail before
-implementation. Then implement bounded playback support, checkpoint before GREEN,
-and stop for independent review. Real application/browser/restart, fixture score
+Then inspect positive class/count evidence and stop for independent review.
+Real application/browser/restart, fixture score
 selection, exports, CI and real-provider quality gates remain open (Task 4b+).

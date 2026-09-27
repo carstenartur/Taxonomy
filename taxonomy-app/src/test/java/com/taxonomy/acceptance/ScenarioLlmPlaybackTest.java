@@ -26,6 +26,28 @@ class ScenarioLlmPlaybackTest {
         }
         assertThat(playback.calls()).hasSize(8);
         assertThat(playback.failures()).isEmpty();
+        playback.verifyReformulationCoverage(2);
+    }
+
+    @Test void realNodePromptBuilderAndResponseParserUseTheSameRemoteBoundary() throws Exception {
+        var fixture = reformulationFixture();
+        var rule = fixture.path("reformulationReplies").get(0);
+        String source = rule.path("originalText").asText();
+        var baseline = new com.taxonomy.reformulation.ReformulationBaseline(
+                new com.taxonomy.reformulation.ReformulationBaseline.Scope("repo", "workspace", "main", 1, 1),
+                1, source, ScenarioLlmPlayback.sha256(source), "snapshot", "{}",
+                java.util.Map.of("reformulationPrompt", com.taxonomy.analysis.reformulation.ReformulationPromptBuilder.interactiveTemplate()),
+                "en", "contract");
+        var input = new com.taxonomy.reformulation.NodeSynthesisInput(baseline, "BP-1017", "BP-1060",
+                "Acquire Data", java.util.List.of(), java.util.List.of(), java.util.List.of(), java.util.Map.of(),
+                java.util.List.of(), java.util.List.of(),
+                "Preserve all original anchors and child IDs verbatim; additions are unreviewed.");
+        var playback = new ScenarioLlmPlayback(fixture);
+        String prompt = new com.taxonomy.analysis.reformulation.ReformulationPromptBuilder(json).build(input, null);
+        String raw = json.readTree(playback.respond(prompt)).at("/choices/0/message/content").asText();
+        var parsed = new com.taxonomy.analysis.reformulation.ReformulationResponseParser(json).parse(raw, input);
+        assertThat(parsed.nodeId()).isEqualTo("BP-1017");
+        assertThat(parsed.summary()).contains("no browser", "30 days");
     }
 
     @Test void reformulationUnknownIdentitiesRemainFatalAfterCallerCatchesFailure() throws Exception {
@@ -42,6 +64,8 @@ class ScenarioLlmPlaybackTest {
             assertThatThrownBy(() -> playback.respond(unknown)).isInstanceOf(IllegalArgumentException.class);
             assertThat(playback.failures()).hasSize(1);
             assertThatThrownBy(() -> playback.verifyCoverage(0)).isInstanceOf(AssertionError.class);
+            assertThatThrownBy(() -> playback.verifyRelationCoverage(0)).isInstanceOf(AssertionError.class);
+            assertThatThrownBy(() -> playback.verifyReformulationCoverage(0)).isInstanceOf(AssertionError.class);
         }
     }
 
