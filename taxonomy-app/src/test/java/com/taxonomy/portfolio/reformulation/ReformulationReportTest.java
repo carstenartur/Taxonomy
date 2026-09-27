@@ -1,7 +1,6 @@
 package com.taxonomy.portfolio.reformulation;
 
 import com.taxonomy.catalog.service.TaxonomyService;
-import com.taxonomy.composition.reformulation.FrozenReformulationArchitectureAssembler;
 import com.taxonomy.reformulation.ReformulationBaseline;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.node.ArrayNode;
@@ -36,7 +35,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @WithMockUser(username = "architect", roles = "ARCHITECT")
 class ReformulationReportTest extends ReformulationWorkflowFixture {
     @Autowired TaxonomyService catalogue;
-    @Autowired FrozenReformulationArchitectureAssembler frozenArchitecture;
+    @Autowired ReformulationReportService reports;
 
     @Override
     String snapshot(RequirementView req) {
@@ -95,7 +94,7 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
     @Test
     void frozenGraphKeepsParallelDirectedMappingsWithoutDuplicatingTheirViewProjection() {
         var baseline = frozenGraphBaseline(true, true);
-        var result = frozenArchitecture.assemble(baseline);
+        var result = reports.frozenArchitecture(baseline);
         assertThat(result.graph().nodes()).extracting("id").containsExactly("BP-1", "BP-2");
         assertThat(result.graph().edges()).extracting("id").containsExactly("mapping-11", "mapping-12");
         assertThat(result.graph().edges()).allSatisfy(edge -> {
@@ -111,8 +110,8 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
 
     @Test
     void unavailableGapAnalysisIsNotAnExplicitlyEmptySavedInventory() {
-        var missing = frozenArchitecture.assemble(frozenGraphBaseline(false, false));
-        var empty = frozenArchitecture.assemble(frozenGraphBaseline(false, true));
+        var missing = reports.frozenArchitecture(frozenGraphBaseline(false, false));
+        var empty = reports.frozenArchitecture(frozenGraphBaseline(false, true));
         assertThat(missing.gapAnalysisAvailable()).isFalse();
         assertThat(empty.gapAnalysisAvailable()).isTrue();
         assertThat(missing.gaps()).isEmpty();
@@ -126,7 +125,7 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         var detail = (ObjectNode) json.readTree(broken.get("snapshotDetail"));
         ((ObjectNode) detail.get("summary")).put("requirementVersionId", baseline.sourceVersionId() + 100);
         broken.put("snapshotDetail", json.writeValueAsString(detail));
-        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> frozenArchitecture.assemble(copy(baseline, broken))))
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(baseline, broken))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("source identity");
         var graph = frozenGraphBaseline(true, true);
         var dangling = new java.util.HashMap<>(graph.frozenContext());
@@ -136,7 +135,7 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         var graphDetail = (ObjectNode) json.readTree(dangling.get("snapshotDetail"));
         graphDetail.set("relationMappings", mappings);
         dangling.put("snapshotDetail", json.writeValueAsString(graphDetail));
-        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> frozenArchitecture.assemble(copy(graph, dangling))))
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(graph, dangling))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("directed frozen relation");
     }
 

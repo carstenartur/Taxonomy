@@ -28,15 +28,13 @@ public class ReformulationReportController {
     private final ReformulationReportService reports;
     private final WorkspaceResolver resolver;
     private final ObjectMapper json;
-    private final FrozenReformulationArchitectureAssembler frozenArchitecture;
     private final ReformulationDocxPort docx;
 
     public ReformulationReportController(ReformulationReportService reports, WorkspaceResolver resolver, ObjectMapper json,
-            FrozenReformulationArchitectureAssembler frozenArchitecture, ReformulationDocxPort docx) {
+            ReformulationDocxPort docx) {
         this.reports = reports;
         this.resolver = resolver;
         this.json = json.rebuild().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
-        this.frozenArchitecture = frozenArchitecture;
         this.docx = docx;
     }
 
@@ -100,7 +98,7 @@ public class ReformulationReportController {
             case "json" -> (evidence + "\n").getBytes(StandardCharsets.UTF_8);
             case "md" -> ReformulationReportRenderer.markdown(input).getBytes(StandardCharsets.UTF_8);
             case "html" -> ReformulationReportRenderer.html(input).getBytes(StandardCharsets.UTF_8);
-            case "docx" -> docx.render(input, frozenArchitecture.assemble(baseline));
+            case "docx" -> docx.render(input, reports.frozenArchitecture(baseline));
             default -> throw new IllegalStateException("Validated format changed");
         };
         // Identity comes only from the authorized persisted record; no user-supplied title in headers.

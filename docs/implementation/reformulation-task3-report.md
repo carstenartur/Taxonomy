@@ -32,6 +32,13 @@ Status: in progress; not product acceptance.
 - Fixture now supplies all ViewContext booleans and deliberately uses view relation IDs 99/100 distinct from mapping-row IDs 11/12. This makes semantic multiplicity (rather than incidental ID equality) observable.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest -Dsurefire.failIfNoSpecifiedTests=false test`.
 
+## Checkpoint 7 — semantic RED and bounded fix
+
+- Valid frozen fixture: 5 tests, 1 expected semantic assertion failure, zero errors. Saved two directed mapping edges were rendered as four (`mapping-11`, `mapping-12`, `view-1`, `view-2`), proving the projection duplication bug.
+- Reconciled view relation occurrences against directed source/target/type counts from mapping rows, retaining parallel and reverse occurrences. View identity differs deliberately from mapping-row identity.
+- Moved typed frozen snapshot decoding/validation into portfolio-owned implementation, exposed only neutral export model through the already referenced `ReformulationReportService`; app no longer imports portfolio DTO/codec classes for graph assembly. Architecture remains POI adapter.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false test`.
+
 ## Checkpoint 6 — frozen catalogue fixture
 
 - Focused class again ran 5 tests, 1 failure / 2 errors: the real BP catalogue has no authored `BP-1`/`BP-2` fixture nodes, so mapper correctly rejected those mappings before reaching multiplicity. Endpoint revision and existing JSON cases passed.

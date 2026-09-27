@@ -1,4 +1,4 @@
-package com.taxonomy.composition.reformulation;
+package com.taxonomy.portfolio.reformulation;
 
 import com.taxonomy.diagram.*;
 import com.taxonomy.dto.*;
@@ -12,11 +12,11 @@ import java.util.*;
 
 /** Decode and validate ONLY the baseline's captured bytes, never a live catalogue or snapshot. */
 @Component
-public final class FrozenReformulationArchitectureAssembler {
+final class FrozenReformulationArchitectureAssembler {
     private final PortfolioJsonCodec json;
     FrozenReformulationArchitectureAssembler(PortfolioJsonCodec json) { this.json = json; }
 
-    public FrozenReformulationArchitecture assemble(ReformulationBaseline baseline) {
+    FrozenReformulationArchitecture assemble(ReformulationBaseline baseline) {
         var frozen = baseline.frozenContext();
         SnapshotDetail detail = required(frozen, "snapshotDetail", SnapshotDetail.class);
         AnalysisResult payload = json.read(baseline.snapshotPayload(), AnalysisResult.class);
@@ -80,9 +80,23 @@ public final class FrozenReformulationArchitectureAssembler {
         }
         var view = payload.getArchitectureView();
         if (view != null && view.getIncludedRelationships() != null) {
+            record Direction(String source, String target, String type) {}
+            var represented = new HashMap<Direction, Integer>();
+            for (var relation : relations) represented.merge(new Direction(relation.sourceCode(),
+                    relation.targetCode(), relation.relationType()), 1, Integer::sum);
             int ordinal = 0;
             for (var relation : view.getIncludedRelationships()) {
                 String id = "view-" + (++ordinal);
+                var direction = new Direction(relation.getSourceCode(), relation.getTargetCode(), relation.getRelationType());
+                int matchingMappings = represented.getOrDefault(direction, 0);
+                // One projection occurrence accounts for one physical mapping occurrence. Do not
+                // erase parallel relations or conflate reverse directions; retain unmatched views.
+                if (matchingMappings > 0) {
+                    represented.put(direction, matchingMappings - 1);
+                    relationDetails.add(id + " · matching saved mapping projection · "
+                            + Objects.toString(relation.getPresenceReason(), ""));
+                    continue;
+                }
                 addEdge(edges, edgeIds, nodeIds, id, relation.getSourceCode(), relation.getTargetCode(),
                         relation.getRelationType(), relation.getPropagatedRelevance(), relation.getRelationCategory());
                 relationDetails.add(id + " · " + relation.getSourceCode() + " → " + relation.getTargetCode()
