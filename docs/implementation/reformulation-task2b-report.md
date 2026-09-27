@@ -7,8 +7,14 @@ real-provider quality claim.
 Fix round 1 (review head `7cdaeec40a511b3fe73d070693ceabb9f1be6a4d`):
 three Important findings accepted. New tests first cover a fresh adopted offer's
 historical rejected wording and branch-local/global/unmappable prompt selection.
-These tests are RED candidates, not yet executed; a real post-adoption analysis
-job/checkpoint transport-only regression is still to be added in this wave.
+Focused RED: 15 analysis tests, two expected failures (unrelated branch context
+leaked; historical rejected summary accepted), zero errors, build failed;
+`/tmp/task2b-review1-red.log`. Candidate per-call selector/guard and v4 input
+encoding are being checked; real post-adoption analysis job/checkpoint
+transport-only regression is still to be added in this wave. Separately,
+root's database CI had 343 portfolio tests with one existing boundary-fixture
+failure: its fully mocked mapper returned null from new `rebuild()` before the
+intended typed write failure; a real mapper spy now faults only serialization.
 
 ## Verified outcome to date
 

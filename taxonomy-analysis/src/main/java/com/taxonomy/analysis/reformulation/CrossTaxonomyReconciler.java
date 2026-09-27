@@ -151,7 +151,7 @@ public class CrossTaxonomyReconciler {
                 if(selected.contains(e.path("sourceCode").asText()) || selected.contains(e.path("targetCode").asText()) || selected.contains(k))localEdges.put(k,v);});
             var frozenContext=new ReconcilePromptBuilder(json).scopedContext(baseline,selected);
             var in=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(Map.of("section",section,"frozenNodeContext",frozenContext,"reconciliationFindings",review.findings().stream().filter(f->f.statementIds().isEmpty() || !Collections.disjoint(f.statementIds(),section.statementIds())).toList())),sourceSpans(baseline),localStatements,children,localEdges,localAnswers,localQuestions,"Preserve exact original and prior evidence. Re-synthesize only this affected section, keeping peer outputs frozen within the round; summarize completed child details. Resolve findings visibly; do not overwrite human/source wording.");
-            var result=RejectedWordingGuard.review(steps.execute("REWORD",in,NodeSynthesisResult.class,()->nodes.synthesize(in,steps)),statements.values());result.statementProposals().forEach(s->statements.putIfAbsent(s.id(),s));result.questionProposals().forEach(q->questions.putIfAbsent(q.id(),q));
+            var result=RejectedWordingGuard.review(steps.execute("REWORD",in,NodeSynthesisResult.class,()->nodes.synthesize(in,steps)),statements.values(),InheritedDecisionContext.rejected(in,json));result.statementProposals().forEach(s->statements.putIfAbsent(s.id(),s));result.questionProposals().forEach(q->questions.putIfAbsent(q.id(),q));
             var sids=new ArrayList<>(section.statementIds());sids.addAll(result.preservedStatementIds());result.statementProposals().forEach(s->sids.add(s.id()));
             var qids=new ArrayList<>(section.questionIds());qids.addAll(result.preservedQuestionIds());result.questionProposals().forEach(q->qids.add(q.id()));
             sections.put(id,new Section(id,section.taxonomyCode(),section.title(),result.summary(),section.children(),distinct(sids),distinct(qids)));
@@ -183,7 +183,8 @@ public class CrossTaxonomyReconciler {
         sections.add(new Section("@interfaces",null,"Schnittstellen / Interfaces","Directed boundary relations: "+String.join("; ",interfaceText),List.of(),statements.stream().filter(s->s.architectureLinks().stream().anyMatch(boundary::containsKey)).map(Statement::id).toList(),List.of()));
         sections.add(new Section("@cross-cutting",null,"Übergreifende Vorgaben / Cross-cutting constraints","Original restrictions apply across taxonomy views.",List.of(),sourceIds,doc.questions().stream().filter(q->q.key().scope().equals("global")).map(DecisionQuestion::id).toList()));
         sections.add(new Section("@unmapped",null,"Original / Unmapped source","Original text retained verbatim; mapping and semantic completeness require review.",List.of(),sourceIds,List.of()));
-        var rejected=RejectedWordingGuard.from(statements);
+        var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(statements));
+        rejected.addAll(InheritedDecisionContext.allRejected(baseline.frozenContext().get("inheritedDecisionContext"),json));
         var safeSections=sections.stream().map(s->new Section(s.id(),s.taxonomyCode(),s.title(),
                 RejectedWordingGuard.safeSummary(s.summary(),rejected,findings),s.children(),s.statementIds(),s.questionIds()))
                 .toList();

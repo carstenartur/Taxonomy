@@ -25,7 +25,12 @@ final class RejectedWordingGuard {
     }
 
     static NodeSynthesisResult review(NodeSynthesisResult result, Collection<Statement> retained) {
-        var rejected = from(retained);
+        return review(result, retained, Set.of());
+    }
+
+    static NodeSynthesisResult review(NodeSynthesisResult result, Collection<Statement> retained, Set<String> historical) {
+        var rejected = new LinkedHashSet<>(from(retained));
+        rejected.addAll(historical);
         var findings = new ArrayList<>(result.conflictCandidates());
         var additions = new ArrayList<Statement>();
         for (var statement : result.statementProposals()) {

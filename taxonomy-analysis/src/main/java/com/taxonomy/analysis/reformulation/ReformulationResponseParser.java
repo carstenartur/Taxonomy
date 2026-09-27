@@ -23,7 +23,8 @@ public class ReformulationResponseParser {
         nodes.add(input.nodeId());if(input.parentId()!=null) nodes.add(input.parentId());
         input.directContributions().forEach(s->{priorStatements.add(s);statementIds.add(s.id());nodes.addAll(s.architectureLinks());});
         input.children().forEach(c->{nodes.add(c.nodeId());c.statementProposals().forEach(s->{priorStatements.add(s);statementIds.add(s.id());nodes.addAll(s.architectureLinks());});statementIds.addAll(c.preservedStatementIds());c.questionProposals().forEach(q->questionIds.add(q.id()));questionIds.addAll(c.preservedQuestionIds());});
-        var rejected=RejectedWordingGuard.from(priorStatements);
+        var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(priorStatements));
+        rejected.addAll(InheritedDecisionContext.rejected(input,json));
         if(RejectedWordingGuard.repeats(text(root,"summary"),rejected))throw invalid("Rejected wording repeated in summary");
         input.openDecisions().forEach(q->questionIds.add(q.id()));
         var catalogue=input.baseline().frozenContext().get("catalogue");

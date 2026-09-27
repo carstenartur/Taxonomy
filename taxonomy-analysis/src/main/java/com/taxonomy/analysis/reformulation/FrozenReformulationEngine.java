@@ -66,7 +66,7 @@ public class FrozenReformulationEngine {
                 var generated=steps.execute("NODE",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps));
                 var evidence=new ArrayList<Statement>(retainedStatements);
                 children.forEach(c->evidence.addAll(c.statementProposals()));
-                var result=RejectedWordingGuard.review(generated,evidence);
+                var result=RejectedWordingGuard.review(generated,evidence,InheritedDecisionContext.rejected(input,json));
                 var carriedStatements=new LinkedHashMap<String,Statement>();var carriedQuestions=new LinkedHashMap<String,DecisionQuestion>();
                 retainedStatements.forEach(v->carriedStatements.put(v.id(),v));openDecisions.forEach(q->carriedQuestions.put(q.id(),q));
                 children.forEach(c->{c.statementProposals().forEach(v->carriedStatements.put(v.id(),v));c.questionProposals().forEach(q->carriedQuestions.put(q.id(),q));});
@@ -113,7 +113,9 @@ public class FrozenReformulationEngine {
         for(var section:before.sections()) rewordSection(section.id(),baseline,sections,statements,questions,descriptions,parents,boundaries,answers,impact,results,findings,visiting,steps);
         StringBuilder text=new StringBuilder();var rendered=new HashSet<String>();
         for(var section:List.copyOf(sections.values())) {
-            String summary=RejectedWordingGuard.safeSummary(section.summary(),RejectedWordingGuard.from(statements.values()),findings);
+            var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(statements.values()));
+            rejected.addAll(InheritedDecisionContext.allRejected(baseline.frozenContext().get("inheritedDecisionContext"),json));
+            String summary=RejectedWordingGuard.safeSummary(section.summary(),rejected,findings);
             if(!summary.equals(section.summary()))sections.put(section.id(),new Section(section.id(),section.taxonomyCode(),section.title(),summary,section.children(),section.statementIds(),section.questionIds()));
             text.append(section.title()).append("\n").append(summary).append("\n\n");
             for(String id:section.statementIds()) {
@@ -157,7 +159,7 @@ public class FrozenReformulationEngine {
             var input=new NodeSynthesisInput(baseline,id,parent,json.writeValueAsString(metadata),anchors(baseline.originalText()),direct,children,localBoundary,
                     answers.stream().filter(a->localQIds.contains(a.questionId())).toList(),localQuestions,
                     "Only reword this affected section. Preserve human wording and all retained evidence. REJECTED additions must not be reintroduced or paraphrased. Independent branch records stay unchanged.");
-            var generated=RejectedWordingGuard.review(steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps)),statements.values());
+            var generated=RejectedWordingGuard.review(steps.execute("REWORD",input,NodeSynthesisResult.class,()->nodes.synthesize(input,steps)),statements.values(),InheritedDecisionContext.rejected(input,json));
             var additions=new ArrayList<Statement>();
             for(var statement:generated.statementProposals()) {
                 var retained=statements.putIfAbsent(statement.id(),statement);
@@ -167,7 +169,9 @@ public class FrozenReformulationEngine {
             var sectionStatements=new LinkedHashSet<>(section.statementIds());additions.forEach(s->sectionStatements.add(s.id()));
             var sectionQuestions=new LinkedHashSet<>(section.questionIds());generated.questionProposals().forEach(q->sectionQuestions.add(q.id()));
             String summary=generated.summary();
-            summary=RejectedWordingGuard.safeSummary(summary,RejectedWordingGuard.from(statements.values()),findings);
+            var rejected=new LinkedHashSet<>(RejectedWordingGuard.from(statements.values()));
+            rejected.addAll(InheritedDecisionContext.rejected(input,json));
+            summary=RejectedWordingGuard.safeSummary(summary,rejected,findings);
             sections.put(id,new Section(section.id(),section.taxonomyCode(),section.title(),summary,section.children(),List.copyOf(sectionStatements),List.copyOf(sectionQuestions)));
             findings.addAll(generated.conflictCandidates());
             result=new NodeSynthesisResult(id,summary,additions,generated.preservedStatementIds(),generated.questionProposals(),generated.preservedQuestionIds(),generated.uncoveredSourceRefs(),generated.conflictCandidates());
