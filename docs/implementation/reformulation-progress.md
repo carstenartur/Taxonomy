@@ -47,6 +47,10 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
   runtime error is not counted as a feature RED.
 - Next exact commands and newest checkpoint details live in
   `reformulation-task2b-report.md`; do not restart completed Tasks 1 or 2a.
+- Task 2b: fix round 1/5 starting after independent review of
+  `03e4208bbd8086c1649240ccb37e2cc2b0d6b76b` (0 addressed, 3 open: inherited
+  rejection enforcement, per-call inherited context scope, genuine adopted-source
+  reanalysis/checkpoint verification). See `reformulation-task2b-review.md`.
 
 ## Local verification environment
 
