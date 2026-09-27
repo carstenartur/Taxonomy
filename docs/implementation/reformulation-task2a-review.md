@@ -22,8 +22,7 @@ Root inspected the cited code and confirmed the mismatch and null/error path.
 Reported focused GREEN before correction: 48 positive tests. This does not cover
 the two newly identified paths. Future-task coordination docs are outside review.
 
-Fix round 1 pending: add meaningful RED regressions for both paths, minimal fixes,
-one covering GREEN, then scoped re-review. Do not repeat unrelated full suites.
+Fix round 1 completed; acceptance below. No unrelated full suites were repeated.
 
 ## Import-path premise correction during RED setup
 
@@ -35,3 +34,20 @@ path. The replacement authors valid lowercase p/r portable DSL, including matchi
 payload keys and recomputed evidence hash, and uses the real importer with no SQL
 mutation. This tests the reachable reverse-direction mismatch and preserves exact
 imported bytes/hash. Baseline JSON null/malformed RED remains independently valid.
+
+## Fix round 1 — accepted
+
+Scoped re-review through 426287fdab65ce0c1c76aff4f74eb111f5a8c7a2: both findings
+addressed; no direct new material breakage found. Read-only, no repeated tests.
+
+- Imported selection remains exact in scope/version/hash and now case-folds business
+  keys consistently with materialization. Stored row-to-payload keys remain exact;
+  comparisons to canonical physical business identity are case-insensitive.
+- Baseline decoding catches the proposal-local codec failure and checks null before
+  use. The fixed generic 409 response does not contain stored payload content.
+- Corrected reachable import RED: one expected 409-vs-200 failure. Baseline RED:
+  null/malformed expected 409 but returned 500/422. Focused post-fix GREEN: guard
+  14/14 plus isolation 9/9, zero failures/errors/skips. The earlier 48-test broader
+  result predates this correction and has not been counted as a post-fix run.
+
+Task 2a accepted. The full integrated gate remains with root after later tasks.

@@ -7,13 +7,15 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
 - Base: `025197b3193f4a86815408a61ed6fb3368967259`.
 - Remote branch created before implementation: `feature/reformulation-durable-completion`.
 - Previous local-only completion work is not being counted as delivered or verified.
-- Task 1 is complete and independently reviewed; Tasks 2–4 remain open. Existing
-  merged functionality is retained.
-- Current operation: Task 2a review fix round 1; see reformulation-task2a-review.md.
-  The pre-correction code and report are remote at
-  `cbe2aa28ef54c5ca0323309a68ea789b4e064d7c`, with 48 focused tests green. Independent
-  review found a case-insensitive imported-identity bypass and invalid-baseline
-  error-status mismatch; these remain open, with tests-first corrections next.
+- Tasks 1 and 2a are complete and independently reviewed. Task 2b (lineage), Task 3
+  (DOCX) and Task 4 (civilian acceptance/quality) remain open. Existing merged
+  functionality is retained.
+- Current operation: start Task 2b from docs/implementation/reformulation-task2b.md.
+  Task 2a corrections and report are remote at
+  `426287fdab65ce0c1c76aff4f74eb111f5a8c7a2`. Scoped independent re-review accepted
+  both fixes. Post-fix focused suite: 23/23; earlier broader suite: 48/48, explicitly
+  before correction. See reformulation-task2a-review.md for the corrected reachable
+  case-folded import premise and exact RED/GREEN evidence.
   Task 1 fix round 1 was accepted by a scoped
   independent re-review, with both findings addressed and no new breakage found.
   The reviewed code, tests and report are remote at
@@ -23,8 +25,7 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
   review corrections, all 588 selected analysis-module tests passed. These are
   distinct runs; the broader suite has not been claimed as a post-correction run.
 - Code, tests and evidence are remote; see reformulation-task1-report.md.
-- Next: finish Task 2a review corrections,
-  followed by Task 2b ancestry/prompt portability. Task 2a is a small checkpoint of
+- Next: Task 2b ancestry/prompt portability, then Tasks 3 and 4. Task 2a is a checkpoint of
   completion Task 2, not a new independent feature.
 - No provider credentials or Docker availability assumed. External gates will be reported explicitly.
 
