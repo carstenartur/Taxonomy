@@ -382,7 +382,7 @@ public class AnalysisProgressRegistry {
             // cancel() and finish() share the run monitor: a cancellation accepted first wins.
             // Do not replace a resource-stop reason that the worker has already recorded.
             if (cancelled && stopReason == null) stopped(AnalysisStoppedException.Reason.CANCELLED);
-            String terminalStatus = "CANCELLED".equals(stopReason) ? "CANCELLED"
+            String terminalStatus = "CANCELLED".equals(stopReason) || "CANCELLED".equals(resultStatus) ? "CANCELLED"
                     : stopReason != null ? "PARTIAL"
                     : "SUCCESS".equals(resultStatus) ? "COMPLETED"
                     : "PARTIAL".equals(resultStatus) ? "PARTIAL" : "ERROR";

@@ -353,6 +353,17 @@
         target.dataset.sessionControl = 'copilot';
         target.dataset.sessionTestOutcome = 'operation';
 
+        // Preserve imported/manual completed evidence without manufacturing a new provider call.
+        if (currentScoresAreAuthoritative() && !C.S.recoveryContext
+                && !window.TaxonomyAnalysisRecovery?.hasOpenEvaluations()) return;
+
+        if (window.TaxonomyAnalysisRecovery) {
+            event.preventDefault();
+            event.stopImmediatePropagation();
+            window.TaxonomyAnalysisRecovery.startCopilot();
+            return;
+        }
+
         if (currentScoresAreAuthoritative()) return;
 
         event.preventDefault();

@@ -24,6 +24,27 @@
     },
     {
       "fromContext": "analysis",
+      "fromPackage": "com.taxonomy.analysis.recovery",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.service",
+      "classDependencyCount": 2
+    },
+    {
+      "fromContext": "analysis",
+      "fromPackage": "com.taxonomy.analysis.recovery",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.model",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "analysis",
+      "fromPackage": "com.taxonomy.analysis.recovery",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 4
+    },
+    {
+      "fromContext": "analysis",
       "fromPackage": "com.taxonomy.analysis.relations",
       "toContext": "knowledge",
       "toPackage": "com.taxonomy.catalog.model",

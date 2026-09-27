@@ -471,6 +471,7 @@
             setTimeout: window.setTimeout.bind(window), clearTimeout: window.clearTimeout.bind(window),
             onSnapshot: function (snapshot, changed) {
                 view.render(snapshot, monitor);
+                document.dispatchEvent(new CustomEvent('taxonomy:analysis-progress', { detail: snapshot }));
                 if (changed && onScores) onScores(snapshot);
             },
             onUnavailable: view.unavailable, onCancelling: view.cancelling
