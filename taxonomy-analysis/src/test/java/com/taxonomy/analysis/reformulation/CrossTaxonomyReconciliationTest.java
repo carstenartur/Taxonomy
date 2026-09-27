@@ -70,6 +70,21 @@ class CrossTaxonomyReconciliationTest {
         assertThat(json.writeValueAsString(original)).isEqualTo(frozen);
         assertThat(out.sections().getFirst().taxonomyCode()).isEqualTo("BP");
     }
+    @Test void reconciliationKeepsRejectedEvidenceOutOfActiveTextAndSummaries() {
+        var d=draft(List.of());
+        var rejected=d.statements().getFirst();
+        rejected=new Statement(rejected.id(),rejected.wording(),rejected.sourceSpans(),rejected.provenance(),
+                rejected.architectureLinks(),rejected.questionDependencies(),rejected.conditionalValidity(),Statement.EditingOrigin.HUMAN,"REJECTED");
+        var statements=new ArrayList<>(d.statements());statements.set(0,rejected);
+        var sections=new ArrayList<>(d.sections());var first=sections.getFirst();
+        sections.set(0,new Section(first.id(),first.taxonomyCode(),first.title(),"Summary repeats "+rejected.wording(),first.children(),first.statementIds(),first.questionIds()));
+        var before=new ReformulationDocument(d.text(),sections,statements,d.questions(),d.validation(),d.nodeResults());
+        var out=reconciler().reconcile(baseline(),before,List.of(),List.of());
+        assertThat(out.statements()).contains(rejected);
+        assertThat(out.text()).doesNotContain(rejected.wording());
+        assertThat(out.sections()).allSatisfy(s->assertThat(s.summary()).doesNotContain(rejected.wording()));
+        assertThat(out.validation().findings()).extracting(ValidationReport.Finding::code).contains("REJECTED_ADDITION_REINTRODUCED");
+    }
     @Test void equalWordingWithDifferentScopeAndIncompatibleContractsStaySeparate() {
         var q=question("q-s","SV","global");
         var incompatible=new DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),q.consequences(),q.state());

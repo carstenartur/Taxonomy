@@ -60,4 +60,23 @@ class FrozenReformulationEngineTest {
         assertThat(result.statements().stream().map(Statement::id).toList()).containsAll(result.questions().getFirst().affectedStatementIds());
     }
 
+    @Test void completeSynthesisKeepsRejectedEvidenceButNeverPublishesItsWording() {
+        var rejected=new Statement("s-rejected","Discarded workflow proposal.",List.of(),Statement.Provenance.MODEL_ADDITION,
+                List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,"REJECTED");
+        var service=mock(NodeReformulationService.class);
+        when(service.synthesize(any(NodeSynthesisInput.class),any(ReformulationStepExecutor.class))).thenAnswer(call->{
+            NodeSynthesisInput input=call.getArgument(0);
+            var replay=new Statement("s-new","Discarded workflow proposal.",List.of(),Statement.Provenance.MODEL_ADDITION,
+                    List.of(),List.of(),null,Statement.EditingOrigin.MODEL,"UNREVIEWED");
+            return new NodeSynthesisResult(input.nodeId(),"Summary: Discarded workflow proposal.",List.of(replay),
+                    input.directContributions().stream().map(Statement::id).toList(),List.of(),List.of(),List.of(),List.of());
+        });
+        var out=new FrozenReformulationEngine(service,new ObjectMapper()).synthesize(WalkUpReformulationTest.baseline(),List.of(rejected),List.of(),List.of());
+        assertThat(out.statements()).contains(rejected);
+        assertThat(out.statements()).filteredOn(s->s.wording().equals(rejected.wording())).allSatisfy(s->assertThat(s.reviewState()).isEqualTo("REJECTED"));
+        assertThat(out.text()).doesNotContain(rejected.wording());
+        assertThat(out.sections()).allSatisfy(s->assertThat(s.summary()).doesNotContain(rejected.wording()));
+        assertThat(out.validation().findings()).extracting(ValidationReport.Finding::code).contains("REJECTED_ADDITION_REINTRODUCED");
+    }
+
 }

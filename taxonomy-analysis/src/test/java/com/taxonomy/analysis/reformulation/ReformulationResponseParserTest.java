@@ -53,4 +53,15 @@ class ReformulationResponseParserTest {
         assertThat(result.preservedStatementIds()).containsExactly("s-child");
         assertThat(new ReformulationPromptBuilder(new ObjectMapper()).build(in,null)).contains(in.baseline().originalText(),"Child exact wording","q-child","short summary");
     }
+    @Test void rejectedWordingCannotBeReplayedAsNewStatementOrParentSummary() {
+        var rejected=new Statement("s-rejected","Do not use this proposed workflow.",List.of(),Statement.Provenance.MODEL_ADDITION,
+                List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,"REJECTED");
+        var in=new NodeSynthesisInput(input().baseline(),"P",null,"parent",List.of(),List.of(rejected),List.of(),Map.of(),List.of(),List.of(),"preserve");
+        String retained=EMPTY.replace("\"preservedStatementIds\":[]","\"preservedStatementIds\":[\"s-rejected\"]");
+        String replay=retained.replace("\"statementProposals\":[]","\"statementProposals\":[{\"wording\":\"Do not use this proposed workflow.\",\"provenance\":\"MODEL_ADDITION\",\"sourceSpans\":[],\"architectureLinks\":[],\"questionDependencies\":[],\"conditionalValidity\":null}]");
+        assertThatThrownBy(()->parser.parse(replay,in)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Rejected wording");
+        assertThatThrownBy(()->parser.parse(retained.replace("Zusammenfassung","Parent repeats: Do not use this proposed workflow."),in))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Rejected wording");
+        assertThat(parser.parse(retained,in).preservedStatementIds()).containsExactly("s-rejected");
+    }
 }
