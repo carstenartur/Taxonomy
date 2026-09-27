@@ -1,0 +1,186 @@
+*** Begin Patch
+*** Add File: taxonomy-app/src/test/java/com/taxonomy/acceptance/ReformulationCivilianAcceptanceTest.java
++package com.taxonomy.acceptance;
++
++import org.junit.jupiter.api.Test;
++import java.nio.file.*;
++import java.util.*;
++import java.util.concurrent.TimeUnit;
++import static org.assertj.core.api.Assertions.assertThat;
++
++/** Real application process; only the outbound provider exchange is replaced. */
++class ReformulationCivilianAcceptanceTest {
++    @Test void authenticatedAnalysisProducesFrozenBottomUpOfferWithoutAdoption() throws Exception {
++        Path output = Path.of("target/reformulation-civilian-acceptance");
++        Files.createDirectories(output);
++        Path log = output.resolve("application.log");
++        var command = new ArrayList<String>();
++        command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
++        command.add("-Xmx" + Runtime.getRuntime().maxMemory());
++        java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
++                .filter(value -> value.startsWith("-javaagent:") && value.contains("jacoco")).forEach(command::add);
++        command.addAll(List.of("-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),
++                ReformulationCivilianApplication.class.getName(), output.toAbsolutePath().toString()));
++        var process = new ProcessBuilder(command).redirectErrorStream(true).redirectOutput(log.toFile()).start();
++        try {
++            assertThat(process.waitFor(240, TimeUnit.SECONDS)).as("Application timeout: %s", log).isTrue();
++            String evidence = Files.readString(log);
++            assertThat(process.exitValue()).as(evidence).isZero();
++            assertThat(evidence).contains("REFORMULATION_CIVILIAN_PROPOSAL_OK");
++        } finally {
++            if (process.isAlive()) {
++                process.descendants().forEach(ProcessHandle::destroyForcibly);
++                process.destroyForcibly();
++                assertThat(process.waitFor(15, TimeUnit.SECONDS)).isTrue();
++            }
++        }
++    }
++}
+*** End Patch
+
+*** Begin Patch
+*** Add File: taxonomy-app/src/test/java/com/taxonomy/acceptance/ReformulationCivilianApplication.java
++package com.taxonomy.acceptance;
++
++import com.taxonomy.TaxonomyApplication;
++import org.springframework.boot.builder.SpringApplicationBuilder;
++import tools.jackson.databind.JsonNode;
++import tools.jackson.databind.ObjectMapper;
++import java.net.URI;
++import java.net.http.*;
++import java.nio.charset.StandardCharsets;
++import java.nio.file.*;
++import java.time.Duration;
++import java.util.*;
++import static org.assertj.core.api.Assertions.assertThat;
++
++/** Authenticated HTTP commands and reads; never inserts analysis or proposal state. */
++public final class ReformulationCivilianApplication {
++    private static final String PASSWORD = "Reformulation-Civilian-Test-2026!";
++    private final ObjectMapper json = new ObjectMapper();
++    private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
++    private final String base;
++    private final Path output;
++    private final ScenarioLlmPlayback playback;
++
++    private ReformulationCivilianApplication(int port, Path output, ScenarioLlmPlayback playback) {
++        this.base = "http://127.0.0.1:" + port; this.output = output; this.playback = playback;
++    }
++
++    public static void main(String[] args) throws Exception {
++        try (var app = new SpringApplicationBuilder(TaxonomyApplication.class, CivilianLlmConfiguration.class).run(
++                "--server.port=0", "--embedding.enabled=false", "--embedding.allow-download=false",
++                "--taxonomy.init.async=false", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
++                "--custom.llm.url=" + CivilianLlmConfiguration.URL, "--custom.llm.model=civilian-fixture",
++                "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false")) {
++            var scenario = new ReformulationCivilianApplication(Integer.parseInt(app.getEnvironment().getProperty("local.server.port")),
++                    Path.of(args[0]), app.getBean(ScenarioLlmPlayback.class));
++            scenario.analysisAndOffer();
++        }
++        System.out.println("REFORMULATION_CIVILIAN_PROPOSAL_OK");
++    }
++
++    private void analysisAndOffer() throws Exception {
++        var source = playback.fixture().path("requirement");
++        long project = request("POST", "/api/projects", Map.of("projectKey", "REF-" + UUID.randomUUID(),
++                "title", "Civilian reformulation", "description", "Authored remote-response acceptance", "status", "ACTIVE"), 201).path("id").asLong();
++        String projectPath = "/api/projects/" + project;
++        var requirement = request("POST", projectPath + "/requirements", Map.of("requirementKey", source.path("key").asText(),
++                "title", source.path("title").asText(), "text", source.path("text").asText(), "status", "DRAFT",
++                "priority", 80, "criticality", "HIGH", "requirementType", "FUNCTIONAL", "reviewStatus", "PROPOSED"), 201);
++        String requirementPath = projectPath + "/requirements/" + requirement.path("id").asLong();
++        var job = request("POST", requirementPath + "/analyses", Map.of("provider", "CUSTOM_OPENAI",
++                "idempotencyKey", UUID.randomUUID().toString()), 202);
++        var completed = awaitTerminal(projectPath + "/analysis-jobs/" + job.path("id").asText(), false);
++        save("analysis-job.json", completed);
++        assertThat(playback.failures()).isEmpty();
++        assertThat(completed.path("status").asText()).as(completed.toPrettyString()).isEqualTo("COMPLETED");
++        String snapshotId = completed.path("items").get(0).path("snapshotId").asText();
++        var snapshot = request("GET", projectPath + "/snapshots/" + snapshotId, null, 200);
++        save("snapshot.json", snapshot);
++        assertThat(snapshot.at("/analysis/scores/BP-1017").asInt()).isPositive();
++        assertThat(snapshot.at("/analysis/architectureView/includedElements")).isNotEmpty();
++        var before = request("GET", requirementPath, null, 200);
++        assertThat(before.path("currentAnalysisSnapshotId").asText()).isEqualTo(snapshotId);
++        String offers = requirementPath + "/reformulations";
++        var created = request("POST", offers, Map.of("snapshotId", snapshotId,
++                "sourceVersionId", before.path("currentVersionId").asLong(), "language", "en"), 202);
++        String offerPath = offers + "/" + created.path("id").asText();
++        var runs = awaitTerminal(offerPath + "/synthesis-runs", true);
++        save("synthesis-runs.json", runs);
++        save("llm-calls.json", json.valueToTree(playback.calls()));
++        assertThat(playback.failures()).isEmpty();
++        assertThat(runs.get(0).path("status").asText()).as(runs.toPrettyString()).isEqualTo("COMPLETED");
++        var offer = request("GET", offerPath, null, 200);
++        save("proposal.json", offer);
++        assertThat(offer.at("/baseline/originalText").asText()).isEqualTo(source.path("text").asText());
++        assertThat(offer.at("/currentRevision/text").asText()).contains("15 minutes", "surface-water", "safety-critical");
++        assertThat(offer.at("/currentRevision/sections")).isNotEmpty();
++        assertThat(offer.at("/currentRevision/questions")).isNotEmpty();
++        assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
++        assertThat(request("GET", projectPath + "/snapshots/" + snapshotId, null, 200)).isEqualTo(snapshot);
++    }
++
++    private JsonNode awaitTerminal(String path, boolean array) throws Exception {
++        long deadline = System.nanoTime() + Duration.ofSeconds(90).toNanos();
++        JsonNode latest;
++        do {
++            latest = request("GET", path, null, 200);
++            JsonNode value = array ? latest.path(0) : latest;
++            if (Set.of("COMPLETED", "SUCCESS", "PARTIAL", "FAILED", "CANCELLED").contains(value.path("status").asText())) return latest;
++            Thread.sleep(100);
++        } while (System.nanoTime() < deadline);
++        throw new AssertionError("Timed out: " + latest.toPrettyString());
++    }
++
++    private JsonNode request(String method, String path, Object body, int status) throws Exception {
++        var request = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(30))
++                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + PASSWORD).getBytes(StandardCharsets.UTF_8)))
++                .header("Content-Type", "application/json")
++                .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();
++        var response = http.send(request, HttpResponse.BodyHandlers.ofString());
++        assertThat(response.statusCode()).as("%s %s: %s", method, path, response.body()).isEqualTo(status);
++        return json.readTree(response.body());
++    }
++
++    private void save(String name, JsonNode value) throws Exception { Files.writeString(output.resolve(name), value.toPrettyString()); }
++}
+*** End Patch
+
+*** Begin Patch
+*** Update File: pom.xml
+@@
+-                <test>CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationBrowserTest</test>
++                <test>CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest,ReformulationBrowserTest</test>
+*** Update File: .mvn/verification-suites.json
+@@
+-      "test": "CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationBrowserTest",
++      "test": "CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest,ReformulationBrowserTest",
+*** Update File: docs/implementation/reformulation-task4-report.md
+@@
+ # Task 4 report
++
++## Task 4b first slice — tests-first checkpoint
++
++Task 4a independently accepted; review is in `reformulation-task4a-review.md`.
++First bounded slice uses a fresh real application JVM and authenticated HTTP:
++requirement creation, actual analysis, persisted snapshot, bottom-up offer,
++questions and unchanged active source/pointer/snapshot before adoption. The only
++replacement remains remote LLM HTTP. No provider budget overrides are present.
++The new `ReformulationCivilianAcceptanceTest` is explicitly selected in both
++the Maven civilian profile and verification-suite manifest.
++
++Next command, after root publishes the exact test-first tree:
++
++```sh
++python .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationCivilianAcceptanceTest -Dsurefire.failIfNoSpecifiedTests=false test
++```
++
++Expected RED: the flood corpus currently has no application reformulation replies.
++After observing actual requests, bind authored bounded scoring fronts and remote
++responses to their real catalogue/input identities; never inject prepared results.
++Answers/deferral, REWORD, manual preservation, adoption, inherited reanalysis,
++four exports, atomic checkpoint and second-process restart remain subsequent Task
++4b slices. Browser and actual-provider quality remain separate Task 4c/4d gates.
+ 
+*** End Patch
