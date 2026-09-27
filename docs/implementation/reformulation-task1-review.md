@@ -20,5 +20,20 @@ Checks outside the diff: nonblank Statement wording validation, deterministic pa
 ID assignment, and ReformulationService REJECT behavior. No edits or repeated tests
 were performed by the reviewer.
 
-Fix round 1: pending. Add meaningful RED regressions for both paths; run the covering
-tests after the minimal correction and obtain a scoped re-review.
+## Fix round 1 — accepted
+
+Scoped re-review: 47f72a9ce973045b49b83d864ce3fa9c2bc37bc4 through
+b2c9a4c24acf950100674ca594b53ff045a28451. Both findings are addressed; no new
+breakage was found in the fix diff. No repeated tests or edits by the reviewer.
+
+- Contaminated summaries are now empty, accompanied by the existing conflict
+  finding. A regression covers the rejected phrase `requires review` itself.
+- Affected synthesis retains the exact existing statement in both the document
+  and node result on a deterministic-ID collision, including HUMAN metadata.
+- The unchanged Section and NodeSynthesisResult contracts permit empty summaries;
+  relevant consumers impose no nonblank-summary requirement.
+
+Implementer evidence: 20-test meaningful RED run with two expected failures and
+zero errors; five-class focused GREEN run with 34 tests, zero failures/errors/skips.
+The earlier 588-test broader run predates these corrections. Task 2a coordination
+documents in the diff were outside this review.
