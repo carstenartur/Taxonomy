@@ -25,9 +25,10 @@ Status: focused Task 2a verification green; independent review and root's integr
 
 Next command for independent review: `git diff 363618842d905807689f2b9b932d9642bd49c5d9..HEAD -- taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/reformulation taxonomy-portfolio/src/main/java/com/taxonomy/portfolio/service/ProjectPortfolioService.java taxonomy-app/src/test/java/com/taxonomy/portfolio/reformulation docs/implementation/reformulation-task2a-report.md`.
 
-## Independent-review fix round 1 (verification pending)
+## Independent-review fix round 1
 
 - Review found mixed-case imported business identity bypass and malformed/null stored-baseline error handling. The review's original P/R evidence into physical p/r direction was inaccurate: portfolio creation normalizes keys to uppercase. The reachable inverse is valid lowercase p/r portable DSL into existing physical P/R; materialization reuses P/R but retains lowercase evidence bytes/hash. No SQL-mutated fixture is used.
 - RED: corrected real import/API case, 1 test, expected 409 but received 200 (36.068 s). Earlier first fixture stopped on canonical physical key assertion, not a valid guard RED; this was corrected before the meaningful RED.
 - RED: JSON `null` baseline returned 500 and malformed `{untrusted-foreign-marker` returned 422; 2 parameterized API/database tests expected 409 (40.646 s combined with the obsolete first import fixture). Exact response leak check is in both tests.
-- Narrow fix: case-insensitive business-key selection and comparison while preserving exact portable row/payload binding and content hash/version/scope; proposal-local baseline decode failures are generic 409 without changing the shared JSON codec. Covering GREEN still pending; this section does not claim acceptance.
+- Narrow fix: case-insensitive business-key selection and comparison while preserving exact portable row/payload binding and content hash/version/scope; proposal-local baseline decode failures are generic 409 without changing the shared JSON codec.
+- Covering GREEN after fix: `ReformulationPositiveReviewGuardTest` **14/14** and `ReformulationIsolationTest` **9/9**; total **23 tests, zero failures/errors/skips**, build success (50.855 s). The earlier 45+3 regression runs remain evidence for the pre-review checkpoint; they were not repeated in this focused correction round. Independent scoped re-review and root's integrated gate remain pending.
