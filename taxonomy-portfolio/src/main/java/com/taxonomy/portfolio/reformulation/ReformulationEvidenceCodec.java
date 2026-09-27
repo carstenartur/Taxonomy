@@ -450,6 +450,15 @@ public class ReformulationEvidenceCodec {
             throw PortfolioException.validation(
                     "Reformulation evidence requires project, requirement, target version and evidence hash");
         }
+        Set<String> expectedProperties = Set.of("schemaVersion", "payload", "evidenceHash", "targetTextHash");
+        Set<String> observedProperties = new LinkedHashSet<>();
+        for (PropertyAst property : block.getProperties()) observedProperties.add(property.key());
+        if (block.getProperties().size() != expectedProperties.size()
+                || !observedProperties.equals(expectedProperties)
+                || !block.getChildren().isEmpty()
+                || !block.getExtensions().isEmpty()) {
+            throw PortfolioException.validation("Reformulation evidence DSL schema is ambiguous");
+        }
         String projectKey = requiredToken(block, 0);
         String requirementKey = requiredToken(block, 1);
         int targetVersion = positiveInt(requiredToken(block, 2));

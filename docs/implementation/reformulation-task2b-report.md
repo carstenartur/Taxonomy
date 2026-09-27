@@ -131,12 +131,14 @@ real-provider quality claim.
   codec default changes.
 - Final self-review noted `BlockAst.property()` takes the first matching DSL
   property. A duplicate or unknown property on an evidence block must fail
-  closed even if its first payload and hash are valid; the narrow test is added
-  but not yet run.
+  closed even if its first payload and hash are valid. RED: one real-import
+  test, one expected failure (duplicate property accepted), zero errors. The
+  candidate codec fix requires exactly four distinct evidence properties and
+  no child/extension content. GREEN unverified.
 
 ## Next exact command
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest#duplicateOrUnknownEvidenceDslPropertyRejectsBeforeMaterialization -Dsurefire.failIfNoSpecifiedTests=false`
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest,ReformulationEvidenceCodecBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false`
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.
