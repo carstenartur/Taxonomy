@@ -1,8 +1,8 @@
 # PR 1135 bounded review fixes
 
-Status: five reported findings and the valid older-source regression pass focused and
-covering selectors. Task 3 visual acceptance remains open for concrete layout and
-provenance issues found in independent rendered-page inspection.
+Status: review and standalone renderer corrections pass the merged-base covering
+selector. Fresh DE/EN document visual inspection, independent review and CI remain
+open; no Task 3 acceptance claim yet.
 
 Five review findings are isolated in focused tests: imported ancestry baseline/physical scope;
 local adoption preview versus current target; readable DOCX origin discovery fields;
@@ -81,5 +81,27 @@ after correct localization; it now expects `Analyse-Snapshot`. The real reanalys
 remote-only playback did not recognize the newly merged `relation-downwalk-v1`
 request. The fixture now explicitly responds to its extraction phase with exact
 offered IDs and conservative REJECT decisions; this exercises the real protocol and
-does not disable relation search or alter product budgets. Neither test correction
-has been verified yet. Fresh DOCX from this failed run is not a final visual gate.
+does not disable relation search or alter product budgets. Fresh DOCX from this failed
+run is not final visual evidence.
+
+Final merged-base covering command used the command above with
+`,AdoptedLineageRealReanalysisTest` appended to `-Dtest`. Maven exit 0:
+59 tests, zero failures/errors (export 1, architecture 4, codec 6,
+app report 7, positive guard 16, history 2, real reanalysis 1, ratchet 22).
+The app subtotal is 48. The real reanalysis exercises outbound provider HTTP playback
+including the merged relation extraction request and still requires SUCCESS. The JS
+download contract passed in the report fixture.
+
+Fresh application-produced DOCX bytes for independent all-page rendering:
+
+- `reformulation-de-adoption.docx`: 5146 bytes, 2026-09-27 18:10:07 +0200,
+  SHA-256 `d3ac2437a9f725441f3a45662b3909e1daa90584aeb0e7fee6a80e30c2b572ff`.
+- `reformulation-en-graph-answered.docx`: 31567 bytes, 2026-09-27 18:09:32 +0200,
+  SHA-256 `f7521c7b22d48d59c2348522237a34a57e854d206505f0c00d5b2c8e9a93f4df`.
+
+Both are under `/workspace/scratch/38625e9262ff/reformulation-task3-qa/`.
+The representative fixtures are saved through actual application services and
+rendered by the production DOCX exporter. They are not a remote-only E2E language
+quality proof. CI on the final published commit and fresh visual inspection remain
+separate gates. Task 4 civilian browser/restart acceptance and opt-in real-model
+comparison remain outstanding.
