@@ -188,3 +188,25 @@ returned Operation not permitted. No local browser pass and no policy bypass. Th
 existing GitHub browser lane is running. The explicit real-model profile wrote
 NOT_RUN / NOT_REVIEWED (2026-09-27 20:42 UTC), with one JUnit skip because no generative
 provider is configured. A successful launcher build does not mean model quality passed.
+
+### Post-review execution evidence
+
+2026-09-27 20:52:49 UTC: final focused reactor BUILD SUCCESS, 18/18, no failures,
+errors or skips: authored scenarios 2, full HTTP/in-flight race/adoption/reanalysis/
+export/checkpoint/fresh-process lifecycle 1, semantic playback contracts 15.
+Artifacts: `target/reformulation-civilian-acceptance/run-7a238133-f6cf-4205-bc95-2bae39098c6a`.
+
+Actual document-CLI invocation first failed because its new flag was not registered.
+The explicit parser regression reproduced that failure (10 tests / one error).
+After the minimal flag correction, 10/10 document-tooling tests passed. The exact
+CI command then rendered both exports from the final successful lifecycle with
+LibreOffice/Poppler: revision 25 pages / 7 content checks; adoption 26 pages / 8
+content checks; neither has empty body pages. First/last sample pages were visually
+inspected. No page limit or content assertion was relaxed.
+
+Independent final review and focused correction rereviews are accepted; see
+`reformulation-task4-final-review.md`. PR #1136 contains the follow-up implementation.
+PR #1135 still waits for its current-head canonical Core/Maven verification before
+merge; PR #1136 browser and full current-head CI remain open. Real-provider evidence
+is explicitly NOT_RUN, with the exact small status report committed alongside this
+ledger. No claim of complete eight-package product-quality acceptance is made.

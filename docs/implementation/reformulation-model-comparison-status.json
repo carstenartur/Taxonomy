@@ -1,0 +1,7 @@
+{
+  "recordedAt" : "2026-09-27T20:42:19.226036247Z",
+  "humanQualityGate" : "NOT_REVIEWED",
+  "pricingBasis" : "NOT_PROVIDED; no currency cost inferred",
+  "status" : "NOT_RUN",
+  "reason" : "No configured generative provider available"
+}

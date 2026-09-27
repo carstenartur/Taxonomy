@@ -110,6 +110,14 @@ class CivilianDocumentQaTest {
         assertThat(TaxonomyTooling.Arguments.parse(new String[]{"--artifacts", "actual"}).flag("visio-only")).isFalse();
     }
 
+    @Test
+    void cliReformulationOnlyFlagKeepsTheArtifactArgument() {
+        var selected = TaxonomyTooling.Arguments.parse(new String[]{"--reformulation-only", "--artifacts", "actual"});
+        assertThat(selected.flag("reformulation-only")).isTrue();
+        assertThat(selected.required("artifacts")).isEqualTo("actual");
+        assertThat(TaxonomyTooling.Arguments.parse(new String[]{"--artifacts", "actual"}).flag("reformulation-only")).isFalse();
+    }
+
     private static String xml(String pages) {
         return "<html xmlns='http://www.w3.org/1999/xhtml'><body><doc>" + pages + "</doc></body></html>";
     }

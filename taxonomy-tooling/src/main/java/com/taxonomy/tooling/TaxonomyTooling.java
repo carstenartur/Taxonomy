@@ -280,7 +280,7 @@ public final class TaxonomyTooling {
     }
 
     static final class Arguments {
-        private static final Set<String> FLAGS = Set.of("stdin", "release", "visio-only");
+        private static final Set<String> FLAGS = Set.of("stdin", "release", "visio-only", "reformulation-only");
 
         private final Map<String, String> values;
         private final Map<String, Boolean> flags;

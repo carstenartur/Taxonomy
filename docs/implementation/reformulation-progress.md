@@ -2,6 +2,26 @@
 
 Plan: [reformulation-completion.md](reformulation-completion.md)
 
+## Follow-up implementation — 2026-09-27 20:58 UTC
+
+PR #1136 (`feature/reformulation-civilian-acceptance`) now contains Task 4's complete
+deterministic application/browser acceptance harness, independent document gate,
+DE/EN documentation and separate five-case real-model comparison. Actual end-to-end
+execution exposed and corrected duplicated inherited prompt context without raising
+provider limits. Independent review and its corrections are accepted.
+
+Final local evidence: 18/18 HTTP/race/restart/authored/playback tests, 10/10 document
+tooling tests, and independent rendering of the current 25/26-page historical exports.
+Browser execution and full current-head CI remain required. Real-model comparison
+was explicitly NOT_RUN because no generative provider is configured; human quality
+is NOT_REVIEWED. See the [Task 4 report](reformulation-task4-report.md) and
+[final review](reformulation-task4-final-review.md).
+
+The user requested PR #1135 merged when all gates succeed and the missing parts in
+this second PR. Its updated head is `43992e1d3784641a3bff76433f403f1fe90df546`; all three
+database jobs succeeded, but Core/Maven verification was still running at this
+checkpoint. No merge or overall product-quality completion is claimed.
+
 ## Current status — 2026-09-27
 
 Recovery is complete; the historical outage note below remains available for audit.
