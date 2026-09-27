@@ -1,0 +1,33 @@
+diff --git a/taxonomy-app/src/test/java/com/taxonomy/CivilianArchitectureAcceptanceTest.java b/taxonomy-app/src/test/java/com/taxonomy/CivilianArchitectureAcceptanceTest.java
+index 44d7eaef3b15b365d9e755754dc6008b61f050ff..6ad73889a763121422276a03f338cb22d5cc29bf 100644
+--- a/taxonomy-app/src/test/java/com/taxonomy/CivilianArchitectureAcceptanceTest.java
++++ b/taxonomy-app/src/test/java/com/taxonomy/CivilianArchitectureAcceptanceTest.java
+@@ -264,6 +264,7 @@ class CivilianArchitectureAcceptanceTest {
+         proposal.setSourceNode(node);proposal.setTargetNode(target);proposal.setRelationType(com.taxonomy.model.RelationType.DEPENDS_ON);
+         proposal.setConfidence(.99);proposal.setRationale("Live proposal added after frozen analysis");
+         int callsBefore=playback.calls().size();
++        var originalPolicy = diagramProjection.getPolicy();
+         org.mockito.Mockito.clearInvocations(liveReports);
+         try {
+             node.setNameEn("MUTATED LIVE CATALOGUE TITLE");node.setDescriptionEn("Mutated live description after saving snapshot");
+@@ -272,10 +273,10 @@ class CivilianArchitectureAcceptanceTest {
+             proposal=proposalRepository.saveAndFlush(proposal);
+             assertThat(catalogueService.getNodeByCode("BP-1017").getNameEn()).isEqualTo("MUTATED LIVE CATALOGUE TITLE");
+             assertThat(preferences.get("diagram.policy")).isEqualTo("leafOnly");
+-            assertThat(diagramProjection.getPolicy()).isInstanceOf(com.taxonomy.export.LeafOnlyDiagramSelectionPolicy.class);
+             var restricted = new com.taxonomy.export.ConfigurableDiagramSelectionPolicy(
+                     new com.taxonomy.export.DiagramSelectionConfig(true, true, true, true, false, true, 0, 1, 1));
+-            assertThat(restricted.apply(before.architecture().diagram()).edges()).hasSizeLessThan(before.architecture().diagram().edges().size());
++            diagramProjection.setPolicy(restricted);
++            assertThat(diagramProjection.getPolicy().apply(before.architecture().diagram()).edges()).hasSizeLessThan(before.architecture().diagram().edges().size());
+             assertThat(proposalRepository.findVisibleByRepositoryAndWorkspace(context.repositoryId(),context.workspaceId())).extracting(com.taxonomy.relations.model.RelationProposal::getId).contains(proposal.getId());
+ 
+             // Both real services deserialize the persisted analysis/version and project the saved view again.
+@@ -295,6 +296,7 @@ class CivilianArchitectureAcceptanceTest {
+         } finally {
+             node.setNameEn(oldName);node.setDescriptionEn(oldDescription);catalogueRepository.saveAndFlush(node);
+             preferences.update(oldPreferences,"word-regression-restore");
++            diagramProjection.setPolicy(originalPolicy);
+             if(proposal.getId()!=null)proposalRepository.deleteById(proposal.getId());
+         }
+     }
