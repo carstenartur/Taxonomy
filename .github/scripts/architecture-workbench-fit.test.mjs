@@ -48,3 +48,44 @@ for (const [name, bounds, viewport] of [
         assert.ok(extent[0] <= k, 'manual zoom must retain the fitted scale instead of jumping to 20%');
     });
 }
+
+// Preserve the legacy filter contract as the civilian browser fixture now
+// exercises the default evidence graph (which deliberately has no impact anchors).
+const visibilityStart = source.indexOf('    function visibleModel() {');
+const visibilityEnd = source.indexOf('    function buildLayerGroups(', visibilityStart);
+assert.ok(visibilityStart >= 0 && visibilityEnd > visibilityStart);
+const visibilityHandler = source.slice(visibilityStart, visibilityEnd);
+const contextGuard = source.match(/contextCheckbox\.disabled = .*$/m)?.[0];
+assert.ok(contextGuard, 'the production context-control guard must be present');
+
+function contextView(nodes, edges, showContext) {
+    const context = vm.createContext({
+        scene: { nodes, edges },
+        state: { showContext, mode: 'overview', selectedNodeId: null },
+        contextCheckbox: { checked: true, disabled: false }
+    });
+    return vm.runInContext(visibilityHandler + '\n' + contextGuard
+        + '\n({ control: contextCheckbox, model: visibleModel() })', context);
+}
+
+test('evidence-only model keeps every node and disables the empty anchor filter', () => {
+    const nodes = [{ id: 'source', anchor: false }, { id: 'target', anchor: false }];
+    const edges = [{ sourceId: 'source', targetId: 'target' }];
+    const { control, model } = contextView(nodes, edges, true);
+    assert.equal(control.disabled, true);
+    assert.equal(control.checked, true);
+    assert.deepEqual(Array.from(model.nodeIds), ['source', 'target']);
+    assert.equal(model.edges.length, 1);
+});
+
+test('legacy anchor-only mode hides context nodes and incident edges', () => {
+    const nodes = [{ id: 'anchor', anchor: true }, { id: 'context', anchor: false }];
+    const edges = [{ sourceId: 'anchor', targetId: 'context' }];
+    const hidden = contextView(nodes, edges, false);
+    assert.equal(hidden.control.disabled, false);
+    assert.deepEqual(Array.from(hidden.model.nodeIds), ['anchor']);
+    assert.equal(hidden.model.edges.length, 0);
+    const restored = contextView(nodes, edges, true);
+    assert.deepEqual(Array.from(restored.model.nodeIds), ['anchor', 'context']);
+    assert.equal(restored.model.edges.length, 1);
+});

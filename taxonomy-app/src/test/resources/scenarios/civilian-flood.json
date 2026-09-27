@@ -120,5 +120,187 @@
     {"id":"UA-1226-categories","task":"categories","parentScore":100,"keys":["UA-1243","UA-1417","UA-1452","UA-1488","UA-1580"],"answers":{"UA-1580":{"score":100,"reason":"F1: Offer a hydrographic view of water observations and warning areas to civilian operators."}},"excludedReason":"Outside the civilian flood information scope: this category does not implement the selected information, subscription or notification function."},
     {"id":"UA-1000-categories","task":"categories","parentScore":100,"keys":["UA-1015","UA-1079","UA-1099","UA-1100","UA-1105","UA-1179","UA-1207","UA-1220","UA-1226","UA-1245","UA-1253","UA-1273","UA-1289","UA-1299","UA-1301","UA-1320","UA-1322","UA-1339","UA-1405","UA-1422","UA-1426","UA-1444","UA-1453","UA-1537","UA-1539","UA-1543"],"answers":{"UA-1226":{"score":100,"reason":"F1: Offer a hydrographic view of water observations and warning areas to civilian operators."}},"excludedReason":"Outside the civilian flood information scope: this category does not implement the selected information, subscription or notification function."},
     {"id":"UA-categories","task":"categories","parentScore":100,"keys":["UA-1000"],"answers":{"UA-1000":{"score":100,"reason":"F1: Offer a hydrographic view of water observations and warning areas to civilian operators."}},"excludedReason":"Outside the civilian flood information scope: this category does not implement the selected information, subscription or notification function."}
-  ]
+  ],
+  "relationPlayback": {
+    "sourceContributions": [
+      {
+        "nodeId": "BP-1017",
+        "text": "Acquire the published observation batch and preserve source and observation time.",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "condition": ""
+      },
+      {
+        "nodeId": "BR-1223",
+        "text": "Provide civilian oversight of the supplementary information service.",
+        "quote": "F2: Support civilian oversight of the service.",
+        "condition": ""
+      },
+      {
+        "nodeId": "CI-1052",
+        "text": "Prepare a hydrographic interpretation of the published observations and warning areas.",
+        "quote": "F1: Give residents and civil authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
+        "condition": ""
+      },
+      {
+        "nodeId": "CO-1048",
+        "text": "Deliver a text notification for a subscribed area.",
+        "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
+        "condition": "Only when the subscriber selects the text channel."
+      },
+      {
+        "nodeId": "CP-1041",
+        "text": "Disseminate warning information through the channels chosen by subscribers.",
+        "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
+        "condition": ""
+      },
+      {
+        "nodeId": "CR-1097",
+        "text": "Queue delivery work durably and support idempotent retry.",
+        "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
+        "condition": "A1 is an explicitly declared test design assumption, not an observed production fact."
+      },
+      {
+        "nodeId": "IP-1116",
+        "text": "Represent the published environmental situation with its source and observation time.",
+        "quote": "F1: Give residents and civil authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
+        "condition": ""
+      },
+      {
+        "nodeId": "UA-1580",
+        "text": "Present the hydrographic warning and observation picture to residents and civil authorities.",
+        "quote": "F1: Give residents and civil authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
+        "condition": ""
+      }
+    ],
+    "paths": {
+      "BP-1017": [
+        "BP",
+        "BP-1000",
+        "BP-1327",
+        "BP-1060",
+        "BP-1017"
+      ],
+      "BR-1223": [
+        "BR",
+        "BR-1000",
+        "BR-1228",
+        "BR-1094",
+        "BR-1223"
+      ],
+      "CI-1052": [
+        "CI",
+        "CI-1000",
+        "CI-1023",
+        "CI-1045",
+        "CI-1052"
+      ],
+      "CO-1048": [
+        "CO",
+        "CO-1000",
+        "CO-1011",
+        "CO-1030",
+        "CO-1048"
+      ],
+      "CP-1041": [
+        "CP",
+        "CP-1000",
+        "CP-1059",
+        "CP-1041"
+      ],
+      "CR-1097": [
+        "CR",
+        "CR-1000",
+        "CR-1111",
+        "CR-1099",
+        "CR-1097"
+      ],
+      "IP-1116": [
+        "IP",
+        "IP-1000",
+        "IP-1005",
+        "IP-1102",
+        "IP-1116"
+      ],
+      "UA-1580": [
+        "UA",
+        "UA-1000",
+        "UA-1226",
+        "UA-1580"
+      ]
+    },
+    "claims": [
+      {
+        "sourceId": "BP-1017",
+        "targetId": "IP-1116",
+        "type": "CONSUMES",
+        "quote": "F5: Consume the latest observation batch at most every 15 minutes; show stale or unavailable data and retain the official warning channels.",
+        "necessity": "REQUIRED",
+        "condition": "",
+        "alternativeGroup": ""
+      },
+      {
+        "sourceId": "CI-1052",
+        "targetId": "BP-1017",
+        "type": "SUPPORTS",
+        "quote": "F1: Give residents and civil authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
+        "necessity": "REQUIRED",
+        "condition": "",
+        "alternativeGroup": ""
+      },
+      {
+        "sourceId": "CI-1052",
+        "targetId": "IP-1116",
+        "type": "PRODUCES",
+        "quote": "F1: Give residents and civil authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
+        "necessity": "REQUIRED",
+        "condition": "",
+        "alternativeGroup": ""
+      },
+      {
+        "sourceId": "CI-1052",
+        "targetId": "CP-1041",
+        "type": "FULFILLS",
+        "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
+        "necessity": "REQUIRED",
+        "condition": "",
+        "alternativeGroup": ""
+      },
+      {
+        "sourceId": "UA-1580",
+        "targetId": "IP-1116",
+        "type": "CONSUMES",
+        "quote": "F1: Give residents and civil authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
+        "necessity": "REQUIRED",
+        "condition": "",
+        "alternativeGroup": ""
+      },
+      {
+        "sourceId": "UA-1580",
+        "targetId": "CI-1052",
+        "type": "USES",
+        "quote": "F1: Give residents and civil authorities an understandable view of published flood warnings, affected areas and water observations, including source and observation time.",
+        "necessity": "REQUIRED",
+        "condition": "",
+        "alternativeGroup": ""
+      },
+      {
+        "sourceId": "UA-1580",
+        "targetId": "CR-1097",
+        "type": "USES",
+        "quote": "A1 (test design assumption): use a durable delivery queue, idempotent retries, protected subscriber details and an auditable delivery history.",
+        "necessity": "REQUIRED",
+        "condition": "A1 is an explicitly declared test design assumption, not an observed production fact.",
+        "alternativeGroup": ""
+      },
+      {
+        "sourceId": "CO-1048",
+        "targetId": "UA-1580",
+        "type": "COMMUNICATES_WITH",
+        "quote": "F3: Support area subscriptions and user-selected text, phone or email notification channels.",
+        "necessity": "OPTIONAL",
+        "condition": "Only when the subscriber selects the text channel.",
+        "alternativeGroup": ""
+      }
+    ]
+  }
 }

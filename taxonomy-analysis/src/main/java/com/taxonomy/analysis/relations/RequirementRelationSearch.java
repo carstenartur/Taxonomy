@@ -72,9 +72,9 @@ public final class RequirementRelationSearch {
                     warnings.add("INVALID_SOURCE_RESPONSE " + batch.stream().map(Node::id).toList() + ": " + invalid.getMessage());
                 }
             }
-            List<Intent> intents = new ArrayList<>();
+            List<List<Intent>> routesByContribution = new ArrayList<>();
             for (SourceAssessment assessment : sources) for (Contribution contribution : assessment.contributions()) {
-                int before = intents.size();
+                List<Intent> intents = new ArrayList<>();
                 for (RelationType type : RelationType.values()) {
                     Set<String> allowed = rules.allowedTargetRoots(contribution.source().root(), type);
                     List<Node> outgoing = roots.stream().filter(n -> allowed.contains(n.root())).toList();
@@ -83,8 +83,18 @@ public final class RequirementRelationSearch {
                             .contains(contribution.source().root())).toList();
                     if (!incoming.isEmpty()) intents.add(new Intent(contribution, type.name(), Direction.INCOMING, incoming));
                 }
-                if (intents.size() == before) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
+                if (intents.isEmpty()) warnings.add("NO_STRUCTURAL_ROUTE " + contribution.source().id()
                         + ": the current root profile cannot route this contribution; not evidence of absence.");
+                routesByContribution.add(intents);
+            }
+            // Complete an admitted branch, then give the next contribution a turn.
+            // One high-ranked source must not spend the entire budget on its types.
+            List<Intent> intents = new ArrayList<>();
+            int rounds = routesByContribution.stream().mapToInt(List::size).max().orElse(0);
+            for (int round = 0; round < rounds; round++) {
+                for (List<Intent> routes : routesByContribution) {
+                    if (round < routes.size()) intents.add(routes.get(round));
+                }
             }
             Limits l = options.limits();
             var engine = new RelationSearchEngine(node -> {
@@ -102,7 +112,7 @@ public final class RequirementRelationSearch {
         } catch (RuntimeException failure) {
             stop = failureReason(failure);
         }
-        return new RelationSearchReport(1, sha256(original), "relation-downwalk-v1/root-compatibility-profile",
+        return new RelationSearchReport(1, sha256(original), "relation-downwalk-v1/root-compatibility-profile/contribution-round-robin",
                 sources, result, extractionCalls + result.calls(), options.limits().maxCalls(),
                 (System.nanoTime() - start) / 1_000_000, warnings, stop);
     }
@@ -112,6 +122,8 @@ public final class RequirementRelationSearch {
                 .filter(e -> e.getValue() != null && e.getValue() > 0)
                 .sorted(Map.Entry.<String,Integer>comparingByValue().reversed().thenComparing(Map.Entry.comparingByKey()))
                 .toList();
+        if (positive.isEmpty()) warnings.add("SOURCE_DISCOVERY_REQUIRED: no positively assessed concrete source is available; "
+                + "this is not proof that the requirement has no architectural dependencies.");
         List<Node> nodes = new ArrayList<>();
         Set<String> concreteRoots = new HashSet<>();
         Set<String> containerRoots = new TreeSet<>();

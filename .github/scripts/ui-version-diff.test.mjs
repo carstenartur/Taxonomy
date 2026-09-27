@@ -202,3 +202,40 @@ test('QA cleanup errors preserve the original assertion failure', async () => {
       return true;
     });
 });
+
+for (const baseline of ['element BP-1 type Process { title: "Überprüfung"; taxonomy: "BP"; }\n',
+    'element BP-1 type Process {}\nrelation BP-1 CONSUMES IP-1 { status: proposed; }\n']) {
+  test('relation-only comparison supplies an isolated QA relation without altering the baseline', async () => {
+    const { comparisonDocuments } = await import('./ui-primary-version-workflow.mjs');
+    assert.equal(typeof comparisonDocuments, 'function');
+    const pair = comparisonDocuments(baseline, 'qa-compare-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee');
+    assert.ok(pair.left.startsWith(baseline)); assert.ok(pair.right.startsWith(baseline));
+    assert.equal(pair.right, pair.left.replace('  status: accepted;\n}\n', '  status: proposed;\n}\n'));
+    assert.match(pair.left, /type Process/); assert.match(pair.left, /type InformationProduct/);
+    assert.match(pair.left, /relation QA-COMPARE-.* CONSUMES QA-COMPARE-/);
+    assert.equal(pair.before, 'accepted'); assert.equal(pair.after, 'proposed');
+  });
+}
+test('comparison fixture rejects invalid identifiers and collisions instead of rewriting an existing element', async () => {
+  const { comparisonDocuments } = await import('./ui-primary-version-workflow.mjs');
+  assert.equal(typeof comparisonDocuments, 'function');
+  for (const branch of ['draft', 'qa-compare-evil\nrelation BP USES CR {}']) assert.throws(() => comparisonDocuments('element A type Process {}', branch));
+  const branch = 'qa-compare-aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const pair = comparisonDocuments('element A type Process {}', branch);
+  assert.throws(() => comparisonDocuments(pair.left, branch));
+});
+for (const present of [false, true]) test('comparison cleanup confirms branch absence after ' + (present ? 'created ref' : 'setup failure'), async () => {
+  const { removeComparisonBranch } = await import('./ui-primary-version-workflow.mjs');
+  assert.equal(typeof removeComparisonBranch, 'function');
+  let exists = present, deletes = 0, reads = 0;
+  const api = { getJson: async () => { reads++; return { branches: exists ? ['draft', 'qa-compare-test'] : ['draft'] }; },
+    request: async (url, options) => { assert.equal(options.method, 'DELETE'); deletes++; exists = false; } };
+  await removeComparisonBranch('qa-compare-test', api);
+  assert.equal(deletes, present ? 1 : 0); assert.equal(reads, 2);
+});
+test('comparison cleanup does not conceal a failed delete or invalid branch inventory', async () => {
+  const { removeComparisonBranch } = await import('./ui-primary-version-workflow.mjs');
+  assert.equal(typeof removeComparisonBranch, 'function');
+  await assert.rejects(() => removeComparisonBranch('qa-compare-test', { getJson: async () => ({ branches: ['qa-compare-test'] }), request: async () => { throw new Error('HTTP 500'); } }), /HTTP 500/);
+  await assert.rejects(() => removeComparisonBranch('qa-compare-test', { getJson: async () => ({ error: 'unavailable' }) }));
+});

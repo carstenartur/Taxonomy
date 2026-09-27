@@ -89,8 +89,9 @@ Das eingehende Kontingent wird nach der Autorisierung geprüft. Lokale Benutzer 
 
 ## Anforderungsbezogene Beziehungssuche
 
-Diese zusätzliche Phase ist ausdrücklich zuschaltbar und nutzt den ausgewählten
-generativen Provider. Die Werte sind Server-Startparameter, keine im Repository
+Diese Phase ist standardmäßig aktiv und nutzt den ausgewählten generativen
+Provider. Nur ein ausdrücklicher `false`-Override verwendet die bisherige
+Score-Ableitung; Fehler lösen keinen automatischen Rückfall aus. Die Werte sind Server-Startparameter, keine im Repository
 gespeicherten Preferences-Felder. Die Grenzen betreffen logische Prüfversuche
 dieser Phase (Beitragsextraktion, Navigation und Verifikation), nicht die vorherige
 Kategoriebewertung, physische HTTP-Wiederholungen oder kumulierte Rechnungstokens.
@@ -99,7 +100,7 @@ sie sind kein Nachweis, dass keine Beziehung existiert.
 
 | Variable | Spring-Eigenschaft / Geltungsbereich | Standard | Bedeutung |
 |---|---|---|---|
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `false` | Aktiviert anforderungsbezogene Beziehungssuche statt reiner Score-Ableitung. Originalanforderung und aktive Architektur werden nicht automatisch übernommen oder überschrieben. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `true` | Aktiviert anforderungsbezogene Beziehungssuche statt reiner Score-Ableitung. Originalanforderung und aktive Architektur werden nicht automatisch übernommen oder überschrieben. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximale logische Prüfversuche dieser Phase, 0–10000. Null ist zulässig und lässt Quellen ausdrücklich unbewertet. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_DEPTH` | `taxonomy.analysis.relations.hierarchical.max-depth` | `8` | Maximale Navigationstiefe, 0–100. Ein dadurch begrenzter Zweig bleibt unerledigt statt als irrelevant zu gelten. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_BATCH_SIZE` | `taxonomy.analysis.relations.hierarchical.batch-size` | `10` | Angebotene Quell- oder Geschwisterkandidaten pro Prüfung, 1–100. Kein Aufrufbudget für den gesamten Lauf. |

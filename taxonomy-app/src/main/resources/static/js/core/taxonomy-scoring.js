@@ -1165,14 +1165,22 @@
             var originKey = e.origin ? 'node.origin.' + e.origin.replace(/_/g, '.').toLowerCase() : '';
             var originLabel = originKey ? t(originKey) : (e.includedBecause || '');
             var originBadge = e.origin ? '<span class="badge bg-' + originBadgeColor(e.origin) + ' text-dark">' + escapeHtml(originLabel) + '</span>' : escapeHtml(e.includedBecause || '');
+            var scoped = e.origin === 'RELATION_EVIDENCE' || e.origin === 'REQUIREMENT_EVIDENCE';
+            var detail = e.scoreDetail;
+            var relevanceLabel = scoped
+                ? (detail && Number.isFinite(detail.effectiveRelevance) ? detail.effectiveRelevance.toFixed(1) + '%' : '—')
+                : (e.relevance * 100).toFixed(1) + '%';
+            var rawLabel = scoped
+                ? (detail && Number.isFinite(detail.rawScore) ? String(detail.rawScore) : '—')
+                : String(e.directLlmScore || 0);
             tbl += '<tr class="' + rowClass + '"' +
                 (e.presenceReason ? ' title="' + escapeHtml(e.presenceReason) + '"' : '') + '>' +
                 '<td>' + escapeHtml(e.nodeCode) + '</td>' +
                 '<td>' + escapeHtml(e.title || '') + '</td>' +
                 '<td class="text-muted small">' + escapeHtml(pathLabel) + '</td>' +
                 '<td>' + escapeHtml(sheetLabel) + '</td>' +
-                '<td>' + (e.relevance * 100).toFixed(1) + '%</td>' +
-                '<td>' + (e.directLlmScore || 0) + '</td>' +
+                '<td>' + relevanceLabel + '</td>' +
+                '<td>' + rawLabel + '</td>' +
                 '<td>' + originBadge + '</td>' +
                 '<td>' + (e.selectedForImpact ? '🎯' : '') +
                 (e.anchor ? ' ★' : '') +
@@ -1240,6 +1248,20 @@
         section('relation.search.questions', result.unfinished, function (item) {
             return escapeHtml((item.sourceId || '') + ' · ' + (item.type || '') + ' · '
                 + (item.reason || '') + ': ' + (item.question || ''));
+        });
+        section('relation.search.sources', report.sources, function (source) {
+            var node = source.node || {};
+            var parts = Array.isArray(source.contributions) ? source.contributions : [];
+            var sourceHtml = '<strong>' + escapeHtml(node.id || '') + '</strong><br>'
+                + escapeHtml(source.rationale || '') + '<br>' + escapeHtml(source.question || '');
+            parts.slice(0, 4).forEach(function (part) {
+                sourceHtml += '<div>' + escapeHtml(part.text || '') + '<br><q>'
+                    + escapeHtml(part.quote || '') + '</q><br>'
+                    + escapeHtml(t('relation.search.conditions')) + ': ' + escapeHtml(part.condition || '') + '</div>';
+            });
+            if (parts.length > 4) sourceHtml += '<p>'
+                + escapeHtml(t('relation.search.omitted', 4, parts.length)) + '</p>';
+            return sourceHtml;
         });
         section('relation.search.evidence', result.edges, function (edge) {
             var part = edge.contribution || {}, node = part.source || {}, target = edge.target || {}, evidence = edge.evidence || {};
