@@ -64,6 +64,12 @@ Status: in progress; not product acceptance.
 - Inspected producer: `PortfolioAnalysisPersistenceService.persistSnapshot` stores analysis payload/gaps and derives element/relation mapping rows directly from the captured `RequirementArchitectureView`, with snapshot summary branch sourced from `ViewContext.basedOnBranch` when present. Test uses that real producer path.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure -Dsurefire.failIfNoSpecifiedTests=false test`.
 
+## Checkpoint 12 — canonical edge correction
+
+- The existing semantic RED names the exact missing behavior; no redundant unchanged-source rerun. Graph mapping rows now expose canonical `edge-<persisted mapping id>`, matching the synthesis/reconciliation references. Parallel-edge expectation updated to the same public ID contract.
+- The saved reference hyperlink/bookmark assertion remains unverified; next focused run should expose it (or another genuine downstream defect).
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure -Dsurefire.failIfNoSpecifiedTests=false test`.
+
 ## Checkpoint 6 — frozen catalogue fixture
 
 - Focused class again ran 5 tests, 1 failure / 2 errors: the real BP catalogue has no authored `BP-1`/`BP-2` fixture nodes, so mapper correctly rejected those mappings before reaching multiplicity. Endpoint revision and existing JSON cases passed.

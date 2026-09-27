@@ -72,9 +72,9 @@ final class FrozenReformulationArchitectureAssembler {
         for (var relation : relations) {
             check(relation.id() != null && relation.id() > 0 && baseline.snapshotId().equals(relation.snapshotId()),
                     "Invalid frozen relation mapping identity");
-            addEdge(edges, edgeIds, nodeIds, "mapping-" + relation.id(), relation.sourceCode(), relation.targetCode(),
+            addEdge(edges, edgeIds, nodeIds, "edge-" + relation.id(), relation.sourceCode(), relation.targetCode(),
                     relation.relationType(), relation.relevance(), relation.relationCategory());
-            relationDetails.add("mapping-" + relation.id() + " · " + relation.sourceCode() + " → " + relation.targetCode()
+            relationDetails.add("edge-" + relation.id() + " · " + relation.sourceCode() + " → " + relation.targetCode()
                     + " · " + relation.relationType() + " · " + Objects.toString(relation.presenceReason(), "")
                     + " · " + relation.reviewStatus());
         }

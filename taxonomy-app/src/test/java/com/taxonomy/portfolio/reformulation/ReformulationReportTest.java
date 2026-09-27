@@ -101,7 +101,7 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         var baseline = frozenGraphBaseline(true, true);
         var result = reports.frozenArchitecture(baseline);
         assertThat(result.graph().nodes()).extracting("id").containsExactly("BP-1", "BP-2");
-        assertThat(result.graph().edges()).extracting("id").containsExactly("mapping-11", "mapping-12");
+        assertThat(result.graph().edges()).extracting("id").containsExactly("edge-11", "edge-12");
         assertThat(result.graph().edges()).allSatisfy(edge -> {
             assertThat(edge.sourceId()).isEqualTo("BP-1");
             assertThat(edge.targetId()).isEqualTo("BP-2");
