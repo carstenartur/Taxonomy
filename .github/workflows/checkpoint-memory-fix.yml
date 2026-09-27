@@ -1,0 +1,55 @@
+name: Verify PR1133 checkpoint memory fix
+on:
+  push:
+    branches: [transfer/pr1133-checkpoint-memory-3f3eddd9]
+    paths: [.github/workflows/checkpoint-memory-fix.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: dfec054b53204565e5add4d0c7c0e29c60af22e8
+          fetch-depth: 1
+      - name: Apply exactly the locally verified changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git fetch origin c6bbe0058a99d3f8ea14e4c94bd18e1da3d79228
+          git show c6bbe0058a99d3f8ea14e4c94bd18e1da3d79228:.github/transfer/apply-checkpoint-memory.py > "$RUNNER_TEMP/apply-checkpoint-memory.py"
+          python "$RUNNER_TEMP/apply-checkpoint-memory.py"
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Real Hibernate persistence and existing durability regressions
+        shell: bash
+        run: |
+          set -o pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am -Dtest=RecoveryCheckpointPersistenceTest,RecoveryDurabilityTest,RecoveryCatalogueExchangeTest -Dsurefire.failIfNoSpecifiedTests=false test 2>&1 | tee "$RUNNER_TEMP/checkpoint-memory/maven.log"
+      - name: Focused production JavaScript regressions
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test .github/scripts/analysis*.test.mjs .github/scripts/copilot-operation-lifecycle.test.mjs .github/scripts/copilot-terminal-state-regression.test.mjs .github/scripts/copilot-session-i18n-ready-regression.test.mjs .github/scripts/copilot-summary-freshness.test.mjs .github/scripts/product-score-streaming.test.mjs .github/scripts/ui-copilot-completion.test.mjs 2>&1 | tee "$RUNNER_TEMP/checkpoint-memory/javascript.log"
+      - name: Retain verified candidate without changing the pull request
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^)" = dfec054b53204565e5add4d0c7c0e29c60af22e8
+          test "$(git ls-remote origin refs/heads/feat/resumable-copilot-evaluation | cut -f1)" = dfec054b53204565e5add4d0c7c0e29c60af22e8
+          git push origin HEAD:refs/heads/transfer/pr1133-checkpoint-memory-candidate-3f3eddd9
+      - name: Retain exact candidate and test evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pr1133-checkpoint-memory
+          path: |
+            ${{ runner.temp }}/checkpoint-memory/
+            **/target/surefire-reports/
+          retention-days: 3
+          if-no-files-found: warn
