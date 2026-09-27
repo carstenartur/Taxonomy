@@ -21,6 +21,7 @@ public class PortfolioJsonCodec {
         this.objectMapper = objectMapper;
         this.strictEvidenceMapper = objectMapper.rebuild()
                 .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
                 .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     }
 

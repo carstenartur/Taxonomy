@@ -106,11 +106,15 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   pre-correction evidence.
 - Public decoder check added for an unknown stored schema: the positive-review
   guard delegates to this decoder, so the decoder must reject v99 rather than
-  parse it as v1. RED not yet run for this additional case.
+  parse it as v1. RED verified: one test, one expected failure, zero errors.
+- Candidate narrow fix enables unknown-property rejection only for evidence
+  decoding, validates exact physical source-version text/hash on import and
+  local receipt projection, and rejects unsupported schema at the shared
+  payload decoder. GREEN unverified. No global JSON codec default changes.
 
 ## Next exact command
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-portfolio -am test -Dtest=ReformulationEvidenceCodecBoundaryTest#publicPayloadDecoderRejectsUnknownStoredSchemaBeforeReadingAsV1 -Dsurefire.failIfNoSpecifiedTests=false`
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest,ReformulationEvidenceCodecBoundaryTest,ReformulationPositiveReviewGuardTest -Dsurefire.failIfNoSpecifiedTests=false`
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.

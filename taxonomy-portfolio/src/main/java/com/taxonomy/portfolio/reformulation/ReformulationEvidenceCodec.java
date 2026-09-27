@@ -394,7 +394,9 @@ public class ReformulationEvidenceCodec {
             int previousVersion = preview.currentRequirement().currentVersion().versionNumber();
             if (target.getVersionNumber() != receipt.targetVersionNumber()
                     || receipt.previousVersionId()
-                    != preview.currentRequirement().currentVersionId()) {
+                    != preview.currentRequirement().currentVersionId()
+                    || !preview.originalText().equals(source.getText())
+                    || !StableIdentityHash.sha256(preview.originalText()).equals(source.getContentHash())) {
                 throw PortfolioException.conflict(
                         "Adoption version binding is inconsistent with portable reformulation evidence");
             }
@@ -503,6 +505,22 @@ public class ReformulationEvidenceCodec {
                     "Reformulation evidence does not match target requirement version");
         }
 
+        List<BlockAst> sourceBlocks = document.blocksOfKind(PortfolioGitService.VERSION_BLOCK)
+                .stream()
+                .filter(candidate -> candidate.getHeaderTokens().size() >= 3)
+                .filter(candidate -> projectKey.equalsIgnoreCase(candidate.getHeaderTokens().get(0)))
+                .filter(candidate -> requirementKey.equalsIgnoreCase(candidate.getHeaderTokens().get(1)))
+                .filter(candidate -> Integer.toString(decoded.sourceVersionNumber())
+                        .equals(candidate.getHeaderTokens().get(2)))
+                .toList();
+        if (sourceBlocks.size() != 1
+                || !decoded.originalText().equals(sourceBlocks.getFirst().property("text"))
+                || !StableIdentityHash.sha256(decoded.originalText())
+                        .equals(sourceBlocks.getFirst().property("contentHash"))) {
+            throw PortfolioException.validation(
+                    "Reformulation evidence does not match source requirement version");
+        }
+
         List<BlockAst> targetBlocks = document.blocksOfKind(PortfolioGitService.VERSION_BLOCK)
                 .stream()
                 .filter(candidate -> candidate.getHeaderTokens().size() >= 3)
@@ -522,6 +540,9 @@ public class ReformulationEvidenceCodec {
     }
 
     public Payload payload(Evidence evidence) {
+        if (!READABLE_SCHEMAS.contains(evidence.schemaVersion()))
+            throw PortfolioException.validation(
+                    "Unsupported reformulation evidence schema: " + evidence.schemaVersion());
         if (ANCESTRY_SCHEMA.equals(evidence.schemaVersion())) {
             PayloadV2 value = json.readStrictEvidence(evidence.payload(), PayloadV2.class);
             if (value == null || value.adoption() == null || value.ancestorHashes() == null
