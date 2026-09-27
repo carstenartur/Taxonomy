@@ -23,6 +23,7 @@ public class ReformulationService {
     private final PortfolioJsonCodec json;
     private final ReformulationRunRepository runs;
     private final ReformulationCheckpointStore checkpoints;
+    private final ReformulationEvidenceCodec evidence;
     public ReformulationService(ProjectPortfolioService projects,
             ProjectRequirementVersionRepository versions,
             RequirementAnalysisSnapshotRepository snapshots,
@@ -32,7 +33,8 @@ public class ReformulationService {
             ReformulationRevisionRepository revisions,
             PortfolioJsonCodec json,
             ReformulationRunRepository runs,
-            ReformulationCheckpointStore checkpoints) {
+            ReformulationCheckpointStore checkpoints,
+            ReformulationEvidenceCodec evidence) {
         this.projects = projects;
         this.versions = versions;
         this.snapshots = snapshots;
@@ -43,6 +45,7 @@ public class ReformulationService {
         this.json = json;
         this.runs = runs;
         this.checkpoints = checkpoints;
+        this.evidence = evidence;
     }
     @Transactional
     public Proposal create(Long projectId,Long requirementId,CreateRequest request,String actor,WorkspaceContext context) {
@@ -61,6 +64,13 @@ public class ReformulationService {
         var content=new TreeMap<>(contextPort.freeze(detail,actor,context));
         content.put("project",json.write(projects.getProject(projectId,actor,context)));
         content.put("sourceVersion",json.write(projects.toVersionView(version)));
+        var lineage=evidence.freezeSource(requirement.getScopeKey(), requirementId, version.getId(),
+                requirement.getProject().getProjectKey(), requirement.getRequirementKey(),
+                version.getVersionNumber(), version.getContentHash());
+        if (!lineage.entries().isEmpty()) {
+            content.put("adoptedLineage", json.write(lineage));
+            content.put("inheritedDecisionContext", lineage.decisionContext());
+        }
         var scope=new ReformulationBaseline.Scope(PortfolioScope.repositoryId(context),PortfolioScope.workspaceId(context),
                 PortfolioScope.branch(context),projectId,requirementId);
         var baseline=ReformulationBaseline.freeze(new ReformulationBaseline.Source(scope,version.getId(),version.getText()),

@@ -11,6 +11,8 @@ import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.portfolio.model.ArchitectureProject;
 import com.taxonomy.portfolio.model.ProjectRequirement;
 import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.node.ObjectNode;
 import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementRepository;
 import com.taxonomy.portfolio.repository.ProjectRequirementVersionRepository;
@@ -93,6 +95,64 @@ public class ReformulationEvidenceCodec {
             String payload,
             String evidenceHash,
             String targetTextHash) {
+    }
+
+    /** Frozen exact archive and separate prompt-safe projection of its historical decisions. */
+    public record LineageSnapshot(List<Evidence> entries, List<String> roots, String decisionContext) {}
+
+    public LineageSnapshot freezeSource(String scopeKey, Long requirementId, Long versionId,
+            String projectKey, String requirementKey, int versionNumber, String contentHash) {
+        List<Evidence> roots = new ArrayList<>(sourceEvidenceFor(
+                adoptions.findByRequirementIdAndTargetVersionIdAndScopeKey(requirementId, versionId, scopeKey),
+                scopeKey));
+        for (ReformulationPortableEvidence stored : importedEvidence.findMatchingCurrent(
+                scopeKey, projectKey, requirementKey, versionNumber, contentHash)) {
+            roots.add(fromStored(stored));
+        }
+        Map<String, Evidence> unique = new LinkedHashMap<>();
+        for (Evidence entry : roots) {
+            if (!entry.projectKey().equalsIgnoreCase(projectKey)
+                    || !entry.requirementKey().equalsIgnoreCase(requirementKey)
+                    || entry.targetVersionNumber() != versionNumber
+                    || !entry.targetTextHash().equals(contentHash)
+                    || !StableIdentityHash.sha256(entry.payload()).equals(entry.evidenceHash())) {
+                throw PortfolioException.conflict("Adopted source evidence does not match selected version");
+            }
+            json.readStrictEvidence(entry.payload(), Payload.class);
+            merge(unique, entry);
+        }
+        if (roots.isEmpty()) return new LineageSnapshot(List.of(), List.of(), "[]");
+        List<String> rootHashes = roots.stream().map(Evidence::evidenceHash).distinct().sorted().toList();
+        List<Evidence> entries = unique.values().stream().sorted(Comparator.comparing(Evidence::evidenceHash)).toList();
+        List<Object> contexts = new ArrayList<>();
+        for (Evidence evidence : entries) {
+            Payload payload = json.readStrictEvidence(evidence.payload(), Payload.class);
+            Map<String, Object> context = new LinkedHashMap<>();
+            context.put("historicalEvidenceHash", evidence.evidenceHash());
+            context.put("historicalSourceVersion", payload.sourceVersionNumber());
+            context.put("historicalTargetVersion", evidence.targetVersionNumber());
+            context.put("adoptionActor", payload.actor());
+            context.put("adoptionRationale", payload.rationale());
+            context.put("statements", withoutOldSpans(payload.revision().statements()));
+            context.put("questions", withoutOldSpans(payload.revision().questions()));
+            context.put("humanAnswers", withoutOldSpans(payload.revision().answers()));
+            context.put("historicalReview", withoutOldSpans(payload.revision().validation()));
+            contexts.add(context);
+        }
+        return new LineageSnapshot(entries, rootHashes, json.write(contexts));
+    }
+
+    private JsonNode withoutOldSpans(Object value) {
+        JsonNode tree = json.readStrictEvidence(json.write(value), JsonNode.class);
+        removeOldSpans(tree);
+        return tree;
+    }
+
+    private static void removeOldSpans(JsonNode node) {
+        if (node instanceof ObjectNode object) {
+            object.remove("sourceSpans");
+            object.properties().forEach(property -> removeOldSpans(property.getValue()));
+        } else if (node.isArray()) node.forEach(ReformulationEvidenceCodec::removeOldSpans);
     }
 
     /** Replace only this codec's blocks; all other portfolio/architecture DSL is preserved. */
@@ -202,8 +262,10 @@ public class ReformulationEvidenceCodec {
     }
 
     private List<Evidence> sourceEvidence(String scopeKey) {
-        List<ReformulationAdoption> rows =
-                adoptions.findByScopeKeyOrderByCreatedAtAsc(scopeKey);
+        return sourceEvidenceFor(adoptions.findByScopeKeyOrderByCreatedAtAsc(scopeKey), scopeKey);
+    }
+
+    private List<Evidence> sourceEvidenceFor(List<ReformulationAdoption> rows, String scopeKey) {
         if (rows.isEmpty()) return List.of();
 
         record SourceRow(

@@ -19,6 +19,14 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   → new offer tests. They assert frozen exact evidence hash and concrete wording,
   origin, question, actor and rationale in inherited context, including portable
   evidence binding to a separately materialized workspace.
+- RED run: eight cases, two expected failures for missing `adoptedLineage` in
+  local/imported new offers, zero errors. The test uses real service/DB/adoption
+  and materialization paths with a fixture-persisted analysis snapshot; it is
+  not the later real-analysis civilian E2E.
+- Candidate GREEN implementation freezes only exact selected-version local
+  receipts and matching imported evidence. Baseline archive bytes and separate
+  prompt-safe historical decision projection are distinct; old source spans and
+  old complete document text remain outside prompt context. GREEN unverified.
 
 ## Next exact command
 
