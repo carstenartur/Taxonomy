@@ -15,6 +15,10 @@ import tools.jackson.databind.ObjectMapper;
 
 import java.net.URI;
 import java.net.http.*;
+import java.io.ByteArrayInputStream;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.time.Duration;
@@ -50,6 +54,10 @@ public final class ReformulationReportChecks {
                     check(get(http,base+f.path()+"/revisions/2/export?format="+format,200,true).body().equals(Files.readString(dir.resolve("revision."+format))),"Historical revision changed across restart: "+format);
                     check(get(http,base+f.path()+"/adoptions/"+data.path("commandId").asText()+"/export?format="+format,200,true).body().equals(Files.readString(dir.resolve("adoption."+format))),"Receipt changed across restart: "+format);
                 }
+                check(docxText(getBinary(http,base+f.path()+"/revisions/2/export?format=docx",200,true).body())
+                        .equals(docxText(Files.readAllBytes(dir.resolve("revision.docx")))),"Historical Word proposal changed across restart");
+                check(docxText(getBinary(http,base+f.path()+"/adoptions/"+data.path("commandId").asText()+"/export?format=docx",200,true).body())
+                        .equals(docxText(Files.readAllBytes(dir.resolve("adoption.docx")))),"Historical Word receipt changed across restart");
                 check(before.equals(projects.getRequirement(f.project,f.requirement,"admin",f.scope)),"Export after restart changed requirement");
                 System.out.println("REFORMULATION_REPORT_RESTART_OK"); return;
             }
@@ -72,6 +80,10 @@ public final class ReformulationReportChecks {
                 if(format.equals("html")) check(!response.body().contains("<script>") && response.body().contains("&lt;script&gt;"),"Unsafe HTML export");
                 Files.writeString(dir.resolve("revision."+format),response.body());
             }
+            var revisionWord=getBinary(http,path+"?format=docx",200,true);
+            check(docxText(revisionWord.body()).contains(ORIGINAL),"Word proposal omitted original");
+            check(docxText(revisionWord.body()).contains("Browser oder Terminal?"),"Word proposal omitted question");
+            Files.write(dir.resolve("revision.docx"),revisionWord.body());
             check(before.equals(projects.getRequirement(f.project,f.requirement,"admin",f.scope)),"Export activated original");
             check(saved.equals(proposals.get(f.project,f.requirement,f.proposal,"admin",f.scope)),"Export edited proposal");
             get(http,path+"?format=pdf",400,true); get(http,path.replace("/2/","/9999/"),404,true); get(http,path,401,false);
@@ -93,15 +105,28 @@ public final class ReformulationReportChecks {
                 }
                 Files.writeString(dir.resolve("adoption."+format),response.body());
             }
+            check(docxText(getBinary(http,path+"?format=docx",200,true).body())
+                    .equals(docxText(revisionWord.body())),"Word proposal retroactively became an adoption receipt");
+            var adoptedWord=getBinary(http,base+f.path()+"/adoptions/"+command+"/export?format=docx",200,true);
+            check(docxText(adoptedWord.body()).contains("Bewusste Terminalwahl"),"Word receipt omitted human answer");
+            check(docxText(adoptedWord.body()).contains("Übernahmebeleg"),"Word receipt lacks adoption identity");
+            Files.write(dir.resolve("adoption.docx"),adoptedWord.body());
+            saveQa("reformulation-de-adoption.docx",adoptedWord.body());
             ReformulationReportBoundaryChecks.verify(app, http, base, f, command);
             proposals.saveDraft(f.project,f.requirement,f.proposal,3,new ReformulationDtos.SaveDraftRequest("Later offer text","Later draft"),"admin",f.scope);
             projects.addRequirementVersion(f.project,f.requirement,new CreateRequirementVersionRequest("Independent later version","Later",null),"admin",f.scope);
             var after=projects.getRequirement(f.project,f.requirement,"admin",f.scope); var offerAfter=proposals.get(f.project,f.requirement,f.proposal,"admin",f.scope);
             for(String format:List.of("json","md","html")) check(get(http,base+f.path()+"/adoptions/"+command+"/export?format="+format,200,true).body().equals(Files.readString(dir.resolve("adoption."+format))),"Receipt export used current mutable data");
+            check(docxText(getBinary(http,path+"?format=docx",200,true).body())
+                    .equals(docxText(revisionWord.body())),"Word proposal used later mutable data");
+            check(docxText(getBinary(http,base+f.path()+"/adoptions/"+command+"/export?format=docx",200,true).body())
+                    .equals(docxText(adoptedWord.body())),"Word receipt used later mutable data");
             check(after.equals(projects.getRequirement(f.project,f.requirement,"admin",f.scope)) && offerAfter.equals(proposals.get(f.project,f.requirement,f.proposal,"admin",f.scope)),"Report read mutated later work");
             check(app.getBean(JdbcTemplate.class).queryForObject("select count(*) from reformulation_usage_attempt",Long.class)==0L,"Report invoked model");
             Files.writeString(dir.resolve("identity.json"),json.writeValueAsString(Map.of("fixture",f,"commandId",command)));
             var other=fixture(app); get(http,path,404,true); get(http,base+f.path()+"/adoptions/"+command+"/export",404,true);
+            getBinary(http,path+"?format=docx",404,true);
+            getBinary(http,base+f.path()+"/adoptions/"+command+"/export?format=docx",404,true);
             get(http,base+other.path()+"/adoptions/"+command+"/export",404,true);
             System.out.println("REFORMULATION_REPORT_HTTP_OK");
         }
@@ -134,6 +159,33 @@ public final class ReformulationReportChecks {
             check(response.headers().firstValue("X-Content-Type-Options").orElse("").equals("nosniff"),"Missing nosniff");
         }
         return response;
+    }
+    static HttpResponse<byte[]> getBinary(HttpClient http,String url,int expected,boolean authenticated) throws Exception {
+        var builder=HttpRequest.newBuilder(URI.create(url)).timeout(Duration.ofSeconds(30));
+        if(authenticated) builder.header("Authorization",basic());
+        var response=http.send(builder.GET().build(),HttpResponse.BodyHandlers.ofByteArray());
+        check(response.statusCode()==expected,"Expected "+expected+" but got "+response.statusCode()+" "+url);
+        if(expected==200) {
+            check(response.headers().firstValue("Content-Type").orElse("").equals(
+                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document"),"Wrong Word MIME");
+            check(response.headers().firstValue("Cache-Control").orElse("").contains("no-store"),"Word response cached");
+            check(response.headers().firstValue("X-Content-Type-Options").orElse("").equals("nosniff"),"Word response sniffable");
+            check(response.headers().firstValue("Content-Disposition").orElse("").startsWith("attachment; filename=\"reformulation-"),"Unsafe Word filename");
+            check(response.headers().firstValue("X-Content-SHA256").orElse("").equals(
+                    HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(response.body()))),"Word digest is not binary SHA-256");
+        }
+        return response;
+    }
+    static String docxText(byte[] bytes) throws Exception {
+        try(var document=new XWPFDocument(new ByteArrayInputStream(bytes))) {
+            return document.getParagraphs().stream().map(p->p.getText()).collect(java.util.stream.Collectors.joining("\n"));
+        }
+    }
+    private static void saveQa(String file,byte[] bytes) throws Exception {
+        String path=System.getProperty("reformulation.docx.qa.dir");
+        if(path!=null && !path.isBlank()) {
+            Path output=Path.of(path);Files.createDirectories(output);Files.write(output.resolve(file),bytes);
+        }
     }
     private static String basic(){return "Basic "+Base64.getEncoder().encodeToString(("admin:"+PASSWORD).getBytes(StandardCharsets.UTF_8));}
     static void check(boolean condition,String message){if(!condition)throw new AssertionError(message);}

@@ -142,6 +142,18 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         dangling.put("snapshotDetail", json.writeValueAsString(graphDetail));
         assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(graph, dangling))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("directed frozen relation");
+        var wrongWorkspace = new java.util.HashMap<>(baseline.frozenContext());
+        var scoped = (ObjectNode) json.readTree(wrongWorkspace.get("snapshotDetail"));
+        ((ObjectNode) scoped.get("summary")).put("workspaceId", UUID.randomUUID().toString());
+        wrongWorkspace.put("snapshotDetail", json.writeValueAsString(scoped));
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(baseline, wrongWorkspace))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("snapshot workspace");
+        var wrongAnalysisBranch = new java.util.HashMap<>(baseline.frozenContext());
+        var branchDetail = (ObjectNode) json.readTree(wrongAnalysisBranch.get("snapshotDetail"));
+        ((ObjectNode) branchDetail.get("summary")).put("branchName", "unexpected-other-branch");
+        wrongAnalysisBranch.put("snapshotDetail", json.writeValueAsString(branchDetail));
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(baseline, wrongAnalysisBranch))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("analysis branch");
     }
 
     @Test
@@ -195,16 +207,26 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
                                 List.of(), List.of("linked"), List.of("q-edge"))),
                         List.of(statement), List.of(question), new com.taxonomy.reformulation.ValidationReport(List.of()), List.of()),
                 null, "architect", context);
-        var response = mvc.perform(get(base() + "/" + proposal.id() + "/revisions/2/export").param("format", "docx"))
+        reformulations.answer(project.id(), requirement.id(), proposal.id(), 2,
+                new ReformulationDtos.AnswerRequest("q-edge", "ANSWER", List.of("One-way from process to subprocess"),
+                        "", "Directed flow accepted"), "architect", context);
+        var response = mvc.perform(get(base() + "/" + proposal.id() + "/revisions/3/export").param("format", "docx"))
                 .andExpect(status().isOk()).andReturn().getResponse();
         try (var doc = new XWPFDocument(new ByteArrayInputStream(response.getContentAsByteArray()))) {
             assertThat(doc.getAllPictures()).isNotEmpty();
             var text = doc.getParagraphs().stream().map(p -> p.getText()).reduce("", (a, b) -> a + "\n" + b);
             assertThat(text).contains("Reformulation offer", first.getNameEn(), second.getNameEn(),
-                    "Analysis based-on branch: draft", "Gap analysis recorded", "Saved directed evidence");
+                    "Analysis based-on branch: draft", "Gap analysis recorded", "Saved directed evidence",
+                    "Directed flow accepted");
             var xml = doc.getDocument().xmlText();
             assertThat(xml).contains("rf_ref_edge_" + mappingId, "w:anchor=\"rf_ref_edge_" + mappingId + "\"");
             assertThat(xml).doesNotContain("TargetMode=\"External\"");
+        }
+        String qaPath = System.getProperty("reformulation.docx.qa.dir");
+        if (qaPath != null && !qaPath.isBlank()) {
+            var output = java.nio.file.Path.of(qaPath);
+            java.nio.file.Files.createDirectories(output);
+            java.nio.file.Files.write(output.resolve("reformulation-en-graph-answered.docx"), response.getContentAsByteArray());
         }
     }
 

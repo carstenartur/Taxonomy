@@ -64,6 +64,15 @@ Status: in progress; not product acceptance.
 - Inspected producer: `PortfolioAnalysisPersistenceService.persistSnapshot` stores analysis payload/gaps and derives element/relation mapping rows directly from the captured `RequirementArchitectureView`, with snapshot summary branch sourced from `ViewContext.basedOnBranch` when present. Test uses that real producer path.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure -Dsurefire.failIfNoSpecifiedTests=false test`.
 
+## Checkpoint 14 — historical/coordinate red tests and QA capture
+
+- Saved graph navigation selector GREEN: 1 test, 0 failures/errors, real persisted view/mappings, POI parser, embedded figure, internal hyperlink/bookmark; Maven exit 0.
+- Added real-process DOCX revision/receipt binary response checks with SHA-256, no-store/nosniff/MIME/filename, parsed historical stability after adoption, current-source edit and fresh process restart; foreign-scope DOCX denial. These have not yet run.
+- Extended mapper case to demand rejection of tampered frozen snapshot workspace and analysis branch while accepting offer branch `main` with captured analysis branch `draft`.
+- Real graph endpoint now saves an answered EN DOCX; historical process saves an answered DE adoption DOCX when `-Dreformulation.docx.qa.dir=/workspace/scratch/38625e9262ff/reformulation-task3-qa` is supplied. These are app-produced bytes for root's independent visual QA, not handcrafted documents.
+- JS download contract now exercises DOCX MIME success and wrong-MIME refusal; direct Node selector exited 0 with `REFORMULATION_REPORT_DOWNLOAD_OK`.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest#tamperedFrozenSnapshotAndDanglingDirectedEndpointAreRejected -Dsurefire.failIfNoSpecifiedTests=false test` (expected coordinate RED); then bounded fix and focused history run.
+
 ## Checkpoint 13 — saved-reference navigation
 
 - Real graph endpoint after canonical ID fix: 1 test, 1 expected assertion failure, 0 errors. POI parsed the DOCX and found a figure, but saved edge references lacked an internal bookmark/hyperlink.
