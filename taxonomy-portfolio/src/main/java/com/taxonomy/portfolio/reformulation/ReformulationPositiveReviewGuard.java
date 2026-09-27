@@ -18,12 +18,15 @@ public class ReformulationPositiveReviewGuard {
     private final ReformulationAdoptionRepository adoptions;
     private final ReformulationPortableEvidenceRepository imports;
     private final PortfolioJsonCodec json;
+    private final ReformulationEvidenceCodec codec;
 
     public ReformulationPositiveReviewGuard(ReformulationAdoptionRepository adoptions,
-            ReformulationPortableEvidenceRepository imports, PortfolioJsonCodec json) {
+            ReformulationPortableEvidenceRepository imports, PortfolioJsonCodec json,
+            ReformulationEvidenceCodec codec) {
         this.adoptions = adoptions;
         this.imports = imports;
         this.json = json;
+        this.codec = codec;
     }
 
     public void requireReviewable(ArchitectureProject project, ProjectRequirement requirement, ProjectRequirementVersion current) {
@@ -41,7 +44,10 @@ public class ReformulationPositiveReviewGuard {
                 scope, project.getProjectKey(), requirement.getRequirementKey(), current.getVersionNumber(), current.getContentHash())) {
             if (!StableIdentityHash.sha256(evidence.getPayload()).equals(evidence.getEvidenceHash()))
                 throw PortfolioException.conflict("Imported adoption review evidence is inconsistent");
-            var payload = json.readStrictEvidence(evidence.getPayload(), ReformulationEvidenceCodec.Payload.class);
+            var payload = codec.payload(new ReformulationEvidenceCodec.Evidence(
+                    evidence.getProjectKey(), evidence.getRequirementKey(), evidence.getTargetVersionNumber(),
+                    evidence.getSchemaVersion(), evidence.getPayload(), evidence.getEvidenceHash(),
+                    evidence.getTargetTextHash()));
             if (payload == null || payload.revision() == null
                     || !Objects.equals(payload.projectKey(), evidence.getProjectKey())
                     || !Objects.equals(payload.requirementKey(), evidence.getRequirementKey())

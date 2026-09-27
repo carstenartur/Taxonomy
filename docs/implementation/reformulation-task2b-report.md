@@ -33,6 +33,13 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   export v2 root linking the v1 evidence by hash (no recursive payload), round
   trip into another workspace, and reject a missing referenced ancestor before
   any materialization. These are service/DB paths with fixture snapshots.
+- RED run: 10 cases, 2 expected assertion failures: second root remained v1,
+  and missing ancestor was accepted. Zero errors; eight earlier cases passed.
+- Candidate v2 adds a nested v1-compatible adoption payload plus direct hash
+  references, snapshots exact source ancestry from the selected offer, emits
+  immutable ancestor blocks separately at the existing checkpoint, and checks
+  closure/hash/business/source-version/text binding before materialization.
+  Existing v1 serialization stays unchanged. GREEN unverified.
 
 ## Next exact command
 

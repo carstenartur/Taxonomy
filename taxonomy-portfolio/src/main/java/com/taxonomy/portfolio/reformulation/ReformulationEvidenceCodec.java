@@ -11,6 +11,7 @@ import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.portfolio.model.ArchitectureProject;
 import com.taxonomy.portfolio.model.ProjectRequirement;
 import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.reformulation.ReformulationBaseline;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
 import com.taxonomy.portfolio.repository.ArchitectureProjectRepository;
@@ -40,7 +41,8 @@ public class ReformulationEvidenceCodec {
 
     public static final String BLOCK_KIND = "reformulationEvidence";
     public static final String CURRENT_SCHEMA = "reformulation-evidence-v1";
-    private static final Set<String> READABLE_SCHEMAS = Set.of(CURRENT_SCHEMA, "1");
+    public static final String ANCESTRY_SCHEMA = "reformulation-evidence-v2";
+    private static final Set<String> READABLE_SCHEMAS = Set.of(CURRENT_SCHEMA, "1", ANCESTRY_SCHEMA);
     private static final SourceLocation GENERATED =
             new SourceLocation("reformulation-evidence-projection", 1, 1);
 
@@ -50,6 +52,7 @@ public class ReformulationEvidenceCodec {
     private final ArchitectureProjectRepository projects;
     private final ProjectRequirementRepository requirements;
     private final ProjectRequirementVersionRepository versions;
+    private final ReformulationProposalRepository proposals;
     private final TaxDslParser parser = new TaxDslParser();
     private final TaxDslSerializer serializer = new TaxDslSerializer();
 
@@ -59,13 +62,15 @@ public class ReformulationEvidenceCodec {
             ReformulationPortableEvidenceRepository importedEvidence,
             ArchitectureProjectRepository projects,
             ProjectRequirementRepository requirements,
-            ProjectRequirementVersionRepository versions) {
+            ProjectRequirementVersionRepository versions,
+            ReformulationProposalRepository proposals) {
         this.json = json;
         this.adoptions = adoptions;
         this.importedEvidence = importedEvidence;
         this.projects = projects;
         this.requirements = requirements;
         this.versions = versions;
+        this.proposals = proposals;
     }
 
     /**
@@ -97,14 +102,18 @@ public class ReformulationEvidenceCodec {
             String targetTextHash) {
     }
 
+    public record PayloadV2(Payload adoption, List<String> ancestorHashes) {
+        public PayloadV2 { ancestorHashes = List.copyOf(ancestorHashes); }
+    }
+
     /** Frozen exact archive and separate prompt-safe projection of its historical decisions. */
     public record LineageSnapshot(List<Evidence> entries, List<String> roots, String decisionContext) {}
 
     public LineageSnapshot freezeSource(String scopeKey, Long requirementId, Long versionId,
             String projectKey, String requirementKey, int versionNumber, String contentHash) {
-        List<Evidence> roots = new ArrayList<>(sourceEvidenceFor(
-                adoptions.findByRequirementIdAndTargetVersionIdAndScopeKey(requirementId, versionId, scopeKey),
-                scopeKey));
+        var receipts = adoptions.findByRequirementIdAndTargetVersionIdAndScopeKey(
+                requirementId, versionId, scopeKey);
+        List<Evidence> roots = new ArrayList<>(sourceEvidenceFor(receipts, scopeKey));
         for (ReformulationPortableEvidence stored : importedEvidence.findMatchingCurrent(
                 scopeKey, projectKey, requirementKey, versionNumber, contentHash)) {
             roots.add(fromStored(stored));
@@ -118,15 +127,28 @@ public class ReformulationEvidenceCodec {
                     || !StableIdentityHash.sha256(entry.payload()).equals(entry.evidenceHash())) {
                 throw PortfolioException.conflict("Adopted source evidence does not match selected version");
             }
-            json.readStrictEvidence(entry.payload(), Payload.class);
+            payload(entry);
             merge(unique, entry);
         }
         if (roots.isEmpty()) return new LineageSnapshot(List.of(), List.of(), "[]");
+        for (Evidence ancestor : sourceClosure(receipts, scopeKey)) merge(unique, ancestor);
+        var pending = new ArrayList<>(roots);
+        for (int index = 0; index < pending.size(); index++) {
+            for (String hash : ancestorHashes(pending.get(index))) {
+                if (unique.containsKey(hash)) continue;
+                var stored = importedEvidence.findByScopeKeyAndEvidenceHash(scopeKey, hash)
+                        .orElseThrow(() -> PortfolioException.conflict("Adopted source ancestry closure is missing"));
+                Evidence ancestor = fromStored(stored);
+                merge(unique, ancestor);
+                pending.add(ancestor);
+            }
+        }
+        validateClosure(unique);
         List<String> rootHashes = roots.stream().map(Evidence::evidenceHash).distinct().sorted().toList();
         List<Evidence> entries = unique.values().stream().sorted(Comparator.comparing(Evidence::evidenceHash)).toList();
         List<Object> contexts = new ArrayList<>();
         for (Evidence evidence : entries) {
-            Payload payload = json.readStrictEvidence(evidence.payload(), Payload.class);
+            Payload payload = payload(evidence);
             Map<String, Object> context = new LinkedHashMap<>();
             context.put("historicalEvidenceHash", evidence.evidenceHash());
             context.put("historicalSourceVersion", payload.sourceVersionNumber());
@@ -210,6 +232,7 @@ public class ReformulationEvidenceCodec {
             }
             if (previous == null) result.add(evidence);
         }
+        validateClosure(byHash);
         return List.copyOf(result);
     }
 
@@ -262,7 +285,37 @@ public class ReformulationEvidenceCodec {
     }
 
     private List<Evidence> sourceEvidence(String scopeKey) {
-        return sourceEvidenceFor(adoptions.findByScopeKeyOrderByCreatedAtAsc(scopeKey), scopeKey);
+        var rows = adoptions.findByScopeKeyOrderByCreatedAtAsc(scopeKey);
+        var result = new ArrayList<>(sourceEvidenceFor(rows, scopeKey));
+        result.addAll(sourceClosure(rows, scopeKey));
+        return result;
+    }
+
+    private List<Evidence> sourceClosure(List<ReformulationAdoption> rows, String scopeKey) {
+        var result = new ArrayList<Evidence>();
+        for (var row : rows) result.addAll(ancestry(row, scopeKey).entries());
+        return result;
+    }
+
+    private LineageSnapshot ancestry(ReformulationAdoption receipt, String scopeKey) {
+        var proposal = proposals.findById(receipt.getProposalId())
+                .orElseThrow(() -> PortfolioException.conflict("Adopted proposal is missing"));
+        if (!scopeKey.equals(proposal.getScopeKey())
+                || !Objects.equals(receipt.getRequirementId(), proposal.getRequirementId())) {
+            throw PortfolioException.conflict("Adopted proposal scope is inconsistent");
+        }
+        ReformulationBaseline baseline = json.read(proposal.getBaselinePayload(), ReformulationBaseline.class);
+        if (baseline == null || baseline.sourceVersionId() <= 0) {
+            throw PortfolioException.conflict("Adopted proposal baseline is incomplete");
+        }
+        String frozen = baseline.frozenContext().get("adoptedLineage");
+        if (frozen == null) return new LineageSnapshot(List.of(), List.of(), "[]");
+        LineageSnapshot lineage = json.readStrictEvidence(frozen, LineageSnapshot.class);
+        if (lineage == null || lineage.roots() == null || lineage.entries() == null
+                || lineage.decisionContext() == null) {
+            throw PortfolioException.conflict("Adopted proposal ancestry is incomplete");
+        }
+        return lineage;
     }
 
     private List<Evidence> sourceEvidenceFor(List<ReformulationAdoption> rows, String scopeKey) {
@@ -354,13 +407,29 @@ public class ReformulationEvidenceCodec {
                     receipt.actor(),
                     receipt.rationale(),
                     preview.revision());
-            String payload = json.write(value);
+            LineageSnapshot ancestry = ancestry(adoption, scopeKey);
+            if (!Objects.equals(preview.sourceVersionId(),
+                    proposals.findById(adoption.getProposalId()).orElseThrow().getSourceVersionId())) {
+                throw PortfolioException.conflict("Adopted source baseline does not match preview");
+            }
+            for (String ancestor : ancestry.roots()) {
+                Evidence parent = ancestry.entries().stream().filter(e -> e.evidenceHash().equals(ancestor))
+                        .findFirst().orElseThrow(() -> PortfolioException.conflict("Adopted source ancestry is missing"));
+                if (parent.targetVersionNumber() != source.getVersionNumber()
+                        || !parent.targetTextHash().equals(source.getContentHash())
+                        || !parent.projectKey().equalsIgnoreCase(project.getProjectKey())
+                        || !parent.requirementKey().equalsIgnoreCase(requirement.getRequirementKey())) {
+                    throw PortfolioException.conflict("Adopted source ancestry does not match source version");
+                }
+            }
+            String payload = ancestry.roots().isEmpty() ? json.write(value)
+                    : json.write(new PayloadV2(value, ancestry.roots()));
             String hash = StableIdentityHash.sha256(payload);
             result.add(new Evidence(
                     value.projectKey(),
                     value.requirementKey(),
                     value.targetVersionNumber(),
-                    CURRENT_SCHEMA,
+                    ancestry.roots().isEmpty() ? CURRENT_SCHEMA : ANCESTRY_SCHEMA,
                     payload,
                     hash,
                     value.targetContentHash()));
@@ -395,9 +464,11 @@ public class ReformulationEvidenceCodec {
                     "Reformulation evidence target requirement version hash is invalid");
         }
 
+        Evidence evidence = new Evidence(projectKey, requirementKey, targetVersion,
+                schema, payload, evidenceHash, targetTextHash);
         Payload decoded;
         try {
-            decoded = json.readStrictEvidence(payload, Payload.class);
+            decoded = payload(evidence);
         } catch (PortfolioException invalid) {
             throw new PortfolioException(
                     PortfolioException.Kind.VALIDATION,
@@ -429,8 +500,8 @@ public class ReformulationEvidenceCodec {
         List<BlockAst> targetBlocks = document.blocksOfKind(PortfolioGitService.VERSION_BLOCK)
                 .stream()
                 .filter(candidate -> candidate.getHeaderTokens().size() >= 3)
-                .filter(candidate -> projectKey.equals(candidate.getHeaderTokens().get(0)))
-                .filter(candidate -> requirementKey.equals(candidate.getHeaderTokens().get(1)))
+                .filter(candidate -> projectKey.equalsIgnoreCase(candidate.getHeaderTokens().get(0)))
+                .filter(candidate -> requirementKey.equalsIgnoreCase(candidate.getHeaderTokens().get(1)))
                 .filter(candidate -> Integer.toString(targetVersion)
                         .equals(candidate.getHeaderTokens().get(2)))
                 .toList();
@@ -441,14 +512,56 @@ public class ReformulationEvidenceCodec {
                     "Reformulation evidence does not match target requirement version");
         }
 
-        return new Evidence(
-                projectKey,
-                requirementKey,
-                targetVersion,
-                schema,
-                payload,
-                evidenceHash,
-                targetTextHash);
+        return evidence;
+    }
+
+    public Payload payload(Evidence evidence) {
+        if (ANCESTRY_SCHEMA.equals(evidence.schemaVersion())) {
+            PayloadV2 value = json.readStrictEvidence(evidence.payload(), PayloadV2.class);
+            if (value == null || value.adoption() == null || value.ancestorHashes() == null
+                    || value.ancestorHashes().isEmpty())
+                throw PortfolioException.validation("Reformulation evidence ancestry is incomplete");
+            return value.adoption();
+        }
+        return json.readStrictEvidence(evidence.payload(), Payload.class);
+    }
+
+    private List<String> ancestorHashes(Evidence evidence) {
+        if (!ANCESTRY_SCHEMA.equals(evidence.schemaVersion())) return List.of();
+        PayloadV2 value = json.readStrictEvidence(evidence.payload(), PayloadV2.class);
+        if (value == null || value.ancestorHashes() == null || value.ancestorHashes().isEmpty()
+                || new LinkedHashSet<>(value.ancestorHashes()).size() != value.ancestorHashes().size()
+                || value.ancestorHashes().stream().anyMatch(hash -> !hex64(hash)))
+            throw PortfolioException.validation("Reformulation evidence ancestry references are invalid");
+        return value.ancestorHashes();
+    }
+
+    private void validateClosure(Map<String, Evidence> entries) {
+        var complete = new LinkedHashSet<String>();
+        for (String hash : entries.keySet()) visit(hash, entries, new LinkedHashSet<>(), complete);
+    }
+
+    private void visit(String hash, Map<String, Evidence> entries, Set<String> visiting, Set<String> complete) {
+        if (complete.contains(hash)) return;
+        Evidence child = entries.get(hash);
+        if (child == null || !StableIdentityHash.sha256(child.payload()).equals(hash))
+            throw PortfolioException.validation("Reformulation evidence ancestry closure or hash is invalid");
+        if (!visiting.add(hash)) throw PortfolioException.validation("Reformulation evidence ancestry cycle");
+        Payload current = payload(child);
+        for (String parentHash : ancestorHashes(child)) {
+            Evidence parent = entries.get(parentHash);
+            if (parent == null) throw PortfolioException.validation("Reformulation evidence ancestry closure is missing");
+            Payload previous = payload(parent);
+            if (!child.projectKey().equalsIgnoreCase(parent.projectKey())
+                    || !child.requirementKey().equalsIgnoreCase(parent.requirementKey())
+                    || current.sourceVersionNumber() != parent.targetVersionNumber()
+                    || !StableIdentityHash.sha256(current.originalText()).equals(parent.targetTextHash())
+                    || !current.originalText().equals(previous.finalText()))
+                throw PortfolioException.validation("Reformulation evidence ancestry identity mismatch");
+            visit(parentHash, entries, visiting, complete);
+        }
+        visiting.remove(hash);
+        complete.add(hash);
     }
 
     private BlockAst block(Evidence evidence) {

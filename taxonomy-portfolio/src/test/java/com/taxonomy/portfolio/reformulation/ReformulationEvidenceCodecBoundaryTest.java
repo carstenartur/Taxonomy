@@ -27,6 +27,8 @@ class ReformulationEvidenceCodecBoundaryTest {
             mock(ProjectRequirementRepository.class);
     private final ProjectRequirementVersionRepository versions =
             mock(ProjectRequirementVersionRepository.class);
+    private final ReformulationProposalRepository proposals =
+            mock(ReformulationProposalRepository.class);
 
     private final ReformulationEvidenceCodec codec = new ReformulationEvidenceCodec(
             new PortfolioJsonCodec(new ObjectMapper()),
@@ -34,7 +36,8 @@ class ReformulationEvidenceCodecBoundaryTest {
             imported,
             projects,
             requirements,
-            versions);
+            versions,
+            proposals);
 
     @Test
     void emptyDocumentsContainNoPortableEvidence() {
