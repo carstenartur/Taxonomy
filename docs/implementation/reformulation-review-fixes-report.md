@@ -117,3 +117,11 @@ snapshot summary's requirement-version number can disagree with frozen source ve
 merged origin questions omit saved state, complete answer schema, consequences and
 dependencies in DOCX. Narrow test-first checks now tamper the summary number and
 require nontrivial origin context in EN/DE. These tests have not run in this checkpoint.
+
+Review round 1 RED: `ReformulationReportDocxReviewTest#mergedOriginRetainsReviewStateAnswerSchemaAndDependenciesInBothLanguages`
+ran 1 test/1 semantic assertion failure/0 errors; the rendered origin lacked the
+saved state and other context. `ReformulationReportTest#tamperedFrozenSnapshotAndDanglingDirectedEndpointAreRejected`
+ran 1 test/1 semantic assertion failure/0 errors; altered summary version number
+was accepted. Production WIP now checks the summary number against frozen source
+version and prints labeled EN/DE origin key, state, complete schema, consequences,
+statement/dependency IDs and discoveries. GREEN verification pending.

@@ -63,6 +63,29 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                 question.origins().forEach(origin -> {
                     w.paragraph(t(de, "Ursprungsfrage: ", "Origin question: ")
                             + origin.id() + " · " + origin.wording());
+                    w.paragraph(t(de, "Ursprungsstatus: ", "Origin state: ") + origin.state()
+                            + " · " + t(de, "Thema: ", "Subject: ") + origin.key().subject()
+                            + " · " + t(de, "Dimension: ", "Dimension: ") + origin.key().dimension()
+                            + " · " + t(de, "Geltungsbereich: ", "Scope: ") + origin.key().scope());
+                    var schema = origin.answerSchema();
+                    w.paragraph(t(de, "Antworttyp: ", "Answer type: ") + schema.kind()
+                            + " · " + t(de, "Optionen: ", "Options: ") + schema.options()
+                            + " · " + t(de, "Einheit: ", "Unit: ") + Objects.toString(schema.unit(), "—")
+                            + " · " + t(de, "Minimum: ", "Minimum: ") + Objects.toString(schema.minimum(), "—")
+                            + " · " + t(de, "Maximum: ", "Maximum: ") + Objects.toString(schema.maximum(), "—"));
+                    w.paragraph(t(de, "Optionsbedeutungen: ", "Option meanings: ") + schema.optionMeanings()
+                            + " · " + t(de, "Unvereinbare Optionen: ", "Incompatible options: ")
+                            + schema.incompatibleOptions()
+                            + " · " + t(de, "Anwendbarkeit: ", "Applicability: ")
+                            + schema.applicability().stream().map(condition -> condition.questionId()
+                                    + " → " + condition.anyOf()).toList());
+                    w.paragraph(t(de, "Auswirkungen: ", "Consequences: ")
+                            + Objects.toString(origin.consequences(), "")
+                            + " · " + t(de, "Aussagen: ", "Statements: ") + origin.affectedStatementIds()
+                            + " · " + t(de, "Vorausgesetzte Fragen: ", "Prerequisite questions: ")
+                            + origin.prerequisites()
+                            + " · " + t(de, "Abhängige Fragen: ", "Dependent questions: ")
+                            + origin.dependentQuestionIds());
                     origin.discoveries().forEach(discovery -> {
                         w.paragraph(t(de, "Entdeckt bei: ", "Discovered at: ") + discovery.location()
                                 + " · " + t(de, "Kontext: ", "Context: ") + discovery.context()

@@ -32,6 +32,7 @@ final class FrozenReformulationArchitectureAssembler {
                 && Objects.equals(summary.requirementId(), scope.requirementId())
                 && Objects.equals(summary.requirementVersionId(), baseline.sourceVersionId()), "Snapshot source identity disagrees with the baseline");
         check(Objects.equals(version.id(), baseline.sourceVersionId())
+                && summary.requirementVersionNumber() == version.versionNumber()
                 && Objects.equals(version.text(), baseline.originalText())
                 && Objects.equals(version.contentHash(), baseline.originalTextHash())
                 && Objects.equals(project.id(), scope.projectId())
