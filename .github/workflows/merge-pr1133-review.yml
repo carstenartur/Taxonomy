@@ -29,9 +29,11 @@ jobs:
           assert hashlib.sha256(raw).hexdigest()=='1d0504f9073f88c7a36c110269e5f68b73b28b55485bdfdde14d8da297a37957'
           manifest=json.loads(raw)['files']
           main='8a1190bf38f77cd5151165bbbfdc688e15f046ab'
+          git('config','user.name','ChatGPT');git('config','user.email','chatgpt@users.noreply.github.com')
           git('fetch','origin',main)
           merge=git('merge','--no-ff','--no-commit',main,check=False)
           (D/'merge.log').write_text(merge.stdout)
+          print(merge.stdout,flush=True)
           conflicts=out('diff','--name-only','--diff-filter=U').splitlines()
           assert conflicts==['.github/package.json'],conflicts
           ours=git('show',':2:.github/package.json').stdout
@@ -45,7 +47,6 @@ jobs:
           pathlib.Path('.github/package.json').write_text(ours)
           git('add','.github/package.json');git('diff','--cached','--check')
           for entry in manifest:assert out('rev-parse',':'+entry['path'])==entry['after'],entry['path']
-          git('config','user.name','ChatGPT');git('config','user.email','chatgpt@users.noreply.github.com')
           git('commit','-m','Merge main into PR1133 preserving recovery and lifecycle verification\n\nResolve only the package.json chain conflict: every main script/dependency is unchanged and recovery remains in both UI verification chains. Retain all reviewed durability blobs byte-for-byte.')
           candidate=out('rev-parse','HEAD');tree=out('rev-parse','HEAD^{tree}')
           result={'head':candidate,'tree':tree,'parents':['eece8e674b57855c75b3a4844974607278d9b886',main],'originalPrHead':'6b4df02b335793bdfb7d1d07849425c2e9197164','resolution':'.github/package.json retains all main entries and both recovery invocations','files':manifest}
