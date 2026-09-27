@@ -94,10 +94,18 @@ class AdoptedLineageRealReanalysisTest extends ReformulationWorkflowFixture {
         var operation = copilot.enqueueManual(project.id(), requirement.id(),
                 new CopilotRunRequest("CUSTOM_OPENAI", 25, AnalysisAutomationProfile.EXHAUSTIVE,
                         1, true, true, true), "architect", context);
-        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(90)).untilAsserted(() ->
-                assertThat(copilot.getOperation(project.id(), operation.operationId(), "architect", context).status())
-                        .isEqualTo(AnalysisStatus.SUCCESS));
+        org.awaitility.Awaitility.await().atMost(Duration.ofSeconds(90)).until(() ->
+                EnumSet.of(AnalysisStatus.SUCCESS, AnalysisStatus.PARTIAL, AnalysisStatus.FAILED,
+                        AnalysisStatus.CANCELLED).contains(copilot.getOperation(project.id(), operation.operationId(),
+                        "architect", context).status()));
         var completed = copilot.getOperation(project.id(), operation.operationId(), "architect", context);
+        var terminalSnapshot = completed.selectedSnapshotId() == null ? null
+                : analyses.getSnapshot(project.id(), completed.selectedSnapshotId(), "architect", context);
+        assertThat(completed.status())
+                .as("terminal operation: %s; snapshot summary: %s; analysis warnings: %s",
+                        completed, terminalSnapshot == null ? null : terminalSnapshot.summary(),
+                        terminalSnapshot == null ? null : terminalSnapshot.analysis().getWarnings())
+                .isEqualTo(AnalysisStatus.SUCCESS);
         assertThat(completed.selectedSnapshotId()).isNotBlank().isNotEqualTo(snapshot);
         assertThat(completed.jobs()).isNotEmpty();
         var next = reformulations.create(project.id(), requirement.id(),

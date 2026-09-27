@@ -7,6 +7,7 @@ import com.taxonomy.portfolio.model.ProjectRequirementVersion;
 import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.reformulation.DecisionQuestion;
+import com.taxonomy.reformulation.ReformulationBaseline;
 import com.taxonomy.reformulation.ValidationReport;
 import org.springframework.stereotype.Service;
 
@@ -19,14 +20,16 @@ public class ReformulationPositiveReviewGuard {
     private final ReformulationPortableEvidenceRepository imports;
     private final PortfolioJsonCodec json;
     private final ReformulationEvidenceCodec codec;
+    private final ReformulationProposalRepository proposals;
 
     public ReformulationPositiveReviewGuard(ReformulationAdoptionRepository adoptions,
             ReformulationPortableEvidenceRepository imports, PortfolioJsonCodec json,
-            ReformulationEvidenceCodec codec) {
+            ReformulationEvidenceCodec codec, ReformulationProposalRepository proposals) {
         this.adoptions = adoptions;
         this.imports = imports;
         this.json = json;
         this.codec = codec;
+        this.proposals = proposals;
     }
 
     public void requireReviewable(ArchitectureProject project, ProjectRequirement requirement, ProjectRequirementVersion current) {
@@ -36,9 +39,14 @@ public class ReformulationPositiveReviewGuard {
             if (preview == null || !StableIdentityHash.sha256(preview.getPayload()).equals(preview.getContentHash()))
                 throw PortfolioException.conflict("Stored adoption review evidence is inconsistent");
             var content = json.read(preview.getPayload(), ReformulationAdoptionDtos.PreviewContent.class);
-            var source = content == null || content.currentRequirement() == null ? null
+            var previous = content == null || content.currentRequirement() == null ? null
                     : content.currentRequirement().currentVersion();
-            if (content == null || content.revision() == null || source == null
+            var proposal = proposals.findByIdAndProjectIdAndRequirementIdAndScopeKey(
+                    receipt.getProposalId(), project.getId(), requirement.getId(), scope)
+                    .orElseThrow(() -> PortfolioException.conflict("Stored adoption proposal is missing"));
+            ReformulationBaseline baseline = json.read(proposal.getBaselinePayload(), ReformulationBaseline.class);
+            var result = json.read(receipt.getPayload(), ReformulationAdoptionDtos.Result.class);
+            if (content == null || content.revision() == null || previous == null || baseline == null || result == null
                     || !Objects.equals(receipt.getScopeKey(), scope)
                     || !Objects.equals(receipt.getRequirementId(), requirement.getId())
                     || !Objects.equals(receipt.getTargetVersionId(), current.getId())
@@ -46,11 +54,13 @@ public class ReformulationPositiveReviewGuard {
                     || !Objects.equals(content.proposalId(), receipt.getProposalId())
                     || !Objects.equals(content.currentRequirement().id(), requirement.getId())
                     || !Objects.equals(content.currentRequirement().projectId(), project.getId())
-                    || !Objects.equals(content.sourceVersionId(), source.id())
-                    || !Objects.equals(content.currentRequirement().currentVersionId(), source.id())
-                    || !Objects.equals(content.originalText(), source.text())
+                    || !Objects.equals(content.sourceVersionId(), baseline.sourceVersionId())
+                    || !Objects.equals(content.currentRequirement().currentVersionId(), previous.id())
+                    || !Objects.equals(result.previousVersionId(), previous.id())
+                    || !Objects.equals(result.targetVersionId(), current.getId())
+                    || !Objects.equals(content.originalText(), baseline.originalText())
                     || content.originalText() == null || content.finalText() == null
-                    || !Objects.equals(StableIdentityHash.sha256(content.originalText()), source.contentHash())
+                    || !Objects.equals(StableIdentityHash.sha256(content.originalText()), baseline.originalTextHash())
                     || !Objects.equals(StableIdentityHash.sha256(content.finalText()), current.getContentHash()))
                 throw PortfolioException.conflict("Stored adoption review evidence is incomplete");
             rejectBlocking(content.revision());

@@ -33,7 +33,15 @@ Focused GREEN after bounded edits: Maven reactor selector, 5 tests, 0 failures/e
 review identified a valid older-source adoption: the preview's sourceVersionId/originalText
 refer to the proposal baseline, while currentRequirement.currentVersion refers to the
 intervening active version. The guard currently conflates them. A real adoption/review
-regression is now test-only WIP; run it RED, then bind each stored coordinate correctly.
+regression ran RED: 1 test, HTTP 409 instead of expected 200, zero errors. The guard
+now binds the source to the saved proposal baseline, the preview's previous active
+version to the receipt's previous version, and the final text to the current target
+hash. This amendment is unverified pending the next focused run.
+
+Separate MSSQL CI follow-up: the real post-adoption reanalysis test now waits for
+terminal operation state and emits operation, snapshot summary, and analysis warnings
+in its still-strict SUCCESS assertion. This is diagnosis only, not an acceptance
+change; run its selector and inspect the terminal details before any fixture correction.
 
 Next targeted command after durable checkpoint publication:
 `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am '-Dtest=ReformulationEvidenceCodecBoundaryTest#ancestryRejectsBaselineOutsidePhysicalProposalAndReceipt,ReformulationPositiveReviewGuardTest#mismatchedLocalPreviewCannotAuthorizePositiveReview,ReformulationReportDocxReviewTest,FrozenReformulationArchitectureOrderTest' -Dsurefire.failIfNoSpecifiedTests=false test`.
