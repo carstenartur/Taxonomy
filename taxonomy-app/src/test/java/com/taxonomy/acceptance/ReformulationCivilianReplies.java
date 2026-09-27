@@ -17,6 +17,7 @@ final class ReformulationCivilianReplies {
     ScenarioReformulationPlayback.Reply respond(String task, JsonNode input) {
         require(original.equals(input.at("/baseline/originalText").asText()), "Unknown civilian source");
         checkEdges(input);
+        if (!task.equals("REWORD")) require(input.path("boundaryEdges").size() == 1, "Missing civilian boundary edge");
         if (task.equals("RECONCILE")) {
             var sections = ids(input.path("sections"), "id");
             require(sections.equals(CHILDREN.keySet()), "Unknown civilian reconciliation sections: " + sections);
@@ -49,6 +50,10 @@ final class ReformulationCivilianReplies {
                     "What is the maximum age of a usable observation?", "NUMBER", List.of(), "minutes", 0.0, 1440.0));
             else newQuestions.add(question("publication", "stale-age", "flood-display",
                     "What is the maximum age of a usable observation?", "NUMBER", List.of(), "minutes", 0.0, 1440.0));
+            for (var question : newQuestions) {
+                ((ObjectNode) question).set("nodeIds", json.valueToTree(List.of(node.equals("BP-1060") ? "BP-1017" : "IP-1116")));
+                ((ObjectNode) question).set("edgeIds", json.valueToTree(input.path("boundaryEdges").propertyNames()));
+            }
         }
         var response = json.createObjectNode();
         response.put("summary", task.equals("REWORD")

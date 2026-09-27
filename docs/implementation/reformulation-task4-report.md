@@ -86,3 +86,23 @@ Still under verification: no complete lifecycle success has been recorded yet.
 Observed run lists are oldest-first; the driver now waits for all returned runs to
 be terminal and asserts the newly returned run ID, never an older completed run.
 No model result is injected into the application.
+
+### Post-adoption regression and real-model runner
+
+Actual HTTP evidence now reaches: initial SUCCESS analysis, completed eight-node
+walk-up, merged/shared and distinct numeric questions, answer+deferral, completed
+targeted rewording, protected manual variant (PARTIAL / MANUAL_DRAFT_PROTECTED with
+a retained candidate and unchanged human revision), explicit adoption and duplicate
+command replay, four exports, and successful actual reanalysis. The new offer after
+adoption fails INPUT_TOO_LARGE_FOR_PROVIDER: inherited question discoveries repeat
+the same long catalogue context, including retained origins. A focused lossless
+round-trip/budget regression is added before changing prompt encoding. The 120000
+character / 262144 byte / 30000 estimated-token default remains unchanged.
+
+A separate `reformulation-real-llm` Maven profile and tagged comparison class now
+cover five authored inputs with the same source, real catalogue front, provider and
+model for walk-up and one complete prompt. They write actual transport attempts,
+available usage, duration, validated outputs and a blank human-quality rubric.
+Source/front assumptions are explicit. Missing credentials produce NOT_RUN, not
+playback results. Provider environment presence was checked: no standard provider
+keys/custom endpoint were configured. No real-provider or human quality pass claimed.

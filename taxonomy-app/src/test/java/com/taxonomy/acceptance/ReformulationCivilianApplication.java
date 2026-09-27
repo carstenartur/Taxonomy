@@ -85,6 +85,9 @@ public final class ReformulationCivilianApplication {
         assertThat(offer.at("/currentRevision/text").asText()).contains("15 minutes", "surface-water", "safety-critical");
         assertThat(offer.at("/currentRevision/sections")).isNotEmpty();
         assertThat(offer.at("/currentRevision/questions")).isNotEmpty();
+        assertThat(playback.calls().stream().map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("civilian:NODE:")))
+                .containsExactlyInAnyOrder("civilian:NODE:BP-1060", "civilian:NODE:BP-1327", "civilian:NODE:BP-1000", "civilian:NODE:BP",
+                        "civilian:NODE:IP-1102", "civilian:NODE:IP-1005", "civilian:NODE:IP-1000", "civilian:NODE:IP");
         assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
         assertThat(request("GET", projectPath + "/snapshots/" + snapshotId, null, 200)).isEqualTo(snapshot);
         decisionsAndAdoption(projectPath, requirementPath, offerPath, offer, before, snapshotId, snapshot);
@@ -110,21 +113,19 @@ public final class ReformulationCivilianApplication {
         assertThat(findQuestion(deferred.at("/currentRevision/questions"), "acquisition").path("state").asText()).isEqualTo("DEFERRED");
         String statementId = deferred.at("/currentRevision/statements").valueStream()
                 .filter(s -> s.path("provenance").asText().equals("MODEL_ADDITION")).findFirst().orElseThrow().path("id").asText();
-        var edited = request("POST", offerPath + "/statements/" + statementId,
-                Map.of("action", "EDIT", "text", "Human wording: preserve official warning channels.", "rationale", "Keep my precise wording"),
-                201, revision(deferred));
         request("POST", offerPath + "/revisions", Map.of("text", "Stale overwrite", "rationale", "Must be rejected"), 412, originalRevision);
-        var targeted = request("POST", offerPath + "/synthesis-runs", null, 202, revision(edited));
+        var targeted = request("POST", offerPath + "/synthesis-runs", null, 202, revision(deferred));
         var runs = awaitTerminal(offerPath + "/synthesis-runs", true);
         save("targeted-runs.json", runs);
         assertThat(playback.failures()).isEmpty();
         assertThat(runs.valueStream().filter(r -> r.path("id").equals(targeted.path("id"))).findFirst().orElseThrow()
                 .path("status").asText()).as(runs.toPrettyString()).isEqualTo("COMPLETED");
         var revised = request("GET", offerPath, null, 200);
+        assertThat(playback.calls().stream().map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("civilian:REWORD:")))
+                .hasSize(8).doesNotHaveDuplicates();
         save("answered-proposal.json", revised);
-        assertThat(revised.at("/currentRevision/text").asText()).contains("Human wording: preserve official warning channels.");
-        assertThat(revised.at("/currentRevision/statements").valueStream().filter(s -> s.path("id").asText().equals(statementId)))
-                .singleElement().satisfies(s -> assertThat(s.path("editingOrigin").asText()).isEqualTo("HUMAN"));
+        assertThat(revised.at("/currentRevision/text").asText()).contains("retain last observation with timestamp");
+        verifyManualProtection(offerPath, revised, statementId);
         assertThat(request("GET", offerPath + "/revisions/" + originalRevision, null, 200)).isEqualTo(initial.path("currentRevision"));
         assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
         assertThat(request("GET", projectPath + "/snapshots/" + snapshotId, null, 200)).isEqualTo(snapshot);
@@ -176,6 +177,26 @@ public final class ReformulationCivilianApplication {
         request("POST", "/api/workspace/" + foreign.path("workspaceId").asText() + "/switch", null, 200);
         request("GET", offerPath, null, 404);
         request("POST", "/api/workspace/" + workspace.path("workspaceId").asText() + "/switch", null, 200);
+    }
+
+    private void verifyManualProtection(String offerPath, JsonNode source, String statementId) throws Exception {
+        var variant = request("POST", offerPath + "/variants", Map.of("rationale", "Independent manual-edit protection check"), 201, revision(source));
+        String path = offerPath.substring(0, offerPath.lastIndexOf('/') + 1) + variant.path("id").asText();
+        var edited = request("POST", path + "/statements/" + statementId,
+                Map.of("action", "EDIT", "text", "Human wording: preserve official warning channels.", "rationale", "Keep my precise wording"),
+                201, revision(variant));
+        var started = request("POST", path + "/synthesis-runs", null, 202, revision(edited));
+        var runs = awaitTerminal(path + "/synthesis-runs", true);
+        var run = runs.valueStream().filter(r -> r.path("id").equals(started.path("id"))).findFirst().orElseThrow();
+        save("protected-manual-run.json", run);
+        assertThat(playback.failures()).isEmpty();
+        assertThat(run.path("status").asText()).isEqualTo("PARTIAL");
+        assertThat(run.path("failureCode").asText()).isEqualTo("MANUAL_DRAFT_PROTECTED");
+        assertThat(run.path("resultRevision").isNull()).isTrue();
+        assertThat(run.at("/candidate/statements").valueStream().filter(s -> s.path("id").asText().equals(statementId)))
+                .singleElement().satisfies(s -> assertThat(s.path("wording").asText()).isEqualTo("Human wording: preserve official warning channels."));
+        assertThat(request("GET", path, null, 200)).isEqualTo(edited);
+        assertThat(request("GET", offerPath, null, 200)).isEqualTo(source);
     }
 
     private void verifyRestart() throws Exception {

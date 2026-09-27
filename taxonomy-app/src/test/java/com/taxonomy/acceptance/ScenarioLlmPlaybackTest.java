@@ -11,6 +11,18 @@ import static org.assertj.core.api.Assertions.*;
 class ScenarioLlmPlaybackTest {
     private final ObjectMapper json = new ObjectMapper();
 
+    @Test void multilineSourceIsMatchedInFullIncludingLaterParagraphs() throws Exception {
+        var fixture = (tools.jackson.databind.node.ObjectNode) ScenarioLlmPlayback.flood().fixture();
+        ((tools.jackson.databind.node.ObjectNode) fixture.path("requirement"))
+                .put("text", fixture.at("/requirement/text").asText() + "\n\nDo not lose this later paragraph.");
+        var playback = new ScenarioLlmPlayback(fixture);
+        String prompt = prompt(playback, fixture.path("replies").get(0));
+        assertThat(playback.respond(prompt)).contains("choices");
+        assertThatThrownBy(() -> playback.respond(prompt.replace("later paragraph", "changed paragraph")))
+                .hasMessageContaining("Unknown scenario requirement");
+        assertThat(playback.failures()).hasSize(1);
+    }
+
     @Test void independentRootCanBeIrrelevantWithoutChangingSiblingBudgets() throws Exception {
         var fixture = ScenarioLlmPlayback.flood().fixture().deepCopy();
         var rule = (tools.jackson.databind.node.ObjectNode) fixture.path("replies").get(1);

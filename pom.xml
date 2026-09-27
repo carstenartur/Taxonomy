@@ -427,6 +427,15 @@
             </plugin></plugins></build>
         </profile>
         <profile>
+            <id>reformulation-real-llm</id>
+            <properties>
+                <test>ReformulationRealModelComparisonTest</test>
+                <groups>real-llm</groups>
+                <excludedGroups>onnx,db-postgres,db-mssql,db-oracle</excludedGroups>
+                <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
+            </properties>
+        </profile>
+        <profile>
             <id>civilian-acceptance</id>
             <properties>
                 <test>CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest,ReformulationBrowserTest</test>

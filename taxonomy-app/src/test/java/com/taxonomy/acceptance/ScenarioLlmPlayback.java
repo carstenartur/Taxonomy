@@ -11,7 +11,7 @@ import java.util.regex.Pattern;
 public final class ScenarioLlmPlayback {
     private static final Pattern KEYS = Pattern.compile("EXACTLY these keys: ([^\\r\\n]+)");
     private static final Pattern BUDGET = Pattern.compile("distribute the parent relevance score of (\\d+)");
-    private static final Pattern REQUIREMENT = Pattern.compile("Business Requirement: (.*?)\\n\\s*\\n", Pattern.DOTALL);
+    private static final Pattern REQUIREMENT = Pattern.compile("Business Requirement: (.*?)\\n\\s*\\n(?=(?:[^\\r\\n]*Categories|Concrete Information Product candidates|Nodes to evaluate):\\r?\\n)", Pattern.DOTALL);
     private final ObjectMapper json = new ObjectMapper();
     private final JsonNode fixture;
     private final ScenarioRelationPlayback relationPlayback;
