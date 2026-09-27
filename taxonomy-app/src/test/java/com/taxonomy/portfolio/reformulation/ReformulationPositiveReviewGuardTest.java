@@ -1,5 +1,11 @@
 package com.taxonomy.portfolio.reformulation;
 
+import com.taxonomy.dsl.ast.BlockAst;
+import com.taxonomy.dsl.ast.DocumentAst;
+import com.taxonomy.dsl.ast.PropertyAst;
+import com.taxonomy.dsl.parser.TaxDslParser;
+import com.taxonomy.dsl.serializer.TaxDslSerializer;
+import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
@@ -9,6 +15,7 @@ import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.PortablePortfolioGitService;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.reformulation.DecisionQuestion;
+import com.taxonomy.reformulation.ValidationReport;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -19,6 +26,7 @@ import org.springframework.http.MediaType;
 import org.springframework.security.test.context.support.WithMockUser;
 
 import java.util.UUID;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf;
@@ -31,6 +39,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture {
     @Autowired ReformulationAdoptionService adoption;
     @Autowired PortablePortfolioGitService git;
+    @Autowired ReformulationEvidenceCodec evidenceCodec;
 
     private void adopt(boolean conflict) throws Exception {
         if (conflict) questionTransform = questions -> questions.stream().map(q -> q.id().equals("channel")
@@ -80,6 +89,52 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
                 : q).toList();
         adopt(false);
         patchMetadata(project.id(), requirement.id(), "{\"reviewStatus\":\"CONFIRMED\"}", 200);
+    }
+
+    @Test void adoptedConflictFindingAloneBlocksPositiveReview() throws Exception {
+        documentTransform = doc -> new com.taxonomy.reformulation.ReformulationDocument(doc.text(), doc.sections(), doc.statements(),
+                doc.questions(), new ValidationReport(List.of(new ValidationReport.Finding(ValidationReport.Kind.CONFLICT,
+                        "BOUNDARY_CONFLICT", "Needs expert resolution", List.of(), List.of()))), doc.nodeResults());
+        adopt(false);
+        patchMetadata(project.id(), requirement.id(), "{\"status\":\"APPROVED\"}", 409);
+    }
+
+    @Test void structurallyInvalidPortableEvidenceBlocksPositiveReview() throws Exception {
+        adopt(false);
+        String dsl = git.exportPortfolio("architect", context);
+        var parsed = new TaxDslParser().parse(dsl, "review-evidence.taxdsl");
+        var original = parsed.blocksOfKind(ReformulationEvidenceCodec.BLOCK_KIND).getFirst();
+        var source = json.readValue(original.property("payload"), ReformulationEvidenceCodec.Payload.class);
+        var old = source.revision();
+        var invalid = new ReformulationDtos.Revision(old.number(), old.predecessor(), old.text(), old.sections(), old.statements(),
+                old.questions(), old.answers(), new ValidationReport(List.of(new ValidationReport.Finding(
+                    ValidationReport.Kind.STRUCTURAL_LOSS, "SOURCE_LOSS", "Source was lost", List.of(), List.of()))),
+                old.actor(), old.createdAt(), old.rationale(), old.impact(), old.variantOrigin());
+        var amended = new ReformulationEvidenceCodec.Payload(source.projectKey(), source.requirementKey(), source.sourceVersionNumber(),
+                source.previousActiveVersionNumber(), source.targetVersionNumber(), source.analysisSnapshotId(), source.originalText(),
+                source.finalText(), source.targetContentHash(), source.proposalRevision(), source.actor(), source.rationale(), invalid);
+        String payload = json.writeValueAsString(amended);
+        String hash = StableIdentityHash.sha256(payload);
+        var blocks = parsed.getBlocks().stream().map(block -> {
+            if (block != original) return block;
+            var properties = block.getProperties().stream().map(property -> {
+                if (property.key().equals("payload")) return new PropertyAst("payload", payload, property.sourceLocation());
+                if (property.key().equals("evidenceHash")) return new PropertyAst("evidenceHash", hash, property.sourceLocation());
+                return property;
+            }).toList();
+            return new BlockAst(block.getKind(), List.of("P", "R", Integer.toString(source.targetVersionNumber()), hash), properties,
+                    block.getChildren(), block.getExtensions(), block.getSourceLocation());
+        }).toList();
+        String historical = new TaxDslSerializer().serialize(new DocumentAst(parsed.getMeta(), blocks));
+        assertThat(evidenceCodec.validateForMaterialization(historical)).hasSize(1);
+        var workspace = workspaces.createWorkspace("architect", "Structural evidence " + UUID.randomUUID(), "Review guard");
+        workspace = workspaces.provisionWorkspaceRepository("architect", workspace.getWorkspaceId());
+        WorkspaceContext target = new WorkspaceContext("architect", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
+        git.materialize(historical, "architect", target);
+        var importedProject = projects.listProjects("architect", target).getFirst();
+        var importedRequirement = projects.listRequirements(importedProject.id(), "architect", target).getFirst();
+        select(target);
+        positive(importedProject.id(), importedRequirement.id(), 409);
     }
 
     @Test void sameBusinessKeysInDifferentWorkspaceHaveNoAdoptionEvidence() throws Exception {

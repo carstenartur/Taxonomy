@@ -296,7 +296,8 @@ public class ProjectPortfolioService {
                                              WorkspaceContext context) {
         requireNonNull(request, "requirement update");
         ProjectRequirement requirement = requireRequirementForUpdate(projectId, requirementId, username, context);
-        if (request.status() == RequirementStatus.APPROVED || request.reviewStatus() == ReviewStatus.CONFIRMED)
+        if (request.status() == RequirementStatus.APPROVED || request.status() == RequirementStatus.IMPLEMENTING
+                || request.status() == RequirementStatus.SATISFIED || request.reviewStatus() == ReviewStatus.CONFIRMED)
             positiveReviewGuard.requireReviewable(requirement.getProject(), requirement, currentVersion(requirement));
         requirement.updateMetadata(
                 request.title() != null ? requireText(request.title(), "title", 240) : null,
