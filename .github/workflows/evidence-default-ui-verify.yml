@@ -1,0 +1,79 @@
+name: Verify default evidence UI and application boundary
+on:
+  push:
+    branches: [maintenance/evidence-default-source-20260927]
+    paths: [.github/workflows/evidence-default-ui-verify.yml]
+permissions:
+  contents: read
+jobs:
+  ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 0}
+      - name: Apply exact UI increment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/evidence-ui
+          cp .github/transfers/evidence-default-ui.patch /tmp/evidence-ui/changes.patch
+          echo '32298f7f1376963dd26df5ef6e3e8e8d849ce1276cd0539a634ea2fcdc37917e  /tmp/evidence-ui/changes.patch' | sha256sum -c -
+          git checkout --detach 62725832391654fb1088469e047d8f0c47099b79
+          git apply --index /tmp/evidence-ui/changes.patch
+          git diff --cached --check
+          test "$(git write-tree)" = 38006fd66028844f48c940b8bb46fb4ddf823915
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Run canonical UI contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -f .github/ui-verification-pom.xml verify -Pcontracts 2>&1 | tee /tmp/evidence-ui/ui.log
+      - name: Publish UI increment without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git write-tree)" = 38006fd66028844f48c940b8bb46fb4ddf823915
+          git config user.name 'Carsten Hammer'
+          git config user.email 'carsten.hammer@t-online.de'
+          git commit -m 'fix(ui): expose source evidence without inventing scores or relationships'
+          git push origin HEAD:refs/heads/fix/default-evidence-architecture
+          git rev-parse HEAD HEAD^{tree} > /tmp/evidence-ui/published.txt
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with: {name: evidence-default-ui, path: /tmp/evidence-ui, if-no-files-found: error, retention-days: 7}
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 0, persist-credentials: false}
+      - name: Apply exact UI increment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/evidence-app
+          cp .github/transfers/evidence-default-ui.patch /tmp/evidence-app/changes.patch
+          echo '32298f7f1376963dd26df5ef6e3e8e8d849ce1276cd0539a634ea2fcdc37917e  /tmp/evidence-app/changes.patch' | sha256sum -c -
+          git checkout --detach 62725832391654fb1088469e047d8f0c47099b79
+          git apply --index /tmp/evidence-app/changes.patch
+          test "$(git write-tree)" = 38006fd66028844f48c940b8bb46fb4ddf823915
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Exercise existing application composition contracts unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=ArchitectureViewTests,AnalysisRelationGeneratorTests,ArchitectureDependencyInventoryTest,ConfigurationReferenceTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee /tmp/evidence-app/maven.log
+      - name: Collect actual application reports
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/evidence-app/reports
+          find taxonomy-* -path '*/surefire-reports/TEST-*.xml' -type f -exec cp --parents '{}' /tmp/evidence-app/reports/ ';'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with: {name: evidence-default-app, path: /tmp/evidence-app, if-no-files-found: error, retention-days: 7}
