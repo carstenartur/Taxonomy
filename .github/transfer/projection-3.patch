@@ -1,0 +1,24 @@
+diff --git a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/recovery/RecoveryDurabilityProbe.java b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/recovery/RecoveryDurabilityProbe.java
+index 11872ab..ebf8394 100644
+--- a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/recovery/RecoveryDurabilityProbe.java
++++ b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/recovery/RecoveryDurabilityProbe.java
+@@ -43,11 +43,18 @@ public final class RecoveryDurabilityProbe {
+                         case "getSingleResult" -> (long) questions.size();
+                         default -> throw new AssertionError(method.getName());
+                     });
++            var ownerQuery = Proxy.newProxyInstance(TypedQuery.class.getClassLoader(), new Class<?>[]{TypedQuery.class},
++                    (proxy, method, args) -> switch (method.getName()) {
++                        case "setParameter", "setLockMode" -> proxy;
++                        case "getResultList" -> present ? Collections.singletonList(new Object[]{run.version,
++                                run.payloadCharacters, run.currentNode, run.state, run.claimToken, run.claimUntil}) : List.of();
++                        default -> throw new AssertionError(method.getName());
++                    });
+             em = (EntityManager) Proxy.newProxyInstance(EntityManager.class.getClassLoader(), new Class<?>[]{EntityManager.class},
+                     (proxy, method, args) -> switch (method.getName()) {
+                         case "find" -> args[0] == AnalysisContinuationRun.class ? (present ? run : null)
+                                 : questions.stream().filter(q -> q.id.equals(args[1])).findFirst().orElse(null);
+-                        case "createQuery" -> query;
++                        case "createQuery" -> args.length > 1 && args[1] == Object[].class ? ownerQuery : query;
+                         case "flush" -> null;
+                         case "persist" -> { run = (AnalysisContinuationRun) args[0]; present = true; yield null; }
+                         default -> throw new AssertionError(method.getName());
