@@ -69,7 +69,13 @@
     const hasDrafts = () => drafts.size > 0;
     function trackDraft(key, controls, read, restore) {
         if (drafts.has(key)) restore(drafts.get(key));
-        const remember = () => { drafts.set(key, read()); announce(t('dirty')); };
+        const remember = () => {
+            const next = read();
+            // Blur repeats the last input value. Keep its edit generation and live status stable.
+            if (drafts.has(key) && JSON.stringify(drafts.get(key)) === JSON.stringify(next)) return;
+            drafts.set(key, next);
+            announce(t('dirty'));
+        };
         controls.forEach(control => {
             control.addEventListener('input', remember);
             control.addEventListener('change', remember);

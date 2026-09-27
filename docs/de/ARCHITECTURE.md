@@ -351,3 +351,25 @@ und Checkpoint-Erzeugung. Endpunktverträge stehen in der [API-Referenz](API_REF
 Die [Persistenzgrafik](#dsl-speicherarchitektur) trennt maßgebliche Zustände von abgeleiteten
 Indizes. Der [Fachmodulgraph](#modularchitektur) beantwortet dagegen, welche Bibliothek
 auf welche andere zugreift. Bei Erweiterungen dürfen diese Pfeilbedeutungen nicht vermischt werden.
+
+## Journal der Neuformulierungsangebote
+
+`taxonomy-analysis` führt die Synthese von unten nach oben und den begrenzten
+taxonomieübergreifenden Abgleich mit eingefrorenen Eingaben über den bestehenden
+Modelltransport aus. `taxonomy-portfolio` verwaltet Baseline, unveränderliche Revisionen,
+typisierte menschliche Antworten, abgesicherte Übernahme und historische Berichtsdaten.
+`taxonomy-app` verbindet authentifizierte HTTP- und UI-Adapter. Analyse- und Kontextlimits
+sowie die Abhängigkeitsrichtungen der Module bleiben unverändert.
+
+Das Vorschlagsjournal verändert weder aktive Anforderung noch Architektur. Eine eigene,
+an die Vorschau gebundene Transaktion aktiviert den Entwurf und speichert atomar den
+Übernahmebeleg. Ausdrückliche Projekt-Checkpoints enthalten diese Belege; Materialisierung
+und Neustart erhalten ihre Identitäten. Neue Analysen und Angebote erben die Herkunft
+übernommener Entscheidungen. Modellergänzungen werden dadurch keine ursprünglichen
+externen Anforderungen. Promptkodierung v6 nimmt geerbte Frageentdeckungen und ihre
+Ursprünge in das lokale Kontextwörterbuch des Aufrufs auf. Eindeutige Belege bleiben
+erhalten; wiederholte Serialisierung entfällt, die Limits steigen nicht.
+
+Der [Abnahmevertrag](../testing/requirement-reformulation.md) trennt deterministische
+Anwendungs-, Browser- und Renderingbelege von echtem Modellvergleich und menschlicher
+Qualitätsprüfung.

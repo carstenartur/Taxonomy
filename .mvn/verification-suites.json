@@ -27,9 +27,16 @@
       "test": "ReformulationUsageBoundaryTest,ReformulationUsageTest,ReformulationUsageWorkerTest,ReformulationLocalRecoveryTest,ReformulationEncodingTest,ArchitectureContextDependencyRatchetTest,WorkflowTestAuthorityPolicyTest,PythonSourceRatchetRepositoryTest,ReformulationVerificationProfileTest",
       "requires": ["Java 21", "Node"]
     },
+    "reformulation-real-llm": {
+      "purpose": "Explicit opt-in five-case real-provider walk-up versus complete-prompt comparison; human quality review remains separate",
+      "test": "ReformulationRealModelComparisonTest",
+      "groups": "real-llm",
+      "excludedGroups": "onnx,db-postgres,db-mssql,db-oracle",
+      "requires": ["Java 21", "Configured generative provider", "Explicit network/cost opt-in"]
+    },
     "civilian-acceptance": {
       "purpose": "Sourced civilian Copilot scenario with Spring remote LLM playback, export semantics and real browser screenshots",
-      "test": "CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationBrowserTest",
+      "test": "CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationCivilianBrowserTest,ReformulationBrowserTest",
       "systemProperty": "generateScreenshots",
       "requires": ["Java 21", "Docker"]
     },

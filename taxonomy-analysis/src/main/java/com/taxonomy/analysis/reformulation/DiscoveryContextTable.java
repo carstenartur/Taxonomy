@@ -35,6 +35,17 @@ final class DiscoveryContextTable {
         if (!table.isEmpty()) data.set("discoveryContextTable", table);
     }
 
+    /** Select encoding including its instruction overhead under every prompt-budget measure. */
+    static boolean improvesBudget(String encoded, String inline, String instruction) {
+        String complete = instruction + encoded;
+        long encodedCharacters = complete.codePointCount(0, complete.length());
+        long inlineCharacters = inline.codePointCount(0, inline.length());
+        long encodedBytes = complete.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        long inlineBytes = inline.getBytes(java.nio.charset.StandardCharsets.UTF_8).length;
+        return encodedCharacters <= inlineCharacters && encodedBytes <= inlineBytes
+                && (encodedCharacters < inlineCharacters || encodedBytes < inlineBytes);
+    }
+
     private static void collect(JsonNode discoveries, List<ObjectNode> target) {
         discoveries.forEach(discovery -> {
             if (discovery instanceof ObjectNode object && discovery.path("context").isString()) target.add(object);

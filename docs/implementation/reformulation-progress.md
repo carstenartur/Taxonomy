@@ -2,6 +2,45 @@
 
 Plan: [reformulation-completion.md](reformulation-completion.md)
 
+## Intermediate merge confirmed — 2026-09-27 21:00 UTC
+
+PR #1135 was squash-merged after all 29 current-head checks were terminal: 27
+successes and the two explicitly allowed skipped CodeQL Source Analysis jobs.
+All ten workflows were successful except the explicitly skipped CodeQL Source
+Analysis workflow. Maven verification, Core, all UI/export/civilian/security/transport
+jobs and PostgreSQL, Oracle and SQL Server succeeded. All five review threads were
+resolved, there was no CHANGES_REQUESTED, and GitHub reported mergeable/clean.
+
+Merged=true was read back with merge SHA
+`13c0a345f4f8de3d56d52e1de54cb2723e20a8d2`. Archive
+`archive/pr-1135-reviewed-a571e779` retains its authorized a571e779 commit; the
+separate follow-up branch is retained. The completed merge watch is disabled.
+
+GitHub retargeted PR #1136 to main. The squash commit has exactly the same tree as
+its already-contained 43992e1d ancestor. A normal two-parent merge reconciles that
+history without dropping follow-up code; full CI is now required on this base.
+The remaining live-provider/human-quality evidence stays explicitly open.
+
+## Follow-up implementation — 2026-09-27 20:56 UTC
+
+PR #1136 (`feature/reformulation-civilian-acceptance`) now contains Task 4's complete
+deterministic application/browser acceptance harness, independent document gate,
+DE/EN documentation and separate five-case real-model comparison. Actual end-to-end
+execution exposed and corrected duplicated inherited prompt context without raising
+provider limits. Independent review and its corrections are accepted.
+
+Final local evidence: 18/18 HTTP/race/restart/authored/playback tests, 10/10 document
+tooling tests, and independent rendering of the current 25/26-page historical exports.
+Browser execution and full current-head CI remain required. Real-model comparison
+was explicitly NOT_RUN because no generative provider is configured; human quality
+is NOT_REVIEWED. See the [Task 4 report](reformulation-task4-report.md) and
+[final review](reformulation-task4-final-review.md).
+
+The user requested PR #1135 merged when all gates succeed and the missing parts in
+this second PR. Its updated head is `43992e1d3784641a3bff76433f403f1fe90df546`; all three
+database jobs succeeded, but Core/Maven verification was still running at this
+checkpoint. No merge or overall product-quality completion is claimed.
+
 ## Current status — 2026-09-27
 
 Recovery is complete; the historical outage note below remains available for audit.
