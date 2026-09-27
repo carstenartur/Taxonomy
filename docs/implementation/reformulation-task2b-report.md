@@ -142,6 +142,22 @@ real-provider quality claim.
   extension content. Covering GREEN: RoundTrip 18/18 and codec boundary 5/5,
   **23 tests**, zero failures/errors/skips, build success.
 
+## Focused verification invocations
+
+These are separate runs in chronological order; `/tmp` logs are transient and
+are not committed artifacts. The reusable runner supplies Java 21, Maven and
+the Mockito agent without changing the project build.
+
+- Pre-correction combined 88/88 (`/tmp/task2b-final-focused.log`):
+  `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test '-Dtest=AdoptedLineagePromptTest,ReformulationEvidenceRoundTripTest,ReformulationPositiveReviewGuardTest,ReformulationEvidenceCodecBoundaryTest,ReformulationResponseParserTest,FrozenReformulationEngineTest,CrossTaxonomyReconciliationTest,ArchitectureContextDependencyRatchetTest' -Dsurefire.failIfNoSpecifiedTests=false`
+- Source/schema correction 36/36 (`/tmp/task2b-source-green.log`):
+  `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test '-Dtest=ReformulationEvidenceRoundTripTest,ReformulationEvidenceCodecBoundaryTest,ReformulationPositiveReviewGuardTest' -Dsurefire.failIfNoSpecifiedTests=false`
+- Final DSL-property RED, one expected assertion failure
+  (`/tmp/task2b-dsl-red.log`):
+  `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test '-Dtest=ReformulationEvidenceRoundTripTest#duplicateOrUnknownEvidenceDslPropertyRejectsBeforeMaterialization' -Dsurefire.failIfNoSpecifiedTests=false`
+- Final DSL-property GREEN 23/23 (`/tmp/task2b-dsl-green.log`):
+  `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test '-Dtest=ReformulationEvidenceRoundTripTest,ReformulationEvidenceCodecBoundaryTest' -Dsurefire.failIfNoSpecifiedTests=false`
+
 ## Scope self-review and limits
 
 - v1 payload serialization remains the existing `Payload` path; imported v1
