@@ -26,7 +26,13 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
 - Candidate GREEN implementation freezes only exact selected-version local
   receipts and matching imported evidence. Baseline archive bytes and separate
   prompt-safe historical decision projection are distinct; old source spans and
-  old complete document text remain outside prompt context. GREEN unverified.
+  old complete document text remain outside prompt context. Covering GREEN:
+  `ReformulationEvidenceRoundTripTest` **8/8**, zero failures/errors/skips,
+  build success.
+- Next RED: second explicit adoption from an offer based on adopted text must
+  export v2 root linking the v1 evidence by hash (no recursive payload), round
+  trip into another workspace, and reject a missing referenced ancestor before
+  any materialization. These are service/DB paths with fixture snapshots.
 
 ## Next exact command
 

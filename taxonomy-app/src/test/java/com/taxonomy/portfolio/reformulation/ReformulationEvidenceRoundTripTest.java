@@ -228,6 +228,70 @@ class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
                 .contains("Question channel").contains("Adopt reviewed draft");
     }
 
+    @Test
+    void secondGenerationExportsNonrecursiveHashLinkedAncestryAndRoundTrips() throws Exception {
+        String first = adoptAndExport();
+        String firstHash = onlyEvidence(first).property("evidenceHash");
+        requirement = projects.getRequirement(project.id(), requirement.id(), "architect", context);
+        var offer = reformulations.create(project.id(), requirement.id(),
+                new ReformulationDtos.CreateRequest(requirement.currentVersionId(), snapshot(requirement), "de"),
+                "architect", context);
+        var revised = reformulations.saveDraft(project.id(), requirement.id(), offer.id(), 1,
+                new ReformulationDtos.SaveDraftRequest("Dritte Fassung mit Erfassung." , "Human revision"),
+                "architect", context);
+        var preview = adoptions.preview(project.id(), requirement.id(), offer.id(),
+                revised.currentRevision().number(), "architect", context);
+        adoptions.adopt(project.id(), requirement.id(), offer.id(), revised.currentRevision().number(),
+                new ReformulationAdoptionDtos.ConfirmRequest(UUID.randomUUID().toString(),
+                        preview.content().id(), preview.hash(), true, true, "Second adoption"),
+                "architect", context);
+
+        String dsl = git.exportPortfolio("architect", context);
+        var blocks = evidenceBlocks(dsl);
+        assertThat(blocks).hasSize(2);
+        BlockAst second = blocks.stream().filter(b -> b.getHeaderTokens().get(2).equals("3"))
+                .findFirst().orElseThrow();
+        assertThat(second.property("schemaVersion")).isEqualTo("reformulation-evidence-v2");
+        var payload = json.readTree(second.property("payload"));
+        assertThat(payload.path("ancestorHashes")).hasSize(1);
+        assertThat(payload.path("ancestorHashes").get(0).asText()).isEqualTo(firstHash);
+        assertThat(second.property("payload")).doesNotContain(onlyEvidence(first).property("payload"));
+
+        WorkspaceContext target = newWorkspace("Second generation import");
+        git.materialize(dsl, "architect", target);
+        var roundTrip = evidenceBlocks(git.exportPortfolio("architect", target));
+        assertThat(roundTrip).hasSize(2);
+        assertThat(roundTrip.stream().map(b -> b.property("evidenceHash")).toList())
+                .containsExactlyInAnyOrderElementsOf(blocks.stream().map(b -> b.property("evidenceHash")).toList());
+    }
+
+    @Test
+    void missingReferencedAncestorRejectsSecondGenerationBeforeMaterialization() throws Exception {
+        String first = adoptAndExport();
+        requirement = projects.getRequirement(project.id(), requirement.id(), "architect", context);
+        var offer = reformulations.create(project.id(), requirement.id(),
+                new ReformulationDtos.CreateRequest(requirement.currentVersionId(), snapshot(requirement), "de"),
+                "architect", context);
+        var revised = reformulations.saveDraft(project.id(), requirement.id(), offer.id(), 1,
+                new ReformulationDtos.SaveDraftRequest("Dritte Fassung", "Human revision"), "architect", context);
+        var preview = adoptions.preview(project.id(), requirement.id(), offer.id(),
+                revised.currentRevision().number(), "architect", context);
+        adoptions.adopt(project.id(), requirement.id(), offer.id(), revised.currentRevision().number(),
+                new ReformulationAdoptionDtos.ConfirmRequest(UUID.randomUUID().toString(),
+                        preview.content().id(), preview.hash(), true, true, "Second adoption"),
+                "architect", context);
+        DocumentAst document = parser.parse(git.exportPortfolio("architect", context), "missing-ancestor.taxdsl");
+        String firstHash = onlyEvidence(first).property("evidenceHash");
+        String missing = serializer.serialize(new DocumentAst(document.getMeta(), document.getBlocks().stream()
+                .filter(block -> !EVIDENCE_BLOCK.equals(block.getKind())
+                        || !block.property("evidenceHash").equals(firstHash)).toList()));
+        WorkspaceContext target = newWorkspace("Missing ancestor rejected");
+
+        assertThatThrownBy(() -> git.materialize(missing, "architect", target))
+                .isInstanceOf(PortfolioException.class);
+        assertThat(projects.listProjects("architect", target)).isEmpty();
+    }
+
     private String snapshotFor(long projectId, com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView selected,
             WorkspaceContext selectedContext) {
         var job = analyses.createOrReuseJob(projectId, List.of(selected.id()), null, 25,
