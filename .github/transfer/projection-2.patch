@@ -1,0 +1,20 @@
+diff --git a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/recovery/RecoveryCheckpointPersistenceTest.java b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/recovery/RecoveryCheckpointPersistenceTest.java
+index 518676c..c656a47 100644
+--- a/taxonomy-analysis/src/test/java/com/taxonomy/analysis/recovery/RecoveryCheckpointPersistenceTest.java
++++ b/taxonomy-analysis/src/test/java/com/taxonomy/analysis/recovery/RecoveryCheckpointPersistenceTest.java
+@@ -3,6 +3,15 @@ package com.taxonomy.analysis.recovery;
+ import org.junit.jupiter.api.Test;
+ 
+ class RecoveryCheckpointPersistenceTest {
++    @Test void questionWritesRequireTheCurrentUncancelledClaim() {
++        RecoveryCheckpointPersistenceProbe.checkpointClaimIsStillEnforced();
++    }
++    @Test void bookkeepingAndQuestionStayInOneTransaction() {
++        RecoveryCheckpointPersistenceProbe.bookkeepingFailureRollsBackQuestion();
++    }
++    @Test void questionBookkeepingNeverHydratesTheSavedResult() {
++        RecoveryCheckpointPersistenceProbe.checkpointDoesNotLoadSavedResult();
++    }
+     @Test void frequentClaimChecksNeverHydrateTheSavedResult() {
+         RecoveryCheckpointPersistenceProbe.stateDoesNotLoadSavedResult();
+     }
