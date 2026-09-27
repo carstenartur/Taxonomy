@@ -57,6 +57,13 @@ Status: in progress; not product acceptance.
 - Revised graph fixture uses actual BP root and its first child as directed endpoints, still persisted via real snapshot/view/mappings.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am '-Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure+exactAdoptionReceiptIsBinaryDocxAndDoesNotRetroactivelyAdoptRevision' -Dsurefire.failIfNoSpecifiedTests=false test`.
 
+## Checkpoint 11 — canonical edge semantic RED
+
+- Corrected two-test selector ran 2 tests, 1 failure, 0 errors. Adoption DOCX passed. Persisted graph route produced `mapping-1`, but the saved reformulation contract references `edge-1`; this is a semantic reference failure, not a fixture error.
+- Extended the same real-endpoint graph test to persist a linked statement and question, and to demand an internal Word bookmark/hyperlink for the saved edge and an embedded figure. New navigation assertion has not yet been observed RED separately; canonical ID already fails.
+- Inspected producer: `PortfolioAnalysisPersistenceService.persistSnapshot` stores analysis payload/gaps and derives element/relation mapping rows directly from the captured `RequirementArchitectureView`, with snapshot summary branch sourced from `ViewContext.basedOnBranch` when present. Test uses that real producer path.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure -Dsurefire.failIfNoSpecifiedTests=false test`.
+
 ## Checkpoint 6 — frozen catalogue fixture
 
 - Focused class again ran 5 tests, 1 failure / 2 errors: the real BP catalogue has no authored `BP-1`/`BP-2` fixture nodes, so mapper correctly rejected those mappings before reaching multiplicity. Endpoint revision and existing JSON cases passed.

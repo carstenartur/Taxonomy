@@ -175,13 +175,36 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         long mappingId = json.readTree(proposal.baseline().frozenContext().get("relationMappings")).get(0).path("id").asLong();
         assertThat(graph.nodes()).hasSize(2);
         assertThat(graph.edges()).extracting("id").containsExactly("edge-" + mappingId);
-        var response = mvc.perform(get(base() + "/" + proposal.id() + "/revisions/1/export").param("format", "docx"))
+        String edgeId = "edge-" + mappingId;
+        var run = reformulations.beginRun(project.id(), requirement.id(), proposal.id(), 1, "TEST", "frozen graph",
+                "v1", "v1", "frozen", "architect", context);
+        var statement = statement("linked", "Saved directed evidence", first.getCode());
+        statement = new com.taxonomy.reformulation.Statement(statement.id(), statement.wording(), statement.sourceSpans(),
+                statement.provenance(), List.of(first.getCode(), edgeId), statement.questionDependencies(),
+                statement.conditionalValidity(), statement.editingOrigin(), statement.reviewState());
+        var question = new com.taxonomy.reformulation.DecisionQuestion("q-edge",
+                new com.taxonomy.reformulation.DecisionQuestion.Key("link", "direction", first.getCode()), "Which direction?",
+                List.of(new com.taxonomy.reformulation.DecisionQuestion.Discovery("graph", "Saved direction", "Review boundary",
+                        List.of(), List.of(first.getCode()), List.of(edgeId))), List.of("linked"),
+                new com.taxonomy.reformulation.DecisionQuestion.AnswerSchema(
+                        com.taxonomy.reformulation.DecisionQuestion.AnswerSchema.Kind.TEXT, List.of(), null, null, null),
+                List.of(), List.of(), "Check flow", com.taxonomy.reformulation.DecisionQuestion.State.OPEN);
+        reformulations.finishRun(project.id(), requirement.id(), proposal.id(), run.id(),
+                new com.taxonomy.reformulation.ReformulationDocument("Saved directed evidence",
+                        List.of(new com.taxonomy.reformulation.Section(first.getCode(), "BP", "Flow", "Review flow",
+                                List.of(), List.of("linked"), List.of("q-edge"))),
+                        List.of(statement), List.of(question), new com.taxonomy.reformulation.ValidationReport(List.of()), List.of()),
+                null, "architect", context);
+        var response = mvc.perform(get(base() + "/" + proposal.id() + "/revisions/2/export").param("format", "docx"))
                 .andExpect(status().isOk()).andReturn().getResponse();
         try (var doc = new XWPFDocument(new ByteArrayInputStream(response.getContentAsByteArray()))) {
             assertThat(doc.getAllPictures()).isNotEmpty();
             var text = doc.getParagraphs().stream().map(p -> p.getText()).reduce("", (a, b) -> a + "\n" + b);
             assertThat(text).contains("Reformulation offer", first.getNameEn(), second.getNameEn(),
-                    "Analysis based-on branch: draft", "Gap analysis recorded");
+                    "Analysis based-on branch: draft", "Gap analysis recorded", "Saved directed evidence");
+            var xml = doc.getDocument().xmlText();
+            assertThat(xml).contains("rf_ref_edge_" + mappingId, "w:anchor=\"rf_ref_edge_" + mappingId + "\"");
+            assertThat(xml).doesNotContain("TargetMode=\"External\"");
         }
     }
 
