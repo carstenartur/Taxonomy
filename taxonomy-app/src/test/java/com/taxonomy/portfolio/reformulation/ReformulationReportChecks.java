@@ -54,8 +54,10 @@ public final class ReformulationReportChecks {
                     check(get(http,base+f.path()+"/revisions/2/export?format="+format,200,true).body().equals(Files.readString(dir.resolve("revision."+format))),"Historical revision changed across restart: "+format);
                     check(get(http,base+f.path()+"/adoptions/"+data.path("commandId").asText()+"/export?format="+format,200,true).body().equals(Files.readString(dir.resolve("adoption."+format))),"Receipt changed across restart: "+format);
                 }
-                check(docxText(getBinary(http,base+f.path()+"/revisions/2/export?format=docx",200,true).body())
-                        .equals(docxText(Files.readAllBytes(dir.resolve("revision.docx")))),"Historical Word proposal changed across restart");
+                String restartedProposal = docxText(getBinary(http,base+f.path()+"/revisions/2/export?format=docx",200,true).body());
+                String originalProposal = docxText(Files.readAllBytes(dir.resolve("revision.docx")));
+                check(restartedProposal.equals(originalProposal), "Historical Word proposal changed across restart: "
+                        + firstDifference(originalProposal, restartedProposal));
                 check(docxText(getBinary(http,base+f.path()+"/adoptions/"+data.path("commandId").asText()+"/export?format=docx",200,true).body())
                         .equals(docxText(Files.readAllBytes(dir.resolve("adoption.docx")))),"Historical Word receipt changed across restart");
                 check(before.equals(projects.getRequirement(f.project,f.requirement,"admin",f.scope)),"Export after restart changed requirement");
@@ -180,6 +182,13 @@ public final class ReformulationReportChecks {
         try(var document=new XWPFDocument(new ByteArrayInputStream(bytes))) {
             return document.getParagraphs().stream().map(p->p.getText()).collect(java.util.stream.Collectors.joining("\n"));
         }
+    }
+    private static String firstDifference(String original, String current) {
+        String[] before = original.split("\n", -1), after = current.split("\n", -1);
+        for (int i = 0; i < Math.min(before.length, after.length); i++) {
+            if (!before[i].equals(after[i])) return "paragraph " + i + " original=" + before[i] + " current=" + after[i];
+        }
+        return "paragraph count original=" + before.length + " current=" + after.length;
     }
     private static void saveQa(String file,byte[] bytes) throws Exception {
         String path=System.getProperty("reformulation.docx.qa.dir");
