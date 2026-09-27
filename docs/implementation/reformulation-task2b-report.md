@@ -87,11 +87,17 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   review, checksum-valid v2 wrong ancestor version and duplicate JSON key reject
   before materialization, and backend ADOPTED_SOURCE cannot be rejected or
   edited. UI label/hiding of source actions is a static implementation boundary;
-  real browser inspection remains Task 4. These tests are not yet run.
+  real browser inspection remains Task 4. RED run: `AdoptedLineagePromptTest`
+  4/4, `ReformulationEvidenceRoundTripTest` 14/15; sole expected failure was
+  ADOPTED_SOURCE `EDIT` succeeding despite protected-source semantics. Imported
+  v2 guard, malformed ancestor/duplicate keys, archive projection, lowercase
+  identity, and budget tests passed in this run. Zero errors.
+- Candidate fix denies both EDIT and REJECT for either source provenance in the
+  service, and hides both controls in the DE/EN UI. GREEN unverified.
 
 ## Next exact command
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest,AdoptedLineagePromptTest -Dsurefire.failIfNoSpecifiedTests=false`
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest,AdoptedLineagePromptTest,ReformulationPositiveReviewGuardTest,ReformulationEvidenceCodecBoundaryTest,ReformulationResponseParserTest,FrozenReformulationEngineTest,CrossTaxonomyReconciliationTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false`
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.

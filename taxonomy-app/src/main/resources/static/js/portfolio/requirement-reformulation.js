@@ -226,12 +226,14 @@
             if(s.reviewState==='REJECTED')item.append(el('p',t('rejected'),'text-danger'));
             s.architectureLinks.forEach(id=>item.append(architectureLink(id)));
             s.questionDependencies.forEach(id=>{const a=el('a',t('questions')+' '+id,'me-2');a.href='#question-'+id;a.addEventListener('click',()=>changeView('questions',false));item.append(a);});
-            const edit=el('textarea',undefined,'form-control my-2');edit.setAttribute('aria-label',t('edit')+' '+s.id);edit.value=s.wording;item.append(edit);
-            const draftKey='statement:'+s.id;
-            trackDraft(draftKey,[edit],()=>({text:edit.value}),draft=>{edit.value=draft.text;});
-            if(drafts.has(draftKey))statements.open=true;
-            item.append(button(t('edit'),()=>update('statements/'+s.id,{action:'EDIT',text:edit.value,rationale:rationale()},draftKey)));
-            if(s.provenance!=='ORIGINAL' && s.provenance!=='ADOPTED_SOURCE' && s.reviewState!=='REJECTED')item.append(button(t('reject'),()=>update('statements/'+s.id,{action:'REJECT',rationale:rationale()}),'btn btn-sm btn-outline-danger ms-2'));
+            if(s.provenance!=='ORIGINAL' && s.provenance!=='ADOPTED_SOURCE') {
+                const edit=el('textarea',undefined,'form-control my-2');edit.setAttribute('aria-label',t('edit')+' '+s.id);edit.value=s.wording;item.append(edit);
+                const draftKey='statement:'+s.id;
+                trackDraft(draftKey,[edit],()=>({text:edit.value}),draft=>{edit.value=draft.text;});
+                if(drafts.has(draftKey))statements.open=true;
+                item.append(button(t('edit'),()=>update('statements/'+s.id,{action:'EDIT',text:edit.value,rationale:rationale()},draftKey)));
+                if(s.reviewState!=='REJECTED')item.append(button(t('reject'),()=>update('statements/'+s.id,{action:'REJECT',rationale:rationale()}),'btn btn-sm btn-outline-danger ms-2'));
+            }
             statements.append(item);
         });host.append(statements);
         const findings=el('details');findings.append(el('summary',t('findings')));revision.validation.findings.forEach(f=>findings.append(el('p',f.code+': '+f.message,'text-break')));host.append(findings);
