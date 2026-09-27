@@ -1,0 +1,10 @@
+{
+  "id": "authored-time-recording-v1",
+  "responseProvenance": "Authored deterministic test assumptions, not external requirements or live model evidence.",
+  "requirement": {"text": "Record working time at electronic terminals only; no browser entry. Retain entries for 30 days even when this constraint receives a weak architecture score. Keep the original paper consent note visible although it has no taxonomy mapping."},
+  "bindings": {"BP-1017": "Acquire Data"},
+  "rules": [
+    {"id": "time-node", "task": "NODE", "nodeId": "BP-1017", "children": [], "boundaryEdges": {}, "answers": [], "response": {"summary": "Terminal-only time recording; no browser entry; retain entries for 30 days.", "statementProposals": [], "preservedStatementIds": [], "questionProposals": [], "preservedQuestionIds": [], "uncoveredSourceRefs": [], "conflictCandidates": []}},
+    {"id": "time-reword", "task": "REWORD", "nodeId": "BP-1017", "children": [], "boundaryEdges": {}, "answers": [{"id": "answer-1", "questionId": "correction", "values": ["No correction required"], "state": "ANSWERED", "disposition": "ANSWER", "supersedes": []}], "response": {"summary": "Terminal-only time recording without correction; retain entries for 30 days.", "statementProposals": [], "preservedStatementIds": [], "questionProposals": [], "preservedQuestionIds": [], "uncoveredSourceRefs": [], "conflictCandidates": []}}
+  ]
+}
