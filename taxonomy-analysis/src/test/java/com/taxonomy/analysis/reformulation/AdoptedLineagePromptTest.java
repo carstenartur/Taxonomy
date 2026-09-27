@@ -33,14 +33,21 @@ class AdoptedLineagePromptTest {
         var b = WalkUpReformulationTest.baseline();
         var context = new HashMap<>(b.frozenContext());
         context.put("adoptedLineage", "frozen archive");
+        context.put("catalogue", "[{\"code\":\"A\",\"children\":[]},{\"code\":\"B\",\"children\":[]}] ");
+        context.put("relationMappings", "[{\"id\":\"1\",\"sourceCode\":\"A\",\"targetCode\":\"B\"}]");
         context.put("inheritedDecisionContext", """
                 [{"historicalEvidenceHash":"history-1","statements":[
                   {"id":"a","wording":"Rejected A-only wording","reviewState":"REJECTED","architectureLinks":["A"],"questionDependencies":[]},
                   {"id":"b","wording":"Rejected B-only wording","reviewState":"REJECTED","architectureLinks":["B"],"questionDependencies":[]},
+                  {"id":"retired","wording":"Obsolete mapping remains visible","reviewState":"REJECTED","architectureLinks":["RETIRED"],"questionDependencies":[]},
                   {"id":"unknown","wording":"Unmapped historical wording","reviewState":"REJECTED","architectureLinks":[],"questionDependencies":[]}],
-                  "questions":[{"id":"q-global","key":{"scope":"global"},"wording":"Shared policy?","affectedStatementIds":[],"prerequisites":[],"discoveries":[]}],
+                  "questions":[{"id":"q-global","key":{"scope":"global"},"wording":"Shared policy?","affectedStatementIds":[],"prerequisites":[],"discoveries":[]},
+                    {"id":"q-boundary","key":{"scope":"edge-1"},"wording":"Boundary decision?","affectedStatementIds":[],"prerequisites":[],"discoveries":[]}],
                   "humanAnswers":[{"questionId":"q-global","values":["retain"],"rationale":"Globally decided"}],
-                  "historicalReview":{"findings":[]}}]
+                  "historicalReview":{"findings":[]}},
+                 {"historicalEvidenceHash":"history-2","statements":[
+                   {"id":"dependent","wording":"Dependent historical wording","reviewState":"REJECTED","architectureLinks":[],"questionDependencies":["q-boundary"]}],
+                   "questions":[],"humanAnswers":[],"historicalReview":{"findings":[]}}]
                 """);
         context.put("reconcilePrompt", ReconcilePromptBuilder.template());
         return new ReformulationBaseline(b.scope(), b.sourceVersionId(), b.originalText(),
@@ -55,10 +62,16 @@ class AdoptedLineagePromptTest {
             var input = new NodeSynthesisInput(baseline, step, null, step, List.of(), List.of(),
                     List.of(), Map.of(), List.of(), List.of(), "Preserve source");
             String prompt = builder.build(input, null);
-            assertThat(prompt).contains("Shared policy?", "Globally decided", "Unmapped historical wording");
+            assertThat(prompt).contains("Shared policy?", "Globally decided", "Unmapped historical wording",
+                    "Obsolete mapping remains visible");
             assertThat(prompt).contains("Rejected " + step + "-only wording");
             assertThat(prompt).doesNotContain("Rejected " + (step.equals("A") ? "B" : "A") + "-only wording");
+            assertThat(prompt).doesNotContain("Boundary decision?", "Dependent historical wording");
         }
+        var boundary = new NodeSynthesisInput(baseline, "A", null, "A", List.of(), List.of(),
+                List.of(), Map.of("edge-1", "{\"sourceCode\":\"A\",\"targetCode\":\"B\"}"),
+                List.of(), List.of(), "Preserve source");
+        assertThat(builder.build(boundary, null)).contains("Boundary decision?", "Dependent historical wording");
         var input = new ReconciliationInput(baseline, 1, List.of(), List.of(), List.of(),
                 List.of(), Map.of(), Map.of(), List.of());
         assertThat(new ReconcilePromptBuilder(json).build(input, null))
@@ -135,5 +148,32 @@ class AdoptedLineagePromptTest {
                 .singleElement().satisfies(s -> assertThat(s.provenance().name())
                         .isEqualTo("ADOPTED_SOURCE"));
         assertThat(phaseB.text()).contains(base.originalText());
+    }
+
+    @Test void historicalRejectionCannotBecomeActiveViaEngineOrReconciledLayout() {
+        var frozen = scopedAdopted();
+        var base = new ReformulationBaseline(frozen.scope(), frozen.sourceVersionId(),
+                frozen.originalText(), frozen.originalTextHash(), frozen.snapshotId(),
+                "{\"rawScores\":{\"A\":45}}", frozen.frozenContext(), frozen.language(), frozen.algorithmVersion());
+        var service = mock(NodeReformulationService.class);
+        when(service.synthesize(any(NodeSynthesisInput.class), any(ReformulationStepExecutor.class)))
+                .thenAnswer(call -> {
+                    NodeSynthesisInput input = call.getArgument(0);
+                    var repeated = new Statement("repeated", "Rejected A-only wording", List.of(),
+                            Statement.Provenance.MODEL_ADDITION, List.of(input.nodeId()), List.of(), null,
+                            Statement.EditingOrigin.MODEL, "UNREVIEWED");
+                    return new NodeSynthesisResult(input.nodeId(), "Rejected A-only wording",
+                            List.of(repeated), input.directContributions().stream().map(Statement::id).toList(),
+                            List.of(), List.of(), List.of(), List.of());
+                });
+        when(service.reconcile(any(ReconciliationInput.class)))
+                .thenReturn(new ReconciliationResult(List.of(), Map.of(), List.of()));
+        var phaseA = new FrozenReformulationEngine(service, json).synthesize(base, List.of(), List.of());
+        assertThat(phaseA.statements()).filteredOn(s -> s.id().equals("repeated"))
+                .singleElement().satisfies(s -> assertThat(s.reviewState()).isEqualTo("REJECTED"));
+        assertThat(phaseA.text()).doesNotContain("Rejected A-only wording");
+        var phaseB = new CrossTaxonomyReconciler(service, json).reconcile(base, phaseA,
+                List.of(), List.of(), ReformulationStepExecutor.direct());
+        assertThat(phaseB.text()).doesNotContain("Rejected A-only wording");
     }
 }

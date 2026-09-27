@@ -19,8 +19,23 @@ ReformulationResponseParserTest 10/10, PortfolioJsonCodecBoundaryTest 2/2,
 zero failures/errors/skips, build success (`/tmp/task2b-review1-green1.log`).
 An additional bounded Spring test now drives actual Copilot analysis after
 adoption, selecting its persisted snapshot for a new offer and checkpoint;
-only outbound RestTemplate model replies are replaced. It is unexecuted at
-this checkpoint, so the integration finding remains open pending RED/GREEN.
+only outbound RestTemplate model replies are replaced. It passed **1/1**,
+zero failures/errors/skips, build success in 25.92s
+(`/tmp/task2b-review1-integration-red.log`; filename is historical, this was
+GREEN-only coverage, not a RED). The local embedding model was unavailable,
+so the analysis logged its existing zero-vector fallback; the real Copilot
+operation nonetheless completed SUCCESS with a newly selected persisted
+snapshot. This does not establish real-provider semantic quality.
+Selector regression extension: frozen catalogue distinguishes the unrelated
+known B branch from an obsolete `RETIRED` mapping that must remain visible;
+a boundary question and dependent statement in a distinct ancestor entry must
+travel together only for the boundary call. These cases and an engine/layout
+postprocessing rejection case are unverified at this checkpoint.
+These refinements were added alongside their candidate fix; they are
+additional covering regression tests, not a separately observed RED. The
+observed review-fix RED remains the earlier 2/15 analysis result. Next exact
+command after publication:
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test '-Dtest=AdoptedLineagePromptTest,ReformulationResponseParserTest,AdoptedLineageRealReanalysisTest,PortfolioJsonCodecBoundaryTest,ArchitectureContextDependencyRatchetTest' -Dsurefire.failIfNoSpecifiedTests=false`
 
 ## Verified outcome to date
 

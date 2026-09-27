@@ -25,7 +25,14 @@ final class InheritedDecisionContext {
             for (String field : List.of("sourceCode", "targetCode"))
                 if (edge.path(field).isString()) nodes.add(edge.path(field).asText());
         });
-        return select(input.baseline().frozenContext().get("inheritedDecisionContext"), json, nodes, edges,
+        var known = new TreeSet<String>();
+        collectNodes(json.readTree(input.baseline().frozenContext().getOrDefault("catalogue", "[]")), known);
+        for (var relation : json.readTree(input.baseline().frozenContext().getOrDefault("relationMappings", "[]"))) {
+            if (!relation.path("id").isMissingNode()) known.add("edge-" + relation.path("id").asText());
+            if (relation.path("sourceCode").isString()) known.add(relation.path("sourceCode").asText());
+            if (relation.path("targetCode").isString()) known.add(relation.path("targetCode").asText());
+        }
+        return select(input.baseline().frozenContext().get("inheritedDecisionContext"), json, nodes, edges, known,
                 input.directContributions().stream().map(s -> s.id()).toList(),
                 input.openDecisions().stream().flatMap(q -> q.referenceIds().stream()).toList());
     }
@@ -53,50 +60,53 @@ final class InheritedDecisionContext {
         return rejected;
     }
 
-    static ArrayNode select(String frozen, ObjectMapper json, Set<String> nodes, Set<String> edges,
+    static ArrayNode select(String frozen, ObjectMapper json, Set<String> nodes, Set<String> edges, Set<String> knownNodes,
             Collection<String> currentStatements, Collection<String> currentQuestions) {
         var result = json.createArrayNode();
         if (frozen == null) return result;
         var histories = json.readTree(frozen);
         if (!histories.isArray()) throw new IllegalArgumentException("Malformed inherited decision context");
-        for (var history : histories) {
+        var statementIds = new TreeSet<String>(currentStatements);
+        var questionIds = new TreeSet<String>(currentQuestions);
+        for (var history : histories)
             if (!history.isObject() || !history.path("statements").isArray()
                     || !history.path("questions").isArray() || !history.path("humanAnswers").isArray())
                 throw new IllegalArgumentException("Malformed inherited decision entry");
-            var statementIds = new TreeSet<String>(currentStatements);
-            var questionIds = new TreeSet<String>(currentQuestions);
-            // Scope, affected statements, prerequisites and dependencies use the same
-            // closure shape as question impact. Unknown mappings stay visible.
-            boolean changed;
-            do {
-                int size = statementIds.size() + questionIds.size();
+        // Close across all historical evidence entries, not just inside one
+        // ancestor. Receipt roots may reference decisions in another ancestor.
+        boolean changed;
+        do {
+            int size = statementIds.size() + questionIds.size();
+            for (var history : histories) {
                 for (var statement : history.path("statements"))
-                    if (statementApplies(statement, nodes, edges, questionIds)) {
+                    if (statementApplies(statement, nodes, edges, knownNodes, questionIds)) {
                         id(statement, statementIds);
                         add(statement.path("questionDependencies"), questionIds);
                     }
                 for (var question : history.path("questions"))
-                    if (questionApplies(question, nodes, edges, statementIds, questionIds)) {
+                    if (questionApplies(question, nodes, edges, knownNodes, statementIds, questionIds)) {
                         id(question, questionIds);
                         add(question.path("aliases"), questionIds);
                         add(question.path("prerequisites"), questionIds);
                         add(question.path("dependentQuestionIds"), questionIds);
                         add(question.path("affectedStatementIds"), statementIds);
                     }
-                changed = size != statementIds.size() + questionIds.size();
-            } while (changed);
+            }
+            changed = size != statementIds.size() + questionIds.size();
+        } while (changed);
+        for (var history : histories) {
             var copy = (ObjectNode) history.deepCopy();
             var selectedStatements = json.createArrayNode();
             for (var statement : history.path("statements"))
                 if (statementIds.contains(statement.path("id").asText())
                         || (!statement.path("id").isString()
-                            && statementApplies(statement, nodes, edges, questionIds))) selectedStatements.add(statement);
+                            && statementApplies(statement, nodes, edges, knownNodes, questionIds))) selectedStatements.add(statement);
             copy.set("statements", selectedStatements);
             var selectedQuestions = json.createArrayNode();
             for (var question : history.path("questions"))
                 if (questionIds.contains(question.path("id").asText())
                         || (!question.path("id").isString()
-                            && questionApplies(question, nodes, edges, statementIds, questionIds))) selectedQuestions.add(question);
+                            && questionApplies(question, nodes, edges, knownNodes, statementIds, questionIds))) selectedQuestions.add(question);
             copy.set("questions", selectedQuestions);
             var answers = json.createArrayNode();
             for (var answer : history.path("humanAnswers"))
@@ -119,14 +129,16 @@ final class InheritedDecisionContext {
         return result;
     }
 
-    private static boolean statementApplies(JsonNode statement, Set<String> nodes, Set<String> edges, Set<String> questions) {
+    private static boolean statementApplies(JsonNode statement, Set<String> nodes, Set<String> edges,
+            Set<String> knownNodes, Set<String> questions) {
         var links = statement.path("architectureLinks");
         var dependencies = statement.path("questionDependencies");
         return intersects(links, nodes) || intersects(links, edges) || intersects(dependencies, questions)
-                || (links.isEmpty() && dependencies.isEmpty());
+                || (links.isEmpty() && dependencies.isEmpty()) || unknown(links, knownNodes, edges);
     }
 
     private static boolean questionApplies(JsonNode question, Set<String> nodes, Set<String> edges,
+            Set<String> knownNodes,
             Set<String> statements, Set<String> questions) {
         String scope = question.path("key").path("scope").asText();
         if (Set.of("global", "@document", "*").contains(scope.toLowerCase(Locale.ROOT))
@@ -135,14 +147,25 @@ final class InheritedDecisionContext {
                 || intersects(question.path("prerequisites"), questions)
                 || intersects(question.path("dependentQuestionIds"), questions)
                 || questions.contains(question.path("id").asText())) return true;
-        boolean mapped = !scope.isBlank();
+        boolean unmappable = !scope.isBlank() && !knownNodes.contains(scope) && !edges.contains(scope);
         for (var discovery : question.path("discoveries")) {
             if (intersects(discovery.path("nodeIds"), nodes) || intersects(discovery.path("edgeIds"), edges)) return true;
-            mapped |= !discovery.path("nodeIds").isEmpty() || !discovery.path("edgeIds").isEmpty();
+            unmappable |= unknown(discovery.path("nodeIds"), knownNodes, edges);
         }
-        // A scope not present in the frozen/current node set may be historical
-        // and unmappable, not necessarily irrelevant. Keep it visibly unresolved.
-        return !mapped;
+        return unmappable || (scope.isBlank() && question.path("discoveries").isEmpty());
+    }
+
+    private static boolean unknown(JsonNode ids, Set<String> knownNodes, Set<String> knownEdges) {
+        for (var id : ids) if (id.isString() && !knownNodes.contains(id.asText())
+                && !knownEdges.contains(id.asText())) return true;
+        return false;
+    }
+
+    private static void collectNodes(JsonNode tree, Set<String> known) {
+        for (var node : tree) {
+            if (node.path("code").isString()) known.add(node.path("code").asText());
+            if (node.path("children").isArray()) collectNodes(node.path("children"), known);
+        }
     }
 
     private static void id(JsonNode item, Set<String> ids) {
