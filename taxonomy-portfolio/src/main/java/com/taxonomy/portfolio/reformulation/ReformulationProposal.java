@@ -43,6 +43,8 @@ public class ReformulationProposal {
         this.createdBy=actor;this.createdAt=now;this.currentRevision=1;
     }
     public String getId(){return id;} public String getScopeKey(){return scopeKey;}
+    public Long getProjectId(){return projectId;} public Long getRequirementId(){return requirementId;}
+    public Long getSourceVersionId(){return sourceVersionId;} public String getSnapshotId(){return snapshotId;}
     public String getBaselinePayload(){return baselinePayload;} public String getCreatedBy(){return createdBy;}
     public Instant getCreatedAt(){return createdAt;} public long getCurrentRevision(){return currentRevision;}
     public void advanceRevision(){currentRevision++;}
