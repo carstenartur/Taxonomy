@@ -25,3 +25,9 @@ Status: in progress; not product acceptance.
 - Added explicit unavailable graph section, removed raw catalogue/report JSON dump from DOCX prose, and surfaced captured inherited decision context.
 - Added frozen-mapper tests for distinct offer/analysis branches, two directed parallel mappings without duplicate view edges, absent versus empty gaps, tampered version and dangling relation target. These tests have not yet been run; expect current graph multiplicity assertion to fail.
 - Next exact command after root remote verification/ref alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest -Dsurefire.failIfNoSpecifiedTests=false test`.
+
+## Checkpoint 4 — corrected fixture
+
+- Focused report class: 5 tests, 1 assertion failure and 2 fixture deserialization errors; the new ViewContext fixture omitted required primitive booleans. Endpoint revision test and existing JSON test were green in that selector, but no class-level GREEN.
+- Fixture now supplies all ViewContext booleans and deliberately uses view relation IDs 99/100 distinct from mapping-row IDs 11/12. This makes semantic multiplicity (rather than incidental ID equality) observable.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest -Dsurefire.failIfNoSpecifiedTests=false test`.

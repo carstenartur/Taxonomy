@@ -146,10 +146,13 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         var viewContext = json.createObjectNode();
         viewContext.put("basedOnBranch", "draft");
         viewContext.put("basedOnCommit", "captured-commit");
+        viewContext.put("includesProvisionalRelations", false);
+        viewContext.put("projectionStale", false);
+        viewContext.put("indexStale", false);
         analysis.set("viewContext", viewContext);
         var view = json.createObjectNode();
         var included = view.putArray("includedRelationships");
-        if (edges) for (int id : new int[] {11, 12}) {
+        if (edges) for (int id : new int[] {99, 100}) {
             var relation = included.addObject();
             relation.put("relationId", id).put("sourceCode", "BP-1").put("targetCode", "BP-2")
                     .put("relationType", "FLOW").put("propagatedRelevance", 0.5);
