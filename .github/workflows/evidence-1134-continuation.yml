@@ -9,29 +9,50 @@ jobs:
   source:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          path: transport
+          persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: 993e90aba4e3b63d4d84e139778189a223661267
           fetch-depth: 2
-          persist-credentials: false
-      - name: Archive exact automatic merge and its Git objects
+          path: product
+      - name: Reconstruct the tested correction without changing main or the PR ref
+        working-directory: product
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD^{tree})" = e47a69f0f06959c905aa4abe3008dfac832761ba
           test "$(git rev-parse HEAD^1)" = 025197b3193f4a86815408a61ed6fb3368967259
           test "$(git rev-parse HEAD^2)" = 2afbea756f0cf964c81428d47f9feb5c7372e242
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, hashlib, lzma, subprocess
+          data = lzma.decompress(base64.b64decode(Path('../transport/.github/verification/1134-closure-fixtures.b64').read_text(), validate=True))
+          assert hashlib.sha256(data).hexdigest() == 'd752352fa89501bd95fdcb362ed48c92554f37d476ca480af8bf57b81fa72295'
+          Path('/tmp/correction.patch').write_bytes(data)
+          subprocess.run(['git','apply','--check','/tmp/correction.patch'], check=True)
+          subprocess.run(['git','apply','/tmp/correction.patch'], check=True)
+          PY
+          git diff --check
+          git add .
+          test "$(git write-tree)" = edee69fc915f45966d9e5b3fc3c06ef8619bef67
+          SHA=$(git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit-tree edee69fc915f45966d9e5b3fc3c06ef8619bef67 -p 2afbea756f0cf964c81428d47f9feb5c7372e242 -p 025197b3193f4a86815408a61ed6fb3368967259 -m 'fix(analysis): keep initial models closed and integrate recovery acceptance')
+          git push origin "${SHA}:refs/heads/verification/evidence-closure-1134-${GITHUB_RUN_ID}"
           mkdir -p /tmp/evidence-1134
-          git archive --format=tar HEAD | gzip -n > /tmp/evidence-1134/source.tar.gz
-          tar -czf /tmp/evidence-1134/git-objects.tar.gz .git/objects
-          git rev-parse HEAD HEAD^{tree} HEAD^1 HEAD^2 > /tmp/evidence-1134/identity.txt
-          git cat-file commit HEAD > /tmp/evidence-1134/commit.txt
+          git rev-parse "$SHA" "${SHA}^{tree}" > /tmp/evidence-1134/identity.txt
+          git archive --format=tar "$SHA" | gzip -n > /tmp/evidence-1134/source.tar.gz
+          git cat-file commit "$SHA" > /tmp/evidence-1134/commit.txt
+          git diff HEAD "$SHA" --binary > /tmp/evidence-1134/correction.patch
           cd /tmp/evidence-1134
-          sha256sum source.tar.gz git-objects.tar.gz identity.txt commit.txt > SHA256SUMS
+          sha256sum source.tar.gz identity.txt commit.txt correction.patch > SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: evidence-1134-recovery-integration
+          name: evidence-1134-closure-candidate
           path: /tmp/evidence-1134
           if-no-files-found: error
           retention-days: 7
