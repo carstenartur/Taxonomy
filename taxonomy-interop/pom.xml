@@ -55,6 +55,20 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Reuse only the workspace-owned persistence fixture, never app test sources. -->
+        <dependency>
+            <groupId>com.taxonomy</groupId>
+            <artifactId>taxonomy-workspace</artifactId>
+            <version>${project.version}</version>
+            <type>test-jar</type>
+            <classifier>test-fixtures</classifier>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.hsqldb</groupId>
+            <artifactId>hsqldb</artifactId>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
     <build>
         <plugins>
