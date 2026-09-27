@@ -1,6 +1,6 @@
 # PR 1135 bounded review fixes
 
-Status: bounded production correction WIP; GREEN selectors have not run yet.
+Status: five reported findings have focused GREEN; guard valid older-source regression pending RED.
 
 Five review findings are isolated in focused tests: imported ancestry baseline/physical scope;
 local adoption preview versus current target; readable DOCX origin discovery fields;
@@ -27,6 +27,13 @@ Production edits bind baseline coordinates to the proposal/receipt row and encod
 bind preview source and adopted target to the current physical aggregate, render origin
 discovery fields and empty-graph gaps, and preserve immutable insertion order in the
 frozen architecture model. These changes are not yet verified.
+
+Focused GREEN after bounded edits: Maven reactor selector, 5 tests, 0 failures/errors
+(export 1, architecture 2, portfolio 1, app 1), exit 0. Before a broader gate,
+review identified a valid older-source adoption: the preview's sourceVersionId/originalText
+refer to the proposal baseline, while currentRequirement.currentVersion refers to the
+intervening active version. The guard currently conflates them. A real adoption/review
+regression is now test-only WIP; run it RED, then bind each stored coordinate correctly.
 
 Next targeted command after durable checkpoint publication:
 `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am '-Dtest=ReformulationEvidenceCodecBoundaryTest#ancestryRejectsBaselineOutsidePhysicalProposalAndReceipt,ReformulationPositiveReviewGuardTest#mismatchedLocalPreviewCannotAuthorizePositiveReview,ReformulationReportDocxReviewTest,FrozenReformulationArchitectureOrderTest' -Dsurefire.failIfNoSpecifiedTests=false test`.

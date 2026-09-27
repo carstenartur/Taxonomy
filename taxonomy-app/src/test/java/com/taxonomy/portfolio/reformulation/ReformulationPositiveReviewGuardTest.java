@@ -97,6 +97,20 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
         positive(project.id(), requirement.id(), 409);
     }
 
+    @Test void acknowledgedOlderSourceAdoptionCanStillReceivePositiveReview() throws Exception {
+        var offer = seed();
+        projects.addRequirementVersion(project.id(), requirement.id(),
+                new CreateRequirementVersionRequest("Intervening current text", "Changed after offer", null),
+                "architect", context);
+        var preview = adoption.preview(project.id(), requirement.id(), offer.id(), offer.currentRevision().number(),
+                "architect", context);
+        assertThat(preview.content().warnings()).contains("SOURCE_DIFFERS_FROM_CURRENT");
+        adoption.adopt(project.id(), requirement.id(), offer.id(), offer.currentRevision().number(),
+                new ReformulationAdoptionDtos.ConfirmRequest(UUID.randomUUID().toString(), preview.content().id(),
+                        preview.hash(), true, true, "Explicit older source adoption"), "architect", context);
+        positive(project.id(), requirement.id(), 200);
+    }
+
     @Test void deferredQuestionAloneIsNonblocking() throws Exception {
         questionTransform = questions -> questions.stream().map(q -> q.id().equals("channel")
                 ? new DecisionQuestion(q.id(), q.key(), q.wording(), q.discoveries(), q.affectedStatementIds(),
