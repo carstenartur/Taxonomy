@@ -218,6 +218,26 @@ class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
     }
 
     @Test
+    void duplicateOrUnknownEvidenceDslPropertyRejectsBeforeMaterialization() throws Exception {
+        String dsl = adoptAndExport();
+        for (String propertyKey : List.of("payload", "unexpectedEvidenceProperty")) {
+            DocumentAst parsed = parser.parse(dsl, "duplicate-evidence-property.taxdsl");
+            String ambiguous = serializer.serialize(new DocumentAst(parsed.getMeta(), parsed.getBlocks().stream()
+                    .map(block -> {
+                        if (!EVIDENCE_BLOCK.equals(block.getKind())) return block;
+                        var properties = new ArrayList<>(block.getProperties());
+                        properties.add(new PropertyAst(propertyKey, "{}", block.getSourceLocation()));
+                        return new BlockAst(block.getKind(), block.getHeaderTokens(), properties,
+                                block.getChildren(), block.getExtensions(), block.getSourceLocation());
+                    }).toList()));
+            WorkspaceContext target = newWorkspace("Ambiguous DSL property rejected");
+            assertThatThrownBy(() -> git.materialize(ambiguous, "architect", target))
+                    .isInstanceOf(PortfolioException.class);
+            assertThat(projects.listProjects("architect", target)).isEmpty();
+        }
+    }
+
+    @Test
     void localAdoptedSourceFreezesExactEvidenceAndConcreteDecisionsAtOfferCreation() throws Exception {
         String dsl = adoptAndExport();
         BlockAst sourceEvidence = onlyEvidence(dsl);

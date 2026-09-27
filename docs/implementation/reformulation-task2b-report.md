@@ -1,6 +1,25 @@
 # Task 2b — adopted lineage and portable evidence
 
-Status: strict-decoder implementation in progress, not Task 2b acceptance.
+Status: focused Task 2b verification green through source/schema correction;
+independent review and root's integrated gate pending. No product acceptance or
+real-provider quality claim.
+
+## Verified outcome to date
+
+- Frozen exact local/imported adopted-source evidence, nonrecursive v2 hash-linked
+  closure, v1 byte/hash preservation, strict portable JSON/source/target binding,
+  and prompt-safe concrete inherited statement/question/answer/review context.
+  ADOPTED_SOURCE is distinct from ORIGINAL and both are protected source kinds.
+- Before the final trust-boundary correction, eight selected analysis/portfolio/
+  architecture classes ran **88/88** positive tests. Afterwards the affected
+  Spring/codec/guard slice ran **36/36** (5 codec boundary, 14 guard, 17 round
+  trip), zero failures/errors/skips, build success. These are two distinct
+  checkpoints, not an inflated combined suite count.
+- Remaining: one narrow DSL property-schema regression is being verified;
+  independent scoped review and root's integrated/full-reactor checks follow.
+  The service/DB fixtures use persisted analysis snapshots but not the later
+  real-analysis civilian browser path. UI labels/action hiding are static code;
+  no browser or real provider was used in this task.
 
 ## Current slice
 
@@ -67,22 +86,20 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   `CrossTaxonomyReconciliationTest` 16/16, `ReformulationResponseParserTest`
   9/9, `FrozenReformulationEngineTest` 4/4: **32 positive tests**, zero
   failures/errors/skips, build success.
-- Next boundary slice adds lowercase portable p/r → physical P/R exact-byte
+- Boundary slice adds lowercase portable p/r → physical P/R exact-byte
   preservation, historical full-source statement archived but excluded from
   concrete prompt context, and an inherited-context small-budget failure. The
-  full-source exclusion is expected RED; the other two assert compatibility
-  and fail-closed behavior. RED run: `AdoptedLineagePromptTest` 4/4 and
-  `ReformulationEvidenceRoundTripTest` 11/12; the single expected failure was
-  historical whole-source wording leaking into the prompt-safe projection,
-  zero errors. Lowercase p/r exact bytes and small-budget failure passed.
+  full-source exclusion was intended RED; the other two assert compatibility
+  and fail-closed behavior. First run: `AdoptedLineagePromptTest` 4/4 and
+  `ReformulationEvidenceRoundTripTest` 11/12. The one assertion failed before
+  reaching projection because JSON escaped the archived newline; it is a test
+  fixture error, not a meaningful product RED. Lowercase identity and budget passed.
 - Candidate fix omits only verbatim historical full-source statements from
   prompt context, while retaining them byte-for-byte in the frozen archive;
   all applicable non-source statement wording/review and human decisions remain.
-  first covering run reached a *test fixture assertion* before checking the
-  projection: JSON escaped the historical source newline, so a raw-string
-  `contains(ORIGINAL)` assertion was invalid. The test now decodes archived
-  statement wording and checks its ID is absent from projection; this is not
-  counted as meaningful product RED or GREEN yet.
+  The test was corrected to decode archived statement wording and check its ID
+  absent from the projection; the later 15/15 run verifies this behavior. No
+  separate valid RED is claimed for this exclusion.
 - Final batched cases added: imported v2 blocking question still blocks positive
   review, checksum-valid v2 wrong ancestor version and duplicate JSON key reject
   before materialization, and backend ADOPTED_SOURCE cannot be rejected or
@@ -99,9 +116,8 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   zero failures/errors/skips, build success.
 - Self-review found an additional trust-boundary gap: v1 payload target text is
   bound to its physical version, but checksum-valid historical `originalText`
-  has not been compared with the physical source version. A narrow import RED
-  test and unknown-field schema test are added. No verification has run for
-  RED verified: 17 RoundTrip cases, two expected failures (source mismatch and
+  had not been compared with the physical source version. RED verified:
+  17 RoundTrip cases, two expected failures (source mismatch and
   unexpected JSON field accepted), zero errors. The preceding 88/88 is
   pre-correction evidence.
 - Public decoder check added for an unknown stored schema: the positive-review
@@ -110,11 +126,17 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
 - Candidate narrow fix enables unknown-property rejection only for evidence
   decoding, validates exact physical source-version text/hash on import and
   local receipt projection, and rejects unsupported schema at the shared
-  payload decoder. GREEN unverified. No global JSON codec default changes.
+  payload decoder. Affected GREEN: codec boundary 5/5, guard 14/14, RoundTrip
+  17/17, **36 tests**, zero failures/errors/skips, build success. No global JSON
+  codec default changes.
+- Final self-review noted `BlockAst.property()` takes the first matching DSL
+  property. A duplicate or unknown property on an evidence block must fail
+  closed even if its first payload and hash are valid; the narrow test is added
+  but not yet run.
 
 ## Next exact command
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest,ReformulationEvidenceCodecBoundaryTest,ReformulationPositiveReviewGuardTest -Dsurefire.failIfNoSpecifiedTests=false`
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest#duplicateOrUnknownEvidenceDslPropertyRejectsBeforeMaterialization -Dsurefire.failIfNoSpecifiedTests=false`
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.
