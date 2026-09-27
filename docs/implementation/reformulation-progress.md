@@ -2,6 +2,14 @@
 
 Plan: [reformulation-completion.md](reformulation-completion.md)
 
+## Execution blocked — resume point
+
+The runtime disconnected after the fully secured source checkpoint `4f1a238122a7369b7122ab9c95ebd85bc5e6bbc3`.
+No uncommitted source edits were outstanding. Read
+[the exact recovery note](reformulation-resume-2026-09-27.md) before proceeding.
+Task3's latest covering run was 30/31; its interrupted diagnostic result is unknown.
+Tasks1/2 are accepted; Task3 review/visual QA, Task4 and the integrated gates remain open.
+
 ## 2026-09-27 — remote recovery checkpoint
 
 - Base: `025197b3193f4a86815408a61ed6fb3368967259`.
@@ -25,8 +33,7 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
   review corrections, all 588 selected analysis-module tests passed. These are
   distinct runs; the broader suite has not been claimed as a post-correction run.
 - Code, tests and evidence are remote; see reformulation-task1-report.md.
-- Next: Task 2b ancestry/prompt portability, then Tasks 3 and 4. Task 2a is a checkpoint of
-  completion Task 2, not a new independent feature.
+- Next: finish Task3, then Task4 and integrated verification. Tasks1/2 are accepted.
 - No provider credentials or Docker availability assumed. External gates will be reported explicitly.
 
 ## Task 2b — durable in-progress checkpoints
