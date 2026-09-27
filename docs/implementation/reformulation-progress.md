@@ -2,7 +2,26 @@
 
 Plan: [reformulation-completion.md](reformulation-completion.md)
 
-## Follow-up implementation — 2026-09-27 20:58 UTC
+## Intermediate merge confirmed — 2026-09-27 21:00 UTC
+
+PR #1135 was squash-merged after all 29 current-head checks were terminal: 27
+successes and the two explicitly allowed skipped CodeQL Source Analysis jobs.
+All ten workflows were successful except the explicitly skipped CodeQL Source
+Analysis workflow. Maven verification, Core, all UI/export/civilian/security/transport
+jobs and PostgreSQL, Oracle and SQL Server succeeded. All five review threads were
+resolved, there was no CHANGES_REQUESTED, and GitHub reported mergeable/clean.
+
+Merged=true was read back with merge SHA
+`13c0a345f4f8de3d56d52e1de54cb2723e20a8d2`. Archive
+`archive/pr-1135-reviewed-a571e779` retains its authorized a571e779 commit; the
+separate follow-up branch is retained. The completed merge watch is disabled.
+
+GitHub retargeted PR #1136 to main. The squash commit has exactly the same tree as
+its already-contained 43992e1d ancestor. A normal two-parent merge reconciles that
+history without dropping follow-up code; full CI is now required on this base.
+The remaining live-provider/human-quality evidence stays explicitly open.
+
+## Follow-up implementation — 2026-09-27 20:56 UTC
 
 PR #1136 (`feature/reformulation-civilian-acceptance`) now contains Task 4's complete
 deterministic application/browser acceptance harness, independent document gate,

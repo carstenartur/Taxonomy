@@ -210,3 +210,12 @@ PR #1135 still waits for its current-head canonical Core/Maven verification befo
 merge; PR #1136 browser and full current-head CI remain open. Real-provider evidence
 is explicitly NOT_RUN, with the exact small status report committed alongside this
 ledger. No claim of complete eight-package product-quality acceptance is made.
+
+### Intermediate integration
+
+PR #1135 merged at 2026-09-27 21:00:13 UTC after its complete gates succeeded;
+confirmed merge SHA `13c0a345f4f8de3d56d52e1de54cb2723e20a8d2`. PR #1136 now targets
+main. Its squash-history reconciliation preserves the follow-up tree: main was
+verified byte-identical to the already-contained reviewed 43992e1d ancestor before
+resolving the mechanical conflicts. No application change was discarded. Current
+follow-up browser/full CI remain required separately from local 18/18 evidence.
