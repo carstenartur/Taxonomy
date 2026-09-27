@@ -51,6 +51,11 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
   `03e4208bbd8086c1649240ccb37e2cc2b0d6b76b` (0 addressed, 3 open: inherited
   rejection enforcement, per-call inherited context scope, genuine adopted-source
   reanalysis/checkpoint verification). See `reformulation-task2b-review.md`.
+- Fix round 1 is remotely secured at
+  `606936c3616697ac8c96a956301e1fa19feb2103`; covering tests: 41/41. Scoped review
+  accepted inherited rejection enforcement and genuine post-adoption reanalysis.
+  Fix round 2/5 is limited to the remaining reachable `scope=local` leak from a
+  historical B-only edited statement into an A-node prompt. Tasks 3/4 remain open.
 
 ## Local verification environment
 

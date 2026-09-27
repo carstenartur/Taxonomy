@@ -45,3 +45,29 @@ real-provider language-quality gate remain open.
 Next: original implementer fixes the three findings with focused RED/GREEN
 evidence and remote checkpoints. Re-review is limited to these findings and new
 breakage in the fix diff.
+
+## Scoped re-review of fix round 1
+
+Reviewed range: `03e4208bbd8086c1649240ccb37e2cc2b0d6b76b` to
+`606936c3616697ac8c96a956301e1fa19feb2103`. The same independent reviewer
+inspected only the three findings and new breakage in that fix diff; no suites
+were rerun by the reviewer.
+
+- Finding 1 — **ADDRESSED**: applicable inherited rejected wording reaches both
+  the parser and engine guard. Regressions cover fresh adopted offers and output.
+- Finding 2 — **NOT ADDRESSED**: `InheritedDecisionContext.java:143–155` treats
+  generic scope `local` as unmappable. Actual statement-edit questions use
+  `Key(statementId, "edit", "local")` with an affected statement
+  (`ReformulationService.java:144`). An A-node call therefore selects a B-only
+  historical edit question and then pulls its affected B statement into the
+  A prompt through the dependency closure at lines 88–92. Existing tests use
+  concrete A/B scopes, not this reachable generic-local case.
+- Finding 3 — **ADDRESSED**: the new real-reanalysis integration test adopts,
+  runs the actual analysis operation, selects the persisted snapshot, creates
+  the next offer and commits a checkpoint. Only outbound LLM replies are replaced.
+- New Critical/Important breakage: none beyond the remaining scope defect.
+
+Controller checked the reachable `local` producer and selector. The remaining
+finding is accepted for bounded fix round 2/5. The other two findings stay closed.
+Covering run at the reviewed head: 41/41, no failures/errors/skips; this does not
+make the outstanding scope case correct. The complete reviewed tree is remote.
