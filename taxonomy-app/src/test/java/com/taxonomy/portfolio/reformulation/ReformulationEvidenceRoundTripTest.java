@@ -150,6 +150,68 @@ class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
         assertThat(projects.listProjects("architect", versionTarget)).isEmpty();
     }
 
+    @Test
+    void duplicatePortableRootIsRejectedBeforeMaterialization() throws Exception {
+        String dsl = adoptAndExport();
+        DocumentAst document = parser.parse(dsl, "duplicate-root.taxdsl");
+        List<BlockAst> blocks = new ArrayList<>(document.getBlocks());
+        blocks.add(onlyEvidence(dsl));
+        String duplicate = serializer.serialize(new DocumentAst(document.getMeta(), blocks));
+        WorkspaceContext target = newWorkspace("Duplicate evidence root rejected");
+
+        assertThatThrownBy(() -> git.materialize(duplicate, "architect", target))
+                .isInstanceOf(PortfolioException.class);
+        assertThat(projects.listProjects("architect", target)).isEmpty();
+    }
+
+    @Test
+    void checksumValidDuplicateJsonKeyIsRejectedBeforeMaterialization() throws Exception {
+        String dsl = adoptAndExport();
+        String original = onlyEvidence(dsl).property("payload");
+        String duplicate = original.replaceFirst("\\\"projectKey\\\":\\\"P\\\"",
+                "\\\"projectKey\\\":\\\"P\\\",\\\"projectKey\\\":\\\"P\\\"");
+        assertThat(duplicate).isNotEqualTo(original);
+        WorkspaceContext target = newWorkspace("Duplicate JSON key rejected");
+
+        assertThatThrownBy(() -> git.materialize(withEvidencePayload(dsl, duplicate), "architect", target))
+                .isInstanceOf(PortfolioException.class);
+        assertThat(projects.listProjects("architect", target)).isEmpty();
+    }
+
+    @Test
+    void checksumValidTrailingJsonTokenIsRejectedBeforeMaterialization() throws Exception {
+        String dsl = adoptAndExport();
+        WorkspaceContext target = newWorkspace("Trailing JSON token rejected");
+
+        assertThatThrownBy(() -> git.materialize(withEvidencePayload(
+                dsl, onlyEvidence(dsl).property("payload") + " {}"), "architect", target))
+                .isInstanceOf(PortfolioException.class);
+        assertThat(projects.listProjects("architect", target)).isEmpty();
+    }
+
+    private String withEvidencePayload(String dsl, String payload) {
+        DocumentAst document = parser.parse(dsl, "reformulation-evidence-payload-rewrite.taxdsl");
+        String hash = StableIdentityHash.sha256(payload);
+        List<BlockAst> blocks = new ArrayList<>(document.getBlocks().size());
+        for (BlockAst block : document.getBlocks()) {
+            if (!EVIDENCE_BLOCK.equals(block.getKind())) {
+                blocks.add(block);
+                continue;
+            }
+            List<PropertyAst> properties = block.getProperties().stream().map(property ->
+                    new PropertyAst(property.key(), switch (property.key()) {
+                        case "payload" -> payload;
+                        case "evidenceHash" -> hash;
+                        default -> property.value();
+                    }, property.sourceLocation())).toList();
+            List<String> header = new ArrayList<>(block.getHeaderTokens());
+            header.set(3, hash);
+            blocks.add(new BlockAst(block.getKind(), header, properties,
+                    block.getChildren(), block.getExtensions(), block.getSourceLocation()));
+        }
+        return serializer.serialize(new DocumentAst(document.getMeta(), blocks));
+    }
+
     private String adoptAndExport() throws Exception {
         var proposal = seed();
         var preview = adoptions.preview(project.id(), requirement.id(), proposal.id(),
