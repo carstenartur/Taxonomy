@@ -55,7 +55,8 @@ class ReformulationReportDocxReviewTest {
     @Test void mergedOriginRetainsReviewStateAnswerSchemaAndDependenciesInBothLanguages() throws Exception {
         var schema = new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE,
                 List.of("manual", "automatic"), "days", 1d, 7d,
-                Map.of("manual", DecisionQuestion.AnswerSchema.OptionMeaning.VALUE),
+                Map.of("manual", DecisionQuestion.AnswerSchema.OptionMeaning.VALUE,
+                        "automatic", DecisionQuestion.AnswerSchema.OptionMeaning.OTHER),
                 List.of(List.of("manual", "automatic")),
                 List.of(new DecisionQuestion.AnswerSchema.AnswerCondition("prior-gate", List.of("yes"))));
         var origin = new DecisionQuestion.Origin("prior-conflict",
@@ -72,6 +73,9 @@ class ReformulationReportDocxReviewTest {
             assertThat(actual).contains("prior-conflict", "CONFLICT", "SINGLE_CHOICE", "manual", "automatic",
                     "saved-statement", "prior-gate", "follow-up", "Requires architectural choice", "BP-1",
                     "VALUE", "yes")
+                    .contains(language.equals("de")
+                            ? "Optionsbedeutungen: [automatic=OTHER, manual=VALUE]"
+                            : "Option meanings: [automatic=OTHER, manual=VALUE]")
                     .contains(language.equals("de") ? "Ursprungsstatus:" : "Origin state:",
                             language.equals("de") ? "Vorausgesetzte Fragen:" : "Prerequisite questions:")
                     .doesNotContain("Origin[", "AnswerSchema[");

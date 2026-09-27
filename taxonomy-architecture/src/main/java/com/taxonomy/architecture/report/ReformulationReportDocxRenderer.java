@@ -73,7 +73,9 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                             + " · " + t(de, "Einheit: ", "Unit: ") + Objects.toString(schema.unit(), "—")
                             + " · " + t(de, "Minimum: ", "Minimum: ") + Objects.toString(schema.minimum(), "—")
                             + " · " + t(de, "Maximum: ", "Maximum: ") + Objects.toString(schema.maximum(), "—"));
-                    w.paragraph(t(de, "Optionsbedeutungen: ", "Option meanings: ") + schema.optionMeanings()
+                    w.paragraph(t(de, "Optionsbedeutungen: ", "Option meanings: ")
+                            + new TreeMap<>(schema.optionMeanings()).entrySet().stream()
+                                    .map(entry -> entry.getKey() + "=" + entry.getValue()).toList()
                             + " · " + t(de, "Unvereinbare Optionen: ", "Incompatible options: ")
                             + schema.incompatibleOptions()
                             + " · " + t(de, "Anwendbarkeit: ", "Applicability: ")

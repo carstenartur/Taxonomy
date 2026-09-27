@@ -125,3 +125,14 @@ ran 1 test/1 semantic assertion failure/0 errors; altered summary version number
 was accepted. Production WIP now checks the summary number against frozen source
 version and prints labeled EN/DE origin key, state, complete schema, consequences,
 statement/dependency IDs and discoveries. GREEN verification pending.
+
+First covering attempt after publication stopped in architecture on stale compiled
+renderer output despite Maven's recompilation log; its class file was older than
+the changed source. `-pl taxonomy-architecture clean` succeeded and the next covering
+run passed all five architecture tests and 41 of 42 selected app tests. The one app
+failure was an overly specific expected message in the new version-number assertion:
+the correct rejection says `Frozen source/project disagrees with the baseline`, not
+`source identity`. Assertion corrected; product check was effective. The review also
+identified a cross-JVM order risk in newly displayed option-meaning maps. A two-entry
+ordered-output assertion ran RED (1 test/1 assertion failure, zero errors), and the
+renderer now traverses that map by sorted key. Both changes await GREEN.
