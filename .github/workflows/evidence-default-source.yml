@@ -1,0 +1,34 @@
+name: Evidence default source snapshot
+on:
+  push:
+    branches: [maintenance/evidence-default-source-20260927]
+    paths: [.github/workflows/evidence-default-source.yml]
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 8a1190bf38f77cd5151165bbbfdc688e15f046ab
+          fetch-depth: 1
+          persist-credentials: false
+      - name: Archive immutable product source only
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 8a1190bf38f77cd5151165bbbfdc688e15f046ab
+          mkdir -p /tmp/evidence-default-source
+          git archive --format=tar.gz HEAD > /tmp/evidence-default-source/source.tar.gz
+          git ls-tree -r HEAD > /tmp/evidence-default-source/git-tree.txt
+          git rev-parse HEAD HEAD^{tree} > /tmp/evidence-default-source/identity.txt
+          cd /tmp/evidence-default-source
+          sha256sum source.tar.gz git-tree.txt identity.txt > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: evidence-default-source
+          path: /tmp/evidence-default-source
+          if-no-files-found: error
+          retention-days: 3
