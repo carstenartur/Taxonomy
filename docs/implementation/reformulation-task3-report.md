@@ -39,6 +39,12 @@ Status: in progress; not product acceptance.
 - Moved typed frozen snapshot decoding/validation into portfolio-owned implementation, exposed only neutral export model through the already referenced `ReformulationReportService`; app no longer imports portfolio DTO/codec classes for graph assembly. Architecture remains POI adapter.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false test`.
 
+## Checkpoint 8 — rename publication and stale class output
+
+- Root's first publisher attempt refused an exact-tree mismatch caused by rename detection omitting the old-path deletion. No remote branch advanced and no source was lost. Explicit delete/add publication with whole-tree verification succeeded; this is a publisher handling issue, not an application outcome.
+- Initial combined selector ran 22 ratchet tests (1 failure), 5 report tests (5 context-load errors). Both stem from the deleted app assembler's stale `.class` still present in `taxonomy-app/target/classes`: ArchUnit imports it and Spring sees duplicate bean names. Source tree contains only the portfolio-owned class. This is build-output staleness, not a production dependency ratchet or semantic assertion result.
+- Next exact commands after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app clean` then `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false test`.
+
 ## Checkpoint 6 — frozen catalogue fixture
 
 - Focused class again ran 5 tests, 1 failure / 2 errors: the real BP catalogue has no authored `BP-1`/`BP-2` fixture nodes, so mapper correctly rejected those mappings before reaching multiplicity. Endpoint revision and existing JSON cases passed.
