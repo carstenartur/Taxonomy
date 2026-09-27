@@ -78,7 +78,16 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
 - Candidate fix omits only verbatim historical full-source statements from
   prompt context, while retaining them byte-for-byte in the frozen archive;
   all applicable non-source statement wording/review and human decisions remain.
-  GREEN unverified.
+  first covering run reached a *test fixture assertion* before checking the
+  projection: JSON escaped the historical source newline, so a raw-string
+  `contains(ORIGINAL)` assertion was invalid. The test now decodes archived
+  statement wording and checks its ID is absent from projection; this is not
+  counted as meaningful product RED or GREEN yet.
+- Final batched cases added: imported v2 blocking question still blocks positive
+  review, checksum-valid v2 wrong ancestor version and duplicate JSON key reject
+  before materialization, and backend ADOPTED_SOURCE cannot be rejected or
+  edited. UI label/hiding of source actions is a static implementation boundary;
+  real browser inspection remains Task 4. These tests are not yet run.
 
 ## Next exact command
 

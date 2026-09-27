@@ -275,13 +275,16 @@ class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
                     document.sections(), statements, document.questions(), document.validation(), document.nodeResults());
         };
         String dsl = adoptAndExport();
-        assertThat(onlyEvidence(dsl).property("payload")).contains(ORIGINAL, "old-whole-source");
+        var archived = json.readTree(onlyEvidence(dsl).property("payload"))
+                .path("revision").path("statements");
+        assertThat(archived.get(2).path("id").asText()).isEqualTo("old-whole-source");
+        assertThat(archived.get(2).path("wording").asText()).isEqualTo(ORIGINAL);
         requirement = projects.getRequirement(project.id(), requirement.id(), "architect", context);
         var offer = reformulations.create(project.id(), requirement.id(),
                 new ReformulationDtos.CreateRequest(requirement.currentVersionId(), snapshot(requirement), "de"),
                 "architect", context);
         assertThat(offer.baseline().frozenContext().get("inheritedDecisionContext"))
-                .doesNotContain(ORIGINAL, "old-whole-source")
+                .doesNotContain("old-whole-source")
                 .contains("Arbeitsbeginn und Ende erfassen.");
     }
 
@@ -347,6 +350,119 @@ class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
         assertThatThrownBy(() -> git.materialize(missing, "architect", target))
                 .isInstanceOf(PortfolioException.class);
         assertThat(projects.listProjects("architect", target)).isEmpty();
+    }
+
+    @Test
+    void importedSecondGenerationConflictStillBlocksPositiveReview() throws Exception {
+        adoptAndExport();
+        requirement = projects.getRequirement(project.id(), requirement.id(), "architect", context);
+        var offer = reformulations.create(project.id(), requirement.id(),
+                new ReformulationDtos.CreateRequest(requirement.currentVersionId(), snapshot(requirement), "de"),
+                "architect", context);
+        var run = reformulations.beginRun(project.id(), requirement.id(), offer.id(), 1,
+                "TEST", "test", "v1", "v1", "frozen", "architect", context);
+        var conflict = new com.taxonomy.reformulation.DecisionQuestion("inherited-conflict",
+                new com.taxonomy.reformulation.DecisionQuestion.Key("capture", "method", "global"),
+                "Conflicting capture choices", List.of(), List.of(),
+                new com.taxonomy.reformulation.DecisionQuestion.AnswerSchema(
+                        com.taxonomy.reformulation.DecisionQuestion.AnswerSchema.Kind.TEXT,
+                        List.of(), null, null, null), List.of(), List.of(), "Expert resolution needed",
+                com.taxonomy.reformulation.DecisionQuestion.State.CONFLICT);
+        reformulations.finishRun(project.id(), requirement.id(), offer.id(), run.id(),
+                new com.taxonomy.reformulation.ReformulationDocument("Third text with unresolved method",
+                        List.of(), List.of(), List.of(conflict),
+                        new com.taxonomy.reformulation.ValidationReport(List.of()), List.of()),
+                null, "architect", context);
+        var revised = reformulations.get(project.id(), requirement.id(), offer.id(), "architect", context);
+        assertThat(revised.currentRevision().number()).isEqualTo(2);
+        var preview = adoptions.preview(project.id(), requirement.id(), offer.id(), 2, "architect", context);
+        adoptions.adopt(project.id(), requirement.id(), offer.id(), 2,
+                new ReformulationAdoptionDtos.ConfirmRequest(UUID.randomUUID().toString(),
+                        preview.content().id(), preview.hash(), true, true, "Adopt unresolved offer"),
+                "architect", context);
+        String dsl = git.exportPortfolio("architect", context);
+        assertThat(evidenceBlocks(dsl)).extracting(block -> block.property("schemaVersion"))
+                .contains("reformulation-evidence-v2");
+        WorkspaceContext target = newWorkspace("Imported v2 review guard");
+        git.materialize(dsl, "architect", target);
+        select(target);
+        var importedProject = projects.listProjects("architect", target).getFirst();
+        var importedRequirement = projects.listRequirements(importedProject.id(), "architect", target).getFirst();
+        mvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                .patch("/api/projects/" + importedProject.id() + "/requirements/" + importedRequirement.id())
+                .with(org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.csrf())
+                .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                .content("{\"status\":\"APPROVED\"}"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.status().isConflict());
+        assertThat(projects.getRequirement(importedProject.id(), importedRequirement.id(),
+                "architect", target).status()).isNotEqualTo(com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus.APPROVED);
+    }
+
+    @Test
+    void checksumValidV2AncestorIdentityMismatchAndDuplicateKeyFailBeforeMaterialization() throws Exception {
+        adoptAndExport();
+        requirement = projects.getRequirement(project.id(), requirement.id(), "architect", context);
+        var offer = reformulations.create(project.id(), requirement.id(),
+                new ReformulationDtos.CreateRequest(requirement.currentVersionId(), snapshot(requirement), "de"),
+                "architect", context);
+        var revised = reformulations.saveDraft(project.id(), requirement.id(), offer.id(), 1,
+                new ReformulationDtos.SaveDraftRequest("Third text", "Revision"), "architect", context);
+        var preview = adoptions.preview(project.id(), requirement.id(), offer.id(),
+                revised.currentRevision().number(), "architect", context);
+        adoptions.adopt(project.id(), requirement.id(), offer.id(), revised.currentRevision().number(),
+                new ReformulationAdoptionDtos.ConfirmRequest(UUID.randomUUID().toString(),
+                        preview.content().id(), preview.hash(), true, true, "Second adoption"),
+                "architect", context);
+        String dsl = git.exportPortfolio("architect", context);
+        String v2 = evidenceBlocks(dsl).stream().filter(b -> "3".equals(b.getHeaderTokens().get(2)))
+                .findFirst().orElseThrow().property("payload");
+        String mismatch = v2.replaceFirst("\\\"sourceVersionNumber\\\":2", "\\\"sourceVersionNumber\\\":1");
+        assertThat(mismatch).isNotEqualTo(v2);
+        String duplicate = v2.replaceFirst("\\\"ancestorHashes\\\":", "\\\"ancestorHashes\\\":[],\\\"ancestorHashes\\\":");
+        for (String invalid : List.of(mismatch, duplicate)) {
+            DocumentAst parsed = parser.parse(dsl, "invalid-v2.taxdsl");
+            String hash = StableIdentityHash.sha256(invalid);
+            String tampered = serializer.serialize(new DocumentAst(parsed.getMeta(), parsed.getBlocks().stream()
+                    .map(block -> EVIDENCE_BLOCK.equals(block.getKind()) && "3".equals(block.getHeaderTokens().get(2))
+                            ? new BlockAst(block.getKind(), List.of("P", "R", "3", hash),
+                                    block.getProperties().stream().map(property -> new PropertyAst(property.key(),
+                                            switch (property.key()) {
+                                                case "payload" -> invalid;
+                                                case "evidenceHash" -> hash;
+                                                default -> property.value();
+                                            }, property.sourceLocation())).toList(),
+                                    block.getChildren(), block.getExtensions(), block.getSourceLocation())
+                            : block).toList()));
+            WorkspaceContext target = newWorkspace("Invalid v2 rejected");
+            assertThatThrownBy(() -> git.materialize(tampered, "architect", target))
+                    .isInstanceOf(PortfolioException.class);
+            assertThat(projects.listProjects("architect", target)).isEmpty();
+        }
+    }
+
+    @Test
+    void sourceOnlyRejectionGuardAlsoProtectsAdoptedSourceProvenance() throws Exception {
+        documentTransform = document -> {
+            var protectedSource = new com.taxonomy.reformulation.Statement("adopted-source-protection",
+                    "Selected adopted source", List.of(),
+                    com.taxonomy.reformulation.Statement.Provenance.ADOPTED_SOURCE,
+                    List.of(), List.of(), null,
+                    com.taxonomy.reformulation.Statement.EditingOrigin.SOURCE, "UNREVIEWED");
+            var statements = new ArrayList<>(document.statements());
+            statements.add(protectedSource);
+            return new com.taxonomy.reformulation.ReformulationDocument(document.text(),
+                    document.sections(), statements, document.questions(), document.validation(), document.nodeResults());
+        };
+        var offer = seed();
+        for (String action : List.of("REJECT", "EDIT")) {
+            assertThatThrownBy(() -> reformulations.statement(project.id(), requirement.id(), offer.id(),
+                    offer.currentRevision().number(), "adopted-source-protection",
+                    new ReformulationDtos.StatementRequest(action, "Mutated source", "Source stays immutable"),
+                    "architect", context))
+                    .isInstanceOf(PortfolioException.class);
+        }
+        assertThat(reformulations.get(project.id(), requirement.id(), offer.id(), "architect", context)
+                .currentRevision().number()).isEqualTo(offer.currentRevision().number());
     }
 
     private String snapshotFor(long projectId, com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView selected,
