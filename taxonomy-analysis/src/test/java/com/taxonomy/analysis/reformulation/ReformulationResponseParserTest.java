@@ -37,6 +37,25 @@ class ReformulationResponseParserTest {
                     .hasMessageContaining("Model cannot create");
         }
     }
+    @Test void modelCannotRelabelExactAdoptedTextAsFreshOriginal() {
+        var base = input().baseline();
+        var context = new HashMap<>(base.frozenContext());
+        context.put("adoptedLineage", "frozen historical adoption");
+        var adopted = new ReformulationBaseline(base.scope(), base.sourceVersionId(),
+                base.originalText(), base.originalTextHash(), base.snapshotId(), base.snapshotPayload(),
+                context, base.language(), base.algorithmVersion());
+        var selected = new NodeSynthesisInput(adopted, "P", null, "description", List.of(),
+                List.of(), List.of(), Map.of(), List.of(), List.of(), "preserve");
+        String exact = new ObjectMapper().writeValueAsString(base.originalText());
+        String statement = "{\"wording\":" + exact + ",\"provenance\":\"ORIGINAL\","
+                + "\"sourceSpans\":[{\"start\":0,\"end\":" + base.originalText().length()
+                + ",\"exactText\":" + exact + "}],\"architectureLinks\":[],"
+                + "\"questionDependencies\":[],\"conditionalValidity\":null}";
+        assertThatThrownBy(() -> parser.parse(EMPTY.replace("\"statementProposals\":[]",
+                "\"statementProposals\":[" + statement + "]"), selected))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("adopted source");
+    }
     @Test void assignsIdsAndRetainsQuestionAnswerContract() {
         String response=EMPTY.replace("\"questionProposals\":[]","\"questionProposals\":[{\"subject\":\"time\",\"dimension\":\"correction\",\"scope\":\"P\",\"wording\":\"Wie werden Fehleingaben korrigiert?\",\"rationale\":\"Original lässt Korrektur offen\",\"affectedStatementIds\":[],\"sourceSpans\":[],\"nodeIds\":[\"P\"],\"edgeIds\":[],\"answerSchema\":{\"kind\":\"SINGLE_CHOICE\",\"options\":[\"Korrektur\",\"Keine Korrektur erforderlich\",\"Offen\"],\"unit\":null,\"minimum\":null,\"maximum\":null},\"prerequisites\":[],\"consequences\":\"Korrekturprozess festlegen\"}]");
         var result=parser.parse(response,input());

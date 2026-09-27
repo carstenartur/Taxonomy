@@ -54,10 +54,16 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   rejects model forging, carries prompt-safe inherited JSON through all node and
   reconcile calls, bumps checkpoint input encoding, and maps source semantics
   through reconciliation/coverage/UI. GREEN unverified.
+- Added exact-span parser regression: even though the selected adopted text is
+  byte-for-byte the baseline original, a model must not claim ORIGINAL for it.
+  Runtime helper briefly lost its external Maven path; root restored the same
+  Maven 3.9.16 under this task's toolchain using the repository wrapper; no
+  product/test loss and no meaningful RED from the FileNotFoundError. RED not
+  yet run for this test.
 
 ## Next exact command
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test -Dtest=AdoptedLineagePromptTest,ReformulationResponseParserTest,FrozenReformulationEngineTest,CrossTaxonomyReconciliationTest -Dsurefire.failIfNoSpecifiedTests=false`
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test -Dtest=ReformulationResponseParserTest#modelCannotRelabelExactAdoptedTextAsFreshOriginal -Dsurefire.failIfNoSpecifiedTests=false`
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.
