@@ -1,12 +1,18 @@
 package com.taxonomy.portfolio.reformulation;
 
 import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementVersionRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateProjectRequest;
+import com.taxonomy.portfolio.dto.PortfolioDtos.CreateRequirementRequest;
 import com.taxonomy.portfolio.model.PortfolioTypes.RequirementStatus;
 import com.taxonomy.portfolio.model.PortfolioTypes.ReviewStatus;
+import com.taxonomy.portfolio.model.PortfolioTypes.*;
 import com.taxonomy.portfolio.service.PortablePortfolioGitService;
+import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.reformulation.DecisionQuestion;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
@@ -46,6 +52,50 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
         mvc.perform(patch(requirementUrl(projectId, requirementId)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
                 .content("{\"title\":\"Reviewed title\",\"status\":\"APPROVED\",\"reviewStatus\":\"CONFIRMED\"}"))
                 .andExpect(expectedStatus == 409 ? status().isConflict() : status().isOk());
+    }
+
+    private void patchMetadata(long projectId, long requirementId, String body, int expectedStatus) throws Exception {
+        mvc.perform(patch(requirementUrl(projectId, requirementId)).with(csrf()).contentType(MediaType.APPLICATION_JSON)
+                .content(body)).andExpect(expectedStatus == 409 ? status().isConflict() : status().isOk());
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = RequirementStatus.class, names = {"APPROVED", "IMPLEMENTING", "SATISFIED"})
+    void blockingLocalEvidencePreventsEachPositiveRequirementStateWithoutReviewChange(RequirementStatus state) throws Exception {
+        adopt(true);
+        patchMetadata(project.id(), requirement.id(), "{\"status\":\"" + state + "\"}", 409);
+        assertThat(projects.getRequirement(project.id(), requirement.id(), "architect", context).status()).isEqualTo(RequirementStatus.DRAFT);
+    }
+
+    @Test void blockingLocalEvidencePreventsConfirmedReviewWithoutStatusChange() throws Exception {
+        adopt(true);
+        patchMetadata(project.id(), requirement.id(), "{\"reviewStatus\":\"CONFIRMED\"}", 409);
+        assertThat(projects.getRequirement(project.id(), requirement.id(), "architect", context).reviewStatus()).isEqualTo(ReviewStatus.PROPOSED);
+    }
+
+    @Test void deferredQuestionAloneIsNonblocking() throws Exception {
+        questionTransform = questions -> questions.stream().map(q -> q.id().equals("channel")
+                ? new DecisionQuestion(q.id(), q.key(), q.wording(), q.discoveries(), q.affectedStatementIds(),
+                        q.answerSchema(), q.prerequisites(), q.dependentQuestionIds(), q.consequences(), DecisionQuestion.State.DEFERRED)
+                : q).toList();
+        adopt(false);
+        patchMetadata(project.id(), requirement.id(), "{\"reviewStatus\":\"CONFIRMED\"}", 200);
+    }
+
+    @Test void sameBusinessKeysInDifferentWorkspaceHaveNoAdoptionEvidence() throws Exception {
+        adopt(true);
+        var workspace = workspaces.createWorkspace("architect", "Independent keys " + UUID.randomUUID(), "Scope guard");
+        workspace = workspaces.provisionWorkspaceRepository("architect", workspace.getWorkspaceId());
+        WorkspaceContext target = new WorkspaceContext("architect", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
+        var separateProject = projects.createProject(new CreateProjectRequest("P", "Separate", "No adoption", ProjectStatus.ACTIVE,
+                null, null, null, null), "architect", target);
+        var separateRequirement = projects.createRequirement(separateProject.id(),
+                new CreateRequirementRequest("R", "Separate", "Unrelated text", RequirementStatus.DRAFT, 50,
+                        Criticality.HIGH, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED, "architect", "Source", null),
+                "architect", target);
+        assertThat(PortfolioScope.key("architect", target)).isNotEqualTo(PortfolioScope.key("architect", context));
+        select(target);
+        positive(separateProject.id(), separateRequirement.id(), 200);
     }
 
     @Test void currentLocalConflictCannotBecomePositiveAndFailedPatchIsAtomic() throws Exception {
