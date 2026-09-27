@@ -28,11 +28,26 @@ Nonzero exit, timeout, absent completion marker and cleanup failures remain fata
 The child checks its distinct PID and inherited heap ceiling. Full child output
 is retained under surefire-reports/adopted-lineage/application-process.log.
 
-## Verification (pending)
+## Focused verification and scoped review
 
-Implementation checkpoint is WIP until the focused scenario and independent
-review pass. The final merge gate is full CI at the resulting exact PR head.
-Next command:
+WIP was secured remotely at `28a62c585618b0885d198c4b3f836e9cf3902fdf`, full tree
+`1c8f79c946d86d57e9c18765fe7c9c0b6e7ce6f5`, before testing. The following command
+completed on Java 21 at 2026-09-27 19:38:53 UTC with BUILD SUCCESS: the actual
+reanalysis scenario 1/1 and AnalysisMemoryGuardTest 7/7, no failures/errors/skips.
+Child diagnostics: 322,116,312 used bytes, 2,147,483,648 maximum bytes; success marker
+after Spring shutdown. These are focused results, not a full-suite success.
+
+Independent scoped review of the three-file delta approved it for full CI: no
+Critical/Important findings; original scenario body and assertions identical after
+whitespace normalization; fixture/security/cleanup and real resource guard retained.
+Review did not prove the shared-JVM-history inference or certify production memory
+behavior. That requires fresh full CI; neither is claimed from focused success.
+Minor deferred: DB workflow does not upload the child log on success/timeout;
+nonzero child exit includes its log in the Maven assertion output. The artifact
+collection improvement belongs with Task 4, keeping this correction narrowly scoped.
+The final merge gate remains full CI at the resulting exact PR head.
+
+Command:
 `python /workspace/scratch/38625e9262ff/toolchain/run-guard-maven.py -pl taxonomy-app -am test -Dtest=AdoptedLineageRealReanalysisTest,AnalysisMemoryGuardTest -Dsurefire.failIfNoSpecifiedTests=false`
 
 Task 4 stays in the separate continuation branch; this is not completion of the
