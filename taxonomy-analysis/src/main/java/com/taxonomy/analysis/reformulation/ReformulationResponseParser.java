@@ -46,6 +46,8 @@ public class ReformulationResponseParser {
             var provenance=Statement.Provenance.valueOf(text(node,"provenance"));
             if(provenance==Statement.Provenance.HUMAN_DECISION || provenance==Statement.Provenance.ADOPTED_SOURCE)
                 throw invalid("Model cannot create human decisions or adopted source");
+            if(provenance==Statement.Provenance.ORIGINAL && input.baseline().frozenContext().containsKey("adoptedLineage"))
+                throw invalid("Model cannot create ORIGINAL for adopted source");
             if(provenance==Statement.Provenance.ORIGINAL && (spans.isEmpty() || !wording.equals(String.join("",spans.stream().map(Statement.SourceSpan::exactText).toList())))) throw invalid("ORIGINAL wording must exactly match source spans");
             statements.add(new Statement(id("s",input,index++,node),wording,spans,provenance,refs(node,"architectureLinks",links),refs(node,"questionDependencies",questionRefs),nullableText(node,"conditionalValidity"),Statement.EditingOrigin.MODEL,"UNREVIEWED"));
         }

@@ -60,10 +60,13 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   Maven 3.9.16 under this task's toolchain using the repository wrapper; no
   product/test loss and no meaningful RED from the FileNotFoundError. RED not
   yet run for this test.
+- RED now verified: that exact-span claim was accepted, one assertion failure,
+  zero errors. Parser candidate explicitly disallows model ORIGINAL for an
+  adopted baseline; ordinary source ORIGINAL remains valid. GREEN unverified.
 
 ## Next exact command
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test -Dtest=ReformulationResponseParserTest#modelCannotRelabelExactAdoptedTextAsFreshOriginal -Dsurefire.failIfNoSpecifiedTests=false`
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test -Dtest=AdoptedLineagePromptTest,ReformulationResponseParserTest,FrozenReformulationEngineTest,CrossTaxonomyReconciliationTest -Dsurefire.failIfNoSpecifiedTests=false`
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.
