@@ -40,6 +40,7 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
     @Autowired ReformulationAdoptionService adoption;
     @Autowired PortablePortfolioGitService git;
     @Autowired ReformulationEvidenceCodec evidenceCodec;
+    @Autowired ReformulationPortableEvidenceRepository importedEvidence;
 
     private void adopt(boolean conflict) throws Exception {
         if (conflict) questionTransform = questions -> questions.stream().map(q -> q.id().equals("channel")
@@ -194,5 +195,35 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
         var before = projects.getRequirement(importedProject.id(), importedRequirement.id(), "architect", target);
         positive(importedProject.id(), importedRequirement.id(), 409);
         assertThat(projects.getRequirement(importedProject.id(), importedRequirement.id(), "architect", target)).isEqualTo(before);
+    }
+
+    @Test void importedConflictRetainsPortableKeysButMatchesExistingDifferentCaseBusinessIdentity() throws Exception {
+        adopt(true);
+        String dsl = git.exportPortfolio("architect", context);
+        var sourceBlock = new TaxDslParser().parse(dsl, "case-sensitive-source.taxdsl")
+                .blocksOfKind(ReformulationEvidenceCodec.BLOCK_KIND).getFirst();
+        var workspace = workspaces.createWorkspace("architect", "Case folded evidence " + UUID.randomUUID(), "Review guard");
+        workspace = workspaces.provisionWorkspaceRepository("architect", workspace.getWorkspaceId());
+        WorkspaceContext target = new WorkspaceContext("architect", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
+        var lowerProject = projects.createProject(new CreateProjectRequest("p", "Existing project", "Same identity", ProjectStatus.ACTIVE,
+                null, null, null, null), "architect", target);
+        var lowerRequirement = projects.createRequirement(lowerProject.id(), new CreateRequirementRequest("r", "Existing requirement",
+                ORIGINAL, RequirementStatus.DRAFT, 50, Criticality.HIGH, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED,
+                "architect", "Original", null), "architect", target);
+        git.materialize(dsl, "architect", target);
+        var current = projects.getRequirement(lowerProject.id(), lowerRequirement.id(), "architect", target);
+        assertThat(projects.getProject(lowerProject.id(), "architect", target).projectKey()).isEqualTo("p");
+        assertThat(current.requirementKey()).isEqualTo("r");
+        assertThat(current.currentVersion().versionNumber()).isEqualTo(2);
+        var stored = importedEvidence.findByScopeKeyOrderByProjectKeyAscRequirementKeyAscTargetVersionNumberAscEvidenceHashAsc(
+                PortfolioScope.key("architect", target));
+        assertThat(stored).hasSize(1);
+        assertThat(stored.getFirst().getProjectKey()).isEqualTo("P");
+        assertThat(stored.getFirst().getRequirementKey()).isEqualTo("R");
+        assertThat(stored.getFirst().getPayload()).isEqualTo(sourceBlock.property("payload"));
+        assertThat(stored.getFirst().getEvidenceHash()).isEqualTo(sourceBlock.property("evidenceHash"));
+        select(target);
+        positive(lowerProject.id(), lowerRequirement.id(), 409);
+        assertThat(projects.getRequirement(lowerProject.id(), lowerRequirement.id(), "architect", target).status()).isNotEqualTo(RequirementStatus.APPROVED);
     }
 }

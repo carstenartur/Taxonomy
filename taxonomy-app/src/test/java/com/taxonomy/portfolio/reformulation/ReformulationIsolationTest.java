@@ -9,6 +9,8 @@ import com.taxonomy.workspace.model.RepositoryVisibility;
 import com.taxonomy.workspace.service.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -180,6 +182,15 @@ class ReformulationIsolationTest {
         } finally {
             jdbc.update("update reformulation_proposal set baseline_payload=? where id=?", payload, id);
         }
+    }
+    @ParameterizedTest
+    @ValueSource(strings = {"null", "{untrusted-foreign-marker"})
+    void invalidPersistedBaselineFailsClosedWithoutLeakingPayload(String invalid) throws Exception {
+        String id = create().path("id").asText();
+        jdbc.update("update reformulation_proposal set baseline_payload=? where id=?", invalid, id);
+        mvc.perform(get(base()+"/"+id)).andExpect(status().isConflict())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString())
+                        .doesNotContain("untrusted-foreign-marker"));
     }
     @Test void cannotReadOrWriteProposalInForeignWorkspaceBranchOrRequirement() throws Exception {
         String id = create().path("id").asText();
