@@ -58,12 +58,18 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                     references(w, discovery.nodeIds(), graphNodes, de);
                     references(w, discovery.edgeIds(), graphEdges, de);
                 });
-                question.origins().forEach(origin -> w.paragraph(t(de, "Ursprungsfrage: ", "Origin question: ")
-                        + origin.id() + " · " + origin.wording() + " · " + origin.discoveries()));
-                question.origins().forEach(origin -> origin.discoveries().forEach(discovery -> {
-                    references(w, discovery.nodeIds(), graphNodes, de);
-                    references(w, discovery.edgeIds(), graphEdges, de);
-                }));
+                question.origins().forEach(origin -> {
+                    w.paragraph(t(de, "Ursprungsfrage: ", "Origin question: ")
+                            + origin.id() + " · " + origin.wording());
+                    origin.discoveries().forEach(discovery -> {
+                        w.paragraph(t(de, "Entdeckt bei: ", "Discovered at: ") + discovery.location()
+                                + " · " + t(de, "Kontext: ", "Context: ") + discovery.context()
+                                + " · " + t(de, "Begründung: ", "Rationale: ") + discovery.rationale()
+                                + " · " + t(de, "Quellstellen: ", "Source spans: ") + discovery.sourceSpans());
+                        references(w, discovery.nodeIds(), graphNodes, de);
+                        references(w, discovery.edgeIds(), graphEdges, de);
+                    });
+                });
                 question.sourceResolutions().forEach(resolution -> w.paragraph(t(de, "Aus Original beantwortet: ", "Resolved from source: ")
                         + resolution.values() + " · " + resolution.rationale() + " · " + resolution.sourceSpans()));
             }
@@ -118,6 +124,11 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                 w.heading(t(de, "Gespeicherte Architektur", "Saved architecture"), 1, "architecture_figures");
                 w.paragraph(t(de, "Kein Architekturgraph im ausgewählten Snapshot gespeichert.",
                         "No architecture graph recorded in the selected snapshot."));
+                if (architecture.gapAnalysisAvailable()) {
+                    w.heading(t(de, "Gespeicherte Lücken", "Saved gaps"), 2, null);
+                    if (architecture.gaps().isEmpty()) w.paragraph(t(de, "Keine Lücken gespeichert.", "No gaps recorded."));
+                    else architecture.gaps().forEach(w::paragraph);
+                }
                 w.heading(t(de, "Architekturbeleg", "Architecture provenance"), 1, "architecture_evidence");
                 w.paragraph("SHA-256: " + ArchitectureReportDocument.graphSha256(graph));
                 document.write(output);

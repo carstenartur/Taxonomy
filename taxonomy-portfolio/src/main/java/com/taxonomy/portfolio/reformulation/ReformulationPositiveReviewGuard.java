@@ -36,7 +36,22 @@ public class ReformulationPositiveReviewGuard {
             if (preview == null || !StableIdentityHash.sha256(preview.getPayload()).equals(preview.getContentHash()))
                 throw PortfolioException.conflict("Stored adoption review evidence is inconsistent");
             var content = json.read(preview.getPayload(), ReformulationAdoptionDtos.PreviewContent.class);
-            if (content == null || content.revision() == null || !Objects.equals(content.proposalId(), receipt.getProposalId()))
+            var source = content == null || content.currentRequirement() == null ? null
+                    : content.currentRequirement().currentVersion();
+            if (content == null || content.revision() == null || source == null
+                    || !Objects.equals(receipt.getScopeKey(), scope)
+                    || !Objects.equals(receipt.getRequirementId(), requirement.getId())
+                    || !Objects.equals(receipt.getTargetVersionId(), current.getId())
+                    || !Objects.equals(content.id(), receipt.getPreviewId())
+                    || !Objects.equals(content.proposalId(), receipt.getProposalId())
+                    || !Objects.equals(content.currentRequirement().id(), requirement.getId())
+                    || !Objects.equals(content.currentRequirement().projectId(), project.getId())
+                    || !Objects.equals(content.sourceVersionId(), source.id())
+                    || !Objects.equals(content.currentRequirement().currentVersionId(), source.id())
+                    || !Objects.equals(content.originalText(), source.text())
+                    || content.originalText() == null || content.finalText() == null
+                    || !Objects.equals(StableIdentityHash.sha256(content.originalText()), source.contentHash())
+                    || !Objects.equals(StableIdentityHash.sha256(content.finalText()), current.getContentHash()))
                 throw PortfolioException.conflict("Stored adoption review evidence is incomplete");
             rejectBlocking(content.revision());
         }

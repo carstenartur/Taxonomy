@@ -1,6 +1,6 @@
 # PR 1135 bounded review fixes
 
-Status: test-only WIP checkpoint; regression selectors have not run yet.
+Status: bounded production correction WIP; GREEN selectors have not run yet.
 
 Five review findings are isolated in focused tests: imported ancestry baseline/physical scope;
 local adoption preview versus current target; readable DOCX origin discovery fields;
@@ -15,6 +15,18 @@ change product code.
 
 The user authorizes merging independently reviewed/tested useful intermediate states;
 root handles merge/CI. Task 4 remains required after these fixes and Task 3 visual QA.
+
+RED evidence before production edits, all five findings:
+
+- Frozen identity order: 1 test, 1 expected assertion failure, 0 errors (export module).
+- DOCX readable origin and empty-graph saved gaps: 2 tests, 2 expected assertion failures, 0 errors (architecture module).
+- Ancestry baseline binding: 1 test, 1 expected assertion failure, 0 errors (portfolio module; a first fixture run erred on workspace-scope encoding and was corrected before semantic RED).
+- Current local preview target hash: 1 test, 1 expected HTTP assertion failure (200 versus required 409), 0 errors (app module).
+
+Production edits bind baseline coordinates to the proposal/receipt row and encoded scope,
+bind preview source and adopted target to the current physical aggregate, render origin
+discovery fields and empty-graph gaps, and preserve immutable insertion order in the
+frozen architecture model. These changes are not yet verified.
 
 Next targeted command after durable checkpoint publication:
 `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am '-Dtest=ReformulationEvidenceCodecBoundaryTest#ancestryRejectsBaselineOutsidePhysicalProposalAndReceipt,ReformulationPositiveReviewGuardTest#mismatchedLocalPreviewCannotAuthorizePositiveReview,ReformulationReportDocxReviewTest,FrozenReformulationArchitectureOrderTest' -Dsurefire.failIfNoSpecifiedTests=false test`.

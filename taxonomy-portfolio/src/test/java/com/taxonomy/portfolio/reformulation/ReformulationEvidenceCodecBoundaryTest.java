@@ -100,7 +100,7 @@ class ReformulationEvidenceCodecBoundaryTest {
     void ancestryRejectsBaselineOutsidePhysicalProposalAndReceipt() {
         var json = new PortfolioJsonCodec(new ObjectMapper());
         String scopeKey = new com.taxonomy.portfolio.model.PortfolioTenantIdentity(
-                "repo", "workspace:workspace", "main").scopeKey();
+                "repo", "WORKSPACE:workspace", "main").scopeKey();
         var receipt = new ReformulationAdoption("receipt", "proposal", "preview", scopeKey, "command",
                 20L, 30L, "{}", java.time.Instant.now());
         for (var scope : List.of(

@@ -11,6 +11,7 @@ import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.portfolio.model.ArchitectureProject;
 import com.taxonomy.portfolio.model.ProjectRequirement;
 import com.taxonomy.portfolio.model.ProjectRequirementVersion;
+import com.taxonomy.portfolio.model.PortfolioTenantIdentity;
 import com.taxonomy.reformulation.ReformulationBaseline;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.node.ObjectNode;
@@ -306,13 +307,23 @@ public class ReformulationEvidenceCodec {
     private LineageSnapshot ancestry(ReformulationAdoption receipt, String scopeKey) {
         var proposal = proposals.findById(receipt.getProposalId())
                 .orElseThrow(() -> PortfolioException.conflict("Adopted proposal is missing"));
-        if (!scopeKey.equals(proposal.getScopeKey())
+        if (!scopeKey.equals(receipt.getScopeKey()) || !scopeKey.equals(proposal.getScopeKey())
                 || !Objects.equals(receipt.getRequirementId(), proposal.getRequirementId())) {
             throw PortfolioException.conflict("Adopted proposal scope is inconsistent");
         }
         ReformulationBaseline baseline = json.read(proposal.getBaselinePayload(), ReformulationBaseline.class);
-        if (baseline == null || baseline.sourceVersionId() <= 0) {
-            throw PortfolioException.conflict("Adopted proposal baseline is incomplete");
+        PortfolioTenantIdentity tenant = PortfolioTenantIdentity.parse(scopeKey);
+        String workspaceId = tenant.workspaceScope().equals(PortfolioTenantIdentity.CENTRAL_SCOPE)
+                ? null : tenant.workspaceScope().substring(PortfolioTenantIdentity.WORKSPACE_SCOPE_PREFIX.length());
+        if (baseline == null || baseline.scope() == null
+                || !tenant.repositoryId().equals(baseline.scope().repositoryId())
+                || !Objects.equals(workspaceId, baseline.scope().workspaceId())
+                || !tenant.branch().equals(baseline.scope().branch())
+                || !Objects.equals(proposal.getProjectId(), baseline.scope().projectId())
+                || !Objects.equals(proposal.getRequirementId(), baseline.scope().requirementId())
+                || !Objects.equals(proposal.getSourceVersionId(), baseline.sourceVersionId())
+                || !Objects.equals(proposal.getSnapshotId(), baseline.snapshotId())) {
+            throw PortfolioException.conflict("Adopted proposal baseline does not match physical scope and source");
         }
         String frozen = baseline.frozenContext().get("adoptedLineage");
         if (frozen == null) return new LineageSnapshot(List.of(), List.of(), "[]");
