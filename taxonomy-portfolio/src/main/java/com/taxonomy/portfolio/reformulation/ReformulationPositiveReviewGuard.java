@@ -41,7 +41,7 @@ public class ReformulationPositiveReviewGuard {
                 scope, project.getProjectKey(), requirement.getRequirementKey(), current.getVersionNumber(), current.getContentHash())) {
             if (!StableIdentityHash.sha256(evidence.getPayload()).equals(evidence.getEvidenceHash()))
                 throw PortfolioException.conflict("Imported adoption review evidence is inconsistent");
-            var payload = json.read(evidence.getPayload(), ReformulationEvidenceCodec.Payload.class);
+            var payload = json.readStrictEvidence(evidence.getPayload(), ReformulationEvidenceCodec.Payload.class);
             if (payload == null || payload.revision() == null
                     || !Objects.equals(payload.projectKey(), evidence.getProjectKey())
                     || !Objects.equals(payload.requirementKey(), evidence.getRequirementKey())

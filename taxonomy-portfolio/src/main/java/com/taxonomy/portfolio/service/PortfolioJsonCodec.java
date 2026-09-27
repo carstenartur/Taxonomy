@@ -2,6 +2,8 @@ package com.taxonomy.portfolio.service;
 
 import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
+import tools.jackson.databind.DeserializationFeature;
+import tools.jackson.core.StreamReadFeature;
 import org.springframework.stereotype.Service;
 
 import java.util.LinkedHashMap;
@@ -13,9 +15,13 @@ import java.util.Map;
 public class PortfolioJsonCodec {
 
     private final ObjectMapper objectMapper;
+    private final ObjectMapper strictEvidenceMapper;
 
     public PortfolioJsonCodec(ObjectMapper objectMapper) {
         this.objectMapper = objectMapper;
+        this.strictEvidenceMapper = objectMapper.rebuild()
+                .enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION)
+                .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).build();
     }
 
     public String write(Object value) {
@@ -34,6 +40,16 @@ public class PortfolioJsonCodec {
         } catch (Exception exception) {
             throw PortfolioException.analysisFailed(
                     "Could not deserialize portfolio payload as " + type.getSimpleName(), exception);
+        }
+    }
+
+    /** Evidence trust boundary: neither duplicate keys nor trailing values are recoverable. */
+    public <T> T readStrictEvidence(String value, Class<T> type) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return strictEvidenceMapper.readValue(value, type);
+        } catch (Exception exception) {
+            throw PortfolioException.validation("Reformulation evidence integrity payload is invalid");
         }
     }
 

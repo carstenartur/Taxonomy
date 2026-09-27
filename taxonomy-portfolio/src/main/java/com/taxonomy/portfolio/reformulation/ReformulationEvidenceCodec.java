@@ -134,8 +134,15 @@ public class ReformulationEvidenceCodec {
         DocumentAst document = parse(dsl, "reformulation-evidence-import.taxdsl");
         List<Evidence> result = new ArrayList<>();
         Map<String, Evidence> byHash = new LinkedHashMap<>();
+        Set<String> roots = new LinkedHashSet<>();
         for (BlockAst block : document.blocksOfKind(BLOCK_KIND)) {
             Evidence evidence = validate(block, document);
+            String root = evidence.projectKey().toLowerCase(java.util.Locale.ROOT) + "\u0000"
+                    + evidence.requirementKey().toLowerCase(java.util.Locale.ROOT) + "\u0000"
+                    + evidence.targetVersionNumber() + "\u0000" + evidence.evidenceHash();
+            if (!roots.add(root)) {
+                throw PortfolioException.validation("Duplicate reformulation evidence root");
+            }
             Evidence previous = byHash.putIfAbsent(evidence.evidenceHash(), evidence);
             if (previous != null && !previous.equals(evidence)) {
                 throw PortfolioException.conflict(
@@ -328,7 +335,7 @@ public class ReformulationEvidenceCodec {
 
         Payload decoded;
         try {
-            decoded = json.read(payload, Payload.class);
+            decoded = json.readStrictEvidence(payload, Payload.class);
         } catch (PortfolioException invalid) {
             throw new PortfolioException(
                     PortfolioException.Kind.VALIDATION,

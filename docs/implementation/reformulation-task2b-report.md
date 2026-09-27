@@ -1,15 +1,20 @@
 # Task 2b — adopted lineage and portable evidence
 
-Status: RED test checkpoint, not implementation or acceptance. This checkpoint is
-deliberately expected to fail and is not merge-ready.
+Status: strict-decoder implementation in progress, not Task 2b acceptance.
 
 ## Current slice
 
 - Added real portfolio import tests for a duplicate root, a checksum-valid payload
   with duplicate JSON keys, and a checksum-valid trailing JSON token. The tests
   require rejection before ordinary portfolio materialization changes the target.
-- No production behavior changed yet. RED verification is the next action after
-  remote persistence of this checkpoint.
+- RED run: `ReformulationEvidenceRoundTripTest`, six cases, two expected assertion
+  failures (duplicate root and duplicate JSON key were accepted), zero errors.
+  The checksum-valid trailing-token case already rejected; this is compatibility
+  evidence, not a newly failing RED. The first WIP remote checkpoint was verified
+  at `2a9ca999e1d774572ffbe9c1e4c3ab29ab889b90`.
+- The trust-boundary JSON decoder now enables duplicate-key and trailing-token
+  rejection; exact repeated roots are rejected before materialization. Covering
+  GREEN has not yet been run.
 
 ## Next exact command
 
