@@ -154,6 +154,33 @@ class ReformulationIsolationTest {
         mvc.perform(get(base()+"/"+id)).andExpect(status().isConflict())
                 .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(foreignPayload));
     }
+    @Test void everyPersistedBaselineIdentityCoordinateMustMatchPhysicalProposal() throws Exception {
+        String id = create().path("id").asText();
+        String payload = jdbc.queryForObject("select baseline_payload from reformulation_proposal where id=?", String.class, id);
+        var changes = Map.of(
+                "repositoryId", new String[]{context.repositoryId(), "foreign-repository"},
+                "workspaceId", new String[]{context.workspaceId(), "foreign-workspace"},
+                "branch", new String[]{context.currentBranch(), "foreign-branch"},
+                "projectId", new String[]{project.id().toString(), Long.toString(project.id() + 1000)},
+                "requirementId", new String[]{requirement.id().toString(), Long.toString(requirement.id() + 1000)},
+                "sourceVersionId", new String[]{requirement.currentVersionId().toString(), Long.toString(requirement.currentVersionId() + 1000)},
+                "snapshotId", new String[]{snapshot, UUID.randomUUID().toString()});
+        try {
+            for (var entry : changes.entrySet()) {
+                String key = entry.getKey();
+                boolean numeric = key.endsWith("Id") && !key.equals("repositoryId") && !key.equals("workspaceId") && !key.equals("snapshotId");
+                String before = "\"" + key + "\":" + (numeric ? entry.getValue()[0] : "\"" + entry.getValue()[0] + "\"");
+                String after = "\"" + key + "\":" + (numeric ? entry.getValue()[1] : "\"" + entry.getValue()[1] + "\"");
+                assertThat(payload).contains(before);
+                String corrupted = payload.replaceFirst(java.util.regex.Pattern.quote(before), java.util.regex.Matcher.quoteReplacement(after));
+                jdbc.update("update reformulation_proposal set baseline_payload=? where id=?", corrupted, id);
+                mvc.perform(get(base()+"/"+id)).andExpect(status().isConflict())
+                        .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(entry.getValue()[1]));
+            }
+        } finally {
+            jdbc.update("update reformulation_proposal set baseline_payload=? where id=?", payload, id);
+        }
+    }
     @Test void cannotReadOrWriteProposalInForeignWorkspaceBranchOrRequirement() throws Exception {
         String id = create().path("id").asText();
         var other = createRequirement("OTHER");
