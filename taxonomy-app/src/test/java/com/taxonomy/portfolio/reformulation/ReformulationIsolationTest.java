@@ -140,6 +140,20 @@ class ReformulationIsolationTest {
         assertThatThrownBy(() -> jdbc.update("update reformulation_proposal set scope_key=? where id=?","foreign",id))
                 .isInstanceOf(org.springframework.dao.DataIntegrityViolationException.class);
     }
+    @Test void storedForeignBaselineNeverLeaksThroughScopedProposalRead() throws Exception {
+        String id = create().path("id").asText();
+        var original = requirement;
+        var foreign = createRequirement("FOREIGN");
+        requirement = foreign;
+        snapshot = snapshot(foreign);
+        String foreignId = create().path("id").asText();
+        String foreignPayload = jdbc.queryForObject("select baseline_payload from reformulation_proposal where id=?", String.class, foreignId);
+        assertThat(foreignPayload).contains("\"requirementId\":" + foreign.id());
+        jdbc.update("update reformulation_proposal set baseline_payload=? where id=?", foreignPayload, id);
+        requirement = original;
+        mvc.perform(get(base()+"/"+id)).andExpect(status().isConflict())
+                .andExpect(result -> assertThat(result.getResponse().getContentAsString()).doesNotContain(foreignPayload));
+    }
     @Test void cannotReadOrWriteProposalInForeignWorkspaceBranchOrRequirement() throws Exception {
         String id = create().path("id").asText();
         var other = createRequirement("OTHER");
