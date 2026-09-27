@@ -19,9 +19,12 @@ public class ReformulationResponseParser {
         JsonNode root=json.reader().with(tools.jackson.core.StreamReadFeature.STRICT_DUPLICATE_DETECTION).with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS).readTree(response);
         fields(root,"summary","statementProposals","preservedStatementIds","questionProposals","preservedQuestionIds","uncoveredSourceRefs","conflictCandidates");
         Set<String> statementIds=new TreeSet<>(),questionIds=new TreeSet<>(),nodes=new TreeSet<>();
+        var priorStatements=new ArrayList<Statement>();
         nodes.add(input.nodeId());if(input.parentId()!=null) nodes.add(input.parentId());
-        input.directContributions().forEach(s->{statementIds.add(s.id());nodes.addAll(s.architectureLinks());});
-        input.children().forEach(c->{nodes.add(c.nodeId());c.statementProposals().forEach(s->{statementIds.add(s.id());nodes.addAll(s.architectureLinks());});statementIds.addAll(c.preservedStatementIds());c.questionProposals().forEach(q->questionIds.add(q.id()));questionIds.addAll(c.preservedQuestionIds());});
+        input.directContributions().forEach(s->{priorStatements.add(s);statementIds.add(s.id());nodes.addAll(s.architectureLinks());});
+        input.children().forEach(c->{nodes.add(c.nodeId());c.statementProposals().forEach(s->{priorStatements.add(s);statementIds.add(s.id());nodes.addAll(s.architectureLinks());});statementIds.addAll(c.preservedStatementIds());c.questionProposals().forEach(q->questionIds.add(q.id()));questionIds.addAll(c.preservedQuestionIds());});
+        var rejected=RejectedWordingGuard.from(priorStatements);
+        if(RejectedWordingGuard.repeats(text(root,"summary"),rejected))throw invalid("Rejected wording repeated in summary");
         input.openDecisions().forEach(q->questionIds.add(q.id()));
         var catalogue=input.baseline().frozenContext().get("catalogue");
         if(catalogue!=null) catalogueIds(json.readTree(catalogue),nodes);
@@ -39,6 +42,7 @@ public class ReformulationResponseParser {
         for(JsonNode node:array(root,"statementProposals")) {
             fields(node,"wording","provenance","sourceSpans","architectureLinks","questionDependencies","conditionalValidity");
             String wording=text(node,"wording");var spans=spans(node,"sourceSpans",input);
+            if(RejectedWordingGuard.repeats(wording,rejected))throw invalid("Rejected wording repeated in statement");
             var provenance=Statement.Provenance.valueOf(text(node,"provenance"));
             if(provenance==Statement.Provenance.HUMAN_DECISION) throw invalid("Model cannot create human decisions");
             if(provenance==Statement.Provenance.ORIGINAL && (spans.isEmpty() || !wording.equals(String.join("",spans.stream().map(Statement.SourceSpan::exactText).toList())))) throw invalid("ORIGINAL wording must exactly match source spans");
