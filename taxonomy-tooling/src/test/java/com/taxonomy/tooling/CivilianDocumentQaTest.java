@@ -127,6 +127,18 @@ class CivilianDocumentQaTest {
         assertThat(java.nio.file.Files.exists(manifest)).isFalse();
     }
 
+    @Test
+    void rerenderRemovesOnlyItsOwnGeneratedEvidence(@org.junit.jupiter.api.io.TempDir java.nio.file.Path root) throws Exception {
+        var generated = List.of("revision.pdf", "revision.txt", "revision.bbox.html", "revision-01.png", "revision-99.png");
+        var preserved = List.of("adoption.pdf", "adoption-01.png", "revision-notes.png", "revision.docx", "revision.json");
+        for (String name : java.util.stream.Stream.concat(generated.stream(), preserved.stream()).toList()) {
+            java.nio.file.Files.writeString(root.resolve(name), name);
+        }
+        CivilianDocumentQa.clearReformulationRender(root, "revision");
+        for (String name : generated) assertThat(java.nio.file.Files.exists(root.resolve(name))).as(name).isFalse();
+        for (String name : preserved) assertThat(java.nio.file.Files.readString(root.resolve(name))).isEqualTo(name);
+    }
+
     private static String xml(String pages) {
         return "<html xmlns='http://www.w3.org/1999/xhtml'><body><doc>" + pages + "</doc></body></html>";
     }

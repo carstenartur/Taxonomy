@@ -244,3 +244,11 @@ Prompt encoding v6 selects the dictionary only when its full instruction+payload
 improves Unicode-character and UTF-8 byte budgets. The reconciliation rule is reused
 unchanged through a shared helper. The answer corpus requires nonblank event IDs.
 The work is remotely checkpointed before further verification.
+
+2026-09-27 21:29 UTC: document-evidence regression reproduced a stale success
+manifest (11 tests / one failure). The renderer now invalidates that manifest
+before starting, clears only the selected document's generated PDF/text/numeric
+page images, and requires one image per actual PDF page. Its regression verifies
+other documents and unrelated files survive. Tooling is GREEN 12/12, no failures,
+errors or skips. The final prompt-budget/playback/application run is in progress;
+native browser and full CI are still required on the final published head.

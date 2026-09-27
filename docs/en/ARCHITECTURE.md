@@ -357,7 +357,7 @@ preview-bound adoption transaction activates a draft and stores its receipt atom
 Explicit project checkpoints include the evidence; materialization and restart preserve
 its historical identities. New analysis and offers inherit adopted provenance rather
 than reclassifying model additions as original external requirements. Prompt encoding
-v5 includes inherited question discoveries/origins in the request-local context dictionary;
+v6 includes inherited question discoveries/origins in the request-local context dictionary;
 this removes repeated serialization without dropping unique evidence or raising limits.
 
 The [acceptance contract](../testing/requirement-reformulation.md) separates deterministic

@@ -52,6 +52,7 @@ final class CivilianDocumentQa {
 
     /** Paired historical JSON is the content oracle; DOCX is independently rendered by LibreOffice. */
     static Map<String, Object> inspectReformulations(Path root, String soffice) throws IOException, InterruptedException {
+        Files.deleteIfExists(root.resolve("reformulation-document-quality.json"));
         List<Path> cases;
         try (var files = Files.walk(root)) {
             cases = files.filter(p -> p.getFileName().toString().equals("identity.json")).map(Path::getParent).sorted().toList();
@@ -70,6 +71,7 @@ final class CivilianDocumentQa {
             for (Object value : array(revision.get("answers"))) expected.add(text(object(value), "rationale"));
             if (kind.equals("adoption")) expected.add(text(object(report.get("adoption")), "rationale"));
             Path output = Files.createDirectories(directory.resolve("document-qa"));
+            clearReformulationRender(output, kind);
             Path temporary = Files.createTempDirectory("reformulation-lo-");
             Path pdf = output.resolve(kind + ".pdf");
             try {
@@ -88,15 +90,31 @@ final class CivilianDocumentQa {
             checked.put("sourceSha256", sha256(source)); checked.put("jsonSha256", sha256(directory.resolve(kind + ".json")));
             checked.put("renderedPdfSha256", sha256(pdf));
             var images = new LinkedHashMap<String, String>();
-            try (var files = Files.newDirectoryStream(output, kind + "-*.png")) {
+            try (var files = Files.newDirectoryStream(output, path -> isPageImage(path, kind))) {
                 for (Path file : files) images.put(file.getFileName().toString(), sha256(file));
             }
+            require(images.size() == ((Number) checked.get("pages")).intValue(),
+                    kind + ": rendered page-image count differs from PDF page count");
             checked.put("pageImagesSha256", images);
             documents.put(root.relativize(source).toString(), checked);
         }
         var result = Map.<String, Object>of("renderer", command(soffice, "--version").strip(), "documents", documents);
         Files.writeString(root.resolve("reformulation-document-quality.json"), FlatJson.pretty(result));
         return result;
+    }
+
+    static void clearReformulationRender(Path output, String kind) throws IOException {
+        require(List.of("revision", "adoption").contains(kind), "Unknown reformulation document kind");
+        for (String suffix : List.of(".pdf", ".txt", ".bbox.html")) {
+            Files.deleteIfExists(output.resolve(kind + suffix));
+        }
+        try (var files = Files.newDirectoryStream(output, path -> isPageImage(path, kind))) {
+            for (Path old : files) Files.delete(old);
+        }
+    }
+
+    private static boolean isPageImage(Path path, String kind) {
+        return path.getFileName().toString().matches(kind + "-[0-9]+\\.png");
     }
 
     static Map<String, Object> inspect(Path root, String soffice, boolean visioOnly) throws IOException, InterruptedException {
