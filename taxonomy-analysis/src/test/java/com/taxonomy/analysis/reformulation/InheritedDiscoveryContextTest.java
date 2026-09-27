@@ -14,7 +14,14 @@ class InheritedDiscoveryContextTest {
     @Test void nodeEncodesRepeatedHistoricalDiscoveriesWithoutLosingDecisions() { verify(false); }
     @Test void reconciliationEncodesRepeatedHistoricalDiscoveriesWithoutLosingDecisions() { verify(true); }
 
+    @Test void nodeKeepsSmallRepeatedContextsInlineIncludingUnicode() {
+        for (String repeated : List.of("a".repeat(140), "😀".repeat(70))) verify(false, repeated, 1, false);
+    }
+
     private void verify(boolean reconcile) {
+        verify(reconcile, "Historical context äöü 😀 with \"quoted\" conditions.\n".repeat(900), 3, true);
+    }
+    private void verify(boolean reconcile, String repeated, int count, boolean encoded) {
         var base = WalkUpReformulationTest.baseline();
         var history = json.createArrayNode();
         var entry = history.addObject().put("historicalEvidenceHash", "unchanged-historical-evidence")
@@ -23,15 +30,14 @@ class InheritedDiscoveryContextTest {
         entry.putArray("humanAnswers").addObject().put("questionId", "q-0").put("state", "DEFERRED")
                 .put("rationale", "Need human evidence").putArray("values");
         var questions = entry.putArray("questions");
-        String repeated = "Historical context äöü 😀 with \"quoted\" conditions.\n".repeat(900);
-        for (int i = 0; i < 3; i++) {
+        for (int i = 0; i < count; i++) {
             var question = questions.addObject().put("id", "q-" + i).put("wording", "Concrete decision " + i).put("state", "DEFERRED");
             question.putObject("key").put("scope", "global");
             var discovery = question.putArray("discoveries").addObject().put("nodeId", "A").put("context", repeated);
             discovery.putArray("nodeIds").add("A"); discovery.putArray("edgeIds");
             question.putArray("origins").addObject().putArray("discoveries").add(discovery.deepCopy());
         }
-        assertThat(history.toString().length()).isGreaterThan(120_000);
+        if (encoded) assertThat(history.toString().length()).isGreaterThan(120_000);
         String archived = history.toString();
         var frozen = new HashMap<>(base.frozenContext()); frozen.put("inheritedDecisionContext", archived);
         frozen.putAll(ReconcilePromptBuilder.freeze(Map.of()));
@@ -43,7 +49,8 @@ class InheritedDiscoveryContextTest {
                 : new ReformulationPromptBuilder(json).build(new NodeSynthesisInput(baseline, "A", null, "A",
                 List.of(), List.of(), List.of(), Map.of(), List.of(), List.of(), "Preserve source"), null);
         var data = json.readTree(prompt.substring(prompt.indexOf(marker) + marker.length()));
-        assertThat(data.path("discoveryContextTable").size()).isEqualTo(1);
+        assertThat(data.has("discoveryContextTable")).isEqualTo(encoded);
+        if (encoded) assertThat(data.path("discoveryContextTable").size()).isEqualTo(1);
         var restored = data.path("inheritedDecisionContext").deepCopy();
         restore(restored, data.path("discoveryContextTable"));
         assertThat(restored).isEqualTo(history);

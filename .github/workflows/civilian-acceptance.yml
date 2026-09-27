@@ -41,7 +41,7 @@ jobs:
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationCivilianAcceptanceTest.xml 1 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationCivilianBrowserTest.xml 1 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ReformulationAuthoredScenarioTest.xml 2 \
-            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ScenarioLlmPlaybackTest.xml 15 \
+            taxonomy-app/target/surefire-reports/TEST-com.taxonomy.acceptance.ScenarioLlmPlaybackTest.xml 17 \
             taxonomy-app/target/surefire-reports/TEST-com.taxonomy.portfolio.reformulation.ReformulationBrowserTest.xml 1
           java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-civilian-documents --artifacts taxonomy-app/target/civilian-acceptance
           java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-civilian-documents --reformulation-only --artifacts taxonomy-app/target/reformulation-civilian-acceptance

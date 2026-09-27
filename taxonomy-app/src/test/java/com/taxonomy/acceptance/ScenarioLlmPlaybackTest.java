@@ -168,6 +168,24 @@ class ScenarioLlmPlaybackTest {
         }
     }
 
+    @Test void reformulationCorpusRejectsBlankAnswerIdentity() throws Exception {
+        var fixture = reformulationFixture();
+        ((tools.jackson.databind.node.ObjectNode) fixture.at("/reformulationReplies/1/answers/0")).put("id", "");
+        assertThatThrownBy(() -> new ScenarioLlmPlayback(fixture)).hasMessageContaining("answer identity");
+    }
+
+    @Test void parentArtifactAlreadyRetainsPromptsRoutedToAdoptedSource() throws Exception {
+        var playback = new ScenarioLlmPlayback(ReformulationCivilianCorpus.flood());
+        String original = playback.fixture().at("/requirement/text").asText();
+        String adopted = original + " Explicitly adopted wording.";
+        String initial = prompt(playback, playback.fixture().path("replies").get(0));
+        playback.respond(initial); playback.registerAdoptedSource(adopted);
+        String subsequent = initial.replace(original, adopted); playback.respond(subsequent);
+        assertThat(playback.prompts()).containsExactly(initial, subsequent);
+        assertThat(playback.calls()).hasSize(2);
+        assertThat(playback.failures()).isEmpty();
+    }
+
     @Test void duplicateReformulationScopesAreRejectedBeforeTransport() throws Exception {
         var fixture = reformulationFixture();
         var rules = (tools.jackson.databind.node.ArrayNode) fixture.path("reformulationReplies");

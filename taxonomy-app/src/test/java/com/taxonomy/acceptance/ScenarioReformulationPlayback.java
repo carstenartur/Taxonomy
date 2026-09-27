@@ -83,6 +83,7 @@ final class ScenarioReformulationPlayback {
         for (var answer : scope.path("answers")) {
             String question = answer.path("questionId").asText();
             require(!question.isBlank(), "Missing answer question identity");
+            require(!answer.path("id").asText().isBlank(), "Missing answer identity");
             var state = new TreeMap<String, Object>();
             for (String field : List.of("questionId", "values", "state", "disposition", "otherText", "rationale", "supersedes"))
                 state.put(field, canonical(answer.path(field)));

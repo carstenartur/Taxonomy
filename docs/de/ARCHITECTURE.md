@@ -366,7 +366,7 @@ an die Vorschau gebundene Transaktion aktiviert den Entwurf und speichert atomar
 Übernahmebeleg. Ausdrückliche Projekt-Checkpoints enthalten diese Belege; Materialisierung
 und Neustart erhalten ihre Identitäten. Neue Analysen und Angebote erben die Herkunft
 übernommener Entscheidungen. Modellergänzungen werden dadurch keine ursprünglichen
-externen Anforderungen. Promptkodierung v5 nimmt geerbte Frageentdeckungen und ihre
+externen Anforderungen. Promptkodierung v6 nimmt geerbte Frageentdeckungen und ihre
 Ursprünge in das lokale Kontextwörterbuch des Aufrufs auf. Eindeutige Belege bleiben
 erhalten; wiederholte Serialisierung entfällt, die Limits steigen nicht.
 
