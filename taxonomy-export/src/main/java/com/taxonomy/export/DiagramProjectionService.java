@@ -126,7 +126,8 @@ public class DiagramProjectionService {
             var coverage = view.getAnalysisCoverage();
             String open = coverage.nodes().entrySet().stream()
                     .filter(e -> e.getValue().reason() != null && (e.getValue().reason().startsWith("FAILED:")
-                            || e.getValue().reason().startsWith("LEFT_OPEN:")))
+                            || e.getValue().reason().startsWith("LEFT_OPEN:")
+                            || e.getValue().reason().startsWith("INTERRUPTED:")))
                     .map(Map.Entry::getKey).sorted().limit(6).collect(java.util.stream.Collectors.joining(", "));
             // Titles are carried by every supported diagram format. Do not create an invented
             // architecture node to represent analysis metadata. Full coverage travels in JSON.

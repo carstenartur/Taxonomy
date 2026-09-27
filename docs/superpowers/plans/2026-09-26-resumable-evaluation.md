@@ -53,3 +53,59 @@ stack or a physical iPad. The full Maven verification was attempted through the
 wrapper and failed downloading Maven. `npm --prefix .github run verify:ui-contracts`
 was attempted and stopped at the unavailable `@axe-core/playwright` dependency.
 These full gates are not green, and the new head still requires CI before merge.
+
+## PR #1133 continuation/evidence follow-up (2026-09-27)
+
+Continued on head `fdcb00a76096be2640423437ca8f6fe7d3545276`, rather than adding
+another evaluation engine. Its core reactor, UI contracts, all six UI shards,
+database compatibility and separate acceptance workflows passed. The overall
+CI/CD run `36260572444` was red solely because the final aggregation job stops
+intentionally at **Keep draft heads non-mergeable**. That guard is unchanged;
+these results do not certify the next commit.
+
+New regressions reproduced three remaining boundary failures before the fixes:
+
+- A paused/stopped/cancelled traversal could leave not-yet-visited roots with
+  `NOT_EVALUATED` but no open-evaluation count, losing uncertainty on exchange.
+  `INTERRUPTED:<state>` now preserves those scopes, independently of failed KI
+  checkpoints. Assessed ancestors remain assessed; excluded descendants remain
+  excluded. Graphical exports name interrupted scopes without invented nodes.
+  The per-node accessible badge also retains the explicit unassessed label for
+  each interruption state, rather than only showing the global warning.
+- Imported partial evidence has no owned recovery dialog. The public Copilot
+  path now refuses unsupported global gap/pattern/recommendation claims and
+  shows an inline explanation; the individual actions no longer silently no-op.
+- A successful follow-up whose draft write failed could admit its dependent
+  stages. Persistence must now succeed first. Retry saves the cached successful
+  result instead of repeating the KI query; a workspace change during the write
+  rejects the stale completion.
+
+Fresh local verification of this follow-up:
+
+- Seven new JavaScript regressions failed before their fixes; all 18 recovery
+  tests then passed. The focused analysis/session/Copilot suites pass **273**
+  tests, zero failures or skips.
+- Three modified Java production classes compile with Java 21 and `-parameters`
+  against the exact CI-built PR runtime. All **five JVM probe groups** pass.
+  The stop/JSON-exchange regression and interrupted diagram scope regression
+  were each observed failing against the prior production behavior.
+- All **12 Chromium component scenarios** pass, including real CDP 400% pinch
+  zoom, narrow/short viewports, visible controls and unchanged scroll position.
+- **Eight real Spring HTTP checks** pass with a loopback-only KI fixture and
+  file-backed HSQLDB: pause with retained parent evidence, read without calls,
+  repeat permanent invalid JSON with the identical prompt, skip and continue
+  independent branches, targeted reassessment, then actual Java process restart,
+  read of the restored paused run without calls, and retry with cached answers.
+  Offered catalogue identities are discovered from the application's real tree.
+  No external KI service was contacted. The failed prompt exceeded 10,000
+  characters and its full fingerprint was unchanged on retry.
+- `git diff --check` passes. The canonical Maven and full npm verification
+  commands were both attempted, without weakened flags. Maven cannot download
+  its distribution here; npm stops at missing `@axe-core/playwright`.
+
+Limits: local Node 22.16.0 differs from CI Node 24; installed Chromium/Playwright
+components are not the pinned native application E2E stack. HTTP execution uses
+patched classes/resources ahead of the original CI runtime, not a new full Maven
+package or external database matrix. There is no fresh independent reviewer
+agent or physical iPad run. Full new-head CI and review remain release gates;
+this follow-up neither merges the PR nor marks the project completely defect-free.

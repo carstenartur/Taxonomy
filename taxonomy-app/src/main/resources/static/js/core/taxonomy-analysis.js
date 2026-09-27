@@ -34,6 +34,18 @@
         return scores && Object.keys(scores).length > 0;
     }
 
+    function warnAboutOpenAssessments(contentId) {
+        var recovery = window.TaxonomyAnalysisRecovery;
+        if (!recovery?.hasOpenEvaluations() && !window.TaxonomyState?.analysisCoverage?.failedOrBlockedNodes) return false;
+        var message = recovery?.partialResultMessage?.() || t('relation.search.partial');
+        if (contentId === 'copilotContent') renderPartialCopilot(message);
+        else showPanelError(contentId, message);
+        // Imported evidence has no owned continuation dialog. The inline warning is
+        // therefore necessary even when open() cannot offer a recovery action.
+        recovery?.open();
+        return true;
+    }
+
     function displayPercent(value) {
         var numeric = Number(value);
         if (!Number.isFinite(numeric)) return '0';
@@ -61,10 +73,7 @@
     // ── Gap Analysis ──────────────────────────────────────────────────────────
 
     function runGapAnalysis() {
-        if (window.TaxonomyAnalysisRecovery?.hasOpenEvaluations()) {
-            window.TaxonomyAnalysisRecovery.open();
-            return;
-        }
+        if (warnAboutOpenAssessments('gapAnalysisContent')) return;
         if (!hasScores()) {
             showPanelError('gapAnalysisContent', t('analyze.scores.required'));
             return;
@@ -171,10 +180,7 @@
     // ── Pattern Detection ─────────────────────────────────────────────────────
 
     function runPatternDetection() {
-        if (window.TaxonomyAnalysisRecovery?.hasOpenEvaluations()) {
-            window.TaxonomyAnalysisRecovery.open();
-            return;
-        }
+        if (warnAboutOpenAssessments('patternDetectionContent')) return;
         if (!hasScores()) {
             showPanelError('patternDetectionContent', t('analyze.scores.required'));
             return;
@@ -278,10 +284,7 @@
     // ── Architecture Recommendation ───────────────────────────────────────────
 
     function runRecommendation() {
-        if (window.TaxonomyAnalysisRecovery?.hasOpenEvaluations()) {
-            window.TaxonomyAnalysisRecovery.open();
-            return;
-        }
+        if (warnAboutOpenAssessments('recommendationContent')) return;
         if (!hasScores()) {
             showPanelError('recommendationContent', t('analyze.scores.required'));
             return;
@@ -553,6 +556,7 @@
     // ── Copilot One-Click Flow ────────────────────────────────────────────────
 
     function runCopilotFlow() {
+        if (warnAboutOpenAssessments('copilotContent')) return;
         var bt = getBusinessText();
         if (!bt) {
             showCopilotStatus('warning', t('analyze.copilot.enter.requirement'));

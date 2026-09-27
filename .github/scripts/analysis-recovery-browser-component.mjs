@@ -74,6 +74,19 @@ try {
  await page.evaluate(()=>{window.__badge=document.getElementById('analysisCoverage-BP-1327');window.TaxonomyAnalysisRecovery.renderCoverage();});
  assert(await page.evaluate(()=>window.__badge===document.getElementById('analysisCoverage-BP-1327')),'heartbeat recreated the same badge');
  report.push({name:'coverage-badges-stable-and-outside-actions'});
+ for(const state of ['PAUSED','STOPPED','CANCELLED']) {
+  await page.evaluate(state=>{
+   window.TaxonomyState.analysisCoverage.nodes['BP-1327'].reason='INTERRUPTED:'+state;
+   window.TaxonomyAnalysisRecovery.renderCoverage();
+  },state);
+  assert.equal(await page.evaluate(()=>document.getElementById('analysisCoverage-BP-1327')?.textContent),'Nicht bewertet',
+   'An interrupted unvisited node must not silently lose its unknown-assessment badge');
+ }
+ await page.evaluate(()=>{
+  window.TaxonomyState.analysisCoverage.nodes['BP-1327'].reason='LEFT_OPEN:q';
+  window.TaxonomyAnalysisRecovery.renderCoverage();
+ });
+ report.push({name:'interrupted-node-remains-explicitly-unassessed'});
  for(const viewport of [{width:320,height:480},{width:640,height:240},{width:768,height:220}]) {
   await page.setViewportSize(viewport);await page.waitForTimeout(60);
   report.push({name:'paused-'+viewport.width+'x'+viewport.height,...await inside('#analysisRecoveryDialog')});

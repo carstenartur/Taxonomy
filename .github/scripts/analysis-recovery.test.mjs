@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import vm from 'node:vm';
 import { webcrypto } from 'node:crypto';
 import { readFileSync } from 'node:fs';
+const analysisSource = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis.js', import.meta.url), 'utf8');
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/core/taxonomy-analysis-recovery.js', import.meta.url), 'utf8');
 function node() {
   return { textContent:'', hidden:false, disabled:false, style:{}, value:'', children:[], classList:{ toggle(){}, add(){}, remove(){} },
@@ -15,7 +16,7 @@ function harness() {
   const fields = { businessText: Object.assign(node(),{value:'Hospital communications'}),
     copilotBtn:node(),analyzeBtn:node(),copilotSpinner:node(),providerSelect:Object.assign(node(),{value:'CUSTOM_OPENAI'}) };
   const S = {}, runtime = {workspaceId:'ws-a', analysisGeneration:0};
-  const requests=[], analyses=[], saved=[], panels=[]; let openOptions=[], snapshot;
+  const requests=[], analyses=[], saved=[], panels=[], derivedRequests=[]; let openOptions=[], snapshot;
   const ui = { update(message){ this.message=message; }, close(){ this.opened=false; }, error(message){ this.errorText=message; },
     open(title,message,build,options){ this.opened=true; openOptions=options; build(node(),()=>node()); } };
   const window = { TaxonomyState:S,__TaxonomyAnalysisSessionContext:{S,runtime,language:()=> 'en'},
@@ -38,7 +39,15 @@ function harness() {
       rawScores:{BP:100,'BP-1000':80},scores:{BP:100,'BP-1000':80},analysisCoverage:{failedOrBlockedNodes:state==='COMPLETED'?0:4,nodes:{}},status:state==='COMPLETED'?'SUCCESS':'PARTIAL'};
     snapshot={request:S.recoveryContext.request,recovery:result.recovery,result};pending(result);return result;
   }
-  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,complete,
+  function loadAnalysis() {
+    for (const id of ['copilotContent', 'copilotPanel', 'gapAnalysisContent', 'gapAnalysisPanel',
+      'patternDetectionContent', 'patternDetectionPanel', 'recommendationContent', 'recommendationPanel']) fields[id] = node();
+    context.TaxonomyI18n = { t:key=>key };
+    context.TaxonomyUtils = { escapeHtml:value=>String(value ?? '') };
+    context.fetch = async url => { derivedRequests.push(url); return {ok:true,json:async()=>({totalGaps:0,totalAnchors:1})}; };
+    vm.runInNewContext(analysisSource,context);
+  }
+  return {S,runtime,ui,analyses,requests,saved,panels,fields,timers,window,document,complete,loadAnalysis,derivedRequests,
     followups:()=>followups,options:()=>openOptions,
     act:id=>openOptions.find(o=>o.id===id).handler(),emit:name=>(listeners.get(name)||[]).forEach(fn=>fn({detail:{}})),
     recovery:window.TaxonomyAnalysisRecovery};
@@ -109,4 +118,61 @@ test('a runtime stop can continue independent work while an earlier area remains
  h.act('analysisRecoveryContinue');assert.equal(h.analyses[1].continuationAction,'CONTINUE');
  assert.equal(h.analyses[1].continuationQuestion,null);h.complete('COMPLETED_WITH_GAPS');await settle();
  assert.equal(h.followups(),0);
+});
+
+
+test('imported open evidence cannot authorize the public Copilot follow-up flow',async()=>{
+ const h=harness();h.loadAnalysis();
+ h.S.currentScores={BP:100};h.S.lastAnalysisStatus='PARTIAL';
+ h.S.analysisCoverage={failedOrBlockedNodes:2,nodes:{}};
+ h.emit('taxonomy:analysis-evidence-imported');
+ assert.equal(h.recovery.isManaged(),false);
+ await h.window.TaxonomyAnalysis.runCopilotFlow();
+ assert.deepEqual(h.derivedRequests,[], 'Missing assessments must not become global absence claims after import');
+ assert.match(h.fields.copilotContent.innerHTML,/partial|unassessed/i);
+});
+for(const [method,panel] of [['runGapAnalysis','gapAnalysisContent'],
+ ['runPatternDetection','patternDetectionContent'],['runRecommendation','recommendationContent']]){
+ test(`${method} explains why imported unknown evidence is insufficient, without a journal dialog`,async()=>{
+  const h=harness();h.loadAnalysis();h.S.currentScores={BP:100};h.S.analysisCoverage={failedOrBlockedNodes:1};
+  h.emit('taxonomy:analysis-evidence-imported');
+  await h.window.TaxonomyAnalysis[method]();
+  assert.deepEqual(h.derivedRequests,[]);
+  assert.match(h.fields[panel].innerHTML || '',/partial|unassessed/i,
+    'Clicking a blocked action must not silently do nothing');
+ });
+}
+test('a failed follow-up checkpoint pauses and retry persists the result without repeating the operation',async()=>{
+ const h=harness();h.recovery.startCopilot();h.complete();await settle();let calls=0;
+ h.window.TaxonomyAnalysisSession.saveNow=async()=>false;
+ const operation=async()=>{calls++;return {totalGaps:0};};
+ await assert.rejects(h.recovery.stage('gap',operation),/sav|persist/i);
+ assert.equal(calls,1);
+ h.window.TaxonomyAnalysisSession.saveNow=async()=>true;
+ const result=await h.recovery.stage('gap',operation);
+ assert.equal(result.totalGaps,0);assert.equal(calls,1);
+});
+test('changing the workspace during follow-up persistence never releases a result to the new workspace',async()=>{
+ const h=harness();h.recovery.startCopilot();h.complete();await settle();let release;
+ h.window.TaxonomyAnalysisSession.saveNow=()=>new Promise(resolve=>{release=resolve;});
+ const work=h.recovery.stage('gap',async()=>({totalGaps:0}));
+ await settle();assert.equal(typeof release,'function');
+ h.runtime.workspaceId='ws-b';release(true);
+ await assert.rejects(work,/context|scope/i);
+});
+
+test('interrupted unvisited catalogue rows are explicitly labelled unassessed',()=>{
+ const h=harness(),header=node(),attributes=new Map([['data-code','CP']]);
+ const row={getAttribute:key=>attributes.get(key)||'',setAttribute:(key,value)=>attributes.set(key,value),
+  querySelector:()=>header};
+ header.querySelector=()=>header.children.find(child=>child.className==='analysis-coverage-node')||null;
+ h.document.createElement=node;
+ h.fields.taxonomyTree={querySelectorAll:()=>[row]};h.fields.analysisCoverageWarning=node();
+ for(const state of ['PAUSED','STOPPED','CANCELLED']){
+  h.S.analysisCoverage={failedOrBlockedNodes:1,nodes:{CP:{state:'UNKNOWN',descendants:'UNASSESSED',reason:'INTERRUPTED:'+state}}};
+  h.recovery.renderCoverage();
+  assert.equal(header.children[0]?.textContent,'Unassessed');
+  assert.equal(attributes.get('aria-describedby'),'analysisCoverage-CP');
+ }
+ assert.equal(header.children.length,1,'Status refresh must retain the same accessible node badge');
 });

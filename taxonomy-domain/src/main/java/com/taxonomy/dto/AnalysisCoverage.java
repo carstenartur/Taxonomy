@@ -31,37 +31,46 @@ public record AnalysisCoverage(Map<String, NodeAssessment> nodes, int assessedNo
     }
     private static boolean unresolved(String reason) {
         return reason != null && (reason.startsWith("FAILED:") || reason.startsWith("LEFT_OPEN:")
-                || reason.startsWith("BLOCKED_BY:"));
+                || reason.startsWith("BLOCKED_BY:") || reason.startsWith("INTERRUPTED:"));
     }
     public boolean hasOpenEvaluations() { return failedOrBlockedNodes > 0; }
 
     public static AnalysisCoverage derive(List<TaxonomyNodeDto> tree, Map<String, Integer> raw,
                                          Map<String, Integer> effective, Map<String, String> failed) {
+        return derive(tree, raw, effective, failed, null);
+    }
+
+    /** A stopped traversal also leaves questions it never reached open, independently of provider failures. */
+    public static AnalysisCoverage derive(List<TaxonomyNodeDto> tree, Map<String, Integer> raw,
+                                         Map<String, Integer> effective, Map<String, String> failed,
+                                         String interruption) {
+        if (interruption != null && !interruption.startsWith("INTERRUPTED:"))
+            throw new IllegalArgumentException("An unfinished traversal requires an explicit interruption reason");
         Map<String, NodeAssessment> nodes = new TreeMap<>();
-        for (TaxonomyNodeDto root : tree) visit(root, raw, effective, failed, null, false, nodes);
+        for (TaxonomyNodeDto root : tree) visit(root, raw, effective, failed, null, false, interruption, nodes);
         int assessed = (int) nodes.values().stream().filter(n -> n.state() != State.UNKNOWN).count();
-        int blocked = (int) nodes.values().stream().filter(n -> n.reason() != null
-                && (n.reason().startsWith("FAILED") || n.reason().startsWith("LEFT_OPEN")
-                    || n.reason().startsWith("BLOCKED_BY:"))).count();
+        int blocked = (int) nodes.values().stream().filter(n -> unresolved(n.reason())).count();
         return new AnalysisCoverage(nodes, assessed, nodes.size() - assessed, blocked);
     }
     private record Visited(boolean complete, boolean anyAssessed) { }
     private static Visited visit(TaxonomyNodeDto node, Map<String, Integer> raw,
                                  Map<String, Integer> effective, Map<String, String> failed,
-                                 String blockedBy, boolean pruned, Map<String, NodeAssessment> out) {
+                                 String blockedBy, boolean pruned, String interruption, Map<String, NodeAssessment> out) {
         String code = node.getCode();
         if (out.containsKey(code)) throw new IllegalArgumentException("Duplicate catalogue node " + code);
         Integer value = raw.get(code);
         String ownFailure = failed.get(code);
         String reason = value != null ? null : ownFailure != null ? ownFailure
                 : blockedBy != null ? "BLOCKED_BY:" + blockedBy
-                : pruned ? "NOT_VISITED_PARENT_EXCLUDED" : "NOT_EVALUATED";
+                : pruned ? "NOT_VISITED_PARENT_EXCLUDED"
+                : interruption != null ? interruption : "NOT_EVALUATED";
         State state = value == null ? State.UNKNOWN : value > 0 ? State.RELEVANT : State.NOT_RELEVANT;
         boolean allChildren = true, anyChildren = false;
         out.put(code, new NodeAssessment(state, value, effective.get(code), Descendants.UNASSESSED, reason));
         for (TaxonomyNodeDto child : node.getChildren() == null ? List.<TaxonomyNodeDto>of() : node.getChildren()) {
             var visit = visit(child, raw, effective, failed,
-                    ownFailure != null ? code : blockedBy, pruned || (value != null && value == 0), out);
+                    ownFailure != null || (reason != null && reason.startsWith("INTERRUPTED:")) ? code : blockedBy,
+                    pruned || (value != null && value == 0), interruption, out);
             allChildren &= visit.complete(); anyChildren |= visit.anyAssessed();
         }
         Descendants descendants = allChildren ? Descendants.COMPLETE

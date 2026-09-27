@@ -5,12 +5,14 @@ import java.util.*;
 public final class RecoveryProjectionProbe {
     public static void main(String[] args) { verify(); System.out.println("Recovery diagram metadata contract passed"); }
     public static void verify() {
-        var view = new RequirementArchitectureView();
-        view.setAnalysisCoverage(new AnalysisCoverage(Map.of("BP", new AnalysisCoverage.NodeAssessment(
-                AnalysisCoverage.State.UNKNOWN, null, null, AnalysisCoverage.Descendants.UNASSESSED, "LEFT_OPEN:q")), 0, 1, 1));
-        var result = new DiagramProjectionService().projectRaw(view, "Hospital");
-        if (!result.title().contains("PARTIAL") || !result.title().contains("BP"))
-            throw new AssertionError("A graphical export lost the open assessment warning");
-        if (!result.nodes().isEmpty()) throw new AssertionError("A coverage warning invented a catalogue node");
+        for (String reason : List.of("LEFT_OPEN:q", "INTERRUPTED:PAUSED", "INTERRUPTED:STOPPED", "INTERRUPTED:CANCELLED")) {
+            var view = new RequirementArchitectureView();
+            view.setAnalysisCoverage(new AnalysisCoverage(Map.of("BP", new AnalysisCoverage.NodeAssessment(
+                    AnalysisCoverage.State.UNKNOWN, null, null, AnalysisCoverage.Descendants.UNASSESSED, reason)), 0, 1, 1));
+            var result = new DiagramProjectionService().projectRaw(view, "Hospital");
+            if (!result.title().contains("PARTIAL") || !result.title().contains("BP"))
+                throw new AssertionError("A graphical export lost the open assessment scope: " + reason);
+            if (!result.nodes().isEmpty()) throw new AssertionError("A coverage warning invented a catalogue node");
+        }
     }
 }

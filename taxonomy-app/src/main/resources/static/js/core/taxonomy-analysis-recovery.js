@@ -32,12 +32,22 @@
             else sessionStorage.removeItem(STORAGE);
         } catch (ignored) { /* The durable server journal remains the authority. */ }
     }
-    async function save() {
+    async function save(required) {
         remember();
         var session = window.TaxonomyAnalysisSession;
         if (session?.state?.().ready && session.saveNow) {
-            try { await session.saveNow(); } catch (ignored) { /* Existing draft UI reports its failure. */ }
+            try { if (await session.saveNow() === true) return true; }
+            catch (ignored) { /* The draft UI retains the underlying persistence error. */ }
         }
+        if (required) throw new Error(text(
+            'Der abgeschlossene Folgeschritt konnte nicht gespeichert werden. Wiederholen versucht zuerst das Speichern, nicht die bereits erfolgreiche Abfrage.',
+            'The completed follow-up could not be saved. Retry first persists its result, without repeating the successful request.'));
+        return false;
+    }
+    function partialResultMessage() {
+        return text(
+            'Architektur-Teilergebnis verfügbar. Offene Bereiche sind nicht negativ bewertet. Globale Lücken-, Muster- und Empfehlungsaussagen bleiben bis zur Nachbewertung offen.',
+            'Partial architecture available. Open areas are not negative assessments. Global gap, pattern and recommendation conclusions remain open until assessment completes.');
     }
     async function request(context, suffix, method) {
         var response = await window.TaxonomyAnalysisSessionApi.request(
@@ -176,9 +186,7 @@
             // Existing gap/recommendation algorithms infer absence from missing scores. They
             // cannot safely make global claims with missing inputs; keep the useful architecture.
             c.followupState = 'COMPLETED_WITH_GAPS';
-            window.TaxonomyAnalysis.renderPartialCopilot?.(text(
-                'Architektur-Teilergebnis gespeichert. Offene Bereiche sind nicht negativ bewertet. Globale Lücken-, Muster- und Empfehlungsaussagen bleiben bis zur Nachbewertung offen.',
-                'Partial architecture saved. Open areas are not negative assessments. Global gap, pattern and recommendation conclusions remain open until assessment completes.'));
+            window.TaxonomyAnalysis.renderPartialCopilot?.(partialResultMessage());
             update(); await save(); return;
         }
         ui.close(); setBusy(true); c.followupState = 'RUNNING'; update();
@@ -198,12 +206,17 @@
         if (stopped()) throw new Error(text('Lauf abgebrochen.', 'Run cancelled.'));
         c.followups = c.followups || {};
         var saved = c.followups[key];
-        if (saved?.state === 'SUCCESS') return saved.result;
         c.followupLabel = label || key; update();
-        var result = await operation();
+        if (saved?.state !== 'SUCCESS') {
+            var result = await operation();
+            if (!inScope(c) || stopped()) throw new Error(text('Laufkontext geändert.', 'Operation context changed.'));
+            // Retain successful work even if saving fails. Explicit retry saves it again;
+            // dependent stages are not admitted until the checkpoint is confirmed durable.
+            saved = c.followups[key] = { state: 'SUCCESS', result: result };
+        }
+        await save(true);
         if (!inScope(c) || stopped()) throw new Error(text('Laufkontext geändert.', 'Operation context changed.'));
-        c.followups[key] = { state: 'SUCCESS', result: result };
-        await save(); return result;
+        return saved.result;
     }
     async function cancel() {
         var c = current();
@@ -303,7 +316,7 @@
         // Unchanged observations must not tear down/reinsert reading content on every heartbeat.
         tree.querySelectorAll('.tax-node[data-code]').forEach(function (node) {
             var code = node.getAttribute('data-code'), assessment = isOpen ? coverage.nodes[code] : null;
-            var label = !assessment ? '' : assessment.reason && /^(FAILED|LEFT_OPEN|BLOCKED_BY)/.test(assessment.reason)
+            var label = !assessment ? '' : assessment.reason && /^(FAILED|LEFT_OPEN|BLOCKED_BY|INTERRUPTED):/.test(assessment.reason)
                 ? text('Nicht bewertet', 'Unassessed') : assessment.descendants !== 'COMPLETE'
                     && assessment.state !== 'UNKNOWN' ? text('Unterbaum teilweise bewertet', 'Subtree partly assessed') : '';
             var row = node.querySelector(':scope > .tax-node-header') || node;
@@ -387,7 +400,7 @@
     });
     window.TaxonomyAnalysisSessionReady?.then(restore);
     window.TaxonomyAnalysisRecovery = { startCopilot: startCopilot, stage: stage, open: open,
-        refresh: refresh, cancel: cancel, renderCoverage: renderCoverage,
+        refresh: refresh, cancel: cancel, renderCoverage: renderCoverage, partialResultMessage: partialResultMessage,
         isManaged: function () { return inScope(current()); },
         hasOpenEvaluations: function () { return Boolean(S.analysisCoverage?.failedOrBlockedNodes)
             || ['PAUSED', 'STOPPED', 'CANCELLED'].includes(S.analysisRecovery?.state); } };

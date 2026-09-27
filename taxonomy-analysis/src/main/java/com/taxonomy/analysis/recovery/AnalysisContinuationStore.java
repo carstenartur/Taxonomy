@@ -161,7 +161,9 @@ public class AnalysisContinuationStore {
                 (question.skipped() ? "LEFT_OPEN:" : "FAILED:") + question.key());
         // This is evidence metadata, never a new official catalogue node or an invented score.
         if (result.getTree() == null || result.getTree().isEmpty()) result.setTree(tree);
-        result.setAnalysisCoverage(AnalysisCoverage.derive(tree, result.getRawScores(), result.getScores(), missing));
+        String interruption = Set.of("PAUSED", "STOPPED", "CANCELLED").contains(run.state)
+                ? "INTERRUPTED:" + run.state : null;
+        result.setAnalysisCoverage(AnalysisCoverage.derive(tree, result.getRawScores(), result.getScores(), missing, interruption));
         if (result.getArchitectureView() != null) {
             var view = result.getArchitectureView(); view.setAnalysisCoverage(result.getAnalysisCoverage());
             if (!open.isEmpty()) {
