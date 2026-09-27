@@ -63,10 +63,19 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
 - RED now verified: that exact-span claim was accepted, one assertion failure,
   zero errors. Parser candidate explicitly disallows model ORIGINAL for an
   adopted baseline; ordinary source ORIGINAL remains valid. GREEN unverified.
+- Focused analysis GREEN after that fix: `AdoptedLineagePromptTest` 3/3,
+  `CrossTaxonomyReconciliationTest` 16/16, `ReformulationResponseParserTest`
+  9/9, `FrozenReformulationEngineTest` 4/4: **32 positive tests**, zero
+  failures/errors/skips, build success.
+- Next boundary slice adds lowercase portable p/r → physical P/R exact-byte
+  preservation, historical full-source statement archived but excluded from
+  concrete prompt context, and an inherited-context small-budget failure. The
+  full-source exclusion is expected RED; the other two assert compatibility
+  and fail-closed behavior. Not yet run.
 
 ## Next exact command
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test -Dtest=AdoptedLineagePromptTest,ReformulationResponseParserTest,FrozenReformulationEngineTest,CrossTaxonomyReconciliationTest -Dsurefire.failIfNoSpecifiedTests=false`
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest,AdoptedLineagePromptTest -Dsurefire.failIfNoSpecifiedTests=false`
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.

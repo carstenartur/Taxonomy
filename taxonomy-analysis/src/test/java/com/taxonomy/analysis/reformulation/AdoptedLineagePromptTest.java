@@ -53,6 +53,28 @@ class AdoptedLineagePromptTest {
         assertThat(prompt).doesNotContain("RAW_OLD_ARCHIVE_DO_NOT_PROMPT");
     }
 
+    @Test void inheritedContextBeyondSmallBudgetFailsRatherThanDroppingHistoricalDecisions() {
+        var base = adopted();
+        var plainContext = new HashMap<>(base.frozenContext());
+        plainContext.remove("adoptedLineage");
+        plainContext.remove("inheritedDecisionContext");
+        var plain = new ReformulationBaseline(base.scope(), base.sourceVersionId(), base.originalText(),
+                base.originalTextHash(), base.snapshotId(), base.snapshotPayload(), plainContext,
+                base.language(), base.algorithmVersion());
+        var input = new NodeSynthesisInput(base, "NODE", null, "Node", List.of(), List.of(),
+                List.of(), Map.of(), List.of(), List.of(), "Preserve source");
+        var without = new NodeSynthesisInput(plain, "NODE", null, "Node", List.of(), List.of(),
+                List.of(), Map.of(), List.of(), List.of(), "Preserve source");
+        var builder = new ReformulationPromptBuilder(json);
+        int maxCharacters = builder.build(without, null).length() + inherited.length() / 2;
+        assertThat(builder.build(without, null).length()).isLessThan(maxCharacters);
+        assertThat(builder.build(input, null).length()).isGreaterThan(maxCharacters);
+        assertThatThrownBy(() -> new BoundedNodeSynthesis(json).partition(input,
+                candidate -> builder.build(candidate, null).length() <= maxCharacters))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("INPUT_TOO_LARGE_FOR_PROVIDER");
+    }
+
     @Test void adoptedOriginalIsProtectedSourceThroughEngineAndReconciliation() {
         var base = adopted();
         var service = mock(NodeReformulationService.class);

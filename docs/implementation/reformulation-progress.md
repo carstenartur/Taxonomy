@@ -10,7 +10,7 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
 - Tasks 1 and 2a are complete and independently reviewed. Task 2b (lineage), Task 3
   (DOCX) and Task 4 (civilian acceptance/quality) remain open. Existing merged
   functionality is retained.
-- Current operation: start Task 2b from docs/implementation/reformulation-task2b.md.
+- Current operation: finish Task 2b from docs/implementation/reformulation-task2b.md.
   Task 2a corrections and report are remote at
   `426287fdab65ce0c1c76aff4f74eb111f5a8c7a2`. Scoped independent re-review accepted
   both fixes. Post-fix focused suite: 23/23; earlier broader suite: 48/48, explicitly
@@ -28,6 +28,25 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
 - Next: Task 2b ancestry/prompt portability, then Tasks 3 and 4. Task 2a is a checkpoint of
   completion Task 2, not a new independent feature.
 - No provider credentials or Docker availability assumed. External gates will be reported explicitly.
+
+## Task 2b — durable in-progress checkpoints
+
+- Task review base: `8e1a1103276600a3127759488fe8bd6c04b463ae`.
+- Strict import, exact local/imported adopted-source freezing and nonrecursive v2
+  ancestry are implemented. Covering Spring runs before the prompt/provenance
+  additions: round-trip 10/10 plus positive-review guard 14/14, no failures/errors/skips.
+- Current remote implementation checkpoint:
+  `ef9db85f85b0fdc0ae3a59e20fcdbaa8bb98af39`. Its complete tree and local alignment
+  were verified. It adds inherited decision prompt context, protected ADOPTED_SOURCE
+  provenance and cache encoding v3, including rejection of exact adopted text
+  mislabeled ORIGINAL. Meaningful analysis RED evidence is in the task report;
+  the corresponding GREEN and independent task review remain pending.
+- The test Maven executable in another scratch checkout disappeared. No source or
+  test work was lost. The repository wrapper restored the same Maven 3.9.16;
+  the verification helper now uses this task's toolchain directory. This incidental
+  runtime error is not counted as a feature RED.
+- Next exact commands and newest checkpoint details live in
+  `reformulation-task2b-report.md`; do not restart completed Tasks 1 or 2a.
 
 ## Local verification environment
 

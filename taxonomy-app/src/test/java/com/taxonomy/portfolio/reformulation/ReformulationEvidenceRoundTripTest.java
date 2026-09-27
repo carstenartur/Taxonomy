@@ -229,6 +229,63 @@ class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
     }
 
     @Test
+    void lowercasePortableIdentityBindsToPhysicalCanonicalKeysWithoutRewritingEvidenceBytes() throws Exception {
+        String dsl = adoptAndExport();
+        BlockAst original = onlyEvidence(dsl);
+        String payload = original.property("payload")
+                .replaceFirst("\\\"projectKey\\\":\\\"P\\\"", "\\\"projectKey\\\":\\\"p\\\"")
+                .replaceFirst("\\\"requirementKey\\\":\\\"R\\\"", "\\\"requirementKey\\\":\\\"r\\\"");
+        assertThat(payload).isNotEqualTo(original.property("payload"));
+        String hash = StableIdentityHash.sha256(payload);
+        DocumentAst document = parser.parse(withEvidencePayload(dsl, payload), "lowercase-evidence.taxdsl");
+        String portable = serializer.serialize(new DocumentAst(document.getMeta(), document.getBlocks().stream()
+                .map(block -> EVIDENCE_BLOCK.equals(block.getKind())
+                        ? new BlockAst(block.getKind(), List.of("p", "r", "2", hash),
+                                block.getProperties(), block.getChildren(), block.getExtensions(), block.getSourceLocation())
+                        : block).toList()));
+        WorkspaceContext target = newWorkspace("Lowercase evidence identity");
+        git.materialize(portable, "architect", target);
+        BlockAst retained = onlyEvidence(git.exportPortfolio("architect", target));
+        assertThat(retained.property("payload")).isEqualTo(payload);
+        assertThat(retained.property("evidenceHash")).isEqualTo(hash);
+        assertThat(retained.getHeaderTokens().subList(0, 2)).containsExactly("p", "r");
+
+        select(target);
+        var physicalProject = projects.listProjects("architect", target).getFirst();
+        var physicalRequirement = projects.listRequirements(physicalProject.id(), "architect", target).getFirst();
+        assertThat(physicalProject.projectKey()).isEqualTo("P");
+        assertThat(physicalRequirement.requirementKey()).isEqualTo("R");
+        var offer = reformulations.create(physicalProject.id(), physicalRequirement.id(),
+                new ReformulationDtos.CreateRequest(physicalRequirement.currentVersionId(),
+                        snapshotFor(physicalProject.id(), physicalRequirement, target), "de"),
+                "architect", target);
+        assertThat(offer.baseline().frozenContext().get("adoptedLineage")).contains(hash);
+    }
+
+    @Test
+    void historicalFullSourceStatementRemainsArchivedButIsNotPromptContext() throws Exception {
+        documentTransform = document -> {
+            var source = new com.taxonomy.reformulation.Statement("old-whole-source", ORIGINAL,
+                    List.of(new com.taxonomy.reformulation.Statement.SourceSpan(0, ORIGINAL.length(), ORIGINAL)),
+                    com.taxonomy.reformulation.Statement.Provenance.ORIGINAL, List.of(), List.of(), null,
+                    com.taxonomy.reformulation.Statement.EditingOrigin.SOURCE, "UNREVIEWED");
+            var statements = new ArrayList<>(document.statements());
+            statements.add(source);
+            return new com.taxonomy.reformulation.ReformulationDocument(document.text(),
+                    document.sections(), statements, document.questions(), document.validation(), document.nodeResults());
+        };
+        String dsl = adoptAndExport();
+        assertThat(onlyEvidence(dsl).property("payload")).contains(ORIGINAL, "old-whole-source");
+        requirement = projects.getRequirement(project.id(), requirement.id(), "architect", context);
+        var offer = reformulations.create(project.id(), requirement.id(),
+                new ReformulationDtos.CreateRequest(requirement.currentVersionId(), snapshot(requirement), "de"),
+                "architect", context);
+        assertThat(offer.baseline().frozenContext().get("inheritedDecisionContext"))
+                .doesNotContain(ORIGINAL, "old-whole-source")
+                .contains("Arbeitsbeginn und Ende erfassen.");
+    }
+
+    @Test
     void secondGenerationExportsNonrecursiveHashLinkedAncestryAndRoundTrips() throws Exception {
         String first = adoptAndExport();
         String firstHash = onlyEvidence(first).property("evidenceHash");
