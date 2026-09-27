@@ -22,6 +22,7 @@ public final class ReformulationCivilianApplication {
     private final ScenarioLlmPlayback playback;
     private ReformulationCivilianBrowser browser;
     private boolean browserMode;
+    private boolean fullLifecycle = true;
 
     private ReformulationCivilianApplication(int port, Path output, ScenarioLlmPlayback playback) {
         this.base = "http://127.0.0.1:" + port; this.output = output; this.playback = playback;
@@ -35,11 +36,13 @@ public final class ReformulationCivilianApplication {
                 "--spring.datasource.username=SA", "--spring.datasource.password=", "--spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver",
                 "--spring.jpa.hibernate.ddl-auto=update", "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
                 "--taxonomy.init.async=false", "--civilian.reformulation=true", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
+                "--civilian.reformulation-case=" + (args[1].startsWith("authored-") ? args[1].substring(9) : "flood"),
                 "--custom.llm.url=" + CivilianLlmConfiguration.URL, "--custom.llm.model=civilian-fixture",
                 "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false")) {
             var scenario = new ReformulationCivilianApplication(Integer.parseInt(app.getEnvironment().getProperty("local.server.port")),
                     Path.of(args[0]), app.getBean(ScenarioLlmPlayback.class));
             scenario.browserMode = args[1].equals("browser");
+            scenario.fullLifecycle = !args[1].startsWith("authored-");
             try { if (args[1].equals("read")) scenario.verifyRestart(); else scenario.analysisAndOffer(); }
             finally {
                 scenario.save(args[1] + "-llm-calls.json", scenario.json.valueToTree(scenario.playback.calls()));
@@ -86,7 +89,15 @@ public final class ReformulationCivilianApplication {
         var offer = request("GET", offerPath, null, 200);
         save("proposal.json", offer);
         assertThat(offer.at("/baseline/originalText").asText()).isEqualTo(source.path("text").asText());
-        assertThat(offer.at("/currentRevision/text").asText()).contains("15 minutes", "surface-water", "safety-critical");
+        if (fullLifecycle) assertThat(offer.at("/currentRevision/text").asText()).contains("15 minutes", "surface-water", "safety-critical");
+        else {
+            for (var fragment : playback.fixture().at("/application/protectedFragments"))
+                assertThat(offer.at("/currentRevision/text").asText()).contains(fragment.asText());
+            assertThat(snapshot.at("/analysis/scores/CR").asInt()).isZero();
+            assertThat(offer.at("/currentRevision/validation/findings").valueStream().filter(f -> f.path("kind").asText().equals("UNMAPPED_SOURCE")))
+                    .isNotEmpty();
+            assertThat(offer.at("/currentRevision/questions")).hasSize(3);
+        }
         assertThat(offer.at("/currentRevision/sections")).isNotEmpty();
         assertThat(offer.at("/currentRevision/questions")).isNotEmpty();
         assertThat(playback.calls().stream().map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("civilian:NODE:")))
@@ -94,6 +105,7 @@ public final class ReformulationCivilianApplication {
                         "civilian:NODE:IP-1102", "civilian:NODE:IP-1005", "civilian:NODE:IP-1000", "civilian:NODE:IP");
         assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
         assertThat(request("GET", projectPath + "/snapshots/" + snapshotId, null, 200)).isEqualTo(snapshot);
+        if (!fullLifecycle) return;
         if (browserMode) {
             browser = new ReformulationCivilianBrowser(URI.create(base).getPort(), output); browser.login(PASSWORD);
             browser.inspect(offerPath, source.path("text").asText(), findQuestion(offer.at("/currentRevision/questions"), "stale-observation").path("id").asText());

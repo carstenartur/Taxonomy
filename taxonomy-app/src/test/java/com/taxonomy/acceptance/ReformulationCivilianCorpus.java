@@ -6,6 +6,26 @@ import java.util.Set;
 
 /** Authored provider choices for a bounded application path; the sourced requirement is unchanged. */
 final class ReformulationCivilianCorpus {
+    static JsonNode scenario(String name) throws Exception {
+        if (name.equals("flood")) return flood();
+        if (!Set.of("time-recording", "cross-taxonomy").contains(name)) throw new IllegalArgumentException("Unknown authored civilian scenario");
+        JsonNode authored;
+        try (var stream = ReformulationCivilianCorpus.class.getResourceAsStream("/scenarios/reformulation-" + name + ".json")) {
+            authored = new tools.jackson.databind.ObjectMapper().readTree(stream);
+        }
+        var fixture = (ObjectNode) flood();
+        String source = authored.at("/requirement/text").asText();
+        fixture.put("id", authored.path("id").asText()).put("responseProvenance", authored.path("responseProvenance").asText());
+        fixture.putArray("sources"); fixture.set("application", authored.path("application"));
+        ((ObjectNode) fixture.path("requirement")).put("key", "AUTHORED-" + name).put("title", "Authored " + name).put("text", source);
+        for (var contribution : fixture.at("/relationPlayback/sourceContributions")) {
+            ((ObjectNode) contribution).put("quote", source).put("condition", "Authored catalogue-front assumption; not a quality judgment.")
+                    .put("text", contribution.path("nodeId").asText().equals("BP-1017")
+                            ? "Acquire the source data described in this authored requirement." : "Represent the source data described in this authored requirement.");
+        }
+        fixture.at("/relationPlayback/claims").forEach(claim -> ((ObjectNode) claim).put("quote", source));
+        return fixture;
+    }
     static JsonNode flood() throws Exception {
         var fixture = (ObjectNode) ScenarioLlmPlayback.flood().fixture();
         fixture.put("id", "civilian-flood-reformulation-bounded-v1");

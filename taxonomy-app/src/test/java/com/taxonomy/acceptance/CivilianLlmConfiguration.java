@@ -21,7 +21,7 @@ public class CivilianLlmConfiguration {
     @Bean @Lazy(false)
     ScenarioLlmPlayback civilianLlmPlayback(RestTemplate restTemplate, org.springframework.core.env.Environment environment) throws Exception {
         var playback = environment.getProperty("civilian.reformulation", Boolean.class, false)
-                ? new ScenarioLlmPlayback(ReformulationCivilianCorpus.flood()) : ScenarioLlmPlayback.flood();
+                ? new ScenarioLlmPlayback(ReformulationCivilianCorpus.scenario(environment.getProperty("civilian.reformulation-case", "flood"))) : ScenarioLlmPlayback.flood();
         var mapper = new ObjectMapper();
         var server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(ExpectedCount.manyTimes(), request -> { }).andRespond(request -> {

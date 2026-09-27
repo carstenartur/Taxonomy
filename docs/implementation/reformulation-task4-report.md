@@ -144,3 +144,13 @@ content, empty-body rejection, page images/hashes and separate measured limits
 unchanged. New page-budget regression failed before the implementation, as intended.
 CI also requires positive named JUnit evidence. Database jobs now retain the child
 reanalysis log identified as a review follow-up.
+
+### Authored scenario application checkpoint
+
+The time-recording and cross-taxonomy authored fixtures now traverse actual analysis
+and offer creation as separately selected JUnit cases. They assert terminal-only /
+no-browser and numerical source constraints, explicit unmapped content and real
+question generation, without treating authored scores as model-quality evidence.
+Verification is pending at this checkpoint; the prior process produced no final
+JUnit result. Next command: focused `ReformulationAuthoredScenarioTest`, then the
+complete civilian profile in CI and independent final review.

@@ -9,10 +9,11 @@ import java.util.*;
 final class ReformulationCivilianReplies {
     private final ObjectMapper json = new ObjectMapper();
     private final String original;
+    private final JsonNode authored;
     private static final Map<String, Set<String>> CHILDREN = Map.of(
             "BP-1060", Set.of(), "BP-1327", Set.of("BP-1060"), "BP-1000", Set.of("BP-1327"), "BP", Set.of("BP-1000"),
             "IP-1102", Set.of(), "IP-1005", Set.of("IP-1102"), "IP-1000", Set.of("IP-1005"), "IP", Set.of("IP-1000"));
-    ReformulationCivilianReplies(JsonNode fixture) { original = fixture.at("/requirement/text").asText(); }
+    ReformulationCivilianReplies(JsonNode fixture) { original = fixture.at("/requirement/text").asText(); authored = fixture.path("application"); }
 
     ScenarioReformulationPlayback.Reply respond(String task, JsonNode input) {
         require(original.equals(input.at("/baseline/originalText").asText()), "Unknown civilian source");
@@ -41,29 +42,36 @@ final class ReformulationCivilianReplies {
         var proposed = json.createArrayNode();
         var newQuestions = json.createArrayNode();
         if (task.equals("NODE") && Set.of("BP-1060", "IP-1102").contains(node)) {
-            proposed.add(json.valueToTree(Map.of("wording", "Show stale or unavailable observations explicitly; keep the official alert channels.",
+            proposed.add(json.valueToTree(Map.of("wording", authored.path("addition").asText("Show stale or unavailable observations explicitly; keep the official alert channels."),
                     "provenance", "MODEL_ADDITION", "sourceSpans", List.of(), "architectureLinks", List.of(node),
                     "questionDependencies", List.of("new-question:0"), "conditionalValidity", "Subject to the explicit stale-data decision.")));
-            newQuestions.add(question("stale-observation", "presentation", "flood-service", "How should stale observations be presented?",
-                    "SINGLE_CHOICE", List.of("Show unavailable", "Retain last observation with timestamp"), null, null, null));
+            var options = authored.has("sharedOptions") ? authored.path("sharedOptions").valueStream().map(JsonNode::asText).toList()
+                    : List.of("Show unavailable", "Retain last observation with timestamp");
+            newQuestions.add(question("stale-observation", "presentation", "shared-source-choice", authored.path("sharedQuestion").asText("How should stale observations be presented?"),
+                    "SINGLE_CHOICE", options, null, null, null));
             if (node.equals("BP-1060")) newQuestions.add(question("acquisition", "stale-age", "flood-ingestion",
-                    "What is the maximum age of a usable observation?", "NUMBER", List.of(), "minutes", 0.0, 1440.0));
+                    authored.path("numericQuestion").asText("What is the maximum age of a usable observation?"), "NUMBER", List.of(), authored.path("unit").asText("minutes"), 0.0, 1440.0));
             else newQuestions.add(question("publication", "stale-age", "flood-display",
-                    "What is the maximum age of a usable observation?", "NUMBER", List.of(), "minutes", 0.0, 1440.0));
+                    authored.path("numericQuestion").asText("What is the maximum age of a usable observation?"), "NUMBER", List.of(), authored.path("unit").asText("minutes"), 0.0, 1440.0));
             for (var question : newQuestions) {
                 ((ObjectNode) question).set("nodeIds", json.valueToTree(List.of(node.equals("BP-1060") ? "BP-1017" : "IP-1116")));
                 ((ObjectNode) question).set("edgeIds", json.valueToTree(input.path("boundaryEdges").propertyNames()));
             }
         }
         var response = json.createObjectNode();
-        response.put("summary", task.equals("REWORD")
+        response.put("summary", authored.has("summary") ? authored.path("summary").asText() : task.equals("REWORD")
                 ? "Keep observations at most every 15 minutes; retain last observation with timestamp. Surface-water flooding remains outside scope; this is not safety-critical."
                 : "Acquire and present observations at most every 15 minutes. Keep source and time visible. Surface-water flooding is outside scope; this is not a safety-critical replacement for official alerts.");
         response.set("statementProposals", proposed);
         response.set("questionProposals", newQuestions);
         response.set("preservedStatementIds", json.valueToTree(statements));
         response.set("preservedQuestionIds", json.valueToTree(questions));
-        response.putArray("uncoveredSourceRefs"); response.putArray("conflictCandidates");
+        var uncovered = response.putArray("uncoveredSourceRefs"); response.putArray("conflictCandidates");
+        if (authored.has("unmappedQuote") && node.equals("BP-1060")) {
+            String quote = authored.path("unmappedQuote").asText(); int at = original.indexOf(quote);
+            require(at >= 0 && at == original.lastIndexOf(quote), "Ambiguous authored unmapped quote");
+            uncovered.addObject().put("start", at).put("end", at + quote.length()).put("exactText", quote);
+        }
         return reply("civilian:" + task + ":" + node, response);
     }
 

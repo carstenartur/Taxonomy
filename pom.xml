@@ -438,7 +438,7 @@
         <profile>
             <id>civilian-acceptance</id>
             <properties>
-                <test>CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest,ReformulationCivilianBrowserTest,ReformulationBrowserTest</test>
+                <test>CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationCivilianBrowserTest,ReformulationBrowserTest</test>
                 <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
                 <generateScreenshots>true</generateScreenshots>
             </properties>
