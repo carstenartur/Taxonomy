@@ -8,7 +8,9 @@ Plan: [reformulation-completion.md](reformulation-completion.md)
 - Remote branch created before implementation: `feature/reformulation-durable-completion`.
 - Previous local-only completion work is not being counted as delivered or verified.
 - Tasks 1–4 remain open; existing merged functionality is retained.
-- Current operation: independent review of Task 1 at `47f72a9ce973045b49b83d864ce3fa9c2bc37bc4`.
+- Current operation: Task 1 fix round 1, two review findings open; see
+  reformulation-task1-review.md. The pre-fix reviewed code is remote at
+  `47f72a9ce973045b49b83d864ce3fa9c2bc37bc4`.
 - Verified Task 1 evidence: four meaningful RED regressions; focused 32/32 GREEN;
   all 588 selected analysis-module tests GREEN, zero failures/errors/skips.
 - Code, tests and evidence are remote; see reformulation-task1-report.md.
