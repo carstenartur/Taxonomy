@@ -8,7 +8,15 @@ findings 1 and 3 closed; finding 2 remains open for a reachable generic
 `local` statement-edit scope. RED candidate adds B-only local edit question
 and answer to the A/B frozen projection, asserting they do not leak into A
 while B and a genuinely unmappable retired edit remain visible. Unexecuted at
-this checkpoint. Next exact command:
+the RED checkpoint. Focused RED ran **1 test, 1 expected assertion failure**
+at the A prompt's B-only rejected statement (line 71), zero errors/skips,
+build failed (`/tmp/task2b-review2-local-red.log`). Candidate fix treats
+`local` as a generic statement-edit scope resolved by affected IDs and
+discovery, rather than an unknown taxonomy node; an unlocated local record
+remains visible. Covering GREEN is not yet executed. Next exact command
+after publication:
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test '-Dtest=AdoptedLineagePromptTest,ReformulationResponseParserTest' -Dsurefire.failIfNoSpecifiedTests=false`
+The RED selector was:
 `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test '-Dtest=AdoptedLineagePromptTest#branchCallsExcludeUnrelatedInheritedDecisionsButKeepGlobalAndUnmapped' -Dsurefire.failIfNoSpecifiedTests=false`
 
 Fix round 1 (review head `7cdaeec40a511b3fe73d070693ceabb9f1be6a4d`):

@@ -141,18 +141,24 @@ final class InheritedDecisionContext {
             Set<String> knownNodes,
             Set<String> statements, Set<String> questions) {
         String scope = question.path("key").path("scope").asText();
+        // Statement edits carry the generic scope "local" and are located by
+        // affectedStatementIds, not by a taxonomy node named "local".
+        boolean local = "local".equalsIgnoreCase(scope);
         if (Set.of("global", "@document", "*").contains(scope.toLowerCase(Locale.ROOT))
                 || nodes.contains(scope) || edges.contains(scope)
                 || intersects(question.path("affectedStatementIds"), statements)
                 || intersects(question.path("prerequisites"), questions)
                 || intersects(question.path("dependentQuestionIds"), questions)
                 || questions.contains(question.path("id").asText())) return true;
-        boolean unmappable = !scope.isBlank() && !knownNodes.contains(scope) && !edges.contains(scope);
+        boolean unmappable = !scope.isBlank() && !local
+                && !knownNodes.contains(scope) && !edges.contains(scope);
         for (var discovery : question.path("discoveries")) {
             if (intersects(discovery.path("nodeIds"), nodes) || intersects(discovery.path("edgeIds"), edges)) return true;
             unmappable |= unknown(discovery.path("nodeIds"), knownNodes, edges);
         }
-        return unmappable || (scope.isBlank() && question.path("discoveries").isEmpty());
+        return unmappable || ((scope.isBlank() || local)
+                && question.path("affectedStatementIds").isEmpty()
+                && question.path("discoveries").isEmpty());
     }
 
     private static boolean unknown(JsonNode ids, Set<String> knownNodes, Set<String> knownEdges) {
