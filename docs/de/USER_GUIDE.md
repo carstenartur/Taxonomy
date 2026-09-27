@@ -1830,3 +1830,34 @@ Für vollständige Details siehe den [Dokumentenimport-Leitfaden](DOCUMENT_IMPOR
 **Nein.** Die Ausfallauswirkungsansicht (⚠️-Schaltfläche) ist eine bewusste Funktion, kein Fehlerzustand. Sie hebt alle Knoten hervor, die betroffen wären, wenn der ausgewählte Knoten ausfällt oder entfernt wird. Verwenden Sie sie für Änderungsauswirkungs-Analysen und Risikobewertungen. Siehe [Abschnitt 8 — Graph Explorer](#8-den-graph-explorer-verwenden) für alle Details.
 
 ![Graph Explorer Ausfallauswirkung](../images/22-graph-explorer-failure.png)
+
+## Gespeicherte Neuformulierungsangebote und Entscheidungsfragen
+
+Öffnen Sie eine gespeicherte Anforderung mit Analyse-Snapshot und erstellen Sie ein
+Neuformulierungsangebot für diese Quellversion. Original, Vorschlag und Fragen sind
+getrennte Ansichten; auf schmalen Bildschirmen wechseln Sie über die Reiter. Warten
+Sie auf das gespeicherte Syntheseergebnis. Ein abgeschlossener Lauf liefert einen
+prüfbaren Vorschlag und erteilt keine Freigabe oder Übernahme.
+
+Beantworten Sie relevante Fragen im angebotenen Format oder stellen Sie sie
+ausdrücklich zurück. „Andere“ benötigt eine Erläuterung. Bedingte Folgefragen werden
+bei erfüllter Voraussetzung sichtbar. Ähnlich formulierte Fragen können verschiedene
+Gegenstände oder Geltungsbereiche betreffen. Widerspricht eine Antwort dem Original,
+bleiben beide sichtbar. Speichern Sie Eingaben vor dem Wechsel des Angebots; eine
+Statusaktualisierung erhält ungespeicherten Text. Nach einer Antwort formuliert die
+gezielte Neugenerierung die betroffenen Abschnitte neu. Geschützte manuelle Änderungen
+bleiben als separat prüfbarer Kandidat erhalten. Vergleichen Sie gespeicherte
+Revisionen mit ihrem Vorgänger.
+
+Prüfen Sie in der Übernahmevorschau den genauen Text und die offenen Fragen. Erst
+die ausdrückliche Bestätigung des Textes, die Kenntnisnahme der Warnungen und eine
+Begründung übernehmen ihn als Entwurf. Schließen vor dem Absenden übernimmt nichts.
+Starten Sie danach bei Bedarf eine neue Analyse; die bisherige Architektur bleibt
+erhalten und gilt als veraltet. Ein neues Angebot übernimmt die gespeicherten
+Entscheidungen samt Belegen.
+
+Laden Sie eine gespeicherte Revision oder einen Übernahmebeleg als JSON, Markdown,
+HTML oder Word herunter. Ungespeicherte Eingaben sind nicht enthalten; historische
+Quelle, Entscheidungen und Architektur bleiben erhalten. Erstellen Sie für portable
+Git-Historie einen eigenen Projekt-Checkpoint. Weitere Details: [Ablauf](../features/requirement-reformulation.md)
+und [Prüfgrenzen](../testing/requirement-reformulation.md).

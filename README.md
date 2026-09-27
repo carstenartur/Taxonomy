@@ -24,6 +24,7 @@ By externalizing taxonomy paths, scores, relations, provenance, and history, the
 | Hierarchical analysis trace | Scores catalogue roots, intermediate nodes, and leaves while preserving the paths and rationales behind the result |
 | Architecture views | Builds cross-layer views from selected elements and typed relations |
 | Traceable source import | Extracts bounded candidates from PDF and DOCX sources and links accepted requirements to source versions and fragments |
+| Requirement reformulation | Produces a saved wording proposal with traceable decision questions, explicit draft adoption and historical JSON/Markdown/HTML/DOCX exports; see the [workflow](docs/features/requirement-reformulation.md) and [verification boundaries](docs/testing/requirement-reformulation.md) |
 | Versioned architecture DSL | Keeps explicit DSL checkpoints in JGit and durable semantic editor revisions in a separate operation journal; supports branches, diffs, merges, reverts, and selective transfer |
 | Search | Provides full-text search and optional local ONNX vector search through Hibernate Search and Lucene |
 | Multi-user workspaces | Separates personal workspaces from the shared architecture repository |

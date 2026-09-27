@@ -154,3 +154,13 @@ question generation, without treating authored scores as model-quality evidence.
 Verification is pending at this checkpoint; the prior process produced no final
 JUnit result. Next command: focused `ReformulationAuthoredScenarioTest`, then the
 complete civilian profile in CI and independent final review.
+
+2026-09-27 20:35:57 UTC: authored application scenarios 2/2 passed, no failures,
+errors or skips, BUILD SUCCESS. The documented terminal-only/browser exclusion,
+numerical and unmapped constraints survive the actual application path. German and
+English user/architecture guides, README and the consolidated acceptance document
+now describe the implemented lifecycle and distinguish the pending real-model gate.
+
+A local Chrome/ChromeDriver 154.0.8037.57 runtime is now available from Selenium
+Manager. The new browser lifecycle is being verified against the real application;
+no browser pass is claimed at this checkpoint.
