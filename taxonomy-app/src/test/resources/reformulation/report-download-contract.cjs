@@ -32,14 +32,16 @@ vm.runInContext(fs.readFileSync(process.argv[2], 'utf8'), context);
     assert.ok(!requests[0].init.method || requests[0].init.method==='GET');
     await api.downloadReformulationAdoptionReport(7,11,proposal,command,'json');
     assert.equal(requests[1].url,'/api/projects/7/requirements/11/reformulations/'+proposal+'/adoptions/'+command+'/export?format=json');
+    await api.downloadReformulationReport(7,11,proposal,3,'docx');
+    assert.equal(requests[2].url,'/api/projects/7/requirements/11/reformulations/'+proposal+'/revisions/3/export?format=docx');
     for(const args of [[7,11,'../other',3,'json'],[7,11,proposal,0,'json'],[7,11,proposal,3,'pdf'],[7,11,proposal,Number.MAX_SAFE_INTEGER+1,'json']]) {
         assert.throws(()=>api.downloadReformulationReport(...args));
     }
-    assert.equal(requests.length,2,'Invalid paths issued requests');
+    assert.equal(requests.length,3,'Invalid paths issued requests');
     vm.runInContext(fs.readFileSync(process.argv[3],'utf8'),context);
     const input={value:'unsaved local wording'},options={projectId:7,requirementId:11,proposalId:proposal,revision:3,language:'de'};
     const controls=context.window.TaxonomyReformulationReports.controls(options);
-    const buttons=controls.children.filter(n=>n.tagName==='button');assert.equal(buttons.length,3);
+    const buttons=controls.children.filter(n=>n.tagName==='button');assert.equal(buttons.length,4);
     assert.ok(controls.children.some(n=>String(n.textContent).includes('Ungespeicherte')));
     let resolve; response=()=>new Promise(done=>{resolve=done;});
     const pending=buttons[0].click(); await Promise.resolve(); await Promise.resolve();

@@ -13,6 +13,10 @@ import org.springframework.security.test.context.support.WithMockUser;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.io.ByteArrayInputStream;
+import java.security.MessageDigest;
+import java.util.HexFormat;
+import org.apache.poi.xwpf.usermodel.XWPFDocument;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -57,5 +61,25 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         assertThat(projects.getRequirement(project.id(), requirement.id(), "architect", context)).isEqualTo(before);
         assertThat(reformulations.get(project.id(), requirement.id(), proposal.id(), "architect", context)).isEqualTo(beforeProposal);
         assertThat(reformulations.runs(project.id(), requirement.id(), proposal.id(), "architect", context)).isEmpty();
+    }
+
+    @Test
+    void docxRevisionContainsFrozenSourceAndLiteralEvidenceWithBinaryDigest() throws Exception {
+        var proposal = reformulations.create(project.id(), requirement.id(),
+                new ReformulationDtos.CreateRequest(requirement.currentVersionId(), snapshot, "de"), "architect", context);
+        var response = mvc.perform(get(base() + "/" + proposal.id() + "/revisions/1/export").param("format", "docx"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(header().string("X-Content-Type-Options", "nosniff"))
+                .andReturn().getResponse();
+        assertThat(response.getContentType()).isEqualTo("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        byte[] bytes = response.getContentAsByteArray();
+        assertThat(response.getHeader("X-Content-SHA256"))
+                .isEqualTo(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)));
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(bytes))) {
+            var text = doc.getParagraphs().stream().map(p -> p.getText()).reduce("", (a, b) -> a + "\n" + b);
+            assertThat(text).contains("Neuformulierungsangebot", ORIGINAL, "nicht übernommen", "Analysis snapshot");
+            assertThat(text).contains("<img src=x onerror=alert(1)>");
+        }
     }
 }
