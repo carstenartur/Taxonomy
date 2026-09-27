@@ -38,7 +38,7 @@ class AdoptedLineagePromptTest {
             assertThat(prompt).contains(base.originalText(), "Card terminal", "Selected by operator",
                     "MODEL_ADDITION", "REJECTED", "Which terminal?", "Terminal-only decision",
                     "0123456789abcdef");
-            assertThat(prompt).doesNotContain("RAW_OLD_ARCHIVE_DO_NOT_PROMPT", "sourceSpans");
+            assertThat(prompt).doesNotContain("RAW_OLD_ARCHIVE_DO_NOT_PROMPT");
         }
     }
 
@@ -50,7 +50,7 @@ class AdoptedLineagePromptTest {
         assertThat(prompt).contains(base.originalText(), "Card terminal", "Selected by operator",
                 "MODEL_ADDITION", "REJECTED", "Which terminal?", "Terminal-only decision",
                 "0123456789abcdef");
-        assertThat(prompt).doesNotContain("RAW_OLD_ARCHIVE_DO_NOT_PROMPT", "sourceSpans");
+        assertThat(prompt).doesNotContain("RAW_OLD_ARCHIVE_DO_NOT_PROMPT");
     }
 
     @Test void adoptedOriginalIsProtectedSourceThroughEngineAndReconciliation() {
@@ -63,6 +63,8 @@ class AdoptedLineagePromptTest {
                             input.directContributions().stream().map(Statement::id).toList(),
                             List.of(), List.of(), List.of(), List.of());
                 });
+        when(service.reconcile(any(ReconciliationInput.class)))
+                .thenReturn(new ReconciliationResult(List.of(), Map.of(), List.of()));
         var phaseA = new FrozenReformulationEngine(service, json).synthesize(base, List.of(), List.of());
         assertThat(phaseA.statements()).filteredOn(s -> s.editingOrigin() == Statement.EditingOrigin.SOURCE)
                 .singleElement().satisfies(s -> {

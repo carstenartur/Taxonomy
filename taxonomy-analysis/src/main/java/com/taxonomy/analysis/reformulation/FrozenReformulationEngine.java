@@ -43,7 +43,9 @@ public class FrozenReformulationEngine {
         var plan=new WalkUpPlanner().plan(hierarchy);var byId=new HashMap<String,WalkUpPlanner.Node>();hierarchy.forEach(n->byId.put(n.id(),n));
         var sourceSpans=anchors(baseline.originalText());var sourceStatements=new ArrayList<Statement>();
         var verbatimSource=baseline.originalText().isEmpty()?List.<Statement.SourceSpan>of():List.of(new Statement.SourceSpan(0,baseline.originalText().length(),baseline.originalText()));
-        for(var span:verbatimSource) sourceStatements.add(new Statement("source-"+StableIdentityHash.sha256(baseline.originalTextHash()+":"+span.start()).substring(0,24),span.exactText(),List.of(span),Statement.Provenance.ORIGINAL,List.of(),List.of(),null,Statement.EditingOrigin.SOURCE,"UNREVIEWED"));
+        var sourceOrigin=baseline.frozenContext().containsKey("adoptedLineage")
+                ?Statement.Provenance.ADOPTED_SOURCE:Statement.Provenance.ORIGINAL;
+        for(var span:verbatimSource) sourceStatements.add(new Statement("source-"+StableIdentityHash.sha256(baseline.originalTextHash()+":"+span.start()).substring(0,24),span.exactText(),List.of(span),sourceOrigin,List.of(),List.of(),null,Statement.EditingOrigin.SOURCE,"UNREVIEWED"));
         var boundary=new TreeMap<String,String>();
         for(var edge:json.readTree(baseline.frozenContext().getOrDefault("relationMappings","[]"))) {
             String id="edge-"+edge.path("id").asText();if(boundary.put(id,edge.toString())!=null) throw new IllegalArgumentException("Duplicate frozen relation ID");

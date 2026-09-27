@@ -136,7 +136,7 @@ public class ReformulationService {
         var old=previous.statements().stream().filter(s->s.id().equals(statementId)).findFirst().orElseThrow(()->PortfolioException.notFound("Statement not found"));
         boolean reject="REJECT".equals(request.action());
         if(!reject && !"EDIT".equals(request.action()))throw PortfolioException.validation("Invalid statement operation");
-        if(reject && old.provenance()==Statement.Provenance.ORIGINAL)throw PortfolioException.validation("Original source cannot be rejected");
+        if(reject && old.provenance().isSource())throw PortfolioException.validation("Selected source cannot be rejected");
         if(!reject && (request.text()==null || request.text().isBlank()))throw PortfolioException.validation("Statement text required");
         var updated=new Statement(old.id(),reject?old.wording():request.text(),old.sourceSpans(),old.provenance(),old.architectureLinks(),
                 old.questionDependencies(),old.conditionalValidity(),Statement.EditingOrigin.HUMAN,reject?"REJECTED":"UNREVIEWED");

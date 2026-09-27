@@ -46,10 +46,18 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   NODE, grouped/aggregate, REWORD and RECONCILE prompt data while excluding raw
   archived payload; adopted source remains protected and distinctly attributed
   through engine/reconciliation; model cannot mint adopted-source provenance.
+- RED analysis run: `AdoptedLineagePromptTest` 3/3 expected failures and
+  `ReformulationResponseParserTest` 1/8 expected failure (four total failures,
+  zero errors); the parser failure exposed the not-yet-declared provenance,
+  while engine and both prompt builders omitted the required semantics.
+- Candidate implementation adds ADOPTED_SOURCE as distinct protected source,
+  rejects model forging, carries prompt-safe inherited JSON through all node and
+  reconcile calls, bumps checkpoint input encoding, and maps source semantics
+  through reconciliation/coverage/UI. GREEN unverified.
 
 ## Next exact command
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest -Dsurefire.failIfNoSpecifiedTests=false`
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test -Dtest=AdoptedLineagePromptTest,ReformulationResponseParserTest,FrozenReformulationEngineTest,CrossTaxonomyReconciliationTest -Dsurefire.failIfNoSpecifiedTests=false`
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.

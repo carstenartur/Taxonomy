@@ -44,7 +44,8 @@ public class ReformulationResponseParser {
             String wording=text(node,"wording");var spans=spans(node,"sourceSpans",input);
             if(RejectedWordingGuard.repeats(wording,rejected))throw invalid("Rejected wording repeated in statement");
             var provenance=Statement.Provenance.valueOf(text(node,"provenance"));
-            if(provenance==Statement.Provenance.HUMAN_DECISION) throw invalid("Model cannot create human decisions");
+            if(provenance==Statement.Provenance.HUMAN_DECISION || provenance==Statement.Provenance.ADOPTED_SOURCE)
+                throw invalid("Model cannot create human decisions or adopted source");
             if(provenance==Statement.Provenance.ORIGINAL && (spans.isEmpty() || !wording.equals(String.join("",spans.stream().map(Statement.SourceSpan::exactText).toList())))) throw invalid("ORIGINAL wording must exactly match source spans");
             statements.add(new Statement(id("s",input,index++,node),wording,spans,provenance,refs(node,"architectureLinks",links),refs(node,"questionDependencies",questionRefs),nullableText(node,"conditionalValidity"),Statement.EditingOrigin.MODEL,"UNREVIEWED"));
         }

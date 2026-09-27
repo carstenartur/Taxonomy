@@ -10,9 +10,9 @@ public class ReformulationCoverageValidator {
         for(var s:candidate.statements()) {
             for(var span:s.sourceSpans()) {
                 if(!span.matches(baseline.originalText())) findings.add(new ValidationReport.Finding(ValidationReport.Kind.STRUCTURAL_LOSS,"INVALID_SOURCE_SPAN","Source evidence does not match the frozen original",List.of(s.id()),List.of()));
-                else if(!"REJECTED".equals(s.reviewState()) && s.provenance()==Statement.Provenance.ORIGINAL && s.wording().contains(span.exactText()) && candidate.text().contains(span.exactText()))covered.set(span.start(),span.end());
+                else if(!"REJECTED".equals(s.reviewState()) && s.provenance().isSource() && s.wording().contains(span.exactText()) && candidate.text().contains(span.exactText()))covered.set(span.start(),span.end());
             }
-            if(s.provenance()!=Statement.Provenance.ORIGINAL && s.provenance()!=Statement.Provenance.HUMAN_DECISION)
+            if(!s.provenance().isSource() && s.provenance()!=Statement.Provenance.HUMAN_DECISION)
                 findings.add(new ValidationReport.Finding(ValidationReport.Kind.SEMANTIC_REVIEW,"UNCONFIRMED_ADDITION","Unconfirmed architecture/model wording; repeated origins provide no independent confirmation",List.of(s.id()),List.of()));
         }
         for(int start=covered.nextClearBit(0);start<baseline.originalText().length();) {

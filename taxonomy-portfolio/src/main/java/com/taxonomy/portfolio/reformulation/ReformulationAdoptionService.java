@@ -50,7 +50,7 @@ public class ReformulationAdoptionService {
         if(!revision.impact().equals(ReformulationImpact.empty()))warnings.add("REVIEW_PENDING_EDITS_AND_DECISIONS");
         if(!Objects.equals(offer.baseline().sourceVersionId(),current.currentVersionId()))warnings.add("SOURCE_DIFFERS_FROM_CURRENT");
         if(!text.equals(revision.text()))warnings.add("EXTERIOR_WHITESPACE_NORMALIZED");
-        if(revision.statements().stream().anyMatch(s->s.provenance()!=Statement.Provenance.ORIGINAL))warnings.add("ADDITIONS_REQUIRE_REVIEW");
+        if(revision.statements().stream().anyMatch(s->!s.provenance().isSource()))warnings.add("ADDITIONS_REQUIRE_REVIEW");
         checkReferences(revision,offer.baseline().originalText(),blocked);
         var data=new PreviewContent(UUID.randomUUID().toString(),proposalId,offer.baseline().sourceVersionId(),offer.baseline().originalText(),
                 offer.baseline().snapshotId(),current,requirement.getRowVersion(),revision,text,warnings.stream().distinct().toList(),
