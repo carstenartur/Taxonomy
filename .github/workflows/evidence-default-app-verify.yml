@@ -1,0 +1,62 @@
+name: Verify default evidence application contracts
+on:
+  push:
+    branches: [maintenance/evidence-default-source-20260927]
+    paths: [.github/workflows/evidence-default-app-verify.yml]
+permissions:
+  contents: write
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 0}
+      - name: Apply exact application-test increment
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/evidence-default-app
+          cp .github/transfers/evidence-default-app-migration.patch /tmp/evidence-default-app/changes.patch
+          echo '542155bfa24fe37b83d1d6935617c6675aeef4c45a6ca9bdd5ea54cab1f6dd61  /tmp/evidence-default-app/changes.patch' | sha256sum -c -
+          git checkout --detach 049cea70321aa30a7f6d24bfd942d32aa0a20968
+          git apply --index /tmp/evidence-default-app/changes.patch
+          git diff --cached --check
+          test "$(git write-tree)" = f845eed6e82bf6af2cb528c3e84119468a26dd34
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Execute default and legacy contracts plus policy guards
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-app -am test -Dtest=ArchitectureViewTests,AnalysisRelationGeneratorTests,DefaultArchitectureAnalysisTest,ArchitectureContextDependencyRatchetTest,ConfigurationReferenceContractTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee /tmp/evidence-default-app/maven.log
+          python3 - <<'PY'
+          from pathlib import Path
+          import xml.etree.ElementTree as X
+          root = Path('taxonomy-app/target/surefire-reports')
+          expected = {'com.taxonomy.ArchitectureViewTests': 23, 'com.taxonomy.AnalysisRelationGeneratorTests': 14, 'com.taxonomy.DefaultArchitectureAnalysisTest': 3, 'com.taxonomy.ArchitectureContextDependencyRatchetTest': None, 'com.taxonomy.config.ConfigurationReferenceContractTest': None}
+          for name, count in expected.items():
+              suite = X.parse(root / ('TEST-' + name + '.xml')).getroot()
+              assert int(suite.get('tests')) > 0, name
+              if count is not None: assert int(suite.get('tests')) == count, name
+              for field in ['failures', 'errors', 'skipped']: assert int(suite.get(field, '0')) == 0, (name, field)
+          PY
+      - name: Publish application-test increment without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git write-tree)" = f845eed6e82bf6af2cb528c3e84119468a26dd34
+          git config user.name 'Carsten Hammer'
+          git config user.email 'carsten.hammer@t-online.de'
+          git commit -m 'test(analysis): separate legacy compatibility from default evidence HTTP contracts'
+          git push origin HEAD:refs/heads/fix/default-evidence-architecture
+          git rev-parse HEAD HEAD^{tree} > /tmp/evidence-default-app/published.txt
+      - name: Collect executed reports
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/evidence-default-app/reports
+          find taxonomy-* -path '*/surefire-reports/TEST-*.xml' -type f -exec cp --parents '{}' /tmp/evidence-default-app/reports/ ';'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with: {name: evidence-default-app-contracts, path: /tmp/evidence-default-app, if-no-files-found: error, retention-days: 7}
