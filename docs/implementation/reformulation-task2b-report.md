@@ -3,6 +3,14 @@
 Status: fix round 1 focused verification green; scoped re-review and root's
 integrated gate pending. No product acceptance or real-provider quality claim.
 
+Fix round 2 (scoped re-review head `0f8a16320ec2762a063d3c3207ea2f5c3cd169cc`):
+findings 1 and 3 closed; finding 2 remains open for a reachable generic
+`local` statement-edit scope. RED candidate adds B-only local edit question
+and answer to the A/B frozen projection, asserting they do not leak into A
+while B and a genuinely unmappable retired edit remain visible. Unexecuted at
+this checkpoint. Next exact command:
+`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test '-Dtest=AdoptedLineagePromptTest#branchCallsExcludeUnrelatedInheritedDecisionsButKeepGlobalAndUnmapped' -Dsurefire.failIfNoSpecifiedTests=false`
+
 Fix round 1 (review head `7cdaeec40a511b3fe73d070693ceabb9f1be6a4d`):
 three Important findings accepted. New tests first cover a fresh adopted offer's
 historical rejected wording and branch-local/global/unmappable prompt selection.

@@ -42,8 +42,11 @@ class AdoptedLineagePromptTest {
                   {"id":"retired","wording":"Obsolete mapping remains visible","reviewState":"REJECTED","architectureLinks":["RETIRED"],"questionDependencies":[]},
                   {"id":"unknown","wording":"Unmapped historical wording","reviewState":"REJECTED","architectureLinks":[],"questionDependencies":[]}],
                   "questions":[{"id":"q-global","key":{"scope":"global"},"wording":"Shared policy?","affectedStatementIds":[],"prerequisites":[],"discoveries":[]},
-                    {"id":"q-boundary","key":{"scope":"edge-1"},"wording":"Boundary decision?","affectedStatementIds":[],"prerequisites":[],"discoveries":[]}],
-                  "humanAnswers":[{"questionId":"q-global","values":["retain"],"rationale":"Globally decided"}],
+                    {"id":"q-boundary","key":{"scope":"edge-1"},"wording":"Boundary decision?","affectedStatementIds":[],"prerequisites":[],"discoveries":[]},
+                    {"id":"edit-b","key":{"scope":"local"},"wording":"B-only statement edit?","affectedStatementIds":["b"],"prerequisites":[],"discoveries":[]},
+                    {"id":"edit-unmapped","key":{"scope":"local"},"wording":"Retired statement edit?","affectedStatementIds":["retired"],"prerequisites":[],"discoveries":[]}],
+                  "humanAnswers":[{"questionId":"q-global","values":["retain"],"rationale":"Globally decided"},
+                    {"questionId":"edit-b","values":["B only"],"rationale":"B edit rationale"}],
                   "historicalReview":{"findings":[]}},
                  {"historicalEvidenceHash":"history-2","statements":[
                    {"id":"dependent","wording":"Dependent historical wording","reviewState":"REJECTED","architectureLinks":[],"questionDependencies":["q-boundary"]}],
@@ -63,10 +66,12 @@ class AdoptedLineagePromptTest {
                     List.of(), Map.of(), List.of(), List.of(), "Preserve source");
             String prompt = builder.build(input, null);
             assertThat(prompt).contains("Shared policy?", "Globally decided", "Unmapped historical wording",
-                    "Obsolete mapping remains visible");
+                    "Obsolete mapping remains visible", "Retired statement edit?");
             assertThat(prompt).contains("Rejected " + step + "-only wording");
             assertThat(prompt).doesNotContain("Rejected " + (step.equals("A") ? "B" : "A") + "-only wording");
             assertThat(prompt).doesNotContain("Boundary decision?", "Dependent historical wording");
+            if (step.equals("A")) assertThat(prompt).doesNotContain("B-only statement edit?", "B edit rationale");
+            else assertThat(prompt).contains("B-only statement edit?", "B edit rationale");
         }
         var boundary = new NodeSynthesisInput(baseline, "A", null, "A", List.of(), List.of(),
                 List.of(), Map.of("edge-1", "{\"sourceCode\":\"A\",\"targetCode\":\"B\"}"),
