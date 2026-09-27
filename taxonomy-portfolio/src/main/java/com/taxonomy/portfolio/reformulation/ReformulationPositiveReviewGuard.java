@@ -37,19 +37,25 @@ public class ReformulationPositiveReviewGuard {
                 throw PortfolioException.conflict("Stored adoption review evidence is incomplete");
             rejectBlocking(content.revision());
         }
-        for (var evidence : imports.findByScopeKeyAndProjectKeyAndRequirementKeyAndTargetVersionNumberAndTargetTextHash(
+        for (var evidence : imports.findMatchingCurrent(
                 scope, project.getProjectKey(), requirement.getRequirementKey(), current.getVersionNumber(), current.getContentHash())) {
             if (!StableIdentityHash.sha256(evidence.getPayload()).equals(evidence.getEvidenceHash()))
                 throw PortfolioException.conflict("Imported adoption review evidence is inconsistent");
             var payload = json.read(evidence.getPayload(), ReformulationEvidenceCodec.Payload.class);
             if (payload == null || payload.revision() == null
-                    || !Objects.equals(payload.projectKey(), project.getProjectKey())
-                    || !Objects.equals(payload.requirementKey(), requirement.getRequirementKey())
+                    || !Objects.equals(payload.projectKey(), evidence.getProjectKey())
+                    || !Objects.equals(payload.requirementKey(), evidence.getRequirementKey())
+                    || !sameBusinessKey(payload.projectKey(), project.getProjectKey())
+                    || !sameBusinessKey(payload.requirementKey(), requirement.getRequirementKey())
                     || payload.targetVersionNumber() != current.getVersionNumber()
                     || !Objects.equals(payload.targetContentHash(), current.getContentHash()))
                 throw PortfolioException.conflict("Imported adoption review evidence is incomplete");
             rejectBlocking(payload.revision());
         }
+    }
+
+    private static boolean sameBusinessKey(String portable, String local) {
+        return portable != null && local != null && portable.equalsIgnoreCase(local);
     }
 
     private static void rejectBlocking(ReformulationDtos.Revision revision) {

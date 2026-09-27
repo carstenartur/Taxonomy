@@ -333,10 +333,15 @@ public class ReformulationService {
         String scope=PortfolioScope.key(actor,context);
         var proposal=(lock?proposals.lockScoped(id,projectId,requirementId,scope):proposals.findByIdAndProjectIdAndRequirementIdAndScopeKey(id,projectId,requirementId,scope))
                 .orElseThrow(()->PortfolioException.notFound("Reformulation proposal not found"));
-        var baseline=json.read(proposal.getBaselinePayload(),ReformulationBaseline.class);
+        ReformulationBaseline baseline;
+        try {
+            baseline=json.read(proposal.getBaselinePayload(),ReformulationBaseline.class);
+        } catch (PortfolioException invalid) {
+            throw PortfolioException.conflict("Stored reformulation baseline does not match proposal identity");
+        }
         var expected=new ReformulationBaseline.Scope(PortfolioScope.repositoryId(context),PortfolioScope.workspaceId(context),
                 PortfolioScope.branch(context),proposal.getProjectId(),proposal.getRequirementId());
-        if(!expected.equals(baseline.scope()) || !Objects.equals(proposal.getSourceVersionId(),baseline.sourceVersionId())
+        if(baseline==null || !expected.equals(baseline.scope()) || !Objects.equals(proposal.getSourceVersionId(),baseline.sourceVersionId())
                 || !Objects.equals(proposal.getSnapshotId(),baseline.snapshotId()))
             throw PortfolioException.conflict("Stored reformulation baseline does not match proposal identity");
         return proposal;
