@@ -1,6 +1,6 @@
 # Task 2b — adopted lineage and portable evidence
 
-Status: fix round 1 focused verification green; scoped re-review and root's
+Status: fix round 2 focused verification green; scoped re-review and root's
 integrated gate pending. No product acceptance or real-provider quality claim.
 
 Fix round 2 (scoped re-review head `0f8a16320ec2762a063d3c3207ea2f5c3cd169cc`):
@@ -13,11 +13,15 @@ at the A prompt's B-only rejected statement (line 71), zero errors/skips,
 build failed (`/tmp/task2b-review2-local-red.log`). Candidate fix treats
 `local` as a generic statement-edit scope resolved by affected IDs and
 discovery, rather than an unknown taxonomy node; an unlocated local record
-remains visible. Covering GREEN is not yet executed. Next exact command
-after publication:
+remains visible. Covering GREEN (`/tmp/task2b-review2-local-green.log`):
+AdoptedLineagePromptTest 6/6 and ReformulationResponseParserTest 10/10,
+**16/16**, zero failures/errors/skips, build success. Exact command:
 `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test '-Dtest=AdoptedLineagePromptTest,ReformulationResponseParserTest' -Dsurefire.failIfNoSpecifiedTests=false`
 The RED selector was:
 `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test '-Dtest=AdoptedLineagePromptTest#branchCallsExcludeUnrelatedInheritedDecisionsButKeepGlobalAndUnmapped' -Dsurefire.failIfNoSpecifiedTests=false`
+Only the generic-local selector and its test changed in this round; the
+earlier real reanalysis and guard findings remain closed. No broad suite was
+repeated after this small correction.
 
 Fix round 1 (review head `7cdaeec40a511b3fe73d070693ceabb9f1be6a4d`):
 three Important findings accepted. New tests first cover a fresh adopted offer's
@@ -253,8 +257,8 @@ the Mockito agent without changing the project build.
 
 ## Next exact action
 
-Independent scoped re-review of `git diff 03e4208bbd8086c1649240ccb37e2cc2b0d6b76b..HEAD`
-against the three accepted Important findings in
+Independent scoped re-review of `git diff 0f8a16320ec2762a063d3c3207ea2f5c3cd169cc..HEAD`
+against remaining finding 2 in
 `docs/implementation/reformulation-task2b-review.md`, then root's integrated
 gate. Do not repeat Tasks 1/2a or infer real-language quality from transport
 playback.
