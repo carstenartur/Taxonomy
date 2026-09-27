@@ -15,6 +15,10 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
     @Override public byte[] render(ReformulationReportRenderer.Input report, FrozenReformulationArchitecture architecture) {
         try (var document = new XWPFDocument(); var output = new ByteArrayOutputStream()) {
             var w = new WordDocumentWriter(document, new DecisionReportLabels(report.language()));
+            var graphNodes = new HashSet<String>();
+            architecture.graph().nodes().forEach(node -> graphNodes.add(node.id()));
+            var graphEdges = new HashSet<String>();
+            architecture.graph().edges().forEach(edge -> graphEdges.add(edge.id()));
             boolean de = report.language().equals("de");
             String title = report.adoptionReceipt() ? t(de, "Neuformulierung — Übernahmebeleg", "Reformulation — adoption receipt")
                     : t(de, "Neuformulierungsangebot — gespeicherte Revision", "Reformulation offer — saved revision");
@@ -48,11 +52,18 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                         + question.answerSchema().kind() + " · " + t(de, "Optionen: ", "Options: ") + question.answerSchema().options());
                 w.paragraph(t(de, "Auswirkungen: ", "Consequences: ") + Objects.toString(question.consequences(), "")
                         + " · " + t(de, "Aussagen: ", "Statements: ") + question.affectedStatementIds());
-                question.discoveries().forEach(discovery -> w.paragraph(t(de, "Entdeckung: ", "Discovery: ")
-                        + discovery.location() + " · " + discovery.context() + " · " + discovery.rationale()
-                        + " · nodes " + discovery.nodeIds() + " · edges " + discovery.edgeIds()));
+                question.discoveries().forEach(discovery -> {
+                    w.paragraph(t(de, "Entdeckung: ", "Discovery: ")
+                            + discovery.location() + " · " + discovery.context() + " · " + discovery.rationale());
+                    references(w, discovery.nodeIds(), graphNodes, de);
+                    references(w, discovery.edgeIds(), graphEdges, de);
+                });
                 question.origins().forEach(origin -> w.paragraph(t(de, "Ursprungsfrage: ", "Origin question: ")
                         + origin.id() + " · " + origin.wording() + " · " + origin.discoveries()));
+                question.origins().forEach(origin -> origin.discoveries().forEach(discovery -> {
+                    references(w, discovery.nodeIds(), graphNodes, de);
+                    references(w, discovery.edgeIds(), graphEdges, de);
+                }));
                 question.sourceResolutions().forEach(resolution -> w.paragraph(t(de, "Aus Original beantwortet: ", "Resolved from source: ")
                         + resolution.values() + " · " + resolution.rationale() + " · " + resolution.sourceSpans()));
             }
@@ -77,6 +88,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                         + Objects.toString(statement.conditionalValidity(), "") + " · architecture "
                         + statement.architectureLinks() + " · questions " + statement.questionDependencies()
                         + " · source " + statement.sourceSpans());
+                references(w, statement.architectureLinks(), graphNodes, graphEdges, de);
             }
             w.heading(t(de, "Prüfung und übernommene Evidenz", "Validation and inherited evidence"), 1, "rf_validation");
             report.validation().findings().forEach(f -> w.paragraph(f.kind() + " · " + f.code() + " · "
@@ -92,6 +104,16 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
             architecture.elementDetails().forEach(w::paragraph);
             architecture.relationDetails().forEach(w::paragraph);
             var graph = architecture.graph();
+            w.heading(t(de, "Nachweisbare Architekturbezüge", "Navigable architecture references"), 2, null);
+            for (var node : graph.nodes()) {
+                var p = w.paragraph(node.id() + " — " + node.label());
+                w.bookmark(p, referenceBookmark(node.id()));
+            }
+            for (var edge : graph.edges()) {
+                var p = w.paragraph(edge.id() + " · " + edge.sourceId() + " → " + edge.targetId()
+                        + " · " + edge.relationType());
+                w.bookmark(p, referenceBookmark(edge.id()));
+            }
             if (graph.nodes().isEmpty()) {
                 w.heading(t(de, "Gespeicherte Architektur", "Saved architecture"), 1, "architecture_figures");
                 w.paragraph(t(de, "Kein Architekturgraph im ausgewählten Snapshot gespeichert.",
@@ -122,5 +144,32 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
     private static String t(boolean de, String german, String english) { return de ? german : english; }
     private static String bookmark(String kind, String id) {
         return "rf_" + kind + "_" + Integer.toUnsignedString(id.hashCode(), 36);
+    }
+    private static void references(WordDocumentWriter writer, List<String> ids, Set<String> nodes, boolean de) {
+        references(writer, ids, nodes, Set.of(), de);
+    }
+    private static void references(WordDocumentWriter writer, List<String> ids, Set<String> nodes,
+            Set<String> edges, boolean de) {
+        for (String id : ids) {
+            if (nodes.contains(id) || edges.contains(id)) {
+                writer.link(writer.paragraph(t(de, "Architekturbezug: ", "Architecture reference: ")),
+                        referenceBookmark(id), id);
+            } else {
+                writer.paragraph(t(de, "Bezug nicht im gespeicherten Graph verfügbar: ",
+                        "Reference unavailable in saved graph: ") + id);
+            }
+        }
+    }
+    private static String referenceBookmark(String id) {
+        StringBuilder out = new StringBuilder("rf_ref_");
+        for (int i = 0; i < id.length(); i++) {
+            char c = id.charAt(i);
+            if (c == '-') out.append('_');
+            else if (c == '_') out.append("_u");
+            else if (Character.isLetterOrDigit(c) && c < 128) out.append(c);
+            else out.append("_x").append(Integer.toHexString(c));
+        }
+        return out.length() <= 40 ? out.toString()
+                : "rf_ref_" + Integer.toUnsignedString(id.hashCode(), 36);
     }
 }

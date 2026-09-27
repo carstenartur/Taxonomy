@@ -64,6 +64,12 @@ Status: in progress; not product acceptance.
 - Inspected producer: `PortfolioAnalysisPersistenceService.persistSnapshot` stores analysis payload/gaps and derives element/relation mapping rows directly from the captured `RequirementArchitectureView`, with snapshot summary branch sourced from `ViewContext.basedOnBranch` when present. Test uses that real producer path.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure -Dsurefire.failIfNoSpecifiedTests=false test`.
 
+## Checkpoint 13 — saved-reference navigation
+
+- Real graph endpoint after canonical ID fix: 1 test, 1 expected assertion failure, 0 errors. POI parsed the DOCX and found a figure, but saved edge references lacked an internal bookmark/hyperlink.
+- Added literal internal Word targets for every frozen graph node and edge and links from saved statement/question discovery references. Unresolved IDs remain visibly labelled unavailable rather than linked to live or invented graph content. The link targets are deterministic and contain no external URL.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure -Dsurefire.failIfNoSpecifiedTests=false test`.
+
 ## Checkpoint 12 — canonical edge correction
 
 - The existing semantic RED names the exact missing behavior; no redundant unchanged-source rerun. Graph mapping rows now expose canonical `edge-<persisted mapping id>`, matching the synthesis/reconciliation references. Parallel-edge expectation updated to the same public ID contract.
