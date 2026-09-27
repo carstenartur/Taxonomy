@@ -209,8 +209,8 @@ public class LlmService {
         if (cachedMockAnalysis != null) { return cachedMockAnalysis; }
         try {
             cachedMockAnalysis = savedAnalysisService.loadFromClasspath(
-                    "mock-scores/secure-voice-comms.json");
-            log.info("MOCK — loaded mock scores from classpath:mock-scores/secure-voice-comms.json");
+                    "mock-scores/communication-demo.json");
+            log.info("MOCK — loaded mock scores from classpath:mock-scores/communication-demo.json");
         } catch (Exception e) {
             log.warn("MOCK — failed to load mock scores from classpath, using hardcoded fallback: {}", e.getMessage());
         }
@@ -221,9 +221,8 @@ public class LlmService {
      * Builds mock {@link ScoreParseResult} for the given nodes.
      *
      * <p>First tries to look up each node's score in the saved analysis JSON loaded from
-     * {@code classpath:mock-scores/secure-voice-comms.json}. The JSON was pre-computed by
-     * {@code MockScoreGeneratorIT} using a hierarchical distribution algorithm that guarantees
-     * children scores sum exactly to their parent's score at every level.
+     * {@code classpath:mock-scores/communication-demo.json}. This explicitly synthetic, bounded demo selects only the paths used by
+     * {@link MockRelationReplies}; it is not a semantic evaluation of arbitrary input.
      *
      * <p>When <em>all</em> nodes are found in the JSON the pre-computed scores are returned
      * as-is, without any re-normalization.  Re-normalizing would distort the carefully computed
@@ -273,7 +272,7 @@ public class LlmService {
         }
 
         // When every score came from the pre-computed JSON the distribution is already correct:
-        // MockScoreGeneratorIT.distributeScores() guarantees children sum exactly to their parent.
+        // The bounded demo supplies complete sibling sets, including explicit zeros.
         // Return the JSON values directly — re-normalizing would distort them.
         if (allFromJson) {
             recordSuccess();
@@ -1446,7 +1445,7 @@ public class LlmService {
     public String callLlmRaw(String prompt) {
         if (providerConfig.isMockMode()) {
             recordSuccess();
-            return "[]"; // Return empty JSON array for mock mode
+            return MockRelationReplies.reply(prompt);
         }
 
         LlmProvider provider = getActiveProvider();

@@ -24,6 +24,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mockStatic;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
@@ -42,8 +43,9 @@ class DefaultArchitectureAnalysisTest {
 
     @Test
     void defaultRejectsInvalidRawEvidenceWithoutInventingLegacyEdges() throws Exception {
-        // The existing mock raw boundary returns [], which is intentionally not
-        // salvaged into a successful relationship response.
+        // Inject a malformed response explicitly. The normal mock now speaks the
+        // relation protocol and must not be relied upon as an error fixture.
+        doReturn("[]").when(llm).callLlmRaw(anyString());
         JsonNode result = analyze(true);
         assertThat(search.isEnabled()).isTrue();
         assertThat(result.path("status").asString()).isEqualTo("PARTIAL");
@@ -88,6 +90,7 @@ class DefaultArchitectureAnalysisTest {
 
     @Test
     void hidingTheArchitectureViewDoesNotDisableDefaultEvidenceValidation() throws Exception {
+        doReturn("[]").when(llm).callLlmRaw(anyString());
         JsonNode result = analyze(false);
         assertThat(search.isEnabled()).isTrue();
         assertThat(result.path("status").asString()).isEqualTo("PARTIAL");
@@ -95,6 +98,30 @@ class DefaultArchitectureAnalysisTest {
         assertThat(result.path("provisionalRelations").isEmpty()).isTrue();
         assertThat(result.path("architectureView").isMissingNode()
                 || result.path("architectureView").isNull()).isTrue();
+    }
+
+    @Test
+    void explicitMockDemonstrationUsesTheDefaultProtocolWithinItsOrdinaryBudget() throws Exception {
+        JsonNode result = analyze(true);
+        assertThat(search.isEnabled()).isTrue();
+        assertThat(result.path("status").asString()).as(result.toString()).isEqualTo("SUCCESS");
+        assertThat(result.path("provider").asString()).isEqualTo("Mock");
+        assertThat(result.path("provisionalRelations").isEmpty()).isTrue();
+        JsonNode report = result.path("relationSearchReport");
+        assertThat(report.path("totalCalls").asInt()).isPositive().isLessThanOrEqualTo(24);
+        assertThat(report.path("warnings").isEmpty()).isTrue();
+        assertThat(report.path("result").path("unfinished").isEmpty()).isTrue();
+        assertThat(report.path("result").path("edges").size()).isEqualTo(2);
+        var relationships = result.path("architectureView").path("includedRelationships");
+        assertThat(result.path("architectureView").path("includedElements").size()).isEqualTo(3);
+        assertThat(relationships.size()).isEqualTo(2);
+        java.util.Set<String> types = new java.util.HashSet<>();
+        for (JsonNode relation : relationships) {
+            types.add(relation.path("relationType").asString());
+            assertThat(relation.path("sourceCode").asString()).isEqualTo("UA-1574");
+            assertThat(relation.path("presenceReason").asString()).contains("MOCK", ORIGINAL);
+        }
+        assertThat(types).containsExactlyInAnyOrder("CONSUMES", "USES");
     }
 
     private JsonNode analyze(boolean includeView) throws Exception {

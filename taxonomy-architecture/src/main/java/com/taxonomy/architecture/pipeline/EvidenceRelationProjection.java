@@ -89,6 +89,7 @@ public final class EvidenceRelationProjection {
                     .collect(java.util.stream.Collectors.joining(" | "));
             RequirementElementView source = element(node, context.getScores(), details, explanation);
             source.setOrigin(NodeOrigin.REQUIREMENT_EVIDENCE);
+            source.setSelectedForImpact(false);
             source.setPresenceReason(summary("SOURCE_ONLY: quoted requirement contribution proposal; "
                     + "no verified required relationship is implied. " + explanation));
             source.setIncludedBecause(source.getPresenceReason());

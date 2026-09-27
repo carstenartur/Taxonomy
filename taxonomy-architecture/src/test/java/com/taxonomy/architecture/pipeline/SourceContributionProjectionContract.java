@@ -34,6 +34,15 @@ public final class SourceContributionProjectionContract {
         check(context.getView().getRelationSearchReport().equals(report), "Full immutable evidence retained");
         new ArchitecturePipelineInvariantValidator().beforeReturn(context);
     }
+    public static void testUnverifiedSourceIsNeverAnImpactAnchor() {
+        var context = project(report(List.of(assessment(SOURCE, PART)), List.of()), 20);
+        var source = context.getElements().getFirst();
+        check(!source.isSelectedForImpact(), "An isolated unconfirmed source must not authorize impact analysis");
+        check(context.getAnchors().isEmpty(), "There are no verified impact anchors");
+        var json = JsonMapper.builder().build();
+        var copy = json.readValue(json.writeValueAsString(context.getView()), RequirementArchitectureView.class);
+        check(!copy.getIncludedElements().getFirst().isSelectedForImpact(), "The unconfirmed state survives persistence");
+    }
     public static void testSourceOnlyProvenanceAndFullReportSurviveJson() {
         var view = project(report(List.of(assessment(SOURCE, PART)), List.of()), 20).getView();
         var json = JsonMapper.builder().build();

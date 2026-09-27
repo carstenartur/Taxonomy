@@ -14,12 +14,14 @@ public final class ScenarioLlmPlayback {
     private static final Pattern REQUIREMENT = Pattern.compile("Business Requirement: (.*?)\\n\\s*\\n", Pattern.DOTALL);
     private final ObjectMapper json = new ObjectMapper();
     private final JsonNode fixture;
+    private final ScenarioRelationPlayback relationPlayback;
     private final Map<String, JsonNode> rules = new LinkedHashMap<>();
     private final List<Call> calls = new ArrayList<>();
     private final List<String> failures = new ArrayList<>();
 
     public ScenarioLlmPlayback(JsonNode fixture) {
         this.fixture = fixture.deepCopy();
+        this.relationPlayback = new ScenarioRelationPlayback(this.fixture);
         require(fixture.path("schemaVersion").asInt() == 1, "Unsupported scenario schema");
         require(!fixture.at("/requirement/text").asText().isBlank(), "Missing requirement");
         Set<String> ids = new HashSet<>();
@@ -54,6 +56,13 @@ public final class ScenarioLlmPlayback {
 
     public synchronized String respond(String prompt) {
         try {
+            if (prompt.startsWith(ScenarioRelationPlayback.PREFIX)) {
+                var reply = relationPlayback.respond(prompt);
+                String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
+                        Map.of("role", "assistant", "content", reply.content())))));
+                calls.add(new Call(reply.id(), sha256(prompt), sha256(body)));
+                return body;
+            }
             String requirement = unique(REQUIREMENT, prompt, "requirement");
             require(normalize(requirement).equals(normalize(fixture.at("/requirement/text").asText())), "Unknown scenario requirement");
             String keyText = unique(KEYS, prompt, "requested keys");
@@ -94,6 +103,17 @@ public final class ScenarioLlmPlayback {
             String id = rule.path("id").asText();
             long actual = calls.stream().filter(call -> call.ruleId().equals(id)).count();
             if (actual != repetitions) throw new AssertionError(id + ": expected " + repetitions + " calls, got " + actual);
+        }
+    }
+
+    public synchronized void verifyRelationCoverage(int repetitions) {
+        relationPlayback.verifyCoverage(repetitions);
+        Map<String, Long> frequencies = calls.stream().filter(call -> call.ruleId().startsWith("relation:"))
+                .collect(java.util.stream.Collectors.groupingBy(Call::ruleId, java.util.stream.Collectors.counting()));
+        for (var entry : frequencies.entrySet()) {
+            if (entry.getValue() != repetitions) {
+                throw new AssertionError("Unstable repeated relation query " + entry.getKey() + ": " + entry.getValue());
+            }
         }
     }
 

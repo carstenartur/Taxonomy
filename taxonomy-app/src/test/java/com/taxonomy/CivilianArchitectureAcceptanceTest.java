@@ -37,7 +37,9 @@ class CivilianArchitectureAcceptanceTest {
             "embedding.enabled=false", "embedding.allow-download=false", "llm.mock=false",
             "llm.provider=CUSTOM_OPENAI", "custom.llm.url=" + CivilianLlmConfiguration.URL,
             "custom.llm.model=civilian-fixture", "taxonomy.admin-password=Civilian-Acceptance-2026!",
-            "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2"
+            "taxonomy.security.require-password-change=false", "taxonomy.ai.copilot.verification-passes=2",
+            // Exhaustive authored response coverage, not a change to the production budget.
+            "taxonomy.analysis.relations.hierarchical.max-calls=256"
     })
     @Import({CivilianLlmConfiguration.class, com.taxonomy.interop.publication.PublicationCivilianConfiguration.class})
     @DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
@@ -102,6 +104,7 @@ class CivilianArchitectureAcceptanceTest {
             assertThat(operation.path("status").asText()).as(operation.toPrettyString()).isEqualTo("SUCCESS");
             assertThat(operation.path("completedPasses").asInt()).isEqualTo(2);
             playback.verifyCoverage(2);
+            playback.verifyRelationCoverage(2);
             String snapshotId = operation.path("selectedSnapshotId").asText();
             assertThat(snapshotId).isNotBlank();
             String snapshotPath = "/api/projects/" + projectId + "/snapshots/" + snapshotId;
@@ -117,9 +120,11 @@ class CivilianArchitectureAcceptanceTest {
             for (JsonNode job : operation.path("jobs")) {
                 String passSnapshotId = job.path("items").get(0).path("snapshotId").asText();
                 JsonNode pass = get("/api/projects/" + projectId + "/snapshots/" + passSnapshotId).path("analysis");
-                for (String field : List.of("scores", "reasons", "architectureView")) {
+                for (String field : List.of("scores", "reasons")) {
                     assertThat(pass.path(field)).as("Stable %s across verification passes", field).isEqualTo(analysis.path(field));
                 }
+                assertThat(semanticArchitecture(pass.path("architectureView")))
+                        .isEqualTo(semanticArchitecture(analysis.path("architectureView")));
             }
             for (JsonNode leaf : fixture.get("expectedLeaves")) {
                 assertThat(analysis.path("scores").path(leaf.asText()).asInt()).isEqualTo(100);
@@ -130,8 +135,10 @@ class CivilianArchitectureAcceptanceTest {
             save("architecture.json", projection);
             assertThat(projection.path("snapshotId").asText()).isEqualTo(snapshotId);
             assertThat(projection.path("requirementText")).isEqualTo(requirement.get("text"));
-            assertThat(projection.path("elements").size()).isBetween(8, 50);
-            assertThat(projection.path("relations").size()).isPositive();
+            // The required view is not every high-scored category: the SMS channel is optional.
+            assertThat(projection.path("elements").propertyNames()).containsExactlyInAnyOrder(
+                    "BP-1017", "BR-1223", "CI-1052", "CP-1041", "CR-1097", "IP-1116", "UA-1580");
+            assertThat(projection.path("relations").size()).isEqualTo(7);
             for (var relation : projection.path("relations").properties()) {
                 var value = relation.getValue();
                 assertThat(projection.path("elements").has(value.path("sourceCode").asText())).isTrue();
@@ -139,16 +146,29 @@ class CivilianArchitectureAcceptanceTest {
                 assertThat(value.path("sourceCode")).isNotEqualTo(value.path("targetCode"));
                 assertThat(value.path("relationType").asText()).isNotBlank();
             }
-            for (JsonNode leaf : fixture.get("expectedLeaves")) {
-                assertThat(projection.path("elements").has(leaf.asText())).as("Architecture includes %s", leaf).isTrue();
-            }
-            Set<String> concreteEndpoints = new HashSet<>();
-            fixture.get("expectedLeaves").forEach(leaf -> concreteEndpoints.add(leaf.asText()));
+            Set<String> signatures = new TreeSet<>();
             for (JsonNode relation : analysis.at("/architectureView/includedRelationships")) {
-                if (relation.path("origin").asText().equals("IMPACT_DERIVED")) {
-                    assertThat(concreteEndpoints).contains(relation.path("sourceCode").asText(), relation.path("targetCode").asText());
-                }
+                assertThat(relation.path("origin").asText()).isEqualTo("LLM_SUPPORTED");
+                assertThat(relation.path("requirementEvidence").isEmpty()).isFalse();
+                signatures.add(relation.path("sourceCode").asText() + ":" + relation.path("relationType").asText()
+                        + ":" + relation.path("targetCode").asText());
             }
+            // Expectations are authored here independently of the LLM response corpus.
+            assertThat(signatures).containsExactlyInAnyOrder("CI-1052:SUPPORTS:BP-1017", "UA-1580:CONSUMES:IP-1116",
+                    "BP-1017:CONSUMES:IP-1116", "CI-1052:FULFILLS:CP-1041", "UA-1580:USES:CI-1052",
+                    "CI-1052:PRODUCES:IP-1116", "UA-1580:USES:CR-1097");
+            JsonNode evidence = analysis.path("relationSearchReport");
+            assertThat(evidence.path("warnings").isEmpty()).isTrue();
+            assertThat(evidence.path("result").path("unfinished").isEmpty()).isTrue();
+            assertThat(evidence.path("result").path("edges")).anySatisfy(edge -> {
+                assertThat(edge.path("evidence").path("necessity").asText()).isEqualTo("OPTIONAL");
+                assertThat(edge.path("evidence").path("condition").asText()).contains("text");
+            });
+            assertThat(analysis.at("/architectureView/includedElements")).anySatisfy(element -> {
+                assertThat(element.path("nodeCode").asText()).isEqualTo("BR-1223");
+                assertThat(element.path("origin").asText()).isEqualTo("REQUIREMENT_EVIDENCE");
+                assertThat(element.path("selectedForImpact").asBoolean()).isFalse();
+            });
             var artifacts = new LinkedHashMap<String, byte[]>();
             var graphHashes = new HashSet<String>();
             for (String format : List.of("svg", "pdf", "archimate.xml", "archimate.zip", "vsdx", "visio.zip")) {
@@ -205,9 +225,11 @@ class CivilianArchitectureAcceptanceTest {
             CivilianIntegrationWalkthrough.verify(this, artifacts.get("architecture.archimate.xml"));
             // Export/reopen must not perform another analysis, even when a provider is configured.
             playback.verifyCoverage(2);
+            playback.verifyRelationCoverage(2);
             CivilianPublicationWalkthrough.prepare(this, publicationProvider);
             if (browser != null) browser.inspect(projectId, requirementId, snapshotId, projection, artifacts, this);
             playback.verifyCoverage(2);
+            playback.verifyRelationCoverage(2);
             assertFrozenWordSourceSurvivesLiveStateMutations(projectId,snapshotId,projection);
             save("run.json", json.valueToTree(Map.of("scenario", fixture.path("id").asText(),
                     "fixtureSha256", ScenarioLlmPlayback.sha256(fixture.toString()),
@@ -216,6 +238,17 @@ class CivilianArchitectureAcceptanceTest {
                     "sourceRevision", System.getenv().getOrDefault("GITHUB_SHA", "local-working-tree"),
                     "ciRun", System.getenv().getOrDefault("GITHUB_RUN_ID", "local"))));
         }
+    }
+
+    private static JsonNode semanticArchitecture(JsonNode architecture) {
+        JsonNode copy = architecture.deepCopy();
+        for (String path : List.of("/relationSearchReport", "/relationSearchReport/result")) {
+            JsonNode report = copy.at(path);
+            assertThat(report.path("durationMillis").isIntegralNumber()).isTrue();
+            assertThat(report.path("durationMillis").asLong()).isGreaterThanOrEqualTo(0);
+            ((tools.jackson.databind.node.ObjectNode) report).remove("durationMillis");
+        }
+        return copy;
     }
 
     private void assertFrozenWordSourceSurvivesLiveStateMutations(long projectId,String snapshotId,JsonNode projection) throws Exception {
@@ -231,6 +264,7 @@ class CivilianArchitectureAcceptanceTest {
         proposal.setSourceNode(node);proposal.setTargetNode(target);proposal.setRelationType(com.taxonomy.model.RelationType.DEPENDS_ON);
         proposal.setConfidence(.99);proposal.setRationale("Live proposal added after frozen analysis");
         int callsBefore=playback.calls().size();
+        var originalPolicy = diagramProjection.getPolicy();
         org.mockito.Mockito.clearInvocations(liveReports);
         try {
             node.setNameEn("MUTATED LIVE CATALOGUE TITLE");node.setDescriptionEn("Mutated live description after saving snapshot");
@@ -239,6 +273,9 @@ class CivilianArchitectureAcceptanceTest {
             proposal=proposalRepository.saveAndFlush(proposal);
             assertThat(catalogueService.getNodeByCode("BP-1017").getNameEn()).isEqualTo("MUTATED LIVE CATALOGUE TITLE");
             assertThat(preferences.get("diagram.policy")).isEqualTo("leafOnly");
+            var restricted = new com.taxonomy.export.ConfigurableDiagramSelectionPolicy(
+                    new com.taxonomy.export.DiagramSelectionConfig(true, true, true, true, false, true, 0, 1, 1));
+            diagramProjection.setPolicy(restricted);
             assertThat(diagramProjection.getPolicy().apply(before.architecture().diagram()).edges()).hasSizeLessThan(before.architecture().diagram().edges().size());
             assertThat(proposalRepository.findVisibleByRepositoryAndWorkspace(context.repositoryId(),context.workspaceId())).extracting(com.taxonomy.relations.model.RelationProposal::getId).contains(proposal.getId());
 
@@ -259,6 +296,7 @@ class CivilianArchitectureAcceptanceTest {
         } finally {
             node.setNameEn(oldName);node.setDescriptionEn(oldDescription);catalogueRepository.saveAndFlush(node);
             preferences.update(oldPreferences,"word-regression-restore");
+            diagramProjection.setPolicy(originalPolicy);
             if(proposal.getId()!=null)proposalRepository.deleteById(proposal.getId());
         }
     }

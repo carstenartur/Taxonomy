@@ -56,7 +56,9 @@ public class RequirementRelationSearchService {
 
     private String complete(String prompt) {
         String provider = llm.getActiveProviderName();
-        promptBudget.requireWithinBudget(prompt, provider);
+        // Presentation labels (notably Custom OpenAI-compatible and Local ONNX)
+        // are not stable provider keys. Preserve them in logs, not in budget lookup.
+        promptBudget.requireWithinBudget(prompt, llm.getActiveProvider().name());
         return AnalysisRunControl.call(provider, "RELATION_SEARCH", () -> {
             LlmCallDetail detail = new LlmCallDetail();
             detail.setPrompt(prompt); detail.setProvider(provider);

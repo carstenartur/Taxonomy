@@ -22,10 +22,20 @@ taxonomy.analysis.relations.hierarchical.max-sources=32
 
 These are server properties, not yet a new Preferences editor. The existing
 analysis endpoints and selected provider are reused. No additional credentials,
-microservice, database, or search engine is required. Existing `llm.mock=true`
-returns an empty array from the raw-completion API; it is **not** a realistic
-relation fixture and the enabled mode correctly reports an invalid response.
-The test fixtures below replace the remote boundary with protocol-aware replies.
+microservice, database, or search engine is required. Explicit `llm.mock=true`
+uses a bounded, clearly labelled **MOCK demonstration**, not a semantic assessment
+of the supplied requirement. It executes the real extraction/navigation/verification
+protocol using three concrete example nodes, keeps original text literal, and
+stays within the ordinary 24-call budget. The old saved example remains readable.
+Malformed-response tests inject their failures explicitly instead of using mock mode
+as a surrogate failure. Unrelated raw mock tasks retain their empty-array response.
+
+The civilian reference uses separately authored, requirement-specific replies at the
+remote HTTP boundary and checks exact required connections independently. Its
+exhaustive two-pass test budget is 256 calls per pass; production defaults remain
+unchanged. Optional SMS is retained in evidence, not promoted to a required edge.
+Source-only role contributions are visible but never selected for impact analysis.
+This proves software behavior, not real-provider architectural quality.
 
 `max-calls` covers contribution extraction, navigation and separate verification
 **evaluation attempts** in this additional phase. It does not include the earlier
@@ -60,7 +70,8 @@ remain active and partial evidence survives a stop.
 6. The normal analysis result carries `relationSearchReport`. The architecture facade
    projects verified required relationships using existing view DTOs and invariants.
    It retains unconditional quoted source contributions as `REQUIREMENT_EVIDENCE`
-   proposals even when relationships remain open. This origin does not claim
+   proposals even when relationships remain open. These unverified sources are
+   not selected for impact analysis. This origin does not claim
    separate relation verification; conditions, unresolved and rejected sources do
    not create standalone required members. Verified endpoints take priority under
    view caps. It does not run legacy seed propagation, score-product inference, or cartesian

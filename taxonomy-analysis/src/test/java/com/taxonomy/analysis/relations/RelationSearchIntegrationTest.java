@@ -9,7 +9,7 @@ import java.util.stream.Stream;
 class RelationSearchIntegrationTest {
     @TestFactory
     Stream<DynamicTest> contracts() {
-        return Stream.of(RelationSearchProtocolContract.class, RequirementRelationSearchContract.class,
+        return Stream.of(MockRelationProtocolContract.class, RelationProviderBudgetContract.class, RelationSearchProtocolContract.class, RequirementRelationSearchContract.class,
                         RelationSearchUseCaseContract.class, DefaultRelationArchitectureContract.class)
                 .flatMap(type -> Arrays.stream(type.getDeclaredMethods()))
                 .filter(method -> method.getName().startsWith("test"))
