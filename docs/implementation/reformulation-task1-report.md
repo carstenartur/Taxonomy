@@ -11,6 +11,7 @@ Rejected statements retain their stable ID, wording, provenance and review state
 - Safe no-mock RED confirmation with `-Dtest=WalkUpReformulationTest,ReformulationResponseParserTest,ReformulationCoverageValidatorTest`: 14 tests, 2 expected failures, 0 errors. Unchanged `WalkUpReformulationTest` baseline: 4/4 pass. The new parser and coverage cases failed for missing rejection/coverage checks.
 - Mockito-enabled RED with `-Dtest=FrozenReformulationEngineTest,CrossTaxonomyReconciliationTest`: 18 tests, 2 expected failures, 0 errors. Complete synthesis published a new-ID replay as UNREVIEWED; reconciliation rendered a rejected statement and repeated it in a section summary.
 - Focused GREEN with the same five-class command above after implementation: 32 tests, 0 failures, 0 errors, 0 skipped; Maven exit 0. An existing Mockito startup-agent warning and Java class-sharing warning remain environmental, not test failures.
+- Broader taxonomy-analysis unit selection: `test_names=$(rg --files taxonomy-analysis/src/test/java | rg '/[^/]+Tests?\.java$' | sed -E 's#.*/([^/]+)\.java#\1#' | paste -sd, -); python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-analysis -am test "-Dtest=$test_names" -DexcludedGroups=real-llm -Dsurefire.failIfNoSpecifiedTests=false`: 588 tests, 0 failures, 0 errors, 0 skipped; Maven exit 0. This selects explicit `*Test`/`*Tests` classes in the module and compiles upstream dependencies; it is not the full reactor/integration gate.
 
 ## Changed files
 
