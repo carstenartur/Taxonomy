@@ -270,3 +270,20 @@ before any answer operation. It also waits for the actual asynchronous compariso
 result and records click geometry on failure. No JavaScript click, hidden-header
 workaround, timeout increase or omitted assertion is introduced. These browser
 corrections require current-head CI execution; no browser success is claimed yet.
+
+CI on `3bceda6c` again completed 26 civilian tests with one browser failure; the
+other 25 passed. Its captured hit-test puts the native pointer over Questions and
+its failure screenshot shows keyboard focus on that button, but the view stayed
+on Proposal. The live status had shortened on textarea blur, moving the button
+up during the native click. The actual draft listener unconditionally recorded
+the same value for both input and change and rewrote that live status.
+
+A new regression executes the production draft listener and save function with
+native Node event targets. Before the correction it fails because unchanged blur
+overwrites the longer live status. After deduplicating only the identical current
+draft, all three behavioral checks pass: blur preserves the status/edit generation,
+an unchanged blur during saving creates no phantom draft, and genuine A-to-B-to-A
+edits during saving remain unsaved. The existing progress and adoption JavaScript
+contracts also pass. The new regression is wired into `ReformulationProgressTest`.
+Native browser and canonical Maven/full CI success still require the new head's
+execution; these focused checks are not a substitute for that evidence.

@@ -38,6 +38,14 @@ class ReformulationProgressTest {
                 "REFORMULATION_PROGRESS_CONTROLS_OK");
     }
 
+    @Test
+    void redundantBlurKeepsStatusStableAndPreservesActualEditGenerations() throws Exception {
+        Path script = resource("/reformulation/draft-events-contract.cjs", "draft-events.cjs");
+        Path workspace = resource("/static/js/portfolio/requirement-reformulation.js", "workspace.js");
+        execute(List.of("node", script.toString(), workspace.toString()), "draft-events", 30,
+                "REFORMULATION_DRAFT_EVENTS_OK");
+    }
+
     private void runApplication(String mode, String marker) throws Exception {
         var command = new ArrayList<String>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
