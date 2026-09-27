@@ -3,6 +3,7 @@ package com.taxonomy.architecture.report;
 import com.taxonomy.architecture.decision.DecisionReportLabels;
 import com.taxonomy.export.LayeredDiagramLayoutService;
 import com.taxonomy.export.reformulation.*;
+import com.taxonomy.reformulation.DecisionQuestion;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.springframework.stereotype.Component;
 
@@ -50,10 +51,12 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                     "No questions recorded; this does not imply approval."));
             for (var question : report.questions()) {
                 w.heading(question.id() + " — " + question.wording(), 2, bookmark("question", question.id()));
-                w.paragraph("Status: " + question.state() + " · " + t(de, "Antworttyp: ", "Answer type: ")
-                        + question.answerSchema().kind() + " · " + t(de, "Optionen: ", "Options: ") + question.answerSchema().options());
+                w.paragraph("Status: " + question.state());
+                answerSchema(w, question.answerSchema(), de);
                 w.paragraph(t(de, "Auswirkungen: ", "Consequences: ") + Objects.toString(question.consequences(), "")
-                        + " · " + t(de, "Aussagen: ", "Statements: ") + question.affectedStatementIds());
+                        + " · " + t(de, "Aussagen: ", "Statements: ") + question.affectedStatementIds()
+                        + " · " + t(de, "Vorausgesetzte Fragen: ", "Prerequisite questions: ") + question.prerequisites()
+                        + " · " + t(de, "Abhängige Fragen: ", "Dependent questions: ") + question.dependentQuestionIds());
                 question.discoveries().forEach(discovery -> {
                     w.paragraph(t(de, "Entdeckung: ", "Discovery: ")
                             + discovery.location() + " · " + discovery.context() + " · " + discovery.rationale());
@@ -67,20 +70,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                             + " · " + t(de, "Thema: ", "Subject: ") + origin.key().subject()
                             + " · " + t(de, "Dimension: ", "Dimension: ") + origin.key().dimension()
                             + " · " + t(de, "Geltungsbereich: ", "Scope: ") + origin.key().scope());
-                    var schema = origin.answerSchema();
-                    w.paragraph(t(de, "Antworttyp: ", "Answer type: ") + schema.kind()
-                            + " · " + t(de, "Optionen: ", "Options: ") + schema.options()
-                            + " · " + t(de, "Einheit: ", "Unit: ") + Objects.toString(schema.unit(), "—")
-                            + " · " + t(de, "Minimum: ", "Minimum: ") + Objects.toString(schema.minimum(), "—")
-                            + " · " + t(de, "Maximum: ", "Maximum: ") + Objects.toString(schema.maximum(), "—"));
-                    w.paragraph(t(de, "Optionsbedeutungen: ", "Option meanings: ")
-                            + new TreeMap<>(schema.optionMeanings()).entrySet().stream()
-                                    .map(entry -> entry.getKey() + "=" + entry.getValue()).toList()
-                            + " · " + t(de, "Unvereinbare Optionen: ", "Incompatible options: ")
-                            + schema.incompatibleOptions()
-                            + " · " + t(de, "Anwendbarkeit: ", "Applicability: ")
-                            + schema.applicability().stream().map(condition -> condition.questionId()
-                                    + " → " + condition.anyOf()).toList());
+                    answerSchema(w, origin.answerSchema(), de);
                     w.paragraph(t(de, "Auswirkungen: ", "Consequences: ")
                             + Objects.toString(origin.consequences(), "")
                             + " · " + t(de, "Aussagen: ", "Statements: ") + origin.affectedStatementIds()
@@ -190,6 +180,20 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
         } catch (Exception exception) {
             throw new IllegalStateException("Could not render frozen reformulation Word report", exception);
         }
+    }
+    private static void answerSchema(WordDocumentWriter w, DecisionQuestion.AnswerSchema schema, boolean de) {
+        w.paragraph(t(de, "Antworttyp: ", "Answer type: ") + schema.kind()
+                + " · " + t(de, "Optionen: ", "Options: ") + schema.options()
+                + " · " + t(de, "Einheit: ", "Unit: ") + Objects.toString(schema.unit(), "—")
+                + " · " + t(de, "Minimum: ", "Minimum: ") + Objects.toString(schema.minimum(), "—")
+                + " · " + t(de, "Maximum: ", "Maximum: ") + Objects.toString(schema.maximum(), "—"));
+        w.paragraph(t(de, "Optionsbedeutungen: ", "Option meanings: ")
+                + new TreeMap<>(schema.optionMeanings()).entrySet().stream()
+                        .map(entry -> entry.getKey() + "=" + entry.getValue()).toList()
+                + " · " + t(de, "Unvereinbare Optionen: ", "Incompatible options: ") + schema.incompatibleOptions()
+                + " · " + t(de, "Anwendbarkeit: ", "Applicability: ")
+                + schema.applicability().stream().map(condition -> condition.questionId()
+                        + " → " + condition.anyOf()).toList());
     }
     private static void standalonePage(XWPFDocument document) {
         var styles = document.createStyles();
