@@ -38,6 +38,14 @@ final class FrozenReformulationArchitectureAssembler {
                 && Objects.equals(project.workspaceId(), scope.workspaceId()), "Frozen source/project disagrees with the baseline");
         check(payload != null && detail.analysis() != null && Objects.equals(json.write(payload), json.write(detail.analysis())),
                 "Snapshot payload disagrees with frozen snapshot detail");
+        check(Objects.equals(summary.workspaceId(), scope.workspaceId()),
+                "Frozen snapshot workspace disagrees with the baseline");
+        var viewContext = payload.getViewContext();
+        if (viewContext != null) {
+            check(Objects.equals(summary.branchName(), viewContext.basedOnBranch())
+                    && Objects.equals(summary.commitSha(), viewContext.basedOnCommit()),
+                    "Frozen analysis branch/commit disagrees with the snapshot summary");
+        }
         check(Objects.equals(json.write(elements), json.write(detail.elementMappings()))
                 && Objects.equals(json.write(relations), json.write(detail.relationMappings()))
                 && Objects.equals(json.write(catalogue), json.write(detail.analysis().getTree() == null ? List.of() : detail.analysis().getTree())),
@@ -126,6 +134,9 @@ final class FrozenReformulationArchitectureAssembler {
         identity.put("Snapshot branch", Objects.toString(summary.branchName(), "—"));
         identity.put("Analysis based-on branch", payload.getViewContext() == null ? "—" : Objects.toString(payload.getViewContext().basedOnBranch(), "—"));
         identity.put("Analysis based-on commit", payload.getViewContext() == null ? "—" : Objects.toString(payload.getViewContext().basedOnCommit(), "—"));
+        identity.put("Includes provisional relations", viewContext == null ? "Unknown" : Boolean.toString(viewContext.includesProvisionalRelations()));
+        identity.put("Projection stale", viewContext == null ? "Unknown" : Boolean.toString(viewContext.projectionStale()));
+        identity.put("Index stale", viewContext == null ? "Unknown" : Boolean.toString(viewContext.indexStale()));
         identity.put("Provider / model", Objects.toString(summary.provider(), "—") + " / " + Objects.toString(summary.modelName(), "—"));
         identity.put("Status", Objects.toString(summary.status(), "—"));
         return new FrozenReformulationArchitecture(new DiagramModel("Frozen architecture · " + baseline.snapshotId(),

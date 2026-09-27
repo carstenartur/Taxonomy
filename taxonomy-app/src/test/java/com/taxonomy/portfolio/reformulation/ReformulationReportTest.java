@@ -110,7 +110,11 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         assertThat(result.gapAnalysisAvailable()).isTrue();
         assertThat(result.gaps()).isEmpty();
         assertThat(result.identity()).containsEntry("Offer workspace branch", "main")
-                .containsEntry("Analysis based-on branch", "draft");
+                .containsEntry("Analysis based-on branch", "draft")
+                .containsEntry("Analysis based-on commit", "captured-commit")
+                .containsEntry("Includes provisional relations", "false")
+                .containsEntry("Projection stale", "false")
+                .containsEntry("Index stale", "false");
     }
 
     @Test
@@ -154,6 +158,12 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         wrongAnalysisBranch.put("snapshotDetail", json.writeValueAsString(branchDetail));
         assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(baseline, wrongAnalysisBranch))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("analysis branch");
+        var wrongAnalysisCommit = new java.util.HashMap<>(baseline.frozenContext());
+        var commitDetail = (ObjectNode) json.readTree(wrongAnalysisCommit.get("snapshotDetail"));
+        ((ObjectNode) commitDetail.get("summary")).put("commitSha", "unexpected-other-commit");
+        wrongAnalysisCommit.put("snapshotDetail", json.writeValueAsString(commitDetail));
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(baseline, wrongAnalysisCommit))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("analysis branch/commit");
     }
 
     @Test
@@ -284,6 +294,7 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         analysis.set("architectureView", view);
         detail.set("analysis", analysis);
         ((ObjectNode) detail.get("summary")).put("branchName", "draft");
+        ((ObjectNode) detail.get("summary")).put("commitSha", "captured-commit");
         var elements = json.createArrayNode();
         for (int id : new int[] {1, 2}) {
             elements.add(json.readTree(json.writeValueAsString(new ElementMappingView((long) id,

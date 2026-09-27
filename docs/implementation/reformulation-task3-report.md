@@ -96,3 +96,10 @@ Status: in progress; not product acceptance.
 - Previous selector still ran 5 tests with 1 failure / 2 errors: the authored empty `GapAnalysisView` JSON and mapping rows lacked required primitive record fields. This is fixture setup, not semantic RED.
 - Test fixture now serializes actual typed `GapAnalysisView`, `ElementMappingView` and `RelationMappingView` values before changing the frozen bytes. No production behavior changed.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest -Dsurefire.failIfNoSpecifiedTests=false test`.
+
+## Checkpoint 15 — frozen coordinate RED and bounded correction
+
+- Targeted mapper selector ran 1 test, 1 assertion failure, 0 errors: a tampered saved snapshot workspace was accepted. This is a valid semantic RED, not fixture setup.
+- The assembler now checks saved snapshot workspace against the frozen offer scope, and saved summary branch/commit against the saved analysis ViewContext when that context exists. The offer branch remains independent: a main-branch offer may use a draft-branch analysis. The synthetic fixture's commit was aligned with the real snapshot producer contract. Captured provisional/projection/index-stale flags are visibly identified, including explicit unknown when ViewContext is absent.
+- Added a tampered commit assertion to the existing already-RED selector. The correction and broader historical/process selectors are not yet GREEN.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dreformulation.docx.qa.dir=/workspace/scratch/38625e9262ff/reformulation-task3-qa -Dtest=ReformulationReportTest,ReformulationReportHistoryTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false test`.
