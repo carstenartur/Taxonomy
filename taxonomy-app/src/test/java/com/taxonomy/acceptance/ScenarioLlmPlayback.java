@@ -19,6 +19,7 @@ public final class ScenarioLlmPlayback {
     private final Map<String, JsonNode> rules = new LinkedHashMap<>();
     private final List<Call> calls = new ArrayList<>();
     private final List<String> failures = new ArrayList<>();
+    private final List<String> prompts = new ArrayList<>();
 
     public ScenarioLlmPlayback(JsonNode fixture) {
         this.fixture = fixture.deepCopy();
@@ -43,7 +44,8 @@ public final class ScenarioLlmPlayback {
                 total += score;
             }
             require(!rule.path("excludedReason").asText().isBlank(), "Missing exclusion reason: " + id);
-            require(!task.equals("categories") || total == rule.path("parentScore").asInt(), "Budget mismatch: " + id);
+            boolean independentRoot = keys.size() == 1 && Set.of("BP", "BR", "CI", "CO", "CP", "CR", "IP", "UA").contains(keys.getFirst());
+            require(!task.equals("categories") || independentRoot || total == rule.path("parentScore").asInt(), "Budget mismatch: " + id);
             String signature = signature(task, rule.path("parentScore").asInt(-1), keys);
             require(rules.putIfAbsent(signature, rule.deepCopy()) == null, "Duplicate response scope: " + id);
         }
@@ -57,6 +59,7 @@ public final class ScenarioLlmPlayback {
     public JsonNode fixture() { return fixture.deepCopy(); }
 
     public synchronized String respond(String prompt) {
+        prompts.add(prompt);
         try {
             if (ScenarioReformulationPlayback.accepts(prompt)) {
                 var reply = reformulationPlayback.respond(prompt);
@@ -101,6 +104,7 @@ public final class ScenarioLlmPlayback {
     }
 
     public synchronized List<Call> calls() { return List.copyOf(calls); }
+    public synchronized List<String> prompts() { return List.copyOf(prompts); }
     public synchronized List<String> failures() { return List.copyOf(failures); }
     public synchronized void reject(String reason) {
         failures.add(reason);

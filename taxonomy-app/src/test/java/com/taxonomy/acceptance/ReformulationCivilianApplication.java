@@ -28,12 +28,17 @@ public final class ReformulationCivilianApplication {
     public static void main(String[] args) throws Exception {
         try (var app = new SpringApplicationBuilder(TaxonomyApplication.class, CivilianLlmConfiguration.class).run(
                 "--server.port=0", "--embedding.enabled=false", "--embedding.allow-download=false",
-                "--taxonomy.init.async=false", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
+                "--taxonomy.init.async=false", "--civilian.reformulation=true", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
                 "--custom.llm.url=" + CivilianLlmConfiguration.URL, "--custom.llm.model=civilian-fixture",
                 "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false")) {
             var scenario = new ReformulationCivilianApplication(Integer.parseInt(app.getEnvironment().getProperty("local.server.port")),
                     Path.of(args[0]), app.getBean(ScenarioLlmPlayback.class));
-            scenario.analysisAndOffer();
+            try { scenario.analysisAndOffer(); }
+            finally {
+                scenario.save("llm-calls.json", scenario.json.valueToTree(scenario.playback.calls()));
+                scenario.save("llm-prompts.json", scenario.json.valueToTree(scenario.playback.prompts()));
+                scenario.save("llm-failures.json", scenario.json.valueToTree(scenario.playback.failures()));
+            }
         }
         System.out.println("REFORMULATION_CIVILIAN_PROPOSAL_OK");
     }

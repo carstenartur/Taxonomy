@@ -19,8 +19,9 @@ public class CivilianLlmConfiguration {
     public static final String URL = "https://civilian.invalid/v1/chat/completions";
 
     @Bean @Lazy(false)
-    ScenarioLlmPlayback civilianLlmPlayback(RestTemplate restTemplate) throws Exception {
-        var playback = ScenarioLlmPlayback.flood();
+    ScenarioLlmPlayback civilianLlmPlayback(RestTemplate restTemplate, org.springframework.core.env.Environment environment) throws Exception {
+        var playback = environment.getProperty("civilian.reformulation", Boolean.class, false)
+                ? new ScenarioLlmPlayback(ReformulationCivilianCorpus.flood()) : ScenarioLlmPlayback.flood();
         var mapper = new ObjectMapper();
         var server = MockRestServiceServer.bindTo(restTemplate).build();
         server.expect(ExpectedCount.manyTimes(), request -> { }).andRespond(request -> {

@@ -55,3 +55,22 @@ from its unverified COMPLETED assumption. Test-only checkpoint precedes executio
 Expected RED: the sourced flood remote corpus has no application reformulation
 responses; observed actual prompt identities will bind authored response cases.
 No application memory/provider budgets or source requirements are changed.
+
+### Task 4b application corpus checkpoint
+
+Initial HTTP acceptance RED: normal analysis returned PARTIAL because the original
+eight-front flood corpus exhausted the unchanged 24-call relation-search budget
+(37 unfinished batches). A separate authored BP/IP score front now runs actual
+analysis to SUCCESS under the defaults; the sourced flood text/bindings remain
+unchanged. The original corpus remains the authority for the existing broad test.
+Independent root-zero response contract: RED 12 tests / 1 error (`Budget mismatch:
+BR`), then GREEN 12/12. Sibling budget validation remains enforced. The HTTP test
+then reached the real NODE/BP-1060 provider request and failed on its missing reply.
+
+New explicitly scoped BP/IP replies bind only runtime statement/question IDs from
+validated input. They author shared and separate numeric decisions without inserting
+application/DB/architecture state. Full prompts and fatal unmatched calls are saved
+as test artifacts. Proposal execution is under test; no end-to-end pass claimed.
+Next: finish the authenticated answer/reword/adoption/export/restart path, then
+browser and separate real-provider comparison. Focused command:
+`./mvnw -pl taxonomy-app -am test -Dtest=ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest -Dsurefire.failIfNoSpecifiedTests=false`.

@@ -11,8 +11,10 @@ final class ScenarioReformulationPlayback {
     private static final String RECONCILE = "\nRECONCILIATION_DATA_JSON\n";
     private final ObjectMapper json = new ObjectMapper();
     private final Map<String, JsonNode> rules = new LinkedHashMap<>();
+    private final ReformulationCivilianReplies civilian;
 
     ScenarioReformulationPlayback(JsonNode fixture) {
+        civilian = fixture.path("civilianReformulation").asBoolean(false) ? new ReformulationCivilianReplies(fixture) : null;
         Set<String> ids = new HashSet<>();
         for (var rule : fixture.path("reformulationReplies")) {
             require(!rule.path("id").asText().isBlank() && ids.add(rule.path("id").asText()), "Duplicate or missing reformulation ID");
@@ -63,6 +65,7 @@ final class ScenarioReformulationPlayback {
         var edges = scope.putObject("boundaryEdges");
         input.path("boundaryEdges").properties().forEach(edge -> edges.set(edge.getKey(), json.readTree(edge.getValue().asText())));
         scope.set("answers", input.path("answers"));
+        if (civilian != null) return civilian.respond(task, input);
         JsonNode rule = rules.get(signature(scope));
         require(rule != null, "Unknown reformulation response scope: " + task + "/" + input.path("nodeId").asText());
         return new Reply(rule.path("id").asText(), json.writeValueAsString(rule.path("response")));

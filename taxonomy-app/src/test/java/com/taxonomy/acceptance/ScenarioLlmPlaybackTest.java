@@ -11,6 +11,18 @@ import static org.assertj.core.api.Assertions.*;
 class ScenarioLlmPlaybackTest {
     private final ObjectMapper json = new ObjectMapper();
 
+    @Test void independentRootCanBeIrrelevantWithoutChangingSiblingBudgets() throws Exception {
+        var fixture = ScenarioLlmPlayback.flood().fixture().deepCopy();
+        var rule = (tools.jackson.databind.node.ObjectNode) fixture.path("replies").get(1);
+        ((tools.jackson.databind.node.ObjectNode) rule.at("/answers/BR")).put("score", 0);
+        var playback = new ScenarioLlmPlayback(fixture);
+        assertThat(json.readTree(json.readTree(playback.respond(prompt(playback, rule)))
+                .at("/choices/0/message/content").asText()).at("/BR/score").asInt()).isZero();
+        var siblings = (tools.jackson.databind.node.ObjectNode) fixture.path("replies").get(8);
+        ((tools.jackson.databind.node.ObjectNode) siblings.at("/answers/BP-1017")).put("score", 99);
+        assertThatThrownBy(() -> new ScenarioLlmPlayback(fixture)).hasMessageContaining("Budget mismatch");
+    }
+
     @Test void reformulationScopesMatchOutOfOrderAndIgnoreProviderRepairSuffix() throws Exception {
         var fixture = reformulationFixture();
         var playback = new ScenarioLlmPlayback(fixture);
