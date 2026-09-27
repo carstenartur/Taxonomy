@@ -3,10 +3,13 @@
 Implements the bounded relationship-search part of issue #1111, package 2. It does
 not complete the project's independent model identity, adoption, or exchange packages.
 
-## Enable explicitly
+## Enabled by default
 
-The initial delivery is **opt-in**. Existing installations keep their current
-score-based analysis and do not incur additional remote evaluations until enabled:
+Requirement-scoped discovery is **enabled by default** for new analyses through
+`AnalyzeRequirementUseCase`. An explicit server override to `false` retains the
+legacy algorithm for compatibility; errors and budget exhaustion never silently
+select that algorithm. Existing saved analyses are not recomputed or relabelled.
+The default adds bounded remote evaluations using the selected provider:
 
 ```properties
 taxonomy.analysis.relations.hierarchical.enabled=true
@@ -37,13 +40,17 @@ remain active and partial evidence survives a stop.
 
 1. Positive **effective** scores order concrete source candidates; catalogue roots
    are navigation containers, not components. Unhandled sources are reported when
-   source limits, missing IDs or root-only analysis prevent extraction.
+   source limits, missing IDs or root-only analysis prevent extraction. An empty or
+   all-nonpositive source set is explicitly `SOURCE_DISCOVERY_REQUIRED`, never proof
+   that the requirement has no architectural dependencies.
 2. Sibling source candidates are assessed together. Each gets explicitly quoted,
    requirement-scoped contributions, a negative assessment or an open question.
    Multiple contributions and conditions are not merged merely because codes match.
 3. The existing `RelationCompatibilityMatrix` routes each contribution through
    permitted relation types and directions. Incoming and same-category routes are
-   considered; unrestricted `RELATED_TO` is not generated automatically.
+   considered; unrestricted `RELATED_TO` is not generated automatically. Both runtime
+   and DSL validation admit `UA -> IP CONSUMES` (reading), separately from
+   `UA -> IP PRODUCES` (writing). The profile still does not assert an edge exists.
 4. Navigation offers sibling candidates together, including unscored targets.
    `DESCEND` means inspect the subtree, **not** create an edge to its root. A concrete
    non-leaf can be a match when further detail would invent a design choice.
@@ -52,7 +59,11 @@ remain active and partial evidence survives a stop.
    optional and alternative outcomes retain their original quotes and conditions.
 6. The normal analysis result carries `relationSearchReport`. The architecture facade
    projects verified required relationships using existing view DTOs and invariants.
-   It does not run legacy seed propagation, score-product inference, or cartesian
+   It retains unconditional quoted source contributions as `REQUIREMENT_EVIDENCE`
+   proposals even when relationships remain open. This origin does not claim
+   separate relation verification; conditions, unresolved and rejected sources do
+   not create standalone required members. Verified endpoints take priority under
+   view caps. It does not run legacy seed propagation, score-product inference, or cartesian
    impact generation. Optional/alternative branches remain in the evidence report.
 
 Source, navigation and verification schemas are strict JSON objects with complete
@@ -98,7 +109,11 @@ separate packages of #1111; no ArchiMate/Sparx conformance certification is clai
 The root compatibility profile is the current application profile, not a full
 ArchiMate metamodel. Source limits, maximum work, depth and model evaluations can all
 leave explicit unfinished work. Roots are admitted lazily so they cannot consume
-all work slots before any promising path reaches independent verification.
+all work slots before any promising path reaches separate verification. Relation
+routes are interleaved between contributions, retaining source priority in each
+round and branch completion before the next route. This prevents one source from
+spending the budget on every relation type before another gets a turn; it does not
+guarantee equitable recall at very small budgets.
 
 A semantic rejection prunes under a heuristic policy. `searchExhausted` means no work
 remains under that policy, **not** that every necessary architectural dependency was
@@ -111,6 +126,11 @@ without a measured comparison against independent expert-reviewed cases.
 
 Normal Maven/JUnit discovery includes:
 
+- `RelationSearchIntegrationTest` also discovers `DefaultRelationArchitectureContract`:
+  real Spring defaults/explicit override, application read/write, matching DSL rules,
+  empty-source coverage and interleaved bounded work.
+- `EvidenceRelationProjectionTest` also discovers `SourceContributionProjectionContract`:
+  isolated source proposals, exact provenance/JSON, conditions and view caps.
 - `RelationSearchEngineTest`: bounded navigation, budgets, deduplication, typed
   evidence, cycles, cancellation and lazy admission.
 - `RelationSearchIntegrationTest`: strict real protocol parsing, read/write

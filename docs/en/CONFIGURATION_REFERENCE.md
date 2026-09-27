@@ -89,7 +89,8 @@ The incoming quota runs after authorization. Local users are keyed by canonical 
 
 ## Requirement-scoped relationship search
 
-This additional phase is opt-in and uses the selected generative provider. These
+This phase is enabled by default and uses the selected generative provider. An explicit
+`false` override retains legacy score-based analysis; errors never select it automatically. These
 are server startup properties, not repository-backed Preferences fields. Limits
 bound this phase's logical evaluation attempts (contribution extraction,
 navigation and verification), not earlier category scoring, physical HTTP retries
@@ -98,7 +99,7 @@ explicitly report unfinished work; they do not certify that no relationship exis
 
 | Variable | Spring property / scope | Default | Meaning |
 |---|---|---|---|
-| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `false` | Enables requirement-scoped relationship discovery instead of score-only inference. Original requirements and active architecture are not automatically adopted or overwritten. |
+| `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_ENABLED` | `taxonomy.analysis.relations.hierarchical.enabled` | `true` | Enables requirement-scoped relationship discovery instead of score-only inference. Original requirements and active architecture are not automatically adopted or overwritten. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_CALLS` | `taxonomy.analysis.relations.hierarchical.max-calls` | `24` | Maximum logical evaluation attempts in this phase, 0–10000. Zero is supported and leaves sources explicitly unassessed. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_MAX_DEPTH` | `taxonomy.analysis.relations.hierarchical.max-depth` | `8` | Navigation depth limit, 0–100. A depth-limited branch remains unfinished rather than becoming a negative finding. |
 | `TAXONOMY_ANALYSIS_RELATIONS_HIERARCHICAL_BATCH_SIZE` | `taxonomy.analysis.relations.hierarchical.batch-size` | `10` | Offered source or sibling candidates per evaluation, 1–100. It is not a total-run call budget. |

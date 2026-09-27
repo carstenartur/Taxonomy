@@ -63,6 +63,38 @@ public final class EvidenceRelationProjection {
             // Numeric confidence remains its legacy layout/index default, not measured evidence.
             relationships.add(relation);
         }
+        // Source evidence and relation evidence are different claims. Keep a
+        // concrete unconditional contribution visible even when its edges remain
+        // open. Verified edges take priority under a view-only node cap.
+        int sourceOnly = 0, omittedSources = 0;
+        Set<String> seenSources = new HashSet<>();
+        for (SourceAssessment assessment : report.sources()) {
+            Node node = assessment.node();
+            if (!seenSources.add(node.id())) throw new IllegalArgumentException("Duplicate source assessment");
+            Node prior = identities.putIfAbsent(node.id(), node);
+            if (prior != null && !prior.equals(node)) throw new IllegalArgumentException("Conflicting source identity");
+            for (Contribution contribution : assessment.contributions()) {
+                if (!node.equals(contribution.source())) {
+                    throw new IllegalArgumentException("Contribution belongs to another source");
+                }
+            }
+            if (node.container() || !assessment.question().isBlank() || elements.containsKey(node.id())) continue;
+            List<Contribution> unconditional = assessment.contributions().stream()
+                    .filter(c -> c.condition().isBlank()).toList();
+            if (unconditional.isEmpty()) continue;
+            if (context.getMaxArchitectureNodes() > 0 && elements.size() >= context.getMaxArchitectureNodes()) {
+                omittedSources++; continue;
+            }
+            String explanation = unconditional.stream().map(c -> c.text() + " | Original: " + c.quote())
+                    .collect(java.util.stream.Collectors.joining(" | "));
+            RequirementElementView source = element(node, context.getScores(), details, explanation);
+            source.setOrigin(NodeOrigin.REQUIREMENT_EVIDENCE);
+            source.setPresenceReason(summary("SOURCE_ONLY: quoted requirement contribution proposal; "
+                    + "no verified required relationship is implied. " + explanation));
+            source.setIncludedBecause(source.getPresenceReason());
+            elements.put(node.id(), source);
+            sourceOnly++;
+        }
         context.setAnchors(new ArrayList<>());
         context.getElements().clear(); context.getElements().addAll(elements.values());
         context.getRelationships().clear(); context.getRelationships().addAll(relationships);
@@ -74,6 +106,10 @@ public final class EvidenceRelationProjection {
         if (relationships.isEmpty()) notes.add("No verified required relationships available; no score-product or catalogue-seed fallback was used.");
         if (choices > 0) notes.add("DECISIONS_PENDING: " + choices + " optional/alternative contexts remain unaccepted in structured evidence; no optional-only edge is included in the required view.");
         if (omitted > 0) notes.add("NODE_LIMIT: " + omitted + " relations omitted from this view; complete evidence is unchanged in the analysis report.");
+        if (sourceOnly > 0) notes.add("SOURCE_ONLY: " + sourceOnly
+                + " quoted contribution proposals retained without verified required relationships; review their open dependencies.");
+        if (omittedSources > 0) notes.add("NODE_LIMIT: " + omittedSources
+                + " source contribution proposals omitted from this view; full source evidence is retained in the report.");
         if (!report.isSearchExhausted()) notes.add("RELATION_SEARCH_PARTIAL: see the analysis report for unassessed work, questions and budget limits.");
     }
 

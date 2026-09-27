@@ -20,8 +20,8 @@ public class RequirementRelationSearchService {
     private final LlmService llm;
     private final AiPromptBudgetPolicy promptBudget;
 
-    @Value("${taxonomy.analysis.relations.hierarchical.enabled:false}")
-    private boolean enabled;
+    @Value("${taxonomy.analysis.relations.hierarchical.enabled:true}")
+    private boolean enabled = true;
     @Value("${taxonomy.analysis.relations.hierarchical.max-calls:24}")
     private int maxCalls = 24;
     @Value("${taxonomy.analysis.relations.hierarchical.max-depth:8}")
