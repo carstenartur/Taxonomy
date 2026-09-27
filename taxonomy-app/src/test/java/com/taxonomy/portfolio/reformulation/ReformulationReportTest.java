@@ -7,6 +7,7 @@ import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.node.ArrayNode;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.dto.TaxonomyNodeDto;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ElementMappingView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RelationMappingView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
@@ -146,6 +147,12 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         var frozen = new java.util.HashMap<>(original.frozenContext());
         var detail = (ObjectNode) json.readTree(frozen.get("snapshotDetail"));
         var analysis = (ObjectNode) json.readTree(original.snapshotPayload());
+        var root = new TaxonomyNodeDto(); root.setCode("BP"); root.setNameDe("Prozesse");
+        var first = new TaxonomyNodeDto(); first.setCode("BP-1"); first.setNameDe("Erfassung"); first.setParentCode("BP");
+        var second = new TaxonomyNodeDto(); second.setCode("BP-2"); second.setNameDe("Abrechnung"); second.setParentCode("BP");
+        root.setChildren(List.of(first, second));
+        var catalogueTree = json.readTree(json.writeValueAsString(List.of(root)));
+        analysis.set("tree", catalogueTree);
         var viewContext = json.createObjectNode();
         viewContext.put("basedOnBranch", "draft");
         viewContext.put("basedOnCommit", "captured-commit");
@@ -182,6 +189,7 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         else detail.putNull("gapAnalysis");
         frozen.put("elementMappings", json.writeValueAsString(elements));
         frozen.put("relationMappings", json.writeValueAsString(relations));
+        frozen.put("catalogue", json.writeValueAsString(catalogueTree));
         frozen.put("snapshotDetail", json.writeValueAsString(detail));
         return new ReformulationBaseline(new ReformulationBaseline.Scope(original.scope().repositoryId(),
                 original.scope().workspaceId(), "main", project.id(), requirement.id()), original.sourceVersionId(),

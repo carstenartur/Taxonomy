@@ -32,6 +32,12 @@ Status: in progress; not product acceptance.
 - Fixture now supplies all ViewContext booleans and deliberately uses view relation IDs 99/100 distinct from mapping-row IDs 11/12. This makes semantic multiplicity (rather than incidental ID equality) observable.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest -Dsurefire.failIfNoSpecifiedTests=false test`.
 
+## Checkpoint 6 — frozen catalogue fixture
+
+- Focused class again ran 5 tests, 1 failure / 2 errors: the real BP catalogue has no authored `BP-1`/`BP-2` fixture nodes, so mapper correctly rejected those mappings before reaching multiplicity. Endpoint revision and existing JSON cases passed.
+- Synthetic saved catalogue now explicitly contains BP, BP-1 and BP-2 and is embedded consistently in both frozen snapshot bytes and detail. This is only test evidence, not a production fallback.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest -Dsurefire.failIfNoSpecifiedTests=false test`.
+
 ## Checkpoint 5 — complete typed frozen fixtures
 
 - Previous selector still ran 5 tests with 1 failure / 2 errors: the authored empty `GapAnalysisView` JSON and mapping rows lacked required primitive record fields. This is fixture setup, not semantic RED.
