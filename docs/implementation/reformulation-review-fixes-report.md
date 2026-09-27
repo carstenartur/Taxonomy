@@ -136,3 +136,28 @@ the correct rejection says `Frozen source/project disagrees with the baseline`, 
 identified a cross-JVM order risk in newly displayed option-meaning maps. A two-entry
 ordered-output assertion ran RED (1 test/1 assertion failure, zero errors), and the
 renderer now traverses that map by sorted key. Both changes await GREEN.
+
+## Final round 1 verification — source `1cdfac33`
+
+The first run's console log ended during compilation, although eight fresh Surefire
+XML files later recorded 60 passing tests. It was not treated as a complete Maven
+success. One repeat of the same bounded selector resolved that evidence gap:
+2026-09-27 16:39:57 UTC, exit 0, BUILD SUCCESS, 60 tests, zero failures/errors/skips.
+Counts: export 1, architecture 5, codec 6, application 48 (report 7, guard 16,
+history 2, real reanalysis 1, architecture ratchet 22). No full regression claim.
+The independent scoped rereview approved both fixes and found no new breakage;
+see `reformulation-task3-rereview.md`.
+
+Fresh application-produced documents were rendered by LibreOffice/Poppler and
+root inspected every page (EN 1–5, DE 1–3). No clipping or overflow was observed;
+the new origin context, provenance, graph inventories and distinct historical
+offer/adoption status are readable. Technical enum values remain visible as such.
+The full real-model quality evaluation remains Task 4, not this fixture proof.
+
+- EN graph/answered DOCX SHA-256:
+  `0880f93db2a57e247ee27485d15eb30d6526f6fbb6d2584cccbc6d0cc7f963d6`.
+- DE adoption DOCX SHA-256:
+  `00cf75b5f1b5c03a3a1baca1053dcf71f10624918547bbcdaa407fefdbd0cd80`.
+
+These supersede the pre-round1 QA bytes above. Whole-branch review and final-head
+CI are still separate merge gates.

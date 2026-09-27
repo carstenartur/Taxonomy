@@ -2,13 +2,21 @@
 
 Plan: [reformulation-completion.md](reformulation-completion.md)
 
-## Execution blocked — resume point
+## Current status — 2026-09-27
 
-The runtime disconnected after the fully secured source checkpoint `4f1a238122a7369b7122ab9c95ebd85bc5e6bbc3`.
-No uncommitted source edits were outstanding. Read
-[the exact recovery note](reformulation-resume-2026-09-27.md) before proceeding.
-Task3's latest covering run was 30/31; its interrupted diagnostic result is unknown.
-Tasks1/2 are accepted; Task3 review/visual QA, Task4 and the integrated gates remain open.
+Recovery is complete; the historical outage note below remains available for audit.
+Source `1cdfac339540e1f6098382bb6b8973d7fb2b4ee6` is secured remotely and includes
+current main `946e5bdb0900ee190ae0ed72da12e3896407e1c1` through a normal merge.
+Tasks 1/2 remain accepted. Task 3's two independent review findings are resolved
+and its scoped rereview is approved. The final focused Maven reactor completed
+at 16:39:57 UTC: 60 tests, zero failures/errors/skips, BUILD SUCCESS.
+Fresh DE/EN DOCX files from that run were independently rendered and all eight
+pages inspected. See the review-fixes report and Task 3 rereview for exact evidence.
+
+The whole-intermediate-branch review and applicable current-head CI remain merge
+gates. The user authorized useful intermediate merges; the boundary is recorded
+in `reformulation-intermediate-scope.md`. Task 4 remains required after this merge;
+the complete original product specification is not yet accepted.
 
 ## 2026-09-27 — remote recovery checkpoint
 
