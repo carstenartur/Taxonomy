@@ -25,12 +25,23 @@ all three coverage entry points inspect that ledger. REWORD is distinguished usi
 the actual affected-section preservation contracts. A real production prompt-builder
 and response-parser contract covers the wire boundary. No production code changed.
 
-Next: after root confirms exact-tree remote durability, execute focused GREEN:
+GREEN evidence at published commit `c4bd1b51f9fcef991bcd12e124f664ed79bc245c`,
+tree `97289619b4b34d0db6450987ed78b1006a8a95df`: `ScenarioLlmPlaybackTest`
+11 tests, zero failures/errors/skips, BUILD SUCCESS, finished 2026-09-27
+17:04:18 UTC (Maven printed 19:04:18 +02:00). Scratch log `task4a-green.log`.
+Exact focused command used for both RED and GREEN:
 
 ```sh
 python .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ScenarioLlmPlaybackTest -Dsurefire.failIfNoSpecifiedTests=false test
 ```
 
-Then inspect positive class/count evidence and stop for independent review.
+The class is already explicitly selected by the `civilian-acceptance` profile
+and `.mvn/verification-suites.json`; no competing selector was added.
+Next step: independent Task 4a review of the published source tree and this report.
+Implementation stops here until review. The fixture responses are initial protocol
+contracts, not yet the complete application-path corpus: real selected graph IDs,
+statement/question preservation and authored score fronts must be bound from actual
+application requests in Task 4b without injecting prepared state.
+
 Real application/browser/restart, fixture score
 selection, exports, CI and real-provider quality gates remain open (Task 4b+).
