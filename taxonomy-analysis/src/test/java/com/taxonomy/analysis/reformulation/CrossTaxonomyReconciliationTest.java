@@ -85,6 +85,20 @@ class CrossTaxonomyReconciliationTest {
         assertThat(out.sections()).allSatisfy(s->assertThat(s.summary()).doesNotContain(rejected.wording()));
         assertThat(out.validation().findings()).extracting(ValidationReport.Finding::code).contains("REJECTED_ADDITION_REINTRODUCED");
     }
+    @Test void withheldSummaryCannotItselfRepeatShortRejectedWording() {
+        var d=draft(List.of());var prior=d.statements().getFirst();
+        var rejected=new Statement(prior.id(),"requires review",prior.sourceSpans(),prior.provenance(),prior.architectureLinks(),
+                prior.questionDependencies(),prior.conditionalValidity(),Statement.EditingOrigin.HUMAN,"REJECTED");
+        var statements=new ArrayList<>(d.statements());statements.set(0,rejected);
+        var first=d.sections().getFirst();var sections=new ArrayList<>(d.sections());
+        sections.set(0,new Section(first.id(),first.taxonomyCode(),first.title(),"This requires review",first.children(),first.statementIds(),first.questionIds()));
+        var before=new ReformulationDocument(d.text(),sections,statements,d.questions(),d.validation(),d.nodeResults());
+        var out=reconciler().reconcile(baseline(),before,List.of(),List.of());
+        assertThat(out.statements()).contains(rejected);
+        assertThat(out.sections().stream().filter(s->s.id().equals(first.id())).findFirst()).get().satisfies(s->assertThat(s.summary()).isEmpty());
+        assertThat(out.text()).doesNotContain(rejected.wording());
+        assertThat(out.validation().findings()).extracting(ValidationReport.Finding::code).contains("REJECTED_ADDITION_REINTRODUCED");
+    }
     @Test void equalWordingWithDifferentScopeAndIncompatibleContractsStaySeparate() {
         var q=question("q-s","SV","global");
         var incompatible=new DecisionQuestion(q.id(),q.key(),q.wording(),q.discoveries(),q.affectedStatementIds(),new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.TEXT,List.of(),null,null,null),List.of(),List.of(),q.consequences(),q.state());

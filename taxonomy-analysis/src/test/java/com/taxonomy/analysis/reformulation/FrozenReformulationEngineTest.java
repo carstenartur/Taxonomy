@@ -78,5 +78,24 @@ class FrozenReformulationEngineTest {
         assertThat(out.sections()).allSatisfy(s->assertThat(s.summary()).doesNotContain(rejected.wording()));
         assertThat(out.validation().findings()).extracting(ValidationReport.Finding::code).contains("REJECTED_ADDITION_REINTRODUCED");
     }
+    @Test void affectedSynthesisSameIdReplayPreservesExactHumanRejectionInDocumentAndNodeResult() {
+        var rejected=new Statement("s-rejected","Discarded workflow proposal.",List.of(),Statement.Provenance.MODEL_ADDITION,
+                List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,"REJECTED");
+        var section=new Section("@document",null,"Document","Prior summary",List.of(),List.of(rejected.id()),List.of());
+        var before=new ReformulationDocument("",List.of(section),List.of(rejected),List.of(),new ValidationReport(List.of()),List.of());
+        var service=mock(NodeReformulationService.class);
+        when(service.synthesize(any(NodeSynthesisInput.class),any(ReformulationStepExecutor.class))).thenAnswer(call->{
+            var input=(NodeSynthesisInput)call.getArgument(0);
+            var replay=new Statement(rejected.id(),rejected.wording(),rejected.sourceSpans(),rejected.provenance(),
+                    rejected.architectureLinks(),rejected.questionDependencies(),rejected.conditionalValidity(),Statement.EditingOrigin.MODEL,"UNREVIEWED");
+            return new NodeSynthesisResult(input.nodeId(),"Safe revised summary",List.of(replay),List.of(rejected.id()),List.of(),List.of(),List.of(),List.of());
+        });
+        var impact=new ReformulationImpact(List.of(rejected.id()),List.of(section.id()),List.of(),List.of(),false);
+        var out=new FrozenReformulationEngine(service,new ObjectMapper()).synthesizeAffected(WalkUpReformulationTest.baseline(),before,List.of(),impact);
+        assertThat(out.statements()).containsExactly(rejected);
+        assertThat(out.nodeResults().getFirst().statementProposals()).containsExactly(rejected);
+        assertThat(out.text()).doesNotContain(rejected.wording());
+        assertThat(out.validation().findings()).extracting(ValidationReport.Finding::code).contains("REJECTED_ADDITION_REINTRODUCED");
+    }
 
 }
