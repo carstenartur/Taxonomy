@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.reformulation;
 
+import com.taxonomy.build.RepositoryResources;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -16,7 +17,8 @@ class ReformulationCancellationAdapterTest {
     @Test
     void realAdapterAllowsCancellationAndRejectsUnrelatedOperations() throws Exception {
         Path script = copyResource("/reformulation/cancellation-api-contract.cjs", "contract.cjs");
-        Path adapter = copyResource("/static/js/api/portfolio-api.js", "portfolio-api.js");
+        Path adapter = Files.writeString(directory.resolve("portfolio-api.js"),
+                RepositoryResources.applicationResource("static/js/api/portfolio-api.js"));
         Path log = directory.resolve("adapter.log");
         Process process = new ProcessBuilder("node", script.toString(), adapter.toString())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();

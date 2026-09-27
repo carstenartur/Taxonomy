@@ -1,11 +1,10 @@
 package com.taxonomy.templates;
 
+import com.taxonomy.build.RepositoryResources;
 import org.junit.jupiter.api.Test;
 import org.springframework.ui.ConcurrentModel;
 
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -99,10 +98,6 @@ class DocumentTemplateQaContractTest {
     }
 
     private static String resource(String path) throws IOException {
-        try (InputStream input = DocumentTemplateQaContractTest.class
-                .getResourceAsStream(path)) {
-            assertThat(input).as("classpath resource %s", path).isNotNull();
-            return new String(input.readAllBytes(), StandardCharsets.UTF_8);
-        }
+        return RepositoryResources.applicationResource(path);
     }
 }

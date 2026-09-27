@@ -1,5 +1,6 @@
 package com.taxonomy.portfolio.reformulation;
 
+import com.taxonomy.build.RepositoryResources;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import java.nio.file.Files;
@@ -12,7 +13,8 @@ class ReformulationCancellationControlsTest {
 
     @Test void activeRunsCanBeCancelledWithoutDiscardingUnsavedText() throws Exception {
         Path script = resource("/reformulation/cancellation-contract.cjs", "contract.cjs");
-        Path source = resource("/static/js/portfolio/requirement-reformulation.js", "workspace.js");
+        Path source = Files.writeString(directory.resolve("workspace.js"),
+                RepositoryResources.applicationResource("static/js/portfolio/requirement-reformulation.js"));
         Path log = directory.resolve("controls.log");
         Process process = new ProcessBuilder("node", script.toString(), source.toString())
                 .redirectErrorStream(true).redirectOutput(log.toFile()).start();

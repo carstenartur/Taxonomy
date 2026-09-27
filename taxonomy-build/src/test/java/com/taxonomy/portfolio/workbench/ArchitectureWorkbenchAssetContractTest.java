@@ -1,9 +1,7 @@
 package com.taxonomy.portfolio.workbench;
 
+import com.taxonomy.build.RepositoryResources;
 import org.junit.jupiter.api.Test;
-import org.springframework.core.io.ClassPathResource;
-
-import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -79,6 +77,6 @@ class ArchitectureWorkbenchAssetContractTest {
     }
 
     private static String resource(String path) throws Exception {
-        return new ClassPathResource(path).getContentAsString(StandardCharsets.UTF_8);
+        return RepositoryResources.applicationResource(path);
     }
 }
