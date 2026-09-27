@@ -60,13 +60,22 @@ public class AnalyzeRequirementUseCase {
      * claim has been revalidated and locked.
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
+        return observe(command, true);
+    }
+
+    /** Retains normal provider, budget, stop and evidence handling without publishing hypotheses. */
+    public AnalyzeRequirementResult analyzePreview(AnalyzeRequirementCommand command) {
+        return observe(command, false);
+    }
+
+    private AnalyzeRequirementResult observe(AnalyzeRequirementCommand command, boolean allowHypothesisPersistence) {
         if (analysisProgressRegistry == null || AnalysisRunControl.active()) {
-            return analyze(command, command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
+            return analyze(command, allowHypothesisPersistence && command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
         }
         // Portfolio/Copilot callers retain their durable job and claim boundaries.
         try (var run = analysisProgressRegistry.open(null, command.username(),
                 command.workspaceContext(), command.provenance())) {
-            AnalyzeRequirementResult result = analyze(command, command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
+            AnalyzeRequirementResult result = analyze(command, allowHypothesisPersistence && command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
             run.finish(result.analysisResult());
             return result;
         }

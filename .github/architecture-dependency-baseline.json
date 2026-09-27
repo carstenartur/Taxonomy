@@ -143,6 +143,41 @@
     },
     {
       "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "analysis",
+      "toPackage": "com.taxonomy.analysis.usecase",
+      "classDependencyCount": 3
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "knowledge",
+      "toPackage": "com.taxonomy.catalog.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.versioning.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
+      "fromPackage": "com.taxonomy.composition.analysis",
+      "toContext": "workspace",
+      "toPackage": "com.taxonomy.workspace.service",
+      "classDependencyCount": 1
+    },
+    {
+      "fromContext": "app-composition",
       "fromPackage": "com.taxonomy.composition.architecture",
       "toContext": "workspace",
       "toPackage": "com.taxonomy.editor",
@@ -809,8 +844,8 @@
     {
       "fromContext": "legacy-export-adapters",
       "fromPackage": "com.taxonomy.export.service",
-      "toContext": "architecture",
-      "toPackage": "com.taxonomy.architecture.service",
+      "toContext": "app-composition",
+      "toPackage": "com.taxonomy.composition.analysis",
       "classDependencyCount": 1
     },
     {

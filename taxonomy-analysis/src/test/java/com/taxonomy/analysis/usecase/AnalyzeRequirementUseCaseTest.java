@@ -106,6 +106,26 @@ class AnalyzeRequirementUseCaseTest {
     }
 
     @Test
+    void previewReturnsLegacyHypothesesWithoutPublishingThemGlobally() throws Exception {
+        WorkspaceContext workspace = new WorkspaceContext("alice", "alice-ws", "draft");
+        var command = new AnalyzeRequirementCommand("Read records", false, 10, null, "alice", workspace);
+        var result = new AnalysisResult();
+        result.setStatus("SUCCESS"); result.setScores(Map.of("BP-1", 80));
+        var provisional = List.of(new RelationHypothesisDto("BP-1", "Process", "IP-1", "Record",
+                "CONSUMES", 0.8, "Explicitly selected legacy operator mode"));
+        when(llmService.analyzeWithBudget(command.businessText())).thenReturn(result);
+        when(analysisRelationGenerator.generate(result.getScores())).thenReturn(provisional);
+        when(repositoryStateService.resolveWorkspaceBranch("alice")).thenReturn("draft");
+        var outcome = useCase.analyzePreview(command);
+        assertThat(outcome.analysisResult()).isSameAs(result);
+        assertThat(result.getProvisionalRelations()).isEqualTo(provisional);
+        assertThat(result.getAnalysisDurationMillis()).isNotNegative();
+        verifyNoInteractions(hypothesisService);
+        verify(llmService).clearRequestProvider();
+        verify(promptBudgetPolicy).requireWithinBudget(command.businessText(), (String) null);
+    }
+
+    @Test
     void projectAnalysisKeepsRelationsButDefersEveryHypothesisSideEffect() {
         WorkspaceContext workspace = new WorkspaceContext("alice", "alice-ws", "draft");
         AnalyzeRequirementCommand command = new AnalyzeRequirementCommand(

@@ -3,9 +3,8 @@ package com.taxonomy.export.service;
 import com.taxonomy.analysis.service.LlmService;
 import com.taxonomy.analysis.service.SavedAnalysisService;
 import com.taxonomy.archimate.ArchiMateModel;
-import com.taxonomy.architecture.service.RequirementArchitectureViewService;
+import com.taxonomy.composition.analysis.AnalysisDiagramExportService;
 import com.taxonomy.diagram.DiagramModel;
-import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.RequirementArchitectureView;
 import com.taxonomy.dto.SavedAnalysis;
 import com.taxonomy.export.ArchiMateDiagramService;
@@ -29,7 +28,7 @@ import java.util.Map;
 public class ExportFacade {
 
     private final LlmService llmService;
-    private final RequirementArchitectureViewService architectureViewService;
+    private final AnalysisDiagramExportService analysisExportService;
     private final DiagramProjectionService diagramProjectionService;
     private final VisioDiagramService visioDiagramService;
     private final VisioPackageBuilder visioPackageBuilder;
@@ -40,7 +39,7 @@ public class ExportFacade {
     private final SavedAnalysisService savedAnalysisService;
 
     public ExportFacade(LlmService llmService,
-                        RequirementArchitectureViewService architectureViewService,
+                        AnalysisDiagramExportService analysisExportService,
                         DiagramProjectionService diagramProjectionService,
                         VisioDiagramService visioDiagramService,
                         VisioPackageBuilder visioPackageBuilder,
@@ -50,7 +49,7 @@ public class ExportFacade {
                         StructurizrExportService structurizrExportService,
                         SavedAnalysisService savedAnalysisService) {
         this.llmService = llmService;
-        this.architectureViewService = architectureViewService;
+        this.analysisExportService = analysisExportService;
         this.diagramProjectionService = diagramProjectionService;
         this.visioDiagramService = visioDiagramService;
         this.visioPackageBuilder = visioPackageBuilder;
@@ -152,12 +151,6 @@ public class ExportFacade {
     }
 
     private DiagramModel analyzeAndProject(String businessText) {
-        AnalysisResult result = llmService.analyzeWithBudget(businessText);
-        RequirementArchitectureView view = architectureViewService.build(
-                result.getScores(), businessText, 20);
-        String title = businessText.length() > 60
-                ? businessText.substring(0, 57) + "..."
-                : businessText;
-        return diagramProjectionService.project(view, title);
+        return analysisExportService.analyzeAndProject(businessText);
     }
 }
