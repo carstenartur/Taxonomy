@@ -72,9 +72,9 @@ class CrossTaxonomyReconciliationTest {
     }
     @Test void reconciliationKeepsRejectedEvidenceOutOfActiveTextAndSummaries() {
         var d=draft(List.of());
-        var rejected=d.statements().getFirst();
-        rejected=new Statement(rejected.id(),rejected.wording(),rejected.sourceSpans(),rejected.provenance(),
-                rejected.architectureLinks(),rejected.questionDependencies(),rejected.conditionalValidity(),Statement.EditingOrigin.HUMAN,"REJECTED");
+        var prior=d.statements().getFirst();
+        var rejected=new Statement(prior.id(),prior.wording(),prior.sourceSpans(),prior.provenance(),
+                prior.architectureLinks(),prior.questionDependencies(),prior.conditionalValidity(),Statement.EditingOrigin.HUMAN,"REJECTED");
         var statements=new ArrayList<>(d.statements());statements.set(0,rejected);
         var sections=new ArrayList<>(d.sections());var first=sections.getFirst();
         sections.set(0,new Section(first.id(),first.taxonomyCode(),first.title(),"Summary repeats "+rejected.wording(),first.children(),first.statementIds(),first.questionIds()));
