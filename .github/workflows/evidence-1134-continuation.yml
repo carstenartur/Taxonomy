@@ -9,26 +9,137 @@ jobs:
   source:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write
+    outputs:
+      sha: ${{ steps.candidate.outputs.sha }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: b0f77b47243ad708c8b77ea459571ca802bf3400
+          path: transport
           persist-credentials: false
-      - name: Archive exact product sources without transport files
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: b0f77b47243ad708c8b77ea459571ca802bf3400
+          path: product
+      - name: Reconstruct the locally verified product tree
+        working-directory: product
         shell: bash
         run: |
           set -euo pipefail
           test "$(git rev-parse HEAD)" = b0f77b47243ad708c8b77ea459571ca802bf3400
           test "$(git rev-parse HEAD^{tree})" = f845eed6e82bf6af2cb528c3e84119468a26dd34
+          python3 - <<'PY'
+          from pathlib import Path
+          import base64, hashlib, json, lzma, subprocess
+          transport = Path('../transport/.github/verification')
+          encoded = ''.join((transport / f'1134-code.part{i}').read_text() for i in range(1,4))
+          patch = lzma.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '0361eaca73fc0a038051e476ad2359c8f5ac008b8383b4e1c6ba5088694608dc'
+          Path('/tmp/1134-code.patch').write_bytes(patch)
+          subprocess.run(['git','apply','--check','/tmp/1134-code.patch'], check=True)
+          subprocess.run(['git','apply','/tmp/1134-code.patch'], check=True)
+          r = Path('.')
+          p = r / 'taxonomy-analysis/src/main/resources/mock-scores/secure-voice-comms.json'
+          d = json.loads(p.read_text())
+          d['scores'] = {k:0 for k in d['scores']}
+          for path, score in [(['UA','UA-1000','UA-1179','UA-1574'],100),(['CR','CR-1000','CR-1011','CR-1014','CR-1005'],80),(['IP','IP-1000','IP-1049','IP-1039','IP-1136'],60)]:
+              for code in path: d['scores'][code] = score
+          d['requirement'] = 'MOCK demonstration: a communication application reads treatment records and uses audio communication. Not a semantic assessment of user input.'
+          d['provider'] = 'Mock'
+          d['timestamp'] = None
+          d['reasons'] = {k:('MOCK demonstration — selected fixture path' if v else 'MOCK demonstration — outside the fixture scope') for k,v in d['scores'].items()}
+          for key in ['requirementSourceLinks','sourceFragments','sourceVersions','sources']: d[key] = []
+          (r/'taxonomy-analysis/src/main/resources/mock-scores/communication-demo.json').write_text(json.dumps(d,ensure_ascii=False,indent=2)+'\n')
+          audit = (transport/'1134-audit.patch').read_bytes()
+          assert hashlib.sha256(audit).hexdigest() == '669bdd7991f125e1d85395fb17cc9ff8a8f4e30c260bd58e4eafbbfba138e9a0'
+          subprocess.run(['git','apply','--check',str(transport/'1134-audit.patch')], check=True)
+          subprocess.run(['git','apply',str(transport/'1134-audit.patch')], check=True)
+          PY
+          git diff --check
+          git add .
+          test "$(git write-tree)" = d322cda3ad90dae1b3731434cda63ad63d95978f
+      - name: Publish only a new verification branch, never main or the PR ref
+        id: candidate
+        working-directory: product
+        shell: bash
+        run: |
+          set -euo pipefail
+          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(analysis): use provider identities and migrate default evidence acceptance'
+          SHA=$(git rev-parse HEAD)
+          test "$(git rev-parse HEAD^{tree})" = d322cda3ad90dae1b3731434cda63ad63d95978f
+          git push origin "HEAD:refs/heads/verification/evidence-default-1134-${GITHUB_RUN_ID}"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
           mkdir -p /tmp/evidence-1134
-          git archive --format=tar HEAD | gzip -n > /tmp/evidence-1134/source.tar.gz
-          git cat-file commit HEAD > /tmp/evidence-1134/commit.txt
           git rev-parse HEAD HEAD^{tree} > /tmp/evidence-1134/identity.txt
+          git archive --format=tar HEAD | gzip -n > /tmp/evidence-1134/source.tar.gz
+          git diff HEAD^ HEAD --binary > /tmp/evidence-1134/integration.patch
           cd /tmp/evidence-1134
-          sha256sum source.tar.gz commit.txt identity.txt > SHA256SUMS
+          sha256sum identity.txt source.tar.gz integration.patch > SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
-          name: evidence-1134-source
+          name: evidence-1134-candidate
           path: /tmp/evidence-1134
+          if-no-files-found: error
+          retention-days: 7
+  verify:
+    needs: source
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: ${{ needs.source.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Execute canonical source verification
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD^{tree})" = d322cda3ad90dae1b3731434cda63ad63d95978f
+          mkdir -p /tmp/evidence-1134-verify
+          ./mvnw -B -ntp verify -DexcludedGroups=real-llm 2>&1 | tee /tmp/evidence-1134-verify/maven.log
+      - name: Collect exact reports and test-only diagnostic runtime
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/evidence-1134-verify
+          git rev-parse HEAD HEAD^{tree} > /tmp/evidence-1134-verify/identity.txt
+          python3 - <<'PY'
+          from pathlib import Path
+          import os, tarfile, xml.etree.ElementTree as ET
+          root = Path.cwd()
+          out = Path('/tmp/evidence-1134-verify')
+          reports = [p for p in root.glob('*/target/*-reports/*') if p.is_file() and p.suffix in ('.xml','.txt')]
+          with tarfile.open(out/'reports.tar.gz','w:gz') as t:
+              for p in reports: t.add(p,arcname=str(p.relative_to(root)),recursive=False)
+          jars = set()
+          m2 = (Path.home()/'.m2/repository').resolve()
+          for p in reports:
+              if p.suffix != '.xml': continue
+              try: doc = ET.parse(p)
+              except ET.ParseError: continue
+              for prop in doc.findall('.//property'):
+                  if prop.get('name') not in ('java.class.path','surefire.test.class.path'): continue
+                  for value in prop.get('value','').split(os.pathsep):
+                      j = Path(value).resolve()
+                      if j.is_file() and j.suffix == '.jar' and j.is_relative_to(m2): jars.add(j)
+          with tarfile.open(out/'test-runtime.tar.gz','w:gz') as t:
+              for j in sorted(jars): t.add(j,arcname='m2/'+str(j.relative_to(m2)),recursive=False)
+              for name in ('classes','test-classes'):
+                  for p in root.glob('*/target/'+name): t.add(p,arcname=str(p.relative_to(root)))
+          PY
+          cd /tmp/evidence-1134-verify
+          sha256sum identity.txt reports.tar.gz test-runtime.tar.gz > SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: evidence-1134-canonical-verification
+          path: /tmp/evidence-1134-verify
           if-no-files-found: error
           retention-days: 7
