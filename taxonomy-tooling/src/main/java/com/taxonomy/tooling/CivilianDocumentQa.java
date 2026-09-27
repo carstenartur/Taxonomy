@@ -33,7 +33,8 @@ final class CivilianDocumentQa {
             var arguments = TaxonomyTooling.Arguments.parse(rawArguments);
             Path root = workingDirectory.resolve(arguments.required("artifacts")).toAbsolutePath().normalize();
             String soffice = arguments.optionalOrDefault("soffice", "soffice");
-            output.println(FlatJson.pretty(inspect(root, soffice, arguments.flag("visio-only"))));
+            output.println(FlatJson.pretty(arguments.flag("reformulation-only")
+                    ? inspectReformulations(root, soffice) : inspect(root, soffice, arguments.flag("visio-only"))));
             return 0;
         } catch (IOException | IllegalArgumentException failure) {
             error.println("::error::Civilian document QA failed: " + failure.getMessage());
@@ -47,6 +48,55 @@ final class CivilianDocumentQa {
 
     static Map<String, Object> inspect(Path root, String soffice) throws IOException, InterruptedException {
         return inspect(root, soffice, false);
+    }
+
+    /** Paired historical JSON is the content oracle; DOCX is independently rendered by LibreOffice. */
+    static Map<String, Object> inspectReformulations(Path root, String soffice) throws IOException, InterruptedException {
+        List<Path> cases;
+        try (var files = Files.walk(root)) {
+            cases = files.filter(p -> p.getFileName().toString().equals("identity.json")).map(Path::getParent).sorted().toList();
+        }
+        require(!cases.isEmpty(), "No completed reformulation lifecycle artifacts");
+        var documents = new LinkedHashMap<String, Object>();
+        for (Path directory : cases) for (String kind : List.of("revision", "adoption")) {
+            Path source = directory.resolve(kind + ".docx");
+            require(Files.isRegularFile(source), "Missing paired reformulation Word file: " + source);
+            var report = FlatJson.parseObject(Files.readString(directory.resolve(kind + ".json")));
+            var revision = object(report.get("revision"));
+            var expected = new ArrayList<String>();
+            expected.add(text(object(report.get("source")), "originalText"));
+            expected.add(text(revision, "text"));
+            for (Object value : array(revision.get("questions"))) expected.add(text(object(value), "wording"));
+            for (Object value : array(revision.get("answers"))) expected.add(text(object(value), "rationale"));
+            if (kind.equals("adoption")) expected.add(text(object(report.get("adoption")), "rationale"));
+            Path output = Files.createDirectories(directory.resolve("document-qa"));
+            Path temporary = Files.createTempDirectory("reformulation-lo-");
+            Path pdf = output.resolve(kind + ".pdf");
+            try {
+                Path converted = Files.createDirectory(temporary.resolve("rendered"));
+                command(soffice, "-env:UserInstallation=" + temporary.resolve("profile").toUri(), "--headless", "--convert-to", "pdf",
+                        "--outdir", converted.toString(), source.toString());
+                require(Files.isRegularFile(converted.resolve(kind + ".pdf")), "No rendered reformulation PDF");
+                Files.copy(converted.resolve(kind + ".pdf"), pdf, StandardCopyOption.REPLACE_EXISTING);
+            } finally { deleteDirectory(temporary); }
+            String text = command("pdftotext", "-raw", pdf.toString(), "-");
+            String bbox = command("pdftotext", "-bbox", pdf.toString(), "-");
+            var checked = checkText("reformulation-" + kind + ".docx", bbox, text, expected, true);
+            Files.writeString(output.resolve(kind + ".txt"), text);
+            Files.writeString(output.resolve(kind + ".bbox.html"), bbox);
+            command("pdftoppm", "-scale-to", "1400", "-png", pdf.toString(), output.resolve(kind).toString());
+            checked.put("sourceSha256", sha256(source)); checked.put("jsonSha256", sha256(directory.resolve(kind + ".json")));
+            checked.put("renderedPdfSha256", sha256(pdf));
+            var images = new LinkedHashMap<String, String>();
+            try (var files = Files.newDirectoryStream(output, kind + "-*.png")) {
+                for (Path file : files) images.put(file.getFileName().toString(), sha256(file));
+            }
+            checked.put("pageImagesSha256", images);
+            documents.put(root.relativize(source).toString(), checked);
+        }
+        var result = Map.<String, Object>of("renderer", command(soffice, "--version").strip(), "documents", documents);
+        Files.writeString(root.resolve("reformulation-document-quality.json"), FlatJson.pretty(result));
+        return result;
     }
 
     static Map<String, Object> inspect(Path root, String soffice, boolean visioOnly) throws IOException, InterruptedException {
@@ -195,7 +245,14 @@ final class CivilianDocumentQa {
         require(empty.isEmpty(), name + ": empty page bodies " + empty);
         // Complete frozen fixture: decision71 pages (48 chapter pages), architecture10.
         // Allow3/2 pages for renderer variance; content, empty-body and orphan gates remain.
-        int pageLimit = name.equals("decision.docx") ? 74 : 12;
+        // Actual full reformulation fixture: saved revision 25 pages, receipt 26;
+        // allow three pages for renderer/browser-answer variance, retaining all content checks.
+        int pageLimit = switch (name) {
+            case "decision.docx" -> 74;
+            case "reformulation-revision.docx" -> 28;
+            case "reformulation-adoption.docx" -> 29;
+            default -> 12;
+        };
         require(!word || pages.size() <= pageLimit, name + ": report grew to " + pages.size() + " pages (limit " + pageLimit + ")");
         // Join body paragraphs across pages. Draw's coordinate order interleaves
         // crossing edges and labels, so its label checks use Poppler's raw order.

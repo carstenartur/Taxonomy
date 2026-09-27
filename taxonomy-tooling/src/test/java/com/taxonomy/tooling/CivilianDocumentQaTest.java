@@ -9,6 +9,17 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class CivilianDocumentQaTest {
     @Test
+    void reformulationExportsHaveMeasuredBudgetsWithNoEmptyBodyAllowance() throws Exception {
+        assertThat(CivilianDocumentQa.checkText("reformulation-revision.docx", xml(page("Source").repeat(25)), "", List.of("Source"), true))
+                .containsEntry("pages", 25);
+        assertThat(CivilianDocumentQa.checkText("reformulation-adoption.docx", xml(page("Source").repeat(26)), "", List.of("Source"), true))
+                .containsEntry("pages", 26);
+        assertThatThrownBy(() -> CivilianDocumentQa.checkText("reformulation-revision.docx", xml(page("Source").repeat(29)), "", List.of("Source"), true))
+                .hasMessageContaining("limit 28");
+        assertThatThrownBy(() -> CivilianDocumentQa.checkText("reformulation-adoption.docx", xml(page("Source").repeat(30)), "", List.of("Source"), true))
+                .hasMessageContaining("limit 29");
+    }
+    @Test
     void joinsContinuedParagraphsWithoutRunningFurnitureAndKeepsUnicode() throws Exception {
         String bbox = xml(page("Öffentliche Warnungen") + page("für Bürger"));
         assertThat(CivilianDocumentQa.checkText("decision.docx", bbox, "unused",

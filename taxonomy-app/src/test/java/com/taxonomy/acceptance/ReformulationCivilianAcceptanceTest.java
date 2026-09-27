@@ -14,11 +14,14 @@ class ReformulationCivilianAcceptanceTest {
         launch(output, "write");
         launch(output, "read");
     }
-    private void launch(Path output, String mode) throws Exception {
+    static void launch(Path output, String mode) throws Exception {
         Path log = output.resolve(mode + "-application.log");
         var command = new ArrayList<String>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
         command.add("-Xmx" + Runtime.getRuntime().maxMemory());
+        for (String name : List.of("webdriver.chrome.driver", "civilian.chrome.binary", "selenium.container.image")) {
+            String value = System.getProperty(name); if (value != null) command.add("-D" + name + "=" + value);
+        }
         java.lang.management.ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
                 .filter(value -> value.startsWith("-javaagent:") && value.contains("jacoco")).forEach(command::add);
         command.addAll(List.of("-cp", System.getProperty("surefire.test.class.path", System.getProperty("java.class.path")),

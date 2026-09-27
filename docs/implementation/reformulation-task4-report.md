@@ -118,3 +118,29 @@ source, answer, rejection or unique context is discarded.
 The new round-trip/default-budget regressions and existing adopted-lineage and
 reconciliation context suites pass locally (BUILD SUCCESS, 2026-09-27 20:13 UTC).
 Full authenticated lifecycle is being rerun against this correction.
+
+### Full HTTP lifecycle GREEN; browser/document integration checkpoint
+
+2026-09-27 20:22:46 UTC: ReformulationCivilianAcceptanceTest 1/1 and
+ScenarioLlmPlaybackTest 14/14 passed, no skips, BUILD SUCCESS. The first application
+created/analyzed/reformulated, answered/deferred, reworded, protected a manual variant,
+adopted explicitly, replayed the command, exported JSON/Markdown/HTML/DOCX, performed
+real reanalysis/new offer, checked concrete inherited decisions, created a checkpoint,
+materialized it and rejected reads in a separately provisioned workspace. A fresh
+application process then verified the same decisions, current requirement and all
+four historical exports (DOCX paragraph content, excluding ZIP metadata).
+Artifact directory: `taxonomy-app/target/reformulation-civilian-acceptance/run-fd0697c5-bb70-446c-9ed9-206977888e6e`.
+
+A separate real-browser lifecycle class is explicitly selected by the civilian Maven
+profile: desktop, exact 390px viewport, keyboard answer/focus, live status, unsaved
+draft retention, actual JSON download, disabled-before-confirmation preview and
+explicit browser adoption. Browser execution is still pending; no local Docker or
+Chrome was available in the capability check. CI preserves screenshots and failures.
+
+Independent LibreOffice rendering measured 25 pages for the actual saved revision
+and 26 for its receipt. The existing document checker is extended for paired JSON
+content, empty-body rejection, page images/hashes and separate measured limits
+28/29 (three-page renderer/extra-browser-answer margin); existing 74/12 limits are
+unchanged. New page-budget regression failed before the implementation, as intended.
+CI also requires positive named JUnit evidence. Database jobs now retain the child
+reanalysis log identified as a review follow-up.

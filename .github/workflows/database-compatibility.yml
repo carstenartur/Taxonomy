@@ -71,5 +71,6 @@ jobs:
           path: |
             target/database-${{ matrix.profile }}.log
             **/target/failsafe-reports/**
+            taxonomy-app/target/surefire-reports/adopted-lineage/**
           if-no-files-found: warn
           retention-days: 90

@@ -20,6 +20,8 @@ public final class ReformulationCivilianApplication {
     private final String base;
     private final Path output;
     private final ScenarioLlmPlayback playback;
+    private ReformulationCivilianBrowser browser;
+    private boolean browserMode;
 
     private ReformulationCivilianApplication(int port, Path output, ScenarioLlmPlayback playback) {
         this.base = "http://127.0.0.1:" + port; this.output = output; this.playback = playback;
@@ -37,11 +39,13 @@ public final class ReformulationCivilianApplication {
                 "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false")) {
             var scenario = new ReformulationCivilianApplication(Integer.parseInt(app.getEnvironment().getProperty("local.server.port")),
                     Path.of(args[0]), app.getBean(ScenarioLlmPlayback.class));
+            scenario.browserMode = args[1].equals("browser");
             try { if (args[1].equals("read")) scenario.verifyRestart(); else scenario.analysisAndOffer(); }
             finally {
                 scenario.save(args[1] + "-llm-calls.json", scenario.json.valueToTree(scenario.playback.calls()));
                 scenario.save(args[1] + "-llm-prompts.json", scenario.json.valueToTree(scenario.playback.prompts()));
                 scenario.save(args[1] + "-llm-failures.json", scenario.json.valueToTree(scenario.playback.failures()));
+                if (scenario.browser != null) scenario.browser.close();
             }
         }
         System.out.println("REFORMULATION_CIVILIAN_" + args[1].toUpperCase(Locale.ROOT) + "_OK");
@@ -90,6 +94,11 @@ public final class ReformulationCivilianApplication {
                         "civilian:NODE:IP-1102", "civilian:NODE:IP-1005", "civilian:NODE:IP-1000", "civilian:NODE:IP");
         assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
         assertThat(request("GET", projectPath + "/snapshots/" + snapshotId, null, 200)).isEqualTo(snapshot);
+        if (browserMode) {
+            browser = new ReformulationCivilianBrowser(URI.create(base).getPort(), output); browser.login(PASSWORD);
+            browser.inspect(offerPath, source.path("text").asText(), findQuestion(offer.at("/currentRevision/questions"), "stale-observation").path("id").asText());
+            offer = request("GET", offerPath, null, 200);
+        }
         decisionsAndAdoption(projectPath, requirementPath, offerPath, offer, before, snapshotId, snapshot);
     }
 
@@ -135,10 +144,21 @@ public final class ReformulationCivilianApplication {
         assertThat(preview.at("/content/unresolvedQuestionIds")).isNotEmpty();
         assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
         String command = UUID.randomUUID().toString();
+        JsonNode browserReceipt = null;
+        String rationale = "Explicit adoption as a draft; numeric decisions remain open";
+        if (browser != null) {
+            browser.preview(offerPath);
+            assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
+            browser.confirm(rationale);
+            var receipts = request("GET", offerPath + "/adoptions", null, 200); assertThat(receipts).hasSize(1);
+            browserReceipt = receipts.get(0); command = browserReceipt.path("commandId").asText();
+            preview = request("GET", offerPath + "/adoption-previews/" + browserReceipt.path("previewId").asText(), null, 200);
+            save("preview.json", preview);
+        }
         var confirmation = Map.of("commandId", command, "previewId", preview.at("/content/id").asText(),
                 "previewHash", preview.path("hash").asText(), "confirmed", true, "acknowledgeWarnings", true,
-                "rationale", "Explicit adoption as a draft; numeric decisions remain open");
-        var adopted = request("POST", offerPath + "/adoptions", confirmation, 200, revision(revised));
+                "rationale", rationale);
+        var adopted = browserReceipt == null ? request("POST", offerPath + "/adoptions", confirmation, 200, revision(revised)) : browserReceipt;
         assertThat(request("POST", offerPath + "/adoptions", confirmation, 200, revision(revised))).isEqualTo(adopted);
         save("receipt.json", adopted);
         var current = request("GET", requirementPath, null, 200);
@@ -168,6 +188,10 @@ public final class ReformulationCivilianApplication {
         var checkpoint = request("POST", "/api/projects/git/commit", Map.of("message", "Explicit civilian reformulation checkpoint"), 200);
         save("checkpoint.json", checkpoint);
         assertThat(checkpoint.path("commitId").asText()).matches("[0-9a-f]{40}");
+        var materialized = request("POST", "/api/projects/git/materialize", Map.of("branch", checkpoint.path("branch").asText(),
+                "expectedHead", checkpoint.path("commitId").asText()), 200);
+        save("materialized.json", materialized);
+        assertThat(request("GET", nextPath, null, 200)).isEqualTo(inherited);
         var workspace = request("GET", "/api/workspace/current", null, 200);
         var identity = Map.of("requirementPath", requirementPath, "nextPath", nextPath, "receiptPath", receiptPath,
                 "revisionPath", revisionPath, "workspaceId", workspace.path("workspaceId").asText(), "checkpoint", checkpoint,
@@ -175,6 +199,7 @@ public final class ReformulationCivilianApplication {
         save("identity.json", json.valueToTree(identity));
         var foreign = request("POST", "/api/workspace/create", Map.of("displayName", "Foreign civilian scope", "description", "Must not read this offer"), 200);
         request("POST", "/api/workspace/" + foreign.path("workspaceId").asText() + "/switch", null, 200);
+        request("POST", "/api/workspace/provision", null, 200);
         request("GET", offerPath, null, 404);
         request("POST", "/api/workspace/" + workspace.path("workspaceId").asText() + "/switch", null, 200);
     }
