@@ -7,6 +7,10 @@ import tools.jackson.databind.node.ArrayNode;
 import com.taxonomy.dto.AnalysisResult;
 import com.taxonomy.dto.GapAnalysisView;
 import com.taxonomy.dto.TaxonomyNodeDto;
+import com.taxonomy.dto.RequirementArchitectureView;
+import com.taxonomy.dto.RequirementElementView;
+import com.taxonomy.dto.RequirementRelationshipView;
+import com.taxonomy.dto.ViewContext;
 import com.taxonomy.portfolio.dto.PortfolioDtos.ElementMappingView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RelationMappingView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
@@ -36,6 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ReformulationReportTest extends ReformulationWorkflowFixture {
     @Autowired TaxonomyService catalogue;
     @Autowired ReformulationReportService reports;
+    @Autowired ReformulationAdoptionService adoptions;
 
     @Override
     String snapshot(RequirementView req) {
@@ -137,6 +142,71 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         dangling.put("snapshotDetail", json.writeValueAsString(graphDetail));
         assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(graph, dangling))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("directed frozen relation");
+    }
+
+    @Test
+    void realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure() throws Exception {
+        var root = catalogue.getFullTree().stream().filter(n -> "BP".equals(n.getCode())).findFirst().orElseThrow();
+        var first = root.getChildren().get(0);
+        var second = root.getChildren().get(1);
+        var view = new RequirementArchitectureView();
+        for (var node : List.of(first, second)) {
+            var element = new RequirementElementView();
+            element.setNodeCode(node.getCode()); element.setTitle(node.getNameEn());
+            element.setTaxonomySheet("BP"); element.setRelevance(0.6);
+            view.getIncludedElements().add(element);
+        }
+        var relation = new RequirementRelationshipView();
+        relation.setRelationId(999L); relation.setSourceCode(first.getCode()); relation.setTargetCode(second.getCode());
+        relation.setRelationType("FLOW"); relation.setPropagatedRelevance(0.6);
+        view.getIncludedRelationships().add(relation);
+        var analysis = new AnalysisResult(Map.of(first.getCode(), 60, second.getCode(), 60), List.of(root));
+        analysis.setStatus("SUCCESS"); analysis.setArchitectureView(view);
+        analysis.setViewContext(new ViewContext("frozen-commit", "draft", null, false, false, false));
+        var job = analyses.createOrReuseJob(project.id(), List.of(requirement.id()), null, 25,
+                UUID.randomUUID().toString(), "architect", context);
+        String savedSnapshot = UUID.randomUUID().toString();
+        analyses.persistSnapshot(job.items().getFirst().id(), job.id(), project.id(), PortfolioScope.key("architect", context),
+                savedSnapshot, "frozen-graph-test", analysis, new GapAnalysisView(), null, null, null, null,
+                "prompt", "catalogue", "architect", context, 1);
+        var proposal = reformulations.create(project.id(), requirement.id(),
+                new ReformulationDtos.CreateRequest(requirement.currentVersionId(), savedSnapshot, "en"), "architect", context);
+        var graph = reports.frozenArchitecture(proposal.baseline()).graph();
+        long mappingId = json.readTree(proposal.baseline().frozenContext().get("relationMappings")).get(0).path("id").asLong();
+        assertThat(graph.nodes()).hasSize(2);
+        assertThat(graph.edges()).extracting("id").containsExactly("edge-" + mappingId);
+        var response = mvc.perform(get(base() + "/" + proposal.id() + "/revisions/1/export").param("format", "docx"))
+                .andExpect(status().isOk()).andReturn().getResponse();
+        try (var doc = new XWPFDocument(new ByteArrayInputStream(response.getContentAsByteArray()))) {
+            assertThat(doc.getAllPictures()).isNotEmpty();
+            var text = doc.getParagraphs().stream().map(p -> p.getText()).reduce("", (a, b) -> a + "\n" + b);
+            assertThat(text).contains("Reformulation offer", first.getNameEn(), second.getNameEn(),
+                    "Analysis based-on branch: draft", "Gap analysis recorded");
+        }
+    }
+
+    @Test
+    void exactAdoptionReceiptIsBinaryDocxAndDoesNotRetroactivelyAdoptRevision() throws Exception {
+        var proposal = seed();
+        var preview = adoptions.preview(project.id(), requirement.id(), proposal.id(), proposal.currentRevision().number(),
+                "architect", context);
+        String command = UUID.randomUUID().toString();
+        adoptions.adopt(project.id(), requirement.id(), proposal.id(), proposal.currentRevision().number(),
+                new ReformulationAdoptionDtos.ConfirmRequest(command, preview.content().id(), preview.hash(), true, true,
+                        "Reviewed draft"), "architect", context);
+        var receipt = mvc.perform(get(base() + "/" + proposal.id() + "/adoptions/" + command + "/export")
+                .param("format", "docx")).andExpect(status().isOk())
+                .andExpect(header().string("Content-Disposition", org.hamcrest.Matchers.containsString("adoption-" + command)))
+                .andReturn().getResponse();
+        var revision = mvc.perform(get(base() + "/" + proposal.id() + "/revisions/2/export")
+                .param("format", "docx")).andExpect(status().isOk()).andReturn().getResponse();
+        try (var adopted = new XWPFDocument(new ByteArrayInputStream(receipt.getContentAsByteArray()));
+             var saved = new XWPFDocument(new ByteArrayInputStream(revision.getContentAsByteArray()))) {
+            assertThat(adopted.getParagraphs().stream().map(p -> p.getText()).toList())
+                    .anySatisfy(p -> assertThat(p).contains("Übernahmebeleg"));
+            assertThat(saved.getParagraphs().stream().map(p -> p.getText()).toList())
+                    .anySatisfy(p -> assertThat(p).contains("nicht übernommen"));
+        }
     }
 
     private ReformulationBaseline frozenGraphBaseline(boolean edges, boolean gaps) {

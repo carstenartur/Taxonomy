@@ -45,6 +45,12 @@ Status: in progress; not product acceptance.
 - Initial combined selector ran 22 ratchet tests (1 failure), 5 report tests (5 context-load errors). Both stem from the deleted app assembler's stale `.class` still present in `taxonomy-app/target/classes`: ArchUnit imports it and Spring sees duplicate bean names. Source tree contains only the portfolio-owned class. This is build-output staleness, not a production dependency ratchet or semantic assertion result.
 - Next exact commands after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app clean` then `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false test`.
 
+## Checkpoint 9 — core GREEN; real graph and receipt RED selectors
+
+- Targeted clean removed only `taxonomy-app/target` and succeeded. Combined focused gate: 27 tests, 0 failures/errors (5 report, 22 architecture ratchet), Maven exit 0. No ratchet baseline edit.
+- Added tests-first real persisted graph endpoint (two catalogue nodes, one directed saved relation, figure, canonical `edge-<mappingId>`, historical branch and explicit empty gaps) and separate exact adoption-receipt DOCX status versus unchanged proposal revision. Neither new selector has been run yet.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure+exactAdoptionReceiptIsBinaryDocxAndDoesNotRetroactivelyAdoptRevision -Dsurefire.failIfNoSpecifiedTests=false test`.
+
 ## Checkpoint 6 — frozen catalogue fixture
 
 - Focused class again ran 5 tests, 1 failure / 2 errors: the real BP catalogue has no authored `BP-1`/`BP-2` fixture nodes, so mapper correctly rejected those mappings before reaching multiplicity. Endpoint revision and existing JSON cases passed.
