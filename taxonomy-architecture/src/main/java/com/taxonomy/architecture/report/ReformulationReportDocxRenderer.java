@@ -81,9 +81,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
             w.heading(t(de, "Prüfung und übernommene Evidenz", "Validation and inherited evidence"), 1, "rf_validation");
             report.validation().findings().forEach(f -> w.paragraph(f.kind() + " · " + f.code() + " · "
                     + f.message() + " · " + f.statementIds() + " · " + f.sourceSpans()));
-            // The complete saved report includes inherited lineage and all structured evidence.
-            w.heading(t(de, "Vollständige gespeicherte Evidenz", "Complete saved evidence"), 2, null);
-            for (String line : report.evidenceJson().split("\\R", -1)) w.paragraph(line);
+            // The raw archive remains in JSON export. Word presents the reviewable evidence above.
             w.heading(t(de, "Gespeicherte Architektur — Kontext", "Saved architecture — context"), 1, null);
             architecture.identity().forEach((key, value) -> w.paragraph(key + ": " + value));
             w.paragraph(architecture.gapAnalysisAvailable()
@@ -94,6 +92,15 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
             architecture.elementDetails().forEach(w::paragraph);
             architecture.relationDetails().forEach(w::paragraph);
             var graph = architecture.graph();
+            if (graph.nodes().isEmpty()) {
+                w.heading(t(de, "Gespeicherte Architektur", "Saved architecture"), 1, "architecture_figures");
+                w.paragraph(t(de, "Kein Architekturgraph im ausgewählten Snapshot gespeichert.",
+                        "No architecture graph recorded in the selected snapshot."));
+                w.heading(t(de, "Architekturbeleg", "Architecture provenance"), 1, "architecture_evidence");
+                w.paragraph("SHA-256: " + ArchitectureReportDocument.graphSha256(graph));
+                document.write(output);
+                return output.toByteArray();
+            }
             var evidence = new ArchitectureReportDocument.SnapshotEvidence(null, null, null, null,
                     architecture.identity().get("Snapshot"), architecture.identity().get("Repository"),
                     architecture.identity().get("Workspace"), architecture.identity().get("Analysis based-on branch"),

@@ -89,6 +89,10 @@ public class ReformulationReportController {
             metadata.put("Preview SHA-256", report.preview().hash());
             identity = "adoption-" + adopted.commandId();
         }
+        var baseline = format.equals("docx") ? reports.frozenBaseline(projectId, requirementId, report.proposalId(),
+                resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()) : null;
+        if (baseline != null && baseline.frozenContext().containsKey("inheritedDecisionContext"))
+            metadata.put("Inherited decision context", baseline.frozenContext().get("inheritedDecisionContext"));
         var input = new ReformulationReportRenderer.Input(report.source().language(), report.adoption() != null,
                 metadata, report.source().originalText(), report.reviewedText(), revision.sections(), revision.statements(),
                 revision.questions(), revision.answers(), revision.validation(), evidence);
@@ -96,8 +100,7 @@ public class ReformulationReportController {
             case "json" -> (evidence + "\n").getBytes(StandardCharsets.UTF_8);
             case "md" -> ReformulationReportRenderer.markdown(input).getBytes(StandardCharsets.UTF_8);
             case "html" -> ReformulationReportRenderer.html(input).getBytes(StandardCharsets.UTF_8);
-            case "docx" -> docx.render(input, frozenArchitecture.assemble(reports.frozenBaseline(projectId,
-                    requirementId, report.proposalId(), resolver.resolveCurrentUsername(), resolver.resolveCurrentContext())));
+            case "docx" -> docx.render(input, frozenArchitecture.assemble(baseline));
             default -> throw new IllegalStateException("Validated format changed");
         };
         // Identity comes only from the authorized persisted record; no user-supplied title in headers.

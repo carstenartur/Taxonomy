@@ -12,11 +12,11 @@ import java.util.*;
 
 /** Decode and validate ONLY the baseline's captured bytes, never a live catalogue or snapshot. */
 @Component
-final class FrozenReformulationArchitectureAssembler {
+public final class FrozenReformulationArchitectureAssembler {
     private final PortfolioJsonCodec json;
     FrozenReformulationArchitectureAssembler(PortfolioJsonCodec json) { this.json = json; }
 
-    FrozenReformulationArchitecture assemble(ReformulationBaseline baseline) {
+    public FrozenReformulationArchitecture assemble(ReformulationBaseline baseline) {
         var frozen = baseline.frozenContext();
         SnapshotDetail detail = required(frozen, "snapshotDetail", SnapshotDetail.class);
         AnalysisResult payload = json.read(baseline.snapshotPayload(), AnalysisResult.class);
