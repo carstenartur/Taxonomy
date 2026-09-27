@@ -82,6 +82,41 @@ class ReformulationReportDocxReviewTest {
         }
     }
 
+    @Test void currentQuestionsWithoutOriginsRetainCompleteAnswerContractInBothLanguages() throws Exception {
+        var numeric = new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.NUMBER,
+                List.of(), "ms", 10d, 100d);
+        var meanings = new LinkedHashMap<String, DecisionQuestion.AnswerSchema.OptionMeaning>();
+        meanings.put("manual", DecisionQuestion.AnswerSchema.OptionMeaning.VALUE);
+        meanings.put("automatic", DecisionQuestion.AnswerSchema.OptionMeaning.OTHER);
+        var conditional = new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE,
+                List.of("manual", "automatic"), null, null, null, meanings,
+                List.of(List.of("manual", "automatic")),
+                List.of(new DecisionQuestion.AnswerSchema.AnswerCondition("enabled", List.of("yes"))));
+        var key = new DecisionQuestion.Key("processing", "timing", "BP-1");
+        var timeout = new DecisionQuestion("timeout", key, "What timeout?", List.of(), List.of(), numeric,
+                List.of(), List.of(), "", DecisionQuestion.State.OPEN, List.of(), List.of(), List.of());
+        var channel = new DecisionQuestion("channel", key, "Which channel?", List.of(), List.of(), conditional,
+                List.of("enabled"), List.of("follow-up"), "", DecisionQuestion.State.OPEN,
+                List.of(), List.of(), List.of());
+        for (var language : List.of("en", "de")) {
+            var report = new ReformulationReportRenderer.Input(language, false, Map.of(), "Original", "Proposal",
+                    List.of(), List.of(), List.of(timeout, channel), List.of(), new ValidationReport(List.of()), "{}");
+            String actual = text(report, emptyGraph(List.of()));
+            assertThat(actual).contains("Minimum: 10.0", "Maximum: 100.0")
+                    .contains(language.equals("de") ? "Antworttyp: NUMBER" : "Answer type: NUMBER",
+                            language.equals("de") ? "Einheit: ms" : "Unit: ms",
+                            language.equals("de") ? "Optionen: [manual, automatic]" : "Options: [manual, automatic]",
+                            language.equals("de") ? "Optionsbedeutungen: [automatic=OTHER, manual=VALUE]"
+                                    : "Option meanings: [automatic=OTHER, manual=VALUE]",
+                            language.equals("de") ? "Unvereinbare Optionen: [[manual, automatic]]"
+                                    : "Incompatible options: [[manual, automatic]]",
+                            language.equals("de") ? "Anwendbarkeit: [enabled → [yes]]" : "Applicability: [enabled → [yes]]",
+                            language.equals("de") ? "Vorausgesetzte Fragen: [enabled]" : "Prerequisite questions: [enabled]",
+                            language.equals("de") ? "Abhängige Fragen: [follow-up]" : "Dependent questions: [follow-up]")
+                    .doesNotContain("Origin question:", "Ursprungsfrage:", "AnswerSchema[");
+        }
+    }
+
     @Test void emptyGraphStillDisplaysSavedGapInventory() throws Exception {
         assertThat(text(input(List.of()), emptyGraph(List.of("Saved unresolved gap"))))
                 .contains("No architecture graph recorded", "Saved unresolved gap");
