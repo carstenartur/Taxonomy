@@ -137,6 +137,12 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         broken.put("snapshotDetail", json.writeValueAsString(detail));
         assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(baseline, broken))))
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("source identity");
+        var wrongNumber = new java.util.HashMap<>(baseline.frozenContext());
+        var numbered = (ObjectNode) json.readTree(wrongNumber.get("snapshotDetail"));
+        ((ObjectNode) numbered.get("summary")).put("requirementVersionNumber", 999);
+        wrongNumber.put("snapshotDetail", json.writeValueAsString(numbered));
+        assertThat(org.assertj.core.api.Assertions.catchThrowable(() -> reports.frozenArchitecture(copy(baseline, wrongNumber))))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("source identity");
         var graph = frozenGraphBaseline(true, true);
         var dangling = new java.util.HashMap<>(graph.frozenContext());
         var mappings = (ArrayNode) json.readTree(dangling.get("relationMappings"));

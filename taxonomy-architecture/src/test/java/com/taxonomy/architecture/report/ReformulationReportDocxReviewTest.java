@@ -52,6 +52,32 @@ class ReformulationReportDocxReviewTest {
                 .doesNotContain("Discovery[", "sourceSpans=", "nodeIds=");
     }
 
+    @Test void mergedOriginRetainsReviewStateAnswerSchemaAndDependenciesInBothLanguages() throws Exception {
+        var schema = new DecisionQuestion.AnswerSchema(DecisionQuestion.AnswerSchema.Kind.SINGLE_CHOICE,
+                List.of("manual", "automatic"), "days", 1d, 7d,
+                Map.of("manual", DecisionQuestion.AnswerSchema.OptionMeaning.VALUE),
+                List.of(List.of("manual", "automatic")),
+                List.of(new DecisionQuestion.AnswerSchema.AnswerCondition("prior-gate", List.of("yes"))));
+        var origin = new DecisionQuestion.Origin("prior-conflict",
+                new DecisionQuestion.Key("processing", "channel", "BP-1"), "Which channel?", List.of(),
+                List.of("saved-statement"), schema, List.of("prior-gate"), List.of("follow-up"),
+                "Requires architectural choice", DecisionQuestion.State.CONFLICT);
+        var question = new DecisionQuestion("merged", origin.key(), "Current wording", List.of(), List.of(),
+                schema, List.of(), List.of(), "", DecisionQuestion.State.OPEN,
+                List.of(), List.of(origin), List.of());
+        for (var language : List.of("en", "de")) {
+            var report = new ReformulationReportRenderer.Input(language, false, Map.of(), "Original", "Proposal",
+                    List.of(), List.of(), List.of(question), List.of(), new ValidationReport(List.of()), "{}");
+            String actual = text(report, emptyGraph(List.of()));
+            assertThat(actual).contains("prior-conflict", "CONFLICT", "SINGLE_CHOICE", "manual", "automatic",
+                    "saved-statement", "prior-gate", "follow-up", "Requires architectural choice", "BP-1",
+                    "VALUE", "yes")
+                    .contains(language.equals("de") ? "Ursprungsstatus:" : "Origin state:",
+                            language.equals("de") ? "Vorausgesetzte Fragen:" : "Prerequisite questions:")
+                    .doesNotContain("Origin[", "AnswerSchema[");
+        }
+    }
+
     @Test void emptyGraphStillDisplaysSavedGapInventory() throws Exception {
         assertThat(text(input(List.of()), emptyGraph(List.of("Saved unresolved gap"))))
                 .contains("No architecture graph recorded", "Saved unresolved gap");

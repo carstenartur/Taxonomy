@@ -1,8 +1,8 @@
 # PR 1135 bounded review fixes
 
-Status: review and standalone renderer corrections pass the merged-base covering
-selector. Fresh DE/EN document visual inspection, independent review and CI remain
-open; no Task 3 acceptance claim yet.
+Status: merged-base covering selector passed; independent Task 3 review identified
+two P2 omissions and scoped corrections are underway. Final Task 3 acceptance remains
+open pending the corrected code, regenerated visual samples, review and CI.
 
 Five review findings are isolated in focused tests: imported ancestry baseline/physical scope;
 local adoption preview versus current target; readable DOCX origin discovery fields;
@@ -105,3 +105,15 @@ rendered by the production DOCX exporter. They are not a remote-only E2E languag
 quality proof. CI on the final published commit and fresh visual inspection remain
 separate gates. Task 4 civilian browser/restart acceptance and opt-in real-model
 comparison remain outstanding.
+
+Root independently inspected all eight pages of the pre-round1 exact-SHA documents
+(EN five, DE three) with LibreOffice/Poppler. Page margins, provenance coordinates,
+graph/tables, labels and status were accepted visually. The exact files, PDFs and PNGs
+are preserved in `Taxonomy-PR1135-DOCX-QA.zip`; this approval precedes the origin-context
+change below and fresh rendering is required after it.
+
+Independent Task 3 review is in `reformulation-task3-review.md`. Two P2 findings:
+snapshot summary's requirement-version number can disagree with frozen source version;
+merged origin questions omit saved state, complete answer schema, consequences and
+dependencies in DOCX. Narrow test-first checks now tamper the summary number and
+require nontrivial origin context in EN/DE. These tests have not run in this checkpoint.
