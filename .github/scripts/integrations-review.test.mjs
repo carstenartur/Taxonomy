@@ -268,3 +268,47 @@ test('authoritative cancellation resolves a lost-response review without enablin
     assert.equal(el('integrationApply').disabled, true); assert.equal(el('integrationRationale').disabled, true);
     assert.ok(el('integrationOperation').textContent.includes('integration.phase.CANCELLED'));
 });
+
+// Read the durable operation, not Playwright's lossy DevTools response cache.
+async function acceptanceHarness(overrides = {}) {
+    const module = await import('./integration-acceptance.mjs');
+    const url = 'https://taxonomy.test/integrations?repositoryId=repo&workspaceId=ws&branch=draft&connection=conn&operation=next';
+    let reads = 0;
+    const operation = { id: 'next', connectionId: 'conn', direction: 'OUTBOUND', status: 'PREVIEWED',
+        context: { connectionId: 'conn', authority: 'BIDIRECTIONAL', profile: 'archimate-3.1', profileVersion: '1',
+            internalState: { repositoryId: 'repo', workspaceScopeKey: 'ws', branch: 'draft' } },
+        document: { losses: [] }, changes: [] };
+    const page = { url: () => url, waitForFunction: async (fn, arg) => {
+        const document = { getElementById: id => id === 'integrationOperation' ? { textContent: 'next · Previewed' } : { disabled: false } };
+        assert.equal(vm.runInNewContext('(' + fn.toString() + ')(arg)', { document, location: { href: overrides.stale ? url.replace('operation=next', 'operation=old') : url }, URL, arg }), true);
+    }, evaluate: async (fn, arg) => vm.runInNewContext('(' + fn.toString() + ')(arg)', {
+        location: { href: url }, URL, window: { IntegrationApi: { downloadUrl: path => '/api/integrations' + path + '?repositoryId=repo&workspaceId=ws&branch=draft' } }
+    , arg }), request: { get: async endpoint => {
+        reads++;
+        assert.equal(endpoint, 'https://taxonomy.test/api/integrations/conn/operations/next?repositoryId=repo&workspaceId=ws&branch=draft');
+        return { status: () => overrides.httpStatus || 200, text: async () => 'Operation unavailable',
+            json: async () => { overrides.corrupt?.(operation); return operation; } };
+    } } };
+    const response = { status: () => overrides.postStatus || 200,
+        text: async () => { throw new Error('evicted from inspector cache'); },
+        json: async () => { throw new Error('evicted from inspector cache'); } };
+    return { module, page, response, reads: () => reads };
+}
+test('large export acceptance follows the rendered identity and reads the persisted scoped operation', async () => {
+    const h = await acceptanceHarness();
+    const result = await h.module.readRenderedExportPreview(h.page, h.response, 'conn', 'old', { id: 'archimate-3.1', version: '1' });
+    assert.equal(result.id, 'next'); assert.equal(h.reads(), 1);
+});
+for (const [name, overrides] of Object.entries({
+    'failed preview POST': { postStatus: 500 }, 'failed operation GET': { httpStatus: 403 }, 'stale UI operation': { stale: true },
+    'wrong operation': { corrupt: op => { op.id = 'foreign'; } },
+    'wrong connection': { corrupt: op => { op.connectionId = 'foreign'; } },
+    'wrong direction': { corrupt: op => { op.direction = 'INBOUND'; } },
+    'wrong status': { corrupt: op => { op.status = 'COMPLETED'; } },
+    'wrong profile': { corrupt: op => { op.context.profileVersion = '2'; } },
+    'wrong workspace': { corrupt: op => { op.context.internalState.workspaceScopeKey = 'foreign'; } }
+})) test('persisted export acceptance rejects ' + name, async () => {
+    const h = await acceptanceHarness(overrides);
+    assert.equal(typeof h.module.readRenderedExportPreview, 'function');
+    await assert.rejects(() => h.module.readRenderedExportPreview(h.page, h.response, 'conn', 'old', { id: 'archimate-3.1', version: '1' }));
+});
