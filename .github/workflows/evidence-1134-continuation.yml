@@ -8,99 +8,70 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 50
-    permissions:
-      contents: write
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          path: transport
+          ref: 0039a12a5b3eb4fcd4b2cea1455221858d8ab36a
           persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: 5aacbddcf705b98704dfa3ca5c91108e896beeac
-          path: product
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
           distribution: temurin
           java-version: '21'
           cache: maven
-      - name: Reconstruct exact local follow-up tree
-        working-directory: product
+      - name: Verify exact source identity and Docker
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD^{tree})" = 97e0919874268598aab74f88e1bf6d9b27a2af85
-          python3 - <<'PY'
-          from pathlib import Path
-          import base64, hashlib, lzma, subprocess
-          data = lzma.decompress(base64.b64decode(Path('../transport/.github/verification/evidence-export-followup.b64').read_text(), validate=True))
-          assert hashlib.sha256(data).hexdigest() == 'f94d77f0767072be1332df922c5251638325f6379987316285a6f65d66e00c8e'
-          Path('/tmp/correction.patch').write_bytes(data)
-          subprocess.run(['git','apply','--check','/tmp/correction.patch'], check=True)
-          subprocess.run(['git','apply','/tmp/correction.patch'], check=True)
-          PY
+          test "$(git rev-parse HEAD)" = 0039a12a5b3eb4fcd4b2cea1455221858d8ab36a
+          test "$(git hash-object taxonomy-app/src/test/java/com/taxonomy/ProductionPersistenceRestartIT.java)" = ec617e04b2efccdd78d99f72ecb59870f4b26efa
           git diff --check
-          git add .
-          test "$(git write-tree)" = 2a2aba5080a8ec8a01a382bb526953fb5bf0ed7a
-      - name: Run actual Maven-owned analysis, export HTTP and architecture tests
-        working-directory: product
+          docker info
+      - name: Run source-built closure, projection and real container-replacement acceptance
+        env:
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/evidence-export
-          ./mvnw -B -ntp -pl taxonomy-app -am test -DexcludedGroups=real-llm -Dtest=AnalyzeRequirementUseCaseTest,AnalysisDrivenExportTest,DefaultAnalysisExportHttpTest,CurrentDiagramExportTest,RecoveryCatalogueExchangeTest,ArchitectureContextDependencyRatchetTest -Dsurefire.failIfNoSpecifiedTests=false 2>&1 | tee /tmp/evidence-export/maven.log
+          mkdir -p /tmp/restart-1134
+          ./mvnw -B -ntp -pl taxonomy-app -am verify -Dtest=TaxDslExportClosureTest,RelationProjectionReadServiceTest -Dsurefire.failIfNoSpecifiedTests=false -Dit.test=ProductionPersistenceRestartIT -DskipITs=false -DexcludedGroups=real-llm -Dtaxonomy.model.download.skip=true 2>&1 | tee /tmp/restart-1134/maven.log
           python3 - <<'PY'
           from pathlib import Path
-          import xml.etree.ElementTree as ET
-          expected = {'AnalyzeRequirementUseCaseTest':6,'AnalysisDrivenExportTest':8,'DefaultAnalysisExportHttpTest':3,'CurrentDiagramExportTest':3,'RecoveryCatalogueExchangeTest':5,'ArchitectureContextDependencyRatchetTest':22}
-          actual = {}
-          for p in Path('.').glob('*/target/surefire-reports/TEST-*.xml'):
+          import json, xml.etree.ElementTree as ET
+          expected = {'TaxDslExportClosureTest', 'RelationProjectionReadServiceTest', 'ProductionPersistenceRestartIT'}
+          inventory = {}
+          for p in Path('.').glob('*/target/*-reports/TEST-*.xml'):
               root = ET.parse(p).getroot()
               name = root.get('name','').rsplit('.',1)[-1]
-              if name in expected:
-                  assert int(root.get('failures','0')) == int(root.get('errors','0')) == int(root.get('skipped','0')) == 0, (name,root.attrib)
-                  actual[name] = int(root.get('tests','0'))
-          assert actual == expected, (actual, expected)
-          Path('/tmp/evidence-export/inventory.txt').write_text(str(actual)+'\n')
+              if name not in expected: continue
+              assert int(root.get('tests','0')) > 0, (name,root.attrib)
+              assert all(int(root.get(k,'0')) == 0 for k in ('failures','errors','skipped')), (name,root.attrib)
+              inventory[name] = int(root.get('tests'))
+          assert set(inventory) == expected, inventory
+          assert inventory['TaxDslExportClosureTest'] == 4, inventory
+          assert inventory['ProductionPersistenceRestartIT'] == 1, inventory
+          Path('/tmp/restart-1134/inventory.json').write_text(json.dumps(inventory,indent=2)+'\n')
           PY
-      - name: Publish candidate only after actual selected JUnit acceptance
-        working-directory: product
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$(git write-tree)" = 2a2aba5080a8ec8a01a382bb526953fb5bf0ed7a
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'fix(export): use shared non-publishing analysis for text-driven diagrams'
-          git push origin "HEAD:refs/heads/verification/evidence-export-${GITHUB_RUN_ID}"
-          git rev-parse HEAD HEAD^{tree} > /tmp/evidence-export/identity.txt
-          git archive --format=tar HEAD | gzip -n > /tmp/evidence-export/source.tar.gz
-          git cat-file commit HEAD > /tmp/evidence-export/commit.txt
-      - name: Collect source-bound verification evidence
+      - name: Collect source-bound reports
         if: always()
-        working-directory: product
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p /tmp/evidence-export
-          git rev-parse HEAD > /tmp/evidence-export/base.txt
-          git write-tree > /tmp/evidence-export/tree.txt
-          git diff HEAD --binary > /tmp/evidence-export/uncommitted.patch
+          mkdir -p /tmp/restart-1134
+          git rev-parse HEAD HEAD^{tree} > /tmp/restart-1134/identity.txt
           python3 - <<'PY'
           from pathlib import Path
           import tarfile
-          with tarfile.open('/tmp/evidence-export/reports.tar.gz','w:gz') as t:
-              for p in Path('.').glob('*/target/surefire-reports/*'):
+          with tarfile.open('/tmp/restart-1134/reports.tar.gz','w:gz') as t:
+              for p in Path('.').glob('*/target/*-reports/*'):
                   if p.is_file() and p.suffix in ('.xml','.txt'): t.add(p,arcname=str(p),recursive=False)
-          with tarfile.open('/tmp/evidence-export/test-dependencies.tar.gz','w:gz') as t:
-              root=Path.home()/'.m2/repository'
-              for p in root.glob('org/springframework/boot/spring-boot-webmvc-test/*/*.jar'): t.add(p,arcname=str(p.relative_to(root)),recursive=False)
           PY
-          cd /tmp/evidence-export
-          sha256sum *.tar.gz *.txt *.patch > SHA256SUMS
+          cd /tmp/restart-1134
+          sha256sum identity.txt reports.tar.gz > SHA256SUMS
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
-          name: evidence-export-followup-verification
-          path: /tmp/evidence-export
+          name: evidence-1134-restart-verification
+          path: /tmp/restart-1134
           if-no-files-found: error
           retention-days: 7
