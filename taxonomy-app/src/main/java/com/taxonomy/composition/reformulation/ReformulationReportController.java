@@ -1,6 +1,7 @@
 package com.taxonomy.composition.reformulation;
 
 import com.taxonomy.export.reformulation.ReformulationReportRenderer;
+import com.taxonomy.export.reformulation.ReformulationDocxPort;
 import com.taxonomy.identity.StableIdentityHash;
 import com.taxonomy.portfolio.reformulation.ReformulationReportService;
 import com.taxonomy.portfolio.reformulation.ReformulationReportService.Report;
@@ -16,6 +17,8 @@ import tools.jackson.databind.ObjectMapper;
 import tools.jackson.databind.SerializationFeature;
 
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.util.HexFormat;
 import java.util.TreeMap;
 
 /** Explicit historical revision/receipt downloads; no live architecture or model lookup. */
@@ -25,33 +28,41 @@ public class ReformulationReportController {
     private final ReformulationReportService reports;
     private final WorkspaceResolver resolver;
     private final ObjectMapper json;
+    private final FrozenReformulationArchitectureAssembler frozenArchitecture;
+    private final ReformulationDocxPort docx;
 
-    public ReformulationReportController(ReformulationReportService reports, WorkspaceResolver resolver, ObjectMapper json) {
+    public ReformulationReportController(ReformulationReportService reports, WorkspaceResolver resolver, ObjectMapper json,
+            FrozenReformulationArchitectureAssembler frozenArchitecture, ReformulationDocxPort docx) {
         this.reports = reports;
         this.resolver = resolver;
         this.json = json.rebuild().enable(SerializationFeature.ORDER_MAP_ENTRIES_BY_KEYS).build();
+        this.frozenArchitecture = frozenArchitecture;
+        this.docx = docx;
     }
 
     @GetMapping("/revisions/{revision}/export")
     public ResponseEntity<byte[]> revision(@PathVariable Long projectId, @PathVariable Long requirementId,
             @PathVariable String proposalId, @PathVariable long revision, @RequestParam(defaultValue = "json") String format) {
         return response(reports.revision(projectId, requirementId, proposalId, revision,
-                resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()), format);
+                resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()), format,
+                projectId, requirementId);
     }
 
     @GetMapping("/adoptions/{commandId}/export")
     public ResponseEntity<byte[]> adoption(@PathVariable Long projectId, @PathVariable Long requirementId,
             @PathVariable String proposalId, @PathVariable String commandId, @RequestParam(defaultValue = "json") String format) {
         return response(reports.adoption(projectId, requirementId, proposalId, commandId,
-                resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()), format);
+                resolver.resolveCurrentUsername(), resolver.resolveCurrentContext()), format,
+                projectId, requirementId);
     }
 
-    private ResponseEntity<byte[]> response(Report report, String format) {
+    private ResponseEntity<byte[]> response(Report report, String format, Long projectId, Long requirementId) {
         MediaType type = switch (format) {
             case "json" -> new MediaType("application", "json", StandardCharsets.UTF_8);
             case "md" -> new MediaType("text", "markdown", StandardCharsets.UTF_8);
             case "html" -> new MediaType("text", "html", StandardCharsets.UTF_8);
-            default -> throw PortfolioException.validation("Supported report formats: json, md, html");
+            case "docx" -> MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+            default -> throw PortfolioException.validation("Supported report formats: json, md, html, docx");
         };
         String evidence = json.writerWithDefaultPrettyPrinter().writeValueAsString(report);
         var revision = report.revision();
@@ -81,10 +92,12 @@ public class ReformulationReportController {
         var input = new ReformulationReportRenderer.Input(report.source().language(), report.adoption() != null,
                 metadata, report.source().originalText(), report.reviewedText(), revision.sections(), revision.statements(),
                 revision.questions(), revision.answers(), revision.validation(), evidence);
-        String body = switch (format) {
-            case "json" -> evidence + "\n";
-            case "md" -> ReformulationReportRenderer.markdown(input);
-            case "html" -> ReformulationReportRenderer.html(input);
+        byte[] bytes = switch (format) {
+            case "json" -> (evidence + "\n").getBytes(StandardCharsets.UTF_8);
+            case "md" -> ReformulationReportRenderer.markdown(input).getBytes(StandardCharsets.UTF_8);
+            case "html" -> ReformulationReportRenderer.html(input).getBytes(StandardCharsets.UTF_8);
+            case "docx" -> docx.render(input, frozenArchitecture.assemble(reports.frozenBaseline(projectId,
+                    requirementId, report.proposalId(), resolver.resolveCurrentUsername(), resolver.resolveCurrentContext())));
             default -> throw new IllegalStateException("Validated format changed");
         };
         // Identity comes only from the authorized persisted record; no user-supplied title in headers.
@@ -93,7 +106,11 @@ public class ReformulationReportController {
                 .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.attachment().filename(filename).build().toString())
                 .header("X-Content-Type-Options", "nosniff")
                 .header("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'")
-                .header("X-Content-SHA256", StableIdentityHash.sha256(body))
-                .body(body.getBytes(StandardCharsets.UTF_8));
+                .header("X-Content-SHA256", sha256(bytes))
+                .body(bytes);
+    }
+    private static String sha256(byte[] bytes) {
+        try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)); }
+        catch (java.security.NoSuchAlgorithmException error) { throw new IllegalStateException(error); }
     }
 }

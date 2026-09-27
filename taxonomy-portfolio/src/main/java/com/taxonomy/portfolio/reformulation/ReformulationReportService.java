@@ -37,6 +37,12 @@ public class ReformulationReportService {
             ReformulationDtos.Revision revision, String reviewedText,
             ReformulationAdoptionDtos.Preview preview, ReformulationAdoptionDtos.Result adoption) {}
 
+    /** Same scoped, persisted baseline used to construct the historical report; no current-source read. */
+    public ReformulationBaseline frozenBaseline(Long projectId, Long requirementId, String proposalId,
+            String actor, WorkspaceContext context) {
+        return proposals.get(projectId, requirementId, proposalId, actor, context).baseline();
+    }
+
     public Report revision(Long projectId, Long requirementId, String proposalId, long number,
             String actor, WorkspaceContext context) {
         var offer = proposals.get(projectId, requirementId, proposalId, actor, context);
