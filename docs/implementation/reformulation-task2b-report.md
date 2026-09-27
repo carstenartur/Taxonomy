@@ -1,8 +1,7 @@
 # Task 2b — adopted lineage and portable evidence
 
-Status: focused Task 2b verification green through DSL-property correction;
-independent review and root's integrated gate pending. No product acceptance or
-real-provider quality claim.
+Status: fix round 1 focused verification green; scoped re-review and root's
+integrated gate pending. No product acceptance or real-provider quality claim.
 
 Fix round 1 (review head `7cdaeec40a511b3fe73d070693ceabb9f1be6a4d`):
 three Important findings accepted. New tests first cover a fresh adopted offer's
@@ -30,12 +29,26 @@ Selector regression extension: frozen catalogue distinguishes the unrelated
 known B branch from an obsolete `RETIRED` mapping that must remain visible;
 a boundary question and dependent statement in a distinct ancestor entry must
 travel together only for the boundary call. These cases and an engine/layout
-postprocessing rejection case are unverified at this checkpoint.
+postprocessing rejection case passed in the final covering run.
 These refinements were added alongside their candidate fix; they are
 additional covering regression tests, not a separately observed RED. The
-observed review-fix RED remains the earlier 2/15 analysis result. Next exact
-command after publication:
+observed review-fix RED remains the earlier 2/15 analysis result. Final
+covering GREEN (`/tmp/task2b-review1-final.log`): AdoptedLineagePromptTest
+6/6, ReformulationResponseParserTest 10/10, PortfolioJsonCodecBoundaryTest
+2/2, ArchitectureContextDependencyRatchetTest 22/22 and
+AdoptedLineageRealReanalysisTest 1/1: **41/41**, zero failures/errors/skips,
+build success. The embedding fallback described above recurred in this run;
+it was not a test failure. Exact command:
 `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test '-Dtest=AdoptedLineagePromptTest,ReformulationResponseParserTest,AdoptedLineageRealReanalysisTest,PortfolioJsonCodecBoundaryTest,ArchitectureContextDependencyRatchetTest' -Dsurefire.failIfNoSpecifiedTests=false`
+Fix diff relative to `03e4208bbd8086c1649240ccb37e2cc2b0d6b76b`: the immutable
+archive stays unchanged. Per-node prompts select applicable historical
+statements/questions/answers across ancestor entries by frozen node, boundary,
+scope and dependency closure; unmappable records stay visible. Parser and
+engine/reconciliation rendering guard applicable rejected wording, with v4
+input encoding invalidating earlier v3 results. The integration uses real
+Copilot analysis orchestration/persistence after adoption but a deterministic
+HTTP model reply, not a real model or browser. No full DB/full-reactor rerun
+by the implementer; root owns those gates and scoped re-review.
 
 ## Verified outcome to date
 
@@ -211,19 +224,24 @@ the Mockito agent without changing the project build.
   portable archive, obsolete spans and old whole-source statement text remain
   outside NODE, grouping/aggregate, REWORD and RECONCILE prompts. The existing
   final-prompt budget path fails visibly when inherited context will not fit;
-  input encoding v3 invalidates old lossy checkpoint entries.
+  input encoding v4 invalidates old lossy and unscoped checkpoint entries.
 - Service/DB tests cover local and imported adoption paths and a second
-  generation using persisted fixture snapshots. They are not the real-analysis
-  civilian playback/browser path, which remains Task 4. No real-provider test,
-  full-reactor run, DOCX work, or independent review was performed by this
-  implementer. The unchanged architecture dependency ratchet passed 22/22 in
-  the pre-correction focused run; no dependency baseline was increased.
+  generation using persisted fixture snapshots. A separate bounded test now
+  drives actual post-adoption Copilot reanalysis to a persisted snapshot and
+  subsequent offer/checkpoint, replacing outbound HTTP model replies only.
+  It is not the full civilian/browser path, which remains Task 4. No
+  real-provider test, full-reactor run, DOCX work, or independent review was
+  performed by this implementer. The unchanged architecture dependency
+  ratchet passed 22/22 in the fix covering run; no dependency baseline was
+  increased.
 
 ## Next exact action
 
-Independent scoped review of `git diff 8e1a1103276600a3127759488fe8bd6c04b463ae..HEAD`
-against `docs/implementation/reformulation-task2b.md`, then root's integrated
-gate. Do not repeat Tasks 1/2a or infer real-language quality from playback.
+Independent scoped re-review of `git diff 03e4208bbd8086c1649240ccb37e2cc2b0d6b76b..HEAD`
+against the three accepted Important findings in
+`docs/implementation/reformulation-task2b-review.md`, then root's integrated
+gate. Do not repeat Tasks 1/2a or infer real-language quality from transport
+playback.
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.
