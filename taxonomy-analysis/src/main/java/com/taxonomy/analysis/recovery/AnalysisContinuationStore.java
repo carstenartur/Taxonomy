@@ -78,62 +78,57 @@ public class AnalysisContinuationStore {
 
     @Transactional
     public AnalysisCheckpointSession.Checkpoint prepare(Claim claim, AnalysisCheckpointSession.Question request) {
-        var run = ownedClaim(claim);
-        var question = question(run, request.key());
+        var run = checkpointOwner(claim, true);
+        var question = question(run.id(), request.key());
         if (question != null) {
             if (!question.inputHash.equals(request.inputHash())) throw conflict("A saved question's input changed");
             if (!"READY".equals(question.state)) return checkpoint(question, request);
         } else {
             long count = em.createQuery("select count(q) from AnalysisQuestionCheckpoint q where q.run.id=:id", Long.class)
-                    .setParameter("id", run.id).getSingleResult();
+                    .setParameter("id", run.id()).getSingleResult();
             if (count >= MAX_CALLS) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
                     "Continuation checkpoint limit reached; completed answers remain stored");
             question = new AnalysisQuestionCheckpoint();
-            question.id = run.id + ":" + request.key(); question.run = run;
+            question.id = run.id() + ":" + request.key();
+            question.run = em.getReference(AnalysisContinuationRun.class, run.id());
             question.questionKey = request.key(); question.inputHash = request.inputHash();
             question.provider = request.provider(); question.nodeCodes = mapper.writeValueAsString(request.nodes());
             question.state = "READY";
             em.persist(question);
         }
         question.attempts++; question.startedAt = System.currentTimeMillis(); question.state = "ATTEMPT";
-        run.currentNode = String.join(", ", request.nodes());
-        if (run.currentNode.length() > 320) run.currentNode = run.currentNode.substring(0, 317) + "...";
-        run.updatedAt = System.currentTimeMillis();
+        String currentNode = String.join(", ", request.nodes());
+        if (currentNode.length() > 320) currentNode = currentNode.substring(0, 317) + "...";
         long retainedPrompt = question.prompt == null ? 0 : question.prompt.length();
-        long nextPayload = run.payloadCharacters - retainedPrompt + request.prompt().length();
+        long nextPayload = run.payloadCharacters() - retainedPrompt + request.prompt().length();
+        String state = "RUNNING";
         if (request.prompt().length() > MAX_QUESTION_CHARACTERS || nextPayload > MAX_RUN_CHARACTERS) {
             question.state = "FAILED";
             question.error = "CHECKPOINT_INPUT_LIMIT: full prompt or total retained text exceeds the bounded checkpoint budget; "
                     + "it was not sent or silently shortened";
-            run.state = "PAUSED";
-        } else {
-            question.prompt = request.prompt(); run.payloadCharacters = nextPayload;
-        }
-        em.flush();
+            state = "PAUSED"; nextPayload = run.payloadCharacters();
+        } else question.prompt = request.prompt();
+        updateCheckpointOwner(claim, run, state, nextPayload, currentNode);
         return checkpoint(question, request);
     }
 
     @Transactional
     public void finish(Claim claim, AnalysisCheckpointSession.Question request, String state, LlmCallDetail detail) {
-        var run = em.find(AnalysisContinuationRun.class, claim.id(), LockModeType.PESSIMISTIC_WRITE);
-        if (run == null || !Objects.equals(run.claimToken, claim.token())
-                || !"RUNNING".equals(run.state)) throw conflict("Question claim was superseded");
-        var question = question(run, request.key());
+        var run = checkpointOwner(claim, false);
+        var question = question(run.id(), request.key());
         if (question == null || !"ATTEMPT".equals(question.state)) throw conflict("Question no longer owns this attempt");
         String json = mapper.writeValueAsString(detail);
         long oldLength = question.detailJson == null ? 0 : question.detailJson.length();
-        if (json.length() > MAX_QUESTION_CHARACTERS || run.payloadCharacters - oldLength + json.length() > MAX_RUN_CHARACTERS) {
+        if (json.length() > MAX_QUESTION_CHARACTERS || run.payloadCharacters() - oldLength + json.length() > MAX_RUN_CHARACTERS) {
             question.state = "FAILED"; question.error = "CHECKPOINT_STORAGE_LIMIT: response was not accepted; prior checkpoints remain intact";
-            if (!"CANCELLED".equals(run.state)) run.state = "PAUSED";
-            run.updatedAt = System.currentTimeMillis();
             // Do not pretend a result was durably cached. Signal the pause outside this transaction.
-            em.flush(); return;
+            updateCheckpointOwner(claim, run, "PAUSED", run.payloadCharacters(), run.currentNode());
+            return;
         }
         question.detailJson = json; question.state = state;
         question.error = bounded(detail.getError(), 2048);
-        run.payloadCharacters += json.length() - oldLength;
-        if ("FAILED".equals(state) && !"CANCELLED".equals(run.state)) run.state = "PAUSED";
-        run.updatedAt = System.currentTimeMillis(); em.flush();
+        updateCheckpointOwner(claim, run, "FAILED".equals(state) ? "PAUSED" : "RUNNING",
+                run.payloadCharacters() + json.length() - oldLength, run.currentNode());
     }
 
     @Transactional(readOnly = true)
@@ -264,14 +259,37 @@ public class AnalysisContinuationStore {
         var run = em.find(AnalysisContinuationRun.class, requireId(id), LockModeType.PESSIMISTIC_WRITE);
         if (run == null) throw notFound(); authorize(run, scope); return run;
     }
-    private AnalysisContinuationRun ownedClaim(Claim claim) {
-        var run = em.find(AnalysisContinuationRun.class, claim.id(), LockModeType.PESSIMISTIC_WRITE);
-        if (run == null || !Objects.equals(run.claimToken, claim.token()) || !"RUNNING".equals(run.state)
-                || System.currentTimeMillis() > run.claimUntil) throw conflict("Operation no longer owns its execution claim");
-        return run;
+    private record CheckpointOwner(String id, long version, long payloadCharacters, String currentNode) { }
+    private CheckpointOwner checkpointOwner(Claim claim, boolean requireUnexpired) {
+        // The same row lock as cancellation/completion, but no result/request LOB hydration.
+        var rows = em.createQuery("select r.version, r.payloadCharacters, r.currentNode, r.state, r.claimToken, r.claimUntil "
+                        + "from AnalysisContinuationRun r where r.id=:id", Object[].class)
+                .setParameter("id", claim.id()).setLockMode(LockModeType.PESSIMISTIC_WRITE).getResultList();
+        if (rows.isEmpty()) throw conflict("Operation no longer owns its execution claim");
+        Object[] row = rows.getFirst();
+        if (!Objects.equals(row[4], claim.token()) || !"RUNNING".equals(row[3])
+                || (requireUnexpired && System.currentTimeMillis() > ((Number) row[5]).longValue()))
+            throw conflict("Operation no longer owns its execution claim");
+        return new CheckpointOwner(claim.id(), ((Number) row[0]).longValue(),
+                ((Number) row[1]).longValue(), (String) row[2]);
+    }
+    private void updateCheckpointOwner(Claim claim, CheckpointOwner run, String state, long payload, String currentNode) {
+        // Commit the question and its bookkeeping atomically. Bulk updates explicitly advance
+        // the same optimistic version used by decisions; the locked row and token stay bound.
+        em.flush();
+        int updated = em.createQuery("update AnalysisContinuationRun r set r.state=:state, r.payloadCharacters=:payload, "
+                        + "r.currentNode=:node, r.updatedAt=:now, r.version=r.version+1 "
+                        + "where r.id=:id and r.claimToken=:token and r.version=:version and r.state='RUNNING'")
+                .setParameter("state", state).setParameter("payload", payload).setParameter("node", currentNode)
+                .setParameter("now", System.currentTimeMillis()).setParameter("id", run.id())
+                .setParameter("token", claim.token()).setParameter("version", run.version()).executeUpdate();
+        if (updated != 1) throw conflict("Question claim was superseded");
     }
     private AnalysisQuestionCheckpoint question(AnalysisContinuationRun run, String key) {
-        return key == null ? null : em.find(AnalysisQuestionCheckpoint.class, run.id + ":" + key);
+        return question(run.id, key);
+    }
+    private AnalysisQuestionCheckpoint question(String runId, String key) {
+        return key == null ? null : em.find(AnalysisQuestionCheckpoint.class, runId + ":" + key);
     }
     private AnalysisCheckpointSession.Checkpoint checkpoint(AnalysisQuestionCheckpoint q, AnalysisCheckpointSession.Question input) {
         return new AnalysisCheckpointSession.Checkpoint(input, q.state,

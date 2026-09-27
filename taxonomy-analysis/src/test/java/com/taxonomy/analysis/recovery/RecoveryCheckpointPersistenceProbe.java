@@ -109,6 +109,85 @@ public final class RecoveryCheckpointPersistenceProbe {
         }
     }
 
+    public static void checkpointDoesNotLoadSavedResult() {
+        try (var db = new Database()) {
+            var question = new AnalysisCheckpointSession.Question("1".repeat(64), "2".repeat(64), "MOCK", List.of("BP"), "prompt");
+            db.transaction(em -> db.store(em).prepare(db.claim(), question));
+            var answer = new LlmCallDetail(); answer.setScores(Map.of("BP", 70)); answer.setProvider("MOCK");
+            db.transaction(em -> { db.store(em).finish(db.claim(), question, "SUCCESS", answer); return null; });
+            var cached = db.transaction(em -> db.store(em).prepare(db.claim(), question));
+            check("SUCCESS".equals(cached.state()), "The successful answer was not reused");
+            check(db.statements.stream().noneMatch(sql -> sql.contains("result_json") || sql.contains("request_json")),
+                    "Question bookkeeping must never hydrate its frozen result: " + db.statements);
+            check(db.factory.getStatistics().getEntityStatistics(AnalysisContinuationRun.class.getName()).getLoadCount() == 0,
+                    "Question prepare/finish hydrated the entire continuation entity");
+            check(db.statements.stream().filter(sql -> sql.startsWith("select") && sql.contains("analysis_continuation"))
+                    .allMatch(sql -> sql.contains("for update")), "Question bookkeeping lost the run row lock");
+        }
+    }
+
+    public static void checkpointClaimIsStillEnforced() {
+        try (var db = new Database()) {
+            var question = new AnalysisCheckpointSession.Question("1".repeat(64), "2".repeat(64), "MOCK", List.of("BP"), "prompt");
+            expectConflict(() -> db.transaction(em -> db.store(em).prepare(
+                    new AnalysisContinuationStore.Claim(db.id, "superseded", null), question)));
+            expectConflict(() -> db.transaction(em -> db.store(em).prepare(
+                    new AnalysisContinuationStore.Claim(UUID.randomUUID().toString(), db.token, null), question)));
+            db.transaction(em -> { em.find(AnalysisContinuationRun.class, db.id).state = "CANCELLED"; return null; });
+            expectConflict(() -> db.transaction(em -> db.store(em).prepare(db.claim(), question)));
+            var late = new LlmCallDetail(); late.setScores(Map.of("BP", 99));
+            expectConflict(() -> db.transaction(em -> { db.store(em).finish(db.claim(), question, "SUCCESS", late); return null; }));
+            db.transaction(em -> { var run = em.find(AnalysisContinuationRun.class, db.id);
+                run.state = "RUNNING"; run.claimUntil = System.currentTimeMillis() - 1; return null; });
+            expectConflict(() -> db.transaction(em -> db.store(em).prepare(db.claim(), question)));
+            db.transaction(em -> {
+                check(em.find(AnalysisQuestionCheckpoint.class, db.id + ":" + question.key()) == null,
+                        "Rejected execution created question evidence");
+                check(db.savedResult.equals(em.find(AnalysisContinuationRun.class, db.id).resultJson),
+                        "Rejected execution changed the frozen result");
+                return null;
+            });
+        }
+    }
+
+    public static void bookkeepingFailureRollsBackQuestion() {
+        try (var db = new Database()) {
+            var question = new AnalysisCheckpointSession.Question("1".repeat(64), "2".repeat(64), "MOCK", List.of("BP"), "prompt");
+            try {
+                db.transaction(em -> {
+                    EntityManager failing = (EntityManager) java.lang.reflect.Proxy.newProxyInstance(
+                            EntityManager.class.getClassLoader(), new Class<?>[]{EntityManager.class}, (proxy, method, args) -> {
+                                if (method.getName().equals("createQuery") && args[0] instanceof String query
+                                        && query.startsWith("update AnalysisContinuationRun"))
+                                    throw new IllegalStateException("Injected bookkeeping failure after question flush");
+                                try { return method.invoke(em, args); }
+                                catch (java.lang.reflect.InvocationTargetException failure) { throw failure.getCause(); }
+                            });
+                    return db.store(failing).prepare(db.claim(), question);
+                });
+                throw new AssertionError("Expected persistence failure");
+            } catch (IllegalStateException expected) {
+                check(expected.getMessage().startsWith("Injected bookkeeping failure"), "Unexpected persistence error");
+            }
+            db.transaction(em -> {
+                check(em.find(AnalysisQuestionCheckpoint.class, db.id + ":" + question.key()) == null,
+                        "Question escaped the rolled-back bookkeeping transaction");
+                var run = em.find(AnalysisContinuationRun.class, db.id);
+                check(run.version == 0 && run.payloadCharacters == 0 && db.savedResult.equals(run.resultJson),
+                        "Failed bookkeeping published a partial update");
+                return null;
+            });
+            check("ATTEMPT".equals(db.transaction(em -> db.store(em).prepare(db.claim(), question)).state()),
+                    "A failed persistence transaction prevented the next valid attempt");
+        }
+    }
+    private static void expectConflict(Runnable operation) {
+        try { operation.run(); throw new AssertionError("An invalid claim was admitted"); }
+        catch (org.springframework.web.server.ResponseStatusException expected) {
+            check(expected.getStatusCode().value() == 409, "Expected a claim conflict");
+        }
+    }
+
     public static void stateIsFreshAndClaimBound() {
         try (var db = new Database(); var observer = db.factory.createEntityManager()) {
             observer.getTransaction().begin();
@@ -128,6 +207,9 @@ public final class RecoveryCheckpointPersistenceProbe {
     public static void main(String[] args) {
         switch (args[0]) {
             case "read" -> stateDoesNotLoadSavedResult();
+            case "checkpoint-read" -> checkpointDoesNotLoadSavedResult();
+            case "checkpoint-authority" -> checkpointClaimIsStillEnforced();
+            case "rollback" -> bookkeepingFailureRollsBackQuestion();
             case "write" -> checkpointDoesNotRewriteSavedResult();
             case "authority" -> stateIsFreshAndClaimBound();
             default -> throw new IllegalArgumentException("read, write or authority required");
