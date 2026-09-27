@@ -189,6 +189,59 @@ class ReformulationEvidenceRoundTripTest extends ReformulationWorkflowFixture {
         assertThat(projects.listProjects("architect", target)).isEmpty();
     }
 
+    @Test
+    void localAdoptedSourceFreezesExactEvidenceAndConcreteDecisionsAtOfferCreation() throws Exception {
+        String dsl = adoptAndExport();
+        BlockAst sourceEvidence = onlyEvidence(dsl);
+        requirement = projects.getRequirement(project.id(), requirement.id(), "architect", context);
+        String adoptedSnapshot = snapshot(requirement);
+
+        var offer = reformulations.create(project.id(), requirement.id(),
+                new ReformulationDtos.CreateRequest(requirement.currentVersionId(), adoptedSnapshot, "de"),
+                "architect", context);
+        var frozen = offer.baseline().frozenContext();
+        assertThat(frozen.get("adoptedLineage")).contains(sourceEvidence.property("evidenceHash"));
+        assertThat(frozen.get("inheritedDecisionContext"))
+                .contains("Arbeitsbeginn und Ende erfassen.")
+                .contains("MODEL_ADDITION")
+                .contains("Question channel")
+                .contains("Adopt reviewed draft")
+                .contains("architect");
+    }
+
+    @Test
+    void importedAdoptedSourceFreezesPortableEvidenceWithPhysicalCanonicalKeys() throws Exception {
+        String dsl = adoptAndExport();
+        WorkspaceContext target = newWorkspace("Imported lineage source");
+        git.materialize(dsl, "architect", target);
+        select(target);
+        var importedProject = projects.listProjects("architect", target).getFirst();
+        var importedRequirement = projects.listRequirements(importedProject.id(), "architect", target).getFirst();
+        String adoptedSnapshot = snapshotFor(importedProject.id(), importedRequirement, target);
+
+        var offer = reformulations.create(importedProject.id(), importedRequirement.id(),
+                new ReformulationDtos.CreateRequest(importedRequirement.currentVersionId(), adoptedSnapshot, "de"),
+                "architect", target);
+        assertThat(offer.baseline().frozenContext().get("adoptedLineage"))
+                .contains(onlyEvidence(dsl).property("evidenceHash"));
+        assertThat(offer.baseline().frozenContext().get("inheritedDecisionContext"))
+                .contains("Question channel").contains("Adopt reviewed draft");
+    }
+
+    private String snapshotFor(long projectId, com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView selected,
+            WorkspaceContext selectedContext) {
+        var job = analyses.createOrReuseJob(projectId, List.of(selected.id()), null, 25,
+                UUID.randomUUID().toString(), "architect", selectedContext);
+        var result = new com.taxonomy.dto.AnalysisResult(java.util.Map.of("BP-1", 45), List.of());
+        result.setStatus("PARTIAL");
+        String id = UUID.randomUUID().toString();
+        analyses.persistSnapshot(job.items().getFirst().id(), job.id(), projectId,
+                com.taxonomy.portfolio.service.PortfolioScope.key("architect", selectedContext),
+                id, "session-" + id, result, null, null, null, null, null,
+                "prompt-fingerprint", "catalogue-fingerprint", "architect", selectedContext, 1);
+        return id;
+    }
+
     private String withEvidencePayload(String dsl, String payload) {
         DocumentAst document = parser.parse(dsl, "reformulation-evidence-payload-rewrite.taxdsl");
         String hash = StableIdentityHash.sha256(payload);

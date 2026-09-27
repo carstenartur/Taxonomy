@@ -12,9 +12,13 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   The checksum-valid trailing-token case already rejected; this is compatibility
   evidence, not a newly failing RED. The first WIP remote checkpoint was verified
   at `2a9ca999e1d774572ffbe9c1e4c3ab29ab889b90`.
-- The trust-boundary JSON decoder now enables duplicate-key and trailing-token
-  rejection; exact repeated roots are rejected before materialization. Covering
-  GREEN has not yet been run.
+- Strict parsing GREEN: same `ReformulationEvidenceRoundTripTest` command,
+  **6/6 positive cases**, zero failures/errors/skips, build success. Global JSON
+  decoding remains unchanged; only explicit evidence decoding is strict.
+- Next RED slice added local adoption → reanalysis → offer and imported adoption
+  → new offer tests. They assert frozen exact evidence hash and concrete wording,
+  origin, question, actor and rationale in inherited context, including portable
+  evidence binding to a separately materialized workspace.
 
 ## Next exact command
 
