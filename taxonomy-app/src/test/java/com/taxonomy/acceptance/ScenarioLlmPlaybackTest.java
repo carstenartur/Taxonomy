@@ -11,6 +11,34 @@ import static org.assertj.core.api.Assertions.*;
 class ScenarioLlmPlaybackTest {
     private final ObjectMapper json = new ObjectMapper();
 
+    @Test void civilianRepliesRejectUnknownFullSourceChildrenEdgesAndAnswerValues() throws Exception {
+        var fixture = ReformulationCivilianCorpus.flood();
+        var input = json.createObjectNode().put("nodeId", "BP-1060")
+                .put("preservationContract", "Preserve all original anchors and child IDs verbatim; additions are unreviewed.");
+        String original = fixture.at("/requirement/text").asText();
+        input.putObject("baseline").put("originalText", original).put("originalTextHash", ScenarioLlmPlayback.sha256(original)).put("snapshotId", "selected-snapshot");
+        input.putArray("children"); input.putArray("answers"); input.putArray("openDecisions"); input.putArray("directContributions");
+        input.putObject("boundaryEdges").put("edge-1", "{\"id\":1,\"snapshotId\":\"selected-snapshot\",\"sourceCode\":\"BP-1017\",\"targetCode\":\"IP-1116\",\"relationType\":\"CONSUMES\",\"reviewStatus\":\"PROPOSED\"}");
+        String prefix = com.taxonomy.analysis.reformulation.ReformulationPromptBuilder.interactiveTemplate() + "\nINPUT_DATA_JSON\n";
+        assertThat(new ScenarioLlmPlayback(fixture).respond(prefix + input)).contains("choices");
+        var wrongSource = input.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) wrongSource.path("baseline")).put("originalText", original + " changed")
+                .put("originalTextHash", ScenarioLlmPlayback.sha256(original + " changed"));
+        var wrongChild = input.deepCopy(); wrongChild.withArray("children").addObject().put("nodeId", "BP-9999");
+        var missingEdge = input.deepCopy(); missingEdge.putObject("boundaryEdges");
+        var wrongEdge = input.deepCopy(); wrongEdge.withObject("boundaryEdges").put("edge-1", input.at("/boundaryEdges/edge-1").asText().replace("IP-1116", "IP-9999"));
+        var answer = input.deepCopy().put("preservationContract", "Only reword this affected section.");
+        answer.withArray("openDecisions").addObject().put("id", "q-known");
+        answer.withArray("answers").addObject().put("id", "a-1").put("questionId", "q-known").put("state", "ANSWERED")
+                .putArray("values").add("Silently remove official warnings");
+        for (var unknown : java.util.List.of(wrongSource, wrongChild, missingEdge, wrongEdge, answer)) {
+            var playback = new ScenarioLlmPlayback(fixture);
+            assertThatThrownBy(() -> playback.respond(prefix + unknown)).isInstanceOf(IllegalArgumentException.class);
+            assertThat(playback.failures()).hasSize(1);
+            assertThatThrownBy(() -> playback.verifyReformulationCoverage(0)).isInstanceOf(AssertionError.class);
+        }
+    }
+
     @Test void multilineSourceIsMatchedInFullIncludingLaterParagraphs() throws Exception {
         var fixture = (tools.jackson.databind.node.ObjectNode) ScenarioLlmPlayback.flood().fixture();
         ((tools.jackson.databind.node.ObjectNode) fixture.path("requirement"))

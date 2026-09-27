@@ -34,7 +34,10 @@ public class ReconcilePromptBuilder {
         var baseline=(tools.jackson.databind.node.ObjectNode)data.path("baseline");baseline.remove("snapshotPayload");
         ((tools.jackson.databind.node.ObjectNode)baseline.path("frozenContext")).retain("project","sourceVersion","reconcilePromptVersion","reconcileSchemaVersion");
         String inline = json.writeValueAsString(data);
-        DiscoveryContextTable.encode(json, data, List.of(data.path("questions")));
+        var questionLists = new ArrayList<JsonNode>();
+        questionLists.add(data.path("questions"));
+        data.path("inheritedDecisionContext").forEach(history -> questionLists.add(history.path("questions")));
+        DiscoveryContextTable.encode(json, data, questionLists);
         String encoded = data.has("discoveryContextTable") ? json.writeValueAsString(data) : inline;
         // Include overhead in both measures enforced by AiPromptBudgetPolicy. UTF-16 length
         // can shrink while Unicode code points (and the token estimate) grow.

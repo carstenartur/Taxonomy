@@ -106,3 +106,15 @@ available usage, duration, validated outputs and a blank human-quality rubric.
 Source/front assumptions are explicit. Missing credentials produce NOT_RUN, not
 playback results. Provider environment presence was checked: no standard provider
 keys/custom endpoint were configured. No real-provider or human quality pass claimed.
+
+### Lossless inherited-context correction
+
+Focused regression RED: 2 tests, 2 failures, no errors/skips. Node and reconciliation
+prompts repeated all historical discovery contexts and exceeded the unchanged
+production budget. Both builders now include historical questions and their origins
+in the existing request-local discovery dictionary. Input encoding identity advances
+to v5 so old step checkpoints cannot masquerade as this prompt encoding. No archive,
+source, answer, rejection or unique context is discarded.
+The new round-trip/default-budget regressions and existing adopted-lineage and
+reconciliation context suites pass locally (BUILD SUCCESS, 2026-09-27 20:13 UTC).
+Full authenticated lifecycle is being rerun against this correction.
