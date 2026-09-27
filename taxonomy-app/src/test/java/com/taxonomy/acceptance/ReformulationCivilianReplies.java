@@ -22,13 +22,14 @@ final class ReformulationCivilianReplies {
         if (task.equals("RECONCILE")) {
             var sections = ids(input.path("sections"), "id");
             require(sections.equals(CHILDREN.keySet()), "Unknown civilian reconciliation sections: " + sections);
+            checkAnswers(input, input.path("questions"), false);
             return reply("civilian:RECONCILE", Map.of("affectedSectionIds", List.of(), "sourceResolutions", List.of(), "findings", List.of()));
         }
         String node = input.path("nodeId").asText();
         require(CHILDREN.containsKey(node), "Unknown civilian node: " + node);
         require(ids(input.path("children"), "nodeId").equals(CHILDREN.get(node)), "Unknown civilian child scope: " + node);
         if (task.equals("NODE")) require(input.path("answers").isEmpty(), "Unexpected initial answers");
-        else checkAnswers(input);
+        else checkAnswers(input, input.path("openDecisions"), true);
         var statements = new TreeSet<String>();
         var questions = new TreeSet<String>();
         input.path("directContributions").forEach(s -> statements.add(s.path("id").asText()));
@@ -97,14 +98,49 @@ final class ReformulationCivilianReplies {
                     && edge.path("reviewStatus").asText().equals("PROPOSED"), "Unknown civilian boundary edge");
         }
     }
-    private void checkAnswers(JsonNode input) {
-        require(!input.path("answers").isEmpty(), "Missing civilian reword answer");
-        Set<String> known = ids(input.path("openDecisions"), "id");
+    private void checkAnswers(JsonNode input, JsonNode questions, boolean required) {
+        require(!required || !input.path("answers").isEmpty(), "Missing civilian reword answer");
+        var known = new TreeMap<String, JsonNode>();
+        questions.forEach(q -> require(!q.path("id").asText().isBlank()
+                && known.putIfAbsent(q.path("id").asText(), q) == null, "Duplicate/missing civilian question"));
+        var events = new TreeMap<String, JsonNode>();
         for (var answer : input.path("answers")) {
-            require(known.contains(answer.path("questionId").asText()), "Unknown civilian answer question");
-            require(Set.of("ANSWERED", "DEFERRED").contains(answer.path("state").asText()), "Unknown civilian answer state");
-            if (answer.path("state").asText().equals("ANSWERED")) require(answer.path("values").toString()
-                    .equals("[\"Retain last observation with timestamp\"]"), "Unknown civilian answer value");
+            String id = answer.path("id").asText();
+            require(!id.isBlank() && events.putIfAbsent(id, answer) == null, "Duplicate/missing civilian answer identity");
+            var question = known.get(answer.path("questionId").asText());
+            require(question != null, "Unknown civilian answer question");
+            String subject = question.at("/key/subject").asText();
+            boolean shared = subject.equals("stale-observation");
+            require(shared || subject.equals("acquisition"), "Unexpected civilian answered subject");
+            require(question.at("/key/dimension").asText().equals(shared ? "presentation" : "stale-age")
+                    && question.at("/key/scope").asText().equals(shared ? "shared-source-choice" : "flood-ingestion"), "Unknown civilian answer scope");
+            require(question.at("/answerSchema/kind").asText().equals(shared ? "SINGLE_CHOICE" : "NUMBER"), "Unknown civilian answer kind");
+            String state = shared ? "ANSWERED" : "DEFERRED";
+            require(answer.path("state").asText().equals(state) && question.path("state").asText().equals(state), "Unknown civilian answer state");
+            require(answer.path("values").equals(json.valueToTree(shared
+                    ? List.of("Retain last observation with timestamp") : List.of())), "Unknown civilian answer values");
+            require(answer.path("disposition").asText().equals(shared ? "ANSWER" : "DEFER"), "Unknown civilian answer disposition");
+            require(answer.path("otherText").isNull() || answer.path("otherText").asText().isEmpty(), "Unknown civilian other answer");
+            require((shared ? Set.of("Human civilian acceptance decision", "Browser acceptance answer")
+                    : Set.of("Obtain evidence for a maximum age")).contains(answer.path("rationale").asText()), "Unknown civilian answer rationale");
+        }
+        for (var answer : events.values()) {
+            var supersedes = new TreeSet<String>();
+            for (var reference : answer.path("supersedes")) {
+                var previous = events.get(reference.asText());
+                require(supersedes.add(reference.asText()) && previous != null && previous != answer
+                        && previous.path("questionId").equals(answer.path("questionId"))
+                        && previous.path("rationale").asText().equals("Browser acceptance answer")
+                        && previous.path("supersedes").isEmpty()
+                        && answer.path("rationale").asText().equals("Human civilian acceptance decision"), "Unknown civilian superseded answer");
+            }
+        }
+        for (var question : known.values()) {
+            var answers = events.values().stream().filter(a -> a.path("questionId").equals(question.path("id"))).toList();
+            boolean decided = Set.of("ANSWERED", "DEFERRED").contains(question.path("state").asText());
+            require(decided == !answers.isEmpty(), "Missing or unexpected civilian decision history");
+            var retired = answers.stream().flatMap(a -> a.path("supersedes").valueStream()).map(JsonNode::asText).collect(java.util.stream.Collectors.toSet());
+            require(answers.stream().filter(a -> !retired.contains(a.path("id").asText())).count() == (decided ? 1 : 0), "Ambiguous civilian active answer");
         }
     }
     private static Set<String> ids(JsonNode values, String field) {

@@ -71,7 +71,8 @@ final class ReformulationCivilianBrowser implements AutoCloseable {
         var card = driver.findElement(By.id(cardId));
         var choice = driver.findElement(By.cssSelector("#" + cardId + " input[value='Retain last observation with timestamp']"));
         scroll(choice); choice.sendKeys(Keys.SPACE);
-        driver.findElement(By.cssSelector("#" + cardId + " label:last-of-type input")).sendKeys("Browser acceptance answer");
+        var rationale = driver.findElement(By.cssSelector("#" + cardId + " label:last-of-type input"));
+        rationale.clear(); rationale.sendKeys("Browser acceptance answer");
         var save = driver.findElement(By.xpath("//*[@id='" + cardId + "']//button[normalize-space()='Save answer']"));
         scroll(save); save.sendKeys(Keys.ENTER); wait.until(ExpectedConditions.stalenessOf(card));
         assertThat(driver.switchTo().activeElement().getDomAttribute("id")).isEqualTo(cardId);

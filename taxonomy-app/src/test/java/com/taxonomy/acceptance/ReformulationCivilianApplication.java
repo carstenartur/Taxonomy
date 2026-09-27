@@ -135,6 +135,8 @@ public final class ReformulationCivilianApplication {
         String statementId = deferred.at("/currentRevision/statements").valueStream()
                 .filter(s -> s.path("provenance").asText().equals("MODEL_ADDITION")).findFirst().orElseThrow().path("id").asText();
         request("POST", offerPath + "/revisions", Map.of("text", "Stale overwrite", "rationale", "Must be rejected"), 412, originalRevision);
+        verifyLatePublication(offerPath, deferred);
+        int beforeTargeted = playback.calls().size();
         var targeted = request("POST", offerPath + "/synthesis-runs", null, 202, revision(deferred));
         var runs = awaitTerminal(offerPath + "/synthesis-runs", true);
         save("targeted-runs.json", runs);
@@ -142,7 +144,7 @@ public final class ReformulationCivilianApplication {
         assertThat(runs.valueStream().filter(r -> r.path("id").equals(targeted.path("id"))).findFirst().orElseThrow()
                 .path("status").asText()).as(runs.toPrettyString()).isEqualTo("COMPLETED");
         var revised = request("GET", offerPath, null, 200);
-        assertThat(playback.calls().stream().map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("civilian:REWORD:")))
+        assertThat(playback.calls().stream().skip(beforeTargeted).map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("civilian:REWORD:")))
                 .hasSize(8).doesNotHaveDuplicates();
         save("answered-proposal.json", revised);
         assertThat(revised.at("/currentRevision/text").asText()).contains("retain last observation with timestamp");
@@ -216,6 +218,33 @@ public final class ReformulationCivilianApplication {
         request("POST", "/api/workspace/" + workspace.path("workspaceId").asText() + "/switch", null, 200);
     }
 
+    private void verifyLatePublication(String offerPath, JsonNode source) throws Exception {
+        var variant = request("POST", offerPath + "/variants", Map.of("rationale", "Real in-flight publication race"), 201, revision(source));
+        String path = offerPath.substring(0, offerPath.lastIndexOf('/') + 1) + variant.path("id").asText();
+        JsonNode started, edited;
+        String lateText = variant.at("/currentRevision/text").asText() + "\nHuman wording saved while the provider response was held.";
+        try (var pause = playback.pauseNextReformulation()) {
+            started = request("POST", path + "/synthesis-runs", null, 202, revision(variant));
+            assertThat(pause.awaitRequest()).as("Real reformulation request must reach the provider boundary").isTrue();
+            var running = request("GET", path + "/synthesis-runs", null, 200).valueStream()
+                    .filter(r -> r.path("id").equals(started.path("id"))).findFirst().orElseThrow();
+            assertThat(running.path("status").asText()).isEqualTo("RUNNING");
+            edited = request("POST", path + "/revisions", Map.of("text", lateText, "rationale", "Keep the in-flight human edit"), 201, revision(variant));
+        }
+        var run = awaitTerminal(path + "/synthesis-runs", true).valueStream()
+                .filter(r -> r.path("id").equals(started.path("id"))).findFirst().orElseThrow();
+        save("late-publication-run.json", run); save("late-publication-human-revision.json", edited);
+        assertThat(playback.failures()).isEmpty();
+        assertThat(run.path("status").asText()).isEqualTo("PARTIAL");
+        assertThat(run.path("failureCode").asText()).isEqualTo("MANUAL_DRAFT_PROTECTED");
+        assertThat(run.path("sourceRevision").asLong()).isLessThan(revision(edited));
+        assertThat(run.path("resultRevision").isNull()).isTrue();
+        assertThat(run.path("candidate").isObject()).isTrue();
+        assertThat(run.at("/candidate/text").asText()).doesNotContain("Human wording saved while the provider response was held.");
+        assertThat(request("GET", path, null, 200)).isEqualTo(edited);
+        assertThat(request("GET", offerPath, null, 200)).isEqualTo(source);
+    }
+
     private void verifyManualProtection(String offerPath, JsonNode source, String statementId) throws Exception {
         var variant = request("POST", offerPath + "/variants", Map.of("rationale", "Independent manual-edit protection check"), 201, revision(source));
         String path = offerPath.substring(0, offerPath.lastIndexOf('/') + 1) + variant.path("id").asText();
@@ -252,12 +281,23 @@ public final class ReformulationCivilianApplication {
             }
         }
         assertThat(playback.calls()).isEmpty();
+        assertThat(playback.failures()).isEmpty();
     }
-    private void verifyLineage(JsonNode offer) {
+    private void verifyLineage(JsonNode offer) throws Exception {
         var inherited = json.readTree(offer.at("/baseline/frozenContext/inheritedDecisionContext").asText());
-        assertThat(inherited.toString()).contains("Human civilian acceptance decision", "Obtain evidence for a maximum age", "DEFERRED");
+        assertThat(inherited).hasSize(1);
+        var prior = json.readTree(Files.readString(output.resolve("answered-proposal.json"))).path("currentRevision");
+        assertThat(inherited.get(0).path("humanAnswers")).isEqualTo(prior.path("answers"));
+        var questions = inherited.get(0).path("questions");
+        assertThat(questions).hasSize(3);
+        for (var expected : Map.of("stale-observation", "ANSWERED", "acquisition", "DEFERRED", "publication", "OPEN").entrySet()) {
+            var actual = findQuestion(questions, expected.getKey());
+            assertThat(actual.path("state").asText()).isEqualTo(expected.getValue());
+            assertThat(actual.path("id")).isEqualTo(findQuestion(prior.path("questions"), expected.getKey()).path("id"));
+            assertThat(actual.path("key")).isEqualTo(findQuestion(prior.path("questions"), expected.getKey()).path("key"));
+        }
         assertThat(offer.at("/currentRevision/statements").valueStream().filter(s -> s.path("editingOrigin").asText().equals("SOURCE")))
-                .allSatisfy(s -> assertThat(s.path("provenance").asText()).isEqualTo("ADOPTED_SOURCE"));
+                .isNotEmpty().allSatisfy(s -> assertThat(s.path("provenance").asText()).isEqualTo("ADOPTED_SOURCE"));
     }
     private void exportAll(String prefix, String path) throws Exception {
         for (String format : List.of("json", "md", "html", "docx")) {

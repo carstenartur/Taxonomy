@@ -21,6 +21,24 @@ public final class ScenarioLlmPlayback {
     private final List<String> failures = new ArrayList<>();
     private final List<String> prompts = new ArrayList<>();
     private final List<ScenarioLlmPlayback> adoptedSources = new ArrayList<>();
+    private ResponsePause nextReformulationPause;
+
+    /** Hold one validated remote response while the real HTTP client changes the proposal. */
+    public synchronized ResponsePause pauseNextReformulation() {
+        require(nextReformulationPause == null, "A provider response is already armed");
+        return nextReformulationPause = new ResponsePause();
+    }
+    public static final class ResponsePause implements AutoCloseable {
+        private final java.util.concurrent.CountDownLatch entered = new java.util.concurrent.CountDownLatch(1);
+        private final java.util.concurrent.CountDownLatch released = new java.util.concurrent.CountDownLatch(1);
+        public boolean awaitRequest() throws InterruptedException { return entered.await(40, java.util.concurrent.TimeUnit.SECONDS); }
+        private void hold() {
+            entered.countDown();
+            try { require(released.await(60, java.util.concurrent.TimeUnit.SECONDS), "Paused provider response timed out"); }
+            catch (InterruptedException failure) { Thread.currentThread().interrupt(); throw new IllegalStateException(failure); }
+        }
+        @Override public void close() { released.countDown(); }
+    }
 
     public ScenarioLlmPlayback(JsonNode fixture) {
         this.fixture = fixture.deepCopy();
@@ -80,6 +98,8 @@ public final class ScenarioLlmPlayback {
             }
             if (ScenarioReformulationPlayback.accepts(prompt)) {
                 var reply = reformulationPlayback.respond(prompt);
+                var pause = nextReformulationPause; nextReformulationPause = null;
+                if (pause != null) pause.hold();
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
                         Map.of("role", "assistant", "content", reply.content())))));
                 calls.add(new Call(reply.id(), sha256(prompt), sha256(body)));

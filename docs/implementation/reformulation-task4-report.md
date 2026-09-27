@@ -164,3 +164,27 @@ now describe the implemented lifecycle and distinguish the pending real-model ga
 A local Chrome/ChromeDriver 154.0.8037.57 runtime is now available from Selenium
 Manager. The new browser lifecycle is being verified against the real application;
 no browser pass is claimed at this checkpoint.
+
+### Independent review corrections
+
+The independent scoped review found two Important test-authority gaps, no Critical
+production finding: the application corpus did not bind answer IDs/states/history
+strictly enough, and the lifecycle lacked an actual in-flight publication race.
+New answer mutation test RED: 15 tests / one failure (a known-but-wrong question ID
+was accepted). Strict semantic question/answer/history checks now run for NODE/REWORD
+and RECONCILE; the focused suite is GREEN 15/15. It rejects swapped questions,
+duplicate events, deferred values, wrong state/scope/disposition/other/rationale and
+unknown superseded IDs. Browser rationale input is explicitly replaced, not appended.
+
+The HTTP lifecycle now holds a validated provider response, verifies the exact run
+is RUNNING, saves a human revision through HTTP, releases the response and requires
+a retained candidate with no published revision and the newer human text unchanged.
+Restart also checks the fatal playback ledger; inherited human answers and all three
+question IDs/keys/states are checked directly with nonempty source provenance.
+The extended lifecycle is pending verification at this checkpoint.
+
+Local Chrome startup was blocked before navigation: process_singleton_posix socket()
+returned Operation not permitted. No local browser pass and no policy bypass. The
+existing GitHub browser lane is running. The explicit real-model profile wrote
+NOT_RUN / NOT_REVIEWED (2026-09-27 20:42 UTC), with one JUnit skip because no generative
+provider is configured. A successful launcher build does not mean model quality passed.

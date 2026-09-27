@@ -39,6 +39,53 @@ class ScenarioLlmPlaybackTest {
         }
     }
 
+    @Test void civilianAnswerIdentityStateAndHistoryAreExactInNodeAndReconciliationPrompts() throws Exception {
+        var fixture = ReformulationCivilianCorpus.flood();
+        String original = fixture.at("/requirement/text").asText();
+        var input = json.createObjectNode().put("nodeId", "BP-1060").put("preservationContract", "Only reword this affected section.");
+        input.putObject("baseline").put("originalText", original).put("originalTextHash", ScenarioLlmPlayback.sha256(original)).put("snapshotId", "selected-snapshot");
+        input.putArray("children"); input.putArray("directContributions");
+        input.putObject("boundaryEdges").put("edge-1", "{\"id\":1,\"snapshotId\":\"selected-snapshot\",\"sourceCode\":\"BP-1017\",\"targetCode\":\"IP-1116\",\"relationType\":\"CONSUMES\",\"reviewStatus\":\"PROPOSED\"}");
+        input.set("openDecisions", json.readTree("""
+                [{"id":"shared","key":{"subject":"stale-observation","dimension":"presentation","scope":"shared-source-choice"},"state":"ANSWERED","answerSchema":{"kind":"SINGLE_CHOICE"}},
+                 {"id":"acquire","key":{"subject":"acquisition","dimension":"stale-age","scope":"flood-ingestion"},"state":"DEFERRED","answerSchema":{"kind":"NUMBER"}}]
+                """));
+        input.set("answers", json.readTree("""
+                [{"id":"answer","questionId":"shared","state":"ANSWERED","values":["Retain last observation with timestamp"],"disposition":"ANSWER","otherText":null,"rationale":"Human civilian acceptance decision","supersedes":[]},
+                 {"id":"defer","questionId":"acquire","state":"DEFERRED","values":[],"disposition":"DEFER","otherText":null,"rationale":"Obtain evidence for a maximum age","supersedes":[]}]
+                """));
+        var mutations = new ArrayList<tools.jackson.databind.node.ObjectNode>();
+        var wrongQuestion = input.deepCopy(); ((tools.jackson.databind.node.ObjectNode) wrongQuestion.at("/answers/0")).put("questionId", "acquire"); mutations.add(wrongQuestion);
+        var duplicate = input.deepCopy(); duplicate.withArray("answers").add(duplicate.at("/answers/0").deepCopy()); mutations.add(duplicate);
+        var deferValue = input.deepCopy(); ((tools.jackson.databind.node.ArrayNode) deferValue.at("/answers/1/values")).add("invented"); mutations.add(deferValue);
+        var wrongState = input.deepCopy(); ((tools.jackson.databind.node.ObjectNode) wrongState.at("/openDecisions/0")).put("state", "OPEN"); mutations.add(wrongState);
+        var wrongScope = input.deepCopy(); ((tools.jackson.databind.node.ObjectNode) wrongScope.at("/openDecisions/0/key")).put("scope", "foreign"); mutations.add(wrongScope);
+        var wrongDisposition = input.deepCopy(); ((tools.jackson.databind.node.ObjectNode) wrongDisposition.at("/answers/0")).put("disposition", "DEFER"); mutations.add(wrongDisposition);
+        var wrongOther = input.deepCopy(); ((tools.jackson.databind.node.ObjectNode) wrongOther.at("/answers/0")).put("otherText", "invented"); mutations.add(wrongOther);
+        var wrongRationale = input.deepCopy(); ((tools.jackson.databind.node.ObjectNode) wrongRationale.at("/answers/0")).put("rationale", "foreign answer"); mutations.add(wrongRationale);
+        var wrongHistory = input.deepCopy(); ((tools.jackson.databind.node.ArrayNode) wrongHistory.at("/answers/0/supersedes")).add("unknown"); mutations.add(wrongHistory);
+        for (boolean reconcile : java.util.List.of(false, true)) {
+            String prefix = reconcile ? com.taxonomy.analysis.reformulation.ReconcilePromptBuilder.template() + "\nRECONCILIATION_DATA_JSON\n"
+                    : com.taxonomy.analysis.reformulation.ReformulationPromptBuilder.interactiveTemplate() + "\nINPUT_DATA_JSON\n";
+            var scopes = new ArrayList<>(mutations); scopes.addFirst(input);
+            for (int index = 0; index < scopes.size(); index++) {
+                var scope = scopes.get(index).deepCopy();
+                if (reconcile) {
+                    scope.set("questions", scope.remove("openDecisions"));
+                    var sections = scope.putArray("sections");
+                    for (String id : java.util.List.of("BP-1060","BP-1327","BP-1000","BP","IP-1102","IP-1005","IP-1000","IP")) sections.addObject().put("id", id);
+                }
+                var playback = new ScenarioLlmPlayback(fixture);
+                if (index == 0) assertThat(playback.respond(prefix + scope)).contains("choices");
+                else {
+                    assertThatThrownBy(() -> playback.respond(prefix + scope)).as("mutation %s, reconcile=%s", index, reconcile).isInstanceOf(IllegalArgumentException.class);
+                    assertThat(playback.failures()).hasSize(1);
+                    assertThatThrownBy(() -> playback.verifyReformulationCoverage(0)).isInstanceOf(AssertionError.class);
+                }
+            }
+        }
+    }
+
     @Test void multilineSourceIsMatchedInFullIncludingLaterParagraphs() throws Exception {
         var fixture = (tools.jackson.databind.node.ObjectNode) ScenarioLlmPlayback.flood().fixture();
         ((tools.jackson.databind.node.ObjectNode) fixture.path("requirement"))
