@@ -26,27 +26,32 @@ public final class ReformulationCivilianApplication {
     }
 
     public static void main(String[] args) throws Exception {
+        Path directory = Path.of(args[0]);
         try (var app = new SpringApplicationBuilder(TaxonomyApplication.class, CivilianLlmConfiguration.class).run(
                 "--server.port=0", "--embedding.enabled=false", "--embedding.allow-download=false",
+                "--spring.datasource.url=jdbc:hsqldb:file:" + directory.resolve("db").toAbsolutePath() + ";shutdown=true",
+                "--spring.datasource.username=SA", "--spring.datasource.password=", "--spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver",
+                "--spring.jpa.hibernate.ddl-auto=update", "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
                 "--taxonomy.init.async=false", "--civilian.reformulation=true", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
                 "--custom.llm.url=" + CivilianLlmConfiguration.URL, "--custom.llm.model=civilian-fixture",
                 "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false")) {
             var scenario = new ReformulationCivilianApplication(Integer.parseInt(app.getEnvironment().getProperty("local.server.port")),
                     Path.of(args[0]), app.getBean(ScenarioLlmPlayback.class));
-            try { scenario.analysisAndOffer(); }
+            try { if (args[1].equals("read")) scenario.verifyRestart(); else scenario.analysisAndOffer(); }
             finally {
-                scenario.save("llm-calls.json", scenario.json.valueToTree(scenario.playback.calls()));
-                scenario.save("llm-prompts.json", scenario.json.valueToTree(scenario.playback.prompts()));
-                scenario.save("llm-failures.json", scenario.json.valueToTree(scenario.playback.failures()));
+                scenario.save(args[1] + "-llm-calls.json", scenario.json.valueToTree(scenario.playback.calls()));
+                scenario.save(args[1] + "-llm-prompts.json", scenario.json.valueToTree(scenario.playback.prompts()));
+                scenario.save(args[1] + "-llm-failures.json", scenario.json.valueToTree(scenario.playback.failures()));
             }
         }
-        System.out.println("REFORMULATION_CIVILIAN_PROPOSAL_OK");
+        System.out.println("REFORMULATION_CIVILIAN_" + args[1].toUpperCase(Locale.ROOT) + "_OK");
     }
 
     private void analysisAndOffer() throws Exception {
         var source = playback.fixture().path("requirement");
         long project = request("POST", "/api/projects", Map.of("projectKey", "REF-" + UUID.randomUUID(),
                 "title", "Civilian reformulation", "description", "Authored remote-response acceptance", "status", "ACTIVE"), 201).path("id").asLong();
+        request("POST", "/api/workspace/provision", null, 200);
         String projectPath = "/api/projects/" + project;
         var requirement = request("POST", projectPath + "/requirements", Map.of("requirementKey", source.path("key").asText(),
                 "title", source.path("title").asText(), "text", source.path("text").asText(), "status", "DRAFT",
@@ -82,26 +87,171 @@ public final class ReformulationCivilianApplication {
         assertThat(offer.at("/currentRevision/questions")).isNotEmpty();
         assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
         assertThat(request("GET", projectPath + "/snapshots/" + snapshotId, null, 200)).isEqualTo(snapshot);
+        decisionsAndAdoption(projectPath, requirementPath, offerPath, offer, before, snapshotId, snapshot);
     }
+
+    private void decisionsAndAdoption(String projectPath, String requirementPath, String offerPath,
+            JsonNode initial, JsonNode before, String snapshotId, JsonNode snapshot) throws Exception {
+        var questions = initial.at("/currentRevision/questions");
+        assertThat(questions).hasSize(3);
+        var shared = findQuestion(questions, "stale-observation");
+        var ingestion = findQuestion(questions, "acquisition");
+        var publication = findQuestion(questions, "publication");
+        assertThat(shared.path("discoveries")).hasSize(2);
+        assertThat(ingestion.path("wording")).isEqualTo(publication.path("wording"));
+        assertThat(ingestion.path("id")).isNotEqualTo(publication.path("id"));
+        assertThat(ingestion.path("key")).isNotEqualTo(publication.path("key"));
+        long originalRevision = revision(initial);
+        var answered = request("POST", offerPath + "/answers", Map.of("questionId", shared.path("id").asText(),
+                "action", "ANSWER", "values", List.of("Retain last observation with timestamp"),
+                "rationale", "Human civilian acceptance decision"), 201, originalRevision);
+        var deferred = request("POST", offerPath + "/answers", Map.of("questionId", ingestion.path("id").asText(),
+                "action", "DEFER", "values", List.of(), "rationale", "Obtain evidence for a maximum age"), 201, revision(answered));
+        assertThat(findQuestion(deferred.at("/currentRevision/questions"), "acquisition").path("state").asText()).isEqualTo("DEFERRED");
+        String statementId = deferred.at("/currentRevision/statements").valueStream()
+                .filter(s -> s.path("provenance").asText().equals("MODEL_ADDITION")).findFirst().orElseThrow().path("id").asText();
+        var edited = request("POST", offerPath + "/statements/" + statementId,
+                Map.of("action", "EDIT", "text", "Human wording: preserve official warning channels.", "rationale", "Keep my precise wording"),
+                201, revision(deferred));
+        request("POST", offerPath + "/revisions", Map.of("text", "Stale overwrite", "rationale", "Must be rejected"), 412, originalRevision);
+        var targeted = request("POST", offerPath + "/synthesis-runs", null, 202, revision(edited));
+        var runs = awaitTerminal(offerPath + "/synthesis-runs", true);
+        save("targeted-runs.json", runs);
+        assertThat(playback.failures()).isEmpty();
+        assertThat(runs.valueStream().filter(r -> r.path("id").equals(targeted.path("id"))).findFirst().orElseThrow()
+                .path("status").asText()).as(runs.toPrettyString()).isEqualTo("COMPLETED");
+        var revised = request("GET", offerPath, null, 200);
+        save("answered-proposal.json", revised);
+        assertThat(revised.at("/currentRevision/text").asText()).contains("Human wording: preserve official warning channels.");
+        assertThat(revised.at("/currentRevision/statements").valueStream().filter(s -> s.path("id").asText().equals(statementId)))
+                .singleElement().satisfies(s -> assertThat(s.path("editingOrigin").asText()).isEqualTo("HUMAN"));
+        assertThat(request("GET", offerPath + "/revisions/" + originalRevision, null, 200)).isEqualTo(initial.path("currentRevision"));
+        assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
+        assertThat(request("GET", projectPath + "/snapshots/" + snapshotId, null, 200)).isEqualTo(snapshot);
+        var preview = request("POST", offerPath + "/adoption-previews", null, 201, revision(revised));
+        save("preview.json", preview);
+        assertThat(preview.at("/content/blockingReasons")).isEmpty();
+        assertThat(preview.at("/content/unresolvedQuestionIds")).isNotEmpty();
+        assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
+        String command = UUID.randomUUID().toString();
+        var confirmation = Map.of("commandId", command, "previewId", preview.at("/content/id").asText(),
+                "previewHash", preview.path("hash").asText(), "confirmed", true, "acknowledgeWarnings", true,
+                "rationale", "Explicit adoption as a draft; numeric decisions remain open");
+        var adopted = request("POST", offerPath + "/adoptions", confirmation, 200, revision(revised));
+        assertThat(request("POST", offerPath + "/adoptions", confirmation, 200, revision(revised))).isEqualTo(adopted);
+        save("receipt.json", adopted);
+        var current = request("GET", requirementPath, null, 200);
+        assertThat(current.path("currentVersionId")).isNotEqualTo(before.path("currentVersionId"));
+        assertThat(current.at("/currentVersion/text")).isEqualTo(preview.at("/content/finalText"));
+        assertThat(adopted.path("analysisNeedsRefresh").asBoolean()).isTrue();
+        String receiptPath = offerPath + "/adoptions/" + command + "/export";
+        String revisionPath = offerPath + "/revisions/" + revision(revised) + "/export";
+        exportAll("revision", revisionPath); exportAll("adoption", receiptPath);
+        playback.registerAdoptedSource(current.at("/currentVersion/text").asText());
+        var newJob = request("POST", requirementPath + "/analyses", Map.of("provider", "CUSTOM_OPENAI",
+                "idempotencyKey", UUID.randomUUID().toString()), 202);
+        var newResult = awaitTerminal(projectPath + "/analysis-jobs/" + newJob.path("id").asText(), false);
+        save("reanalysis.json", newResult);
+        assertThat(playback.failures()).isEmpty();
+        assertThat(newResult.path("status").asText()).as(newResult.toPrettyString()).isEqualTo("SUCCESS");
+        String newSnapshot = newResult.at("/items/0/snapshotId").asText();
+        var next = request("POST", requirementPath + "/reformulations", Map.of("snapshotId", newSnapshot,
+                "sourceVersionId", current.path("currentVersionId").asLong(), "language", "en"), 202);
+        String nextPath = requirementPath + "/reformulations/" + next.path("id").asText();
+        var nextRuns = awaitTerminal(nextPath + "/synthesis-runs", true);
+        assertThat(playback.failures()).isEmpty();
+        assertThat(nextRuns.get(0).path("status").asText()).as(nextRuns.toPrettyString()).isEqualTo("COMPLETED");
+        var inherited = request("GET", nextPath, null, 200);
+        save("inherited-proposal.json", inherited);
+        verifyLineage(inherited);
+        var checkpoint = request("POST", "/api/projects/git/commit", Map.of("message", "Explicit civilian reformulation checkpoint"), 200);
+        save("checkpoint.json", checkpoint);
+        assertThat(checkpoint.path("commitId").asText()).matches("[0-9a-f]{40}");
+        var workspace = request("GET", "/api/workspace/current", null, 200);
+        var identity = Map.of("requirementPath", requirementPath, "nextPath", nextPath, "receiptPath", receiptPath,
+                "revisionPath", revisionPath, "workspaceId", workspace.path("workspaceId").asText(), "checkpoint", checkpoint,
+                "current", request("GET", requirementPath, null, 200));
+        save("identity.json", json.valueToTree(identity));
+        var foreign = request("POST", "/api/workspace/create", Map.of("displayName", "Foreign civilian scope", "description", "Must not read this offer"), 200);
+        request("POST", "/api/workspace/" + foreign.path("workspaceId").asText() + "/switch", null, 200);
+        request("GET", offerPath, null, 404);
+        request("POST", "/api/workspace/" + workspace.path("workspaceId").asText() + "/switch", null, 200);
+    }
+
+    private void verifyRestart() throws Exception {
+        var identity = json.readTree(Files.readString(output.resolve("identity.json")));
+        assertThat(request("GET", identity.path("requirementPath").asText(), null, 200)).isEqualTo(identity.path("current"));
+        var inherited = request("GET", identity.path("nextPath").asText(), null, 200);
+        assertThat(inherited).isEqualTo(json.readTree(Files.readString(output.resolve("inherited-proposal.json"))));
+        verifyLineage(inherited);
+        for (String kind : List.of("revision", "adoption")) {
+            String endpoint = identity.path(kind.equals("revision") ? "revisionPath" : "receiptPath").asText();
+            for (String format : List.of("json", "md", "html", "docx")) {
+                byte[] actual = download(endpoint + "?format=" + format);
+                byte[] expected = Files.readAllBytes(output.resolve(kind + "." + format));
+                if (format.equals("docx")) assertThat(docxText(actual)).isEqualTo(docxText(expected));
+                else assertThat(actual).isEqualTo(expected);
+            }
+        }
+        assertThat(playback.calls()).isEmpty();
+    }
+    private void verifyLineage(JsonNode offer) {
+        var inherited = json.readTree(offer.at("/baseline/frozenContext/inheritedDecisionContext").asText());
+        assertThat(inherited.toString()).contains("Human civilian acceptance decision", "Obtain evidence for a maximum age", "DEFERRED");
+        assertThat(offer.at("/currentRevision/statements").valueStream().filter(s -> s.path("editingOrigin").asText().equals("SOURCE")))
+                .allSatisfy(s -> assertThat(s.path("provenance").asText()).isEqualTo("ADOPTED_SOURCE"));
+    }
+    private void exportAll(String prefix, String path) throws Exception {
+        for (String format : List.of("json", "md", "html", "docx")) {
+            byte[] bytes = download(path + "?format=" + format);
+            Files.write(output.resolve(prefix + "." + format), bytes);
+            String readable = format.equals("docx") ? docxText(bytes) : new String(bytes, StandardCharsets.UTF_8);
+            assertThat(readable).contains("15 minutes", "surface-water", "Human civilian acceptance decision");
+        }
+    }
+    private static String docxText(byte[] bytes) throws Exception {
+        try (var doc = new org.apache.poi.xwpf.usermodel.XWPFDocument(new java.io.ByteArrayInputStream(bytes))) {
+            return doc.getParagraphs().stream().map(p -> p.getText()).collect(java.util.stream.Collectors.joining("\n"));
+        }
+    }
+    private byte[] download(String path) throws Exception {
+        var response = http.send(builder("GET", path, null, null).build(), HttpResponse.BodyHandlers.ofByteArray());
+        assertThat(response.statusCode()).as(path).isEqualTo(200);
+        assertThat(response.headers().firstValue("Content-Disposition").orElse("")).startsWith("attachment;");
+        assertThat(response.headers().firstValue("Cache-Control").orElse("")).contains("no-store");
+        return response.body();
+    }
+    private JsonNode findQuestion(JsonNode questions, String subject) {
+        return questions.valueStream().filter(q -> q.at("/key/subject").asText().equals(subject)).findFirst().orElseThrow();
+    }
+    private static long revision(JsonNode proposal) { return proposal.at("/currentRevision/number").asLong(); }
 
     private JsonNode awaitTerminal(String path, boolean array) throws Exception {
         long deadline = System.nanoTime() + Duration.ofSeconds(90).toNanos();
         JsonNode latest;
         do {
             latest = request("GET", path, null, 200);
-            JsonNode value = array ? latest.path(0) : latest;
-            if (Set.of("COMPLETED", "SUCCESS", "PARTIAL", "FAILED", "CANCELLED").contains(value.path("status").asText())) return latest;
+            var terminal = Set.of("COMPLETED", "SUCCESS", "PARTIAL", "FAILED", "CANCELLED", "SUPERSEDED");
+            if (array ? !latest.isEmpty() && latest.valueStream().allMatch(v -> terminal.contains(v.path("status").asText()))
+                    : terminal.contains(latest.path("status").asText())) return latest;
             Thread.sleep(100);
         } while (System.nanoTime() < deadline);
         throw new AssertionError("Timed out: " + latest.toPrettyString());
     }
 
     private JsonNode request(String method, String path, Object body, int status) throws Exception {
-        var request = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(30))
+        return request(method, path, body, status, null);
+    }
+    private HttpRequest.Builder builder(String method, String path, Object body, Long revision) {
+        var builder = HttpRequest.newBuilder(URI.create(base + path)).timeout(Duration.ofSeconds(30))
                 .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + PASSWORD).getBytes(StandardCharsets.UTF_8)))
                 .header("Content-Type", "application/json")
-                .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body))).build();
-        var response = http.send(request, HttpResponse.BodyHandlers.ofString());
+                .method(method, body == null ? HttpRequest.BodyPublishers.noBody() : HttpRequest.BodyPublishers.ofString(json.writeValueAsString(body)));
+        if (revision != null) builder.header("If-Match", "\"" + revision + "\"");
+        return builder;
+    }
+    private JsonNode request(String method, String path, Object body, int status, Long revision) throws Exception {
+        var response = http.send(builder(method, path, body, revision).build(), HttpResponse.BodyHandlers.ofString());
         assertThat(response.statusCode()).as("%s %s: %s", method, path, response.body()).isEqualTo(status);
         return json.readTree(response.body());
     }

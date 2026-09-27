@@ -20,6 +20,7 @@ public final class ScenarioLlmPlayback {
     private final List<Call> calls = new ArrayList<>();
     private final List<String> failures = new ArrayList<>();
     private final List<String> prompts = new ArrayList<>();
+    private final List<ScenarioLlmPlayback> adoptedSources = new ArrayList<>();
 
     public ScenarioLlmPlayback(JsonNode fixture) {
         this.fixture = fixture.deepCopy();
@@ -58,9 +59,25 @@ public final class ScenarioLlmPlayback {
     }
     public JsonNode fixture() { return fixture.deepCopy(); }
 
+    /** Test driver registers only text read back after its explicit authenticated adoption command. */
+    public synchronized void registerAdoptedSource(String source) {
+        require(fixture.path("civilianReformulation").asBoolean(false), "Only the civilian workflow binds adoption sources");
+        require(source.contains(fixture.at("/requirement/text").asText()) && !source.equals(fixture.at("/requirement/text").asText()),
+                "Adopted fixture must retain the complete original and add reviewed offer text");
+        require(adoptedSources.stream().noneMatch(p -> p.fixture.at("/requirement/text").asText().equals(source)), "Duplicate adoption source");
+        var next = (tools.jackson.databind.node.ObjectNode) fixture.deepCopy();
+        ((tools.jackson.databind.node.ObjectNode) next.path("requirement")).put("text", source);
+        adoptedSources.add(new ScenarioLlmPlayback(next));
+    }
+
     public synchronized String respond(String prompt) {
         prompts.add(prompt);
         try {
+            if (!adoptedSources.isEmpty()) {
+                String source = requestSource(prompt);
+                for (var next : adoptedSources) if (normalize(source).equals(normalize(next.fixture.at("/requirement/text").asText())))
+                    return next.respond(prompt);
+            }
             if (ScenarioReformulationPlayback.accepts(prompt)) {
                 var reply = reformulationPlayback.respond(prompt);
                 String body = json.writeValueAsString(Map.of("choices", List.of(Map.of("message",
@@ -103,9 +120,17 @@ public final class ScenarioLlmPlayback {
         }
     }
 
-    public synchronized List<Call> calls() { return List.copyOf(calls); }
+    public synchronized List<Call> calls() { var all = new ArrayList<>(calls); adoptedSources.forEach(p -> all.addAll(p.calls())); return List.copyOf(all); }
     public synchronized List<String> prompts() { return List.copyOf(prompts); }
     public synchronized List<String> failures() { return List.copyOf(failures); }
+    private String requestSource(String prompt) {
+        for (String marker : List.of("\nINPUT_DATA_JSON\n", "\nRECONCILIATION_DATA_JSON\n")) {
+            int at = prompt.indexOf(marker);
+            if (at >= 0) return json.readTree(prompt.substring(at + marker.length()).split("\\nVALIDATION_ERRORS", 2)[0]).at("/baseline/originalText").asText();
+        }
+        if (prompt.startsWith(ScenarioRelationPlayback.PREFIX)) return json.readTree(prompt.substring(prompt.indexOf("INPUT\n") + 6)).path("original").asText();
+        return unique(REQUIREMENT, prompt, "requirement");
+    }
     public synchronized void reject(String reason) {
         failures.add(reason);
         throw new IllegalArgumentException(reason);

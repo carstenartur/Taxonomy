@@ -74,3 +74,15 @@ as test artifacts. Proposal execution is under test; no end-to-end pass claimed.
 Next: finish the authenticated answer/reword/adoption/export/restart path, then
 browser and separate real-provider comparison. Focused command:
 `./mvnw -pl taxonomy-app -am test -Dtest=ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest -Dsurefire.failIfNoSpecifiedTests=false`.
+
+### Lifecycle checkpoint
+
+The HTTP driver now creates answers and an explicit deferral, edits a statement,
+checks stale If-Match rejection, invokes targeted synthesis, compares the historical
+revision and frozen architecture, previews/confirms/replays an adoption command,
+downloads four formats, runs actual post-adoption analysis/new offer, checkpoints,
+and starts a separate file-database application process for history/lineage checks.
+Still under verification: no complete lifecycle success has been recorded yet.
+Observed run lists are oldest-first; the driver now waits for all returned runs to
+be terminal and asserts the newly returned run ID, never an older completed run.
+No model result is injected into the application.

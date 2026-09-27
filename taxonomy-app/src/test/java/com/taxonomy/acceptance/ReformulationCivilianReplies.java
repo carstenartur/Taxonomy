@@ -19,8 +19,7 @@ final class ReformulationCivilianReplies {
         checkEdges(input);
         if (task.equals("RECONCILE")) {
             var sections = ids(input.path("sections"), "id");
-            require(sections.equals(Set.of("BP", "IP")), "Unknown civilian reconciliation sections: " + sections);
-            require(input.path("answers").isEmpty(), "Unexpected reconciliation answer scope");
+            require(sections.equals(CHILDREN.keySet()), "Unknown civilian reconciliation sections: " + sections);
             return reply("civilian:RECONCILE", Map.of("affectedSectionIds", List.of(), "sourceResolutions", List.of(), "findings", List.of()));
         }
         String node = input.path("nodeId").asText();
