@@ -155,7 +155,13 @@ public class ReformulationEvidenceCodec {
             context.put("historicalTargetVersion", evidence.targetVersionNumber());
             context.put("adoptionActor", payload.actor());
             context.put("adoptionRationale", payload.rationale());
-            context.put("statements", withoutOldSpans(payload.revision().statements()));
+            // The selected current original is already supplied in full. A verbatim
+            // historical source statement would inject an obsolete entire original;
+            // retain it only in the immutable archive, not the semantic prompt view.
+            var applicable = payload.revision().statements().stream()
+                    .filter(statement -> !(statement.provenance().isSource()
+                            && statement.wording().equals(payload.originalText()))).toList();
+            context.put("statements", withoutOldSpans(applicable));
             context.put("questions", withoutOldSpans(payload.revision().questions()));
             context.put("humanAnswers", withoutOldSpans(payload.revision().answers()));
             context.put("historicalReview", withoutOldSpans(payload.revision().validation()));

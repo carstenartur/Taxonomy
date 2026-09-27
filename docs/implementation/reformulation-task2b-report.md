@@ -71,7 +71,14 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   preservation, historical full-source statement archived but excluded from
   concrete prompt context, and an inherited-context small-budget failure. The
   full-source exclusion is expected RED; the other two assert compatibility
-  and fail-closed behavior. Not yet run.
+  and fail-closed behavior. RED run: `AdoptedLineagePromptTest` 4/4 and
+  `ReformulationEvidenceRoundTripTest` 11/12; the single expected failure was
+  historical whole-source wording leaking into the prompt-safe projection,
+  zero errors. Lowercase p/r exact bytes and small-budget failure passed.
+- Candidate fix omits only verbatim historical full-source statements from
+  prompt context, while retaining them byte-for-byte in the frozen archive;
+  all applicable non-source statement wording/review and human decisions remain.
+  GREEN unverified.
 
 ## Next exact command
 
