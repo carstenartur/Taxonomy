@@ -62,9 +62,9 @@ class ReformulationReportDocxReviewTest {
             var section = doc.getDocument().getBody().getSectPr();
             assertThat(section).isNotNull();
             assertThat(section.getPgSz().getW()).isEqualTo(BigInteger.valueOf(11906));
-            assertThat(section.getPgMar().getTop()).isGreaterThanOrEqualTo(BigInteger.valueOf(1000));
-            assertThat(section.getPgMar().getBottom()).isGreaterThanOrEqualTo(BigInteger.valueOf(1000));
-            assertThat(doc.getStyles().getDefaultRunStyle().getRPr().getRFonts().getAscii()).isEqualTo("Aptos");
+            assertThat((BigInteger) section.getPgMar().getTop()).isGreaterThanOrEqualTo(BigInteger.valueOf(1000));
+            assertThat((BigInteger) section.getPgMar().getBottom()).isGreaterThanOrEqualTo(BigInteger.valueOf(1000));
+            assertThat(doc.getStyles().getDefaultRunStyle().getRPr().getRFontsArray(0).getAscii()).isEqualTo("Aptos");
         }
     }
 

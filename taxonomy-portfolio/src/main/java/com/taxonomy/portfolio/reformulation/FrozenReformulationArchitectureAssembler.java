@@ -141,7 +141,10 @@ final class FrozenReformulationArchitectureAssembler {
         identity.put("Status", Objects.toString(summary.status(), "—"));
         return new FrozenReformulationArchitecture(new DiagramModel("Frozen architecture · " + baseline.snapshotId(),
                 nodes, edges, new DiagramLayout("LR", true)), identity, gaps, warnings,
-                detail.gapAnalysis() != null, elementDetails, relationDetails);
+                detail.gapAnalysis() != null, elementDetails, relationDetails,
+                new FrozenReformulationArchitecture.SourceIdentity(scope.projectId(), scope.requirementId(),
+                        version.id(), version.versionNumber(), summary.taxonomyFingerprint(),
+                        summary.provider(), summary.modelName()));
     }
 
     private <T> T required(Map<String, String> frozen, String key, Class<T> type) {

@@ -64,4 +64,11 @@ bounded fixes. DE page inspection is pending. No Task 3 visual acceptance claim.
 Subsequent DE three-page inspection confirmed the same top-edge margin defect and
 English metadata/identity keys, with some English history/provenance labels. DE and EN
 draft/adoption status and literal markup were readable. Bounded test-first layout,
-provenance and DE label checks are added; no production correction in this checkpoint.
+provenance and DE label checks ran RED: architecture 2 tests/2 semantic failures,
+app real frozen graph 1 test/1 semantic failure (`null / vnull` provenance). A first
+architecture test compilation error from POI/AssertJ API assumptions was corrected
+before semantic RED. The proposed standalone page setup, frozen numeric source
+identity and DE label corrections are WIP, not yet GREEN.
+
+Current main advanced with PR 1134 during this work; integrate it via an ordinary
+merge after the next clean checkpoint and before the next broad gate.

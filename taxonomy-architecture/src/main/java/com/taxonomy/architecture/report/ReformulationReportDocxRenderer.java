@@ -7,6 +7,7 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 import org.springframework.stereotype.Component;
 
 import java.io.ByteArrayOutputStream;
+import java.math.BigInteger;
 import java.util.*;
 
 /** POI adapter for the export-owned immutable reformulation and graph contracts. */
@@ -14,6 +15,7 @@ import java.util.*;
 public final class ReformulationReportDocxRenderer implements ReformulationDocxPort {
     @Override public byte[] render(ReformulationReportRenderer.Input report, FrozenReformulationArchitecture architecture) {
         try (var document = new XWPFDocument(); var output = new ByteArrayOutputStream()) {
+            standalonePage(document);
             var w = new WordDocumentWriter(document, new DecisionReportLabels(report.language()));
             var graphNodes = new HashSet<String>();
             architecture.graph().nodes().forEach(node -> graphNodes.add(node.id()));
@@ -42,7 +44,7 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
             w.paragraph(report.originalText());
             w.heading(t(de, "Vollständiger Vorschlagstext", "Complete proposed text"), 2, null);
             w.paragraph(report.reviewedText());
-            report.metadata().forEach((key, value) -> w.paragraph(key + ": " + value));
+            report.metadata().forEach((key, value) -> w.paragraph(label(de, key) + ": " + value));
             w.heading(t(de, "Fragen und Antworten", "Questions and answers"), 1, "rf_questions");
             if (report.questions().isEmpty()) w.paragraph(t(de, "Keine Fragen gespeichert; dies bedeutet keine Freigabe.",
                     "No questions recorded; this does not imply approval."));
@@ -76,10 +78,11 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
             w.heading(t(de, "Gespeicherte Antworten und Verlauf", "Saved answers and history"), 2, null);
             var active = com.taxonomy.reformulation.DecisionAnswer.active(report.answers());
             for (var answer : report.answers()) w.paragraph(answer.questionId() + " · " + answer.state()
-                    + (active.contains(answer) ? " · active" : " · superseded") + " · " + answer.values()
+                    + (active.contains(answer) ? t(de, " · wirksam", " · active")
+                            : t(de, " · ersetzt", " · superseded")) + " · " + answer.values()
                     + " · " + Objects.toString(answer.otherText(), "") + " · " + answer.author() + " · "
                     + answer.occurredAt() + " · " + answer.rationale() + " · " + answer.disposition()
-                    + " · supersedes " + answer.supersedes());
+                    + " · " + t(de, "ersetzt ", "supersedes ") + answer.supersedes());
             w.heading(t(de, "Aussagen und Herkunft", "Statements and provenance"), 1, "rf_statements");
             for (var section : report.sections()) {
                 w.heading(section.id() + " — " + section.title(), 2, bookmark("section", section.id()));
@@ -91,17 +94,21 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                 w.heading(statement.id() + " — " + statement.provenance(), 2, bookmark("statement", statement.id()));
                 w.paragraph(statement.wording());
                 w.paragraph(statement.reviewState() + " · " + statement.editingOrigin() + " · "
-                        + Objects.toString(statement.conditionalValidity(), "") + " · architecture "
-                        + statement.architectureLinks() + " · questions " + statement.questionDependencies()
-                        + " · source " + statement.sourceSpans());
+                        + Objects.toString(statement.conditionalValidity(), "") + " · "
+                        + t(de, "Architektur ", "architecture ") + statement.architectureLinks()
+                        + " · " + t(de, "Fragen ", "questions ") + statement.questionDependencies()
+                        + " · " + t(de, "Quellstellen ", "source ") + statement.sourceSpans());
                 references(w, statement.architectureLinks(), graphNodes, graphEdges, de);
             }
             w.heading(t(de, "Prüfung und übernommene Evidenz", "Validation and inherited evidence"), 1, "rf_validation");
+            if (report.validation().findings().isEmpty()) w.paragraph(t(de,
+                    "Keine Prüfbefunde gespeichert; dies bedeutet keine fachliche Freigabe.",
+                    "No validation findings recorded; this does not imply expert approval."));
             report.validation().findings().forEach(f -> w.paragraph(f.kind() + " · " + f.code() + " · "
                     + f.message() + " · " + f.statementIds() + " · " + f.sourceSpans()));
             // The raw archive remains in JSON export. Word presents the reviewable evidence above.
             w.heading(t(de, "Gespeicherte Architektur — Kontext", "Saved architecture — context"), 1, null);
-            architecture.identity().forEach((key, value) -> w.paragraph(key + ": " + value));
+            architecture.identity().forEach((key, value) -> w.paragraph(label(de, key) + ": " + value));
             w.paragraph(architecture.gapAnalysisAvailable()
                     ? t(de, "Lückenanalyse gespeichert", "Gap analysis recorded")
                     : t(de, "Lückenanalyse nicht verfügbar — nicht als lückenfrei zu interpretieren",
@@ -134,13 +141,20 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
                 document.write(output);
                 return output.toByteArray();
             }
-            var evidence = new ArchitectureReportDocument.SnapshotEvidence(null, null, null, null,
+            var source = architecture.source();
+            var evidence = new ArchitectureReportDocument.SnapshotEvidence(
+                    source == null ? null : source.projectId(), source == null ? null : source.requirementId(),
+                    source == null ? null : source.versionId(), source == null ? null : source.versionNumber(),
                     architecture.identity().get("Snapshot"), architecture.identity().get("Repository"),
                     architecture.identity().get("Workspace"), architecture.identity().get("Analysis based-on branch"),
-                    architecture.identity().get("Analysis based-on commit"), architecture.identity().get("Provider / model"),
-                    null, null, ArchitectureReportDocument.graphSha256(graph));
+                    architecture.identity().get("Analysis based-on commit"), source == null ? null : source.provider(),
+                    source == null ? null : source.model(), source == null ? null : source.taxonomyFingerprint(),
+                    ArchitectureReportDocument.graphSha256(graph));
             var architectureDocument = ArchitectureReportDocument.from(title, report.language(), report.originalText(),
-                    architecture.identity().toString(), t(de, "Historischer Stand; keine fachliche Freigabe.",
+                    architecture.identity().entrySet().stream()
+                            .map(entry -> label(de, entry.getKey()) + ": " + entry.getValue())
+                            .collect(java.util.stream.Collectors.joining("; ")),
+                    t(de, "Historischer Stand; keine fachliche Freigabe.",
                             "Historical record; no expert approval."),
                     architecture.gapAnalysisAvailable() ? architecture.gaps()
                             : List.of(t(de, "Nicht verfügbar", "Unavailable")), graph,
@@ -151,6 +165,56 @@ public final class ReformulationReportDocxRenderer implements ReformulationDocxP
         } catch (Exception exception) {
             throw new IllegalStateException("Could not render frozen reformulation Word report", exception);
         }
+    }
+    private static void standalonePage(XWPFDocument document) {
+        var styles = document.createStyles();
+        var fonts = org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFonts.Factory.newInstance();
+        fonts.setAscii("Aptos"); fonts.setHAnsi("Aptos"); fonts.setCs("Aptos"); fonts.setEastAsia("Aptos");
+        styles.setDefaultFonts(fonts);
+        styles.getDefaultRunStyle().getRPr().addNewSz().setVal(BigInteger.valueOf(20));
+        var section = document.getDocument().getBody().addNewSectPr();
+        var size = section.addNewPgSz();
+        size.setW(BigInteger.valueOf(11906)); size.setH(BigInteger.valueOf(16838));
+        var margin = section.addNewPgMar();
+        margin.setLeft(BigInteger.valueOf(1050)); margin.setRight(BigInteger.valueOf(1050));
+        margin.setTop(BigInteger.valueOf(1020)); margin.setBottom(BigInteger.valueOf(1160));
+        margin.setHeader(BigInteger.valueOf(420)); margin.setFooter(BigInteger.valueOf(560));
+    }
+    private static String label(boolean de, String key) {
+        if (!de) return key;
+        return switch (key) {
+            case "Proposal" -> "Angebot";
+            case "Project / Requirement" -> "Projekt / Anforderung";
+            case "Source version" -> "Quellversion";
+            case "Source SHA-256" -> "Quell-SHA-256";
+            case "Analysis snapshot" -> "Analyse-Snapshot";
+            case "Proposal revision" -> "Angebotsrevision";
+            case "Saved by" -> "Gespeichert von";
+            case "Saved at" -> "Gespeichert am";
+            case "Revision rationale" -> "Begründung der Revision";
+            case "Adoption command" -> "Übernahmebefehl";
+            case "Adopted by" -> "Übernommen von";
+            case "Adopted at" -> "Übernommen am";
+            case "Adoption rationale" -> "Begründung der Übernahme";
+            case "Target version" -> "Zielversion";
+            case "Warnings acknowledged" -> "Warnungen bestätigt";
+            case "Unresolved question IDs" -> "IDs offener Fragen";
+            case "Preview SHA-256" -> "Vorschau-SHA-256";
+            case "Inherited decision context" -> "Übernommener Entscheidungskontext";
+            case "Snapshot" -> "Snapshot";
+            case "Repository" -> "Repository";
+            case "Workspace" -> "Arbeitsbereich";
+            case "Offer workspace branch" -> "Angebotszweig";
+            case "Snapshot branch" -> "Snapshot-Zweig";
+            case "Analysis based-on branch" -> "Analyse-Ausgangszweig";
+            case "Analysis based-on commit" -> "Analyse-Ausgangs-Commit";
+            case "Includes provisional relations" -> "Vorläufige Beziehungen enthalten";
+            case "Projection stale" -> "Projektion veraltet";
+            case "Index stale" -> "Index veraltet";
+            case "Provider / model" -> "Anbieter / Modell";
+            case "Status" -> "Status";
+            default -> key;
+        };
     }
     private static String t(boolean de, String german, String english) { return de ? german : english; }
     private static String bookmark(String kind, String id) {
