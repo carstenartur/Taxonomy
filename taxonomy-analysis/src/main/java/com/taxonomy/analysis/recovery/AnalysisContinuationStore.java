@@ -138,9 +138,12 @@ public class AnalysisContinuationStore {
 
     @Transactional(readOnly = true)
     public String state(Claim claim) {
-        var run = em.find(AnalysisContinuationRun.class, claim.id());
-        if (run == null || !Objects.equals(run.claimToken, claim.token())) return "CANCELLED";
-        return run.state;
+        // Called at every cooperative checkpoint, often several times per question.
+        // Read only the current authority, never hydrate the frozen result/catalogue
+        // or reuse an entity cached before another transaction cancelled the run.
+        return em.createQuery("select r.state from AnalysisContinuationRun r where r.id=:id and r.claimToken=:token", String.class)
+                .setParameter("id", claim.id()).setParameter("token", claim.token())
+                .getResultList().stream().findFirst().orElse("CANCELLED");
     }
 
     @Transactional

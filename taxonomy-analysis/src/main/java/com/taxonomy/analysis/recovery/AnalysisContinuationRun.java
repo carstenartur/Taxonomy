@@ -2,10 +2,14 @@ package com.taxonomy.analysis.recovery;
 
 import jakarta.persistence.*;
 import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.annotations.DynamicUpdate;
 import org.hibernate.type.SqlTypes;
 
 /** Durable state only; no live worker or security context is retained in this entity. */
 @Entity
+// Checkpoint bookkeeping must not rewrite the multi-megabyte frozen result LOB.
+// Only explicit result changes should allocate a new frozen-result LOB.
+@DynamicUpdate
 @Table(name = "analysis_continuation", indexes = @Index(name = "idx_analysis_cont_scope", columnList = "workspace_id,username"))
 public class AnalysisContinuationRun {
     @Id @Column(length = 36) String id;
