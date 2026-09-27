@@ -72,3 +72,14 @@ identity and DE label corrections are WIP, not yet GREEN.
 
 Current main advanced with PR 1134 during this work; integrate it via an ordinary
 merge after the next clean checkpoint and before the next broad gate.
+
+Main was merged with the preserved second parent and exact remote tree. First merged
+covering run: 59 tests selected across modules, 2 failures, 0 errors. Architecture
+renderer 4/4, codec 6/6, guard 16/16, history 2/2, ratchet 22/22 and export 1/1
+passed. The DE revision test's old English `Analysis snapshot` expectation failed
+after correct localization; it now expects `Analyse-Snapshot`. The real reanalysis
+remote-only playback did not recognize the newly merged `relation-downwalk-v1`
+request. The fixture now explicitly responds to its extraction phase with exact
+offered IDs and conservative REJECT decisions; this exercises the real protocol and
+does not disable relation search or alter product budgets. Neither test correction
+has been verified yet. Fresh DOCX from this failed run is not a final visual gate.

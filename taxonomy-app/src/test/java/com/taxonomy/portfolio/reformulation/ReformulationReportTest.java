@@ -92,7 +92,7 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
                 .isEqualTo(HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(bytes)));
         try (var doc = new XWPFDocument(new ByteArrayInputStream(bytes))) {
             var text = doc.getParagraphs().stream().map(p -> p.getText()).reduce("", (a, b) -> a + "\n" + b);
-            assertThat(text).contains("Neuformulierungsangebot", ORIGINAL, "nicht übernommen", "Analysis snapshot");
+            assertThat(text).contains("Neuformulierungsangebot", ORIGINAL, "nicht übernommen", "Analyse-Snapshot");
             assertThat(text).contains("<img src=x onerror=alert(1)>");
         }
     }

@@ -44,7 +44,19 @@ class AdoptedLineageRealReanalysisTest extends ReformulationWorkflowFixture {
             String prompt = json.readTree(body).at("/messages/0/content").asText();
             calls.add(prompt);
             String response;
-            if (prompt.contains("RECONCILIATION_DATA_JSON\n")) {
+            if (prompt.startsWith("You assess requirement-scoped architectural relationships. Protocol: relation-downwalk-v1.\n")) {
+                int inputAt = prompt.indexOf("INPUT\n");
+                assertThat(inputAt).isGreaterThanOrEqualTo(0);
+                var relation = json.readTree(prompt.substring(inputAt + "INPUT\n".length()));
+                assertThat(relation.path("original").asText()).isEqualTo(requirement.currentVersion().text());
+                assertThat(relation.has("nodes")).isTrue();
+                var offered = new ArrayList<Map<String, Object>>();
+                relation.path("nodes").forEach(node -> offered.add(Map.of(
+                        "nodeId", node.path("id").asText(), "outcome", "REJECT", "contributions", List.of(),
+                        "rationale", "No separately authored relationship claim in this lineage fixture", "question", "")));
+                assertThat(offered).isNotEmpty();
+                response = json.writeValueAsString(Map.of("selections", offered));
+            } else if (prompt.contains("RECONCILIATION_DATA_JSON\n")) {
                 response = json.writeValueAsString(Map.of("affectedSectionIds", List.of(),
                         "sourceResolutions", List.of(), "findings", List.of()));
             } else if (prompt.contains("INPUT_DATA_JSON\n")) {
