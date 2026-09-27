@@ -26,6 +26,17 @@ class ReformulationResponseParserTest {
         assertThatThrownBy(()->parser.parse(EMPTY.replace("\"statementProposals\":[]","\"statementProposals\":["+statement+"]"),input())).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(()->parser.parse(EMPTY.replace("\"uncoveredSourceRefs\":[]","\"uncoveredSourceRefs\":[{\"start\":0,\"end\":4,\"exactText\":\"Fake\"}]"),input())).isInstanceOf(IllegalArgumentException.class);
     }
+    @Test void modelCannotMintAdoptedSourceOrHumanDecisionProvenance() {
+        for (String provenance : List.of("ADOPTED_SOURCE", "HUMAN_DECISION")) {
+            String statement = "{\"wording\":\"Unreviewed model claim\",\"provenance\":\""
+                    + provenance + "\",\"sourceSpans\":[],\"architectureLinks\":[],"
+                    + "\"questionDependencies\":[],\"conditionalValidity\":null}";
+            assertThatThrownBy(() -> parser.parse(EMPTY.replace("\"statementProposals\":[]",
+                    "\"statementProposals\":[" + statement + "]"), input()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Model cannot create");
+        }
+    }
     @Test void assignsIdsAndRetainsQuestionAnswerContract() {
         String response=EMPTY.replace("\"questionProposals\":[]","\"questionProposals\":[{\"subject\":\"time\",\"dimension\":\"correction\",\"scope\":\"P\",\"wording\":\"Wie werden Fehleingaben korrigiert?\",\"rationale\":\"Original lässt Korrektur offen\",\"affectedStatementIds\":[],\"sourceSpans\":[],\"nodeIds\":[\"P\"],\"edgeIds\":[],\"answerSchema\":{\"kind\":\"SINGLE_CHOICE\",\"options\":[\"Korrektur\",\"Keine Korrektur erforderlich\",\"Offen\"],\"unit\":null,\"minimum\":null,\"maximum\":null},\"prerequisites\":[],\"consequences\":\"Korrekturprozess festlegen\"}]");
         var result=parser.parse(response,input());

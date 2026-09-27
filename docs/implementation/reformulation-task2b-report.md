@@ -39,7 +39,13 @@ Status: strict-decoder implementation in progress, not Task 2b acceptance.
   references, snapshots exact source ancestry from the selected offer, emits
   immutable ancestor blocks separately at the existing checkpoint, and checks
   closure/hash/business/source-version/text binding before materialization.
-  Existing v1 serialization stays unchanged. GREEN unverified.
+  Existing v1 serialization stays unchanged. GREEN: `ReformulationEvidenceRoundTripTest`
+  10/10 and `ReformulationPositiveReviewGuardTest` 14/14, **24 positive tests**, zero
+  failures/errors/skips, build success.
+- Next RED analysis slice requires concrete inherited answers/wordings/review in
+  NODE, grouped/aggregate, REWORD and RECONCILE prompt data while excluding raw
+  archived payload; adopted source remains protected and distinctly attributed
+  through engine/reconciliation; model cannot mint adopted-source provenance.
 
 ## Next exact command
 
