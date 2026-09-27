@@ -55,7 +55,8 @@ class ProjectPortfolioViewCountTest {
                 solutionRepository,
                 conflictRepository,
                 fingerprintService,
-                jsonCodec);
+                jsonCodec,
+                org.mockito.Mockito.mock(com.taxonomy.portfolio.reformulation.ReformulationPositiveReviewGuard.class));
     }
 
     @Test

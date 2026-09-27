@@ -11,6 +11,9 @@ public interface ReformulationPortableEvidenceRepository
     Optional<ReformulationPortableEvidence> findByScopeKeyAndEvidenceHash(
             String scopeKey, String evidenceHash);
 
+    List<ReformulationPortableEvidence> findByScopeKeyAndProjectKeyAndRequirementKeyAndTargetVersionNumberAndTargetTextHash(
+            String scopeKey, String projectKey, String requirementKey, int targetVersionNumber, String targetTextHash);
+
     List<ReformulationPortableEvidence>
             findByScopeKeyOrderByProjectKeyAscRequirementKeyAscTargetVersionNumberAscEvidenceHashAsc(
                     String scopeKey);
