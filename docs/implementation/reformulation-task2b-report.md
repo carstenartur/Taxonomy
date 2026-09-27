@@ -10,11 +10,17 @@ historical rejected wording and branch-local/global/unmappable prompt selection.
 Focused RED: 15 analysis tests, two expected failures (unrelated branch context
 leaked; historical rejected summary accepted), zero errors, build failed;
 `/tmp/task2b-review1-red.log`. Candidate per-call selector/guard and v4 input
-encoding are being checked; real post-adoption analysis job/checkpoint
-transport-only regression is still to be added in this wave. Separately,
+encoding are being checked. Separately,
 root's database CI had 343 portfolio tests with one existing boundary-fixture
 failure: its fully mocked mapper returned null from new `rebuild()` before the
 intended typed write failure; a real mapper spy now faults only serialization.
+First focused candidate GREEN: AdoptedLineagePromptTest 5/5,
+ReformulationResponseParserTest 10/10, PortfolioJsonCodecBoundaryTest 2/2,
+zero failures/errors/skips, build success (`/tmp/task2b-review1-green1.log`).
+An additional bounded Spring test now drives actual Copilot analysis after
+adoption, selecting its persisted snapshot for a new offer and checkpoint;
+only outbound RestTemplate model replies are replaced. It is unexecuted at
+this checkpoint, so the integration finding remains open pending RED/GREEN.
 
 ## Verified outcome to date
 
