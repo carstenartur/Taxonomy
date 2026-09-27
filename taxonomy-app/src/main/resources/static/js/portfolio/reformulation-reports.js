@@ -15,7 +15,7 @@ window.TaxonomyReformulationReports = (function () {
         const status = document.createElement('p');
         status.setAttribute('role', 'status');
         group.append(explanation);
-        for (const [format, name] of [['json', 'JSON'], ['md', 'Markdown'], ['html', 'HTML']]) {
+        for (const [format, name] of [['json', 'JSON'], ['md', 'Markdown'], ['html', 'HTML'], ['docx', 'Word (DOCX)']]) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'btn btn-outline-secondary';
@@ -30,7 +30,8 @@ window.TaxonomyReformulationReports = (function () {
                     const response = captured.commandId
                         ? await api.downloadReformulationAdoptionReport(captured.projectId, captured.requirementId, captured.proposalId, captured.commandId, format)
                         : await api.downloadReformulationReport(captured.projectId, captured.requirementId, captured.proposalId, captured.revision, format);
-                    const expected = {json:'application/json',md:'text/markdown',html:'text/html'}[format];
+                    const expected = {json:'application/json',md:'text/markdown',html:'text/html',
+                        docx:'application/vnd.openxmlformats-officedocument.wordprocessingml.document'}[format];
                     if ((response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase() !== expected
                             || !(response.headers.get('Content-Disposition') || '').startsWith('attachment;')
                             || !/^[a-f0-9]{64}$/.test(response.headers.get('X-Content-SHA256') || ''))

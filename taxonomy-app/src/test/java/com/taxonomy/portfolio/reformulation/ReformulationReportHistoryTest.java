@@ -26,6 +26,8 @@ class ReformulationReportHistoryTest {
     private void runApplication(String mode) throws Exception {
         var command=new ArrayList<String>();
         command.add(Path.of(System.getProperty("java.home"),"bin","java").toString());command.add("-Xmx768m");
+        if(System.getProperty("reformulation.docx.qa.dir")!=null)
+            command.add("-Dreformulation.docx.qa.dir="+System.getProperty("reformulation.docx.qa.dir"));
         ManagementFactory.getRuntimeMXBean().getInputArguments().stream()
                 .filter(a->a.startsWith("-javaagent:") && a.contains("jacoco")).forEach(command::add);
         command.addAll(List.of("-cp",System.getProperty("surefire.test.class.path",System.getProperty("java.class.path")),

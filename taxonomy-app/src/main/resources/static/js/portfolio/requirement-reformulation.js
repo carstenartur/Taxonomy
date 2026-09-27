@@ -31,7 +31,7 @@
             loading:'Wird geladen…', working:'Wird verarbeitet…', dirty:'Ungespeicherte Bearbeitung bleibt erhalten.', failed:'Aktion fehlgeschlagen: ',
             referenceUnavailable:'Der Bezug ist im eingefrorenen Snapshot nicht vorhanden.', architecture:'Architekturbezug', findings:'Konflikte und Quellabdeckung', true:'Ja', false:'Nein', refresh:'Status aktualisieren',
             OPEN:'Offen', ANSWERED:'Beantwortet', DEFERRED:'Zurückgestellt', NOT_APPLICABLE:'Nicht anwendbar', CONFLICT:'Konflikt',
-            MODEL_ADDITION:'Modellergänzung', ORIGINAL:'Original', CATALOGUE_INSPIRATION:'Kataloganregung', ARCHITECTURE_HYPOTHESIS:'Architekturhypothese', HUMAN_DECISION:'Menschliche Entscheidung',
+            MODEL_ADDITION:'Modellergänzung', ORIGINAL:'Original', ADOPTED_SOURCE:'Übernommener Quelltext', CATALOGUE_INSPIRATION:'Kataloganregung', ARCHITECTURE_HYPOTHESIS:'Architekturhypothese', HUMAN_DECISION:'Menschliche Entscheidung',
             changeDecision:'Abweichende menschliche Entscheidung erfassen', applicable:'Bedingte Folgefrage', unavailable:'Erst bei passender Antwort auf die vorausgesetzte Frage beantworten.'},
         en: {usage:'Recorded request attempts', usageUnrecorded:'Usage recording has not been started for this run.',
             httpAttempts:'Admitted HTTP attempts', replays:'Replays without HTTP', pendingAttempts:'Attempts without a recorded outcome', retries:'Transport retries', httpErrors:'HTTP error responses', transportErrors:'Transport errors', invalidUsage:'Invalid usage metadata',
@@ -57,7 +57,7 @@
             loading:'Loading…', working:'Working…', dirty:'Unsaved edit has been preserved.', failed:'Action failed: ',
             referenceUnavailable:'This reference is not present in the frozen snapshot.', architecture:'Architecture reference', findings:'Conflicts and source coverage', true:'Yes', false:'No', refresh:'Refresh status',
             OPEN:'Open', ANSWERED:'Answered', DEFERRED:'Deferred', NOT_APPLICABLE:'Not applicable', CONFLICT:'Conflict',
-            MODEL_ADDITION:'Model addition', ORIGINAL:'Original', CATALOGUE_INSPIRATION:'Catalogue inspiration', ARCHITECTURE_HYPOTHESIS:'Architecture hypothesis', HUMAN_DECISION:'Human decision',
+            MODEL_ADDITION:'Model addition', ORIGINAL:'Original', ADOPTED_SOURCE:'Adopted source text', CATALOGUE_INSPIRATION:'Catalogue inspiration', ARCHITECTURE_HYPOTHESIS:'Architecture hypothesis', HUMAN_DECISION:'Human decision',
             changeDecision:'Record a different human decision', applicable:'Conditional follow-up', unavailable:'Answer only after the prerequisite decision selects the relevant variant.'}
     };
     const t = key => words[lang][key] || key;
@@ -226,12 +226,14 @@
             if(s.reviewState==='REJECTED')item.append(el('p',t('rejected'),'text-danger'));
             s.architectureLinks.forEach(id=>item.append(architectureLink(id)));
             s.questionDependencies.forEach(id=>{const a=el('a',t('questions')+' '+id,'me-2');a.href='#question-'+id;a.addEventListener('click',()=>changeView('questions',false));item.append(a);});
-            const edit=el('textarea',undefined,'form-control my-2');edit.setAttribute('aria-label',t('edit')+' '+s.id);edit.value=s.wording;item.append(edit);
-            const draftKey='statement:'+s.id;
-            trackDraft(draftKey,[edit],()=>({text:edit.value}),draft=>{edit.value=draft.text;});
-            if(drafts.has(draftKey))statements.open=true;
-            item.append(button(t('edit'),()=>update('statements/'+s.id,{action:'EDIT',text:edit.value,rationale:rationale()},draftKey)));
-            if(s.provenance!=='ORIGINAL' && s.reviewState!=='REJECTED')item.append(button(t('reject'),()=>update('statements/'+s.id,{action:'REJECT',rationale:rationale()}),'btn btn-sm btn-outline-danger ms-2'));
+            if(s.provenance!=='ORIGINAL' && s.provenance!=='ADOPTED_SOURCE') {
+                const edit=el('textarea',undefined,'form-control my-2');edit.setAttribute('aria-label',t('edit')+' '+s.id);edit.value=s.wording;item.append(edit);
+                const draftKey='statement:'+s.id;
+                trackDraft(draftKey,[edit],()=>({text:edit.value}),draft=>{edit.value=draft.text;});
+                if(drafts.has(draftKey))statements.open=true;
+                item.append(button(t('edit'),()=>update('statements/'+s.id,{action:'EDIT',text:edit.value,rationale:rationale()},draftKey)));
+                if(s.reviewState!=='REJECTED')item.append(button(t('reject'),()=>update('statements/'+s.id,{action:'REJECT',rationale:rationale()}),'btn btn-sm btn-outline-danger ms-2'));
+            }
             statements.append(item);
         });host.append(statements);
         const findings=el('details');findings.append(el('summary',t('findings')));revision.validation.findings.forEach(f=>findings.append(el('p',f.code+': '+f.message,'text-break')));host.append(findings);

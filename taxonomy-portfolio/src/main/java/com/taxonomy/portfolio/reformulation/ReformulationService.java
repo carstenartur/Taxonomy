@@ -23,6 +23,7 @@ public class ReformulationService {
     private final PortfolioJsonCodec json;
     private final ReformulationRunRepository runs;
     private final ReformulationCheckpointStore checkpoints;
+    private final ReformulationEvidenceCodec evidence;
     public ReformulationService(ProjectPortfolioService projects,
             ProjectRequirementVersionRepository versions,
             RequirementAnalysisSnapshotRepository snapshots,
@@ -32,7 +33,8 @@ public class ReformulationService {
             ReformulationRevisionRepository revisions,
             PortfolioJsonCodec json,
             ReformulationRunRepository runs,
-            ReformulationCheckpointStore checkpoints) {
+            ReformulationCheckpointStore checkpoints,
+            ReformulationEvidenceCodec evidence) {
         this.projects = projects;
         this.versions = versions;
         this.snapshots = snapshots;
@@ -43,6 +45,7 @@ public class ReformulationService {
         this.json = json;
         this.runs = runs;
         this.checkpoints = checkpoints;
+        this.evidence = evidence;
     }
     @Transactional
     public Proposal create(Long projectId,Long requirementId,CreateRequest request,String actor,WorkspaceContext context) {
@@ -61,6 +64,13 @@ public class ReformulationService {
         var content=new TreeMap<>(contextPort.freeze(detail,actor,context));
         content.put("project",json.write(projects.getProject(projectId,actor,context)));
         content.put("sourceVersion",json.write(projects.toVersionView(version)));
+        var lineage=evidence.freezeSource(requirement.getScopeKey(), requirementId, version.getId(),
+                requirement.getProject().getProjectKey(), requirement.getRequirementKey(),
+                version.getVersionNumber(), version.getContentHash());
+        if (!lineage.entries().isEmpty()) {
+            content.put("adoptedLineage", json.write(lineage));
+            content.put("inheritedDecisionContext", lineage.decisionContext());
+        }
         var scope=new ReformulationBaseline.Scope(PortfolioScope.repositoryId(context),PortfolioScope.workspaceId(context),
                 PortfolioScope.branch(context),projectId,requirementId);
         var baseline=ReformulationBaseline.freeze(new ReformulationBaseline.Source(scope,version.getId(),version.getText()),
@@ -126,7 +136,7 @@ public class ReformulationService {
         var old=previous.statements().stream().filter(s->s.id().equals(statementId)).findFirst().orElseThrow(()->PortfolioException.notFound("Statement not found"));
         boolean reject="REJECT".equals(request.action());
         if(!reject && !"EDIT".equals(request.action()))throw PortfolioException.validation("Invalid statement operation");
-        if(reject && old.provenance()==Statement.Provenance.ORIGINAL)throw PortfolioException.validation("Original source cannot be rejected");
+        if(old.provenance().isSource())throw PortfolioException.validation("Selected source cannot be edited or rejected");
         if(!reject && (request.text()==null || request.text().isBlank()))throw PortfolioException.validation("Statement text required");
         var updated=new Statement(old.id(),reject?old.wording():request.text(),old.sourceSpans(),old.provenance(),old.architectureLinks(),
                 old.questionDependencies(),old.conditionalValidity(),Statement.EditingOrigin.HUMAN,reject?"REJECTED":"UNREVIEWED");
@@ -331,8 +341,20 @@ public class ReformulationService {
     private ReformulationProposal require(Long projectId,Long requirementId,String id,String actor,WorkspaceContext context,boolean lock) {
         projects.requireRequirement(projectId,requirementId,actor,context);
         String scope=PortfolioScope.key(actor,context);
-        return (lock?proposals.lockScoped(id,projectId,requirementId,scope):proposals.findByIdAndProjectIdAndRequirementIdAndScopeKey(id,projectId,requirementId,scope))
+        var proposal=(lock?proposals.lockScoped(id,projectId,requirementId,scope):proposals.findByIdAndProjectIdAndRequirementIdAndScopeKey(id,projectId,requirementId,scope))
                 .orElseThrow(()->PortfolioException.notFound("Reformulation proposal not found"));
+        ReformulationBaseline baseline;
+        try {
+            baseline=json.read(proposal.getBaselinePayload(),ReformulationBaseline.class);
+        } catch (PortfolioException invalid) {
+            throw PortfolioException.conflict("Stored reformulation baseline does not match proposal identity");
+        }
+        var expected=new ReformulationBaseline.Scope(PortfolioScope.repositoryId(context),PortfolioScope.workspaceId(context),
+                PortfolioScope.branch(context),proposal.getProjectId(),proposal.getRequirementId());
+        if(baseline==null || !expected.equals(baseline.scope()) || !Objects.equals(proposal.getSourceVersionId(),baseline.sourceVersionId())
+                || !Objects.equals(proposal.getSnapshotId(),baseline.snapshotId()))
+            throw PortfolioException.conflict("Stored reformulation baseline does not match proposal identity");
+        return proposal;
     }
     private Revision readRevision(ReformulationProposal proposal,long number) {
         return json.read(revisions.findByProposalIdAndNumberAndScopeKey(proposal.getId(),number,proposal.getScopeKey())

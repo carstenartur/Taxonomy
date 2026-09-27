@@ -26,6 +26,36 @@ class ReformulationResponseParserTest {
         assertThatThrownBy(()->parser.parse(EMPTY.replace("\"statementProposals\":[]","\"statementProposals\":["+statement+"]"),input())).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(()->parser.parse(EMPTY.replace("\"uncoveredSourceRefs\":[]","\"uncoveredSourceRefs\":[{\"start\":0,\"end\":4,\"exactText\":\"Fake\"}]"),input())).isInstanceOf(IllegalArgumentException.class);
     }
+    @Test void modelCannotMintAdoptedSourceOrHumanDecisionProvenance() {
+        for (String provenance : List.of("ADOPTED_SOURCE", "HUMAN_DECISION")) {
+            String statement = "{\"wording\":\"Unreviewed model claim\",\"provenance\":\""
+                    + provenance + "\",\"sourceSpans\":[],\"architectureLinks\":[],"
+                    + "\"questionDependencies\":[],\"conditionalValidity\":null}";
+            assertThatThrownBy(() -> parser.parse(EMPTY.replace("\"statementProposals\":[]",
+                    "\"statementProposals\":[" + statement + "]"), input()))
+                    .isInstanceOf(IllegalArgumentException.class)
+                    .hasMessageContaining("Model cannot create");
+        }
+    }
+    @Test void modelCannotRelabelExactAdoptedTextAsFreshOriginal() {
+        var base = input().baseline();
+        var context = new HashMap<>(base.frozenContext());
+        context.put("adoptedLineage", "frozen historical adoption");
+        var adopted = new ReformulationBaseline(base.scope(), base.sourceVersionId(),
+                base.originalText(), base.originalTextHash(), base.snapshotId(), base.snapshotPayload(),
+                context, base.language(), base.algorithmVersion());
+        var selected = new NodeSynthesisInput(adopted, "P", null, "description", List.of(),
+                List.of(), List.of(), Map.of(), List.of(), List.of(), "preserve");
+        String exact = new ObjectMapper().writeValueAsString(base.originalText());
+        String statement = "{\"wording\":" + exact + ",\"provenance\":\"ORIGINAL\","
+                + "\"sourceSpans\":[{\"start\":0,\"end\":" + base.originalText().length()
+                + ",\"exactText\":" + exact + "}],\"architectureLinks\":[],"
+                + "\"questionDependencies\":[],\"conditionalValidity\":null}";
+        assertThatThrownBy(() -> parser.parse(EMPTY.replace("\"statementProposals\":[]",
+                "\"statementProposals\":[" + statement + "]"), selected))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("adopted source");
+    }
     @Test void assignsIdsAndRetainsQuestionAnswerContract() {
         String response=EMPTY.replace("\"questionProposals\":[]","\"questionProposals\":[{\"subject\":\"time\",\"dimension\":\"correction\",\"scope\":\"P\",\"wording\":\"Wie werden Fehleingaben korrigiert?\",\"rationale\":\"Original lässt Korrektur offen\",\"affectedStatementIds\":[],\"sourceSpans\":[],\"nodeIds\":[\"P\"],\"edgeIds\":[],\"answerSchema\":{\"kind\":\"SINGLE_CHOICE\",\"options\":[\"Korrektur\",\"Keine Korrektur erforderlich\",\"Offen\"],\"unit\":null,\"minimum\":null,\"maximum\":null},\"prerequisites\":[],\"consequences\":\"Korrekturprozess festlegen\"}]");
         var result=parser.parse(response,input());
@@ -52,5 +82,32 @@ class ReformulationResponseParserTest {
         var result=parser.parse(EMPTY.replace("\"preservedStatementIds\":[]","\"preservedStatementIds\":[\"s-child\"]").replace("\"preservedQuestionIds\":[]","\"preservedQuestionIds\":[\"q-child\"]"),in);
         assertThat(result.preservedStatementIds()).containsExactly("s-child");
         assertThat(new ReformulationPromptBuilder(new ObjectMapper()).build(in,null)).contains(in.baseline().originalText(),"Child exact wording","q-child","short summary");
+    }
+    @Test void rejectedWordingCannotBeReplayedAsNewStatementOrParentSummary() {
+        var rejected=new Statement("s-rejected","Do not use this proposed workflow.",List.of(),Statement.Provenance.MODEL_ADDITION,
+                List.of(),List.of(),null,Statement.EditingOrigin.HUMAN,"REJECTED");
+        var in=new NodeSynthesisInput(input().baseline(),"P",null,"parent",List.of(),List.of(rejected),List.of(),Map.of(),List.of(),List.of(),"preserve");
+        String retained=EMPTY.replace("\"preservedStatementIds\":[]","\"preservedStatementIds\":[\"s-rejected\"]");
+        String replay=retained.replace("\"statementProposals\":[]","\"statementProposals\":[{\"wording\":\"Do not use this proposed workflow.\",\"provenance\":\"MODEL_ADDITION\",\"sourceSpans\":[],\"architectureLinks\":[],\"questionDependencies\":[],\"conditionalValidity\":null}]");
+        assertThatThrownBy(()->parser.parse(replay,in)).isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Rejected wording");
+        assertThatThrownBy(()->parser.parse(retained.replace("Zusammenfassung","Parent repeats: Do not use this proposed workflow."),in))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Rejected wording");
+        assertThat(parser.parse(retained,in).preservedStatementIds()).containsExactly("s-rejected");
+    }
+    @Test void freshAdoptedOfferRejectsApplicableHistoricalWordingWithoutCurrentStatements() {
+        var baseline = AdoptedLineagePromptTest.scopedAdopted();
+        var input = new NodeSynthesisInput(baseline, "A", null, "A", List.of(), List.of(),
+                List.of(), Map.of(), List.of(), List.of(), "preserve");
+        assertThatThrownBy(() -> parser.parse(EMPTY.replace("Zusammenfassung",
+                "Summary repeats Rejected A-only wording"), input))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Rejected wording");
+        String proposal = "{\"wording\":\"Rejected A-only wording\",\"provenance\":\"MODEL_ADDITION\","
+                + "\"sourceSpans\":[],\"architectureLinks\":[],\"questionDependencies\":[],\"conditionalValidity\":null}";
+        assertThatThrownBy(() -> parser.parse(EMPTY.replace("\"statementProposals\":[]",
+                "\"statementProposals\":[" + proposal + "]"), input))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Rejected wording");
+        // A branch-local rejection must not falsely veto an unrelated branch.
+        assertThat(parser.parse(EMPTY.replace("Zusammenfassung", "Rejected B-only wording"), input)
+                .summary()).isEqualTo("Rejected B-only wording");
     }
 }

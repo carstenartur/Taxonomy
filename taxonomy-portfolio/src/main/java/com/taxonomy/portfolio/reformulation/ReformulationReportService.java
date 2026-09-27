@@ -5,6 +5,7 @@ import com.taxonomy.portfolio.service.PortfolioException;
 import com.taxonomy.portfolio.service.PortfolioJsonCodec;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import com.taxonomy.reformulation.ReformulationBaseline;
+import com.taxonomy.export.reformulation.FrozenReformulationArchitecture;
 import com.taxonomy.workspace.service.WorkspaceContext;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -21,13 +22,16 @@ public class ReformulationReportService {
     private final ReformulationAdoptionService adoptions;
     private final ReformulationAdoptionRepository receipts;
     private final PortfolioJsonCodec json;
+    private final FrozenReformulationArchitectureAssembler frozenArchitecture;
 
     public ReformulationReportService(ReformulationService proposals, ReformulationAdoptionService adoptions,
-            ReformulationAdoptionRepository receipts, PortfolioJsonCodec json) {
+            ReformulationAdoptionRepository receipts, PortfolioJsonCodec json,
+            FrozenReformulationArchitectureAssembler frozenArchitecture) {
         this.proposals = proposals;
         this.adoptions = adoptions;
         this.receipts = receipts;
         this.json = json;
+        this.frozenArchitecture = frozenArchitecture;
     }
 
     public record Source(long projectId, long requirementId, long versionId, String analysisSnapshotId,
@@ -36,6 +40,16 @@ public class ReformulationReportService {
     public record Report(String schemaVersion, String kind, String proposalId, Source source, ProposalIdentity proposal,
             ReformulationDtos.Revision revision, String reviewedText,
             ReformulationAdoptionDtos.Preview preview, ReformulationAdoptionDtos.Result adoption) {}
+
+    /** Same scoped, persisted baseline used to construct the historical report; no current-source read. */
+    public ReformulationBaseline frozenBaseline(Long projectId, Long requirementId, String proposalId,
+            String actor, WorkspaceContext context) {
+        return proposals.get(projectId, requirementId, proposalId, actor, context).baseline();
+    }
+
+    public FrozenReformulationArchitecture frozenArchitecture(ReformulationBaseline baseline) {
+        return frozenArchitecture.assemble(baseline);
+    }
 
     public Report revision(Long projectId, Long requirementId, String proposalId, long number,
             String actor, WorkspaceContext context) {
