@@ -23,6 +23,15 @@ jobs:
           from pathlib import Path
           root = Path('/tmp/evidence-default-verification')
           encoded = (root / 'transport.b64').read_text().strip()
+          # Exactly two transcription errors identified by the downloaded
+          # transfer artifact; the authoritative decoded digest is unchanged.
+          repairs = [
+              ('UxRPXVU3ApkT+2VR1fKyU0wEHLbJJbvzOpsyXJs9TNbPOAFjgFmOcVlms', 'UxRPXVU3ApkT+2VR1fKyU0wEHLbJbvzOpsyXJs9TNbPOAFjgFmOcVlms'),
+              ('eKlhSH5QhS34e29Kfsxon9MHnod3MHnod3ztVLb7drFJk6zxYWV2DB/vMToauh', 'eKlhSH5QhS34e29Kfsxon9MHnod3ztVLb7drFJk6zxYWV2DB/vMToauh')
+          ]
+          for old, new in repairs:
+              assert encoded.count(old) == 1
+              encoded = encoded.replace(old, new)
           patch = gzip.decompress(base64.b64decode(encoded, validate=True))
           assert hashlib.sha256(patch).hexdigest() == '6e98230ed580b930c7a0ccd9fc04d586b01d0a9c1db2b183d74338ae319d4744'
           (root / 'changes.patch').write_bytes(patch)
