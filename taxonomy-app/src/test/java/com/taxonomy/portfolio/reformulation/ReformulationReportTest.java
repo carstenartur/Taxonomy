@@ -6,6 +6,9 @@ import com.taxonomy.reformulation.ReformulationBaseline;
 import tools.jackson.databind.node.ObjectNode;
 import tools.jackson.databind.node.ArrayNode;
 import com.taxonomy.dto.AnalysisResult;
+import com.taxonomy.dto.GapAnalysisView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.ElementMappingView;
+import com.taxonomy.portfolio.dto.PortfolioDtos.RelationMappingView;
 import com.taxonomy.portfolio.dto.PortfolioDtos.RequirementView;
 import com.taxonomy.portfolio.service.PortfolioScope;
 import org.junit.jupiter.api.Test;
@@ -162,19 +165,20 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
         ((ObjectNode) detail.get("summary")).put("branchName", "draft");
         var elements = json.createArrayNode();
         for (int id : new int[] {1, 2}) {
-            elements.addObject().put("id", id).put("snapshotId", original.snapshotId())
-                    .put("nodeCode", "BP-" + id).put("nodeTitle", "Frozen " + id)
-                    .put("taxonomyRoot", "BP").put("relevance", 0.5);
+            elements.add(json.readTree(json.writeValueAsString(new ElementMappingView((long) id,
+                    original.snapshotId(), "BP-" + id, "Frozen " + id, "BP", 50, 0.5, 0.7,
+                    null, "BP > BP-" + id, "Saved mapping", false,
+                    null, null, null, null, null, null))));
         }
         detail.set("elementMappings", elements);
         var relations = json.createArrayNode();
         if (edges) for (int id : new int[] {11, 12}) {
-            relations.addObject().put("id", id).put("snapshotId", original.snapshotId())
-                    .put("sourceCode", "BP-1").put("targetCode", "BP-2")
-                    .put("relationType", "FLOW").put("relevance", 0.5);
+            relations.add(json.readTree(json.writeValueAsString(new RelationMappingView((long) id,
+                    original.snapshotId(), "BP-1", "BP-2", "FLOW", "SAVED", "impact", 0.5, 0.7,
+                    "Saved directed relation", null, null, null, null))));
         }
         detail.set("relationMappings", relations);
-        if (gaps) detail.set("gapAnalysis", json.createObjectNode());
+        if (gaps) detail.set("gapAnalysis", json.readTree(json.writeValueAsString(new GapAnalysisView())));
         else detail.putNull("gapAnalysis");
         frozen.put("elementMappings", json.writeValueAsString(elements));
         frozen.put("relationMappings", json.writeValueAsString(relations));

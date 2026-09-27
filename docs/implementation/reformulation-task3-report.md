@@ -31,3 +31,9 @@ Status: in progress; not product acceptance.
 - Focused report class: 5 tests, 1 assertion failure and 2 fixture deserialization errors; the new ViewContext fixture omitted required primitive booleans. Endpoint revision test and existing JSON test were green in that selector, but no class-level GREEN.
 - Fixture now supplies all ViewContext booleans and deliberately uses view relation IDs 99/100 distinct from mapping-row IDs 11/12. This makes semantic multiplicity (rather than incidental ID equality) observable.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest -Dsurefire.failIfNoSpecifiedTests=false test`.
+
+## Checkpoint 5 — complete typed frozen fixtures
+
+- Previous selector still ran 5 tests with 1 failure / 2 errors: the authored empty `GapAnalysisView` JSON and mapping rows lacked required primitive record fields. This is fixture setup, not semantic RED.
+- Test fixture now serializes actual typed `GapAnalysisView`, `ElementMappingView` and `RelationMappingView` values before changing the frozen bytes. No production behavior changed.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest -Dsurefire.failIfNoSpecifiedTests=false test`.
