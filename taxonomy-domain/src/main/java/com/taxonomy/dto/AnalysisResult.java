@@ -8,6 +8,13 @@ import java.util.Objects;
 
 public class AnalysisResult {
 
+    private AnalysisCoverage analysisCoverage;
+    public AnalysisCoverage getAnalysisCoverage() { return analysisCoverage; }
+    public void setAnalysisCoverage(AnalysisCoverage value) { analysisCoverage = value; }
+    private AnalysisRecoveryView recovery;
+    public AnalysisRecoveryView getRecovery() { return recovery; }
+    public void setRecovery(AnalysisRecoveryView value) { recovery = value; }
+
     /** Server-measured scoring, relation and architecture work; null for older/unmeasured results. */
     private Long analysisDurationMillis;
     public Long getAnalysisDurationMillis() { return analysisDurationMillis; }

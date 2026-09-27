@@ -61,12 +61,12 @@ public class AnalyzeRequirementUseCase {
      */
     public AnalyzeRequirementResult analyze(AnalyzeRequirementCommand command) {
         if (analysisProgressRegistry == null || AnalysisRunControl.active()) {
-            return analyze(command, command.provenance() == null);
+            return analyze(command, command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
         }
         // Portfolio/Copilot callers retain their durable job and claim boundaries.
         try (var run = analysisProgressRegistry.open(null, command.username(),
                 command.workspaceContext(), command.provenance())) {
-            AnalyzeRequirementResult result = analyze(command, command.provenance() == null);
+            AnalyzeRequirementResult result = analyze(command, command.provenance() == null && !com.taxonomy.analysis.recovery.AnalysisCheckpointSession.active());
             run.finish(result.analysisResult());
             return result;
         }
@@ -108,7 +108,7 @@ public class AnalyzeRequirementUseCase {
     }
 
     private static boolean isCooperativeStop(String message) {
-        return message.startsWith("MEMORY_PRESSURE:") || message.startsWith("CANCELLED:")
+        return message.startsWith("AWAITING_DECISION:") || message.startsWith("MEMORY_PRESSURE:") || message.startsWith("CANCELLED:")
                 || message.startsWith("TIME_LIMIT:");
     }
 

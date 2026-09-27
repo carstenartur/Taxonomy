@@ -177,6 +177,7 @@
         C.S.lastAnalysisDurationMillis = null;
         C.S.lastAnalysisProvider = 'MANUAL';
         C.S.lastAnalysisStatus = 'SUCCESS';
+        document.dispatchEvent(new CustomEvent('taxonomy:analysis-evidence-imported'));
     });
 
     Object.assign(C, {

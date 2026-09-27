@@ -84,6 +84,7 @@ public final class RelationSearchUseCaseContract {
             @Override public AnalysisResult analyzeWithBudget(String original) { var r = new AnalysisResult(); r.setScores(Map.of("process", 1)); r.setStatus("SUCCESS"); return r; }
             @Override public String callLlmRaw(String prompt) { raw.incrementAndGet(); return invalid ? "please try again" : RequirementRelationSearchContract.answer(prompt); }
             @Override public String getActiveProviderName() { return "TEST"; }
+            @Override public LlmProvider getActiveProvider() { return LlmProvider.CUSTOM_OPENAI; }
             @Override public void clearRequestProvider() { }
         };
         TaxonomyNode source = node("process", "BP", "BP"), root = node("IP", "IP", null), target = node("evidence", "IP", "IP");

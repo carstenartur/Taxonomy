@@ -56,7 +56,10 @@ public class TaxDslExportService {
 
         // Export all non-root taxonomy nodes as elements
         List<TaxonomyNode> allNodes = nodeRepository.findAll();
+        Set<String> virtualRoots = new HashSet<>();
+        Set<String> elementIds = new HashSet<>();
         for (TaxonomyNode node : allNodes) {
+            if (node.getLevel() == 0) virtualRoots.add(node.getCode());
             if (node.getLevel() > 0) { // Skip virtual root nodes
                 ArchitectureElement el = new ArchitectureElement();
                 el.setId(node.getCode());
@@ -65,16 +68,26 @@ public class TaxDslExportService {
                 el.setDescription(node.getDescriptionEn());
                 el.setTaxonomy(node.getTaxonomyRoot());
                 model.getElements().add(el);
+                elementIds.add(node.getCode());
             }
         }
 
-        // Export all relations
+        // Category-root templates stay in the catalogue; they are not accepted
+        // relationships between architecture instances. Never synthesize virtual
+        // components just to make those templates exportable.
         List<TaxonomyRelation> allRelations = relationRepository.findAll();
         for (TaxonomyRelation rel : allRelations) {
+            String sourceId = rel.getSourceNode().getCode();
+            String targetId = rel.getTargetNode().getCode();
+            if (virtualRoots.contains(sourceId) || virtualRoots.contains(targetId)) continue;
+            if (!elementIds.contains(sourceId) || !elementIds.contains(targetId)) {
+                throw new IllegalStateException("Concrete catalogue relation has an absent endpoint: "
+                        + sourceId + " -> " + targetId);
+            }
             ArchitectureRelation archRel = new ArchitectureRelation();
-            archRel.setSourceId(rel.getSourceNode().getCode());
+            archRel.setSourceId(sourceId);
             archRel.setRelationType(rel.getRelationType().name());
-            archRel.setTargetId(rel.getTargetNode().getCode());
+            archRel.setTargetId(targetId);
             archRel.setStatus("accepted");
             archRel.setProvenance(rel.getProvenance());
             model.getRelations().add(archRel);

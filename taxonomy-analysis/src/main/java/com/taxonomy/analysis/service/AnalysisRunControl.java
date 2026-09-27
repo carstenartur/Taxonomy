@@ -51,6 +51,7 @@ public final class AnalysisRunControl implements AutoCloseable {
     public static void checkpoint() {
         AnalysisRunControl current = CURRENT.get();
         try {
+            com.taxonomy.analysis.recovery.AnalysisCheckpointSession.checkpoint();
             if (Thread.currentThread().isInterrupted()
                     || (current != null && current.cancelled.getAsBoolean())) {
                 throw new AnalysisStoppedException(AnalysisStoppedException.Reason.CANCELLED);
@@ -109,7 +110,7 @@ public final class AnalysisRunControl implements AutoCloseable {
         } catch (AnalysisStoppedException stopped) {
             if (current != null) current.observer.stoppedAfterResponse(
                     id, detail, (System.nanoTime() - started) / 1_000_000, stopped.reason());
-            throw stopped.withPartial(detail);
+            throw stopped.withCompletedCall(detail);
         }
         if (current != null) current.observer.completed(id, detail, (System.nanoTime() - started) / 1_000_000);
         return result;

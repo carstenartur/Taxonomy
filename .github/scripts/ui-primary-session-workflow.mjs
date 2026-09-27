@@ -125,6 +125,20 @@ async function waitForCopilotComplete(page, expectedText) {
     const button = document.getElementById('copilotBtn');
     const spinner = document.getElementById('copilotSpinner');
     const summary = document.querySelector('#copilotContent .alert-success');
+    const recovery = state?.analysisRecovery?.state;
+    const followup = state?.recoveryContext?.followupState;
+    const settled = button && !button.disabled && spinner?.classList.contains('d-none');
+    // A terminal partial result cannot turn into SUCCESS without a user decision.
+    // Fail with the actual application reason, not a misleading 180-second timeout.
+    // Never accept a partial result or silently retry it in this success scenario.
+    if (state?.lastAnalyzedText === text && settled
+        && (['PARTIAL', 'ERROR', 'CANCELLED'].includes(state.lastAnalysisStatus)
+          || ['PAUSED', 'STOPPED', 'CANCELLED', 'COMPLETED_WITH_GAPS'].includes(recovery)
+          || ['PAUSED', 'CANCELLED', 'COMPLETED_WITH_GAPS'].includes(followup))) {
+      const reason = [state.recoveryContext?.followupError,
+        document.getElementById('statusArea')?.textContent].filter(Boolean).join(' ').slice(0, 1500);
+      throw new Error(`Copilot did not complete: ${state.lastAnalysisStatus} / ${recovery || '-'} / ${followup || '-'}: ${reason}`);
+    }
     return state?.lastAnalyzedText === text
       && state?.lastAnalysisStatus === 'SUCCESS'
       && scores && Object.keys(scores).length > 0

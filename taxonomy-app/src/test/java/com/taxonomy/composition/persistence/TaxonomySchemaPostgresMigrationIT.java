@@ -146,11 +146,12 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(columnExists(dataSource, "editor_operation", "target_operation_id")).isTrue();
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
+        assertAnalysisRecoverySchema(dataSource);
         assertThat(tableExists(dataSource, TaxonomySchemaMigrationConfig.HISTORY_TABLE)).isTrue();
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "0", "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30");
     }
 
     @Test
@@ -225,9 +226,51 @@ class TaxonomySchemaPostgresMigrationIT {
         assertThat(successfulVersions(dataSource))
                 .containsExactly(
                         "1", "2", "3", "4", "5",
-                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29");
+                        "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19", "20", "21", "22", "23", "24", "25", "26", "27", "28", "29", "30");
         assertIntegrationSchema(dataSource);
         assertReformulationSchema(dataSource);
+        assertAnalysisRecoverySchema(dataSource);
+    }
+
+    private static void assertAnalysisRecoverySchema(DataSource dataSource) throws SQLException {
+        for (String table : List.of("analysis_continuation", "analysis_question_checkpoint")) {
+            assertThat(tableExists(dataSource, table)).as(table).isTrue();
+        }
+        for (String column : List.of("id", "username", "workspace_id", "branch_name", "repository_id",
+                "input_hash", "request_json", "result_json", "state", "claim_token", "claim_until",
+                "updated_at", "payload_characters", "current_node", "row_version")) {
+            assertThat(columnExists(dataSource, "analysis_continuation", column))
+                    .as("analysis continuation " + column).isTrue();
+        }
+        for (String column : List.of("id", "run_id", "question_key", "input_hash", "provider",
+                "node_codes", "detail_json", "prompt_text", "state", "attempts", "started_at", "error_text")) {
+            assertThat(columnExists(dataSource, "analysis_question_checkpoint", column))
+                    .as("analysis question " + column).isTrue();
+        }
+        assertThat(foreignKeyBindings(dataSource, "analysis_question_checkpoint", "fk_analysis_question_run"))
+                .containsExactly("run_id->analysis_continuation.id");
+        assertRecoveryIndex(dataSource, "analysis_continuation", "idx_analysis_cont_scope", true,
+                "workspace_id", "username");
+        assertRecoveryIndex(dataSource, "analysis_question_checkpoint", "idx_analysis_question_run", true,
+                "run_id", "state");
+        assertRecoveryIndex(dataSource, "analysis_question_checkpoint", "uq_analysis_question", false,
+                "run_id", "question_key");
+    }
+
+    private static void assertRecoveryIndex(DataSource dataSource, String table, String name,
+            boolean nonUnique, String... expectedColumns) throws SQLException {
+        var columns = new java.util.TreeMap<Integer, String>();
+        try (Connection connection = dataSource.getConnection();
+             ResultSet rows = connection.getMetaData().getIndexInfo(
+                     connection.getCatalog(), connection.getSchema(), table, false, false)) {
+            while (rows.next()) {
+                if (name.equals(rows.getString("INDEX_NAME"))) {
+                    assertThat(rows.getBoolean("NON_UNIQUE")).as(name + " uniqueness").isEqualTo(nonUnique);
+                    columns.put(rows.getInt("ORDINAL_POSITION"), rows.getString("COLUMN_NAME"));
+                }
+            }
+        }
+        assertThat(List.copyOf(columns.values())).as(name + " ordered columns").containsExactly(expectedColumns);
     }
 
     private static void assertReformulationSchema(DataSource dataSource) throws SQLException {

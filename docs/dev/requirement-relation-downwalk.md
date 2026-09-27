@@ -174,3 +174,19 @@ compiler-generated references in its anonymous catalogue adapter do not constitu
 a second class pair under the existing inventory policy. The former jdeps-based
 count of six was incorrect. The baseline now records the five actual pairs and
 keeps every unrelated entry and the exact dependency ratchet unchanged.
+
+## Initial catalogue DSL and integration exports
+
+Fresh catalogue materialization excludes virtual root-to-root and root-to-element
+templates from architecture relationships, just as it already excludes virtual
+root elements. The catalogue rows themselves are unchanged. Concrete relationships
+and their provenance remain; a missing concrete endpoint fails explicitly instead
+of silently dropping the relationship. This keeps a newly initialized workspace
+referentially closed without inventing category containers as project components.
+Existing Git histories and saved workspace documents are not rewritten by this
+change. Historical documents with dangling references still require an explicit
+reviewed repair; the integration export validator remains fail-closed.
+
+Evidence-only diagrams contain no score-derived impact anchors. Their checked
+context control is disabled rather than offering a filter that would hide every
+element. Legacy diagrams with real anchors retain the context filter.

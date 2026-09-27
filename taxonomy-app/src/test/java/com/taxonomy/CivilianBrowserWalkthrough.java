@@ -178,16 +178,25 @@ final class CivilianBrowserWalkthrough implements AutoCloseable {
         screenshot("76-civilian-focus.png");
         click(By.id("architectureOverview"));
         wait.until(browser -> browser.findElements(By.cssSelector(".architecture-node")).size() == total);
-        click(By.id("showArchitectureContext"));
-        assertThat(driver.findElement(By.id("showArchitectureContext")).isSelected()).isFalse();
         Set<String> anchors = new TreeSet<>();
         projection.at("/scene/nodes").forEach(node -> {
             if (node.path("anchor").asBoolean()) anchors.add(node.path("id").asText());
         });
-        wait.until(browser -> visibleNodeIds().equals(anchors));
-        click(By.id("showArchitectureContext"));
-        assertThat(driver.findElement(By.id("showArchitectureContext")).isSelected()).isTrue();
-        wait.until(browser -> visibleNodeIds().size() == total);
+        var contextToggle = driver.findElement(By.id("showArchitectureContext"));
+        if (anchors.isEmpty()) {
+            // Evidence-backed views have no score-derived impact anchors. The
+            // disabled, checked control must keep every model element visible.
+            assertThat(contextToggle.isEnabled()).isFalse();
+            assertThat(contextToggle.isSelected()).isTrue();
+            assertThat(visibleNodeIds()).hasSize(total);
+        } else {
+            click(By.id("showArchitectureContext"));
+            assertThat(contextToggle.isSelected()).isFalse();
+            wait.until(browser -> visibleNodeIds().equals(anchors));
+            click(By.id("showArchitectureContext"));
+            assertThat(contextToggle.isSelected()).isTrue();
+            wait.until(browser -> visibleNodeIds().size() == total);
+        }
         click(By.id("fitArchitecture"));
         awaitFit();
         double before = zoom();

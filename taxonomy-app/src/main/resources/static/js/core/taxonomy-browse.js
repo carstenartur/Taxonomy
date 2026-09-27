@@ -137,7 +137,13 @@
                             showStatus('danger', t('browse.import.failed', data.error));
                             return;
                         }
-                        S.currentScores = data.scores || {};
+                        S.recoveryContext = null;
+                        document.dispatchEvent(new CustomEvent('taxonomy:analysis-evidence-imported'));
+                        S.analysisRecovery = null;
+                        S.analysisCoverage = data.analysisCoverage || null;
+                        if (window.TaxonomyScoring?.applyLocalRawScores) {
+                            window.TaxonomyScoring.applyLocalRawScores(data.rawScores || data.scores || {}, true);
+                        } else S.currentScores = data.scores || {};
                         S.currentReasons = data.reasons || {};
                         S.lastAnalysisProvider = data.provider || 'IMPORTED';
                         S.lastAnalysisDurationMillis = null; // imported scores have no verified run timing
@@ -955,6 +961,7 @@
                 provider: decisionProvider,
                 analysisStatus: S.lastAnalysisStatus || 'UNKNOWN',
                 analysisDurationMillis: S.lastAnalysisDurationMillis,
+                analysisCoverage: S.analysisCoverage || null,
                 discrepancies: S.currentDiscrepancies || [],
                 productCoverageGaps: S.currentProductCoverageGaps || [],
                 language: window.TaxonomyI18n
