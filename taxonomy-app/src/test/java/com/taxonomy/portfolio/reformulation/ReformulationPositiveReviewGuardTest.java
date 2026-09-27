@@ -199,32 +199,51 @@ class ReformulationPositiveReviewGuardTest extends ReformulationWorkflowFixture 
 
     @Test void importedConflictRetainsPortableKeysButMatchesExistingDifferentCaseBusinessIdentity() throws Exception {
         adopt(true);
-        String dsl = git.exportPortfolio("architect", context);
-        var sourceBlock = new TaxDslParser().parse(dsl, "case-sensitive-source.taxdsl")
+        var parsed = new TaxDslParser().parse(git.exportPortfolio("architect", context), "case-fold-source.taxdsl");
+        var originalEvidence = parsed.blocksOfKind(ReformulationEvidenceCodec.BLOCK_KIND).getFirst();
+        var source = json.readValue(originalEvidence.property("payload"), ReformulationEvidenceCodec.Payload.class);
+        var amended = new ReformulationEvidenceCodec.Payload("p", "r", source.sourceVersionNumber(),
+                source.previousActiveVersionNumber(), source.targetVersionNumber(), source.analysisSnapshotId(), source.originalText(),
+                source.finalText(), source.targetContentHash(), source.proposalRevision(), source.actor(), source.rationale(), source.revision());
+        String lowerPayload = json.writeValueAsString(amended);
+        String lowerHash = StableIdentityHash.sha256(lowerPayload);
+        var lowercaseBlocks = parsed.getBlocks().stream().map(block -> {
+            String kind = block.getKind();
+            if (!List.of("project", "projectRequirement", "requirementVersion", ReformulationEvidenceCodec.BLOCK_KIND).contains(kind)) return block;
+            var header = new java.util.ArrayList<>(block.getHeaderTokens());
+            header.set(0, "p");
+            if (!kind.equals("project")) header.set(1, "r");
+            if (kind.equals(ReformulationEvidenceCodec.BLOCK_KIND)) header.set(3, lowerHash);
+            var properties = kind.equals(ReformulationEvidenceCodec.BLOCK_KIND)
+                    ? block.getProperties().stream().map(property -> {
+                        if (property.key().equals("payload")) return new PropertyAst("payload", lowerPayload, property.sourceLocation());
+                        if (property.key().equals("evidenceHash")) return new PropertyAst("evidenceHash", lowerHash, property.sourceLocation());
+                        return property;
+                    }).toList() : block.getProperties();
+            return new BlockAst(kind, header, properties, block.getChildren(), block.getExtensions(), block.getSourceLocation());
+        }).toList();
+        String dsl = new TaxDslSerializer().serialize(new DocumentAst(parsed.getMeta(), lowercaseBlocks));
+        var sourceBlock = new TaxDslParser().parse(dsl, "case-fold-import.taxdsl")
                 .blocksOfKind(ReformulationEvidenceCodec.BLOCK_KIND).getFirst();
+        assertThat(evidenceCodec.validateForMaterialization(dsl)).hasSize(1);
         var workspace = workspaces.createWorkspace("architect", "Case folded evidence " + UUID.randomUUID(), "Review guard");
         workspace = workspaces.provisionWorkspaceRepository("architect", workspace.getWorkspaceId());
         WorkspaceContext target = new WorkspaceContext("architect", workspace.getWorkspaceId(), workspace.getCurrentBranch(), workspace.getSourceRepositoryId());
-        var lowerProject = projects.createProject(new CreateProjectRequest("p", "Existing project", "Same identity", ProjectStatus.ACTIVE,
+        var lowerProject = projects.createProject(new CreateProjectRequest("P", "Existing project", "Same identity", ProjectStatus.ACTIVE,
                 null, null, null, null), "architect", target);
-        var lowerRequirement = projects.createRequirement(lowerProject.id(), new CreateRequirementRequest("r", "Existing requirement",
+        var lowerRequirement = projects.createRequirement(lowerProject.id(), new CreateRequirementRequest("R", "Existing requirement",
                 ORIGINAL, RequirementStatus.DRAFT, 50, Criticality.HIGH, RequirementType.FUNCTIONAL, ReviewStatus.PROPOSED,
                 "architect", "Original", null), "architect", target);
         git.materialize(dsl, "architect", target);
-        // The importer reuses the case-insensitive business identity but normalizes
-        // its spelling from the source. Restore the existing spelling to exercise a
-        // valid mixed-case persisted target without changing portable evidence bytes.
-        jdbc.update("update arch_project set project_key=? where id=?", "p", lowerProject.id());
-        jdbc.update("update project_requirement set requirement_key=? where id=?", "r", lowerRequirement.id());
         var current = projects.getRequirement(lowerProject.id(), lowerRequirement.id(), "architect", target);
-        assertThat(projects.getProject(lowerProject.id(), "architect", target).projectKey()).isEqualTo("p");
-        assertThat(current.requirementKey()).isEqualTo("r");
+        assertThat(projects.getProject(lowerProject.id(), "architect", target).projectKey()).isEqualTo("P");
+        assertThat(current.requirementKey()).isEqualTo("R");
         assertThat(current.currentVersion().versionNumber()).isEqualTo(2);
         var stored = importedEvidence.findByScopeKeyOrderByProjectKeyAscRequirementKeyAscTargetVersionNumberAscEvidenceHashAsc(
                 PortfolioScope.key("architect", target));
         assertThat(stored).hasSize(1);
-        assertThat(stored.getFirst().getProjectKey()).isEqualTo("P");
-        assertThat(stored.getFirst().getRequirementKey()).isEqualTo("R");
+        assertThat(stored.getFirst().getProjectKey()).isEqualTo("p");
+        assertThat(stored.getFirst().getRequirementKey()).isEqualTo("r");
         assertThat(stored.getFirst().getPayload()).isEqualTo(sourceBlock.property("payload"));
         assertThat(stored.getFirst().getEvidenceHash()).isEqualTo(sourceBlock.property("evidenceHash"));
         select(target);

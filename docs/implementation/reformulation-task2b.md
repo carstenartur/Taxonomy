@@ -45,6 +45,13 @@ part of completion Task 2; do not redo Task 1 or broaden module boundaries.
 - Respect existing context/budget checks. If required inherited context cannot fit,
   fail visibly; no hidden truncation or archive-only substitute.
 
+Relevant existing seams: `FrozenReformulationEngine` currently labels its verbatim
+source statement ORIGINAL; the response parser only forbids models from minting
+HUMAN_DECISION. If introducing an adopted-source provenance, also prevent the model
+from fabricating it and update source-only editing protections/DE-EN UI labels
+(`ReformulationService.statement` and `requirement-reformulation.js` currently test
+ORIGINAL explicitly). Preserve protected source behavior independently of origin.
+
 ## Verification and bounded scope
 
 Write meaningful RED tests before product changes. Cover ordinary source, local

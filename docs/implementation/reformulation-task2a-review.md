@@ -9,8 +9,9 @@ boundaries sound for tested valid payloads, with two material missing edge cases
 - High: `ReformulationPositiveReviewGuard.java:40-47` queries and compares imported
   project/requirement business keys case-sensitively. Existing materialization uses
   case-insensitive identity (`PortfolioGitService` and `ReformulationEvidenceCodec`).
-  A valid conflict-bearing P/R document imported into existing p/r with matching
-  current version and text hash is stored but missed by the positive-review query.
+  A valid conflict-bearing lowercase p/r portable document materializes canonical
+  physical P/R rows while retaining lowercase evidence keys/bytes. With matching
+  current version and text hash, the positive-review query misses that evidence.
   Preserve original portable bytes/hash while matching the established identity.
 - Medium: `ReformulationService.java:336-339` dereferences deserialized baseline
   without a null check. Persisted JSON `null` yields 500 and malformed JSON maps to
@@ -23,3 +24,14 @@ the two newly identified paths. Future-task coordination docs are outside review
 
 Fix round 1 pending: add meaningful RED regressions for both paths, minimal fixes,
 one covering GREEN, then scoped re-review. Do not repeat unrelated full suites.
+
+## Import-path premise correction during RED setup
+
+The initial reviewer example reversed the casing direction. Ordinary creation
+normalizes business keys to uppercase (`ProjectPortfolioService.businessKey`), so
+an API-created p/r is already P/R; the importer does not rename it. An intermediate
+SQL-restored test fixture was rejected before execution as evidence for this user
+path. The replacement authors valid lowercase p/r portable DSL, including matching
+payload keys and recomputed evidence hash, and uses the real importer with no SQL
+mutation. This tests the reachable reverse-direction mismatch and preserves exact
+imported bytes/hash. Baseline JSON null/malformed RED remains independently valid.
