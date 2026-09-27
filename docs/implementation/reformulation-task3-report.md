@@ -51,6 +51,12 @@ Status: in progress; not product acceptance.
 - Added tests-first real persisted graph endpoint (two catalogue nodes, one directed saved relation, figure, canonical `edge-<mappingId>`, historical branch and explicit empty gaps) and separate exact adoption-receipt DOCX status versus unchanged proposal revision. Neither new selector has been run yet.
 - Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am -Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure+exactAdoptionReceiptIsBinaryDocxAndDoesNotRetroactivelyAdoptRevision -Dsurefire.failIfNoSpecifiedTests=false test`.
 
+## Checkpoint 10 — authored graph fixture correction
+
+- Two-test selector: adoption receipt positive; graph case did not reach the exporter because the real BP catalogue fixture root has only one immediate child. One test error (`IndexOutOfBoundsException`), zero assertion failures. Not semantic RED.
+- Revised graph fixture uses actual BP root and its first child as directed endpoints, still persisted via real snapshot/view/mappings.
+- Next exact command after remote alignment: `python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am '-Dtest=ReformulationReportTest#realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure+exactAdoptionReceiptIsBinaryDocxAndDoesNotRetroactivelyAdoptRevision' -Dsurefire.failIfNoSpecifiedTests=false test`.
+
 ## Checkpoint 6 — frozen catalogue fixture
 
 - Focused class again ran 5 tests, 1 failure / 2 errors: the real BP catalogue has no authored `BP-1`/`BP-2` fixture nodes, so mapper correctly rejected those mappings before reaching multiplicity. Endpoint revision and existing JSON cases passed.

@@ -147,8 +147,8 @@ class ReformulationReportTest extends ReformulationWorkflowFixture {
     @Test
     void realSavedGraphDocxUsesCanonicalEdgeReferenceAndEmbedsFigure() throws Exception {
         var root = catalogue.getFullTree().stream().filter(n -> "BP".equals(n.getCode())).findFirst().orElseThrow();
-        var first = root.getChildren().get(0);
-        var second = root.getChildren().get(1);
+        var first = root;
+        var second = root.getChildren().getFirst();
         var view = new RequirementArchitectureView();
         for (var node : List.of(first, second)) {
             var element = new RequirementElementView();
