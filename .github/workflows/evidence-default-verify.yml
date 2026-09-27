@@ -1,0 +1,64 @@
+name: Verify default relationship evidence
+on:
+  push:
+    branches: [maintenance/evidence-default-source-20260927]
+    paths: [.github/workflows/evidence-default-verify.yml]
+permissions:
+  contents: write
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {fetch-depth: 0}
+      - name: Verify transfer and exact product tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/evidence-default-verification
+          cp .github/transfers/evidence-default.patch.b64 /tmp/evidence-default-verification/transport.b64
+          python3 - <<'PY'
+          import base64, gzip, hashlib
+          from pathlib import Path
+          root = Path('/tmp/evidence-default-verification')
+          encoded = (root / 'transport.b64').read_text().strip()
+          patch = gzip.decompress(base64.b64decode(encoded, validate=True))
+          assert hashlib.sha256(patch).hexdigest() == '6e98230ed580b930c7a0ccd9fc04d586b01d0a9c1db2b183d74338ae319d4744'
+          (root / 'changes.patch').write_bytes(patch)
+          PY
+          git checkout --detach 8a1190bf38f77cd5151165bbbfdc688e15f046ab
+          git apply --index /tmp/evidence-default-verification/changes.patch
+          git diff --cached --check
+          test "$(git write-tree)" = 4a4c291043f92107c5f433391ea0b41ff0b94d35
+          git diff --cached --stat > /tmp/evidence-default-verification/diff-stat.txt
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin, cache: maven}
+      - name: Verify owning modules with Maven
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./mvnw -B -ntp -pl taxonomy-analysis,taxonomy-portfolio -am test 2>&1 | tee /tmp/evidence-default-verification/maven.log
+      - name: Publish verified product branch without force
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git write-tree)" = 4a4c291043f92107c5f433391ea0b41ff0b94d35
+          git config user.name 'Carsten Hammer'
+          git config user.email 'carsten.hammer@t-online.de'
+          git commit -m 'feat(analysis): default to scoped evidence and retain open source contributions'
+          git push origin HEAD:refs/heads/fix/default-evidence-architecture
+          git rev-parse HEAD HEAD^{tree} > /tmp/evidence-default-verification/published.txt
+      - name: Collect executed reports
+        if: always()
+        shell: bash
+        run: |
+          mkdir -p /tmp/evidence-default-verification/reports
+          find taxonomy-* -path '*/surefire-reports/TEST-*.xml' -type f -exec cp --parents '{}' /tmp/evidence-default-verification/reports/ ';'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: evidence-default-verification
+          path: /tmp/evidence-default-verification
+          if-no-files-found: error
+          retention-days: 7
