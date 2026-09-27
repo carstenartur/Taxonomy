@@ -94,4 +94,20 @@ class ReformulationResponseParserTest {
                 .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Rejected wording");
         assertThat(parser.parse(retained,in).preservedStatementIds()).containsExactly("s-rejected");
     }
+    @Test void freshAdoptedOfferRejectsApplicableHistoricalWordingWithoutCurrentStatements() {
+        var baseline = AdoptedLineagePromptTest.scopedAdopted();
+        var input = new NodeSynthesisInput(baseline, "A", null, "A", List.of(), List.of(),
+                List.of(), Map.of(), List.of(), List.of(), "preserve");
+        assertThatThrownBy(() -> parser.parse(EMPTY.replace("Zusammenfassung",
+                "Summary repeats Rejected A-only wording"), input))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Rejected wording");
+        String proposal = "{\"wording\":\"Rejected A-only wording\",\"provenance\":\"MODEL_ADDITION\","
+                + "\"sourceSpans\":[],\"architectureLinks\":[],\"questionDependencies\":[],\"conditionalValidity\":null}";
+        assertThatThrownBy(() -> parser.parse(EMPTY.replace("\"statementProposals\":[]",
+                "\"statementProposals\":[" + proposal + "]"), input))
+                .isInstanceOf(IllegalArgumentException.class).hasMessageContaining("Rejected wording");
+        // A branch-local rejection must not falsely veto an unrelated branch.
+        assertThat(parser.parse(EMPTY.replace("Zusammenfassung", "Rejected B-only wording"), input)
+                .summary()).isEqualTo("Rejected B-only wording");
+    }
 }

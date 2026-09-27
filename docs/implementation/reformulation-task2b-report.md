@@ -4,6 +4,12 @@ Status: focused Task 2b verification green through DSL-property correction;
 independent review and root's integrated gate pending. No product acceptance or
 real-provider quality claim.
 
+Fix round 1 (review head `7cdaeec40a511b3fe73d070693ceabb9f1be6a4d`):
+three Important findings accepted. New tests first cover a fresh adopted offer's
+historical rejected wording and branch-local/global/unmappable prompt selection.
+These tests are RED candidates, not yet executed; a real post-adoption analysis
+job/checkpoint transport-only regression is still to be added in this wave.
+
 ## Verified outcome to date
 
 - Frozen exact local/imported adopted-source evidence, nonrecursive v2 hash-linked

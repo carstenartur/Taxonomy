@@ -29,6 +29,42 @@ class AdoptedLineagePromptTest {
                 b.language(), b.algorithmVersion());
     }
 
+    static ReformulationBaseline scopedAdopted() {
+        var b = WalkUpReformulationTest.baseline();
+        var context = new HashMap<>(b.frozenContext());
+        context.put("adoptedLineage", "frozen archive");
+        context.put("inheritedDecisionContext", """
+                [{"historicalEvidenceHash":"history-1","statements":[
+                  {"id":"a","wording":"Rejected A-only wording","reviewState":"REJECTED","architectureLinks":["A"],"questionDependencies":[]},
+                  {"id":"b","wording":"Rejected B-only wording","reviewState":"REJECTED","architectureLinks":["B"],"questionDependencies":[]},
+                  {"id":"unknown","wording":"Unmapped historical wording","reviewState":"REJECTED","architectureLinks":[],"questionDependencies":[]}],
+                  "questions":[{"id":"q-global","key":{"scope":"global"},"wording":"Shared policy?","affectedStatementIds":[],"prerequisites":[],"discoveries":[]}],
+                  "humanAnswers":[{"questionId":"q-global","values":["retain"],"rationale":"Globally decided"}],
+                  "historicalReview":{"findings":[]}}]
+                """);
+        context.put("reconcilePrompt", ReconcilePromptBuilder.template());
+        return new ReformulationBaseline(b.scope(), b.sourceVersionId(), b.originalText(),
+                b.originalTextHash(), b.snapshotId(), b.snapshotPayload(), context,
+                b.language(), b.algorithmVersion());
+    }
+
+    @Test void branchCallsExcludeUnrelatedInheritedDecisionsButKeepGlobalAndUnmapped() {
+        var baseline = scopedAdopted();
+        var builder = new ReformulationPromptBuilder(json);
+        for (String step : List.of("A", "B")) {
+            var input = new NodeSynthesisInput(baseline, step, null, step, List.of(), List.of(),
+                    List.of(), Map.of(), List.of(), List.of(), "Preserve source");
+            String prompt = builder.build(input, null);
+            assertThat(prompt).contains("Shared policy?", "Globally decided", "Unmapped historical wording");
+            assertThat(prompt).contains("Rejected " + step + "-only wording");
+            assertThat(prompt).doesNotContain("Rejected " + (step.equals("A") ? "B" : "A") + "-only wording");
+        }
+        var input = new ReconciliationInput(baseline, 1, List.of(), List.of(), List.of(),
+                List.of(), Map.of(), Map.of(), List.of());
+        assertThat(new ReconcilePromptBuilder(json).build(input, null))
+                .contains("Rejected A-only wording", "Rejected B-only wording", "Shared policy?");
+    }
+
     @Test void nodeGroupAggregateAndRewordPayloadsCarryConcreteInheritedEvidenceWithoutRawArchive() {
         var base = adopted();
         for (String node : List.of("NODE", "NODE_GROUP", "NODE_AGGREGATE", "REWORD")) {
