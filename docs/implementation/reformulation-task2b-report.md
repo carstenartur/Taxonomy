@@ -1,6 +1,6 @@
 # Task 2b — adopted lineage and portable evidence
 
-Status: focused Task 2b verification green through source/schema correction;
+Status: focused Task 2b verification green through DSL-property correction;
 independent review and root's integrated gate pending. No product acceptance or
 real-provider quality claim.
 
@@ -15,8 +15,13 @@ real-provider quality claim.
   Spring/codec/guard slice ran **36/36** (5 codec boundary, 14 guard, 17 round
   trip), zero failures/errors/skips, build success. These are two distinct
   checkpoints, not an inflated combined suite count.
-- Remaining: one narrow DSL property-schema regression is being verified;
-  independent scoped review and root's integrated/full-reactor checks follow.
+- Final narrow DSL-property correction ran `ReformulationEvidenceRoundTripTest`
+  **18/18** and `ReformulationEvidenceCodecBoundaryTest` **5/5**, zero
+  failures/errors/skips, build success. This was after the 88-test combined run
+  and the 36-test source/schema correction run; each count belongs to its own
+  checkpoint and is not a single cumulative suite.
+- Remaining: independent scoped review and root's integrated/full-reactor
+  checks. No merge or product acceptance claim.
   The service/DB fixtures use persisted analysis snapshots but not the later
   real-analysis civilian browser path. UI labels/action hiding are static code;
   no browser or real provider was used in this task.
@@ -133,12 +138,43 @@ real-provider quality claim.
   property. A duplicate or unknown property on an evidence block must fail
   closed even if its first payload and hash are valid. RED: one real-import
   test, one expected failure (duplicate property accepted), zero errors. The
-  candidate codec fix requires exactly four distinct evidence properties and
-  no child/extension content. GREEN unverified.
+  codec now requires exactly four distinct evidence properties and no child or
+  extension content. Covering GREEN: RoundTrip 18/18 and codec boundary 5/5,
+  **23 tests**, zero failures/errors/skips, build success.
 
-## Next exact command
+## Scope self-review and limits
 
-`python3 .superpowers/sdd/reformulation-completion/run-maven.py -pl taxonomy-app -am test -Dtest=ReformulationEvidenceRoundTripTest,ReformulationEvidenceCodecBoundaryTest -Dsurefire.failIfNoSpecifiedTests=false`
+- v1 payload serialization remains the existing `Payload` path; imported v1
+  bytes and hashes survive round trip. v2 wraps an adoption payload with direct
+  ancestor hashes, and the existing portfolio checkpoint emits each ancestor as
+  a distinct immutable block. Import checks exact root uniqueness, JSON and DSL
+  schema, source/target version text/hash, closure, cycles and business identity
+  before materialization. Portable p/r can bind physical P/R without rewriting
+  evidence bytes.
+- The selected adopted original is `ADOPTED_SOURCE`, not a new user approval.
+  The model cannot mint it or relabel exact adopted text `ORIGINAL`; engine,
+  coverage, reconciliation, service actions and DE/EN UI source labels share
+  protected-source semantics. Existing review metadata is retained as history,
+  not promoted to current review.
+- Frozen prompt projection includes historical hashes, applicable statement
+  wording/origin/review, question/source-resolution values and rationales, and
+  human answer events with actor, supersession, values and rationale. Raw
+  portable archive, obsolete spans and old whole-source statement text remain
+  outside NODE, grouping/aggregate, REWORD and RECONCILE prompts. The existing
+  final-prompt budget path fails visibly when inherited context will not fit;
+  input encoding v3 invalidates old lossy checkpoint entries.
+- Service/DB tests cover local and imported adoption paths and a second
+  generation using persisted fixture snapshots. They are not the real-analysis
+  civilian playback/browser path, which remains Task 4. No real-provider test,
+  full-reactor run, DOCX work, or independent review was performed by this
+  implementer. The unchanged architecture dependency ratchet passed 22/22 in
+  the pre-correction focused run; no dependency baseline was increased.
+
+## Next exact action
+
+Independent scoped review of `git diff 8e1a1103276600a3127759488fe8bd6c04b463ae..HEAD`
+against `docs/implementation/reformulation-task2b.md`, then root's integrated
+gate. Do not repeat Tasks 1/2a or infer real-language quality from playback.
 
 Use this report for evolving RED/GREEN counts, decisions, limitations and the
 next exact command. Root owns full-reactor CI and publication verification.
