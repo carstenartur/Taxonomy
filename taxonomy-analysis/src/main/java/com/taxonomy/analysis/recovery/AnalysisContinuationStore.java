@@ -26,7 +26,7 @@ public class AnalysisContinuationStore {
     public record Snapshot(AnalysisRecoveryView recovery, AnalysisResult result, AnalysisRequest request) { }
 
     @Transactional
-    public Claim begin(AnalysisRequest request, WorkspaceContext scope, String signature) {
+    public Claim begin(AnalysisRequest request, WorkspaceContext scope, String signature, List<TaxonomyNodeDto> tree) {
         requireScope(scope);
         String id = requireId(request.getContinuationId());
         var run = em.find(AnalysisContinuationRun.class, id, LockModeType.PESSIMISTIC_WRITE);
@@ -38,6 +38,11 @@ public class AnalysisContinuationStore {
             run.repositoryId = scope.repositoryId(); run.branchName = scope.currentBranch();
             run.inputHash = signature; run.requestJson = mapper.writeValueAsString(request);
             run.state = "NEW";
+            // Seed the original catalogue before any provider call. Cancellation can then
+            // reconstruct typed evidence without a worker or a potentially changed catalogue.
+            var seed = new AnalysisResult(Map.of(), tree);
+            seed.setStatus("IN_PROGRESS"); seed.setProvider(request.getProvider());
+            writeResult(run, seed);
             em.persist(run);
         } else {
             authorize(run, scope);
@@ -112,7 +117,7 @@ public class AnalysisContinuationStore {
     public void finish(Claim claim, AnalysisCheckpointSession.Question request, String state, LlmCallDetail detail) {
         var run = em.find(AnalysisContinuationRun.class, claim.id(), LockModeType.PESSIMISTIC_WRITE);
         if (run == null || !Objects.equals(run.claimToken, claim.token())
-                || !Set.of("RUNNING", "CANCELLED").contains(run.state)) throw conflict("Question claim was superseded");
+                || !"RUNNING".equals(run.state)) throw conflict("Question claim was superseded");
         var question = question(run, request.key());
         if (question == null || !"ATTEMPT".equals(question.state)) throw conflict("Question no longer owns this attempt");
         String json = mapper.writeValueAsString(detail);
@@ -142,6 +147,12 @@ public class AnalysisContinuationStore {
     public AnalysisResult complete(Claim claim, AnalysisResult result, List<TaxonomyNodeDto> tree) {
         var run = em.find(AnalysisContinuationRun.class, claim.id(), LockModeType.PESSIMISTIC_WRITE);
         if (run == null || !Objects.equals(run.claimToken, claim.token())) throw conflict("Operation claim was superseded");
+        var previous = readResult(run);
+        if ("CANCELLED".equals(run.state) && previous != null && previous.getAnalysisCoverage() != null
+                && "CANCELLED".equals(previous.getStatus())) {
+            return previous; // Cancellation already committed the canonical result; late workers cannot rewrite it.
+        }
+        if (previous != null && previous.getTree() != null) tree = previous.getTree();
         for (var question : questions(run)) if ("ATTEMPT".equals(question.state)) {
             question.state = "FAILED";
             question.error = "OUTCOME_UNCERTAIN: interrupted call; the provider may have processed it";
@@ -160,7 +171,7 @@ public class AnalysisContinuationStore {
         for (var question : open) for (String node : question.nodes()) missing.put(node,
                 (question.skipped() ? "LEFT_OPEN:" : "FAILED:") + question.key());
         // This is evidence metadata, never a new official catalogue node or an invented score.
-        if (result.getTree() == null || result.getTree().isEmpty()) result.setTree(tree);
+        result.setTree(tree);
         String interruption = Set.of("PAUSED", "STOPPED", "CANCELLED").contains(run.state)
                 ? "INTERRUPTED:" + run.state : null;
         result.setAnalysisCoverage(AnalysisCoverage.derive(tree, result.getRawScores(), result.getScores(), missing, interruption));
@@ -177,10 +188,7 @@ public class AnalysisContinuationStore {
         run.claimUntil = 0; run.updatedAt = System.currentTimeMillis(); em.flush();
         result.setRecovery(view(run));
         // Tree is retained: restoring against a later catalogue must not relabel old evidence.
-        String json = mapper.writeValueAsString(result);
-        if (json.length() > 12_000_000) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
-                "Analysis result exceeds the durable result limit; individual answers remain stored");
-        run.resultJson = json; em.flush();
+        writeResult(run, result); em.flush();
         result.setRecovery(view(run));
         return result;
     }
@@ -192,15 +200,40 @@ public class AnalysisContinuationStore {
     }
     @Transactional
     public Snapshot cancel(String id, WorkspaceContext scope) {
-        var run = scoped(id, scope);
-        if (!"COMPLETED".equals(run.state) && !"CANCELLED".equals(run.state)) {
-            run.state = "CANCELLED"; run.updatedAt = System.currentTimeMillis();
-        }
-        em.flush();
+        return cancelLocked(scoped(id, scope), null, null);
+    }
+    /** Legacy in-flight rows can recover the tree only after its full semantic identity is verified. */
+    @Transactional
+    public Snapshot cancel(String id, WorkspaceContext scope, List<TaxonomyNodeDto> tree, String signature) {
+        return cancelLocked(scoped(id, scope), tree, signature);
+    }
+    private Snapshot cancelLocked(AnalysisContinuationRun run, List<TaxonomyNodeDto> fallbackTree, String signature) {
         var result = readResult(run);
-        if (result != null && "CANCELLED".equals(run.state)) {
-            result.setStatus("CANCELLED"); result.setRecovery(view(run));
-            run.resultJson = mapper.writeValueAsString(result); em.flush();
+        if (!"COMPLETED".equals(run.state) && (!"CANCELLED".equals(run.state)
+                || result == null || result.getAnalysisCoverage() == null)) {
+            if (result == null || result.getTree() == null) {
+                if (fallbackTree == null || !Objects.equals(signature, run.inputHash))
+                    throw conflict("The original catalogue snapshot is unavailable; restore its matching context before deciding");
+                result = new AnalysisResult(Map.of(), fallbackTree);
+            }
+            var raw = new LinkedHashMap<>(result.getRawScores());
+            var reasons = new LinkedHashMap<>(result.getReasons() == null ? Map.<String,String>of() : result.getReasons());
+            // The run lock serializes this snapshot with finish(). An accepted cancellation
+            // includes every earlier committed success and admits no later provider answer.
+            for (var question : questions(run)) {
+                if ("SUCCESS".equals(question.state) && question.detailJson != null) {
+                    var detail = mapper.readValue(question.detailJson, LlmCallDetail.class);
+                    raw.putAll(detail.getScores());
+                    if (detail.getReasons() != null) reasons.putAll(detail.getReasons());
+                    if (detail.getProvider() != null) result.setProvider(detail.getProvider());
+                }
+            }
+            result.setRawScores(raw); result.setReasons(reasons);
+            result.setErrorMessage("CANCELLED: completed question evidence preserved; remaining assessments are unknown");
+            run.state = "CANCELLED";
+            // complete() remains inside this short transaction and marks unfinished attempts
+            // uncertain, derives coverage from the frozen tree and persists the entire result.
+            result = complete(new Claim(run.id, run.claimToken, null), result, result.getTree());
         }
         return new Snapshot(view(run), result, mapper.readValue(run.requestJson, AnalysisRequest.class));
     }
@@ -256,6 +289,12 @@ public class AnalysisContinuationStore {
         int complete = (int) all.stream().filter(q -> "SUCCESS".equals(q.state)).count();
         return new AnalysisRecoveryView(run.id, run.version, run.state, complete,
                 all.stream().mapToInt(q -> q.attempts).sum(), run.currentNode, openQuestions(run));
+    }
+    private void writeResult(AnalysisContinuationRun run, AnalysisResult result) {
+        String json = mapper.writeValueAsString(result);
+        if (json.length() > 12_000_000) throw new ResponseStatusException(HttpStatus.UNPROCESSABLE_ENTITY,
+                "Analysis result exceeds the durable result limit; individual answers remain stored");
+        run.resultJson = json;
     }
     private AnalysisResult readResult(AnalysisContinuationRun run) {
         return run.resultJson == null ? null : withRecovery(mapper.readValue(run.resultJson, AnalysisResult.class), run);

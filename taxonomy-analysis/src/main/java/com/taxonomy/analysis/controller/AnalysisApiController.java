@@ -163,8 +163,13 @@ public class AnalysisApiController {
                             request.getProvider(),
                             username,
                             context));
-            if (run != null) run.finish(result.analysisResult());
             AnalysisResult response = continuation == null ? result.analysisResult() : continuation.complete(result.analysisResult());
+            if (run != null) {
+                // The continuation is the durable authority. Publishing live completion must
+                // follow its commit and must not mutate that already persisted response.
+                if (continuation == null) run.finish(response);
+                else run.finish(response.getStatus());
+            }
             return ResponseEntity.ok().cacheControl(org.springframework.http.CacheControl.noStore())
                     .header(ANALYSIS_OPERATION_ID_HEADER, operationId)
                     .body(response);

@@ -125,7 +125,7 @@ public class SavedAnalysisService {
             throw new IllegalArgumentException("scores must not be null or empty");
         }
 
-        saved.validateCoverageEvidence();
+        validateCoverageEvidence(saved);
 
         // Warn about unknown node codes but do not reject
         List<String> unknownCodes = new ArrayList<>();
@@ -139,6 +139,18 @@ public class SavedAnalysisService {
         }
 
         return saved;
+    }
+
+    /** Version-3 evidence must refer to real catalogue identities on both exchange paths. */
+    public void validateCoverageEvidence(SavedAnalysis saved) {
+        saved.validateCoverageEvidence();
+        if (saved.getVersion() >= 3) {
+            for (String code : saved.getAnalysisCoverage().nodes().keySet()) {
+                if (taxonomyService.getNodeByCode(code) == null) {
+                    throw new IllegalArgumentException("Unknown catalogue node in assessment coverage: " + code);
+                }
+            }
+        }
     }
 
     /**

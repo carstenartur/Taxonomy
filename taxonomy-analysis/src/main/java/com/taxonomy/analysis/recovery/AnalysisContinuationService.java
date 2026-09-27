@@ -25,19 +25,28 @@ public class AnalysisContinuationService {
         authorize(username, scope);
         AnalysisRequest frozen = mapper.readValue(mapper.writeValueAsString(request), AnalysisRequest.class);
         frozen.setMaxArchitectureNodes(maxNodes);
-        String signature = AnalysisCheckpointSession.digest("resumable-scoring-v1", frozen.getBusinessText(),
-                Boolean.toString(frozen.isIncludeArchitectureView()), Integer.toString(maxNodes),
-                llm.recoveryPolicyFingerprint(frozen.getProvider()), mapper.writeValueAsString(catalogue.getFullTree()));
-        return new Execution(store.begin(frozen, scope, signature));
+        var tree = catalogue.getFullTree();
+        return new Execution(store.begin(frozen, scope, signature(frozen, tree), tree));
     }
     public AnalysisContinuationStore.Snapshot read(String id, String username, WorkspaceContext scope) {
         authorize(username, scope); return store.read(id, scope);
     }
     public AnalysisContinuationStore.Snapshot cancel(String id, String username, WorkspaceContext scope) {
-        authorize(username, scope); return store.cancel(id, scope);
+        authorize(username, scope);
+        var snapshot = store.read(id, scope);
+        if (snapshot.result() == null || snapshot.result().getTree() == null) {
+            var tree = catalogue.getFullTree();
+            return store.cancel(id, scope, tree, signature(snapshot.request(), tree));
+        }
+        return store.cancel(id, scope);
     }
     public LlmCallDetail detail(String id, String key, String username, WorkspaceContext scope) {
         authorize(username, scope); return store.detail(id, key, scope);
+    }
+    private String signature(AnalysisRequest request, java.util.List<TaxonomyNodeDto> tree) {
+        return AnalysisCheckpointSession.digest("resumable-scoring-v1", request.getBusinessText(),
+                Boolean.toString(request.isIncludeArchitectureView()), String.valueOf(request.getMaxArchitectureNodes()),
+                llm.recoveryPolicyFingerprint(request.getProvider()), mapper.writeValueAsString(tree));
     }
     private void authorize(String username, WorkspaceContext scope) {
         if (scope == null || !Objects.equals(username, scope.username()) || scope.workspaceId() == null)

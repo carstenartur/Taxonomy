@@ -109,3 +109,50 @@ patched classes/resources ahead of the original CI runtime, not a new full Maven
 package or external database matrix. There is no fresh independent reviewer
 agent or physical iPad run. Full new-head CI and review remain release gates;
 this follow-up neither merges the PR nor marks the project completely defect-free.
+
+## PR #1133 durability review follow-up (2026-09-27)
+
+Addressed the four findings from review `5328928128` on head `6b4df02`:
+
+- Commit the durable continuation before publishing terminal progress. The live
+  registry uses its committed status without mutating the persisted response;
+  a storage exception cannot report a completed operation.
+- Freeze the original catalogue when admitting a run. Cancellation holds the
+  run lock, materializes all previously committed successful question evidence,
+  marks uncompleted scopes unknown and commits that result before returning.
+  Late provider completions are fenced. Legacy rows without a seed require the
+  exact original catalogue/policy identity before reconstruction; a changed
+  context is rejected rather than relabeling old evidence.
+- Invalid explicit providers in recovery fingerprinting use the established
+  `UnknownAnalysisProviderException`, so HTTP remains 400 instead of 500.
+- Both version-3 import and export validate all coverage identities, including
+  unassessed keys, against the catalogue through `SavedAnalysisService`.
+  Real UNKNOWN scopes and legacy version-2 warning-only behavior remain valid.
+
+Fresh local evidence:
+
+- Eight original review regressions were observed failing; three compatibility
+  checks already passed. The legacy interrupted-row regression also exposed and
+  then verified the repair of a cancelled row with no result snapshot.
+- All 13 new executable Java scenarios pass; they have JUnit wrappers owned by
+  the analysis and application modules. All five prior JVM contract groups pass.
+  Eight modified production classes compile with Java 21 and `-parameters`.
+- All 273 focused JavaScript regressions and all 12 Chromium recovery component
+  scenarios pass, with no failures or skips in the JavaScript suites.
+- Nine actual Spring HTTP/crash-restart checks pass against a loopback-only KI
+  fixture and file-backed HSQLDB. The third provider request (15,643 characters)
+  was held open while cancellation committed the two preceding successful
+  questions. Java was killed with SIGKILL before that provider could complete.
+  A fresh process restored the same cancelled scores and unknown coverage;
+  reads and repeated cancellation sent no further KI requests. The HTTP checks
+  also cover invalid providers and both genuine/fabricated import/export scopes.
+- `git diff --check` passes. Full Maven and npm contract commands were attempted
+  unchanged: Maven distribution download remains unavailable locally, and npm
+  stops at missing `@axe-core/playwright`. No gate or baseline was relaxed.
+
+These local Java/HTTP checks use patched classes ahead of the prior CI-built
+application, not a newly packaged complete reactor. Probe wrappers are not a
+claim that the complete JUnit suite ran locally. Node 22.16.0 and the installed
+Chromium/Playwright differ from the pinned CI toolchain; no physical iPad test
+or full external-database matrix was run here. Current-head CI and review are
+still required. The PR's user-selected ready state is not changed by this work.

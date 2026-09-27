@@ -713,8 +713,16 @@ public class LlmService {
 
     /** Semantic input identity deliberately excludes credentials and transport-only retry settings. */
     public String recoveryPolicyFingerprint(String requestedProvider) {
-        LlmProvider provider = requestedProvider == null || requestedProvider.isBlank() || "MOCK".equalsIgnoreCase(requestedProvider)
-                ? getActiveProvider() : LlmProvider.valueOf(requestedProvider.toUpperCase(Locale.ROOT));
+        LlmProvider provider;
+        if (requestedProvider == null || requestedProvider.isBlank() || "MOCK".equalsIgnoreCase(requestedProvider)) {
+            provider = getActiveProvider();
+        } else {
+            try {
+                provider = LlmProvider.valueOf(requestedProvider.toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException invalidProvider) {
+                throw new com.taxonomy.analysis.usecase.UnknownAnalysisProviderException(requestedProvider);
+            }
+        }
         String endpoint = provider == LlmProvider.GEMINI ? providerConfig.getGeminiUrl()
                 : provider == LlmProvider.LOCAL_ONNX ? "LOCAL_ONNX" : providerConfig.getOpenAiCompatibleUrl(provider);
         String model = provider == LlmProvider.GEMINI || provider == LlmProvider.LOCAL_ONNX ? endpoint
