@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "referenceKind": "SYNTHETIC_POSITIVE_REFERENCES_NOT_EXHAUSTIVE",
+  "source": "Requirements authored for this repository; catalogue bindings reviewed before any ONNX result was inspected. No external requirement documents.",
+  "catalogueSourceRevision": "934d3cbe695ebed7f435663eff4495849174965c",
+  "cases": [
+    {"id":"payroll-en-v1","language":"en","domain":"human-resources","query":"Calculate employee salaries and deductions and track employee benefits and leave for the monthly payroll.","required":["UA-1604"],"expectedTitle":"Payroll Applications"},
+    {"id":"payroll-de-v1","language":"de","domain":"human-resources","query":"Die monatliche Gehaltsabrechnung soll Gehälter und Abzüge berechnen und Leistungen sowie Urlaub der Beschäftigten berücksichtigen.","required":["UA-1604"],"expectedTitle":"Payroll Applications"},
+    {"id":"documents-en-v1","language":"en","domain":"document-editing","query":"Staff need to compose, edit, format and print letters and reports, with spelling and grammar checks.","required":["UA-1583"],"expectedTitle":"Word Processing Applications"},
+    {"id":"documents-de-v1","language":"de","domain":"document-editing","query":"Beschäftigte sollen Briefe und Berichte verfassen, bearbeiten, formatieren und drucken können, einschließlich Rechtschreib- und Grammatikprüfung.","required":["UA-1583"],"expectedTitle":"Word Processing Applications"},
+    {"id":"email-en-v1","language":"en","domain":"messaging","query":"Employees need to compose and store email messages, choose recipients and send documents as attachments.","required":["UA-1222"],"expectedTitle":"Email Applications"},
+    {"id":"email-de-v1","language":"de","domain":"messaging","query":"Beschäftigte sollen E-Mails verfassen und speichern, Empfänger auswählen und Dokumente als Anhänge versenden können.","required":["UA-1222"],"expectedTitle":"Email Applications"}
+  ]
+}

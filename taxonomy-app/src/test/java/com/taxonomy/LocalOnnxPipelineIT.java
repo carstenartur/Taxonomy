@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.acceptance.OnnxReferenceEvaluation;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -18,6 +19,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Path;
 import java.time.Duration;
 import java.util.Base64;
 
@@ -40,6 +42,7 @@ class LocalOnnxPipelineIT {
             + Base64.getEncoder().encodeToString(
                     ("admin:" + ContainerTestUtils.TEST_ADMIN_PASSWORD)
                             .getBytes(StandardCharsets.UTF_8));
+    private static final Path MODEL_DIRECTORY = requireModelDirectory();
 
     @Container
     static GenericContainer<?> app = new GenericContainer<>(
@@ -49,10 +52,12 @@ class LocalOnnxPipelineIT {
             .withEnv("TAXONOMY_REQUIRE_PASSWORD_CHANGE", "false")
             .withEnv("LLM_PROVIDER", "LOCAL_ONNX")
             .withEnv("TAXONOMY_EMBEDDING_ENABLED", "true")
-            // This dedicated ONNX integration test starts from the same minimal image as
-            // production. It therefore opts into the model download explicitly; ordinary
-            // containers and the Helm chart retain the safe download-denied default.
-            .withEnv("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD", "true")
+            // Maven provisions the pinned files before testing. Inference itself is offline.
+            .withFileSystemBind(MODEL_DIRECTORY.toString(), "/models",
+                    org.testcontainers.containers.BindMode.READ_ONLY)
+            .withEnv("TAXONOMY_EMBEDDING_MODEL_DIR", "/models")
+            .withEnv("TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD", "false")
+            .withEnv("TAXONOMY_EMBEDDING_QUERY_PREFIX", OnnxReferenceEvaluation.QUERY_PREFIX)
             .withStartupTimeout(Duration.ofSeconds(180))
             .waitingFor(Wait.forHttp("/actuator/health")
                     .forStatusCode(200)
@@ -60,14 +65,28 @@ class LocalOnnxPipelineIT {
 
     private static String baseUrl;
 
+    private static Path requireModelDirectory() {
+        try { return OnnxReferenceEvaluation.modelDirectory(); }
+        catch (java.io.IOException failure) { throw new IllegalStateException("ONNX test model provisioning failed", failure); }
+    }
+
     @BeforeAll
     static void setUp() {
         baseUrl = "http://" + app.getHost() + ":" + app.getMappedPort(8080);
     }
 
+    @Test
+    @Order(0)
+    void independentlyAuthoredReferencesExerciseRealLocalInference() throws Exception {
+        // Run before the subsequent DSL mutation tests and before inspecting model outputs.
+        OnnxReferenceEvaluation.verify(URI.create(baseUrl), BASIC_AUTH, MODEL_DIRECTORY,
+                ContainerTestUtils.findApplicationJar());
+    }
+
     private HttpResponse<String> httpGet(String path) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
+                .timeout(Duration.ofSeconds(30))
                 .header("Accept", "application/json")
                 .header("Authorization", BASIC_AUTH)
                 .GET()
@@ -79,6 +98,7 @@ class LocalOnnxPipelineIT {
             String path, String body, String contentType) throws Exception {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(baseUrl + path))
+                .timeout(Duration.ofSeconds(30))
                 .header("Content-Type", contentType)
                 .header("Accept", "application/json")
                 .header("Authorization", BASIC_AUTH)

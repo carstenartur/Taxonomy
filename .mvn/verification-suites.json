@@ -63,6 +63,7 @@
   },
   "workflowResponsibilities": {
     "ci-cd.yml": "authoritative Maven verification and report publication",
+    "local-onnx-reference.yml": "Maven-owned ONNX inference and versioned DE/EN retrieval reference evidence; canonical CI remains authoritative",
     "database-compatibility.yml": "scheduled/manual environment matrix invoking Maven-owned profiles",
     "catalogue-overlay-proposal.yml": "Maven-verified deterministic catalogue-overlay proposal and review-evidence publication",
     "document-template-report-e2e.yml": "Maven-owned packaged browser and decision-report evidence",

@@ -1,0 +1,53 @@
+name: Local ONNX reference evaluation
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/local-onnx-reference.yml'
+      - 'taxonomy-app/src/test/java/com/taxonomy/LocalOnnxPipelineIT.java'
+      - 'taxonomy-app/src/test/java/com/taxonomy/acceptance/OnnxReference*'
+      - 'taxonomy-app/src/test/resources/scenarios/local-onnx-reference-v1.json'
+      - 'taxonomy-knowledge/src/main/java/com/taxonomy/catalog/service/LocalEmbeddingService.java'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: taxonomy-onnx-reference-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  reference:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Set up Java 21
+        uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          java-version: '21'
+          distribution: temurin
+          cache: maven
+      - name: Verify Docker availability
+        run: docker info
+      - name: Run Maven-owned ONNX suite
+        env:
+          TAXONOMY_EMBEDDING_ALLOW_DOWNLOAD: 'false'
+        shell: bash
+        run: |
+          mkdir -p target
+          set -o pipefail
+          ./mvnw -B verify -Ponnx 2>&1 | tee target/local-onnx-reference.log
+      - name: Upload local inference evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: local-onnx-reference-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            target/local-onnx-reference.log
+            **/target/failsafe-reports/**
+          if-no-files-found: error
+          retention-days: 7
