@@ -378,7 +378,10 @@
         var ok = await load(original.context, null, true);
         busy = false;
         if (!ok) { pending = null; permissions(); return; }
-        pending = Object.assign({}, original, { context: context(), metadata: metadata(original.metadata.commandId, original.metadata.correlationId) });
+        // Re-review the frozen intent; neither form may replace its rationale after a conflict.
+        var audit = { commandId: crypto.randomUUID(), correlationId: original.metadata.correlationId,
+            causationId: original.metadata.commandId, rationale: original.metadata.rationale };
+        pending = Object.assign({}, original, { context: context(), metadata: audit });
         await previewPending();
     };
     el('editorCheckpoint').onclick = async function () {

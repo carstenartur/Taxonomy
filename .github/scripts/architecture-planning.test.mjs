@@ -80,3 +80,122 @@ test('malformed namespace is visible and cannot be overwritten through the profi
     assert.equal(f.intents.length,0); assert.equal(f.ids.editorPlanningSave.disabled,true);
     assert.equal(f.ids.editorPlanningStatus.textContent,'invalid');
 });
+
+// Run both production UI modules together: do not replace the panel's stage callback.
+// Only browser rendering and the remote API boundary are fixtures, not retry logic.
+async function editorFixture(conflictAt) {
+    const html = fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/templates/architecture-editor.html'), 'utf8');
+    const ids = Object.fromEntries([...html.matchAll(/<([a-z0-9]+)\b[^>]*\bid="([^"]+)"/gi)]
+        .map(([, tag, id]) => [id, new Element(tag)]));
+    for (const node of Object.values(ids)) {
+        node.scrollIntoView = () => {};
+        node.showModal = function () { this.open = true; };
+        node.close = function () { this.open = false; };
+    }
+    const context = { repositoryId:'test-repository', workspaceScopeKey:'test-workspace', branch:'main',
+        commit:null, revision:1, actor:'test-user', writeMode:'PRIVATE_WORKSPACE' };
+    const view = { mayEdit:true, document:{context, dsl:'', projectionState:'READY', history:[], versions:[], source:'WORKSPACE_REVISION'},
+        schema:{elementTypes:[], relationTypes:[], relationStatuses:[], planningProfiles:[{id:'go-live', version:'1',
+            fields:[{key:'precision',required:true,choices:['YEAR','DATE']}, {key:'value',required:true,choices:[]}]}]},
+        model:{requirements:[{id:'R',title:'Original'}], elements:[], relations:[], evidence:[], packages:[]},
+        scene:{nodes:[],edges:[]}, searchIndex:[], planningInformation:{R:[{supported:true, entry:{id:'launch',
+            profile:'go-live', version:'1', origin:'MANUAL', values:{precision:'YEAR',value:'2030'}}}]} };
+    const previews = [], executions = [], loads = [];
+    let conflicted = false, sequence = 0;
+    function conflict() {
+        conflicted = true;
+        context.revision = 2;
+        throw Object.assign(new Error('Workspace revision moved'), {status:412,
+            responseBody:{code:'REVISION_MOVED',expectedRevision:1,currentRevision:2}});
+    }
+    const api = {
+        async load(scope, revision) { loads.push({scope:structuredClone(scope),revision}); return structuredClone(view); },
+        async preview(command) {
+            previews.push(structuredClone(command));
+            if (conflictAt === 'preview' && !conflicted) conflict();
+            assert.equal(command.context.revision, context.revision);
+            return {context:structuredClone(context), change:{changes:[{id:'requirement:R',before:'old planning',after:'new planning'}]}};
+        },
+        async execute(command) {
+            executions.push(structuredClone(command));
+            if (conflictAt === 'execute' && !conflicted) conflict();
+            assert.equal(command.context.revision, context.revision);
+            context.revision++;
+            return {context:structuredClone(context),projectionState:'READY'};
+        }
+    };
+    const document = {getElementById:id => {
+        assert.ok(ids[id], `Production template is missing ${id}`);
+        return ids[id];
+    }, createElement:tag => new Element(tag), querySelectorAll:() => []};
+    const window = {confirm:() => true, addEventListener:() => {}, ArchitectureEditorApi:api,
+        TaxonomyI18n:{t:key => key, ready:() => Promise.resolve()},
+        ArchitectureEditorRenderer:() => ({render(){},select(){},focus(){},fit(){}})};
+    const sandbox = vm.createContext({window,document,URL,URLSearchParams,AbortController,
+        crypto:{randomUUID:() => `00000000-0000-4000-8000-${String(++sequence).padStart(12,'0')}`},
+        location:{href:'https://example.invalid/architecture/editor',search:''},
+        history:{replaceState(){},pushState(){}}});
+    vm.runInContext(source, sandbox);
+    vm.runInContext(fs.readFileSync(path.join(root, 'taxonomy-app/src/main/resources/static/js/architecture-editor.js'), 'utf8'), sandbox);
+    await settleUi();
+    assert.equal(loads.length, 1);
+    assert.equal(ids.editorPlanningActions.disabled, false);
+    ids.editorPlanningEntry.value = 'launch';
+    ids.editorPlanningEntry.events.change();
+    return {ids, previews, executions, loads};
+}
+
+// All fixture promises resolve immediately; drain the real handlers without timed sleeps.
+async function settleUi() { await new Promise(resolve => setImmediate(resolve)); }
+
+for (const conflictAt of ['preview','execute']) {
+    for (const generalReason of ['', 'Unrelated architecture edit']) {
+        test(`planning ${conflictAt} conflict preserves its frozen reason with ${generalReason ? 'another' : 'an empty'} general reason`, async () => {
+            await checkPlanningRetry(conflictAt, generalReason, false);
+        });
+    }
+}
+test('planning deletion preserves its frozen reason through an execute conflict', async () => {
+    await checkPlanningRetry('execute', 'Unrelated architecture edit', true);
+});
+
+async function checkPlanningRetry(conflictAt, generalReason, deletion) {
+    const f = await editorFixture(conflictAt);
+    const reason = deletion ? 'Remove the superseded launch target' : 'Use the approved launch year';
+    f.ids.editorRationale.value = generalReason;
+    f.ids.editorPlanningReason.value = reason;
+    if (deletion) f.ids.editorPlanningDelete.events.click();
+    else {
+        const value = f.ids.editorPlanningFields.querySelectorAll().find(field => field.dataset.planningField === 'value');
+        value.value = '2031'; value.events.input();
+        f.ids.editorPlanningForm.events.submit({preventDefault(){}});
+    }
+    await settleUi();
+    assert.equal(f.previews.length, 1);
+    const original = f.previews[0];
+    assert.equal(original.kind, deletion ? 'DELETE_PLANNING' : 'SET_PLANNING');
+    assert.equal(original.metadata.rationale, reason);
+    if (conflictAt === 'execute') await f.ids.editorAccept.onclick();
+    assert.equal(f.ids.editorReapply.hidden, false);
+    assert.equal(f.ids.editorPreviewDialog.open, true);
+
+    // Retry must use the accepted intent, not reread either mutable form field.
+    f.ids.editorPlanningReason.value = 'An unsubmitted later draft';
+    await f.ids.editorReapply.onclick();
+    assert.equal(f.previews.length, 2);
+    const retried = f.previews[1];
+    assert.equal(retried.metadata.rationale, reason);
+    assert.equal(retried.context.revision, 2);
+    assert.equal(retried.context.workspaceScopeKey, original.context.workspaceScopeKey);
+    assert.equal(retried.metadata.correlationId, original.metadata.correlationId);
+    assert.equal(retried.metadata.causationId, original.metadata.commandId);
+    assert.notEqual(retried.metadata.commandId, original.metadata.commandId);
+    assert.deepEqual(retried.planning, original.planning);
+    assert.equal(f.ids.editorAccept.disabled, false);
+    assert.ok(f.ids.editorPreviewContext.textContent.includes(reason));
+    assert.equal(f.executions.length, conflictAt === 'execute' ? 1 : 0, 'Reapply must not auto-accept');
+    await f.ids.editorAccept.onclick();
+    assert.deepEqual(f.executions.at(-1), retried, 'Acceptance must use exactly the re-reviewed command');
+    assert.equal(f.ids.editorPreviewDialog.open, false);
+    assert.equal(f.loads.length, 3, 'Initial load, conflict refresh and accepted-revision reload');
+}
