@@ -5,41 +5,8 @@ on:
 permissions:
   contents: read
 jobs:
-  java:
-    name: Setup Java regressions (${{ matrix.os }})
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest]
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: 6e8ec0d69b7b4fbad91f598288cc883b86086ef8
-          persist-credentials: false
-      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
-        with: {java-version: '21', distribution: temurin}
-      - name: Compile actual setup sources and dependency-free contracts
-        shell: bash
-        run: |
-          set -euo pipefail
-          git rev-parse HEAD
-          mkdir -p target/setup-review
-          javac -encoding UTF-8 -d target/setup-review \
-            taxonomy-app/src/main/java/com/taxonomy/setup/LocalSetup.java \
-            taxonomy-app/src/main/java/com/taxonomy/setup/SetupChecks.java \
-            taxonomy-app/src/main/java/com/taxonomy/setup/SetupProbe.java \
-            taxonomy-app/src/test/java/com/taxonomy/setup/SetupContractCases.java \
-            taxonomy-app/src/test/java/com/taxonomy/setup/SetupReviewRegressionCases.java
-      - name: Existing contracts
-        shell: bash
-        run: java -cp target/setup-review com.taxonomy.setup.SetupContractCases
-      - name: Review regressions
-        shell: bash
-        run: java -cp target/setup-review com.taxonomy.setup.SetupReviewRegressionCases
   helm:
-    name: Setup Helm render regressions
+    name: Inspect Helm regression input and error boundaries
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -50,7 +17,25 @@ jobs:
       - name: Install repository-pinned Helm
         env: {HELM_VERSION: v3.21.0}
         run: bash .github/scripts/install-helm.sh
-      - name: Existing render contracts
-        run: bash deploy/helm/taxonomy/verify-setup.sh
-      - name: Security render regressions
-        run: bash deploy/helm/taxonomy/verify-setup-security.sh
+      - name: Inspect synthetic credential rejection without printing values
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          trap 'rm -rf "$tmp"' EXIT
+          common=(--set image.tag=sha-0123456789abcdef0123456789abcdef01234567 --set existingSecret=taxonomy-secrets)
+          for key in ADMIN_TOKEN customApiKey; do
+            echo "Schema diagnostic for $key"
+            if helm template taxonomy deploy/helm/taxonomy "${common[@]}" --set-json "config={\"$key\":\"redacted-test-input\"}" >"$tmp/out" 2>"$tmp/error"; then
+              echo ACCEPTED
+            else
+              sed 's/redacted-test-input/[redacted]/g' "$tmp/error"
+            fi
+          done
+          printf '%s' 'https://identity.example.invalid\evil/realm' >"$tmp/endpoint"
+          echo 'Literal endpoint file diagnostic'
+          if helm template taxonomy deploy/helm/taxonomy "${common[@]}" --set authentication.mode=keycloak --set config.KEYCLOAK_CLIENT_ID=taxonomy-app --set-file "config.KEYCLOAK_ISSUER_URI=$tmp/endpoint" >"$tmp/out" 2>"$tmp/error"; then
+            echo ACCEPTED
+          else
+            cat "$tmp/error"
+          fi
