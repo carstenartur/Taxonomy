@@ -96,7 +96,7 @@ class UserManagementPageTest {
     @Test
     @WithMockUser(username = "operator", roles = "ADMIN")
     void createsAnAccountThroughTheExistingServiceAndRedirectsWithoutSecrets() throws Exception {
-        when(service.createUser(any(), eq("operator"))).thenReturn(ACCOUNT);
+        when(service.createUser(any(), eq(PASSWORD), eq("operator"))).thenReturn(ACCOUNT);
         var result = mvc.perform(post("/admin/users").with(csrf())
                         .param("username", "alice").param("displayName", "Alice")
                         .param("email", "alice@example.test").param("roles", "ROLE_USER")
@@ -104,8 +104,8 @@ class UserManagementPageTest {
                 .andExpect(status().is3xxRedirection())
                 .andExpect(flash().attribute("successKey", "users.created")).andReturn();
         verify(service).createUser(Map.of("username", "alice", "displayName", "Alice",
-                "email", "alice@example.test", "roles", List.of("ROLE_USER"),
-                "password", PASSWORD), "operator");
+                "email", "alice@example.test", "roles", List.of("ROLE_USER")), PASSWORD, "operator");
+        verify(service, never()).createUser(any(), any());
         assertThat(result.getFlashMap().toString()).doesNotContain(PASSWORD);
     }
 
@@ -118,7 +118,7 @@ class UserManagementPageTest {
                 .andExpect(status().isBadRequest())
                 .andExpect(model().attribute("errorKey", "users.error.passwordMismatch"))
                 .andExpect(content().string(not(containsString(PASSWORD))));
-        verify(service, never()).createUser(any(), any());
+        verifyNoInteractions(service);
     }
 
     @Test
@@ -129,13 +129,13 @@ class UserManagementPageTest {
                         .param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
                 .andExpect(status().isBadRequest())
                 .andExpect(model().attributeHasFieldErrors("form", "email", "roles[0]"));
-        verify(service, never()).createUser(any(), any());
+        verifyNoInteractions(service);
     }
 
     @Test
     @WithMockUser(roles = "ADMIN")
     void duplicateUserIsAVisibleConflictWithoutEchoingPasswords() throws Exception {
-        when(service.createUser(any(), any())).thenThrow(
+        when(service.createUser(any(), any(), any())).thenThrow(
                 new UserManagementService.ConflictException("Username already exists."));
         mvc.perform(post("/admin/users").with(csrf()).param("username", "alice")
                         .param("roles", "ROLE_USER").param("newPassword", PASSWORD)
@@ -256,7 +256,7 @@ class UserManagementPageTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void serviceValidationOnCreationIsVisibleWithoutSecrets() throws Exception {
-        when(service.createUser(any(), any())).thenThrow(new UserManagementService.ValidationException("Invalid account"));
+        when(service.createUser(any(), any(), any())).thenThrow(new UserManagementService.ValidationException("Invalid account"));
         mvc.perform(post("/admin/users").with(csrf()).param("username", "alice").param("roles", "ROLE_USER")
                         .param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
                 .andExpect(status().isBadRequest()).andExpect(model().attribute("errorKey", "users.error.profile"))
@@ -286,6 +286,29 @@ class UserManagementPageTest {
                 .andExpect(status().isNotFound());
         mvc.perform(post("/admin/users/7/status").with(csrf()).param("enabled", "false"))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @WithMockUser(username = "operator", roles = "ADMIN")
+    void successRedirectsKeepTheServletContextAndNeverIncludeCredentials() throws Exception {
+        when(service.getUser(7L)).thenReturn(Optional.of(ACCOUNT));
+        mvc.perform(post("/taxonomy/admin/users").contextPath("/taxonomy").with(csrf())
+                        .param("lang", "de").param("username", "alice").param("roles", "ROLE_USER")
+                        .param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/taxonomy/admin/users?lang=de"));
+        mvc.perform(post("/taxonomy/admin/users/7").contextPath("/taxonomy").with(csrf())
+                        .param("lang", "de").param("username", "alice").param("roles", "ROLE_USER"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/taxonomy/admin/users/7?lang=de"));
+        mvc.perform(post("/taxonomy/admin/users/7/password").contextPath("/taxonomy").with(csrf())
+                        .param("lang", "de").param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/taxonomy/admin/users/7?lang=de"));
+        mvc.perform(post("/taxonomy/admin/users/7/status").contextPath("/taxonomy").with(csrf())
+                        .param("lang", "de").param("enabled", "false"))
+                .andExpect(status().is3xxRedirection())
+                .andExpect(redirectedUrl("/taxonomy/admin/users?lang=de"));
     }
 
     @Configuration(proxyBeanMethods = false)

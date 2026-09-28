@@ -62,6 +62,17 @@ class LocalUserManagementProfileTest {
         });
     }
 
+    @ParameterizedTest
+    @org.junit.jupiter.params.provider.ValueSource(strings = {"true", "TRUE", "True", "tRuE"})
+    void trueIsCaseInsensitiveInBothRegistrationAndNavigation(String value) {
+        runner.withPropertyValues("spring.profiles.active=local-user-management",
+                "taxonomy.security.local-users-enabled=" + value).run(context -> {
+            assertThat(context).hasNotFailed().hasSingleBean(UserManagementPageController.class)
+                    .hasSingleBean(UserManagementController.class);
+            assertThat(LocalUserManagementAccess.isEnabled(context.getEnvironment())).isTrue();
+        });
+    }
+
     @Test
     void existingLocalAccountDefaultDoesNotOptInThePage() {
         runner.run(context -> {

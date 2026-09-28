@@ -57,12 +57,21 @@ public class UserManagementService {
         return userRepository.findById(id).map(this::toUserMap);
     }
 
+    /** Compatibility adapter for the existing REST request format. */
     public Map<String, Object> createUser(Map<String, Object> body, String actor) {
-        String username = stringValue(body.get("username"));
-        String password = stringValue(body.get("password"));
-        String displayName = stringValue(body.get("displayName"));
-        String email = stringValue(body.get("email"));
-        List<String> roles = stringList(body.get("roles"));
+        return createUser(body, stringValue(body.get("password")), actor);
+    }
+
+    /**
+     * Creates an account with the credential passed separately from profile data.
+     * HTML adapters must not mix plaintext passwords into their profile/model maps.
+     * The password is used only for validation and hashing, never for audit output.
+     */
+    public Map<String, Object> createUser(Map<String, Object> profile, String password, String actor) {
+        String username = stringValue(profile.get("username"));
+        String displayName = stringValue(profile.get("displayName"));
+        String email = stringValue(profile.get("email"));
+        List<String> roles = stringList(profile.get("roles"));
 
         if (username == null || username.isBlank()) {
             throw new ValidationException("Username is required.");

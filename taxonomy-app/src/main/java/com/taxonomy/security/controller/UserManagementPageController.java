@@ -91,9 +91,9 @@ public class UserManagementPageController {
         }
         Map<String, Object> body = form.profile();
         body.put("username", form.username());
-        body.put("password", newPassword);
+        // Keep the credential out of the profile map and all view/audit data.
         try {
-            users.createUser(body, authentication.getName());
+            users.createUser(body, newPassword, authentication.getName());
             return redirect(redirect, locale, "users.created", "/admin/users");
         } catch (UserManagementService.ConflictException exception) {
             return failure(model, response, HttpStatus.CONFLICT, "users.error.duplicate", "user-management-form");
