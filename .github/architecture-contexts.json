@@ -81,6 +81,7 @@
         "com.taxonomy.composition..",
         "com.taxonomy.observability..",
         "com.taxonomy.security..",
+        "com.taxonomy.setup..",
         "com.taxonomy.shared.."
       ]
     },
