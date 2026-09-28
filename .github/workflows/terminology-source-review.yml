@@ -1,0 +1,32 @@
+name: Terminology source review
+on:
+  push:
+    branches: ['maintenance/terminology-review-20260928']
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          ref: 3bb4b8c4b2e60ca90f41b416b047a0bf7b5faea2
+          persist-credentials: false
+      - name: Export exact source and tree inventory
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = 3bb4b8c4b2e60ca90f41b416b047a0bf7b5faea2
+          mkdir -p exported
+          git archive --format=tar.gz HEAD > exported/source.tar.gz
+          git ls-tree -r HEAD > exported/source-tree.txt
+          git rev-parse HEAD > exported/source-revision.txt
+          cd exported
+          sha256sum source.tar.gz source-tree.txt source-revision.txt > SHA256SUMS
+          sha256sum -c SHA256SUMS
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: terminology-source-review
+          path: exported/
+          if-no-files-found: error
+          retention-days: 1
