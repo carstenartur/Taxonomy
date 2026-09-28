@@ -16,7 +16,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 60574772eb74e0e179d04ba6d17424582d0e792a
+          ref: 6e8ec0d69b7b4fbad91f598288cc883b86086ef8
           persist-credentials: false
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with: {java-version: '21', distribution: temurin}
@@ -45,7 +45,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          ref: 60574772eb74e0e179d04ba6d17424582d0e792a
+          ref: 6e8ec0d69b7b4fbad91f598288cc883b86086ef8
           persist-credentials: false
       - name: Install repository-pinned Helm
         env: {HELM_VERSION: v3.21.0}
