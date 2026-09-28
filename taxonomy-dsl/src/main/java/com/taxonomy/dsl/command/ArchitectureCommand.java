@@ -7,6 +7,19 @@ import java.util.List;
 
 /** Renderer- and framework-independent semantic intents. Identity is never an editable property. */
 public sealed interface ArchitectureCommand {
+    record SetRequirementPlanning(String requirementId, com.taxonomy.dsl.planning.PlanningEntry entry)
+            implements ArchitectureCommand {
+        public SetRequirementPlanning { Objects.requireNonNull(requirementId); Objects.requireNonNull(entry); }
+    }
+    /** Internal reviewed import only. Not exposed as a public editor wire command. */
+    record ImportRequirementPlanning(String requirementId, com.taxonomy.dsl.planning.PlanningEntry entry)
+            implements ArchitectureCommand {
+        public ImportRequirementPlanning { Objects.requireNonNull(requirementId); Objects.requireNonNull(entry); }
+    }
+    record DeleteRequirementPlanning(String requirementId, String entryId) implements ArchitectureCommand {
+        public DeleteRequirementPlanning { Objects.requireNonNull(requirementId); Objects.requireNonNull(entryId); }
+    }
+
     record CreateArchitectureElement(String id, String type, Map<String, String> properties)
             implements ArchitectureCommand {
         public CreateArchitectureElement { properties = copyProperties(properties); }

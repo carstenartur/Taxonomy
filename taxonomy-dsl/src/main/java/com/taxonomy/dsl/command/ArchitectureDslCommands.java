@@ -19,6 +19,12 @@ import java.util.Set;
 
 /** Strict commands layered over the tolerant import parser. No persistence or renderer dependencies. */
 public final class ArchitectureDslCommands {
+    private final com.taxonomy.dsl.planning.PlanningInformation planning;
+    public ArchitectureDslCommands() { this(new com.taxonomy.dsl.planning.PlanningInformation()); }
+    public ArchitectureDslCommands(com.taxonomy.dsl.planning.PlanningInformation planning) {
+        this.planning = Objects.requireNonNull(planning);
+    }
+
     public static final Set<String> ELEMENT_PROPERTIES = Set.of("title", "description",
             "x-editor-status", "x-owner", "x-responsible-organization", "x-product-reference", "x-system-reference");
 
@@ -51,6 +57,9 @@ public final class ArchitectureDslCommands {
         Objects.requireNonNull(source, "source");
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(source);
         String next = switch (command) {
+            case SetRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), false);
+            case ImportRequirementPlanning p -> planning.upsert(source, p.requirementId(), p.entry(), true);
+            case DeleteRequirementPlanning p -> planning.remove(source, p.requirementId(), p.entryId());
             case CreateArchitecturePackage create -> createPackage(source, blocks, create);
             case UpdateArchitecturePackage update -> updatePackage(source, blocks, update);
             case SetArchitecturePackagePlacements placements -> placePackages(source, blocks, placements);
@@ -79,7 +88,8 @@ public final class ArchitectureDslCommands {
         if (original.isEmpty()) throw problem("NOT_UNDOABLE", "targetOperationId", "Target has no semantic changes");
         if (original.stream().anyMatch(change -> !change.id().startsWith("element:")
                 && !change.id().startsWith("relation:") && !change.id().startsWith("package:")
-                && !change.id().startsWith("mapping:"))) {
+                && !change.id().startsWith("mapping:")
+                && !com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, change.id()))) {
             throw problem("NOT_UNDOABLE", "targetOperationId", "Target contains unsupported semantic objects");
         }
         String next = ArchitectureSemanticPatch.inverse(current, before, original);
@@ -108,6 +118,8 @@ public final class ArchitectureDslCommands {
         }
         validateContainment(blocks);
         validatePackages(next);
+        if (original.stream().anyMatch(c -> com.taxonomy.dsl.planning.PlanningInformation.planningOnlyChange(before, after, c.id())))
+            com.taxonomy.dsl.planning.PlanningInformation.validateReferences(next);
         return new Change(next, ArchitectureSemanticPatch.between(current, next));
     }
 

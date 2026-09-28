@@ -1,5 +1,6 @@
 package com.taxonomy.interop;
 
+import com.taxonomy.interop.planning.PlanningExchangeBridge;
 import com.taxonomy.dsl.command.ArchitectureCommand;
 import com.taxonomy.dsl.command.ArchitectureCommand.StoreExchangeEvidence;
 import com.taxonomy.dsl.command.ArchitectureDslCommands;
@@ -142,12 +143,15 @@ public class IntegrationService {
         IntegrationContext authority = authority(context, connection, request.expected());
         ExchangeDocument document = connector.previewInbound(new InboundRequest(authority, request.mediaType(), content,
                 ReqifExchangeCodec.digest(content), request.completeScope()));
+        if (ReqifExchangeCodec.PROFILE.equals(connection.connectorId())) PlanningExchangeBridge.validateInbound(document);
         return store.locked(context, connectionId, session -> {
             Operation existing = session.find(request.operationId()); if (existing != null) return replay(existing, fingerprint);
             var state = domain.snapshot(context, session.connection(), session.identities(), read(context));
             expect(request.expected(), state.state());
-            return session.preview(request.operationId(), authority, "INBOUND", fingerprint, document,
-                    diff.compare(document, connection.authority(), session.identities(), state.items()));
+            ExchangeDocument described = ReqifExchangeCodec.PROFILE.equals(connection.connectorId())
+                    ? PlanningExchangeBridge.describeInbound(document, state.items()) : document;
+            return session.preview(request.operationId(), authority, "INBOUND", fingerprint, described,
+                    diff.compare(described, connection.authority(), session.identities(), state.items()));
         });
     }
 
@@ -197,14 +201,18 @@ public class IntegrationService {
             expect(operation.context().internalState(), current.state());
             Map<String, Identity> known = new TreeMap<>(); mappings.forEach(m -> known.put(m.externalId(), m));
             Map<String, Artifact> selected = select(operation, review, current.items(), known);
+            boolean planningProfile = ReqifExchangeCodec.PROFILE.equals(connection.connectorId());
+            if (planningProfile && connection.authority() != AuthorityMode.LINK_ONLY)
+                selected.replaceAll((key, value) -> PlanningExchangeBridge.retainOmissions(value, current.items().get(key)));
+            boolean planningEntries = planningProfile && PlanningExchangeBridge.hasEntries(selected);
             ExchangeDocument resultDocument = ExchangeItems.expand(operation.document(), selected);
             boolean linked = connection.authority() == AuthorityMode.LINK_ONLY;
             boolean changed = !semanticItems(current.items()).equals(semanticItems(selected));
             // Validate the reviewed dependency closure and schema before mutating any canonical data.
             if (!linked && changed) connectors.require(connection.connectorId(), connection.profileVersion()).validateInboundSelection(new OutboundRequest(operation.context(), resultDocument, operation.document().externalVersion()));
-            String planningDsl = !linked && changed && domain.supportsNativePackages(connection) && connection.projectId() != null
+            String planningDsl = !linked && changed && (domain.supportsNativePackages(connection) || planningEntries) && connection.projectId() != null
                     ? domain.portfolioContribution(context).apply(before.dsl()) : before.dsl();
-            Map<String, IntegrationPortfolioPort.RequirementApplyPlan> requirementPlans = !linked && domain.supportsNativePackages(connection)
+            Map<String, IntegrationPortfolioPort.RequirementApplyPlan> requirementPlans = !linked && (domain.supportsNativePackages(connection) || planningEntries)
                     ? domain.planRequirements(context, connection, selected, mappings, planningDsl) : Map.of();
             var endpointIndex = domain.indexEndpoints(connection, selected, mappings, requirementPlans);
             // Selection already contains accepted endpoint choices and retained local approval.
@@ -213,6 +221,10 @@ public class IntegrationService {
             if (!linked && changed && connectors.require(connection.connectorId(), connection.profileVersion()).descriptor().capabilities().contains(Capability.ARCHITECTURE_MODEL)) {
                 commands.addAll(domain.architectureCommands(connection, planningDsl, current.items(), selected, mappings, endpointIndex, Map.of(), review.rationale()));
                 domain.validateCompletePlan(planningDsl, commands, requirementPlans);
+            }
+            if (!linked && changed && planningEntries) {
+                PlanningExchangeBridge.validateInbound(resultDocument);
+                commands.addAll(PlanningExchangeBridge.commands(selected, requirementPlans));
             }
             session.beginReview(review);
             for (IntegrationChange change : operation.changes()) {
@@ -245,7 +257,7 @@ public class IntegrationService {
                             connection.projectId() != null ? domain.portfolioContribution(context) : null, checkpointMetadata(operation.id(), review.rationale()));
                 } catch (IOException failure) { throw new UncheckedIOException(failure); }
             }
-            String projectFingerprint = domain.snapshot(context, connection, session.identities(), before).state().projectFingerprint();
+            String projectFingerprint = domain.projectFingerprint(context, connection);
             InternalState state = new InternalState(context.repositoryId(), resultContext.workspaceScopeKey(), context.branch(), resultContext.commitId(),
                     resultContext.semanticRevision(), connection.projectId(), projectFingerprint);
             session.applied(operation.id(), state, resultDocument, !linked && changed);

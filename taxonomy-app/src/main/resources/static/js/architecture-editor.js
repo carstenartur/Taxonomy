@@ -20,6 +20,7 @@
     var renderer = window.ArchitectureEditorRenderer(el('editorGraph'), selectElement, selectRelation, function (visible, total) {
         el('editorGraphSummary').textContent = t('editor.visible', visible, total);
     });
+    var planningPanel = window.TaxonomyPlanningEditor.create({ t: t, stage: stage });
     function el(id) { return document.getElementById(id); }
     function t(key) { return window.TaxonomyI18n.t.apply(null, arguments); }
     function short(commit) { return commit ? commit.substring(0, 12) : t('editor.emptyBranch'); }
@@ -35,6 +36,7 @@
         target.textContent = message + (problem.dependencies && problem.dependencies.length ? '\n' + problem.dependencies.join('\n') : '')
             + (problem.currentCommit ? '\n' + short(problem.expectedCommit) + ' → ' + short(problem.currentCommit) : '');
         target.hidden = false;
+        target.scrollIntoView({ block: 'nearest' });
     }
     function option(select, value, label) { var item = document.createElement('option'); item.value = value; item.textContent = label || value; select.append(item); }
     function button(label, action, disabled) {
@@ -60,6 +62,7 @@
     }
     function permissions() {
         var writable = view && view.mayEdit && !busy;
+        planningPanel.setEnabled(writable);
         el('editorCheckpoint').disabled = !writable;
         el('editorResumeCheckpoint').disabled = busy;
         el('editorRecoverVersion').disabled = busy;
@@ -95,6 +98,7 @@
     }
     function render(preserveDraft) {
         renderPackages();
+        planningPanel.render(view, preserveDraft);
         var c = context();
         var contextLabel = view.document.source === 'GIT_CHECKPOINT' ? t('editor.selectedVersion', short(c.commit))
             : t('editor.revision', c.revision) + ' · ' + t('editor.lastCheckpoint', short(c.commit));
@@ -266,10 +270,12 @@
         return { commandId: id, correlationId: correlation || id,
             causationId: causation || id, rationale: el('editorRationale').value };
     }
-    async function stage(intent) {
+    async function stage(intent, rationaleInput) {
         if (busy || !view || !view.mayEdit) return;
-        if (!el('editorRationale').reportValidity()) return;
-        pending = Object.assign({}, intent, { context: context(), metadata: metadata() });
+        rationaleInput = rationaleInput || el('editorRationale');
+        if (!rationaleInput.reportValidity()) return;
+        var audit = metadata(); audit.rationale = rationaleInput.value;
+        pending = Object.assign({}, intent, { context: context(), metadata: audit });
         await previewPending();
     }
     async function previewPending() {

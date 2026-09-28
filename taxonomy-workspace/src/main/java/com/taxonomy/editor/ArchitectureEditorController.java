@@ -82,7 +82,15 @@ public class ArchitectureEditorController {
     public record WireCommand(Context context, Metadata metadata, String kind, String id, String type,
                               Map<String, String> properties, String sourceId, String relationType, String targetId,
                               String status, String parentId, String targetOperationId,
-                              List<PackagePlacement> placements, java.util.Set<String> completeParentScopes) {
+                              List<PackagePlacement> placements, java.util.Set<String> completeParentScopes,
+                              PlanningEdit planning) {
+        public WireCommand(Context context, Metadata metadata, String kind, String id, String type,
+                           Map<String, String> properties, String sourceId, String relationType, String targetId,
+                           String status, String parentId, String targetOperationId,
+                           List<PackagePlacement> placements, java.util.Set<String> completeParentScopes) {
+            this(context, metadata, kind, id, type, properties, sourceId, relationType, targetId,
+                    status, parentId, targetOperationId, placements, completeParentScopes, null);
+        }
         public WireCommand(Context context, Metadata metadata, String kind, String id, String type,
                            Map<String, String> properties, String sourceId, String relationType, String targetId,
                            String status, String parentId, String targetOperationId) {
@@ -100,9 +108,22 @@ public class ArchitectureEditorController {
         }
     }
 
+    public record PlanningEdit(String entryId, String profile, String version, Map<String, String> values) {}
+
+    private static PlanningEdit planning(WireCommand body) {
+        if (body.planning() == null) throw new IllegalArgumentException("Planning edit is required");
+        return body.planning();
+    }
+
     private static Command command(WireCommand body, String ifMatch, String ifNoneMatch) {
         requireRevision(body.context(), ifMatch, ifNoneMatch);
         Operation operation = switch (body.kind()) {
+            case "SET_PLANNING" -> {
+                PlanningEdit p = planning(body);
+                yield new SemanticCommand(new SetRequirementPlanning(body.id(),
+                        new com.taxonomy.dsl.planning.PlanningEntry(p.entryId(), p.profile(), p.version(), "MANUAL", p.values())));
+            }
+            case "DELETE_PLANNING" -> new SemanticCommand(new DeleteRequirementPlanning(body.id(), planning(body).entryId()));
             case "CREATE_PACKAGE" -> new SemanticCommand(new CreateArchitecturePackage("pkg-" + body.metadata().commandId(), body.properties()));
             case "UPDATE_PACKAGE" -> new SemanticCommand(new UpdateArchitecturePackage(body.id(), body.properties()));
             case "DELETE_PACKAGE" -> new SemanticCommand(new DeleteArchitecturePackage(body.id()));
