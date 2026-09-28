@@ -59,9 +59,13 @@ public final class ScenarioRelationQuality {
         RunState state = RunState.valueOf(status);
         JsonNode unfinished = array(object(search, "result"), "unfinished");
         JsonNode warnings = array(search, "warnings");
+        JsonNode analysisWarnings = array(analysis, "warnings");
         String stopReason = textValue(search, "stopReason");
         // Exhausting a navigation queue is not proof of semantic completeness.
-        if (state == RunState.SUCCESS && (!unfinished.isEmpty() || !warnings.isEmpty() || !stopReason.isEmpty())) {
+        // Unclassified analysis warnings require review. They do not prove a wrong
+        // relationship, but must not silently certify complete evidence either.
+        if (state == RunState.SUCCESS && (!unfinished.isEmpty() || !warnings.isEmpty()
+                || !analysisWarnings.isEmpty() || !stopReason.isEmpty())) {
             state = RunState.PARTIAL;
         }
         var predictions = new ArrayList<Relation>();
@@ -85,6 +89,9 @@ public final class ScenarioRelationQuality {
         report.put("relationCallBudget", count(search, "maxCalls"));
         report.put("relationDurationMillis", count(search, "durationMillis"));
         report.put("unfinishedSearchCount", unfinished.size());
+        report.put("analysisWarningCount", analysisWarnings.size());
+        report.put("relationWarningCount", warnings.size());
+        report.put("stopReasonPresent", !stopReason.isEmpty());
         report.put("reference", REFERENCE);
         report.put("evaluation", evaluation);
         String renderedJson = JSON.writerWithDefaultPrettyPrinter().writeValueAsString(report) + "\n";

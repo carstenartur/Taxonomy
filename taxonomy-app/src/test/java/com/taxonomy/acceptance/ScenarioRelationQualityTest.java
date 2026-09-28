@@ -86,11 +86,70 @@ class ScenarioRelationQualityTest {
         assertEquals(1, report.at("/evaluation/notObservedRequired").size());
     }
 
+    @Test void globalWarningsAreUnreviewedEvidenceNotWrongRelations() throws Exception {
+        var snapshot = inputs();
+        ((ObjectNode) snapshot.path("analysis")).putArray("warnings").add("source classification incomplete");
+        assertInconclusive(snapshot);
+        var report = json.readTree(Files.readString(directory.resolve("relation-quality.json")));
+        assertEquals(1, report.path("analysisWarningCount").asInt());
+        assertEquals(0, report.at("/evaluation/falsePositives").size());
+        assertEquals(7, report.at("/evaluation/matchedRequired").asInt());
+        assertFalse(Files.readString(directory.resolve("relation-quality.html"))
+                .contains("source classification incomplete"));
+    }
+
+    @Test void relationWarningsPreventCompletePass() throws Exception {
+        var snapshot = inputs();
+        ((ObjectNode) snapshot.at("/analysis/relationSearchReport")).putArray("warnings").add("budget exhausted");
+        assertInconclusive(snapshot);
+    }
+
+    @Test void stopReasonPreventsCompletePassEvenWithoutUnfinishedEntries() throws Exception {
+        var snapshot = inputs();
+        ((ObjectNode) snapshot.at("/analysis/relationSearchReport")).put("stopReason", "CALL_BUDGET");
+        assertInconclusive(snapshot);
+    }
+
+    @Test void missingOrMalformedGlobalWarningsCannotCertifyCompleteness() throws Exception {
+        var snapshot = inputs();
+        ((ObjectNode) snapshot.path("analysis")).remove("warnings");
+        saveSnapshot(snapshot);
+        assertThrows(IllegalArgumentException.class, () -> ScenarioRelationQuality.write(directory));
+        ((ObjectNode) snapshot.path("analysis")).put("warnings", "not-an-array");
+        saveSnapshot(snapshot);
+        assertThrows(IllegalArgumentException.class, () -> ScenarioRelationQuality.write(directory));
+    }
+
+    @Test void failedAndCancelledStatesAreNotOverwrittenByWarnings() throws Exception {
+        for (String state : List.of("FAILED", "CANCELLED", "PARTIAL")) {
+            var snapshot = inputs();
+            ((ObjectNode) snapshot.path("summary")).put("status", state);
+            ((ObjectNode) snapshot.path("analysis")).put("status", state).putArray("warnings").add("incomplete");
+            saveSnapshot(snapshot);
+            var result = ScenarioRelationQuality.write(directory);
+            assertEquals(RunState.valueOf(state), result.state());
+            assertEquals(Verdict.INCONCLUSIVE, result.verdict());
+            assertNull(result.precision());
+            assertNull(result.recall());
+        }
+    }
+
+    private void assertInconclusive(ObjectNode snapshot) throws Exception {
+        saveSnapshot(snapshot);
+        var result = ScenarioRelationQuality.write(directory);
+        assertEquals(RunState.PARTIAL, result.state());
+        assertEquals(Verdict.INCONCLUSIVE, result.verdict());
+        assertNull(result.precision());
+        assertNull(result.recall());
+        assertThrows(AssertionError.class, () -> ScenarioRelationQuality.verify(directory));
+    }
+
     private ObjectNode inputs() throws Exception {
         var snapshot = json.createObjectNode();
         snapshot.putObject("summary").put("id", "snapshot-1").put("status", "SUCCESS")
                 .put("taxonomyFingerprint", "a".repeat(64)).put("promptFingerprint", "b".repeat(64));
         var analysis = snapshot.putObject("analysis").put("status", "SUCCESS");
+        analysis.putArray("warnings");
         var search = analysis.putObject("relationSearchReport").put("totalCalls", 136).put("maxCalls", 256)
                 .put("durationMillis", 100).put("stopReason", "");
         search.putArray("warnings");
