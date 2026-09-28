@@ -10,24 +10,34 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
-        with:
-          ref: 3bb4b8c4b2e60ca90f41b416b047a0bf7b5faea2
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
         with:
           java-version: '21'
           distribution: temurin
-      - name: Reconstruct and verify the reviewed source tree
-        env:
-          BUNDLE: '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'
+      - name: Verify transport and reconstruct the exact reviewed tree
         run: |
           set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/terminology-evidence"
+          cp .maintenance/neutral-input.txt "$RUNNER_TEMP/terminology-evidence/input-transfer.txt"
+          python - <<'PY'
+          import base64,gzip,hashlib,os,re
+          from pathlib import Path
+          source=Path('.maintenance/neutral-input.txt').read_text()
+          value=re.search(r"BUNDLE: '([^']+)'",source).group(1)
+          # Correct transcription only at the transfer boundary; the original digest is authoritative.
+          for old,new in [('UJKeLMJKeLMJ1DS','UJKeLMJ1DS'),('Zs93Js93fJjvPvg','Zs93Js93vJjvPvg'),('WbqzEpilJa/U','WbqzEJa/U'),('ffrmOK6DVS','ffrmOKrDVS')]:
+              value=value.replace(old,new)
+          raw=gzip.decompress(base64.b64decode(value,validate=True))
+          assert hashlib.sha256(raw).hexdigest()=='d31effbfd725404baa6dce225331097aa3dd11fceb90a6d9f01464ee018a517f'
+          Path(os.environ['RUNNER_TEMP'],'neutral-bundle.json').write_bytes(raw)
+          PY
+          git fetch --depth=1 origin 3bb4b8c4b2e60ca90f41b416b047a0bf7b5faea2
+          git checkout --detach 3bb4b8c4b2e60ca90f41b416b047a0bf7b5faea2
           test "$(git rev-parse HEAD)" = 3bb4b8c4b2e60ca90f41b416b047a0bf7b5faea2
           python - <<'PY'
-          import base64,gzip,hashlib,json,os
+          import json,os
           from pathlib import Path
-          raw=gzip.decompress(base64.b64decode(os.environ['BUNDLE']))
-          assert hashlib.sha256(raw).hexdigest()=='d31effbfd725404baa6dce225331097aa3dd11fceb90a6d9f01464ee018a517f'
-          bundle=json.loads(raw)
+          bundle=json.loads(Path(os.environ['RUNNER_TEMP'],'neutral-bundle.json').read_text())
           for name,content in bundle['files'].items():
               assert name.startswith('taxonomy-build/src/test/java/com/taxonomy/build/ScenarioAcceptanceNaming')
               Path(name).write_text(content)
@@ -35,7 +45,7 @@ jobs:
           PY
           test "$(git write-tree)" = 9d955bfc376c2cf04a980443d8b7affe3f581d5d
           git diff --cached --check
-          mkdir -p "$RUNNER_TEMP/terminology-classes" "$RUNNER_TEMP/terminology-evidence"
+          mkdir -p "$RUNNER_TEMP/terminology-classes"
           find taxonomy-tooling/src/main/java -name '*.java' > "$RUNNER_TEMP/tooling-sources.txt"
           javac --release 21 -Xlint:all -Werror -d "$RUNNER_TEMP/terminology-classes" @"$RUNNER_TEMP/tooling-sources.txt"
           cat > "$RUNNER_TEMP/NamingProbe.java" <<'JAVA'
@@ -63,5 +73,5 @@ jobs:
         with:
           name: terminology-change-verification
           path: ${{ runner.temp }}/terminology-evidence/
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7
