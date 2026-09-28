@@ -6,35 +6,115 @@ permissions:
   contents: read
   actions: read
 jobs:
-  snapshot:
-    name: Export immutable source and runtime for offline review
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
+  check:
+    name: Second review source contracts (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      LANG: C.UTF-8
+      LC_ALL: C.UTF-8
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {path: driver, persist-credentials: false}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           ref: f5993eba133cd16b006f4548ae4f66bd54708f4a
+          path: source
           persist-credentials: false
-      - name: Install repository-pinned Helm
-        env: {HELM_VERSION: v3.21.0}
-        run: bash .github/scripts/install-helm.sh
+      - name: Apply reviewed patch and require exact locally tested tree
+        shell: bash
+        working-directory: source
+        run: |
+          set -euo pipefail
+          cat ../driver/.github/qa/setup-review2.patch.gz.1 ../driver/.github/qa/setup-review2.patch.gz.2 | gzip -d >../setup-review2.patch
+          git apply --check ../setup-review2.patch
+          git apply --index ../setup-review2.patch
+          git diff --cached --check
+          test "$(git write-tree)" = 295e83f7bfef0b427dff51af47655da56c44f35b
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with: {java-version: '21', distribution: temurin}
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: taxonomy-ui-application
-          path: target/review-bundle/application
+          path: source/target/review-runtime/application
           run-id: 36466691181
           github-token: ${{ github.token }}
-      - name: Export tracked source and Helm (no workspace credentials)
+      - name: Compile changed sources against existing CI dependencies and run contracts
+        shell: python
+        working-directory: source
+        run: |
+          import glob, hashlib, os, pathlib, subprocess, zipfile
+          jar = pathlib.Path('target/review-runtime/application/taxonomy-app-1.4.0-SNAPSHOT.jar')
+          assert hashlib.sha256(jar.read_bytes()).hexdigest() == '74a1f9587664cf650f2e879c4044d2b2fcfec82fbb7a920e1ae6cd67b02f33b5'
+          with zipfile.ZipFile(jar) as archive:
+              for entry in archive.infolist():
+                  if entry.filename.startswith('BOOT-INF/lib/') and entry.filename.endswith('.jar'):
+                      archive.extract(entry, 'target/review-runtime')
+          pathlib.Path('target/review2-classes').mkdir(parents=True, exist_ok=True)
+          libraries = 'target/review-runtime/BOOT-INF/lib/*'
+          sources = glob.glob('taxonomy-app/src/main/java/com/taxonomy/setup/*.java')
+          sources += ['taxonomy-app/src/main/java/com/taxonomy/security/config/ProductionSecurityGuard.java']
+          sources += glob.glob('taxonomy-app/src/test/java/com/taxonomy/setup/Setup*Cases.java')
+          subprocess.run(['javac', '-encoding', 'UTF-8', '-cp', libraries, '-d', 'target/review2-classes', *sources], check=True)
+          cp = os.pathsep.join(['target/review2-classes', 'taxonomy-app/src/main/resources', libraries])
+          for case in ['SetupContractCases', 'SetupReviewRegressionCases', 'SetupSpringCases', 'SetupStartupRegressionCases']:
+              subprocess.run(['java', '-cp', cp, 'com.taxonomy.setup.' + case], check=True)
+          subprocess.run(['javac', '-encoding', 'UTF-8', '-d', 'target/review2-classes', 'deploy/native/PackageTaxonomy.java', 'deploy/native/PackageTaxonomyCases.java'], check=True)
+          subprocess.run(['java', '-cp', 'target/review2-classes', 'PackageTaxonomyCases'], check=True)
+      - name: Install repository-pinned Helm
+        if: runner.os == 'Linux'
+        working-directory: source
+        env: {HELM_VERSION: v3.21.0}
+        run: bash .github/scripts/install-helm.sh
+      - name: Verify Helm contracts and rendered Keycloak ApplicationRunner startup
+        if: runner.os == 'Linux'
+        working-directory: source
         shell: bash
         run: |
           set -euo pipefail
-          git archive --format=tar.gz --output=target/review-bundle/source.tar.gz HEAD
-          cp "$(command -v helm)" target/review-bundle/helm
-          git rev-parse HEAD >target/review-bundle/source-commit.txt
-          sha256sum target/review-bundle/source.tar.gz target/review-bundle/helm >target/review-bundle/SHA256SUMS
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+          bash deploy/helm/taxonomy/verify-setup.sh
+          bash deploy/helm/taxonomy/verify-setup-security.sh
+          helm template taxonomy deploy/helm/taxonomy \
+            --set image.tag=sha-0123456789abcdef0123456789abcdef01234567 \
+            --set existingSecret=taxonomy-secrets \
+            --set authentication.mode=keycloak \
+            --set config.KEYCLOAK_ISSUER_URI=https://identity.example.invalid/realms/taxonomy \
+            --set config.KEYCLOAK_CLIENT_ID=taxonomy-app >target/keycloak-review.yaml
+          java -cp 'target/review2-classes:taxonomy-app/src/main/resources:target/review-runtime/BOOT-INF/lib/*' \
+            com.taxonomy.setup.SetupStartupRegressionCases target/keycloak-review.yaml
+  publish-candidate:
+    name: Publish exactly verified candidate to staging branch only
+    needs: check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with: {path: driver, persist-credentials: false}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          name: setup-second-review-offline-bundle
-          path: target/review-bundle/**
-          if-no-files-found: error
-          retention-days: 1
+          ref: f5993eba133cd16b006f4548ae4f66bd54708f4a
+          path: source
+      - name: Commit source and documentation; never update main or the PR branch here
+        working-directory: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          cat ../driver/.github/qa/setup-review2.patch.gz.1 ../driver/.github/qa/setup-review2.patch.gz.2 | gzip -d >../setup-review2.patch
+          git apply --check ../setup-review2.patch
+          git apply --index ../setup-review2.patch
+          git diff --cached --check
+          test "$(git write-tree)" = 295e83f7bfef0b427dff51af47655da56c44f35b
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'fix(setup): align guided startup, endpoint validation and installation docs' \
+            -m 'Keep production machine-token checks with central login. Require native configuration even with optional overlays, reject volatile defaults, validate custom Helm endpoints, and report generated model metadata as not checked. Add real Spring runner and rendered Helm regression contracts; update installation and Keycloak documentation.' \
+            -m 'Exact source tree verified on Linux and Windows with existing CI dependencies. This focused check is not a full reactor build, real OIDC login, native installer acceptance or production MSSQL qualification. Canonical PR CI remains required.'
+          git push origin HEAD:refs/heads/verify/pr1142-second-review-candidate-20260928
+          echo '### Verified staging candidate' >> "$GITHUB_STEP_SUMMARY"
+          git rev-parse HEAD >> "$GITHUB_STEP_SUMMARY"
