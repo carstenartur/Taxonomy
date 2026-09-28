@@ -64,6 +64,26 @@ public final class PlanningIntegrationContract {
         var returned = roundTrip.artifacts().stream().filter(a -> a.kind() == ArtifactKind.REQUIREMENT).findFirst().orElseThrow();
         equal("2031", PlanningEnvelope.read(returned.extensions().get(PlanningEnvelope.EXTENSION)).getFirst().values().get("value"));
         check(!registry.read(applied, "R").getFirst().entry().values().containsKey("operational"), "Goal upgraded to operation");
+        // A format without a planning mapping must report omission for this project,
+        // not silently drop the data or report another project's requirements.
+        String foreignBase = base.replace("requirement R {", "requirement OTHER {")
+                .replace("x-project-key: \"P\"", "x-project-key: \"OTHER-PROJECT\"");
+        String scopedDsl = registry.upsert(dsl + foreignBase, "OTHER", new PlanningEntry(
+                "other-launch", "go-live", "1", "MANUAL", Map.of("precision", "YEAR", "value", "2040")), false);
+        var unsupported = new Connection(connection.id(), "org", "Test", "test-unmapped-format", "1",
+                AuthorityMode.BIDIRECTIONAL, connection.externalScope(), 1L, null, 0L, null, null, "alice");
+        var plainIdentity = new Identity("REQUIREMENT:external", "REQ", 42L, "remote-v1", "fingerprint",
+                noPlanning, noPlanning, UUID.randomUUID(), false);
+        var scopedDocument = new WorkspaceDocument(new State("workspace", null, 1L), scopedDsl);
+        var unmappedSnapshot = adapter.snapshot(context, unsupported, List.of(plainIdentity), scopedDocument);
+        var unmappedExport = adapter.exportDocument(unsupported, unmappedSnapshot, scopedDocument,
+                List.of(plainIdentity), null);
+        var planningLosses = unmappedExport.losses().stream()
+                .filter(loss -> "PLANNING_FORMAT_UNSUPPORTED".equals(loss.code())).toList();
+        equal(1, planningLosses.size());
+        equal("R", planningLosses.getFirst().artifactId());
+        equal(LossDisposition.UNSUPPORTED, planningLosses.getFirst().disposition());
+        equal("P", unmappedSnapshot.projectKey());
         // A missing project key must never match an unscoped canonical requirement.
         String unscoped = dsl.replace("  x-project-key: \"P\";\n", "");
         rejects(() -> new PlanningExchangeBridge(unscoped).overlay(artifact, null, "REQ"));

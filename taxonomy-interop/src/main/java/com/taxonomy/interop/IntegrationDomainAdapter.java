@@ -98,7 +98,7 @@ public class IntegrationDomainAdapter {
         Map<String, BlockAst> blocks = ArchitectureSemanticPatch.index(document.dsl());
         boolean planningPresent = ReqifExchangeCodec.PROFILE.equals(connection.connectorId()) && (hasPlanning(blocks)
                 || mappings.stream().anyMatch(m -> m.internal() != null && m.internal().extensions().containsKey(PlanningEnvelope.EXTENSION)));
-        String projectKey = connection.projectId() != null && (supportsNativePackages(connection) || planningPresent)
+        String projectKey = connection.projectId() != null && (supportsNativePackages(connection) || planningPresent || hasPlanning(blocks))
                 ? projects.getProject(connection.projectId(), context.username(), workspace(context)).projectKey() : null;
         PlanningExchangeBridge planning = planningPresent ? new PlanningExchangeBridge(document.dsl()) : null;
         Map<String, Artifact> items = new TreeMap<>();
