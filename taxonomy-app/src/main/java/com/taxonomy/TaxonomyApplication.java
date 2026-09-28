@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.setup.SetupCommand;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.persistence.autoconfigure.EntityScan;
@@ -14,6 +15,11 @@ import org.springframework.scheduling.annotation.EnableAsync;
 @EnableAsync
 public class TaxonomyApplication {
     public static void main(String[] args) {
-        SpringApplication.run(TaxonomyApplication.class, args);
+        int setupExitCode = SetupCommand.execute(args, System.out);
+        if (setupExitCode >= 0) {
+            System.exit(setupExitCode);
+            return;
+        }
+        SpringApplication.run(TaxonomyApplication.class, SetupCommand.applicationArguments(args));
     }
 }

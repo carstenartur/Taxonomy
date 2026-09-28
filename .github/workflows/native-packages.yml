@@ -1,0 +1,82 @@
+name: Native packages
+
+on:
+  workflow_dispatch:
+    inputs:
+      package_version:
+        description: 'Numeric package version (major.minor.patch); does not publish a release'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with: { java-version: '21', distribution: temurin, cache: maven }
+      - name: Package the application (canonical CI remains the acceptance gate)
+        run: ./mvnw -B -ntp -DskipTests package
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: native-application-input
+          path: taxonomy-app/target/taxonomy-app-*.jar
+          if-no-files-found: error
+          retention-days: 7
+
+  package:
+    needs: application
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            installer: deb
+          - os: windows-latest
+            installer: msi
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    env:
+      PACKAGE_VERSION: ${{ inputs.package_version }}
+      INSTALLER_TYPE: ${{ matrix.installer }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with: { persist-credentials: false }
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with: { java-version: '21', distribution: temurin }
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with: { name: native-application-input, path: native-input }
+      - name: Build self-contained application and installer
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $jars = @(Get-ChildItem native-input -Filter 'taxonomy-app-*.jar')
+          if ($jars.Count -ne 1) { throw 'Expected exactly one repackaged application JAR' }
+          java deploy/native/PackageTaxonomy.java $jars[0].FullName $env:PACKAGE_VERSION app-image native-image
+          if ($LASTEXITCODE -ne 0) { throw 'Application-image verification failed' }
+          if ($IsLinux) {
+            # Preserve executable permissions inside the artifact.
+            tar -czf taxonomy-linux-app-image.tar.gz -C native-image Taxonomy application-input.sha256
+            if ($LASTEXITCODE -ne 0) { throw 'Image archive failed' }
+            if (-not (Get-Command fakeroot -ErrorAction SilentlyContinue)) { throw 'DEB packaging requires fakeroot on the build runner' }
+          } else {
+            Compress-Archive -Path native-image/Taxonomy,native-image/application-input.sha256 -DestinationPath taxonomy-windows-app-image.zip
+            # JDK 21 requires WiX 3 candle/light. Do not download an unpinned installer.
+            if ($env:WIX) { $env:PATH = "$env:WIX\bin;$env:PATH" }
+            if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) { throw 'MSI packaging requires WiX 3 candle.exe and light.exe on the build runner' }
+          }
+          java deploy/native/PackageTaxonomy.java $jars[0].FullName $env:PACKAGE_VERSION $env:INSTALLER_TYPE native-installer
+          if ($LASTEXITCODE -ne 0) { throw 'Native installer packaging failed' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: taxonomy-native-${{ matrix.installer }}-${{ github.sha }}
+          path: |
+            taxonomy-*-app-image.*
+            native-installer/*
+          if-no-files-found: error
+          retention-days: 7

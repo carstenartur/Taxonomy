@@ -77,6 +77,7 @@
     "delivery.yml": "report, container and deployment delivery",
     "deploy-release.yml": "release state machine",
     "publish-helm-oci.yml": "immutable release chart publication and Rancher OCI verification",
+    "native-packages.yml": "manual native application packaging; command contracts remain Maven-owned and canonical CI is the acceptance gate",
     "protected-release-main-advance.yml": "protected next-development snapshot verification and pull-request handoff to main",
     "prepare-development-version.yml": "validated non-release development-version transition through a protected pull request",
     "cleanup-workflow-runs.yml": "Actions retention"

@@ -1,0 +1,139 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Taxonomy chart values",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "authentication": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": [
+            "existing",
+            "local",
+            "keycloak"
+          ]
+        },
+        "keycloakClientSecretKey": {
+          "type": "string",
+          "minLength": 1,
+          "pattern": "^[A-Za-z0-9._-]+$"
+        }
+      }
+    },
+    "database": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "url": {
+          "type": "string",
+          "pattern": "^$|^jdbc:postgresql://[^\\s@]+$"
+        },
+        "username": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]*$"
+        }
+      }
+    },
+    "existingSecret": {
+      "type": "string"
+    },
+    "replicaCount": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "config": {
+      "type": "object",
+      "propertyNames": {
+        "not": {
+          "enum": [
+            "SPRING_DATASOURCE_PASSWORD",
+            "TAXONOMY_ADMIN_PASSWORD",
+            "ADMIN_PASSWORD",
+            "KEYCLOAK_CLIENT_SECRET",
+            "GEMINI_API_KEY",
+            "OPENAI_API_KEY",
+            "DEEPSEEK_API_KEY",
+            "DASHSCOPE_API_KEY",
+            "LLAMA_API_KEY",
+            "MISTRAL_API_KEY",
+            "CUSTOM_LLM_API_KEY"
+          ]
+        }
+      },
+      "additionalProperties": {
+        "type": [
+          "string",
+          "number",
+          "boolean"
+        ]
+      }
+    },
+    "secretEnv": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "required": [
+          "key",
+          "optional"
+        ],
+        "properties": {
+          "key": {
+            "type": "string",
+            "minLength": 1
+          },
+          "optional": {
+            "type": "boolean"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    "upgrade": {
+      "type": "object",
+      "properties": {
+        "strategy": {
+          "enum": [
+            "Recreate",
+            "RollingUpdate"
+          ]
+        },
+        "allowConcurrentApplicationVersions": {
+          "type": "boolean"
+        }
+      }
+    },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "size": {
+          "type": "string",
+          "minLength": 1
+        },
+        "storageClass": {
+          "type": "string"
+        }
+      }
+    },
+    "service": {
+      "type": "object",
+      "properties": {
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        },
+        "targetPort": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    }
+  }
+}
