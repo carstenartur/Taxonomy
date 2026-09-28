@@ -1,0 +1,74 @@
+name: PR 1139 locale regression evidence
+
+on:
+  push:
+    branches: [verify/pr1139-locale-regression-20260928]
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    name: Original failure and corrected user-management JUnit tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          fetch-depth: 3
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - name: Reproduce the original JUnit assertion failure
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p target/pr1139-regression/original target/pr1139-regression/corrected
+          test_source=taxonomy-app/src/test/java/com/taxonomy/security/UserManagementPageTest.java
+          git show bdd8c1eeb7aa25607d36df631bf7886e7246e950:"$test_source" > "$test_source"
+          set +e
+          ./mvnw -B -ntp -pl taxonomy-app -am test \
+            -Dtest=UserManagementPageTest#successRedirectsKeepTheServletContextAndNeverIncludeCredentials \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -Dmaven.build.cache.enabled=false \
+            -Dtaxonomy.ui.skip=true -Dtaxonomy.model.download.skip=true \
+            > target/pr1139-regression/original/maven.log 2>&1
+          result=$?
+          set -e
+          report=taxonomy-app/target/surefire-reports/TEST-com.taxonomy.security.UserManagementPageTest.xml
+          test "$result" -ne 0
+          test -f "$report"
+          grep -F 'Redirected URL expected:&lt;/taxonomy/admin/users?lang=de&gt; but was:&lt;/taxonomy/admin/users?lang=en&gt;' "$report"
+          cp "$report" target/pr1139-regression/original/
+          echo 'Confirmed the original JUnit failure: the servlet context is preserved, but the isolated request locale is English.'
+      - name: Verify all corrected user-management JUnit suites
+        shell: bash
+        run: |
+          set -euo pipefail
+          test_source=taxonomy-app/src/test/java/com/taxonomy/security/UserManagementPageTest.java
+          git show 35fad560cfc8a254ad1d8c457a713cbf24ad01d2:"$test_source" > "$test_source"
+          ./mvnw -B -ntp -pl taxonomy-app -am test \
+            -Dtest=UserManagementPageTest,LocalUserManagementProfileTest,UserManagementFormTest,UserCreationCredentialsTest \
+            -Dsurefire.failIfNoSpecifiedTests=false \
+            -Dmaven.build.cache.enabled=false \
+            -Dtaxonomy.ui.skip=true -Dtaxonomy.model.download.skip=true \
+            > target/pr1139-regression/corrected/maven.log 2>&1
+          for suite in UserManagementPageTest LocalUserManagementProfileTest UserManagementFormTest UserCreationCredentialsTest; do
+            report="taxonomy-app/target/surefire-reports/TEST-com.taxonomy.security.${suite}.xml"
+            test -f "$report"
+            grep -E '<testsuite .*errors="0".*failures="0"' "$report"
+            cp "$report" target/pr1139-regression/corrected/
+          done
+          git diff --exit-code -- "$test_source"
+          echo 'Verified source: 35fad560cfc8a254ad1d8c457a713cbf24ad01d2; no production or security-gate changes.'
+      - name: Archive actual JUnit and Maven evidence
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: pr1139-locale-regression-evidence
+          path: target/pr1139-regression/
+          if-no-files-found: error
+          retention-days: 7
