@@ -1,5 +1,6 @@
 package com.taxonomy;
 
+import com.taxonomy.acceptance.CivilianRelationQuality;
 import com.taxonomy.support.ProcessTestDiagnostics;
 import org.springframework.test.context.TestContextManager;
 
@@ -20,6 +21,7 @@ public final class CivilianAcceptanceProcess {
     static void verify() throws Exception {
         Path directory = Path.of("target/civilian-acceptance");
         Files.createDirectories(directory);
+        CivilianRelationQuality.clearReports(directory);
         Path log = directory.resolve("application-process.log");
         var command = new ArrayList<String>();
         command.add(Path.of(System.getProperty("java.home"), "bin", "java").toString());
@@ -78,6 +80,7 @@ public final class CivilianAcceptanceProcess {
             // This is the unchanged complete scenario, including its real HTTP, persistence,
             // two-pass analysis, export/reopen, mutation and optional browser assertions.
             scenario.verifyScenario();
+            CivilianRelationQuality.verify(Path.of("target/civilian-acceptance"));
         } catch (Throwable problem) {
             failure = problem;
         } finally {
