@@ -125,16 +125,16 @@ owner. Example (replace the nonsecret identities and endpoint):
 taxonomy:
   integrations:
     remotes:
-      civilian-pcs:
+      scenario-pcs:
         repository-id: <repository-id>
         organization-id: USER:<repository-owner>
         base-uri: https://pcs.example.org/model/oslc/am/
-        credential-environment-variable: CIVILIAN_PCS_TOKEN
+        credential-environment-variable: SCENARIO_PCS_TOKEN
         allow-private-networks: false
         allow-insecure-http: false
 ```
 
-`CIVILIAN_PCS_TOKEN` contains the PCS session GUID obtained using the model's
+`SCENARIO_PCS_TOKEN` contains the PCS session GUID obtained using the model's
 [documented login](https://sparxsystems.com/enterprise_architect_user_guide/17.2/the_model_repository/oslc_user_cred.html).
 Login, SSO and token renewal are administrator responsibilities in this slice.
 The transport sends `Authorization: OSLC <token>` and the required `useridentifier`
@@ -144,7 +144,7 @@ and credential-free resource identities. Authentication failures retain a failed
 operation that can be resumed after replacing the server-side credential.
 
 On the integration page select the AM profile, an allowed authority and the key
-`civilian-pcs`. **External repository identity must exactly equal `base-uri`**;
+`scenario-pcs`. **External repository identity must exactly equal `base-uri`**;
 leave external configuration blank. Set a project when importing requirement
 elements. Leave the remote resource blank for `sp/` discovery, or enter `qc/`.
 Projected/filtered queries are rejected so a partial property list cannot silently

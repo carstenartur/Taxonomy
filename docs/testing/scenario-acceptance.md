@@ -1,6 +1,6 @@
-# Zivile Architektur als reproduzierbare Integrationsabnahme
+# Szenariobasierte Architekturabnahme
 
-Die Abnahme beginnt mit einer öffentlichen zivilen Anforderung und führt den echten
+Die Abnahme beginnt mit einer öffentlichen Anforderung und führt den echten
 Taxonomy-Copilot bis zum gespeicherten Architektur-Snapshot und dessen Exporten aus.
 Nur die HTTP-Antwort der entfernten LLM wird durch Spring ersetzt. Projektverwaltung,
 Authentifizierung, Katalog, Prompts, Providerformat, Parser, Analyse, Verifikationsläufe,
@@ -8,7 +8,7 @@ Hypothesen, Datenbank, Git und Renderer bleiben echte Anwendungskomponenten.
 
 ## Nachvollziehbare Anforderung
 
-`CIV-FLOOD-001` beschreibt einen ergänzenden Hochwasserinformationsdienst für England.
+`FLOOD-001` beschreibt einen ergänzenden Hochwasserinformationsdienst für England.
 Die [GOV.UK-Dienstbeschreibung](https://www.gov.uk/get-flood-warnings) belegt
 gebietsbezogene Warnungen, Kontaktkanäle und die Verwaltung eines Benutzerkontos.
 Die [API-Dokumentation der Environment Agency](https://environment.data.gov.uk/flood-monitoring/doc/reference)
@@ -22,14 +22,14 @@ ersetzt keine offiziellen sicherheitskritischen Warnkanäle. Es werden weder ech
 Warnungen verschickt noch reale Abonnentendaten verwendet.
 
 Die Datei
-[`civilian-flood.json`](../../taxonomy-app/src/test/resources/scenarios/civilian-flood.json)
+[`flood-information.json`](../../taxonomy-app/src/test/resources/scenarios/flood-information.json)
 enthält Quellen, Anforderung, Katalogbindungen und 39 Antwortregeln auf rund 20 KB.
 Die Antworten sind fachlich verfasste Testdaten, keine aufgezeichneten LLM-Ausgaben.
 
 | Fachlicher Schwerpunkt | Tatsächlicher Katalog-Endpunkt |
 |---|---|
 | Eingang veröffentlichter Beobachtungen | BP-1017 — Acquire Data |
-| Zivile Aufsicht | BR-1223 — Civil Governance Roles |
+| Fachliche Aufsicht | BR-1223 — Civil Governance Roles |
 | Hydrografische Verarbeitung | CI-1052 — Hydrography Services |
 | SMS-Zugang | CO-1048 — Short Messaging Access Services |
 | Verbreitung von Informationen | CP-1041 — Information Dissemination Capabilities |
@@ -44,9 +44,9 @@ Pfads; er bedeutet weder Vollständigkeit noch eine Freigabe der Architektur.
 
 ## Testgrenze und Ablauf
 
-`CivilianLlmConfiguration` bindet `MockRestServiceServer` an das vorhandene
+`ScenarioLlmConfiguration` bindet `MockRestServiceServer` an das vorhandene
 `RestTemplate`. `llm.mock=false` bleibt gesetzt. Der echte OpenAI-kompatible Gateway
-sendet seine normalen Requests an `https://civilian.invalid/v1/chat/completions`;
+sendet seine normalen Requests an `https://scenario.invalid/v1/chat/completions`;
 der Spring-Server beantwortet sie im Prozess. Kein Netzwerk-Fallback ist möglich.
 Unbekannte URLs, Modelle, Anfragen, Aufgaben, Budgets oder Kategorien führen zum Fehler.
 
@@ -80,19 +80,19 @@ Normale Abnahme ohne Docker und ohne LLM-Schlüssel:
 
 ```bash
 ./mvnw -B -ntp -pl taxonomy-app -am test \
-  -Pcivilian-acceptance -DgenerateScreenshots=false
+  -Pscenario-acceptance -DgenerateScreenshots=false
 ```
 
 Browserabnahme und Dokumentationsbilder mit Docker/Selenium:
 
 ```bash
-./mvnw -B -ntp -pl taxonomy-app -am test -Pcivilian-acceptance
+./mvnw -B -ntp -pl taxonomy-app -am test -Pscenario-acceptance
 ```
 
 Alternativ kann ein lokal installiertes zusammenpassendes Chrome/ChromeDriver-Paar
 mit `-Dwebdriver.chrome.driver=/absolute/path/chromedriver` und optional
-`-Dcivilian.chrome.binary=/absolute/path/chrome` verwendet werden.
-Das Profil `civilian-acceptance` setzt `generateScreenshots=true` und aktiviert damit
+`-Dscenario.chrome.binary=/absolute/path/chrome` verwendet werden.
+Das Profil `scenario-acceptance` setzt `generateScreenshots=true` und aktiviert damit
 Browser und Screenshots. `-DgenerateScreenshots=false` schaltet beides aus.
 Es werden keine HTML-Inhalte, erfolgreichen Antworten oder Ergebniszustände injiziert.
 Der Container-Browser vertraut ausschließlich der dynamischen HTTP-Testadresse
@@ -102,7 +102,7 @@ nur für diesen Browserlauf; produktive Bereitstellungen benötigen ihre regulä
 HTTPS-Konfiguration.
 
 Die ergänzende CI
-[`.github/workflows/civilian-acceptance.yml`](../../.github/workflows/civilian-acceptance.yml)
+[`.github/workflows/scenario-acceptance.yml`](../../.github/workflows/scenario-acceptance.yml)
 führt den Browserweg bei relevanten Pull Requests aus und bewahrt das gesamte
 Abnahmepaket als Workflow-Artefakt auf. Sie benötigt keine Provider-Secrets und schreibt
 nichts in den Branch zurück. Die allgemeine Pflichtprüfung bleibt:
@@ -132,7 +132,7 @@ dass diese offenen Produktfunktionen bereits vorhanden sind.
 | ArchiMate-Integrationscodec | Tatsächlich exportierte Datei wird eingelesen, erneut geschrieben und mit gleichen Identitäten eingelesen |
 
 Das sind 17 Snapshot-/Berichtsdateien plus die geprüfte Sparx-XMI-Datei, zusätzlich zu Snapshot, Auftragsdaten, LLM-Aufrufprotokoll und
-Qualitätsbericht in `taxonomy-app/target/civilian-acceptance/`. Die vier Diagrammadapter
+Qualitätsbericht in `taxonomy-app/target/scenario-acceptance/`. Die vier Diagrammadapter
 werden direkt über ihre produktive Spring-Registrierung aufgerufen, da ihre älteren
 REST-Endpunkte bewusst eine neue Analyse starten würden. Die Snapshot-Exporte dürfen
 keinen zusätzlichen LLM-Aufruf auslösen.
@@ -147,7 +147,7 @@ Die CI rendert die tatsächlichen Dateien zusätzlich mit:
 
 ```bash
 ./mvnw -B -ntp -pl taxonomy-tooling -am compile -DskipTests
-java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-civilian-documents --artifacts taxonomy-app/target/civilian-acceptance
+java -cp taxonomy-tooling/target/classes com.taxonomy.tooling.TaxonomyTooling check-scenario-documents --artifacts taxonomy-app/target/scenario-acceptance
 ```
 
 Dafür werden LibreOffice Writer/Draw und Poppler benötigt. `document-qa/` enthält
@@ -215,50 +215,16 @@ enthält zusätzlich sichtbare, versteckte und deaktivierte Steuerelemente; die 
 beschreibt die für diesen Ablauf relevanten Aktionen, keine vollständige Anleitung
 aller Verwaltungsseiten der Anwendung.
 
-## Echte Bilder des Referenzlaufs
+## Historische Bildschirmnachweise
 
-Diese unveränderten Browserbilder stammen aus dem erfolgreichen
-[CI-Lauf 35475880662](https://github.com/carstenartur/Taxonomy/actions/runs/35475880662).
-Ergebnis- und Architekturansichten verwenden Snapshot `bfc86dc4-8fa2-4ad6-8363-48cdc5363e5b`;
-Anforderung und Projekt wurden zuvor in derselben Sitzung angelegt. Commit,
-Browser-Version, Abmessungen und SHA-256-Werte stehen im
-[Bildnachweis](../qa/civilian-acceptance-evidence.json).
+Frühere, unveränderte Browseraufnahmen und ihre Commit-/Snapshot-Nachweise stehen
+im [historischen Bildanhang](../qa/scenario-screenshots-history.md). Sie werden nicht
+als Aufnahmen des aktuellen Quellstands ausgegeben. Neue Prüfläufe verwenden die
+neutralen Szenarionamen und erzeugen ihre eigenen Dateien und Fingerabdrücke.
 
-Vor dem Start: der nachvollziehbare zivile Anforderungstext und das gewählte
-Profil **Exhaustive**. Die Quellen stehen in der Szenariodatei, nicht in einem
-nachträglich erfundenen Importfragment.
+## Historische Qualitätsbefunde und Prüfgrenzen
 
-![Zivile Anforderung vor dem vollständigen Copilot-Lauf](../images/73-civilian-requirement.png)
-
-Nach dem Abschluss und Wiederöffnen: zwei erfolgreiche Durchläufe, der ausgewählte
-Snapshot und die zugehörige Ergebnisansicht. Die Profilauswahl oben ist die Vorgabe
-für einen nächsten Lauf; der abgeschlossene Auftrag belegt seine zwei Durchläufe
-im Statusbereich.
-
-![Abgeschlossener Copilot-Auftrag und ausgewählter Snapshot](../images/74-civilian-result.png)
-
-Die vollständige Workbench zeigt 38 Elemente und 44 Beziehungen. Die Übersicht
-bewahrt den Hierarchiekontext; für einzelne Bezeichnungen und Verbindungen sind
-Zoom, Suche und Fokus vorgesehen.
-
-![Gespeicherte zivile Kandidatenarchitektur mit Exportaktionen](../images/75-civilian-architecture.png)
-
-Der ausgewählte Hydrografiedienst und seine fünf direkten Nachbarn bilden die
-Fokusansicht mit sechs Knoten und 16 Beziehungen. Rechts bleiben Identität,
-Herkunft und der noch offene Review-Status sichtbar.
-
-![Fokus auf Hydrografiedienst, Nachbarn und Herkunftsinformationen](../images/76-civilian-focus.png)
-
-Die gescrollte mobile Ansicht verwendet echte 390 × 844 CSS-Pixel in Chrome-
-Geräteemulation. Die Bedienelemente umbrechen, und „Fit“ hält alle Knoten innerhalb
-der Zeichenfläche. Die Gesamtübersicht ist dabei bewusst klein; zum Lesen einzelner
-Elemente werden Zoom und Fokus benötigt. Dies ist kein Test auf einem physischen Telefon.
-
-![Mobile Workbench mit umgebrochenen Bedienelementen und eingepasster Übersicht](../images/77-civilian-mobile.png)
-
-## Qualitätsbefunde und Grenzen
-
-Die zivile Abnahme hat eine reale Vervielfachung abgeleiteter Beziehungen aufgedeckt:
+Die Abnahme hat eine reale Vervielfachung abgeleiteter Beziehungen aufgedeckt:
 auch gleich bewertete Vorfahren wurden als konkrete Impact-Endpunkte behandelt.
 Die Auswahl unterdrückt nun einen Vorfahren, wenn ein qualifizierter Nachfolger
 seinen Pfad repräsentiert. Andere Zweige und schwach bewertete Nachfolger bleiben

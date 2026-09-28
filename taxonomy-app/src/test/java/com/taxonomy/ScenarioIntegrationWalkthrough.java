@@ -17,19 +17,19 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Feed the real generated exchange file through review, canonical editing and Sparx delivery. */
-final class CivilianIntegrationWalkthrough {
-    static void verify(CivilianArchitectureAcceptanceTest app, byte[] archimate) throws Exception {
-        var repository = app.post("/api/repositories", Map.of("displayName", "Civilian exchange QA",
-                "slug", "civilian-exchange-" + UUID.randomUUID(), "description", "Isolated native exchange walkthrough",
+final class ScenarioIntegrationWalkthrough {
+    static void verify(ScenarioArchitectureAcceptanceTest app, byte[] archimate) throws Exception {
+        var repository = app.post("/api/repositories", Map.of("displayName", "Scenario exchange QA",
+                "slug", "scenario-exchange-" + UUID.randomUUID(), "description", "Isolated native exchange walkthrough",
                 "visibility", "PRIVATE", "defaultBranch", "draft"), 200);
         var workspace = app.post("/api/repositories/" + repository.path("repositoryId").asText() + "/workspaces",
-                Map.of("displayName", "Civilian exchange", "description", "", "sourceBranch", "draft"), 200);
+                Map.of("displayName", "Scenario exchange", "description", "", "sourceBranch", "draft"), 200);
         String scope = "?workspaceId=" + workspace.path("workspaceId").asText();
-        String incoming = create(app, "Civilian snapshot import", ArchiMateExchangeCodec.PROFILE, "IMPORT_COPY", scope);
+        String incoming = create(app, "Scenario snapshot import", ArchiMateExchangeCodec.PROFILE, "IMPORT_COPY", scope);
         var current = app.get(incoming + scope).get("current");
         var previewRequest = Map.of("operationId", UUID.randomUUID(), "expected", current,
                 "mediaType", "application/archimate+xml", "completeScope", false);
-        String boundary = "civilian-" + UUID.randomUUID();
+        String boundary = "scenario-" + UUID.randomUUID();
         var body = new java.io.ByteArrayOutputStream();
         body.write(("--" + boundary + "\r\nContent-Disposition: form-data; name=\"request\"\r\n"
                 + "Content-Type: application/json\r\n\r\n" + app.json.writeValueAsString(previewRequest)
@@ -38,7 +38,7 @@ final class CivilianIntegrationWalkthrough {
         body.write(archimate); body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
         var response = app.http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port + incoming + "/previews" + scope))
                 .timeout(Duration.ofSeconds(30)).header("Authorization", "Basic " + Base64.getEncoder().encodeToString(
-                        ("admin:" + CivilianArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
+                        ("admin:" + ScenarioArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary)
                 .POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofByteArray());
         assertThat(response.statusCode()).as(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo(200);
@@ -49,7 +49,7 @@ final class CivilianIntegrationWalkthrough {
         assertThat(applied.path("status").asText()).isEqualTo("COMPLETED");
         assertThat(app.post(incoming + "/apply" + scope, review(preview), 200)).isEqualTo(applied);
 
-        String outgoing = create(app, "Civilian Sparx delivery", SparxMappingProfile.PROFILE, "BIDIRECTIONAL", scope);
+        String outgoing = create(app, "Scenario Sparx delivery", SparxMappingProfile.PROFILE, "BIDIRECTIONAL", scope);
         var exportPreview = app.post(outgoing + "/export-previews" + scope, Map.of("operationId", UUID.randomUUID(),
                 "expected", app.get(outgoing + scope).get("current")), 200);
         app.save("integration-sparx-preview.json", exportPreview);
@@ -59,12 +59,12 @@ final class CivilianIntegrationWalkthrough {
         byte[] xmi = app.request("GET", outgoing + "/operations/" + delivered.path("id").asText() + "/file" + scope, null, 200).body();
         Files.write(app.output.resolve("architecture.sparx.xmi"), xmi);
         var codec = new SparxXmiCodec();
-        var read = codec.read(xmi, "civilian-delivery", false);
-        var replay = codec.read(codec.write(read), "civilian-delivery", false);
+        var read = codec.read(xmi, "scenario-delivery", false);
+        var replay = codec.read(codec.write(read), "scenario-delivery", false);
         assertThat(replay.artifacts()).isEqualTo(read.artifacts());
         assertThat(replay.relations()).isEqualTo(read.relations());
         assertThat(read.artifacts()).hasSize(7);
-        var source = new ArchiMateExchangeCodec().read(archimate, "civilian-snapshot", false);
+        var source = new ArchiMateExchangeCodec().read(archimate, "scenario-snapshot", false);
         assertThat(read.artifacts()).extracting(a -> a.title())
                 .containsExactlyInAnyOrderElementsOf(source.artifacts().stream()
                         .filter(a -> a.kind() == com.taxonomy.extension.api.integration.IntegrationContracts.ArtifactKind.ELEMENT)
@@ -96,7 +96,7 @@ final class CivilianIntegrationWalkthrough {
         app.save("integration-quality.json", app.json.valueToTree(Map.of(
                 "generatedRelations", 7, "nativeAcceptedRelations", 7, "nativeRejectedRelations", 0,
                 "sparxDeliveredElements", 7, "sparxDeliveredRelations", 2, "sparxUnmappedRelations", 5,
-                "sparxFileSha256", com.taxonomy.acceptance.CivilianExportQa.sha256(xmi),
+                "sparxFileSha256", com.taxonomy.acceptance.ScenarioExportQa.sha256(xmi),
                 "productCompatibility", "NOT_EXECUTED", "reviewEvidence", List.of("integration-import-review.json", "integration-sparx-review.json"))));
         // A delivered file is not a remote acknowledgement and must not advance a checkpoint.
         assertThat(app.get(outgoing + scope).path("checkpoint").isNull()).isTrue();
@@ -105,7 +105,7 @@ final class CivilianIntegrationWalkthrough {
     }
 
     /** Contract fixture at the remote boundary; all application APIs and persistence remain real. */
-    private static void verifyNativeV2(CivilianArchitectureAcceptanceTest app, String ignoredScope) throws Exception {
+    private static void verifyNativeV2(ScenarioArchitectureAcceptanceTest app, String ignoredScope) throws Exception {
         var repository = app.post("/api/repositories", Map.of("displayName", "Native V2 contract", "slug", "native-v2-" + UUID.randomUUID(),
                 "description", "Isolated contract fixture", "visibility", "PRIVATE", "defaultBranch", "draft"), 200);
         var workspace = app.post("/api/repositories/" + repository.path("repositoryId").asText() + "/workspaces",
@@ -177,15 +177,15 @@ final class CivilianIntegrationWalkthrough {
                 "connection", connection.toString(), "packageId", packageId, "productCompatibility", "NOT_EXECUTED", "fixture", "contract")));
         app.save("integration-native-review.json", app.json.valueToTree(review));
     }
-    static JsonNode editorRequest(CivilianArchitectureAcceptanceTest app, String path, Object body, long revision) throws Exception {
+    static JsonNode editorRequest(ScenarioArchitectureAcceptanceTest app, String path, Object body, long revision) throws Exception {
         var response = app.http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port + path)).timeout(Duration.ofSeconds(30))
-                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + CivilianArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
+                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + ScenarioArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
                 .header("Content-Type", "application/json").header("If-Match", "\"workspace-revision-" + revision + "\"")
                 .POST(HttpRequest.BodyPublishers.ofString(app.json.writeValueAsString(body))).build(), HttpResponse.BodyHandlers.ofByteArray());
         assertThat(response.statusCode()).as(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo(200);
         return app.json.readTree(response.body());
     }
-    static JsonNode uploadXmi(CivilianArchitectureAcceptanceTest app, String path, String scope, byte[] file) throws Exception {
+    static JsonNode uploadXmi(ScenarioArchitectureAcceptanceTest app, String path, String scope, byte[] file) throws Exception {
         String boundary = "native-" + UUID.randomUUID();
         var request = Map.of("operationId", UUID.randomUUID(), "expected", app.get(path + scope).path("current"), "mediaType", "application/xmi+xml", "completeScope", true);
         var body = new java.io.ByteArrayOutputStream();
@@ -193,16 +193,16 @@ final class CivilianIntegrationWalkthrough {
                 + "\r\n--" + boundary + "\r\nContent-Disposition: form-data; name=\"file\"; filename=\"contract.xmi\"\r\nContent-Type: application/xmi+xml\r\n\r\n").getBytes(StandardCharsets.UTF_8));
         body.write(file); body.write(("\r\n--" + boundary + "--\r\n").getBytes(StandardCharsets.UTF_8));
         var response = app.http.send(HttpRequest.newBuilder(URI.create("http://localhost:" + app.port + path + "/previews" + scope))
-                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + CivilianArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
+                .header("Authorization", "Basic " + Base64.getEncoder().encodeToString(("admin:" + ScenarioArchitectureAcceptanceTest.PASSWORD).getBytes(StandardCharsets.UTF_8)))
                 .header("Content-Type", "multipart/form-data; boundary=" + boundary).POST(HttpRequest.BodyPublishers.ofByteArray(body.toByteArray())).build(), HttpResponse.BodyHandlers.ofByteArray());
         assertThat(response.statusCode()).as(new String(response.body(), StandardCharsets.UTF_8)).isEqualTo(200); return app.json.readTree(response.body());
     }
 
-    private static String create(CivilianArchitectureAcceptanceTest app, String name, String profile, String authority, String scope) throws Exception {
+    private static String create(ScenarioArchitectureAcceptanceTest app, String name, String profile, String authority, String scope) throws Exception {
         UUID id = UUID.randomUUID();
         app.post("/api/integrations" + scope, Map.of("id", id, "name", name, "connectorId", profile,
-                "authority", authority, "externalScope", Map.of("systemType", "Civilian reference",
-                        "repository", "urn:taxonomy:civilian-flood:" + id)), 200);
+                "authority", authority, "externalScope", Map.of("systemType", "Scenario reference",
+                        "repository", "urn:taxonomy:scenario-flood:" + id)), 200);
         return "/api/integrations/" + id;
     }
 

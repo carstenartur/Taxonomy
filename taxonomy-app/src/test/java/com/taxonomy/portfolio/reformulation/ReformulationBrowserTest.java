@@ -110,11 +110,11 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
     @FunctionalInterface interface BrowserAction { void run(RemoteWebDriver driver,WebDriverWait wait) throws Exception; }
     private void inBrowser(String name,String proposalId,BrowserAction action) throws Exception {
         var options=new ChromeOptions();options.addArguments("--headless=new","--no-sandbox","--disable-dev-shm-usage");
-        String binary=System.getProperty("civilian.chrome.binary");if(binary!=null)options.setBinary(binary);
+        String binary=System.getProperty("scenario.chrome.binary");if(binary!=null)options.setBinary(binary);
         BrowserWebDriverContainer<?> container=null;RemoteWebDriver driver;String origin;
         if(System.getProperty("webdriver.chrome.driver")!=null){driver=new ChromeDriver(options);origin="http://localhost:"+port;}
         else {Testcontainers.exposeHostPorts(port);origin="http://host.testcontainers.internal:"+port;container=new BrowserWebDriverContainer<>(DockerImageName.parse(System.getProperty("selenium.container.image","selenium/standalone-chrome:"+new BuildInfo().getReleaseLabel())));container.start();driver=new RemoteWebDriver(container.getSeleniumAddress(),options);}
-        Path output=Path.of("target/civilian-acceptance/reformulation-browser",name);Files.createDirectories(output);
+        Path output=Path.of("target/scenario-acceptance/reformulation-browser",name);Files.createDirectories(output);
         try {
             var wait=new WebDriverWait(driver,Duration.ofSeconds(20));driver.manage().window().setSize(new Dimension(1440,1000));driver.get(origin+"/login");
             driver.findElement(By.name("username")).sendKeys("admin");driver.findElement(By.name("password")).sendKeys("Reformulation-Browser-2026!");driver.findElement(By.cssSelector("form")).submit();wait.until(d->!d.getCurrentUrl().contains("/login"));
@@ -128,7 +128,7 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
     @Test void wideAndNarrowWorkspacePreservesEditsWhitespaceAndExplicitProposalSave() throws Exception {
         var proposal=seed();var before=projects.getRequirement(project.id(),requirement.id(),"architect",context);
         var options=new ChromeOptions(); options.addArguments("--headless=new","--no-sandbox","--disable-dev-shm-usage");
-        String binary=System.getProperty("civilian.chrome.binary");if(binary!=null)options.setBinary(binary);
+        String binary=System.getProperty("scenario.chrome.binary");if(binary!=null)options.setBinary(binary);
         BrowserWebDriverContainer<?> container=null;RemoteWebDriver driver;String origin;
         if(System.getProperty("webdriver.chrome.driver")!=null) {driver=new ChromeDriver(options);origin="http://localhost:"+port;}
         else {
@@ -146,7 +146,7 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
             assertThat(driver.findElement(By.cssSelector("[data-reformulation-original]")).getDomProperty("textContent")).isEqualTo(ORIGINAL);
             assertThat(driver.findElement(By.cssSelector("[data-reformulation-original]")).getCssValue("white-space")).isEqualTo("pre-wrap");
             assertThat(driver.findElements(By.cssSelector("#reformulationOffers img"))).isEmpty();
-            Path output=Path.of("target/civilian-acceptance/reformulation-browser");Files.createDirectories(output);
+            Path output=Path.of("target/scenario-acceptance/reformulation-browser");Files.createDirectories(output);
             driver.executeScript("document.getElementById('reformulationOffers').scrollIntoView()");
             Files.write(output.resolve("wide-de.png"),driver.getScreenshotAs(OutputType.BYTES));
             ((HasCdp)new Augmenter().augment(driver)).executeCdpCommand("Emulation.setDeviceMetricsOverride",Map.of("width",390,"height",844,"deviceScaleFactor",1,"mobile",true));
@@ -205,7 +205,7 @@ class ReformulationBrowserTest extends ReformulationWorkflowFixture {
             Files.write(output.resolve("wide-en.png"),driver.getScreenshotAs(OutputType.BYTES));
             assertThat(driver.findElement(By.id("reformulationList")).getText()).contains("older source version");
         } catch(Throwable failure) {
-            Path output=Path.of("target/civilian-acceptance/reformulation-browser");Files.createDirectories(output);
+            Path output=Path.of("target/scenario-acceptance/reformulation-browser");Files.createDirectories(output);
             Files.write(output.resolve("failure.png"),driver.getScreenshotAs(OutputType.BYTES));
             Files.writeString(output.resolve("failure-page.html"),driver.getPageSource());
             Files.writeString(output.resolve("failure-geometry.json"),String.valueOf(driver.executeScript("return JSON.stringify(window.__reformulationClickGeometry || {})")));throw failure;

@@ -5,12 +5,12 @@ import tools.jackson.databind.node.ObjectNode;
 import java.util.Set;
 
 /** Authored provider choices for a bounded application path; the sourced requirement is unchanged. */
-final class ReformulationCivilianCorpus {
+final class ReformulationScenarioCorpus {
     static JsonNode scenario(String name) throws Exception {
         if (name.equals("flood")) return flood();
-        if (!Set.of("time-recording", "cross-taxonomy").contains(name)) throw new IllegalArgumentException("Unknown authored civilian scenario");
+        if (!Set.of("time-recording", "cross-taxonomy").contains(name)) throw new IllegalArgumentException("Unknown authored scenario");
         JsonNode authored;
-        try (var stream = ReformulationCivilianCorpus.class.getResourceAsStream("/scenarios/reformulation-" + name + ".json")) {
+        try (var stream = ReformulationScenarioCorpus.class.getResourceAsStream("/scenarios/reformulation-" + name + ".json")) {
             authored = new tools.jackson.databind.ObjectMapper().readTree(stream);
         }
         var fixture = (ObjectNode) flood();
@@ -28,8 +28,8 @@ final class ReformulationCivilianCorpus {
     }
     static JsonNode flood() throws Exception {
         var fixture = (ObjectNode) ScenarioLlmPlayback.flood().fixture();
-        fixture.put("id", "civilian-flood-reformulation-bounded-v1");
-        fixture.put("civilianReformulation", true);
+        fixture.put("id", "scenario-flood-reformulation-bounded-v1");
+        fixture.put("scenarioReformulation", true);
         fixture.put("responseProvenance", "Authored acceptance assumptions: only BP and IP are scored relevant. "
                 + "This is not a completeness judgment about the source or live-model quality evidence.");
         var selected = Set.of("BP", "IP");

@@ -436,9 +436,9 @@
             </properties>
         </profile>
         <profile>
-            <id>civilian-acceptance</id>
+            <id>scenario-acceptance</id>
             <properties>
-                <test>CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationCivilianBrowserTest,ReformulationBrowserTest</test>
+                <test>ScenarioArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationScenarioAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationScenarioBrowserTest,ReformulationBrowserTest</test>
                 <surefire.failIfNoSpecifiedTests>false</surefire.failIfNoSpecifiedTests>
                 <generateScreenshots>true</generateScreenshots>
             </properties>

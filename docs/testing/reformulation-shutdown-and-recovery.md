@@ -110,6 +110,6 @@ reservation references the existing portfolio Claim contract; any inventory upda
 must follow the actual unchanged ArchUnit output, not guessed counts.
 
 No live cloud model was called. These are execution/safety tests, not a claim about
-real-model wording quality or full civilian acceptance. This is author review, not
+real-model wording quality or full scenario acceptance. This is author review, not
 independent approval. Large aggregate/discovery-context fidelity, checkpoint query
 indexing, retention, subsequent adoption and final acceptance remain separate work.

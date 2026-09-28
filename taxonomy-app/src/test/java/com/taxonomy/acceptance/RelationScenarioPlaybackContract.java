@@ -8,7 +8,7 @@ import java.util.List;
 
 import static com.taxonomy.dto.RelationSearchModel.*;
 
-/** Executes the real JSON protocol against the authored civilian response corpus. */
+/** Executes the real JSON protocol against the authored scenario response corpus. */
 public final class RelationScenarioPlaybackContract {
     private static final JsonMapper JSON = JsonMapper.builder().build();
     private static final Node APPLICATION = new Node("UA-1580", "UA", "Hydrographic Applications", "", false);
@@ -24,7 +24,7 @@ public final class RelationScenarioPlaybackContract {
             catch (ReflectiveOperationException failure) { failures.add(method.getName() + ": " + failure.getCause()); }
         }
         failures.forEach(System.err::println);
-        System.out.println("Civilian relation playback: " + passed + " passed, " + failures.size() + " failed");
+        System.out.println("Scenario relation playback: " + passed + " passed, " + failures.size() + " failed");
         if (!failures.isEmpty()) { throw new AssertionError(failures.toString()); }
     }
 

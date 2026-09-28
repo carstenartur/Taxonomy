@@ -12,7 +12,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class DecisionRationaleDocxLayoutTest {
     @Test
     void alternativesKeepDistinctScoresAndSourcesButShareFullWidthRationales() throws Exception {
-        String reason = "This alternative is outside the civilian subscription boundary. "
+        String reason = "This alternative is outside the scenario subscription boundary. "
                 + "Published warnings must retain their source, observation time and geographic area.";
         var chapter = new DecisionChapter(1, "BP", "Business processes", "", 100, 0,
                 true, "Selected data acquisition", "All alternatives were assessed.", List.of(

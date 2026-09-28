@@ -71,7 +71,7 @@ public final class ScenarioLlmPlayback {
         require(!rules.isEmpty(), "Empty response corpus");
     }
     public static ScenarioLlmPlayback flood() throws Exception {
-        try (var input = ScenarioLlmPlayback.class.getResourceAsStream("/scenarios/civilian-flood.json")) {
+        try (var input = ScenarioLlmPlayback.class.getResourceAsStream("/scenarios/flood-information.json")) {
             return new ScenarioLlmPlayback(new ObjectMapper().readTree(input));
         }
     }
@@ -79,7 +79,7 @@ public final class ScenarioLlmPlayback {
 
     /** Test driver registers only text read back after its explicit authenticated adoption command. */
     public synchronized void registerAdoptedSource(String source) {
-        require(fixture.path("civilianReformulation").asBoolean(false), "Only the civilian workflow binds adoption sources");
+        require(fixture.path("scenarioReformulation").asBoolean(false), "Only the scenario workflow binds adoption sources");
         require(source.contains(fixture.at("/requirement/text").asText()) && !source.equals(fixture.at("/requirement/text").asText()),
                 "Adopted fixture must retain the complete original and add reviewed offer text");
         require(adoptedSources.stream().noneMatch(p -> p.fixture.at("/requirement/text").asText().equals(source)), "Duplicate adoption source");

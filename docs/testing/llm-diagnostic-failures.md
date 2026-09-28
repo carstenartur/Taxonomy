@@ -83,7 +83,7 @@ Maven was unavailable locally; no full local Maven/HTTP/browser pass is claimed.
 The older architecture API failure had an explicit MEMORY_PRESSURE cause and
 received a separate deterministic success/pressure test repair. At predecessor
 `06f2442`, PostgreSQL and Oracle passed, but SQL Server lane 106734443130 failed in
-its ordinary HSQL application suite: civilian verification pass two was PARTIAL
+its ordinary HSQL application suite: scenario verification pass two was PARTIAL
 with no item/aggregate explanation. Its cause is not established from that
 summary. The new diagnostic persistence does not itself prove this acceptance
 failure fixed. The unchanged acceptance test still requires SUCCESS.

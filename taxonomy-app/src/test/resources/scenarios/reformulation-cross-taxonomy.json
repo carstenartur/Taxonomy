@@ -1,10 +1,10 @@
 {
   "id": "authored-cross-taxonomy-v1",
   "responseProvenance": "Authored deterministic test assumptions, not external requirements or live model evidence.",
-  "requirement": {"text": "Acquire civilian observations and deliver user-selected text notices. Delivery must take no more than 5 minutes; preserve the handwritten meeting note as unmapped original content."},
+  "requirement": {"text": "Acquire observations and deliver user-selected text notices. Delivery must take no more than 5 minutes; preserve the handwritten meeting note as unmapped original content."},
   "bindings": {"BP-1017": "Acquire Data", "CO-1048": "Short Messaging Access Services", "BP-1060": "Analytical Support"},
   "application": {
-    "summary": "Acquire civilian observations and deliver user-selected text notices within 5 minutes. Preserve the handwritten meeting note.",
+    "summary": "Acquire observations and deliver user-selected text notices within 5 minutes. Preserve the handwritten meeting note.",
     "addition": "Consider an attributable delivery-failure history without changing the 5 minutes limit.",
     "sharedQuestion": "How should failed notice delivery be handled?",
     "sharedOptions": ["Keep a failure for explicit review", "Offer a separately confirmed retry"],

@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The scenario owns its application settings; only explicit UI test flags go on argv. */
-class CivilianAcceptanceProcessTest {
+class ScenarioAcceptanceProcessTest {
     @ParameterizedTest
     @ValueSource(strings = {
             "custom.llm.api.key", "spring.datasource.password", "taxonomy.admin-password",
@@ -28,7 +28,7 @@ class CivilianAcceptanceProcessTest {
     }
 
     private static boolean forwarded(String key) throws Exception {
-        var selector = CivilianAcceptanceProcess.class.getDeclaredMethod("testProperty", String.class);
+        var selector = ScenarioAcceptanceProcess.class.getDeclaredMethod("testProperty", String.class);
         selector.setAccessible(true);
         return (boolean) selector.invoke(null, key);
     }

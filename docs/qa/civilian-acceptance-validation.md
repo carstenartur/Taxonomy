@@ -1,7 +1,7 @@
 # Civilian acceptance validation
 
 The reproducible contract and source requirement are described in the
-[acceptance guide](../testing/civilian-acceptance.md). This record distinguishes
+[acceptance guide](https://github.com/carstenartur/Taxonomy/blob/3bb4b8c4b2e60ca90f41b416b047a0bf7b5faea2/docs/testing/civilian-acceptance.md). This record distinguishes
 executed checks from pending visual/product acceptance.
 
 ## Executed locally

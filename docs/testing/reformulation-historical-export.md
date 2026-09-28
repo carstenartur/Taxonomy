@@ -119,7 +119,7 @@ historical identity, UI capture/error handling and markup containment.
 
 Remaining package 7: portable evidence inside atomic Git checkpoints, import/round
 trip, rich Word reports including the selected architecture/decision-tree graphics.
-Package 8 live-model and full civilian acceptance remains separate.
+Package 8 live-model and full scenario acceptance remains separate.
 
 ## CI repair on 23 September 2026
 

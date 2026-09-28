@@ -16,6 +16,10 @@ The primary goal is to shorten the path from an unstructured need to a useful fi
 
 By externalizing taxonomy paths, scores, relations, provenance, and history, the workbench also reduces the amount of architecture context users must reconstruct and keep in mind at once.
 
+Taxonomy addresses architecture work in federal, state and local public administration
+and in enterprises. Example scenarios describe test coverage, not a restriction of
+the intended users or application domains.
+
 ## What the application provides
 
 | Capability | Description |

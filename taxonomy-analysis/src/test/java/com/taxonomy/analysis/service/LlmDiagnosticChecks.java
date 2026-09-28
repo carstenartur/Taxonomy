@@ -40,7 +40,7 @@ public final class LlmDiagnosticChecks {
         String id = UUID.randomUUID().toString();
         try (var reservation = registry.reserve(id, "owner", SCOPE, null);
              var handle = reservation.open()) {
-            LlmCallDetail detail = service(REPLY).analyzeSingleBatchDetailed("Civilian requirement", List.of(node()), 100);
+            LlmCallDetail detail = service(REPLY).analyzeSingleBatchDetailed("Example requirement", List.of(node()), 100);
             require(REPLY.equals(detail.getRawResponse()), "Service must preserve the exact invalid reply");
             require(detail.getError() != null, "Non-JSON must remain a failed analysis");
             require(detail.getScores().isEmpty(), "A failed assessment must not manufacture a zero score");
@@ -51,7 +51,7 @@ public final class LlmDiagnosticChecks {
             Map<?, ?> fields = JSON.readValue(JSON.writeValueAsString(saved), Map.class);
             require(detail.getError().equals(fields.get("error")), "Diagnostic endpoint loses the actual parse error");
             require(REPLY.equals(saved.response()), "Failed response must survive terminal completion");
-            require(saved.prompt().contains("Civilian requirement"), "Prompt must survive failure");
+            require(saved.prompt().contains("Example requirement"), "Prompt must survive failure");
             expectHidden(() -> registry.callDetail(id, 1, "another-owner", SCOPE));
             expectHidden(() -> registry.callDetail(id, 1, "owner", new WorkspaceContext("owner", "other", "draft")));
         }
@@ -63,7 +63,7 @@ public final class LlmDiagnosticChecks {
         String id = UUID.randomUUID().toString();
         try (var reservation = registry.reserve(id, "owner", SCOPE, null);
              var handle = reservation.open()) {
-            var detail = service(raw).analyzeSingleBatchDetailed("Civilian requirement", List.of(node()), 100);
+            var detail = service(raw).analyzeSingleBatchDetailed("Example requirement", List.of(node()), 100);
             require(detail.getError() != null && detail.getError().contains("Invalid JSON in LLM response"),
                     "The actual service must expose the concise parser diagnostic");
             require(raw.equals(detail.getRawResponse()), "No repaired or shortened answer may replace raw evidence");
@@ -117,7 +117,7 @@ public final class LlmDiagnosticChecks {
     }
 
     static void nonJsonIsActionableAndNotSuccess() throws Exception {
-        LlmCallDetail detail = service(REPLY).analyzeSingleBatchDetailed("Civilian requirement", List.of(node()), 100);
+        LlmCallDetail detail = service(REPLY).analyzeSingleBatchDetailed("Example requirement", List.of(node()), 100);
         require(detail.getError() != null && detail.getError().contains("JSON object")
                 && detail.getError().contains("LLM communication log"), "Non-JSON error must identify the contract and diagnostic location");
         require(REPLY.equals(detail.getRawResponse()), "The actionable message must not replace the raw reply");

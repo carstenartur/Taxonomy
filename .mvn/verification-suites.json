@@ -34,9 +34,9 @@
       "excludedGroups": "onnx,db-postgres,db-mssql,db-oracle",
       "requires": ["Java 21", "Configured generative provider", "Explicit network/cost opt-in"]
     },
-    "civilian-acceptance": {
-      "purpose": "Sourced civilian Copilot scenario with Spring remote LLM playback, export semantics and real browser screenshots",
-      "test": "CivilianArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationCivilianAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationCivilianBrowserTest,ReformulationBrowserTest",
+    "scenario-acceptance": {
+      "purpose": "Sourced Copilot scenario with Spring remote LLM playback, export semantics and real browser screenshots",
+      "test": "ScenarioArchitectureAcceptanceTest,ScenarioLlmPlaybackTest,ReformulationScenarioAcceptanceTest,ReformulationAuthoredScenarioTest,ReformulationScenarioBrowserTest,ReformulationBrowserTest",
       "systemProperty": "generateScreenshots",
       "requires": ["Java 21", "Docker"]
     },
@@ -67,7 +67,7 @@
     "catalogue-overlay-proposal.yml": "Maven-verified deterministic catalogue-overlay proposal and review-evidence publication",
     "document-template-report-e2e.yml": "Maven-owned packaged browser and decision-report evidence",
     "reformulation-usage-contract.yml": "Supplemental Maven-owned usage, recovery and input-fidelity tests with positive JUnit evidence; canonical CI remains authoritative",
-    "civilian-acceptance.yml": "Maven-owned civilian Copilot, remote LLM playback, export and screenshot evidence",
+    "scenario-acceptance.yml": "Maven-owned scenario Copilot, remote LLM playback, export and screenshot evidence",
     "jgit-storage-hibernate-contract.yml": "consumer-owned storage compatibility contract with Maven verification catalogue selectors",
     "kubernetes-constrained-smoke.yml": "external kind and Helm constrained-cluster release-floor verification",
     "codeql.yml": "external source analysis",

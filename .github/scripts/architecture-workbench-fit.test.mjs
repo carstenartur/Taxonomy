@@ -34,7 +34,7 @@ function fit(bounds, viewport) {
 }
 
 for (const [name, bounds, viewport] of [
-    ['civilian overview on a phone', { x: -14, y: 4, width: 2516, height: 1220 }, { width: 320, height: 540 }],
+    ['scenario overview on a phone', { x: -14, y: 4, width: 2516, height: 1220 }, { width: 320, height: 540 }],
     ['tall graph', { x: 20, y: -70, width: 900, height: 6000 }, { width: 1100, height: 600 }],
     ['compact focused graph', { x: 100, y: 40, width: 400, height: 260 }, { width: 1200, height: 900 }]
 ]) {
@@ -49,7 +49,7 @@ for (const [name, bounds, viewport] of [
     });
 }
 
-// Preserve the legacy filter contract as the civilian browser fixture now
+// Preserve the legacy filter contract as the scenario browser fixture now
 // exercises the default evidence graph (which deliberately has no impact anchors).
 const visibilityStart = source.indexOf('    function visibleModel() {');
 const visibilityEnd = source.indexOf('    function buildLayerGroups(', visibilityStart);

@@ -172,10 +172,10 @@ class LlmPreparedPromptTest {
         node.setTaxonomyRoot("IP");
         node.setNameEn("Information Products");
         try (var run = new Run()) {
-            var returned = service.analyzeSingleBatchDetailed("Civilian requirement", List.of(node), 100);
+            var returned = service.analyzeSingleBatchDetailed("Example requirement", List.of(node), 100);
             assertNotNull(returned.getError());
             var retained = run.detail(1);
-            assertTrue(retained.prompt().contains("Civilian requirement"),
+            assertTrue(retained.prompt().contains("Example requirement"),
                     "The service's constructed prompt must survive an escaping provider failure");
             assertEquals(retained.prompt().length(), retained.promptLength());
             assertEquals("IllegalStateException", retained.error());

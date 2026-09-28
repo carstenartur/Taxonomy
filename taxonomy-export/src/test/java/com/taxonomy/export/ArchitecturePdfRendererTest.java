@@ -19,12 +19,12 @@ class ArchitecturePdfRendererTest {
     private final ArchitecturePdfRenderer renderer = new ArchitecturePdfRenderer();
 
     @Test
-    void wideCivilianSceneKeepsReadableLabelsAndHeaderTextInsideTheNode() throws Exception {
+    void wideScenarioSceneKeepsReadableLabelsAndHeaderTextInsideTheNode() throws Exception {
         var node = new com.taxonomy.diagram.DiagramSceneNode("CO-1048", "Short Messaging Access Services",
                 "Communications Services", 1, true, 8, 4, true, null, false,
                 2200, 40, 240, 84);
-        var wide = new DiagramScene("Civilian flood information", 2516, 650, "LR", List.of(node), List.of());
-        try (var document = org.apache.pdfbox.Loader.loadPDF(renderer.render(wide, "CIV-FLOOD-001"))) {
+        var wide = new DiagramScene("Flood information", 2516, 650, "LR", List.of(node), List.of());
+        try (var document = org.apache.pdfbox.Loader.loadPDF(renderer.render(wide, "FLOOD-001"))) {
             var labels = new java.util.ArrayList<org.apache.pdfbox.text.TextPosition>();
             var nodeText = new java.util.ArrayList<org.apache.pdfbox.text.TextPosition>();
             var text = new org.apache.pdfbox.text.PDFTextStripper() {

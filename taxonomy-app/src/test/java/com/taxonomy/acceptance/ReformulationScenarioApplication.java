@@ -13,33 +13,33 @@ import java.util.*;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Authenticated HTTP commands and reads; never inserts analysis or proposal state. */
-public final class ReformulationCivilianApplication {
-    private static final String PASSWORD = "Reformulation-Civilian-Test-2026!";
+public final class ReformulationScenarioApplication {
+    private static final String PASSWORD = "Reformulation-Scenario-Test-2026!";
     private final ObjectMapper json = new ObjectMapper();
     private final HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
     private final String base;
     private final Path output;
     private final ScenarioLlmPlayback playback;
-    private ReformulationCivilianBrowser browser;
+    private ReformulationScenarioBrowser browser;
     private boolean browserMode;
     private boolean fullLifecycle = true;
 
-    private ReformulationCivilianApplication(int port, Path output, ScenarioLlmPlayback playback) {
+    private ReformulationScenarioApplication(int port, Path output, ScenarioLlmPlayback playback) {
         this.base = "http://127.0.0.1:" + port; this.output = output; this.playback = playback;
     }
 
     public static void main(String[] args) throws Exception {
         Path directory = Path.of(args[0]);
-        try (var app = new SpringApplicationBuilder(TaxonomyApplication.class, CivilianLlmConfiguration.class).run(
+        try (var app = new SpringApplicationBuilder(TaxonomyApplication.class, ScenarioLlmConfiguration.class).run(
                 "--server.port=0", "--embedding.enabled=false", "--embedding.allow-download=false",
                 "--spring.datasource.url=jdbc:hsqldb:file:" + directory.resolve("db").toAbsolutePath() + ";shutdown=true",
                 "--spring.datasource.username=SA", "--spring.datasource.password=", "--spring.datasource.driver-class-name=org.hsqldb.jdbc.JDBCDriver",
                 "--spring.jpa.hibernate.ddl-auto=update", "--spring.jpa.properties.hibernate.search.backend.directory.type=local-heap",
-                "--taxonomy.init.async=false", "--civilian.reformulation=true", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
-                "--civilian.reformulation-case=" + (args[1].startsWith("authored-") ? args[1].substring(9) : "flood"),
-                "--custom.llm.url=" + CivilianLlmConfiguration.URL, "--custom.llm.model=civilian-fixture",
+                "--taxonomy.init.async=false", "--scenario.reformulation=true", "--llm.mock=false", "--llm.provider=CUSTOM_OPENAI",
+                "--scenario.reformulation-case=" + (args[1].startsWith("authored-") ? args[1].substring(9) : "flood"),
+                "--custom.llm.url=" + ScenarioLlmConfiguration.URL, "--custom.llm.model=scenario-fixture",
                 "--taxonomy.admin-password=" + PASSWORD, "--taxonomy.security.require-password-change=false")) {
-            var scenario = new ReformulationCivilianApplication(Integer.parseInt(app.getEnvironment().getProperty("local.server.port")),
+            var scenario = new ReformulationScenarioApplication(Integer.parseInt(app.getEnvironment().getProperty("local.server.port")),
                     Path.of(args[0]), app.getBean(ScenarioLlmPlayback.class));
             scenario.browserMode = args[1].equals("browser");
             scenario.fullLifecycle = !args[1].startsWith("authored-");
@@ -51,13 +51,13 @@ public final class ReformulationCivilianApplication {
                 if (scenario.browser != null) scenario.browser.close();
             }
         }
-        System.out.println("REFORMULATION_CIVILIAN_" + args[1].toUpperCase(Locale.ROOT) + "_OK");
+        System.out.println("REFORMULATION_SCENARIO_" + args[1].toUpperCase(Locale.ROOT) + "_OK");
     }
 
     private void analysisAndOffer() throws Exception {
         var source = playback.fixture().path("requirement");
         long project = request("POST", "/api/projects", Map.of("projectKey", "REF-" + UUID.randomUUID(),
-                "title", "Civilian reformulation", "description", "Authored remote-response acceptance", "status", "ACTIVE"), 201).path("id").asLong();
+                "title", "Scenario reformulation", "description", "Authored remote-response acceptance", "status", "ACTIVE"), 201).path("id").asLong();
         request("POST", "/api/workspace/provision", null, 200);
         String projectPath = "/api/projects/" + project;
         var requirement = request("POST", projectPath + "/requirements", Map.of("requirementKey", source.path("key").asText(),
@@ -100,14 +100,14 @@ public final class ReformulationCivilianApplication {
         }
         assertThat(offer.at("/currentRevision/sections")).isNotEmpty();
         assertThat(offer.at("/currentRevision/questions")).isNotEmpty();
-        assertThat(playback.calls().stream().map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("civilian:NODE:")))
-                .containsExactlyInAnyOrder("civilian:NODE:BP-1060", "civilian:NODE:BP-1327", "civilian:NODE:BP-1000", "civilian:NODE:BP",
-                        "civilian:NODE:IP-1102", "civilian:NODE:IP-1005", "civilian:NODE:IP-1000", "civilian:NODE:IP");
+        assertThat(playback.calls().stream().map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("scenario:NODE:")))
+                .containsExactlyInAnyOrder("scenario:NODE:BP-1060", "scenario:NODE:BP-1327", "scenario:NODE:BP-1000", "scenario:NODE:BP",
+                        "scenario:NODE:IP-1102", "scenario:NODE:IP-1005", "scenario:NODE:IP-1000", "scenario:NODE:IP");
         assertThat(request("GET", requirementPath, null, 200)).isEqualTo(before);
         assertThat(request("GET", projectPath + "/snapshots/" + snapshotId, null, 200)).isEqualTo(snapshot);
         if (!fullLifecycle) return;
         if (browserMode) {
-            browser = new ReformulationCivilianBrowser(URI.create(base).getPort(), output); browser.login(PASSWORD);
+            browser = new ReformulationScenarioBrowser(URI.create(base).getPort(), output); browser.login(PASSWORD);
             browser.inspect(offerPath, source.path("text").asText(), findQuestion(offer.at("/currentRevision/questions"), "stale-observation").path("id").asText());
             offer = request("GET", offerPath, null, 200);
         }
@@ -128,7 +128,7 @@ public final class ReformulationCivilianApplication {
         long originalRevision = revision(initial);
         var answered = request("POST", offerPath + "/answers", Map.of("questionId", shared.path("id").asText(),
                 "action", "ANSWER", "values", List.of("Retain last observation with timestamp"),
-                "rationale", "Human civilian acceptance decision"), 201, originalRevision);
+                "rationale", "Human scenario acceptance decision"), 201, originalRevision);
         var deferred = request("POST", offerPath + "/answers", Map.of("questionId", ingestion.path("id").asText(),
                 "action", "DEFER", "values", List.of(), "rationale", "Obtain evidence for a maximum age"), 201, revision(answered));
         assertThat(findQuestion(deferred.at("/currentRevision/questions"), "acquisition").path("state").asText()).isEqualTo("DEFERRED");
@@ -144,7 +144,7 @@ public final class ReformulationCivilianApplication {
         assertThat(runs.valueStream().filter(r -> r.path("id").equals(targeted.path("id"))).findFirst().orElseThrow()
                 .path("status").asText()).as(runs.toPrettyString()).isEqualTo("COMPLETED");
         var revised = request("GET", offerPath, null, 200);
-        assertThat(playback.calls().stream().skip(beforeTargeted).map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("civilian:REWORD:")))
+        assertThat(playback.calls().stream().skip(beforeTargeted).map(ScenarioLlmPlayback.Call::ruleId).filter(id -> id.startsWith("scenario:REWORD:")))
                 .hasSize(8).doesNotHaveDuplicates();
         save("answered-proposal.json", revised);
         assertThat(revised.at("/currentRevision/text").asText()).contains("retain last observation with timestamp");
@@ -199,7 +199,7 @@ public final class ReformulationCivilianApplication {
         var inherited = request("GET", nextPath, null, 200);
         save("inherited-proposal.json", inherited);
         verifyLineage(inherited);
-        var checkpoint = request("POST", "/api/projects/git/commit", Map.of("message", "Explicit civilian reformulation checkpoint"), 200);
+        var checkpoint = request("POST", "/api/projects/git/commit", Map.of("message", "Explicit scenario reformulation checkpoint"), 200);
         save("checkpoint.json", checkpoint);
         assertThat(checkpoint.path("commitId").asText()).matches("[0-9a-f]{40}");
         var materialized = request("POST", "/api/projects/git/materialize", Map.of("branch", checkpoint.path("branch").asText(),
@@ -211,7 +211,7 @@ public final class ReformulationCivilianApplication {
                 "revisionPath", revisionPath, "workspaceId", workspace.path("workspaceId").asText(), "checkpoint", checkpoint,
                 "current", request("GET", requirementPath, null, 200));
         save("identity.json", json.valueToTree(identity));
-        var foreign = request("POST", "/api/workspace/create", Map.of("displayName", "Foreign civilian scope", "description", "Must not read this offer"), 200);
+        var foreign = request("POST", "/api/workspace/create", Map.of("displayName", "Foreign scenario scope", "description", "Must not read this offer"), 200);
         request("POST", "/api/workspace/" + foreign.path("workspaceId").asText() + "/switch", null, 200);
         request("POST", "/api/workspace/provision", null, 200);
         request("GET", offerPath, null, 404);
@@ -304,7 +304,7 @@ public final class ReformulationCivilianApplication {
             byte[] bytes = download(path + "?format=" + format);
             Files.write(output.resolve(prefix + "." + format), bytes);
             String readable = format.equals("docx") ? docxText(bytes) : new String(bytes, StandardCharsets.UTF_8);
-            assertThat(readable).contains("15 minutes", "surface-water", "Human civilian acceptance decision");
+            assertThat(readable).contains("15 minutes", "surface-water", "Human scenario acceptance decision");
         }
     }
     private static String docxText(byte[] bytes) throws Exception {

@@ -146,7 +146,7 @@ runtime measurements; see [the extraction history](../internal/MODULE_BOUNDARIES
 
 This is a **workflow/ownership view**, not a claim that every box is one HTTP request
 or that saving a snapshot automatically edits a workspace. A requirement might, for
-example, describe a civilian hospital's communication needs; the real catalogue and
+example, describe a hospital's communication needs; the real catalogue and
 source links remain the input authority.
 
 ```mermaid

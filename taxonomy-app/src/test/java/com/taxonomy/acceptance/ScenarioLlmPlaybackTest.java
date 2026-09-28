@@ -11,8 +11,8 @@ import static org.assertj.core.api.Assertions.*;
 class ScenarioLlmPlaybackTest {
     private final ObjectMapper json = new ObjectMapper();
 
-    @Test void civilianRepliesRejectUnknownFullSourceChildrenEdgesAndAnswerValues() throws Exception {
-        var fixture = ReformulationCivilianCorpus.flood();
+    @Test void scenarioRepliesRejectUnknownFullSourceChildrenEdgesAndAnswerValues() throws Exception {
+        var fixture = ReformulationScenarioCorpus.flood();
         var input = json.createObjectNode().put("nodeId", "BP-1060")
                 .put("preservationContract", "Preserve all original anchors and child IDs verbatim; additions are unreviewed.");
         String original = fixture.at("/requirement/text").asText();
@@ -39,8 +39,8 @@ class ScenarioLlmPlaybackTest {
         }
     }
 
-    @Test void civilianAnswerIdentityStateAndHistoryAreExactInNodeAndReconciliationPrompts() throws Exception {
-        var fixture = ReformulationCivilianCorpus.flood();
+    @Test void scenarioAnswerIdentityStateAndHistoryAreExactInNodeAndReconciliationPrompts() throws Exception {
+        var fixture = ReformulationScenarioCorpus.flood();
         String original = fixture.at("/requirement/text").asText();
         var input = json.createObjectNode().put("nodeId", "BP-1060").put("preservationContract", "Only reword this affected section.");
         input.putObject("baseline").put("originalText", original).put("originalTextHash", ScenarioLlmPlayback.sha256(original)).put("snapshotId", "selected-snapshot");
@@ -51,7 +51,7 @@ class ScenarioLlmPlaybackTest {
                  {"id":"acquire","key":{"subject":"acquisition","dimension":"stale-age","scope":"flood-ingestion"},"state":"DEFERRED","answerSchema":{"kind":"NUMBER"}}]
                 """));
         input.set("answers", json.readTree("""
-                [{"id":"answer","questionId":"shared","state":"ANSWERED","values":["Retain last observation with timestamp"],"disposition":"ANSWER","otherText":null,"rationale":"Human civilian acceptance decision","supersedes":[]},
+                [{"id":"answer","questionId":"shared","state":"ANSWERED","values":["Retain last observation with timestamp"],"disposition":"ANSWER","otherText":null,"rationale":"Human scenario acceptance decision","supersedes":[]},
                  {"id":"defer","questionId":"acquire","state":"DEFERRED","values":[],"disposition":"DEFER","otherText":null,"rationale":"Obtain evidence for a maximum age","supersedes":[]}]
                 """));
         var mutations = new ArrayList<tools.jackson.databind.node.ObjectNode>();
@@ -175,7 +175,7 @@ class ScenarioLlmPlaybackTest {
     }
 
     @Test void parentArtifactAlreadyRetainsPromptsRoutedToAdoptedSource() throws Exception {
-        var playback = new ScenarioLlmPlayback(ReformulationCivilianCorpus.flood());
+        var playback = new ScenarioLlmPlayback(ReformulationScenarioCorpus.flood());
         String original = playback.fixture().at("/requirement/text").asText();
         String adopted = original + " Explicitly adopted wording.";
         String initial = prompt(playback, playback.fixture().path("replies").get(0));
@@ -257,7 +257,7 @@ class ScenarioLlmPlaybackTest {
     @Test void rejectsUnknownScenarioKeysBudgetAndTaskWithoutLiveFallback() throws Exception {
         var playback = ScenarioLlmPlayback.flood();
         String known = prompt(playback, playback.fixture().get("replies").get(0));
-        for (String unknown : new String[]{known.replace("CIV-FLOOD-001", "OTHER"),
+        for (String unknown : new String[]{known.replace("FLOOD-001", "OTHER"),
                 known.replace("these keys: BP", "these keys: BP, XX-9999"),
                 known.replace("score of 100", "score of 99"),
                 known.replace("distribute the parent relevance score", "summarise the parent relevance score")}) {

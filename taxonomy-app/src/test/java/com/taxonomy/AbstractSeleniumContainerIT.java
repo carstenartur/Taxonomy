@@ -79,6 +79,15 @@ abstract class AbstractSeleniumContainerIT {
 
     @BeforeAll
     void startContainers() {
+        try {
+            startAndAuthenticate();
+        } catch (RuntimeException failure) {
+            recordStartupFailure(failure);
+            throw failure;
+        }
+    }
+
+    private void startAndAuthenticate() {
         network = createNetwork();
 
         dbContainer = createDbContainer(network);
@@ -101,8 +110,9 @@ abstract class AbstractSeleniumContainerIT {
         driver.findElement(By.name("password")).sendKeys("admin");
         driver.findElement(By.cssSelector("button[type='submit'], input[type='submit']")).click();
 
-        // Wait for the main page to load after login
-        driver.get(ContainerTestUtils.APP_ORIGIN + "/");
+        // Observe the response to the login POST. A second navigation here can
+        // cancel an in-flight submission and replace it with an anonymous GET.
+        // Keep the original timeout and require the actual protected page.
         new WebDriverWait(driver, Duration.ofSeconds(30))
                 .until(ExpectedConditions.presenceOfElementLocated(By.id("taxonomyTree")));
         // Wait for the data-view-rendered attribute which is set by renderView() after
@@ -122,6 +132,41 @@ abstract class AbstractSeleniumContainerIT {
                     .until(ExpectedConditions.invisibilityOfElementLocated(By.id("onboardingOverlay")));
         }
         waitForRoleSurfaceReady();
+    }
+
+    /** Record structural evidence only; never cookies, passwords, CSRF values or page text. */
+    private void recordStartupFailure(RuntimeException failure) {
+        try {
+            java.nio.file.Path report = java.nio.file.Path.of("target", "failsafe-reports",
+                    getClass().getSimpleName() + "-startup.json");
+            java.nio.file.Files.createDirectories(report.getParent());
+            var evidence = new java.util.LinkedHashMap<String, Object>();
+            evidence.put("phase", "container-startup-and-form-login");
+            evidence.put("failureType", failure.getClass().getName());
+            evidence.put("applicationRunning", appContainer != null && appContainer.isRunning());
+            evidence.put("databaseRunning", dbContainer != null && dbContainer.isRunning());
+            evidence.put("browserStarted", driver != null);
+            if (driver != null) {
+                String path = URI.create(driver.getCurrentUrl()).getPath();
+                evidence.put("pageKind", switch (path == null ? "" : path) {
+                    case "/" -> "HOME";
+                    case "/login" -> "LOGIN";
+                    case "/change-password" -> "PASSWORD_CHANGE";
+                    case "/error" -> "ERROR";
+                    default -> "OTHER";
+                });
+                evidence.put("loginError", URI.create(driver.getCurrentUrl()).getQuery() != null
+                        && java.util.Arrays.stream(URI.create(driver.getCurrentUrl()).getQuery().split("&"))
+                                .anyMatch(value -> value.equals("error") || value.startsWith("error=")));
+                evidence.put("sessionCookiePresent", driver.manage().getCookieNamed("JSESSIONID") != null);
+                evidence.put("usernameFieldPresent", !driver.findElements(By.name("username")).isEmpty());
+                evidence.put("taxonomyTreePresent", !driver.findElements(By.id("taxonomyTree")).isEmpty());
+            }
+            java.nio.file.Files.writeString(report,
+                    MAPPER.writerWithDefaultPrettyPrinter().writeValueAsString(evidence));
+        } catch (Exception diagnosticFailure) {
+            failure.addSuppressed(diagnosticFailure);
+        }
     }
 
     @AfterAll

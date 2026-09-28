@@ -150,7 +150,7 @@ Laufzeitmessung; siehe [Extraktionshistorie](../internal/MODULE_BOUNDARIES_HISTO
 
 Dies ist eine **Ablauf- und Zuständigkeitsdarstellung**. Nicht jeder Kasten entspricht
 einem HTTP-Aufruf; das Speichern eines Snapshots bearbeitet nicht automatisch einen
-Workspace. Eine Anforderung kann beispielsweise zivile Kommunikationsbedürfnisse
+Workspace. Eine Anforderung kann beispielsweise Kommunikationsbedürfnisse
 eines Krankenhauses beschreiben. Maßgeblich bleiben der echte Katalog und die Quellenverknüpfungen.
 
 ```mermaid

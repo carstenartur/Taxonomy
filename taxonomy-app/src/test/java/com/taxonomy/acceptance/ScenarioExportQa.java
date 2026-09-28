@@ -24,9 +24,9 @@ import java.util.zip.ZipInputStream;
 import static org.assertj.core.api.Assertions.assertThat;
 
 /** Assertions consume real downloaded bytes and the persisted scene, never fabricated outputs. */
-public final class CivilianExportQa {
+public final class ScenarioExportQa {
     private static final ObjectMapper JSON = new ObjectMapper();
-    private CivilianExportQa() { }
+    private ScenarioExportQa() { }
 
     private static org.w3c.dom.Document XmlSupport(String xml) throws Exception {
         var factory=DocumentBuilderFactory.newInstance();factory.setNamespaceAware(true);
@@ -147,7 +147,7 @@ public final class CivilianExportQa {
                     output.resolve("architecture-pdf.png").toFile());
         }
         String reportHtml = new String(artifacts.get("decision.html"), StandardCharsets.UTF_8);
-        assertThat(reportHtml).contains(requirement, snapshot, "CIV-FLOOD-001");
+        assertThat(reportHtml).contains(requirement, snapshot, "FLOOD-001");
         JsonNode decision = JSON.readTree(artifacts.get("decision.json"));
         assertThat(decision.toString()).contains(requirement, snapshot);
         String wordGraphHash = com.taxonomy.architecture.report.ArchitectureReportDocument.graphSha256(expected);
@@ -220,7 +220,7 @@ public final class CivilianExportQa {
         report.put("isolatedElements", isolated);
         report.put("architectureState", "GENERATED_CANDIDATE");
         report.put("referenceReview", Map.of("decision", "ACCEPTED_AS_INTEGRATION_TEST_REFERENCE",
-                "document", "docs/qa/civilian-reference-review.md", "productionApproval", false,
+                "document", "docs/qa/scenario-reference-review.md", "productionApproval", false,
                 "remainingCoverage", List.of("F3 phone/email and subscription model", "F4 account management/deletion",
                         "F5 timing/outage contracts", "A1 delivery/privacy/audit contracts")));
         report.put("automaticChecks", List.of("ArchiMate semantic round trip", "Visio identity and endpoint parity",
