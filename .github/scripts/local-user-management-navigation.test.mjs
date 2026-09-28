@@ -5,7 +5,7 @@ import vm from 'node:vm';
 
 const source = readFileSync(new URL('../../taxonomy-app/src/main/resources/static/js/security/taxonomy-role-surface.js', import.meta.url), 'utf8');
 
-function surface(initial) {
+function surface(initial, { i18n = true, basePath = "/taxonomy" } = {}) {
   const elements = new Map();
   function element() {
     return {
@@ -21,16 +21,19 @@ function surface(initial) {
   elements.set('tab-admin', adminTab);
   let response = initial;
   const sandbox = {
-    document: { readyState: 'loading', body: element(), addEventListener() {}, dispatchEvent() {},
+    document: { currentScript: { src: 'https://example.test' + basePath + '/js/security/taxonomy-role-surface.js?v=1139' }, readyState: 'loading', body: element(), addEventListener() {}, dispatchEvent() {},
       createElement: element, querySelectorAll() { return []; },
       getElementById(id) { return elements.get(id) || null; } },
     Node: { ELEMENT_NODE: 1 }, MutationObserver: class { observe() {} },
-    CustomEvent: class {}, console: { error() {} },
-    window: { alert() {}, addEventListener() {}, setTimeout() {},
+    URL, CustomEvent: class {}, console: { error() {} },
+    window: { location: { href: 'https://example.test' + basePath + '/' }, alert() {}, addEventListener() {}, setTimeout() {},
       TaxonomyApiClient: { getJson() { return response instanceof Error ? Promise.reject(response) : Promise.resolve(response); } },
       TaxonomyI18n: { ready: () => Promise.resolve(), t: key => key, resolveUrl: path => '/taxonomy' + path } }
   };
+  if (!i18n) delete sandbox.window.TaxonomyI18n;
   vm.runInNewContext(source, sandbox);
+  // currentScript is no longer available when the asynchronous account request finishes.
+  sandbox.document.currentScript = null;
   return { elements, api: sandbox.window.TaxonomyRoleSurface,
     async refresh(next = response) { response = next; await this.api.refresh(); await Promise.resolve(); } };
 }
@@ -73,3 +76,11 @@ test('failed capability refresh removes an already rendered link', async () => {
   assert.equal(ui.elements.has('localUserManagementAdminEntry'), false);
   assert.equal(ui.api.getContext().localUserManagementAllowed, false);
 });
+
+for (const basePath of ['', '/taxonomy', '/gateway/taxonomy']) {
+  test('navigation keeps base path without the translation module: ' + (basePath || '/'), async () => {
+    const ui = surface({ ...admin, localUserManagementAllowed: true }, { i18n: false, basePath });
+    await ui.refresh();
+    assert.equal(ui.elements.get('localUserManagementLink').href, basePath + '/admin/users');
+  });
+}

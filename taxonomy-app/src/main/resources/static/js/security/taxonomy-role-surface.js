@@ -2,6 +2,20 @@
 window.TaxonomyRoleSurface = (function () {
     'use strict';
 
+    // Capture the base before currentScript disappears during asynchronous refresh.
+    var applicationBasePath = (function () {
+        if (!document.currentScript || !document.currentScript.src) return '';
+        try {
+            var pathname = new URL(document.currentScript.src, window.location.href).pathname;
+            var suffix = '/js/security/taxonomy-role-surface.js';
+            if (!pathname.endsWith(suffix)) return '';
+            var prefix = pathname.slice(0, -suffix.length);
+            return prefix.startsWith('//') ? '' : prefix;
+        } catch (error) {
+            return '';
+        }
+    }());
+
     var context = {
         username: null,
         roles: [],
@@ -147,7 +161,7 @@ window.TaxonomyRoleSurface = (function () {
         link.id = 'localUserManagementLink';
         link.className = 'btn btn-primary';
         link.href = window.TaxonomyI18n
-            ? window.TaxonomyI18n.resolveUrl('/admin/users') : '/admin/users';
+            ? window.TaxonomyI18n.resolveUrl('/admin/users') : applicationBasePath + '/admin/users';
         link.textContent = translated('users.open', 'Manage users');
         body.append(title, description, link);
         card.appendChild(body);
