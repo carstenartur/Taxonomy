@@ -292,21 +292,23 @@ class UserManagementPageTest {
     @WithMockUser(username = "operator", roles = "ADMIN")
     void successRedirectsKeepTheServletContextAndNeverIncludeCredentials() throws Exception {
         when(service.getUser(7L)).thenReturn(Optional.of(ACCOUNT));
+        // This MVC slice includes message bundles, not the application locale interceptor.
+        // Set the resolved request locale explicitly, as in the German page-rendering test.
         mvc.perform(post("/taxonomy/admin/users").contextPath("/taxonomy").with(csrf())
-                        .param("lang", "de").param("username", "alice").param("roles", "ROLE_USER")
+                        .locale(java.util.Locale.GERMAN).param("username", "alice").param("roles", "ROLE_USER")
                         .param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/taxonomy/admin/users?lang=de"));
         mvc.perform(post("/taxonomy/admin/users/7").contextPath("/taxonomy").with(csrf())
-                        .param("lang", "de").param("username", "alice").param("roles", "ROLE_USER"))
+                        .locale(java.util.Locale.GERMAN).param("username", "alice").param("roles", "ROLE_USER"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/taxonomy/admin/users/7?lang=de"));
         mvc.perform(post("/taxonomy/admin/users/7/password").contextPath("/taxonomy").with(csrf())
-                        .param("lang", "de").param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
+                        .locale(java.util.Locale.GERMAN).param("newPassword", PASSWORD).param("confirmPassword", PASSWORD))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/taxonomy/admin/users/7?lang=de"));
         mvc.perform(post("/taxonomy/admin/users/7/status").contextPath("/taxonomy").with(csrf())
-                        .param("lang", "de").param("enabled", "false"))
+                        .locale(java.util.Locale.GERMAN).param("enabled", "false"))
                 .andExpect(status().is3xxRedirection())
                 .andExpect(redirectedUrl("/taxonomy/admin/users?lang=de"));
     }
