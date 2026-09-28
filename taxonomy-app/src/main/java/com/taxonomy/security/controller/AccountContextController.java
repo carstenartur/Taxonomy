@@ -1,5 +1,7 @@
 package com.taxonomy.security.controller;
 
+import com.taxonomy.security.config.LocalUserManagementAccess;
+import org.springframework.core.env.Environment;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.GrantedAuthority;
@@ -15,6 +17,12 @@ import java.util.Set;
 @RestController
 @RequestMapping("/api/account")
 public class AccountContextController {
+    private final Environment environment;
+
+    public AccountContextController(Environment environment) {
+        this.environment = environment;
+    }
+
 
     @GetMapping("/me")
     public ResponseEntity<?> currentAccount(Authentication authentication) {
@@ -37,6 +45,7 @@ public class AccountContextController {
                 "username", authentication.getName(),
                 "roles", roles,
                 "architectureMutationAllowed", architectureMutationAllowed,
-                "administrator", administrator));
+                "administrator", administrator,
+                "localUserManagementAllowed", administrator && LocalUserManagementAccess.isEnabled(environment)));
     }
 }

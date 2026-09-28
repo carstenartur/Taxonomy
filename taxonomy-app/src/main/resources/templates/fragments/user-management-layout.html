@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" lang="en">
+<head th:fragment="head">
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+    <title th:text="#{users.title} + ' — Taxonomy'">User management — Taxonomy</title>
+    <link rel="stylesheet" th:href="@{/webjars/bootstrap/5.3.8/dist/css/bootstrap.min.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy.css}"/>
+    <link rel="stylesheet" th:href="@{/css/taxonomy-ergonomics.css}"/>
+</head>
+<body>
+<header th:fragment="navigation">
+    <a class="skip-link" href="#userManagementMain" th:text="#{users.skip}">Skip to user management</a>
+    <nav class="navbar navbar-dark bg-dark" th:attr="aria-label=#{users.navigation}">
+        <div class="container d-flex flex-wrap gap-2">
+            <a class="navbar-brand" th:href="@{/(lang=${#locale.language})}">Taxonomy</a>
+            <a class="btn btn-outline-light" th:href="@{/admin/users(lang=${#locale.language})}"
+               th:text="#{users.title}">User management</a>
+            <a class="btn btn-outline-light" th:href="@{/(lang=${#locale.language})}"
+               th:text="#{users.back}">Back to application</a>
+        </div>
+    </nav>
+</header>
+<div th:fragment="feedback">
+    <div th:if="${errorKey}" class="alert alert-danger" role="alert"
+         th:text="${#messages.msg(errorKey)}"></div>
+    <div th:if="${successKey}" class="alert alert-success" role="status" aria-live="polite"
+         th:text="${#messages.msg(successKey)}"></div>
+</div>
+</body>
+</html>

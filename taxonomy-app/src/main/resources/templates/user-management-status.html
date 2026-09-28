@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head th:replace="~{fragments/user-management-layout :: head}"></head>
+<body class="bg-body-tertiary">
+<header th:replace="~{fragments/user-management-layout :: navigation}"></header>
+<main id="userManagementMain" class="container py-4">
+    <h1 th:text="${enableAccount} ? #{users.enable} : #{users.disable}">Change account status</h1>
+    <div th:replace="~{fragments/user-management-layout :: feedback}"></div>
+    <div class="card card-body">
+        <p class="text-break"><strong th:text="${account.username}"></strong></p>
+        <p th:text="${enableAccount} ? #{users.enableHelp} : #{users.disableHelp}"></p>
+        <p class="alert alert-warning" th:if="${account.username == currentUsername and !enableAccount}" th:text="#{users.selfDisable}"></p>
+        <form method="post" th:action="@{/admin/users/{id}/status(id=${account.id},lang=${#locale.language})}">
+            <input type="hidden" name="enabled" th:value="${enableAccount}"/>
+            <div class="d-flex flex-wrap gap-2">
+                <button type="submit" class="btn btn-primary" th:text="${enableAccount} ? #{users.confirmEnable} : #{users.confirmDisable}">Confirm</button>
+                <a class="btn btn-outline-secondary" th:href="@{/admin/users(lang=${#locale.language})}" th:text="#{users.cancel}">Cancel</a>
+            </div>
+        </form>
+    </div>
+</main>
+</body>
+</html>

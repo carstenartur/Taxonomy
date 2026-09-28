@@ -4,6 +4,7 @@ import com.taxonomy.security.service.UserManagementService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.context.annotation.Profile;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -23,6 +24,7 @@ import java.util.Map;
 /** Admin-only REST adapter for local user management. */
 @RestController
 @RequestMapping("/api/admin/users")
+@Profile("!keycloak")
 @PreAuthorize("hasRole('ADMIN')")
 @Tag(name = "User Management", description = "Admin-only user CRUD operations")
 @ConditionalOnProperty(name = "taxonomy.security.local-users-enabled",
