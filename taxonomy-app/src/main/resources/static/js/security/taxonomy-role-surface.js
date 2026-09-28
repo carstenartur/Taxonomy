@@ -2,6 +2,20 @@
 window.TaxonomyRoleSurface = (function () {
     'use strict';
 
+    // Capture the base before currentScript disappears during asynchronous refresh.
+    var applicationBasePath = (function () {
+        if (!document.currentScript || !document.currentScript.src) return '';
+        try {
+            var pathname = new URL(document.currentScript.src, window.location.href).pathname;
+            var suffix = '/js/security/taxonomy-role-surface.js';
+            if (!pathname.endsWith(suffix)) return '';
+            var prefix = pathname.slice(0, -suffix.length);
+            return prefix.startsWith('//') ? '' : prefix;
+        } catch (error) {
+            return '';
+        }
+    }());
+
     var context = {
         username: null,
         roles: [],
@@ -121,6 +135,42 @@ window.TaxonomyRoleSurface = (function () {
         body.append(copy, link);
         card.appendChild(body);
         adminTab.insertBefore(card, adminTab.firstChild);
+    }
+
+    function ensureLocalUserManagementAdminEntry() {
+        var existing = document.getElementById('localUserManagementAdminEntry');
+        if (!isAdministrator() || context.localUserManagementAllowed !== true) {
+            if (existing) existing.remove();
+            return;
+        }
+        var adminTab = document.getElementById('tab-admin');
+        if (!adminTab || existing) return;
+        var card = document.createElement('section');
+        card.id = 'localUserManagementAdminEntry';
+        card.className = 'card shadow-sm mb-3';
+        card.setAttribute('aria-labelledby', 'localUserManagementAdminEntryTitle');
+        var body = document.createElement('div');
+        body.className = 'card-body';
+        var title = document.createElement('h2');
+        title.id = 'localUserManagementAdminEntryTitle';
+        title.className = 'h5';
+        title.textContent = translated('users.title', 'User management');
+        var description = document.createElement('p');
+        description.textContent = translated('users.description', 'Manage local accounts and roles.');
+        var link = document.createElement('a');
+        link.id = 'localUserManagementLink';
+        link.className = 'btn btn-primary';
+        link.href = window.TaxonomyI18n
+            ? window.TaxonomyI18n.resolveUrl('/admin/users') : applicationBasePath + '/admin/users';
+        link.textContent = translated('users.open', 'Manage users');
+        body.append(title, description, link);
+        card.appendChild(body);
+        adminTab.insertBefore(card, adminTab.firstChild);
+    }
+
+    function ensureAdminEntries() {
+        ensureDocumentTemplateAdminEntry();
+        ensureLocalUserManagementAdminEntry();
     }
 
     function normalizeGlobalModalPlacement() {
@@ -243,9 +293,9 @@ window.TaxonomyRoleSurface = (function () {
                 context = data;
                 ensureStableEvidenceAnchors();
                 if (window.TaxonomyI18n) {
-                    window.TaxonomyI18n.ready().then(ensureDocumentTemplateAdminEntry);
+                    window.TaxonomyI18n.ready().then(ensureAdminEntries);
                 } else {
-                    ensureDocumentTemplateAdminEntry();
+                    ensureAdminEntries();
                 }
                 applyStaticSurfaces(document);
                 installMutationObserver();
@@ -259,6 +309,8 @@ window.TaxonomyRoleSurface = (function () {
             })
             .catch(function (error) {
                 console.error('[Taxonomy] Unable to load role context', error);
+                context.localUserManagementAllowed = false;
+                ensureLocalUserManagementAdminEntry();
                 ensureStableEvidenceAnchors();
                 applyStaticSurfaces(document);
                 installMutationObserver();

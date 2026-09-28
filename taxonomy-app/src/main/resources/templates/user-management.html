@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org" th:lang="${#locale.language}" lang="en">
+<head th:replace="~{fragments/user-management-layout :: head}"></head>
+<body class="bg-body-tertiary">
+<header th:replace="~{fragments/user-management-layout :: navigation}"></header>
+<main id="userManagementMain" class="container py-4">
+    <h1 th:text="#{users.title}">User management</h1>
+    <p th:text="#{users.description}">Manage local accounts and roles.</p>
+    <div th:replace="~{fragments/user-management-layout :: feedback}"></div>
+    <a id="newUserLink" class="btn btn-primary mb-4" th:href="@{/admin/users/new(lang=${#locale.language})}"
+       th:text="#{users.create}">Create user</a>
+    <p th:if="${#lists.isEmpty(users)}" th:text="#{users.empty}">No local accounts.</p>
+    <div class="row g-3">
+        <div class="col-12 col-lg-6" th:each="account : ${users}">
+            <section class="card h-100" th:attr="aria-labelledby='user-title-' + ${account.id}">
+                <div class="card-body">
+                    <h2 class="h5 text-break" th:id="'user-title-' + ${account.id}" th:text="${account.username}">Username</h2>
+                    <dl class="mb-3">
+                        <dt th:text="#{users.displayName}">Display name</dt>
+                        <dd class="text-break" th:text="${#strings.isEmpty(account.displayName) ? '—' : account.displayName}"></dd>
+                        <dt th:text="#{users.email}">Email</dt>
+                        <dd class="text-break" th:text="${#strings.isEmpty(account.email) ? '—' : account.email}"></dd>
+                        <dt th:text="#{users.roles}">Roles</dt>
+                        <dd><span th:each="role, state : ${account.roles}"><span th:text="${#messages.msg('users.role.' + role)}"></span><span th:unless="${state.last}">, </span></span></dd>
+                        <dt th:text="#{users.status}">Status</dt>
+                        <dd th:text="${account.enabled} ? #{users.active} : #{users.inactive}"></dd>
+                    </dl>
+                    <p class="small" th:if="${account.mustChangePassword == true}" th:text="#{users.passwordPending}"></p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a class="btn btn-outline-primary" th:href="@{/admin/users/{id}(id=${account.id},lang=${#locale.language})}"
+                           th:text="#{users.edit}">Edit</a>
+                        <a class="btn btn-outline-secondary" th:href="@{/admin/users/{id}/status(id=${account.id},enabled=${!account.enabled},lang=${#locale.language})}"
+                           th:text="${account.enabled} ? #{users.disable} : #{users.enable}">Change status</a>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+</main>
+</body>
+</html>
