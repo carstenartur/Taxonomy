@@ -17,6 +17,10 @@ import org.junit.jupiter.api.io.TempDir;
 class SetupInfrastructureTest {
     @TempDir Path directory;
 
+    @Test void reviewConfigurationContracts() throws Exception {
+        SetupReviewRegressionCases.main(new String[0]);
+    }
+
     @Test void nativePackageCommandContracts() throws Exception {
         Path source = repository().resolve("deploy/native");
         var compiler = ToolProvider.getSystemJavaCompiler();
@@ -42,6 +46,7 @@ class SetupInfrastructureTest {
         assumeTrue(available, "Helm not installed locally; canonical CI requires it");
         Path root = repository();
         run(List.of("bash", root.resolve("deploy/helm/taxonomy/verify-setup.sh").toString()), root, 120);
+        run(List.of("bash", root.resolve("deploy/helm/taxonomy/verify-setup-security.sh").toString()), root, 120);
     }
 
     private void run(List<String> command, Path workingDirectory, int seconds) throws Exception {
